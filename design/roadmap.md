@@ -21,6 +21,15 @@ This roadmap records deferred features and the documentation prerequisites befor
   - Schema: enable `history_cache` materialization; document migration steps.
 - **Job Logs Table**
   - Document expected volume, log format, and pruning approach.
+- **Scheduled Staging Database Cleanup**
+  - Background task to clean up truly abandoned staging databases (7+ days old).
+  - Query failed jobs and scan each dbhost for orphaned staging databases.
+  - Configurable age threshold (default 7 days) via `settings` table.
+  - Safety checks: verify no active jobs for that target before deletion.
+  - Audit logging: track all automatic deletions in job_events or dedicated cleanup_log table.
+  - Metrics: count of staging databases cleaned, total size reclaimed.
+  - Documentation: cron schedule, safety guarantees, manual override procedures.
+  - Rationale: Catches edge cases where user doesn't re-restore same target (no auto-cleanup trigger).
 
 ## Phase 2 – Concurrency Controls & Usability
 
@@ -51,10 +60,46 @@ This roadmap records deferred features and the documentation prerequisites befor
   - Session management with secure token handling.
   - Password reset and account recovery flows.
   - Document security model updates, credential storage, and audit logging.
+- **Role-Based Access Control (RBAC)**
+  - **Admin Role**: Full system access
+    - Manage users (add, remove, change roles, enable/disable)
+    - View all jobs across all users
+    - Cancel any job (including others' jobs)
+    - Adjust job priority/queue order
+    - Submit jobs on behalf of other users
+    - Access system configuration and settings
+    - View and manage staging database cleanup
+  - **Manager Role**: Operational oversight
+    - View all jobs across all users (read-only job list)
+    - Cancel jobs (any user's jobs)
+    - Adjust job priority/queue order
+    - Submit jobs for other users (with proper audit logging)
+    - View system metrics and queue health
+    - Cannot manage users or change system configuration
+  - **User Role** (default): Self-service access
+    - Submit own restore jobs
+    - View own jobs only (filtered by owner_user_id)
+    - Cancel own jobs only
+    - View own job history
+    - No access to other users' jobs or system operations
+  - **Schema Changes**:
+    - Add `role` ENUM('user','manager','admin') to `auth_users` table
+    - Default role: 'user'
+    - Track role changes in job_events (audit trail)
+  - **Authorization Logic**:
+    - CLI validates role permissions before job submission
+    - Daemon enforces role checks for job cancellation
+    - Web interface renders UI based on role capabilities
+  - **Documentation Requirements**:
+    - Update security model with RBAC permissions matrix
+    - Document role promotion/demotion procedures
+    - Add role-based command examples to README
+    - Update runbooks with manager troubleshooting workflows
 - **Migration Strategy**
   - Maintain CLI trusted wrapper authentication for backwards compatibility.
   - Add `auth_credentials` table for web users (hashed passwords, 2FA secrets).
   - Document authentication flow differences between CLI and web interfaces.
+  - Migrate existing users to 'user' role by default; manually promote admins/managers.
 
 ## Phase 5 – Automation & APIs
 

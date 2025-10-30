@@ -476,6 +476,224 @@ Add event types:
 - `rename_started`: Atomic rename initiated
 - `rename_complete`: Cutover successful
 - `staging_cleanup`: Staging database dropped
+- `staging_auto_cleanup`: Orphaned staging database auto-dropped before new restore
+
+## Scheduled Cleanup (Phase 1 - Deferred)
+
+### Rationale
+
+The automatic cleanup during restore handles most orphaned staging databases, but edge cases remain:
+- User restores customer A, job fails, user never restores customer A again
+- Staging database remains indefinitely
+- Accumulates disk space and clutters database server
+
+**Solution**: Scheduled background cleanup job removes truly abandoned staging databases after configurable age threshold.
+
+### Implementation Design (Phase 1)
+
+```python
+def scheduled_staging_cleanup(age_threshold_days: int = 7):
+    """
+    Background job to clean up abandoned staging databases.
+    
+    Runs daily via cron. Identifies staging databases associated with
+    failed jobs that are older than threshold and have no active restore
+    attempts for the same target.
+    
+    Args:
+        age_threshold_days: Minimum age before staging database is eligible for cleanup
+    """
+    # Query failed jobs with staging databases older than threshold
+    cursor.execute("""
+        SELECT DISTINCT 
+            j.id as job_id,
+            j.staging_name,
+            j.target,
+            j.dbhost,
+            j.completed_at
+        FROM jobs j
+        WHERE j.status IN ('failed', 'canceled')
+            AND j.staging_name IS NOT NULL
+            AND j.completed_at < NOW() - INTERVAL %s DAY
+            AND NOT EXISTS (
+                -- Ensure no active jobs for same target
+                SELECT 1 FROM jobs j2 
+                WHERE j2.target = j.target 
+                  AND j2.dbhost = j.dbhost
+                  AND j2.status IN ('queued', 'running')
+            )
+        ORDER BY j.dbhost, j.completed_at
+    """, (age_threshold_days,))
+    
+    failed_jobs = cursor.fetchall()
+    
+    # Group by dbhost for efficient cleanup
+    by_host = {}
+    for job in failed_jobs:
+        if job['dbhost'] not in by_host:
+            by_host[job['dbhost']] = []
+        by_host[job['dbhost']].append(job)
+    
+    cleanup_summary = {
+        'total_scanned': 0,
+        'total_dropped': 0,
+        'total_size_mb': 0,
+        'by_host': {}
+    }
+    
+    # Process each host
+    for dbhost, jobs in by_host.items():
+        host_conn = get_connection(dbhost)
+        host_cursor = host_conn.cursor()
+        
+        # Get all actual staging databases on this host
+        host_cursor.execute("""
+            SELECT 
+                SCHEMA_NAME,
+                ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) as size_mb
+            FROM information_schema.SCHEMATA s
+            LEFT JOIN information_schema.TABLES t ON s.SCHEMA_NAME = t.TABLE_SCHEMA
+            WHERE SCHEMA_NAME REGEXP '_[0-9a-f]{12}$'
+            GROUP BY SCHEMA_NAME
+        """)
+        
+        actual_staging_dbs = {row['SCHEMA_NAME']: row['size_mb'] for row in host_cursor.fetchall()}
+        
+        cleanup_summary['total_scanned'] += len(actual_staging_dbs)
+        cleanup_summary['by_host'][dbhost] = {
+            'scanned': len(actual_staging_dbs),
+            'dropped': 0,
+            'size_mb': 0
+        }
+        
+        # Drop staging databases from eligible failed jobs
+        for job in jobs:
+            staging_name = job['staging_name']
+            
+            # Verify database still exists
+            if staging_name not in actual_staging_dbs:
+                logger.debug(f"Staging database already gone: {staging_name}")
+                continue
+            
+            # Safety check: verify target has no active jobs (redundant but safe)
+            cursor.execute("""
+                SELECT COUNT(*) as active_count
+                FROM jobs
+                WHERE target = %s AND dbhost = %s AND status IN ('queued', 'running')
+            """, (job['target'], job['dbhost']))
+            
+            if cursor.fetchone()['active_count'] > 0:
+                logger.warning(f"Skipping {staging_name}: active job detected for target {job['target']}")
+                continue
+            
+            # Drop the staging database
+            size_mb = actual_staging_dbs[staging_name]
+            try:
+                host_cursor.execute(f"DROP DATABASE IF EXISTS `{staging_name}`")
+                host_conn.commit()
+                
+                # Log the cleanup
+                cursor.execute("""
+                    INSERT INTO job_events 
+                    (job_id, event_type, event_time, detail)
+                    VALUES (%s, 'scheduled_staging_cleanup', UTC_TIMESTAMP(6), %s)
+                """, (job['job_id'], f"Dropped abandoned staging database: {staging_name} ({size_mb} MB, age: {age_threshold_days}+ days)"))
+                
+                cleanup_summary['total_dropped'] += 1
+                cleanup_summary['total_size_mb'] += size_mb
+                cleanup_summary['by_host'][dbhost]['dropped'] += 1
+                cleanup_summary['by_host'][dbhost]['size_mb'] += size_mb
+                
+                logger.info(f"Dropped abandoned staging database: {staging_name} ({size_mb} MB)")
+                
+            except Exception as e:
+                logger.error(f"Failed to drop {staging_name}: {e}")
+        
+        host_cursor.close()
+        host_conn.close()
+    
+    # Emit metrics
+    emit_metric('staging_cleanup.databases_dropped', cleanup_summary['total_dropped'])
+    emit_metric('staging_cleanup.disk_reclaimed_mb', cleanup_summary['total_size_mb'])
+    
+    return cleanup_summary
+```
+
+### Configuration
+
+Add settings for scheduled cleanup:
+
+```sql
+INSERT INTO settings (`key`, `value`) VALUES
+    ('staging_cleanup_enabled', 'true'),
+    ('staging_cleanup_age_days', '7'),
+    ('staging_cleanup_schedule', '0 2 * * *');  -- Daily at 2 AM
+```
+
+### Deployment
+
+```bash
+# Add to cron (daily at 2 AM)
+0 2 * * * /opt/pulldb/bin/pulldb-cleanup-staging >> /var/log/pulldb/staging-cleanup.log 2>&1
+```
+
+### Safety Guarantees
+
+1. **Age Threshold**: Only staging databases from jobs completed 7+ days ago
+2. **Active Job Check**: Skip targets with queued/running jobs
+3. **Failed Job Correlation**: Only drop staging databases from failed/canceled jobs
+4. **Audit Trail**: Every deletion logged in job_events
+5. **Manual Override**: Admin can disable via `staging_cleanup_enabled` setting
+6. **Metrics**: Datadog tracking of cleanup activity and disk reclaimed
+
+### Monitoring
+
+```python
+# Datadog metrics
+pulldb.staging_cleanup.databases_dropped  # Count per run
+pulldb.staging_cleanup.disk_reclaimed_mb  # Space freed per run
+pulldb.staging_cleanup.run_duration_ms    # Execution time
+pulldb.staging_cleanup.errors             # Failed cleanup attempts
+```
+
+### Manual Investigation Before Cleanup
+
+If needed, inspect staging database before scheduled cleanup removes it:
+
+```sql
+-- Find staging databases eligible for cleanup (7+ days old)
+SELECT 
+    j.id,
+    j.staging_name,
+    j.target,
+    j.status,
+    j.completed_at,
+    DATEDIFF(NOW(), j.completed_at) as age_days
+FROM jobs j
+WHERE j.status IN ('failed', 'canceled')
+    AND j.staging_name IS NOT NULL
+    AND j.completed_at < NOW() - INTERVAL 7 DAY
+ORDER BY j.completed_at;
+
+-- Inspect specific staging database before it's cleaned
+USE jdoecustomer_550e8400e29b;
+SELECT * FROM pullDB;  -- View restore metadata
+SHOW TABLES;
+```
+
+### Comparison: Auto-Cleanup vs Scheduled Cleanup
+
+| Aspect | Auto-Cleanup (On Restore) | Scheduled Cleanup (Background) |
+|--------|---------------------------|--------------------------------|
+| **Trigger** | User restores same target again | Cron job (daily) |
+| **Scope** | Staging DBs for specific target | All staging DBs 7+ days old |
+| **Timing** | Before new restore starts | Nightly batch process |
+| **Edge Cases** | Doesn't catch "never re-restored" targets | Catches all abandoned staging DBs |
+| **Phase** | Phase 0 (Prototype) | Phase 1 (Enhancement) |
+
+Both mechanisms are complementary:
+- Auto-cleanup handles normal workflow (99% of cases)
+- Scheduled cleanup is safety net for edge cases (1% of cases)
 
 ## Documentation Updates Required
 

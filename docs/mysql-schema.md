@@ -221,6 +221,15 @@ INSERT INTO settings (`key`, `value`) VALUES
 - `history_cache`: materialized view of completed restores to power `history=` responses.
 - `user_concurrency_limits` and `host_concurrency_limits`: override tables for future concurrency policies.
 - Additional queue partitions (`priority`, `cancel_requested`) and event types that depend on cancellation or multi-daemon orchestration.
+- **Role-Based Access Control (Phase 4)**:
+  - Add `role` column to `auth_users` table: `ENUM('user','manager','admin') NOT NULL DEFAULT 'user'`
+  - **User Role** (default): Submit and manage own jobs only, view own job history
+  - **Manager Role**: View all jobs, cancel any job, adjust priority, submit for others
+  - **Admin Role**: Full system access including user management and configuration
+  - Track role changes in `job_events` with event_type='role_changed'
+  - Add authorization checks in CLI and daemon for role-based operations
+  - Document permissions matrix: user can only see `WHERE owner_user_id = current_user_id`, manager/admin see all jobs
+  - Web interface renders UI components based on role capabilities
 
 Documenting these tables now avoids architectural drift while keeping the prototype schema lean.
 
