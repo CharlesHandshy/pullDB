@@ -7,19 +7,25 @@ This guide captures where configuration values live, how they flow into the CLI 
 ## Sources
 
 1. **Environment Variables**
-   - `PULLDB_MYSQL_HOST`: MySQL coordination database host.
-   - `PULLDB_MYSQL_USER`: MySQL coordination database username.
-   - `PULLDB_MYSQL_PASSWORD`: MySQL coordination database password.
+   - `PULLDB_MYSQL_HOST`: MySQL coordination database host (or AWS Parameter Store path starting with `/`).
+   - `PULLDB_MYSQL_USER`: MySQL coordination database username (or AWS Parameter Store path).
+   - `PULLDB_MYSQL_PASSWORD`: MySQL coordination database password (or AWS Parameter Store path).
    - `PULLDB_MYSQL_DATABASE`: MySQL coordination database name.
-   - `PULLDB_S3_BUCKET`: default backup bucket (always production backups).
-   - `PULLDB_S3_PREFIX`: base prefix (`daily/prod`).
+   - `PULLDB_AWS_PROFILE`: AWS profile name for S3 and Parameter Store access (required, no explicit credentials supported).
+   - `PULLDB_S3_BUCKET_PATH`: S3 bucket path including prefix (e.g., `pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod`).
    - `PULLDB_DEFAULT_DBHOST`: default MySQL host for restores.
-   - `PULLDB_WORKDIR`: filesystem workspace for extractions.
-2. **Secrets Manager / SSM**
-   - MySQL service account credentials (username/password per host).
-   - Datadog API key or stats endpoint tokens.
-3. **Configuration Files (Optional)**
-   - `config/<env>.yaml` may map host-specific overrides (max DB counts, credential refs). Parsed by the daemon on startup.
+   - `PULLDB_WORK_DIR`: filesystem workspace for extractions.
+   - `PULLDB_CUSTOMERS_AFTER_SQL_DIR`: directory containing post-restore SQL scripts for customer databases.
+   - `PULLDB_QA_TEMPLATE_AFTER_SQL_DIR`: directory containing post-restore SQL scripts for QA template databases.
+2. **AWS Parameter Store** (recommended for production)
+   - Values starting with `/` are automatically fetched from AWS Systems Manager Parameter Store.
+   - Example: `PULLDB_MYSQL_PASSWORD=/pulldb/prod/mysql/password`
+   - Supports SecureString type for encrypted storage.
+   - Requires IAM permissions: `ssm:GetParameter` and `kms:Decrypt`.
+3. **.env File** (local development)
+   - Gitignored file containing environment variables.
+   - Template available in `.env.example`.
+   - Loaded automatically by `python-dotenv` in Config class.
 
 ## MySQL Settings Table
 
@@ -28,24 +34,26 @@ Key-value pairs stored in `settings` provide operational overrides that both CLI
 | Key | Description | Source |
 | --- | --- | --- |
 | `default_dbhost` | Canonical host when `dbhost=` absent. | Derived from `PULLDB_DEFAULT_DBHOST` or config file. |
-| `extraction_directory` | Absolute path for temp restore workspace. | `PULLDB_WORKDIR` or config file. |
-| `s3_bucket` | Backup bucket name. | `PULLDB_S3_BUCKET`. |
-| `s3_prefix` | Bucket prefix for lookup. | `PULLDB_S3_PREFIX`. |
+| `work_directory` | Absolute path for temp restore workspace. | `PULLDB_WORK_DIR`. |
+| `s3_bucket_path` | S3 bucket path including prefix. | `PULLDB_S3_BUCKET_PATH`. |
 | `customers_after_sql_dir` | Directory containing post-restore SQL files for customer databases. | Config file entry. |
 | `qa_template_after_sql_dir` | Directory containing post-restore SQL files for QA template databases. | Config file entry. |
-| `history_retention_days` | Reserved for future cleanup loops. | Config file or default constant. |
 
 Populate defaults during migrations; allow environment overrides on startup.
 
 ## Flow
 
 1. Process-level environment variables bootstrap CLI/daemon.
-2. Daemon reads optional YAML configuration; merges with environment.
-3. Effective configuration updates MySQL `settings` during migration or first run.
-4. CLI consults MySQL for dynamic values (e.g., default host) while remaining mostly environment-driven.
+2. Config class resolves Parameter Store references (values starting with `/`).
+3. Daemon reads MySQL `settings` table for operational overrides.
+4. CLI consults MySQL for dynamic values (e.g., default host) while remaining environment-driven.
 
 ## Security Considerations
 
-- Never store secrets directly in MySQL `settings`—store references (e.g., SSM parameter names) instead.
-- Enforce proper MySQL user permissions and access controls.
-- Rotate credentials out of band; update references and verify through integration tests.
+- **Never store secrets directly in .env or MySQL `settings`** — use AWS Parameter Store paths instead.
+- **Profile-only authentication**: pullDB only supports AWS profiles (`PULLDB_AWS_PROFILE`), not explicit credentials.
+- **Parameter Store paths**: MySQL credentials can be stored as Parameter Store references (e.g., `/pulldb/prod/mysql/password`).
+- **Automatic resolution**: Config class detects paths starting with `/` and fetches actual values via boto3 SSM client.
+- **IAM permissions required**: `ssm:GetParameter`, `ssm:GetParameters`, and `kms:Decrypt` (for SecureString parameters).
+- **Rotate credentials**: Update Parameter Store values; restart daemon to pick up new credentials.
+- Enforce proper MySQL user permissions and access controls for coordination database.

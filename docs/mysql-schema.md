@@ -19,7 +19,7 @@ CREATE TABLE auth_users (
     username VARCHAR(255) NOT NULL UNIQUE,
     user_code CHAR(6) NOT NULL UNIQUE,
     is_admin BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     disabled_at TIMESTAMP(6) NULL,
     CONSTRAINT chk_user_code_length CHECK (CHAR_LENGTH(user_code) = 6)
 );
@@ -40,29 +40,37 @@ CREATE TABLE jobs (
     owner_username VARCHAR(255) NOT NULL,
     owner_user_code CHAR(6) NOT NULL,
     target VARCHAR(255) NOT NULL,
-    status ENUM('queued','running','failed','complete','canceled') NOT NULL,
-    submitted_at TIMESTAMP(6) NOT NULL,
+    staging_name VARCHAR(64) NOT NULL,
+    dbhost VARCHAR(255) NOT NULL,
+    status ENUM('queued','running','failed','complete','canceled') NOT NULL DEFAULT 'queued',
+    submitted_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     started_at TIMESTAMP(6) NULL,
     completed_at TIMESTAMP(6) NULL,
     options_json JSON,
     retry_count INT NOT NULL DEFAULT 0,
     error_detail TEXT,
+    active_target_key VARCHAR(520) GENERATED ALWAYS AS (
+        CASE WHEN status IN ('queued','running') THEN CONCAT(target,'@@',dbhost) ELSE NULL END
+    ) VIRTUAL,
     CONSTRAINT fk_jobs_owner FOREIGN KEY (owner_user_id) REFERENCES auth_users(user_id)
 );
 ```
 
-- `target`: sanitized database name (`user_code` + customer token or `qatemplate`).
+- `target`: sanitized database name (`user_code` + customer token or `qatemplate`). Maximum 51 characters.
+- `staging_name`: temporary database name used during restore (`target_<job_id_first_12_chars>`). Maximum 64 characters.
+- `dbhost`: target database server hostname.
 - `options_json`: frozen snapshot of CLI flags for replay and inspection.
 - `retry_count`: increments when operators resubmit after failure (manual only).
 - `error_detail`: optional payload describing failure context.
 - `status`: only `queued`, `running`, `failed`, `complete` are emitted in the prototype; `canceled` remains reserved for future work.
+- `active_target_key`: generated virtual column for per-target exclusivity (NULL unless status is queued/running).
 
-Enforce per-target exclusivity with a functional index:
+Enforce per-target exclusivity with unique index on generated column (MySQL 8.0 doesn't support partial indexes):
 
 ```sql
-CREATE UNIQUE INDEX idx_jobs_target_active
-    ON jobs(target, status)
-    WHERE status IN ('queued','running');
+CREATE UNIQUE INDEX idx_jobs_active_target ON jobs(active_target_key);
+
+CREATE INDEX idx_jobs_queue ON jobs(status, submitted_at);
 ```
 
 ### job_events
@@ -71,67 +79,60 @@ CREATE UNIQUE INDEX idx_jobs_target_active
 CREATE TABLE job_events (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     job_id CHAR(36) NOT NULL,
-    event_time TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
     event_type VARCHAR(50) NOT NULL,
-    actor_user_id CHAR(36),
-    actor_username VARCHAR(255),
-    actor_user_code CHAR(6),
     detail TEXT,
-    CONSTRAINT fk_events_job FOREIGN KEY (job_id) REFERENCES jobs(id),
-    CONSTRAINT fk_events_actor FOREIGN KEY (actor_user_id) REFERENCES auth_users(user_id)
+    logged_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    CONSTRAINT fk_job_events_job FOREIGN KEY (job_id) REFERENCES jobs(id)
 );
 
-CREATE INDEX idx_job_events_job_time
-    ON job_events (job_id, event_time);
+CREATE INDEX idx_job_events_job_id ON job_events(job_id, logged_at);
 ```
 
 - `event_type`: expected prototype values include `queued`, `running`, `failed`, `complete`, plus `heartbeat` or `note` as needed for troubleshooting.
-- Actor columns remain nullable so daemon-generated events can omit operator identity.
+- `logged_at`: timestamp of event (uses CURRENT_TIMESTAMP(6) for microsecond precision).
+- Actor columns removed in final implementation - job ownership is tracked in jobs table.
 
 ### db_hosts
 
 ```sql
 CREATE TABLE db_hosts (
-    dbhost VARCHAR(255) PRIMARY KEY,
-    description TEXT,
-    credential_ref VARCHAR(255) NOT NULL,
-    max_db_count INT NOT NULL,
-    last_known_db_count INT NOT NULL DEFAULT 0,
-    last_refreshed_at TIMESTAMP(6),
-    disabled_at TIMESTAMP(6)
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    hostname VARCHAR(255) NOT NULL UNIQUE,
+    connection_string VARCHAR(512) NOT NULL,
+    max_concurrent_restores INT NOT NULL DEFAULT 1,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
 );
 ```
 
-- `credential_ref`: pointer to the credential material provisioned on the daemon host.
-- `max_db_count`: hard ceiling checked before each restore; failure to meet headroom aborts the job.
-- `last_known_db_count`: cached observation maintained by the daemon.
-- `disabled_at`: allows temporary suspension without losing metadata.
 
 ### locks
 
 ```sql
 CREATE TABLE locks (
-    name VARCHAR(255) PRIMARY KEY,
-    owner VARCHAR(255) NOT NULL,
-    acquired_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)
+    lock_name VARCHAR(100) PRIMARY KEY,
+    locked_by VARCHAR(255) NOT NULL,
+    locked_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    expires_at TIMESTAMP(6) NOT NULL,
+    INDEX idx_locks_expires (expires_at)
 );
 ```
 
-- Locks coordinate single-process access (for example `target:<db>` or `schema:migrate`).
-- The daemon releases locks explicitly; watchdog jobs should reclaim abandoned rows.
+- `expires_at`: TTL for automatic lock expiration if daemon crashes.
+- The daemon releases locks explicitly; watchdog jobs can reclaim abandoned rows after expiration.
 
 ### settings
 
 ```sql
 CREATE TABLE settings (
-    `key` VARCHAR(255) PRIMARY KEY,
-    `value` TEXT NOT NULL,
-    updated_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)
+    setting_key VARCHAR(100) PRIMARY KEY,
+    setting_value TEXT NOT NULL,
+    description TEXT,
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
 );
 ```
 
-- Stores JSON or scalar configuration (default extraction directory, default `dbhost`, S3 bucket path, post-restore SQL script directories).
-- Prototype keeps the set small; future feature flags can reuse this store.
+- `description`: human-readable explanation of setting purpose.
 
 ## Supporting Views & Indices
 

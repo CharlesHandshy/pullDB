@@ -62,18 +62,13 @@ pullDB status
 - `overwrite` prevents interactive prompts for existing targets
 
 ### MySQL Schema Patterns
-- UUIDs for primary keys (`user_id`, `job_id`)
-- UTC timestamps in ISO-8601 format via `UTC_TIMESTAMP(6)`
-- Status constraints: `('queued','running','failed','complete','canceled')`
-- Per-target job exclusivity: `UNIQUE INDEX ON jobs(target) WHERE status IN ('queued','running')`
-- Foreign key constraints enabled
-- Triggers for automatic event logging on status changes
+- Timestamps with microsecond precision via `CURRENT_TIMESTAMP(6)` (MySQL 8.0 compatible)
+  - Implemented using generated virtual column `active_target_key` (MySQL 8.0 doesn't support partial indexes)
 
 ### Configuration Philosophy
-- Environment variables for secrets and deployment-specific values
-- MySQL `settings` table for runtime configuration  
-- Never hardcode credentials or host-specific settings in code
-- Support AWS Secrets Manager/SSM for credential references
+- AWS Parameter Store for secure credential storage (values starting with `/` auto-resolved)
+- AWS profile-only authentication (`PULLDB_AWS_PROFILE` required, no explicit credentials)
+- `.env` file for local development (gitignored)
 
 ## Python Implementation Guidelines
 

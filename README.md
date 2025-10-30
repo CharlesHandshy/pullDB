@@ -5,28 +5,47 @@
 ## Quick Start
 
 ```bash
-# 1. Install AWS CLI (optional profile configuration)
+# 1. Install AWS CLI
 sudo scripts/setup-aws.sh
-# sudo scripts/setup-aws.sh --configure pr-prod us-east-1 json
 
-# 2. Install MySQL and create database schema
+# 2. Configure AWS credentials (creates .env file)
+scripts/setup-aws-credentials.sh
+# Follow prompts to:
+#   - Configure AWS profile: aws configure --profile pr-prod
+#   - Edit .env and set PULLDB_AWS_PROFILE=pr-prod
+#   - Verify credentials work
+
+# 3. Install MySQL and create database schema
 sudo scripts/setup-mysql.sh
 sudo scripts/setup-pulldb-schema.sh
 
-# 3. Set up Python environment
+# 4. Set up Python environment
 python3 -m venv venv
 source venv/bin/activate
 scripts/setup-python-project.sh
 
-# 4. Use pullDB (once implementation is complete)
+# 5. Use pullDB (once implementation is complete)
 pulldb --help
 pulldb-daemon
 ```
 
 Documentation:
-- AWS Setup: [docs/aws-setup.md](docs/aws-setup.md)
-- MySQL Setup: [docs/mysql-setup.md](docs/mysql-setup.md)
-- Python Project Setup: [docs/python-project-setup.md](docs/python-project-setup.md)
+- MySQL Database Schema: [docs/mysql-schema.md](docs/mysql-schema.md)
+
+### Configuration Validation
+
+After completing environment setup you can run the consolidated validator:
+
+```bash
+scripts/validate-config.sh
+```
+
+It checks:
+- AWS profile usability (STS)
+- Parameter Store references (if any values start with `/`)
+- MySQL connectivity to coordination database
+- Work directory writability
+- Presence of `settings` table
 
 ## Purpose
 

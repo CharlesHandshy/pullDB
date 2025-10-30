@@ -6,7 +6,7 @@
 #
 # Usage:
 #   sudo ./scripts/setup-aws.sh            # Install only
-#   sudo ./scripts/setup-aws.sh --configure PROFILE_NAME REGION OUTPUT
+#   sudo ./scripts/setup-aws.sh --configure PROFILE_NAME REGION OUTPUT   # set region/output only; add keys with 'aws configure --profile <name>'
 #   sudo ./scripts/setup-aws.sh --force    # Reinstall even if present
 #
 # Example:
@@ -110,21 +110,20 @@ fi
 
 if [[ $CONFIGURE -eq 1 ]]; then
   if [[ -z "$PROFILE_NAME" || -z "$PROFILE_REGION" ]]; then
-    error "--configure requires PROFILE_NAME and REGION and OUTPUT"
+    error "--configure requires PROFILE_NAME REGION OUTPUT"
     exit 1
   fi
-  info "Configuring AWS profile '$PROFILE_NAME'..."
+  info "Configuring AWS profile '$PROFILE_NAME' region/output (credentials managed separately)."
 
-  AWS_CONFIG_DIR="/root/.aws"
+  TARGET_USER=${SUDO_USER:-root}
+  TARGET_HOME=$(eval echo "~$TARGET_USER")
+  AWS_CONFIG_DIR="$TARGET_HOME/.aws"
   mkdir -p "$AWS_CONFIG_DIR"
-
   CONFIG_FILE="$AWS_CONFIG_DIR/config"
-  CRED_FILE="$AWS_CONFIG_DIR/credentials"
-
-  touch "$CONFIG_FILE" "$CRED_FILE"
+  touch "$CONFIG_FILE"
 
   if grep -q "\[profile $PROFILE_NAME\]" "$CONFIG_FILE"; then
-    warn "Profile '$PROFILE_NAME' already exists in config; updating region/output."
+    warn "Profile '$PROFILE_NAME' already exists; updating region/output."
     sed -i "/\[profile $PROFILE_NAME\]/,/^$/ s/region = .*/region = $PROFILE_REGION/" "$CONFIG_FILE" || true
     sed -i "/\[profile $PROFILE_NAME\]/,/^$/ s/output = .*/output = $PROFILE_OUTPUT/" "$CONFIG_FILE" || true
   else
@@ -135,17 +134,8 @@ output = $PROFILE_OUTPUT
 EOF
   fi
 
-  if ! grep -q "\[$PROFILE_NAME\]" "$CRED_FILE"; then
-    warn "No credentials block for '$PROFILE_NAME'. Add them manually or use 'aws configure --profile $PROFILE_NAME'."
-    cat >> "$CRED_FILE" <<EOF
-[$PROFILE_NAME]
-aws_access_key_id = REPLACE_ME
-aws_secret_access_key = REPLACE_ME
-EOF
-  fi
-
-  chmod 600 "$CONFIG_FILE" "$CRED_FILE"
-  info "Profile '$PROFILE_NAME' configured (placeholder credentials)."
+  chmod 600 "$CONFIG_FILE"
+  info "Region/output written for profile '$PROFILE_NAME'. Run 'aws configure --profile $PROFILE_NAME' as $TARGET_USER to add access keys if needed (development only; prefer IAM role)."
 fi
 
 cat <<SUMMARY
@@ -159,10 +149,12 @@ Force Reinstall: $FORCE
 Profile Configured: $CONFIGURE (${PROFILE_NAME:-none})
 
 Next Steps:
-1. Replace placeholder credentials in /root/.aws/credentials or run:
-   aws configure --profile <name>
-2. Export AWS_PROFILE for daemon environment or set credentials via IAM role.
-3. Use 'aws s3 ls' to validate connectivity (after adding credentials).
-4. For pullDB production, prefer IAM role-based auth over static keys.
+1. (Dev only) Add credentials: sudo -u ${SUDO_USER:-$USER} aws configure --profile ${PROFILE_NAME:-your-profile}
+2. (Prod) Attach IAM role to instance; no local keys required.
+3. Validate identity:
+  AWS_PROFILE=${PROFILE_NAME:-your-profile} aws sts get-caller-identity
+4. List bucket (after permissions):
+  AWS_PROFILE=${PROFILE_NAME:-your-profile} aws s3 ls s3://pestroutes-rds-backup-prod-vpc-us-east-1-s3/ | head
+5. Prefer Parameter Store for MySQL credentials (see docs/parameter-store-setup.md)
 
 SUMMARY
