@@ -155,6 +155,60 @@ CREATE INDEX idx_jobs_owner_status
 - `active_jobs` powers duplicate detection and status reporting without extra predicates in application code.
 - `idx_jobs_owner_status` accelerates per-user status queries in the CLI `status` command.
 
+## Initial Data Population
+
+### Database Hosts (Legacy appType Support)
+
+Pre-populate `db_hosts` with the three existing development database servers to support legacy `--type=` behavior via `dbhost=` parameter:
+
+```sql
+-- DEV team database server (legacy --type=DEV)
+INSERT INTO db_hosts (dbhost, description, credential_ref, max_db_count) VALUES
+    ('db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
+     'Development team database server (legacy DEV type)',
+     'aws-ssm:/pulldb/db3-dev-credentials',
+     1000);
+
+-- SUPPORT team database server (legacy --type=SUPPORT, default)
+INSERT INTO db_hosts (dbhost, description, credential_ref, max_db_count) VALUES
+    ('db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
+     'Support team database server (legacy SUPPORT type, default)',
+     'aws-ssm:/pulldb/db4-dev-credentials',
+     1000);
+
+-- IMPLEMENTATION team database server (legacy --type=IMPLEMENTATION)
+INSERT INTO db_hosts (dbhost, description, credential_ref, max_db_count) VALUES
+    ('db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
+     'Implementation team database server (legacy IMPLEMENTATION type)',
+     'aws-ssm:/pulldb/db5-dev-credentials',
+     1000);
+```
+
+### Configuration Settings
+
+Set default `dbhost` to match legacy SUPPORT default and configure other operational parameters:
+
+```sql
+-- Default database host (matches legacy SUPPORT default)
+INSERT INTO settings (`key`, `value`) VALUES
+    ('default_dbhost', 'db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com');
+
+-- S3 backup bucket path
+INSERT INTO settings (`key`, `value`) VALUES
+    ('s3_bucket_path', 'pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/');
+
+-- Post-restore SQL script directories
+INSERT INTO settings (`key`, `value`) VALUES
+    ('customers_after_sql_dir', '/opt/pulldb/customers_after_sql/'),
+    ('qa_template_after_sql_dir', '/opt/pulldb/qa_template_after_sql/');
+
+-- Default working directory for downloads and extractions
+INSERT INTO settings (`key`, `value`) VALUES
+    ('work_dir', '/var/lib/pulldb/work/');
+```
+
+**Migration Note**: Users of legacy `pullDB-auth --type=SUPPORT` should use `pullDB user=<user> customer=<customer>` (default) or explicitly specify `dbhost=db-mysql-db4-dev` for clarity.
+
 ## Daemon-Oriented Triggers
 
 - **jobs_after_insert**: set `submitted_at` to `UTC_TIMESTAMP(6)` (if not provided), insert a matching `job_events` row with `event_type='queued'`.

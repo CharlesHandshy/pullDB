@@ -31,7 +31,8 @@ design/
   ├── system-overview.md          # Component responsibilities and interactions  
   ├── implementation-notes.md     # Python structure and integration patterns
   ├── configuration-map.md        # Config sources and MySQL settings flow
-  └── roadmap.md                  # Deferred features documentation requirements
+  ├── roadmap.md                  # Deferred features documentation requirements
+  └── apptype-analysis.md         # Legacy appType → dbhost parameter mapping
 docs/
   └── mysql-schema.md             # Complete database schema with invariants
 customers_after_sql/              # Post-restore SQL for customer databases (PII removal)
@@ -113,6 +114,9 @@ class JobRepository:
 - Customer: `{user_code}{sanitized_customer_id}` 
 - QA Template: `{user_code}qatemplate`
 - Sanitization: lowercase, remove all non-letter characters (letters only)
+- **Length Limit**: Maximum 51 characters (reserves 13 chars for staging suffix: `_` + 12-char job_id)
+- **MySQL Constraint**: Total staging name must not exceed 64 characters
+- Validation must reject customer IDs that would result in target > 51 chars
 
 ### S3 Backup Discovery
 - Path: `pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/{customer|qatemplate}`
@@ -134,6 +138,20 @@ class JobRepository:
 - **QA Templates**: No post-restore scripts needed (already sanitized in production)
 - **Single Addition**: Only one `pullDB` table is added to track restore metadata
 - **Restore Metadata Table**: Contains user who restored, restore timestamp, backup filename used, and JSON report of post-restore SQL script execution status
+
+### Staging-to-Production Rename Pattern (MANDATORY)
+- **Staging Name**: `<target>_<job_id_first_12_chars>` (e.g., `jdoecustomer_550e8400e29b`)
+- **Length Constraints**: Target max 51 chars + suffix 13 chars = staging name max 64 chars (MySQL limit)
+- **Orphaned Cleanup**: Before restore, auto-drop all staging databases matching `{target}_[0-9a-f]{12}` pattern
+- **Cleanup Rationale**: User re-restoring same target implies done examining previous staging databases
+- **Uniqueness Check**: Verify staging name doesn't exist after cleanup (should never exist)
+- **Restore Target**: myloader restores to staging database, not final target
+- **Post-Restore SQL**: Execute against staging database
+- **Metadata Table**: Add `pullDB` table to staging database with job details
+- **Atomic Rename**: Use stored procedure to rename all tables staging → target
+- **Cleanup**: Drop staging database after successful rename
+- **Failure Handling**: Preserve staging database on failure; auto-cleaned on next restore to same target
+- **Safety Benefits**: Zero downtime, validation before cutover, rollback capability, audit trail
 
 ## Testing Strategy
 

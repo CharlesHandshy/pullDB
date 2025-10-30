@@ -37,12 +37,40 @@ The CLI fails validation when `customer` and `qatemplate` are supplied together 
 
 - All target `dbhost` entries must be registered in the MySQL configuration (`db_hosts` table captures credentials, max active limits, and maximum database counts). The agent verifies membership before accepting a restore request and fails fast if the host is unknown.
 - Credentials are stored securely and surfaced to the daemon through environment configuration on the corresponding EC2 host.
+- **Pre-populated Hosts**: Three database servers are registered during deployment to support legacy team segregation:
+  - `db-mysql-db3-dev` - Development team (legacy `--type=DEV`)
+  - `db-mysql-db4-dev` - Support team (legacy `--type=SUPPORT`, **default**)
+  - `db-mysql-db5-dev` - Implementation team (legacy `--type=IMPLEMENTATION`)
+
+### Migration from Legacy pullDB-auth
+
+Users of the legacy `pullDB-auth` tool should note these mappings:
+
+| Legacy Command | New pullDB Command |
+|----------------|-------------------|
+| `pullDB --db=customer --user=jdoe` | `pullDB user=jdoe customer=customer` |
+| `pullDB --db=customer --user=jdoe --type=SUPPORT` | `pullDB user=jdoe customer=customer` (default) |
+| `pullDB --db=customer --user=jdoe --type=DEV` | `pullDB user=jdoe customer=customer dbhost=db-mysql-db3-dev` |
+| `pullDB --db=customer --user=jdoe --type=IMPLEMENTATION` | `pullDB user=jdoe customer=customer dbhost=db-mysql-db5-dev` |
+
+**Key Differences**:
+- The `--type=` parameter is replaced by explicit `dbhost=` for clarity
+- Default behavior matches legacy SUPPORT (db4 host)
+- Short hostnames (`db3-dev`, `db4-dev`, `db5-dev`) are supported alongside full FQDNs
+- Database host registration is now dynamic via `db_hosts` table instead of hardcoded switch statements
 
 ### Default Naming Rules
 
 - `user_code` is generated from the first six alphabetic characters of the provided username after stripping non-letters and lowercasing the result. If fewer than six alphabetic characters remain, the request is rejected.
 - When a collision occurs, the system replaces the sixth character with the next unused alphabetic character found later in the username, then shifts left to the fifth and fourth characters as needed (up to three adjustments). Failure to produce a unique code aborts provisioning.
 - Default target database names concatenate the operator's `user_code` with the sanitized customer token (customer identifier lowercased, non-letters removed). For the QA template, the suffix literal `qatemplate` is used.
+- **Length Limit**: Target database names are limited to **51 characters maximum** to accommodate the staging database suffix (`_` + 12-character job_id prefix = 13 chars). This ensures staging names stay within MySQL's 64-character database name limit.
+  - `user_code`: 6 characters (fixed)
+  - `sanitized_customer_id`: maximum 45 characters (51 - 6 = 45)
+  - `qatemplate`: 10 characters (6 + 10 = 16 total, well under limit)
+  - Staging suffix: 13 characters (`_` + 12-char job_id)
+  - Total staging name: maximum 64 characters (51 + 13)
+- The CLI validates target name length during option parsing and rejects requests that would exceed the 51-character limit.
 - Sanitized target names are stored verbatim in MySQL and reused consistently by the CLI and daemon.
 
 ### Authentication Model

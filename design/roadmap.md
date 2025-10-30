@@ -22,11 +22,16 @@ This roadmap records deferred features and the documentation prerequisites befor
 - **Job Logs Table**
   - Document expected volume, log format, and pruning approach.
 
-## Phase 2 – Concurrency Controls
+## Phase 2 – Concurrency Controls & Usability
 
 - Introduce per-user/per-host/global active caps.
 - Document configuration additions and failure scenarios.
 - Extend security model and runbooks for throttling alerts.
+- **Short Hostname Aliases**
+  - Support `dbhost=db3-dev`, `dbhost=db4-dev`, `dbhost=db5-dev` as aliases for full FQDNs.
+  - Document alias-to-FQDN resolution logic in CLI.
+  - Add `host_alias` column to `db_hosts` table or maintain alias mapping in `settings` table.
+  - Update README with shortened syntax examples.
 
 ## Phase 3 – Multi-Daemon & Distributed Locks
 
