@@ -34,6 +34,15 @@ design/
   └── roadmap.md                  # Deferred features documentation requirements
 docs/
   └── mysql-schema.md             # Complete database schema with invariants
+customers_after_sql/              # Post-restore SQL for customer databases (PII removal)
+  ├── 010.remove_customer_pii.sql
+  ├── 020.remove_billto_info.sql
+  └── ... (120.reset_business_registration.sql)
+qa_template_after_sql/            # Post-restore SQL for QA templates (currently empty)
+  └── README.md                   # Explains no scripts needed for QA templates
+reference/                        # Legacy PHP implementations (read-only)
+  ├── pullDB-auth                 # Customer restore with obfuscation
+  └── pullQA-auth                 # QA template restore
 ```
 
 **Documentation Hierarchy**: This file + constitution.md are top-level guides. All other docs elaborate on specific aspects defined here.
@@ -118,7 +127,11 @@ class JobRepository:
 
 ### MySQL Restore Behavior
 - **Read-Only Restore**: Restored MySQL databases are never modified after myloader completes
-- **Post-Restore SQL Scripts**: After successful restore, SQL files from `customers_after_sql/` or `qa_template_after_sql/` directories are executed
+- **Post-Restore SQL Scripts**: After successful restore, SQL files from `customers_after_sql/` or `qa_template_after_sql/` directories are executed in lexicographic order
+- **Script Naming Convention**: Files named `NNN.descriptive_purpose.sql` (e.g., `010.remove_customer_pii.sql`)
+- **Execution Order**: Scripts execute sequentially (010, 020, 030...) with status tracked
+- **Customer Sanitization**: Customer databases require 12 post-restore scripts removing PII, credentials, and disabling external integrations
+- **QA Templates**: No post-restore scripts needed (already sanitized in production)
 - **Single Addition**: Only one `pullDB` table is added to track restore metadata
 - **Restore Metadata Table**: Contains user who restored, restore timestamp, backup filename used, and JSON report of post-restore SQL script execution status
 

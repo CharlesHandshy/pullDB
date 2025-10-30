@@ -1,0 +1,81 @@
+# Reference implementations (legacy PHP code - read-only, not tracked)
+reference/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+*.cover
+.hypothesis/
+
+# Logs
+*.log
+logs/
+
+# Temporary files and working directories
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+
+# Database files (test databases, dumps, backups)
+*.sql
+*.sql.gz
+*.sql.zst
+*.tar
+*.tar.gz
+*.tar.zst
+*.dump
+*.dmp
+test_db/
+test_data/
+
+# OS
+.DS_Store
+Thumbs.db
+*.lnk
+
+# Local configuration overrides (if needed)
+local.conf
+.env.local
