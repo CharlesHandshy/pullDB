@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS auth_users (
     username VARCHAR(255) NOT NULL UNIQUE,
     user_code CHAR(6) NOT NULL UNIQUE,
     is_admin BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     disabled_at TIMESTAMP(6) NULL,
     CONSTRAINT chk_user_code_length CHECK (CHAR_LENGTH(user_code) = 6)
 );
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     staging_name VARCHAR(64) NOT NULL,
     dbhost VARCHAR(255) NOT NULL,
     status ENUM('queued','running','failed','complete','canceled') NOT NULL DEFAULT 'queued',
-    submitted_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
+    submitted_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     started_at TIMESTAMP(6) NULL,
     completed_at TIMESTAMP(6) NULL,
     options_json JSON,
@@ -92,9 +92,13 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 
 -- Index for active jobs per target exclusivity
-CREATE UNIQUE INDEX idx_jobs_active_target 
-ON jobs(target, dbhost) 
-WHERE status IN ('queued', 'running');
+-- MySQL does not support partial indexes with WHERE; emulate by using a generated column
+-- that is NULL unless status is in ('queued','running'), then enforce uniqueness where not null.
+ALTER TABLE jobs 
+    ADD COLUMN active_target_key VARCHAR(520) GENERATED ALWAYS AS (
+        CASE WHEN status IN ('queued','running') THEN CONCAT(target,'@@',dbhost) ELSE NULL END
+    ) VIRTUAL;
+CREATE UNIQUE INDEX idx_jobs_active_target ON jobs(active_target_key);
 
 -- Index for job queue polling
 CREATE INDEX idx_jobs_queue 
@@ -106,7 +110,7 @@ CREATE TABLE IF NOT EXISTS job_events (
     job_id CHAR(36) NOT NULL,
     event_type VARCHAR(50) NOT NULL,
     detail TEXT,
-    logged_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
+    logged_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     CONSTRAINT fk_job_events_job FOREIGN KEY (job_id) REFERENCES jobs(id)
 );
 
@@ -120,7 +124,7 @@ CREATE TABLE IF NOT EXISTS db_hosts (
     connection_string VARCHAR(512) NOT NULL,
     max_concurrent_restores INT NOT NULL DEFAULT 1,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
 );
 
 -- settings table
@@ -128,14 +132,14 @@ CREATE TABLE IF NOT EXISTS settings (
     setting_key VARCHAR(100) PRIMARY KEY,
     setting_value TEXT NOT NULL,
     description TEXT,
-    updated_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6) ON UPDATE UTC_TIMESTAMP(6)
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
 );
 
 -- locks table (for distributed locking)
 CREATE TABLE IF NOT EXISTS locks (
     lock_name VARCHAR(100) PRIMARY KEY,
     locked_by VARCHAR(255) NOT NULL,
-    locked_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
+    locked_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     expires_at TIMESTAMP(6) NOT NULL,
     INDEX idx_locks_expires (expires_at)
 );

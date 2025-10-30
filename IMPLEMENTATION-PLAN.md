@@ -38,7 +38,7 @@
 - [x] AWS CLI v2 installed (script-driven)
 - [x] AWS Python libraries installed (boto3 1.40.63, botocore 1.40.63, s3transfer 0.14.0)
 - [ ] AWS profile/role configuration (pending environment decision)
-- [ ] pulldb coordination database (run `scripts/setup-pulldb-schema.sh`)
+- [x] pulldb coordination database (schema deployed)
 - [ ] EC2 instance for daemon
 - [ ] AWS credentials and IAM roles
 - [ ] Database host registrations
