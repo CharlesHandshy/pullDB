@@ -223,13 +223,35 @@ INSERT INTO settings (`key`, `value`) VALUES
 - Additional queue partitions (`priority`, `cancel_requested`) and event types that depend on cancellation or multi-daemon orchestration.
 - **Role-Based Access Control (Phase 4)**:
   - Add `role` column to `auth_users` table: `ENUM('user','manager','admin') NOT NULL DEFAULT 'user'`
-  - **User Role** (default): Submit and manage own jobs only, view own job history
-  - **Manager Role**: View all jobs, cancel any job, adjust priority, submit for others
+  - **User Role** (default): Submit and manage own jobs only, view all jobs (read-only)
+  - **Manager Role**: View all jobs, cancel/modify assigned users' jobs only
   - **Admin Role**: Full system access including user management and configuration
   - Track role changes in `job_events` with event_type='role_changed'
   - Add authorization checks in CLI and daemon for role-based operations
-  - Document permissions matrix: user can only see `WHERE owner_user_id = current_user_id`, manager/admin see all jobs
   - Web interface renders UI components based on role capabilities
+- **Hierarchical Manager-User Relationships (Phase 5)**:
+  - Add `manager_id` column to `auth_users`: `CHAR(36) NULL, FOREIGN KEY (manager_id) REFERENCES auth_users(user_id)`
+  - Users assigned to specific manager for team-based oversight
+  - Managers can only action (cancel/modify) jobs for their assigned users
+  - Create `manager_of_managers` table:
+    ```sql
+    CREATE TABLE manager_of_managers (
+        manager_id CHAR(36) NOT NULL,
+        subordinate_manager_id CHAR(36) NOT NULL,
+        assigned_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
+        assigned_by_user_id CHAR(36) NOT NULL,
+        PRIMARY KEY (manager_id, subordinate_manager_id),
+        FOREIGN KEY (manager_id) REFERENCES auth_users(user_id),
+        FOREIGN KEY (subordinate_manager_id) REFERENCES auth_users(user_id),
+        FOREIGN KEY (assigned_by_user_id) REFERENCES auth_users(user_id)
+    );
+    ```
+  - Senior managers inherit visibility of subordinate managers' teams
+  - Authorization: managers action only assigned users' jobs, but VIEW all jobs
+  - Universal job visibility: all roles can view all jobs (read-only job list)
+  - Action permissions: filtered by role and manager assignment
+  - Track manager assignments in job_events for audit trail
+  - Example hierarchy: Manager A → Users 1-5, Manager B → Users 6-10, Senior Manager C → Managers A+B (sees all 10 users)
 
 Documenting these tables now avoids architectural drift while keeping the prototype schema lean.
 
