@@ -1,5 +1,7 @@
 # pullDB MySQL Schema Constitution
 
+> **Foundation Documents**: This schema implements the architectural principles defined in `../.github/copilot-instructions.md` and coding standards from `../constitution.md`.
+
 ## Prototype Charter
 
 - **Single source of truth**: MySQL captures every restore request, its lifecycle, and audit breadcrumbs for the CLI and daemon.

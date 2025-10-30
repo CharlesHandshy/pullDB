@@ -1,5 +1,11 @@
 # pullDB Constitution
 
+## Purpose
+
+This document establishes the foundational principles, standards, and workflows for the pullDB project. Together with `.github/copilot-instructions.md` (which provides architectural overview and AI agent guidance), this constitution forms the top-level governance for all implementation decisions.
+
+**For AI Agents**: Read `.github/copilot-instructions.md` first for architectural context, then refer to this document for coding standards and workflow requirements.
+
 ## Mission
 
 Deliver a dependable, minimal restore pipeline that prioritizes correctness, clarity, and maintainability over feature breadth. Prototype fast, validate thoroughly, and expand only when real usage demands it.
@@ -17,8 +23,10 @@ Deliver a dependable, minimal restore pipeline that prioritizes correctness, cla
 - Single CLI funnels requests into MySQL; one daemon owns validation, execution, and status updates.
 - MySQL is the sole coordination layer. Enforce per-target exclusivity through schema constraints.
 - S3 remains the system of record for backups; the daemon downloads on demand, cleans up temp storage afterward.
-- Configuration lives outside binaries (environment variables, config files). Never hardcode secrets or host-specific settings.
+- Configuration lives outside binaries (environment variables, MySQL settings table). Never hardcode secrets or host-specific settings.
+- System always runs in development environment with read-only access to production S3 backups.
 - Reference `Tools/pullDB/README.md` for flow diagrams, option scope, and future roadmap.
+- See `.github/copilot-instructions.md` for architectural principles and critical design constraints.
 
 ## Tooling & Language Policy
 

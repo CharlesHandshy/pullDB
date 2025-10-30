@@ -1,6 +1,11 @@
 # pullDB Design Index
 
-This directory curates the documentation and diagrams that shape the pullDB prototype. Start here before touching code, and keep these artefacts current as the system evolves.
+This directory curates the documentation and diagrams that shape the pullDB prototype. Start with the top-level governance documents before diving into these technical details:
+
+1. **`.github/copilot-instructions.md`** - Primary AI agent reference, architectural principles
+2. **`constitution.md`** - Coding standards, tooling philosophy, development workflow
+3. **`README.md`** - Complete API reference and usage patterns (this provides user-facing context)
+4. **Design docs** (below) - Technical implementation guidance
 
 ## Document Map
 

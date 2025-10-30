@@ -1,16 +1,17 @@
 # Configuration Map
 
+> **Context**: See `../.github/copilot-instructions.md` for configuration philosophy and `../constitution.md` for security requirements.
+
 This guide captures where configuration values live, how they flow into the CLI and daemon, and how they connect to MySQL `settings` entries.
 
 ## Sources
 
 1. **Environment Variables**
-   - `PULLDB_ENV`: environment label (dev, staging, prod).
    - `PULLDB_MYSQL_HOST`: MySQL coordination database host.
    - `PULLDB_MYSQL_USER`: MySQL coordination database username.
    - `PULLDB_MYSQL_PASSWORD`: MySQL coordination database password.
    - `PULLDB_MYSQL_DATABASE`: MySQL coordination database name.
-   - `PULLDB_S3_BUCKET`: default backup bucket.
+   - `PULLDB_S3_BUCKET`: default backup bucket (always production backups).
    - `PULLDB_S3_PREFIX`: base prefix (`daily/prod`).
    - `PULLDB_DEFAULT_DBHOST`: default MySQL host for restores.
    - `PULLDB_WORKDIR`: filesystem workspace for extractions.

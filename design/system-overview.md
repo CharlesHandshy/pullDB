@@ -1,22 +1,24 @@
 # System Overview
 
-The pullDB prototype consists of a CLI that validates user intent and inserts jobs into SQLite, plus a long-running daemon that executes restores. This document expands on the high-level flow described in `../README.md`.
+> **Prerequisites**: Read `../.github/copilot-instructions.md` for architectural principles and `../constitution.md` for coding standards before diving into these implementation details.
+
+The pullDB prototype consists of a CLI that validates user intent and inserts jobs into MySQL, plus a long-running daemon that executes restores. This document expands on the high-level flow described in `../README.md`.
 
 ## Component Responsibilities
 
 - **CLI**
   - Validate option combinations (`user`, `customer`/`qatemplate`, `overwrite`, optional `dbhost`).
-  - Inject jobs into SQLite with `status=queued` while enforcing per-target uniqueness.
+  - Inject jobs into MySQL with `status=queued` while enforcing per-target uniqueness.
   - Provide a `status` command that reads active job summaries from the `active_jobs` view.
 - **Daemon**
-  - Poll SQLite for queued work, acquiring per-target locks before mutation.
+  - Poll MySQL for queued work, acquiring per-target locks before mutation.
   - Stream backups from S3, verify disk capacity, extract to a workspace, and invoke MySQL restore tooling (`myloader`).
-  - Run obfuscation SQL, emit `job_events`, and update job status.
+  - Execute post-restore SQL scripts, emit `job_events`, and update job status.
   - Publish metrics (queue depth, disk alerts) and structured logs.
-- **SQLite**
+- **MySQL Coordination Database**
   - Serves as the coordination plane for jobs, events, configuration, and locks.
-  - Enforces invariants through constraints and triggers defined in `../docs/sqlite-schema.md`.
-- **MySQL Hosts**
+  - Enforces invariants through constraints and triggers defined in `../docs/mysql-schema.md`.
+- **MySQL Target Hosts**
   - Receive restored databases using least-privilege service accounts.
   - Track capacity via `db_hosts.max_db_count` to prevent over-allocation.
 

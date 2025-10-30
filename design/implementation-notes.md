@@ -1,5 +1,7 @@
 # Implementation Notes
 
+> **Prerequisites**: Ensure you've read `../.github/copilot-instructions.md` (architectural overview) and `../constitution.md` (coding standards) before implementation.
+
 These notes outline the anticipated Python structure and integrations for the prototype implementation. Follow them alongside `../constitution.md` when writing code.
 
 ## Project Skeleton
@@ -31,7 +33,7 @@ pulldb/
 
 ## Database Access
 
-- Use Python's `sqlite3` module with `row_factory=sqlite3.Row`.
+- Use `mysql-connector-python` or `PyMySQL` for MySQL connectivity.
 - Wrap SQL statements in repository classes (e.g., `JobRepository`, `EventRepository`). Each class should expose explicit methods like `enqueue_job`, `mark_running`, `append_event`.
 - Enforce uniqueness via SQL constraints; handle `IntegrityError` by surfacing user-friendly CLI messages.
 
@@ -59,7 +61,7 @@ pulldb/
 
 ## Testing Strategy
 
-- Unit tests: use `pytest` with fixtures for in-memory SQLite (`sqlite3.connect(':memory:')`).
+- Unit tests: use `pytest` with fixtures for test MySQL databases or mocked connections.
 - Integration tests: spin up disposable MySQL containers (e.g., Testcontainers) to validate restore flow.
 - Mock S3 and subprocess calls where full integration is not required.
 - Smoke test script: orchestrate CLI + daemon against a staging configuration before release.

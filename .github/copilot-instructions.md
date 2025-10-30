@@ -1,10 +1,18 @@
 # Copilot Instructions for pullDB
 
+## Overview
+
+This document is the **primary reference for AI coding agents** working on pullDB. It distills the essential architecture, patterns, and constraints from the comprehensive documentation. Always read this file first, then consult other documents as needed.
+
+**Related Documents**: Read `constitution.md` for coding standards, tooling philosophy, and development workflow. These two documents form the foundation—all other documentation flows from these principles.
+
 ## Project Overview
 
 pullDB is a database restoration tool that pulls production MySQL backups from S3 and restores them to development environments. The system follows a **documentation-first, prototype-first** approach with extensive planning before implementation.
 
 **Current Status**: Pre-implementation phase - comprehensive design documentation exists but no code has been written yet.
+
+**Environment Context**: Always runs in development environment with read access to production S3 backups. No environment switching required.
 
 ## Architecture Principles
 
@@ -16,16 +24,19 @@ pullDB is a database restoration tool that pulls production MySQL backups from S
 ## Key Files & Directory Structure
 
 ```
-README.md                    # Complete API reference and usage patterns
-constitution.md             # Coding standards, tooling choices, principles
+.github/copilot-instructions.md  # THIS FILE - Primary AI agent reference
+constitution.md                   # Coding standards, tooling, dev workflow (co-primary)
+README.md                         # Complete API reference and usage patterns
 design/
-  ├── system-overview.md     # Component responsibilities and interactions  
-  ├── implementation-notes.md # Python structure and integration patterns
-  ├── configuration-map.md   # Config sources and SQLite settings flow
-  └── roadmap.md            # Deferred features documentation requirements
+  ├── system-overview.md          # Component responsibilities and interactions  
+  ├── implementation-notes.md     # Python structure and integration patterns
+  ├── configuration-map.md        # Config sources and MySQL settings flow
+  └── roadmap.md                  # Deferred features documentation requirements
 docs/
-  └── mysql-schema.md      # Complete database schema with invariants
+  └── mysql-schema.md             # Complete database schema with invariants
 ```
+
+**Documentation Hierarchy**: This file + constitution.md are top-level guides. All other docs elaborate on specific aspects defined here.
 
 ## Critical Design Constraints
 
