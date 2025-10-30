@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pulldb"
+version = "0.0.1.dev0"
+description = "pullDB - Development database restoration tool using production MySQL backups from S3"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [ { name = "PestRoutes Engineering" } ]
+keywords = ["mysql", "restore", "s3", "backup", "dev"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+dependencies = [
+  "mysql-connector-python>=8.0.0",
+  "boto3>=1.28.0",
+  "click>=8.1.0",
+  "pydantic>=2.0.0",
+  "python-dotenv>=1.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "mypy>=1.7.0",
+  "ruff>=0.14.0"
+]
+
+[project.scripts]
+pulldb = "pulldb.cli.main:main"
+pulldb-daemon = "pulldb.daemon.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pulldb*"]
+namespaces = false
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_ignores = true
+warn_return_any = true
+warn_unused_configs = true
+strict_optional = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+show_error_codes = true
+exclude = ["pulldb/tests/"]
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "PL", "RUF"]
+ignore = ["E203", "E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.ruff.lint.isort]
+known-first-party = ["pulldb"]

@@ -16,17 +16,17 @@ sudo scripts/setup-pulldb-schema.sh
 # 3. Set up Python environment
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+scripts/setup-python-project.sh
 
 # 4. Use pullDB (once implementation is complete)
-pullDB user=jdoe customer=acme
-pullDB user=jdoe qatemplate
-pullDB status
+pulldb --help
+pulldb-daemon
 ```
 
 Documentation:
 - AWS Setup: [docs/aws-setup.md](docs/aws-setup.md)
 - MySQL Setup: [docs/mysql-setup.md](docs/mysql-setup.md)
+- Python Project Setup: [docs/python-project-setup.md](docs/python-project-setup.md)
 
 ## Purpose
 

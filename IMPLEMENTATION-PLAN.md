@@ -27,7 +27,7 @@
 - [x] Schema setup script created (`scripts/setup-pulldb-schema.sh`)
 - [x] AWS installation script created (`scripts/setup-aws.sh`)
 - [x] Dependency manifests added (`requirements.txt`, `requirements-dev.txt`, `requirements.lock`)
-- [ ] Python project structure (awaiting Milestone 1.1)
+- [x] Python project structure (initial scaffolding complete)
 - [ ] Python tests (awaiting Milestone 9)
 
 ### Infrastructure (Partially Provisioned ⚙️)
@@ -114,8 +114,8 @@ pulldb/
 - [x] Initialize Python virtual environment (Python 3.12.3)
 - [x] Create MySQL installation script with custom data directory setup
 - [x] Create pulldb schema deployment script
-- [ ] Initialize Python project with Poetry or setuptools
-- [ ] Create directory structure
+-- [x] Initialize Python project with setuptools (PEP 621 metadata)
+-- [x] Create directory structure (`pulldb/` package scaffolding)
 - [ ] Set up pytest configuration
 - [ ] Configure linting (ruff/black) and type checking (mypy)
 - [ ] Create basic `__init__.py` files
