@@ -25,7 +25,7 @@ pullDB \
 ## Monitor Progress
 
 1. Run `pullDB status` to confirm job entered `queued`.
-2. Observe daemon logs for phase updates (download, extraction, restore, obfuscation).
+2. Observe daemon logs for phase updates (download, extraction, restore, post-restore SQL execution).
 3. Check Datadog dashboards for queue depth trends and disk capacity alerts.
 4. Inspect `job_events` table if deeper insight is needed:
 
@@ -38,10 +38,11 @@ ORDER BY event_time;
 
 ## Post-Restore Validation
 
-1. Confirm job status is `complete` in SQLite.
+1. Confirm job status is `complete` in MySQL coordination database.
 2. Connect to target MySQL instance and verify restored database presence.
-3. Run obfuscation smoke tests (e.g., confirm PII tables contain masked values).
-4. Notify stakeholders or downstream automation as required.
+3. Query the `pullDB` metadata table in the restored database to verify post-restore SQL execution status.
+4. Run data validation smoke tests as needed for the specific customer or QA template.
+5. Notify stakeholders or downstream automation as required.
 
 ## Cleanup
 

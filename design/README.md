@@ -23,6 +23,6 @@ Raw Mermaid sources live in `diagrams/` so they can be rendered by Markdown view
 
 - `diagrams/system-overview.mmd`
 - `diagrams/restore-lifecycle.mmd`
-- `diagrams/sqlite-schema.mmd`
+- `diagrams/mysql-schema.mmd`
 
 Keep diagram names synchronized with the referencing documents.

@@ -26,7 +26,7 @@ This document summarizes the protections that guard pullDB operations. Revisit i
 
 ## Data at Rest
 
-- SQLite file resides on encrypted volumes (EBS level). Access restricted to the daemon and CLI process owners.
+- MySQL coordination database resides on encrypted volumes (EBS level). Access restricted via MySQL user permissions.
 - Temporary extraction workspace should live on encrypted storage with restrictive permissions (700).
 - Backup tarballs are not persisted beyond the restore window in the prototype.
 
@@ -40,7 +40,7 @@ This document summarizes the protections that guard pullDB operations. Revisit i
 
 - Combine queue service and worker into one daemon to remove surface area.
 - Validate all CLI inputs; reject unexpected flags and enforce minimal option set.
-- The daemon never executes dynamic SQL beyond parameterized obfuscation scripts stored in controlled locations.
+- The daemon executes only pre-approved post-restore SQL scripts stored in controlled locations (no dynamic SQL generation).
 
 ## Incident Response Hooks
 

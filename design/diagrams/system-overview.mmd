@@ -1,11 +1,11 @@
 %% Mermaid flowchart describing the prototype topology
 flowchart LR
-  CLI["CLI Agent"] -->|submit restore| SQLite[(SQLite Queue)]
-  CLI -->|status query| SQLite
-  Daemon["Daemon"] -->|poll queued jobs| SQLite
+  CLI["CLI Agent"] -->|submit restore| MySQLQueue[(MySQL Queue)]
+  CLI -->|status query| MySQLQueue
+  Daemon["Daemon"] -->|poll queued jobs| MySQLQueue
   Daemon -->|download backup| S3[(AWS S3)]
-  Daemon -->|restore + obfuscate| MySQL[(MySQL 8 Host)]
-  Daemon -->|emit events| SQLite
+  Daemon -->|restore + post-SQL| MySQLTarget[(MySQL 8 Host)]
+  Daemon -->|emit events| MySQLQueue
   Daemon -->|metrics + logs| Observability[(Datadog)]
-  SQLite -->|configuration| CLI
-  SQLite -->|status| Daemon
+  MySQLQueue -->|configuration| CLI
+  MySQLQueue -->|status| Daemon

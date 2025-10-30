@@ -17,9 +17,8 @@ pulldb/
     service.py
     workers.py
   infra/
-    sqlite.py
-    s3.py
     mysql.py
+    s3.py
     logging.py
   domain/
     models.py

@@ -37,13 +37,14 @@ Use this guide to triage and resolve common pullDB restore failures.
 - Check for conflicting active sessions or locks on the target database.
 - Drop partially created database manually before retrying.
 
-## Obfuscation Failure
+## Post-Restore SQL Failure
 
-**Symptoms**: Restore completes but obfuscation script errors.
+**Symptoms**: Restore completes but post-restore SQL script errors.
 
-- Inspect obfuscation SQL for recent changes.
+- Inspect post-restore SQL scripts in `customers_after_sql/` or `qa_template_after_sql/` for recent changes.
 - Run script manually against staging to reproduce.
-- If data remains partially obfuscated, isolate database and notify security stakeholders.
+- Check JSON report in pullDB metadata table for specific script failures.
+- If data remains in unexpected state, isolate database and notify appropriate stakeholders.
 
 ## Daemon Crash
 
@@ -51,8 +52,9 @@ Use this guide to triage and resolve common pullDB restore failures.
 
 - Restart daemon service; observe logs on startup.
 - Inspect system journal for Python tracebacks.
-- Check SQLite integrity (`PRAGMA integrity_check;`).
-- If corruption detected, restore from latest backup and replay necessary jobs manually.
+- Check MySQL coordination database connectivity and health.
+- Verify MySQL query performance and check for locks or deadlocks.
+- If database issues detected, resolve connectivity/locks and restart daemon.
 
 ## Escalation
 

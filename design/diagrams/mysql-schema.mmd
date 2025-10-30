@@ -1,0 +1,63 @@
+%% Mermaid ER diagram for core prototype tables
+erDiagram
+  AUTH_USERS ||--o{ JOBS : owns
+  JOBS ||--o{ JOB_EVENTS : generates
+  DB_HOSTS ||--o{ JOBS : targets
+  LOCKS ||--o{ JOBS : guards
+  SETTINGS ||--o{ JOBS : config
+
+  AUTH_USERS {
+    char36 user_id PK
+    varchar255 username
+    char6 user_code
+    bool is_admin
+    timestamp6 created_at
+    timestamp6 disabled_at
+  }
+
+  JOBS {
+    char36 id PK
+    char36 owner_user_id FK
+    varchar255 owner_username
+    char6 owner_user_code
+    varchar255 target
+    enum status
+    timestamp6 submitted_at
+    timestamp6 started_at
+    timestamp6 completed_at
+    json options_json
+    int retry_count
+    text error_detail
+  }
+
+  JOB_EVENTS {
+    bigint id PK
+    char36 job_id FK
+    timestamp6 event_time
+    varchar50 event_type
+    char36 actor_user_id FK
+    varchar255 actor_username
+    char6 actor_user_code
+    text detail
+  }
+
+  DB_HOSTS {
+    varchar255 dbhost PK
+    varchar255 credential_ref
+    int max_db_count
+    int last_known_db_count
+    timestamp6 last_refreshed_at
+    timestamp6 disabled_at
+  }
+
+  LOCKS {
+    varchar255 name PK
+    varchar255 owner
+    timestamp6 acquired_at
+  }
+
+  SETTINGS {
+    varchar255 key PK
+    text value
+    timestamp6 updated_at
+  }

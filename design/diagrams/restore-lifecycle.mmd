@@ -1,7 +1,7 @@
 %% Mermaid sequence diagram for restore lifecycle
 sequenceDiagram
   participant CLI as CLI
-  participant DB as SQLite
+  participant DB as MySQL Queue
   participant D as Daemon
   participant S3 as AWS S3
   participant MySQL as MySQL Host
@@ -13,7 +13,8 @@ sequenceDiagram
   D->>D: verify disk space
   D->>D: extract archive to workspace
   D->>MySQL: run myloader restore
-  D->>MySQL: execute obfuscation SQL
+  D->>MySQL: execute post-restore SQL scripts
+  D->>MySQL: add pullDB metadata table
   D->>DB: mark complete + append events
   CLI->>DB: status query
   DB-->>CLI: job status = complete
