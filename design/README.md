@@ -6,7 +6,7 @@ This directory curates the documentation and diagrams that shape the pullDB prot
 
 - `system-overview.md`: narrative walkthrough of the CLI/daemon/S3/MySQL interactions.
 - `implementation-notes.md`: technical guidance for Python structure, dependency injection, and logging patterns.
-- `configuration-map.md`: describes configuration sources, secrets handling, and the SQLite `settings` linkage.
+- `configuration-map.md`: describes configuration sources, secrets handling, and the MySQL `settings` linkage.
 - `security-model.md`: summarizes IAM, host hardening, and audit expectations.
 - `runbook-restore.md`: operational checklist for the happy-path restore.
 - `runbook-failure.md`: troubleshooting flow for common failure scenarios.

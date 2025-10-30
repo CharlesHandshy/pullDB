@@ -6,16 +6,16 @@ Deliver a dependable, minimal restore pipeline that prioritizes correctness, cla
 
 ## Guiding Principles
 
-1. **Document First**: capture intent in `README.md`, `docs/sqlite-schema.md`, and design notes before writing code. Every feature starts as prose and diagrams.
+1. **Document First**: capture intent in `README.md`, `docs/mysql-schema.md`, and design notes before writing code. Every feature starts as prose and diagrams.
 2. **KISS**: prefer the simplest solution that works; avoid clever abstractions until experience proves they are required.
 3. **Function Over Fashion**: choose reliability and transparency over stylistic novelty. Consistency matters more than novelty.
-4. **Minimal Is Best**: ship the smallest viable slice (CLI + daemon + SQLite) and iterate deliberately.
+4. **Minimal Is Best**: ship the smallest viable slice (CLI + daemon + MySQL) and iterate deliberately.
 5. **Prototype Before Scale**: validate workflows end-to-end with constrained scope before layering on options, services, or automation.
 
 ## Architecture Charter
 
-- Single CLI funnels requests into SQLite; one daemon owns validation, execution, and status updates.
-- SQLite is the sole coordination layer. Enforce per-target exclusivity through schema constraints.
+- Single CLI funnels requests into MySQL; one daemon owns validation, execution, and status updates.
+- MySQL is the sole coordination layer. Enforce per-target exclusivity through schema constraints.
 - S3 remains the system of record for backups; the daemon downloads on demand, cleans up temp storage afterward.
 - Configuration lives outside binaries (environment variables, config files). Never hardcode secrets or host-specific settings.
 - Reference `Tools/pullDB/README.md` for flow diagrams, option scope, and future roadmap.
@@ -23,7 +23,7 @@ Deliver a dependable, minimal restore pipeline that prioritizes correctness, cla
 ## Tooling & Language Policy
 
 - **Python 3.11+**: primary implementation language for the CLI and daemon.
-- **SQLite3**: use the standard Python `sqlite3` module with row factories for clarity; wrap access in thin repositories to keep SQL close to the domain.
+- **MySQL**: use `mysql-connector-python` or `PyMySQL` for coordination database access; wrap access in thin repositories to keep SQL close to the domain.
 - **AWS S3**: interact via `boto3` with least-privilege IAM roles. Mock calls in tests using moto or local stubs.
 - **MySQL Restore**: orchestrate `myloader` or compatible utilities for ingestion into MySQL 8.x. Shell out through well-audited helpers and capture logs for diagnostics.
 - **MySQL Client Libraries**: use `mysql-connector-python` or `PyMySQL` for light metadata queries. Keep credentials external.

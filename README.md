@@ -2,19 +2,19 @@
 
 ## Purpose
 
-`pullDB` pulls production database backups from S3, stores them in a local archive, and restores them into development environments. The prototype release keeps the surface tight: a CLI funnels requests into SQLite and a single long-running daemon validates, queues, and executes the restores end-to-end. We will reintroduce additional components once the simplified flow proves reliable.
+`pullDB` pulls production database backups from S3, stores them in a local archive, and restores them into development environments. The prototype release keeps the surface tight: a CLI funnels requests into MySQL and a single long-running daemon validates, queues, and executes the restores end-to-end. We will reintroduce additional components once the simplified flow proves reliable.
 
 ## Development Strategy
 
-- **Prototype first**: deliver the minimal restore loop (CLI + daemon + SQLite job store) before layering on extra commands or services.
+- **Prototype first**: deliver the minimal restore loop (CLI + daemon + MySQL job store) before layering on extra commands or services.
 - **Bias for simplicity**: avoid optional filters, admin tooling, or aggressive concurrency controls until real usage demands them.
 - **Iterate safely**: once the prototype is hardened, grow scope incrementally—revisit queue/service separation, introduce cancellation, filtering, and richer telemetry as distinct follow-up milestones.
 
 ## Prototype Architecture
 
-- **CLI (Agent)**: validates required options, prevents conflicting flags, and inserts restore jobs into SQLite. The CLI remains the only user-facing entry point in the prototype.
-- **Daemon**: combines the former queue service and worker roles. It runs continuously, dequeues pending work, performs download/extract/restore tasks, and emits status updates back into SQLite.
-- **SQLite Queue**: single source of truth for job state, audit breadcrumbs, and simple per-target locking. Both the CLI and daemon collaborate solely through this datastore.
+- **CLI (Agent)**: validates required options, prevents conflicting flags, and inserts restore jobs into MySQL. The CLI remains the only user-facing entry point in the prototype.
+- **Daemon**: combines the former queue service and worker roles. It runs continuously, dequeues pending work, performs download/extract/restore tasks, and emits status updates back into MySQL.
+- **MySQL Queue**: single source of truth for job state, audit breadcrumbs, and simple per-target locking. Both the CLI and daemon collaborate solely through this datastore.
 - **S3 + Local Storage**: the daemon always downloads requested backups (no archive reuse in v0) and stages them locally only for the lifetime of the restore.
 
 ## Usage
@@ -33,15 +33,15 @@ The CLI fails validation when `customer` and `qatemplate` are supplied together 
 
 ### Host Registration Requirements
 
-- All target `dbhost` entries must be registered in the SQLite configuration (`db_hosts` table captures credentials, max active limits, and maximum database counts). The agent verifies membership before accepting a restore request and fails fast if the host is unknown.
+- All target `dbhost` entries must be registered in the MySQL configuration (`db_hosts` table captures credentials, max active limits, and maximum database counts). The agent verifies membership before accepting a restore request and fails fast if the host is unknown.
 - Credentials are stored securely and surfaced to the daemon through environment configuration on the corresponding EC2 host.
 
 ### Default Naming Rules
 
 - `user_code` is generated from the first six alphabetic characters of the provided username after stripping non-letters and lowercasing the result. If fewer than six alphabetic characters remain, the request is rejected.
 - When a collision occurs, the system replaces the sixth character with the next unused alphabetic character found later in the username, then shifts left to the fifth and fourth characters as needed (up to three adjustments). Failure to produce a unique code aborts provisioning.
-- Default target database names concatenate the operator's `user_code` with the sanitized customer token (customer identifier lowercased, non-alphanumeric characters removed). For the QA template, the suffix literal `qatemplate` is used.
-- Sanitized target names are stored verbatim in SQLite and reused consistently by the CLI and daemon.
+- Default target database names concatenate the operator's `user_code` with the sanitized customer token (customer identifier lowercased, non-letters removed). For the QA template, the suffix literal `qatemplate` is used.
+- Sanitized target names are stored verbatim in MySQL and reused consistently by the CLI and daemon.
 
 ### Authentication Model
 
@@ -80,7 +80,7 @@ pullDB \
 
 ## Data Retention
 
-- Queue entries (including job history and logs) remain in SQLite for 90 days. A maintenance task prunes older records while ensuring the core Datadog metrics (queue depth, disk failures) continue to reflect current state.
+- Queue entries (including job history and logs) remain in MySQL for 90 days. A maintenance task prunes older records while ensuring the core Datadog metrics (queue depth, disk failures) continue to reflect current state.
 - Datadog log ingestion retains the single-line history output and operational logs indefinitely according to existing retention policies.
 
 ## Restored Database Lifecycle
@@ -91,13 +91,13 @@ pullDB \
 ## Metrics and Monitoring
 
 - The daemon emits two day-one metrics to Datadog: queue depth and disk-capacity failures. These power the primary alerts for prototype operations.
-- Additional visibility comes from structured logs (phase transitions, obfuscation results, failures). Cancellation-specific logging arrives with the future cancel command.
+- Additional visibility comes from structured logs (phase transitions, restore results, post-restore SQL execution, failures). Cancellation-specific logging arrives with the future cancel command.
 
 ## Release Management
 
 - The CLI and daemon ship as a single versioned bundle for the prototype; deploy them together to keep migrations and binaries aligned.
 - Schema migrations apply before restarting the daemon. Once migrations succeed, recycle the daemon and update the CLI wrapper during the same maintenance window.
-- Downgrades are not supported without restoring SQLite from backup. Keep a recent snapshot prior to upgrading.
+- Downgrades are not supported without restoring MySQL from backup. Keep a recent snapshot prior to upgrading.
 
 ## Prototype Queue Data Model
 
@@ -107,7 +107,7 @@ pullDB \
 - **db_hosts**: registry of allowable restore targets containing credentials references and `max_db_count` for safety checks.
 - **locks**: simple advisory rows keyed by target database name to serialize restores and prevent duplicate jobs.
 
-Tables such as `history_cache`, per-user/host concurrency overrides, and detailed job log fan-out remain defined in `Tools/pullDB/docs/sqlite-schema.md` but are not required for the prototype runtime.
+Tables such as `history_cache`, per-user/host concurrency overrides, and detailed job log fan-out remain defined in `Tools/pullDB/docs/mysql-schema.md` but are not required for the prototype runtime.
 
 ## Process Flow
 
@@ -122,7 +122,7 @@ Tables such as `history_cache`, per-user/host concurrency overrides, and detaile
 - Confirm required files exist before transfer (`*-schema-create.sql.zst` must be present); if missing, fail fast to avoid wasted downloads.
 - Download the archive for every run, extract into a working area, and purge temporary files after the restore completes.
 - Before extraction, fetch the object size from S3 and ensure at least `size * 1.8` free space is available on the data directory volume.
-- CLI invocations may run in parallel; they rely on SQLite locks keyed by target database name to prevent duplicate restores.
+- CLI invocations may run in parallel; they rely on MySQL locks keyed by target database name to prevent duplicate restores.
 
 ### Disk Capacity Management (Daemon)
 
@@ -137,8 +137,8 @@ Tables such as `history_cache`, per-user/host concurrency overrides, and detaile
 - If the target database already exists and `overwrite` was not supplied, the CLI exits prior to queueing the job with instructions to rerun using `--overwrite`.
 - Before starting work, the daemon verifies the designated `dbhost` is registered and checks that the projected database count does not exceed the configured limit. If it would, the job fails fast with guidance to free capacity.
 - The daemon updates `started_at` and `status=running` before executing download/extract/restore steps. Single-threaded per-target locks prevent concurrent restores for the same destination.
-- After a successful restore, the daemon runs the customer- or template-specific obfuscation script to sanitize sensitive data. Failures mark the job as `failed` and capture details in `job_events`.
-- All major phase transitions (download complete, extraction complete, restore finished, obfuscation finished) produce job event rows for troubleshooting.
+- After a successful restore, the daemon executes SQL files from the appropriate directory (`customers_after_sql/` for customer restores, `qa_template_after_sql/` for QA template restores) and adds a single `pullDB` table to the restored database containing restore metadata (user who restored, restore timestamp, backup filename used, and JSON report of post-restore SQL script execution status).
+- All major phase transitions (download complete, extraction complete, restore finished, post-restore SQL executed, metadata table added) produce job event rows for troubleshooting.
 
 ## Deferred: History Output Format
 
@@ -149,9 +149,9 @@ Tables such as `history_cache`, per-user/host concurrency overrides, and detaile
 
 ## Prototype Configuration
 
-- `settings` table stores the default extraction directory, default `dbhost`, S3 bucket configuration, and paths to the obfuscation SQL scripts.
+- `settings` table stores the default extraction directory, default `dbhost`, S3 bucket configuration, post-restore SQL script directories, and other operational parameters.
 - Per-target database caps live in `db_hosts.max_db_count`; the daemon reads this value before starting a restore.
-- Global concurrency limits (`max_active_restoring`, user/host overrides) are deferred. The prototype relies on SQLite locks to serialize per-target restores only.
+- Global concurrency limits (`max_active_restoring`, user/host overrides) are deferred. The prototype relies on MySQL locks to serialize per-target restores only.
 - Historical retention knobs (`history_retention_days`, detailed log pruning) will matter once history endpoints exist; keep placeholders but avoid implementing maintenance tasks until needed.
 
 ## Validation and Safeguards
@@ -160,7 +160,7 @@ Tables such as `history_cache`, per-user/host concurrency overrides, and detaile
 2. Honor the `overwrite` flag by checking target database existence in the CLI and aborting early when it is missing.
 3. Ensure every job receives a UUID plus timestamp trio (`submitted`, `started`, `completed`). The daemon owns status transitions and writes them atomically.
 4. Validate disk space ahead of extraction using the S3 object size and reject jobs that cannot satisfy the `1.8x` buffer.
-5. Use SQLite advisory locks to prevent more than one active job per target database name; no additional concurrency tiers are enforced in the prototype.
+5. Use MySQL advisory locks to prevent more than one active job per target database name; no additional concurrency tiers are enforced in the prototype.
 6. Prevent duplicate queue inserts for the same target by checking existing `queued` or `running` jobs before writing a new record.
 7. Check the `dbhost` registration and projected database count before restore. Unknown hosts or over-capacity projections cause the daemon to fail the job immediately.
 8. Do not auto-retry failures; capture error context in `job_events` and require operators to resubmit once issues are resolved.
@@ -189,7 +189,7 @@ Tables such as `history_cache`, per-user/host concurrency overrides, and detaile
 flowchart TD
   Agent["CLI Submits Restore"] --> Validate["Daemon: Validate Options"]
   Validate --> S3Check{Check S3 for schema file}
-  S3Check -->|found| QueueInsert["Persist job in SQLite queue"]
+  S3Check -->|found| QueueInsert["Persist job in MySQL queue"]
   S3Check -->|missing| FailFast["Fail job with guidance"]
   QueueInsert --> StartRestore["Begin restore when slots free"]
   FailFast --> AuditLog["Write audit + job event"]
@@ -253,12 +253,12 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  CLI["CLI Agent"] -->|submit restore| SQLite[(SQLite Queue)]
-  Daemon["Daemon"] -->|poll queued jobs| SQLite
+  CLI["CLI Agent"] -->|submit restore| MySQL[(MySQL Queue)]
+  Daemon["Daemon"] -->|poll queued jobs| MySQL
   Daemon -->|download backup| S3[(S3 Backups)]
-  Daemon -->|restore + obfuscate| DevDB[(Target Database)]
-  Daemon -->|status + events| SQLite
-  SQLite -->|status for status cmd| CLI
+  Daemon -->|restore + post-SQL + metadata| DevDB[(Target Database)]
+  Daemon -->|status + events| MySQL
+  MySQL -->|status for status cmd| CLI
 ```
 
 ### Restore Lifecycle
@@ -266,13 +266,14 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   participant CLI as CLI
-  participant DB as SQLite Queue
+  participant DB as MySQL Queue
   participant D as Daemon
   CLI->>DB: insert job (status=queued)
   D->>DB: lock job + mark running
   D->>S3: fetch latest backup
   D->>DevDB: create database & restore
-  D->>DevDB: run obfuscation script
+  D->>DevDB: execute post-restore SQL scripts
+  D->>DevDB: add pullDB metadata table
   D->>DB: mark complete + append events
   CLI->>DB: poll via status command
   DB-->>CLI: job state summary
@@ -281,5 +282,5 @@ sequenceDiagram
 ## Logging Strategy
 
 - **Audit Logging**: capture authorization failures and other security-related events (e.g., unknown `user=` attempts, host validation failures).
-- **General Logging**: record operational events for the CLI wrapper and daemon, including disk checks, download phases, restore timing, and obfuscation results.
+- **General Logging**: record operational events for the CLI wrapper and daemon, including disk checks, download phases, restore timing, post-restore SQL execution, and metadata table creation.
 - **Job Logging**: emit single-line records for each job transition (queued, running, failed, complete). Cancellation entries will join once that feature ships.

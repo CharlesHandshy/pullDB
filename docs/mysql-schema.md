@@ -1,8 +1,8 @@
-# pullDB SQLite Schema Constitution
+# pullDB MySQL Schema Constitution
 
 ## Prototype Charter
 
-- **Single source of truth**: SQLite captures every restore request, its lifecycle, and audit breadcrumbs for the CLI and daemon.
+- **Single source of truth**: MySQL captures every restore request, its lifecycle, and audit breadcrumbs for the CLI and daemon.
 - **Lean first release**: only tables required for the minimal restore loop ship in the prototype; everything else waits until the feature lands.
 - **Predictable invariants**: constraints enforce unique usernames, per-target job exclusivity, and traceable status transitions.
 - **Future-friendly**: deferred structures are documented so we can grow without rewriting foundations.
@@ -13,13 +13,13 @@
 
 ```sql
 CREATE TABLE auth_users (
-    user_id TEXT PRIMARY KEY,
-    username TEXT NOT NULL UNIQUE,
-    user_code TEXT NOT NULL UNIQUE,
-    is_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0,1)),
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    disabled_at TEXT,
-    CHECK (length(user_code) = 6)
+    user_id CHAR(36) PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    user_code CHAR(6) NOT NULL UNIQUE,
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
+    disabled_at TIMESTAMP(6) NULL,
+    CONSTRAINT chk_user_code_length CHECK (CHAR_LENGTH(user_code) = 6)
 );
 ```
 
@@ -33,17 +33,17 @@ CREATE TABLE auth_users (
 
 ```sql
 CREATE TABLE jobs (
-    id TEXT PRIMARY KEY,
-    owner_user_id TEXT NOT NULL,
-    owner_username TEXT NOT NULL,
-    owner_user_code TEXT NOT NULL,
-    target TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('queued','running','failed','complete','canceled')),
-    submitted_at TEXT NOT NULL,
-    started_at TEXT,
-    completed_at TEXT,
-    options_json TEXT,
-    retry_count INTEGER NOT NULL DEFAULT 0,
+    id CHAR(36) PRIMARY KEY,
+    owner_user_id CHAR(36) NOT NULL,
+    owner_username VARCHAR(255) NOT NULL,
+    owner_user_code CHAR(6) NOT NULL,
+    target VARCHAR(255) NOT NULL,
+    status ENUM('queued','running','failed','complete','canceled') NOT NULL,
+    submitted_at TIMESTAMP(6) NOT NULL,
+    started_at TIMESTAMP(6) NULL,
+    completed_at TIMESTAMP(6) NULL,
+    options_json JSON,
+    retry_count INT NOT NULL DEFAULT 0,
     error_detail TEXT,
     CONSTRAINT fk_jobs_owner FOREIGN KEY (owner_user_id) REFERENCES auth_users(user_id)
 );
@@ -55,11 +55,11 @@ CREATE TABLE jobs (
 - `error_detail`: optional payload describing failure context.
 - `status`: only `queued`, `running`, `failed`, `complete` are emitted in the prototype; `canceled` remains reserved for future work.
 
-Enforce per-target exclusivity with a partial unique index:
+Enforce per-target exclusivity with a functional index:
 
 ```sql
 CREATE UNIQUE INDEX idx_jobs_target_active
-    ON jobs(target)
+    ON jobs(target, status)
     WHERE status IN ('queued','running');
 ```
 
@@ -67,13 +67,13 @@ CREATE UNIQUE INDEX idx_jobs_target_active
 
 ```sql
 CREATE TABLE job_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id TEXT NOT NULL,
-    event_time TEXT NOT NULL,
-    event_type TEXT NOT NULL,
-    actor_user_id TEXT,
-    actor_username TEXT,
-    actor_user_code TEXT,
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    job_id CHAR(36) NOT NULL,
+    event_time TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
+    event_type VARCHAR(50) NOT NULL,
+    actor_user_id CHAR(36),
+    actor_username VARCHAR(255),
+    actor_user_code CHAR(6),
     detail TEXT,
     CONSTRAINT fk_events_job FOREIGN KEY (job_id) REFERENCES jobs(id),
     CONSTRAINT fk_events_actor FOREIGN KEY (actor_user_id) REFERENCES auth_users(user_id)
@@ -90,13 +90,13 @@ CREATE INDEX idx_job_events_job_time
 
 ```sql
 CREATE TABLE db_hosts (
-    dbhost TEXT PRIMARY KEY,
+    dbhost VARCHAR(255) PRIMARY KEY,
     description TEXT,
-    credential_ref TEXT NOT NULL,
-    max_db_count INTEGER NOT NULL,
-    last_known_db_count INTEGER NOT NULL DEFAULT 0,
-    last_refreshed_at TEXT,
-    disabled_at TEXT
+    credential_ref VARCHAR(255) NOT NULL,
+    max_db_count INT NOT NULL,
+    last_known_db_count INT NOT NULL DEFAULT 0,
+    last_refreshed_at TIMESTAMP(6),
+    disabled_at TIMESTAMP(6)
 );
 ```
 
@@ -109,9 +109,9 @@ CREATE TABLE db_hosts (
 
 ```sql
 CREATE TABLE locks (
-    name TEXT PRIMARY KEY,
-    owner TEXT NOT NULL,
-    acquired_at TEXT NOT NULL
+    name VARCHAR(255) PRIMARY KEY,
+    owner VARCHAR(255) NOT NULL,
+    acquired_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)
 );
 ```
 
@@ -122,13 +122,13 @@ CREATE TABLE locks (
 
 ```sql
 CREATE TABLE settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    `key` VARCHAR(255) PRIMARY KEY,
+    `value` TEXT NOT NULL,
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)
 );
 ```
 
-- Stores JSON or scalar configuration (default extraction directory, default `dbhost`, S3 bucket path, obfuscation script references).
+- Stores JSON or scalar configuration (default extraction directory, default `dbhost`, S3 bucket path, post-restore SQL script directories).
 - Prototype keeps the set small; future feature flags can reuse this store.
 
 ## Supporting Views & Indices
@@ -155,7 +155,7 @@ CREATE INDEX idx_jobs_owner_status
 
 ## Daemon-Oriented Triggers
 
-- **jobs_after_insert**: set `submitted_at` to `strftime` (if not provided), insert a matching `job_events` row with `event_type='queued'`.
+- **jobs_after_insert**: set `submitted_at` to `UTC_TIMESTAMP(6)` (if not provided), insert a matching `job_events` row with `event_type='queued'`.
 - **jobs_after_status_update**: whenever `status` changes, append an event snapshot capturing `actor_*` context and `detail` (error text when moving to `failed`).
 - **auth_users_after_update_admin**: record admin toggles in `job_events` so audit history remains centralized even before admin tooling exists.
 
@@ -170,8 +170,8 @@ Documenting these tables now avoids architectural drift while keeping the protot
 
 ## Timestamp Policy
 
-- Every timestamp column stores UTC strings via `strftime('%Y-%m-%dT%H:%M:%fZ','now')`.
-- Application code should treat values as milliseconds-precision ISO-8601 for easy comparison and ordering.
+- Every timestamp column stores UTC values via `UTC_TIMESTAMP(6)` with microsecond precision.
+- Application code should treat values as MySQL TIMESTAMP(6) for easy comparison and ordering.
 - When external systems ingest the data, they should not mutate timestamps in place; use new event rows instead.
 
 _This constitution guides the initial implementation and provides a grounded roadmap for the queued enhancements without committing code we are not ready to operate yet._
