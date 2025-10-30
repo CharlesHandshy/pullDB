@@ -1,0 +1,46 @@
+# Markdownlint configuration
+# See: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+# Default state for all rules
+default: true
+
+# MD013/line-length - Line length
+MD013:
+  line_length: 100
+  code_blocks: false
+  tables: false
+
+# MD033/no-inline-html - Inline HTML
+MD033:
+  allowed_elements:
+    - br
+    - details
+    - summary
+    - sup
+    - sub
+
+# MD041/first-line-h1 - First line in file should be a top level heading
+MD041: false  # Allow front matter
+
+# MD046/code-block-style - Code block style
+MD046:
+  style: fenced
+
+# MD024/no-duplicate-header - Multiple headers with the same content
+MD024:
+  siblings_only: true
+
+# MD029/ol-prefix - Ordered list item prefix
+MD029:
+  style: ordered
+
+# MD040/fenced-code-language - Fenced code blocks should have a language specified
+MD040: true
+
+# MD049/emphasis-style - Emphasis style should be consistent
+MD049:
+  style: asterisk
+
+# MD050/strong-style - Strong style should be consistent
+MD050:
+  style: asterisk

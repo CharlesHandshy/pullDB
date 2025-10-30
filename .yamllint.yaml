@@ -1,0 +1,28 @@
+# YAML Lint configuration
+# See: https://yamllint.readthedocs.io/en/stable/rules.html
+
+extends: default
+
+rules:
+  # Line length
+  line-length:
+    max: 100
+    level: warning
+
+  # Indentation
+  indentation:
+    spaces: 2
+    indent-sequences: true
+
+  # Comments
+  comments:
+    min-spaces-from-content: 1
+
+  # Document start (---) - make optional
+  document-start:
+    present: false
+
+  # Truthy values (use true/false not yes/no)
+  truthy:
+    allowed-values: ['true', 'false']
+    check-keys: false

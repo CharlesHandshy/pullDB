@@ -10,6 +10,157 @@ This roadmap records deferred features and the documentation prerequisites befor
 - Daemon polling, download, restore, post-restore SQL execution, logging, metrics.
 - MySQL schema as defined in `../docs/mysql-schema.md`.
 - Authentication via trusted wrapper (sudo context).
+- **Initial single-format support** (format TBD during implementation).
+- **Use staging account for development** - contains both older and newer mydumper formats for testing.
+
+### Deferred for Post-Prototype
+
+The following features are documented but intentionally deferred from the prototype:
+
+1. **Multi-Environment Backup Access** - See below for full documentation
+2. **Multiple mydumper Format Support** - See below for full documentation
+
+## Multi-Environment Backup Access
+
+### Context
+
+**Current State (as of Oct 2025):**
+- **Development environment** needs access to backups from **both staging and production** accounts
+- **Staging account** (`333204494849`): Contains newer mydumper format backups
+- **Production account** (`448509429610`): Currently contains older mydumper format backups
+  - Will migrate to newer mydumper format after pullDB implementation is complete
+
+**Account Relationships:**
+```
+Dev Account (345321506926)
+├── Needs read access → Staging Account (333204494849) - newer mydumper format
+└── Needs read access → Production Account (448509429610) - older mydumper format (migrating)
+```
+
+### Rationale for Deferral
+
+- Prototype can start with single backup source (staging account recommended for development)
+- Staging account contains both older and newer format backups, allowing format testing
+- Cross-account setup for second environment can be added later
+- Core restore workflow is identical regardless of backup source
+- Allows focus on daemon architecture and MySQL coordination
+
+### Implementation Considerations
+
+1. **AWS Profile Configuration**: Dev environment will need two cross-account role configurations:
+   ```ini
+   [profile pr-prod]
+   role_arn = arn:aws:iam::448509429610:role/PullDB-CrossAccount-ReadOnly
+   ...
+   
+   [profile pr-staging]
+   role_arn = arn:aws:iam::333204494849:role/PullDB-CrossAccount-ReadOnly
+   ...
+   ```
+
+2. **S3 Bucket Discovery**: CLI/daemon needs parameter to specify which environment's backups to use:
+   ```bash
+   pulldb user=jdoe customer=acme source=staging  # use staging backups
+   pulldb user=jdoe customer=acme source=prod     # use production backups
+   ```
+
+3. **Configuration**: Extend Config class to support multiple S3 buckets and AWS profiles
+
+### Prerequisites
+
+- [ ] Document staging account S3 bucket name and path structure (DONE: `s3://pestroutesrdsdbs/daily/stg/`)
+- [ ] Create staging account cross-account IAM role (mirror production setup)
+- [ ] Add staging AWS profile to dev environment
+- [ ] Add `source=` CLI parameter validation
+- [ ] Add `PULLDB_BACKUP_SOURCE` environment variable support
+- [ ] Update configuration-map.md with new parameters
+
+### Documentation Requirements
+
+When implementing multi-environment support:
+- Update aws-cross-account-setup.md to cover staging account setup
+- Add staging bucket details to system-overview.md
+- Document source selection logic in implementation-notes.md
+- Add source parameter to README.md usage examples
+
+## Multiple mydumper Format Support
+
+### Context
+
+pullDB must support **two different mydumper backup formats**:
+
+1. **Older mydumper format**
+   - Available in staging account (for testing)
+   - Currently in production account (will migrate after pullDB completion)
+   - Format details TBD when implementation begins
+   
+2. **Newer mydumper format**
+   - Available in staging account (for testing)
+   - Production will migrate to this format after pullDB is complete
+
+**Development Strategy**: Use staging account (`333204494849`) for development and testing since it contains **both** backup formats. This allows testing multi-format support without production access.
+
+**Migration Timeline**: Production will adopt newer mydumper format **after** pullDB is fully implemented and deployed.
+
+### Rationale for Deferral
+
+- Format differences are not yet fully documented
+- Implementation requires analysis of both backup formats
+- Prototype can start with single format support (allows faster delivery)
+- Must be completed before production rollout (blocking requirement)
+- Provides time to document format differences during prototype phase
+
+### Design Considerations
+
+1. **Format Detection**: Automatically detect backup format from archive structure or manifest files
+   - Possible indicators: filename patterns, directory structure, manifest file content
+   - Must work without full extraction (efficiency)
+
+2. **Restore Strategy Selection**: Use appropriate myloader version/flags based on detected format
+   - Determine if different myloader binaries required or just different flags
+   - Encapsulate format-specific logic in dedicated module
+
+3. **Validation**: Ensure restored database is valid regardless of source format
+   - Post-restore checks should be format-agnostic
+   - Verify table counts, schema integrity, data sampling
+
+4. **Migration Path**: Document testing strategy when production migrates formats
+   - Maintain backward compatibility during transition
+   - Test both formats in parallel during migration period
+
+### Prerequisites
+
+- [ ] Document older mydumper format structure (filenames, directory layout, manifests)
+- [ ] Document newer mydumper format structure (differences from older format)
+- [ ] Identify format detection mechanism (propose 2-3 options with pros/cons)
+- [ ] Document myloader restore command for older format (binary, flags, options)
+- [ ] Document myloader restore command for newer format (binary, flags, options)
+- [ ] Acquire sample backups from both formats for testing
+- [ ] Create integration test matrix covering both formats
+- [ ] Determine if different myloader versions are needed or just different flags
+
+### Documentation Requirements
+
+When implementing multi-format support:
+- Create docs/backup-formats.md with format specifications (DONE - placeholder created)
+- Add format detection logic to design/implementation-notes.md
+- Document myloader version requirements and installation
+- Update runbook-restore.md with format-specific troubleshooting steps
+- Add format validation to integration test documentation
+- Update system-overview.md with format detection architecture
+
+### Success Criteria
+
+Multi-format support is complete when:
+- [ ] pullDB can detect backup format without user input
+- [ ] Restores succeed from both older and newer formats
+- [ ] Integration tests pass with sample backups from both formats
+- [ ] Post-restore SQL scripts execute correctly for both formats
+- [ ] Staging database rename pattern works with both formats
+- [ ] Documentation explains format differences and detection logic
+- [ ] Performance is acceptable for both formats (within 10% of each other)
+
+---
 
 ## Phase 1 – Operational Enhancements
 

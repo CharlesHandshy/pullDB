@@ -18,7 +18,18 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-info "Loading .env"; set -o allexport; grep -v '^#' .env | grep -E '^[A-Z_]+=.*' | while IFS= read -r line; do key="${line%%=*}"; val="${line#*=}"; printf -v "$key" '%s' "$val"; done; set +o allexport
+info "Loading .env"
+set -o allexport
+while IFS= read -r line; do
+  [[ -z "$line" || "$line" =~ ^# ]] && continue
+  # Skip lines that do not match KEY=VALUE format
+  if [[ "$line" =~ ^[A-Z_][A-Z0-9_]*= ]]; then
+    key="${line%%=*}"
+    val="${line#*=}"
+    printf -v "$key" '%s' "$val"
+  fi
+done < .env
+set +o allexport
 
 echo ""
 info "Validating AWS profile"
@@ -27,11 +38,13 @@ if [[ -z "${PULLDB_AWS_PROFILE:-}" ]]; then
   exit 1
 fi
 export AWS_PROFILE="$PULLDB_AWS_PROFILE"
-if ! aws sts get-caller-identity >/dev/null 2>&1; then
+STS_OUTPUT=$(aws sts get-caller-identity 2>/dev/null || true)
+if [[ -z "$STS_OUTPUT" ]]; then
   error "AWS profile '$PULLDB_AWS_PROFILE' not usable (sts get-caller-identity failed)"
   exit 1
+else
+  info "AWS profile '$PULLDB_AWS_PROFILE' OK: $(echo "$STS_OUTPUT" | tr -d '\n' | sed 's/  */ /g')"
 fi
-info "AWS profile '$PULLDB_AWS_PROFILE' OK"
 
 echo ""
 info "Checking Parameter Store references"

@@ -14,6 +14,9 @@ scripts/setup-aws-credentials.sh
 #   - Configure AWS profile: aws configure --profile pr-prod
 #   - Edit .env and set PULLDB_AWS_PROFILE=pr-prod
 #   - Verify credentials work
+# NOTE: For cross-account S3 access:
+#   - Local dev: see docs/aws-cross-account-setup.md (IAM user)
+#   - Production: see docs/aws-service-role-setup.md (EC2/ECS/Lambda roles)
 
 # 3. Install MySQL and create database schema
 sudo scripts/setup-mysql.sh
@@ -51,11 +54,60 @@ It checks:
 
 `pullDB` pulls production database backups from S3, stores them in a local archive, and restores them into development environments. The prototype release keeps the surface tight: a CLI funnels requests into MySQL and a single long-running daemon validates, queues, and executes the restores end-to-end. We will reintroduce additional components once the simplified flow proves reliable.
 
+**Multi-Environment Context**:
+- Prototype supports single backup source (staging or production, TBD during implementation)
+- **Staging recommended for development**: Contains both mydumper formats for testing
+- Full multi-environment support (dev accessing both staging and production backups) is deferred
+- Multi-format mydumper support (newer format in staging, older format in production) is deferred
+- See `design/roadmap.md` and `docs/backup-formats.md` for full deferred feature documentation
+
 ## Development Strategy
 
 - **Prototype first**: deliver the minimal restore loop (CLI + daemon + MySQL job store) before layering on extra commands or services.
+- **Use staging for development**: Staging account contains both mydumper formats, allowing format testing without production access.
+- **Single format initially**: prototype will support one mydumper format; multi-format support added pre-production.
+- **Single backup source initially**: prototype connects to one S3 bucket (staging recommended); multi-environment support added as needed.
+- **Code quality**: All code must follow PEP 8 style guidelines (enforced via ruff and mypy)
 - **Bias for simplicity**: avoid optional filters, admin tooling, or aggressive concurrency controls until real usage demands them.
 - **Iterate safely**: once the prototype is hardened, grow scope incrementally—revisit queue/service separation, introduce cancellation, filtering, and richer telemetry as distinct follow-up milestones.
+
+### Code Quality Standards
+
+All code follows industry-standard best practices with automated enforcement:
+
+**Standards Documentation**: See [docs/coding-standards.md](docs/coding-standards.md) for comprehensive guidelines covering:
+- **Python**: PEP 8, PEP 484 (type hints), Google-style docstrings
+- **Markdown**: CommonMark, GitHub Flavored Markdown
+- **SQL**: SQL Style Guide (MySQL dialect)
+- **Shell Scripts**: Google Shell Style Guide
+- **YAML**: YAML 1.2 specification
+- **Mermaid**: Diagram best practices
+
+#### Quick Setup
+
+```bash
+# Install pre-commit hooks (runs automatically on git commit)
+pre-commit install
+
+# Run all quality checks manually
+pre-commit run --all-files
+
+# Or run individual tools
+ruff check .              # Lint Python code (fast!)
+ruff check --fix .        # Lint and auto-fix issues
+ruff format .             # Format Python code
+mypy pulldb/              # Type check Python
+pytest                    # Run tests
+ruff rule D101            # Show documentation for specific rule
+```
+
+**VS Code Integration**:
+- Install the Ruff extension (`charliermarsh.ruff`) for real-time diagnostics as you code
+- Errors appear inline with rule codes (e.g., `D101: Missing docstring in public class`)
+- AI agents can use the `get_errors` tool to access these diagnostics for proactive error checking
+- See `docs/vscode-diagnostics.md` for complete workflow and examples
+
+See `constitution.md` for development workflow and complete coding standards. See `docs/vscode-diagnostics.md` for VS Code diagnostic integration.
 
 ## Prototype Architecture
 
@@ -343,12 +395,18 @@ sequenceDiagram
   participant CLI as CLI
   participant DB as MySQL Queue
   participant D as Daemon
+  participant S3 as S3 Backups
+  participant DevDB as Target Database
   CLI->>DB: insert job (status=queued)
   D->>DB: lock job + mark running
   D->>S3: fetch latest backup
-  D->>DevDB: create database & restore
-  D->>DevDB: execute post-restore SQL scripts
-  D->>DevDB: add pullDB metadata table
+  D->>D: verify disk space & extract
+  D->>DevDB: cleanup orphaned staging databases
+  D->>DevDB: restore to staging_name (myloader)
+  D->>DevDB: execute post-restore SQL scripts on staging
+  D->>DevDB: add pullDB metadata table to staging
+  D->>DevDB: atomic rename staging tables → target
+  D->>DevDB: drop staging database
   D->>DB: mark complete + append events
   CLI->>DB: poll via status command
   DB-->>CLI: job state summary
@@ -359,3 +417,21 @@ sequenceDiagram
 - **Audit Logging**: capture authorization failures and other security-related events (e.g., unknown `user=` attempts, host validation failures).
 - **General Logging**: record operational events for the CLI wrapper and daemon, including disk checks, download phases, restore timing, post-restore SQL execution, and metadata table creation.
 - **Job Logging**: emit single-line records for each job transition (queued, running, failed, complete). Cancellation entries will join once that feature ships.
+
+## Documentation
+
+### Setup & Configuration
+- [AWS Setup Guide](docs/aws-setup.md) - AWS CLI installation and profile configuration
+- [AWS Cross-Account Setup (IAM User)](docs/aws-cross-account-setup.md) - Cross-account S3 access for local development
+- [AWS Service Role Setup](docs/aws-service-role-setup.md) - Cross-account S3 access for production services (EC2/ECS/Lambda)
+- [AWS IAM Setup](docs/aws-iam-setup.md) - IAM users, roles, and policies
+- [AWS Parameter Store Setup](docs/parameter-store-setup.md) - Secure credential storage
+
+### Architecture & Schema
+- [MySQL Schema Documentation](docs/mysql-schema.md) - Complete database schema reference
+- [System Overview](design/system-overview.md) - Component responsibilities and interactions
+- [Configuration Map](design/configuration-map.md) - Configuration sources and precedence
+
+### Development
+- [Copilot Instructions](.github/copilot-instructions.md) - AI agent architecture reference
+- [Constitution](constitution.md) - Coding standards and development workflow

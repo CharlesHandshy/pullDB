@@ -9,6 +9,15 @@ pullDB interacts with AWS S3 to discover and download production database backup
 - Python `boto3`/`botocore` libraries (daemon S3 operations)
 - Optional: environment profile configuration or IAM role
 
+## Cross-Account Access
+
+pullDB requires cross-account access to read production backups from S3. Choose the appropriate authentication method:
+
+- **For Local Development**: Follow [AWS Cross-Account Setup (IAM User)](aws-cross-account-setup.md) - uses IAM user with access keys in `~/.aws/credentials`
+- **For Production Services** (EC2/ECS/Lambda): Follow [AWS Service Role Setup](aws-service-role-setup.md) - uses instance profiles/task roles with automatic credential rotation (RECOMMENDED)
+
+Both guides include complete setup instructions, trust policies, permission policies, and troubleshooting procedures.
+
 ## Quick Start
 
 ```bash
@@ -535,10 +544,11 @@ The daemon will:
 
 ## Next Steps
 After AWS setup:
-1. **Set up IAM permissions**: Complete IAM user/role setup with required policies: [docs/aws-iam-setup.md](aws-iam-setup.md)
-2. **(Recommended) Configure AWS Parameter Store** for secure MySQL credentials: [docs/parameter-store-setup.md](parameter-store-setup.md)
-3. Run MySQL setup scripts (if not done)
-4. Implement downloader module (`pulldb/daemon/downloader.py`)
-5. Add unit tests mocking S3 via `moto`
+1. **Cross-Account Access (if needed)**: If dev and prod are in different AWS accounts, complete [Cross-Account Setup Guide](aws-cross-account-setup.md)
+2. **Set up IAM permissions**: Complete IAM user/role setup with required policies: [docs/aws-iam-setup.md](aws-iam-setup.md)
+3. **(Recommended) Configure AWS Parameter Store** for secure MySQL credentials: [docs/parameter-store-setup.md](parameter-store-setup.md)
+4. Run MySQL setup scripts (if not done)
+5. Implement downloader module (`pulldb/daemon/downloader.py`)
+6. Add unit tests mocking S3 via `moto`
 
 See `IMPLEMENTATION-PLAN.md` for roadmap alignment.

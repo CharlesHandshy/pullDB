@@ -4,7 +4,7 @@
 
 This document is the **primary reference for AI coding agents** working on pullDB. It distills the essential architecture, patterns, and constraints from the comprehensive documentation. Always read this file first, then consult other documents as needed.
 
-**Related Documents**: Read `constitution.md` for coding standards, tooling philosophy, and development workflow. These two documents form the foundation—all other documentation flows from these principles.
+**Related Documents**: Read `constitution.md` for coding standards, tooling philosophy, and development workflow. Read `docs/coding-standards.md` for comprehensive style guidelines for all file types (Python, Markdown, SQL, Shell, YAML, Mermaid). These documents form the foundation—all other documentation flows from these principles.
 
 ## Project Overview
 
@@ -12,7 +12,12 @@ pullDB is a database restoration tool that pulls production MySQL backups from S
 
 **Current Status**: Pre-implementation phase - comprehensive design documentation exists but no code has been written yet.
 
-**Environment Context**: Always runs in development environment with read access to production S3 backups. No environment switching required.
+**Environment Context**:
+- **Development environment** (`345321506926`) runs pullDB and needs cross-account S3 access to:
+  - **Staging backups** (`333204494849`): `s3://pestroutesrdsdbs/daily/stg/` - **Primary for development** - Contains both newer and older mydumper format backups for testing
+  - **Production backups** (`448509429610`): `s3://pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/` - Older mydumper format (will migrate to newer format post-implementation)
+- **Prototype development**: Use staging backups as primary source (has both formats available)
+- Multi-format mydumper support required (deferred feature - see roadmap.md)
 
 ## Architecture Principles
 
@@ -25,16 +30,15 @@ pullDB is a database restoration tool that pulls production MySQL backups from S
 
 ```
 .github/copilot-instructions.md  # THIS FILE - Primary AI agent reference
-constitution.md                   # Coding standards, tooling, dev workflow (co-primary)
-README.md                         # Complete API reference and usage patterns
-design/
-  ├── system-overview.md          # Component responsibilities and interactions  
-  ├── implementation-notes.md     # Python structure and integration patterns
-  ├── configuration-map.md        # Config sources and MySQL settings flow
-  ├── roadmap.md                  # Deferred features documentation requirements
-  └── apptype-analysis.md         # Legacy appType → dbhost parameter mapping
+constitution.md                   # Coding standards and development workflow (co-primary)
 docs/
-  └── mysql-schema.md             # Complete database schema with invariants
+  ├── coding-standards.md         # Comprehensive style guide for all file types
+  ├── mysql-schema.md             # Complete database schema with invariants
+  ├── aws-setup.md                # AWS CLI and SDK configuration overview
+  ├── aws-cross-account-setup.md  # Cross-account S3 access with IAM user (local dev)
+  ├── aws-service-role-setup.md   # Cross-account S3 access with service roles (production)
+  ├── aws-iam-setup.md            # IAM users, roles, and policies
+  └── parameter-store-setup.md    # Secure credential storage in AWS
 customers_after_sql/              # Post-restore SQL for customer databases (PII removal)
   ├── 010.remove_customer_pii.sql
   ├── 020.remove_billto_info.sql
@@ -72,15 +76,56 @@ pullDB status
 
 ## Python Implementation Guidelines
 
+### Proactive Error Checking
+
+**CRITICAL**: Always use the `get_errors` tool to check for VS Code diagnostics before and after editing files. This tool provides access to:
+- **Ruff diagnostics**: Missing docstrings (D101-D107), style violations (E, W), unused imports (F401), etc.
+- **Mypy diagnostics**: Type checking errors, incompatible types, missing type hints
+- **Other linters**: Any configured VS Code extensions
+
+**Workflow**:
+1. Before editing: `get_errors` on target files to understand existing issues
+2. Make changes addressing the issues
+3. After editing: `get_errors` to verify fixes and check for new issues
+4. Iterate until all errors are resolved
+
+**Example Error**: `config.py:16 - Missing docstring in public class Ruff(D101)`
+- **Action**: Add comprehensive Google-style docstring to class
+- **Verification**: Run `get_errors` again to confirm fix
+
 ### Project Structure (from `design/implementation-notes.md`)
 ```python
 pulldb/
   cli/           # Command validation, option parsing, MySQL job insertion
-  daemon/        # Job polling, S3 download, MySQL restore orchestration  
+  daemon/        # Job polling, S3 download, MySQL restore orchestration
   infra/         # MySQL, S3, logging abstractions
   domain/        # Job, JobEvent, configuration dataclasses
   tests/         # Unit tests with test MySQL instances, integration smoke tests
 ```
+
+### Code Style (PEP 8 Required)
+**Primary Reference**: See `docs/coding-standards.md` for complete standards covering Python, Markdown, SQL, Shell, YAML, and Mermaid.
+
+**Python Quick Reference**:
+- **Primary linter**: Ruff (replaces Flake8, isort, pydocstyle, etc.) - 10-100x faster
+- **Maximum line length**: 88 characters (Ruff/Black default)
+- **Type hints required**: All function signatures must include type hints (checked by mypy)
+- **Docstrings required**: Google-style docstrings for all public functions/classes (Ruff D101-D107)
+- **Import order**: stdlib, third-party, local (alphabetized within groups, enforced by Ruff I001)
+- **Naming**: snake_case for functions/variables, PascalCase for classes, UPPER_CASE for constants (Ruff N802, N806)
+- **Error handling**: Use specific exceptions, always `raise ... from e` to preserve traceback (Ruff B904)
+- **No print statements**: Use Python `logging` module exclusively (Ruff T201)
+- **Quality tools**: Code must pass `ruff check`, `ruff format`, `mypy`, and tests before commit
+- **VS Code integration**: Use `get_errors` tool to access real-time Ruff/mypy diagnostics
+
+**Other File Types**:
+- **Markdown**: Follow CommonMark + GitHub Flavored Markdown (enforced by markdownlint)
+- **SQL**: SQL Style Guide with MySQL dialect (enforced by sqlfluff)
+- **Shell**: Google Shell Style Guide (enforced by shellcheck + shfmt)
+- **YAML**: YAML 1.2 spec (enforced by yamllint)
+- **Mermaid**: Clear node IDs, descriptive labels, consistent styling
+
+All standards automatically enforced via pre-commit hooks. See `constitution.md` and `docs/coding-standards.md` for complete details.
 
 ### Dependency Patterns
 - **MySQL**: `mysql-connector-python` or `PyMySQL` for coordination database and restored databases
@@ -106,7 +151,7 @@ class JobRepository:
 - Fail if unique 6-char code cannot be generated
 
 ### Target Database Naming
-- Customer: `{user_code}{sanitized_customer_id}` 
+- Customer: `{user_code}{sanitized_customer_id}`
 - QA Template: `{user_code}qatemplate`
 - Sanitization: lowercase, remove all non-letter characters (letters only)
 - **Length Limit**: Maximum 51 characters (reserves 13 chars for staging suffix: `_` + 12-char job_id)
@@ -152,11 +197,11 @@ class JobRepository:
 
 ### Unit Tests
 - Test MySQL instances with temporary databases
-- Mock S3 calls with moto library  
+- Mock S3 calls with moto library
 - Mock subprocess calls to avoid external dependencies
 - Test user_code generation edge cases and collision handling
 
-### Integration Tests  
+### Integration Tests
 - Use local installed shared MySQL instance for disposable MySQL instances ensuring consistent environment and cleanup after tests always
 - Test complete restore flow against staging S3 bucket
 - Verify cleanup and error handling scenarios
@@ -164,7 +209,7 @@ class JobRepository:
 ## Development Workflow
 
 1. **Document First**: Update design docs before any code changes
-2. **Test-Driven**: Write tests covering success/failure cases before implementation  
+2. **Test-Driven**: Write tests covering success/failure cases before implementation
 3. **Schema-Driven**: MySQL constraints enforce business rules
 4. **Migration-Safe**: Forward-only SQL migrations, no downgrades supported
 
@@ -173,7 +218,7 @@ class JobRepository:
 - Don't implement deferred features marked in roadmap.md
 - Never hardcode credentials, hosts, or S3 bucket names
 - Don't retry failed jobs automatically - require manual resubmission
-- Don't allow multiple active jobs per target database 
+- Don't allow multiple active jobs per target database
 - Don't implement cancellation, history, or admin commands in prototype
 - Ensure all database operations are wrapped in transactions
 - Validate CLI options before MySQL insertion, not in daemon

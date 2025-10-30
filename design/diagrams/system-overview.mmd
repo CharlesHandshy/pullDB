@@ -3,9 +3,11 @@ flowchart LR
   CLI["CLI Agent"] -->|submit restore| MySQLQueue[(MySQL Queue)]
   CLI -->|status query| MySQLQueue
   Daemon["Daemon"] -->|poll queued jobs| MySQLQueue
-  Daemon -->|download backup| S3[(AWS S3)]
+  Daemon -->|download backup| S3[(AWS S3<br/>Cross-Account)]
   Daemon -->|restore + post-SQL| MySQLTarget[(MySQL 8 Host)]
   Daemon -->|emit events| MySQLQueue
   Daemon -->|metrics + logs| Observability[(Datadog)]
   MySQLQueue -->|configuration| CLI
   MySQLQueue -->|status| Daemon
+  CLI -.->|AWS credentials<br/>via profile| AWSProfile[AWS Profile<br/>+ Parameter Store]
+  Daemon -.->|AWS credentials<br/>via profile| AWSProfile

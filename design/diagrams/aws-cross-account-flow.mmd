@@ -1,0 +1,81 @@
+%% Simplified cross-account access flow diagram
+%% Shows the step-by-step authentication and authorization process
+
+sequenceDiagram
+    autonumber
+    participant DevUser as Dev IAM User<br/>(pulldb-dev-user)
+    participant LocalProfile as Local AWS Profile<br/>(pr-prod-cross-account)
+    participant STS as AWS STS Service
+    participant ProdRole as Prod IAM Role<br/>(cross-account-read-role)
+    participant S3 as Prod S3 Bucket
+    participant KMS as KMS Key
+    participant SSM as Parameter Store
+    participant pullDB as pullDB Application
+
+    Note over DevUser,LocalProfile: Development/Staging Account (345321506926 / 333204494849)
+    Note over ProdRole,SSM: Production Account (448509429610)
+    
+    pullDB->>LocalProfile: Load AWS_PROFILE=pr-prod-cross-account
+    LocalProfile->>LocalProfile: Read source_profile (pr-dev)<br/>Read role_arn<br/>Read external_id
+    
+    LocalProfile->>DevUser: Get base credentials<br/>(Access Key + Secret)
+    DevUser-->>LocalProfile: Return credentials
+    
+    LocalProfile->>STS: AssumeRole Request<br/>role_arn + external_id
+    
+    Note over STS: Validate Request
+    STS->>ProdRole: Check trust policy
+    ProdRole->>ProdRole: Verify principal = dev account
+    ProdRole->>ProdRole: Verify external_id matches
+    ProdRole-->>STS: Trust policy valid
+    
+    STS->>STS: Generate temporary credentials<br/>(AccessKeyId, SecretAccessKey, SessionToken)<br/>Valid for max_session_duration
+    
+    STS-->>LocalProfile: Return temporary credentials
+    LocalProfile-->>pullDB: Credentials ready
+    
+    Note over pullDB: Configuration Loading
+    pullDB->>SSM: GetParameter(/pulldb/prod/mysql/host)
+    SSM->>ProdRole: Check permissions
+    ProdRole->>ProdRole: Verify ssm:GetParameter allowed
+    ProdRole-->>SSM: Permission granted
+    SSM->>KMS: Decrypt SecureString
+    KMS->>ProdRole: Check kms:Decrypt permission
+    ProdRole-->>KMS: Permission granted (via SSM)
+    KMS-->>SSM: Decrypted value
+    SSM-->>pullDB: MySQL host value
+    
+    pullDB->>SSM: GetParameter(/pulldb/prod/mysql/password)
+    SSM->>SSM: Check permissions (cached)
+    SSM->>KMS: Decrypt SecureString
+    KMS-->>SSM: Decrypted value
+    SSM-->>pullDB: MySQL password value
+    
+    Note over pullDB: Restore Workflow
+    pullDB->>S3: ListObjectsV2(daily/prod/customer123/)
+    S3->>ProdRole: Check permissions
+    ProdRole->>ProdRole: Verify s3:ListBucket allowed
+    ProdRole-->>S3: Permission granted
+    S3-->>pullDB: List of backup files
+    
+    pullDB->>S3: GetObject(latest_backup.tar)
+    S3->>ProdRole: Check permissions
+    ProdRole->>ProdRole: Verify s3:GetObject allowed
+    ProdRole->>ProdRole: Verify s3:PutObject DENIED
+    ProdRole-->>S3: Get permission granted
+    S3->>KMS: Decrypt object (SSE-KMS)
+    KMS->>ProdRole: Check kms:Decrypt permission
+    ProdRole-->>KMS: Permission granted (via S3)
+    KMS-->>S3: Decrypted data stream
+    S3-->>pullDB: Backup file stream
+    
+    Note over pullDB: Credentials Auto-Refresh
+    pullDB->>LocalProfile: Need credentials (after TTL)
+    LocalProfile->>STS: AssumeRole (automatic refresh)
+    STS-->>LocalProfile: New temporary credentials
+    LocalProfile-->>pullDB: Refreshed credentials
+    
+    Note over DevUser,SSM: Audit Trail
+    STS-->>STS: Log AssumeRole event to CloudTrail
+    S3-->>S3: Log data access to CloudTrail
+    SSM-->>SSM: Log parameter access to CloudTrail

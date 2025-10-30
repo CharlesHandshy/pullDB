@@ -1,0 +1,98 @@
+# Pre-commit hooks for code quality and PEP 8 compliance
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Ruff - fast Python linter and formatter (replaces black, isort, flake8)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.0
+    hooks:
+      # Run the linter
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+      # Run the formatter
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # Mypy - static type checker
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.9.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - types-boto3
+          - types-PyMySQL
+        args: [--config-file=pyproject.toml]
+        exclude: ^pulldb/tests/
+
+  # Markdown linting and formatting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.39.0
+    hooks:
+      - id: markdownlint
+        args: [--fix]
+        exclude: ^(node_modules/|\.git/)
+      - id: markdownlint-docker
+        args: [--fix]
+        exclude: ^(node_modules/|\.git/)
+
+  # SQL linting
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: 3.0.0
+    hooks:
+      - id: sqlfluff-lint
+        args: [--dialect, mysql]
+        files: \.sql$
+      - id: sqlfluff-fix
+        args: [--dialect, mysql]
+        files: \.sql$
+
+  # Shell script linting
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: [-x]  # Follow external sources
+
+  # Shell script formatting
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.8.0-1
+    hooks:
+      - id: shfmt
+        args: [-i, '2', -ci, -bn, -sr, -w]
+
+  # YAML linting
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [-c, .yamllint.yaml]
+
+  # Basic file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(.*\.md|.*\.txt)$
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: debug-statements
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-case-conflict
+      - id: check-json
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+
+  # Security checks
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.8
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml, -ll]
+        exclude: ^pulldb/tests/

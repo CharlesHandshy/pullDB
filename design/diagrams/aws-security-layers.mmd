@@ -1,0 +1,98 @@
+%% AWS Security Layers and Controls
+%% Shows defense-in-depth security architecture
+
+graph LR
+    subgraph "Layer 1: Identity & Authentication"
+        A1[IAM User Credentials<br/>~/.aws/credentials<br/>File Permissions: 0600]
+        A2[AWS Profile Configuration<br/>~/.aws/config<br/>role_arn + external_id]
+        A3[EC2 Instance Profile<br/>Optional: Metadata Service<br/>No credentials in files]
+        
+        A1 -.->|alternative| A3
+        A1 -->|authenticates| A2
+    end
+    
+    subgraph "Layer 2: Trust Boundary"
+        B1[Trust Policy<br/>Principal: dev account root]
+        B2[External ID<br/>pulldb-dev-access-2025<br/>Prevents Confused Deputy]
+        B3[MFA Requirement<br/>Optional: aws:MultiFactorAuthPresent]
+        
+        B1 -->|requires| B2
+        B1 -.->|optional| B3
+    end
+    
+    subgraph "Layer 3: Authorization"
+        C1[IAM Permission Policy<br/>Attached to Role]
+        C2[Allow Actions:<br/>s3:ListBucket<br/>s3:GetObject<br/>ssm:GetParameter<br/>kms:Decrypt]
+        C3[Explicit Deny:<br/>s3:PutObject<br/>s3:DeleteObject<br/>s3:DeleteBucket]
+        
+        C1 -->|grants| C2
+        C1 -->|denies| C3
+    end
+    
+    subgraph "Layer 4: Resource Policies"
+        D1[S3 Bucket Policy<br/>Allow: cross-account role<br/>Deny: all others]
+        D2[KMS Key Policy<br/>Allow: role via S3/SSM services<br/>Condition: kms:ViaService]
+        D3[Resource-Level Restrictions<br/>ARN patterns for buckets/parameters]
+        
+        D1 -->|enforces| D3
+        D2 -->|enforces| D3
+    end
+    
+    subgraph "Layer 5: Network & Encryption"
+        E1[TLS 1.2+ Required<br/>All API calls encrypted in transit]
+        E2[SSE-KMS Encryption at Rest<br/>S3 objects + SSM parameters]
+        E3[VPC Endpoints<br/>Optional: Private access to AWS services]
+        
+        E1 -->|protects| E2
+        E2 -.->|via| E3
+    end
+    
+    subgraph "Layer 6: Temporal Controls"
+        F1[Session Duration<br/>max_session_duration: 1-12 hours]
+        F2[Automatic Credential Refresh<br/>AWS SDK handles rotation]
+        F3[Lock Expiration<br/>TTL for abandoned daemon processes]
+        
+        F1 -->|managed by| F2
+        F2 -.->|similar to| F3
+    end
+    
+    subgraph "Layer 7: Audit & Monitoring"
+        G1[CloudTrail Logging<br/>All API calls logged<br/>Immutable audit trail]
+        G2[CloudWatch Alarms<br/>Unauthorized access attempts<br/>Excessive API calls]
+        G3[IAM Access Analyzer<br/>Detect unintended access<br/>Policy validation]
+        
+        G1 -->|triggers| G2
+        G1 -->|analyzed by| G3
+    end
+    
+    subgraph "Layer 8: Access Patterns"
+        H1[Read-Only Access<br/>No write permissions to prod]
+        H2[Least Privilege<br/>Minimal permissions for task]
+        H3[Prefix Restrictions<br/>daily/prod/* only]
+        
+        H1 -->|enforces| H2
+        H2 -->|scoped by| H3
+    end
+    
+    subgraph "Layer 9: Operational Security"
+        I1[Credential Rotation<br/>Quarterly key rotation<br/>Automated if using IAM role]
+        I2[External ID Rotation<br/>Periodic trust policy updates]
+        I3[Security Group Restrictions<br/>EC2 outbound: HTTPS only]
+        
+        I1 -->|includes| I2
+        I2 -.->|complements| I3
+    end
+    
+    A2 ==>|passes through| B1
+    B1 ==>|validated by| C1
+    C1 ==>|combined with| D1
+    D1 ==>|secured by| E1
+    E1 ==>|limited by| F1
+    F1 ==>|logged by| G1
+    G1 ==>|enforces| H1
+    H1 ==>|maintained by| I1
+    
+    style B2 fill:#ffcccc,stroke:#cc0000,stroke-width:3px
+    style C3 fill:#ffcccc,stroke:#cc0000,stroke-width:3px
+    style E2 fill:#ccffcc,stroke:#00cc00,stroke-width:2px
+    style G1 fill:#ccccff,stroke:#0000cc,stroke-width:2px

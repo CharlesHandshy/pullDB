@@ -135,7 +135,8 @@ EOF
   fi
 
   chmod 600 "$CONFIG_FILE"
-  info "Region/output written for profile '$PROFILE_NAME'. Run 'aws configure --profile $PROFILE_NAME' as $TARGET_USER to add access keys if needed (development only; prefer IAM role)."
+  chown "$TARGET_USER":"$TARGET_USER" "$CONFIG_FILE" || warn "Could not change owner of $CONFIG_FILE (permission issue)."
+  info "Region/output written for profile '$PROFILE_NAME' (owner: $TARGET_USER). Run 'aws configure --profile $PROFILE_NAME' as $TARGET_USER to add access keys if needed (development only; prefer IAM role)."
 fi
 
 cat <<SUMMARY

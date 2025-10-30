@@ -12,9 +12,12 @@ sequenceDiagram
   D->>S3: fetch latest backup
   D->>D: verify disk space
   D->>D: extract archive to workspace
-  D->>MySQL: run myloader restore
-  D->>MySQL: execute post-restore SQL scripts
-  D->>MySQL: add pullDB metadata table
+  D->>D: cleanup orphaned staging databases
+  D->>MySQL: run myloader restore to staging_name
+  D->>MySQL: execute post-restore SQL scripts on staging
+  D->>MySQL: add pullDB metadata table to staging
+  D->>MySQL: atomic rename staging tables to target
+  D->>MySQL: drop staging database
   D->>DB: mark complete + append events
   CLI->>DB: status query
   DB-->>CLI: job status = complete

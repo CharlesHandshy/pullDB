@@ -12,7 +12,9 @@ This guide captures where configuration values live, how they flow into the CLI 
    - `PULLDB_MYSQL_PASSWORD`: MySQL coordination database password (or AWS Parameter Store path).
    - `PULLDB_MYSQL_DATABASE`: MySQL coordination database name.
    - `PULLDB_AWS_PROFILE`: AWS profile name for S3 and Parameter Store access (required, no explicit credentials supported).
-   - `PULLDB_S3_BUCKET_PATH`: S3 bucket path including prefix (e.g., `pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod`).
+   - `PULLDB_BACKUP_SOURCE`: Which backup environment to use (`production` or `staging`). Default: `staging` (recommended for development). **Deferred feature** - see roadmap.md.
+   - `PULLDB_S3_BUCKET_PATH`: S3 URI including prefix (e.g., `s3://pestroutesrdsdbs/daily/stg/` for staging, recommended for development).
+   - `PULLDB_S3_STAGING_BUCKET_PATH`: S3 URI for staging backups (e.g., `s3://pestroutesrdsdbs/daily/stg/`). **Deferred feature** - will be used when multi-environment support is implemented.
    - `PULLDB_DEFAULT_DBHOST`: default MySQL host for restores.
    - `PULLDB_WORK_DIR`: filesystem workspace for extractions.
    - `PULLDB_CUSTOMERS_AFTER_SQL_DIR`: directory containing post-restore SQL scripts for customer databases.
@@ -35,7 +37,9 @@ Key-value pairs stored in `settings` provide operational overrides that both CLI
 | --- | --- | --- |
 | `default_dbhost` | Canonical host when `dbhost=` absent. | Derived from `PULLDB_DEFAULT_DBHOST` or config file. |
 | `work_directory` | Absolute path for temp restore workspace. | `PULLDB_WORK_DIR`. |
-| `s3_bucket_path` | S3 bucket path including prefix. | `PULLDB_S3_BUCKET_PATH`. |
+| `s3_bucket_path` | S3 URI including prefix (staging recommended for dev). | `PULLDB_S3_BUCKET_PATH`. |
+| `s3_staging_bucket_path` | S3 URI including prefix (staging). | `PULLDB_S3_STAGING_BUCKET_PATH`. **Deferred**. |
+| `backup_source` | Which backup environment to use (`production` or `staging`). | `PULLDB_BACKUP_SOURCE`. Default: `staging`. **Deferred**. |
 | `customers_after_sql_dir` | Directory containing post-restore SQL files for customer databases. | Config file entry. |
 | `qa_template_after_sql_dir` | Directory containing post-restore SQL files for QA template databases. | Config file entry. |
 

@@ -24,6 +24,37 @@ The pullDB prototype consists of a CLI that validates user intent and inserts jo
 
 Refer to `../constitution.md` for coding standards, tooling choices, and deployment workflow.
 
-## Diagram
+## Diagrams
 
-See `diagrams/system-overview.mmd` for the Mermaid source. Render it with a Mermaid-compatible viewer when updating design discussions.
+### System Architecture
+See `diagrams/system-overview.mmd` for the Mermaid source showing component interactions. Render it with a Mermaid-compatible viewer when updating design discussions.
+
+### AWS Security Architecture
+pullDB operates in a cross-account AWS environment with defense-in-depth security:
+
+- **`diagrams/aws-security-architecture.mmd`** - Complete security architecture showing:
+  - Cross-account IAM role assumption flow
+  - S3 bucket policies and KMS encryption
+  - Parameter Store integration with SecureString
+  - CloudTrail audit logging
+  - Multi-layer security controls
+
+- **`diagrams/aws-cross-account-flow.mmd`** - Step-by-step sequence diagram of:
+  - STS AssumeRole authentication process
+  - External ID validation (confused deputy prevention)
+  - Temporary credential issuance and refresh
+  - S3 and Parameter Store access with KMS decryption
+  - Automatic credential rotation by AWS SDK
+
+- **`diagrams/aws-security-layers.mmd`** - Defense-in-depth security layers:
+  - Layer 1: Identity & Authentication
+  - Layer 2: Trust Boundary (External ID, optional MFA)
+  - Layer 3: Authorization (IAM policies with explicit deny)
+  - Layer 4: Resource Policies (bucket/key policies)
+  - Layer 5: Network & Encryption (TLS + SSE-KMS)
+  - Layer 6: Temporal Controls (session duration, auto-refresh)
+  - Layer 7: Audit & Monitoring (CloudTrail, CloudWatch)
+  - Layer 8: Access Patterns (read-only, least privilege)
+  - Layer 9: Operational Security (rotation, restrictions)
+
+See `../docs/aws-cross-account-setup.md` for complete setup instructions implementing these security controls.
