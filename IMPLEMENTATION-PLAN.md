@@ -25,6 +25,8 @@
 - [x] Python virtual environment created (Python 3.12.3)
 - [x] MySQL setup script created (`scripts/setup-mysql.sh`)
 - [x] Schema setup script created (`scripts/setup-pulldb-schema.sh`)
+- [x] AWS installation script created (`scripts/setup-aws.sh`)
+- [x] Dependency manifests added (`requirements.txt`, `requirements-dev.txt`, `requirements.lock`)
 - [ ] Python project structure (awaiting Milestone 1.1)
 - [ ] Python tests (awaiting Milestone 9)
 
@@ -33,6 +35,9 @@
 - [x] MySQL data directory configured at `/mnt/data/mysql/data`
 - [x] MySQL tmpdir configured at `/mnt/data/mysql/tmpdir`
 - [x] Python MySQL libraries installed (mysql-connector-python 9.5.0, pymysql 1.4.6)
+- [x] AWS CLI v2 installed (script-driven)
+- [x] AWS Python libraries installed (boto3 1.40.63, botocore 1.40.63, s3transfer 0.14.0)
+- [ ] AWS profile/role configuration (pending environment decision)
 - [ ] pulldb coordination database (run `scripts/setup-pulldb-schema.sh`)
 - [ ] EC2 instance for daemon
 - [ ] AWS credentials and IAM roles
