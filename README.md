@@ -2,6 +2,26 @@
 
 > **For AI Agents & New Developers**: Start with `.github/copilot-instructions.md` for architectural overview and critical constraints, then read `constitution.md` for coding standards and workflow. This README provides complete API reference and usage patterns.
 
+## Quick Start
+
+```bash
+# 1. Install MySQL and create database schema
+sudo scripts/setup-mysql.sh
+sudo scripts/setup-pulldb-schema.sh
+
+# 2. Set up Python environment
+python3 -m venv venv
+source venv/bin/activate
+pip install mysql-connector-python pymysql boto3
+
+# 3. Use pullDB (once implementation is complete)
+pullDB user=jdoe customer=acme
+pullDB user=jdoe qatemplate
+pullDB status
+```
+
+See [docs/mysql-setup.md](docs/mysql-setup.md) for detailed MySQL installation instructions.
+
 ## Purpose
 
 `pullDB` pulls production database backups from S3, stores them in a local archive, and restores them into development environments. The prototype release keeps the surface tight: a CLI funnels requests into MySQL and a single long-running daemon validates, queues, and executes the restores end-to-end. We will reintroduce additional components once the simplified flow proves reliable.

@@ -79,3 +79,4 @@ Thumbs.db
 # Local configuration overrides (if needed)
 local.conf
 .env.local
+venv/

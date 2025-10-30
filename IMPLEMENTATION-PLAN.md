@@ -21,13 +21,19 @@
 - [x] `qa_template_after_sql/` - README explaining no scripts needed
 - [x] `reference/` - Legacy PHP implementations (gitignored, local only)
 
-### Code (Not Started ❌)
-- [ ] No Python code exists yet
-- [ ] No tests exist yet
-- [ ] No deployment scripts exist yet
+### Code (In Progress 🚧)
+- [x] Python virtual environment created (Python 3.12.3)
+- [x] MySQL setup script created (`scripts/setup-mysql.sh`)
+- [x] Schema setup script created (`scripts/setup-pulldb-schema.sh`)
+- [ ] Python project structure (awaiting Milestone 1.1)
+- [ ] Python tests (awaiting Milestone 9)
 
-### Infrastructure (Not Provisioned ❌)
-- [ ] MySQL coordination database
+### Infrastructure (Partially Provisioned ⚙️)
+- [x] MySQL 8.0.43 server installed and running
+- [x] MySQL data directory configured at `/mnt/data/mysql/data`
+- [x] MySQL tmpdir configured at `/mnt/data/mysql/tmpdir`
+- [x] Python MySQL libraries installed (mysql-connector-python 9.5.0, pymysql 1.4.6)
+- [ ] pulldb coordination database (run `scripts/setup-pulldb-schema.sh`)
 - [ ] EC2 instance for daemon
 - [ ] AWS credentials and IAM roles
 - [ ] Database host registrations
@@ -94,11 +100,15 @@ pulldb/
 │       ├── test_infra/
 │       └── fixtures/
 └── scripts/
-    ├── setup-mysql-schema.sql   # MySQL schema + initial data
-    └── deploy-daemon.sh          # Deployment helper
+    ├── setup-mysql.sh               # MySQL 8.x installation script
+    ├── setup-pulldb-schema.sh       # pulldb database creation script
+    └── deploy-daemon.sh             # Deployment helper (future)
 ```
 
 **Tasks**:
+- [x] Initialize Python virtual environment (Python 3.12.3)
+- [x] Create MySQL installation script with custom data directory setup
+- [x] Create pulldb schema deployment script
 - [ ] Initialize Python project with Poetry or setuptools
 - [ ] Create directory structure
 - [ ] Set up pytest configuration
@@ -117,10 +127,18 @@ python-dotenv>=1.0.0  # .env file support
 
 #### 1.2 MySQL Schema Deployment
 
+**Scripts Created**:
+- `scripts/setup-mysql.sh` - Installs MySQL 8.x, configures data directories on `/mnt/data/mysql`
+- `scripts/setup-pulldb-schema.sh` - Creates `pulldb` database with all tables and initial data
+
 **Tasks**:
-- [ ] Create `scripts/setup-mysql-schema.sql` with complete schema from `docs/mysql-schema.md`
-- [ ] Include initial data population (db_hosts, settings)
-- [ ] Add triggers for automatic job_events
+- [x] Create MySQL installation script with automated setup
+- [x] Configure MySQL data directory: `/mnt/data/mysql/data` (working data)
+- [x] Configure MySQL tmpdir: `/mnt/data/mysql/tmpdir` (temporary files)
+- [x] Update AppArmor permissions for custom data directory
+- [x] Create schema deployment script with trigger and initial data
+- [ ] Run `sudo scripts/setup-mysql.sh` (if not already done)
+- [ ] Run `sudo scripts/setup-pulldb-schema.sh` to create pulldb database
 - [ ] Test schema deployment on local/dev MySQL instance
 - [ ] Document connection parameters and credential setup
 
