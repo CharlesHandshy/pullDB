@@ -381,9 +381,32 @@ aws iam attach-role-policy \
     --policy-arn arn:aws:iam::333204494849:policy/pulldb-staging-s3-readonly
 ```
 
-### 2.3 Update S3 Bucket Policy
+### 2.3 Update S3 Bucket Policy (Optional)
 
-**IMPORTANT**: This step requires manually merging the new statement with any existing bucket policy to avoid overwriting existing permissions.
+**IMPORTANT**: This step is **only required if the bucket policy explicitly blocks cross-account access**. In most cases, the IAM role permissions from Step 2.2 are sufficient.
+
+**Check if bucket policy modification is needed**:
+```bash
+# Check current bucket policy
+aws s3api get-bucket-policy --bucket pestroutesrdsdbs --query Policy --output text 2>/dev/null | jq .
+
+# If no policy exists or policy doesn't have explicit Deny statements, skip this step
+# If you see an error "NoSuchBucketPolicy", you can skip this step
+```
+
+**Test if IAM permissions alone work**:
+```bash
+# From the dev account EC2 instance, test assuming the role and listing the bucket
+aws sts assume-role \
+    --role-arn arn:aws:iam::333204494849:role/pulldb-cross-account-readonly \
+    --role-session-name test-access \
+    --external-id pulldb-dev-access-2025
+
+# Use the temporary credentials to test S3 access
+# If this works, you don't need to modify the bucket policy
+```
+
+**Only if bucket policy modification is required** (bucket policy has explicit Deny or conflicting Allow):
 
 ```bash
 # Get existing bucket policy
