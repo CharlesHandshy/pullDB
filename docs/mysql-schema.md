@@ -98,12 +98,19 @@ CREATE INDEX idx_job_events_job_id ON job_events(job_id, logged_at);
 CREATE TABLE db_hosts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     hostname VARCHAR(255) NOT NULL UNIQUE,
-    connection_string VARCHAR(512) NOT NULL,
+    credential_ref VARCHAR(512) NOT NULL,
     max_concurrent_restores INT NOT NULL DEFAULT 1,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
 );
 ```
+
+- `hostname`: Fully qualified domain name of the target MySQL server
+- `credential_ref`: Reference to credentials in AWS Secrets Manager or SSM Parameter Store
+  - Format: `aws-secretsmanager:/pulldb/mysql/db3-dev` (recommended)
+  - Format: `aws-ssm:/pulldb/mysql/db3-dev-credentials` (alternative)
+- `max_concurrent_restores`: Maximum number of simultaneous restore operations on this host
+- `enabled`: Boolean flag to temporarily disable a host without deleting the record
 
 
 ### locks
@@ -164,26 +171,28 @@ Pre-populate `db_hosts` with the three existing development database servers to 
 
 ```sql
 -- DEV team database server (legacy --type=DEV)
-INSERT INTO db_hosts (dbhost, description, credential_ref, max_db_count) VALUES
+INSERT INTO db_hosts (hostname, credential_ref, max_concurrent_restores, enabled) VALUES
     ('db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
-     'Development team database server (legacy DEV type)',
-     'aws-ssm:/pulldb/db3-dev-credentials',
-     1000);
+     'aws-secretsmanager:/pulldb/mysql/db3-dev',
+     1,
+     TRUE);
 
 -- SUPPORT team database server (legacy --type=SUPPORT, default)
-INSERT INTO db_hosts (dbhost, description, credential_ref, max_db_count) VALUES
+INSERT INTO db_hosts (hostname, credential_ref, max_concurrent_restores, enabled) VALUES
     ('db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
-     'Support team database server (legacy SUPPORT type, default)',
-     'aws-ssm:/pulldb/db4-dev-credentials',
-     1000);
+     'aws-secretsmanager:/pulldb/mysql/db4-dev',
+     1,
+     TRUE);
 
 -- IMPLEMENTATION team database server (legacy --type=IMPLEMENTATION)
-INSERT INTO db_hosts (dbhost, description, credential_ref, max_db_count) VALUES
+INSERT INTO db_hosts (hostname, credential_ref, max_concurrent_restores, enabled) VALUES
     ('db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
-     'Implementation team database server (legacy IMPLEMENTATION type)',
-     'aws-ssm:/pulldb/db5-dev-credentials',
-     1000);
+     'aws-secretsmanager:/pulldb/mysql/db5-dev',
+     1,
+     TRUE);
 ```
+
+**Note**: Credentials for these hosts must be created in AWS Secrets Manager before the Worker service can connect. See `aws-secrets-manager-setup.md` for setup instructions.
 
 ### Configuration Settings
 
@@ -191,20 +200,20 @@ Set default `dbhost` to match legacy SUPPORT default and configure other operati
 
 ```sql
 -- Default database host (matches legacy SUPPORT default)
-INSERT INTO settings (`key`, `value`) VALUES
+INSERT INTO settings (setting_key, setting_value) VALUES
     ('default_dbhost', 'db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com');
 
 -- S3 backup bucket path
-INSERT INTO settings (`key`, `value`) VALUES
+INSERT INTO settings (setting_key, setting_value) VALUES
     ('s3_bucket_path', 'pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/');
 
 -- Post-restore SQL script directories
-INSERT INTO settings (`key`, `value`) VALUES
+INSERT INTO settings (setting_key, setting_value) VALUES
     ('customers_after_sql_dir', '/opt/pulldb/customers_after_sql/'),
     ('qa_template_after_sql_dir', '/opt/pulldb/qa_template_after_sql/');
 
 -- Default working directory for downloads and extractions
-INSERT INTO settings (`key`, `value`) VALUES
+INSERT INTO settings (setting_key, setting_value) VALUES
     ('work_dir', '/var/lib/pulldb/work/');
 ```
 
@@ -258,8 +267,11 @@ Documenting these tables now avoids architectural drift while keeping the protot
 
 ## Timestamp Policy
 
-- Every timestamp column stores UTC values via `UTC_TIMESTAMP(6)` with microsecond precision.
+- Every timestamp column uses `CURRENT_TIMESTAMP(6)` with microsecond precision for automatic timestamp insertion.
+- MySQL's `TIMESTAMP` type stores UTC values internally and converts based on session time zone.
+- Server and application should be configured with `time_zone = '+00:00'` to ensure UTC storage and retrieval.
 - Application code should treat values as MySQL TIMESTAMP(6) for easy comparison and ordering.
 - When external systems ingest the data, they should not mutate timestamps in place; use new event rows instead.
+- Triggers may use `UTC_TIMESTAMP(6)` for explicit UTC timestamp generation when needed.
 
 _This constitution guides the initial implementation and provides a grounded roadmap for the queued enhancements without committing code we are not ready to operate yet._

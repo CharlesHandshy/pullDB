@@ -127,6 +127,100 @@ sudo scripts/setup-pulldb-schema.sh
 - Tables: 6+ tables (auth_users, jobs, job_events, db_hosts, settings, locks)
 - Initial data: 3 db_hosts, 5 settings
 
+**Note**: This script does NOT create the `pulldb_app` MySQL user. You must create it manually (see "MySQL User Creation" section below).
+
+## MySQL User Creation
+
+### Create pulldb_app User
+
+After installing MySQL and creating the database, create the `pulldb_app` user for application access:
+
+```bash
+# Connect to MySQL as root
+sudo mysql
+
+# Create pulldb_app user with strong password
+CREATE USER 'pulldb_app'@'localhost' IDENTIFIED BY 'REPLACE_WITH_STRONG_PASSWORD';
+
+# Grant all privileges on pulldb database
+GRANT ALL PRIVILEGES ON pulldb.* TO 'pulldb_app'@'localhost';
+
+# Grant SELECT privilege on mysql.user for authentication queries (optional)
+GRANT SELECT ON mysql.user TO 'pulldb_app'@'localhost';
+
+# Apply privilege changes
+FLUSH PRIVILEGES;
+
+# Verify user was created
+SELECT user, host FROM mysql.user WHERE user = 'pulldb_app';
+
+# Exit MySQL
+EXIT;
+```
+
+**For RDS/Remote Database Servers**:
+
+If connecting to RDS or remote MySQL servers (like db3-dev, db4-dev, db5-dev), create users with appropriate host patterns:
+
+```sql
+-- For specific host
+CREATE USER 'pulldb_app'@'10.0.1.%' IDENTIFIED BY 'STRONG_PASSWORD';
+GRANT ALL PRIVILEGES ON *.* TO 'pulldb_app'@'10.0.1.%';
+
+-- Or for any host (less secure, use with caution)
+CREATE USER 'pulldb_app'@'%' IDENTIFIED BY 'STRONG_PASSWORD';
+GRANT ALL PRIVILEGES ON *.* TO 'pulldb_app'@'%';
+
+FLUSH PRIVILEGES;
+```
+
+**Permissions Explained**:
+- `ALL PRIVILEGES ON pulldb.*` - Full access to coordination database
+- `ALL PRIVILEGES ON *.*` - Full access for target database restores (db3-dev, db4-dev, db5-dev)
+- `SELECT ON mysql.user` - Optional, for authentication verification queries
+
+**Security Note**: The password used here should match the password stored in AWS Secrets Manager (see `aws-secrets-manager-setup.md`).
+
+### Verify User Connectivity
+
+Test the pulldb_app user can connect:
+
+```bash
+# Test local connection
+mysql -u pulldb_app -p pulldb
+
+# Test remote connection (if applicable)
+mysql -h db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com \
+      -u pulldb_app -p
+
+# Inside MySQL, verify access
+SHOW DATABASES;
+USE pulldb;
+SHOW TABLES;
+SELECT * FROM settings;
+```
+
+**Expected Output**:
+```
++-------------------------+
+| Database                |
++-------------------------+
+| information_schema      |
+| pulldb                  |
++-------------------------+
+
++----------------+
+| Tables_in_pulldb |
++----------------+
+| auth_users      |
+| db_hosts        |
+| job_events      |
+| jobs            |
+| locks           |
+| settings        |
++----------------+
+```
+
 ## Database Schema
 
 ### Core Tables
@@ -319,6 +413,8 @@ After MySQL setup is complete:
 2. ✅ Data directories configured on `/mnt/data/mysql`
 3. ✅ Python MySQL libraries installed
 4. ⏭️ **Run schema setup**: `sudo scripts/setup-pulldb-schema.sh`
-5. ⏭️ **Begin Python implementation** (Milestone 1.3 - Configuration Module)
+5. ⏭️ **Create pulldb_app user**: See "MySQL User Creation" section above
+6. ⏭️ **Store credentials in Secrets Manager**: See `aws-secrets-manager-setup.md`
+7. ⏭️ **Begin Python implementation** (Milestone 1.3 - Configuration Module)
 
 See [IMPLEMENTATION-PLAN.md](../IMPLEMENTATION-PLAN.md) for the complete development roadmap.

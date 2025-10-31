@@ -131,6 +131,7 @@ The `pulldb-ec2-service-role` should already exist in the development account. V
 - `AmazonRDSFullAccess` - RDS management (AWS managed)
 - `AmazonSQSFullAccess` - SQS access (AWS managed)
 - `pulldb-cross-account-assume-role` - Cross-account S3 access (add if missing)
+- `pulldb-secrets-manager-access` - Secrets Manager for MySQL credentials (add if missing)
 
 **Verify Role Exists**:
 ```bash
@@ -170,7 +171,87 @@ aws iam create-role \
     --tags Key=Service,Value=pulldb Key=Environment,Value=development
 ```
 
-### 1.2 Add Cross-Account Assumption Policy
+### 1.2 Add Secrets Manager Access Policy
+
+This policy allows pullDB services to retrieve MySQL credentials from AWS Secrets Manager.
+
+**Check if policy already exists**:
+```bash
+# Check for existing policy
+aws iam get-policy --policy-arn arn:aws:iam::345321506926:policy/pulldb-secrets-manager-access 2>/dev/null
+
+# If policy exists, verify it's attached to role
+aws iam list-attached-role-policies --role-name pulldb-ec2-service-role | grep pulldb-secrets-manager-access
+```
+
+**If policy doesn't exist, create it**:
+```bash
+cat > /tmp/pulldb-secrets-manager-policy.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "GetPullDBSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*"
+      ]
+    },
+    {
+      "Sid": "ListSecretsForDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:ListSecrets"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringLike": {
+          "secretsmanager:ResourceTag/Service": "pulldb"
+        }
+      }
+    },
+    {
+      "Sid": "DecryptSecretsWithKMS",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt",
+        "kms:DescribeKey"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": [
+            "secretsmanager.us-east-1.amazonaws.com"
+          ]
+        }
+      }
+    }
+  ]
+}
+EOF
+
+# Create policy
+aws iam create-policy \
+    --policy-name pulldb-secrets-manager-access \
+    --policy-document file:///tmp/pulldb-secrets-manager-policy.json \
+    --description "Allows pullDB to retrieve MySQL credentials from Secrets Manager"
+```
+
+**Attach policy to role** (if not already attached):
+```bash
+aws iam attach-role-policy \
+    --role-name pulldb-ec2-service-role \
+    --policy-arn arn:aws:iam::345321506926:policy/pulldb-secrets-manager-access
+
+# Verify attachment
+aws iam list-attached-role-policies --role-name pulldb-ec2-service-role
+```
+
+### 1.3 Add Cross-Account Assumption Policy
 
 This policy allows the EC2 role to assume roles in staging and production accounts.
 
@@ -232,7 +313,7 @@ aws iam attach-role-policy \
 aws iam list-attached-role-policies --role-name pulldb-ec2-service-role
 ```
 
-### 1.3 Create Instance Profile
+### 1.4 Create Instance Profile
 
 ```bash
 # Create instance profile
@@ -248,7 +329,7 @@ aws iam add-role-to-instance-profile \
 aws iam get-instance-profile --instance-profile-name pulldb-instance-profile
 ```
 
-### 1.4 Attach Instance Profile to EC2
+### 1.5 Attach Instance Profile to EC2
 
 ```bash
 # If launching new instance
@@ -899,8 +980,9 @@ Download access: ✅ Verified (read 1024 bytes)
 | `s3:GetObject` (*.tar) | ❌ Denied by policy | ✅ Allowed | Large backups |
 | `s3:PutObject` | ❌ Denied | ❌ Denied | No writes |
 | `s3:DeleteObject` | ❌ Denied | ❌ Denied | No deletes |
-| `kms:Decrypt` | ✅ Allowed (via S3) | ✅ Allowed (via S3) | SSE-KMS |
-| `ssm:GetParameter` | ✅ Allowed | ✅ Allowed | MySQL creds |
+| `kms:Decrypt` | ✅ Allowed (via S3) | ✅ Allowed (via S3/Secrets) | SSE-KMS |
+| `ssm:GetParameter` | ✅ Allowed | ✅ Allowed | Config values |
+| `secretsmanager:GetSecretValue` | ✅ Allowed | ✅ Allowed | MySQL creds |
 
 ## Security Best Practices
 
@@ -1051,7 +1133,8 @@ aws cloudtrail lookup-events \
 ## Related Documentation
 
 - **Two-Service Architecture**: See `design/two-service-architecture.md` for API/Worker separation
-- **Parameter Store Setup**: See `parameter-store-setup.md` for MySQL credential storage
+- **Secrets Manager Setup**: See `aws-secrets-manager-setup.md` for MySQL credential storage (recommended)
+- **Parameter Store Setup**: See `parameter-store-setup.md` for alternative credential storage
 - **MySQL Setup**: See `mysql-setup.md` for coordination database
 - **Deployment**: See `aws-ec2-deployment-setup.md` for complete EC2 setup
 
@@ -1065,7 +1148,9 @@ This authentication setup provides:
 - ✅ External ID prevents confused deputy attacks
 - ✅ Explicit denies prevent accidental writes
 - ✅ Complete audit trail via CloudTrail
+- ✅ Secrets Manager access for MySQL credentials with auto-rotation
+- ✅ KMS decrypt scoped to S3 and Secrets Manager services only
 
-Both API and Worker services use the same instance profile but implement different S3 access patterns:
-- API service lists and inspects backups (discovery)
-- Worker service downloads and restores backups (execution)
+Both API and Worker services use the same instance profile but implement different access patterns:
+- API service lists and inspects backups (discovery), retrieves MySQL credentials
+- Worker service downloads and restores backups (execution), connects to target databases

@@ -1,7 +1,7 @@
-"""Configuration dataclass with AWS Parameter Store support.
+"""Configuration dataclass with AWS Secrets Manager and Parameter Store support.
 
-Milestone 1.3 will implement full loading from env + MySQL settings + secrets.
-Supports AWS Systems Manager Parameter Store for secure credential storage.
+Milestone 1.3 implementation: Full loading from env + MySQL settings + AWS Secrets Manager.
+Supports both AWS Secrets Manager (recommended) and SSM Parameter Store for credentials.
 """
 
 from __future__ import annotations
@@ -9,8 +9,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-
-import boto3
 
 
 @dataclass(slots=True)
