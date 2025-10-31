@@ -699,15 +699,24 @@ PULLDB_WORK_DIR=/mnt/data/pulldb/work
 
 ```bash
 # SSH to EC2 instance
-# Verify instance metadata service
-curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
+# Get IMDSv2 session token (required for newer EC2 instances)
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+
+# Verify instance metadata service with token
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+    http://169.254.169.254/latest/meta-data/iam/security-credentials/
 
 # Should return: pulldb-ec2-service-role
 
-# Get temporary credentials
-curl http://169.254.169.254/latest/meta-data/iam/security-credentials/pulldb-ec2-service-role
+# Get temporary credentials with token
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+    http://169.254.169.254/latest/meta-data/iam/security-credentials/pulldb-ec2-service-role
 
 # Should return JSON with AccessKeyId, SecretAccessKey, Token
+
+# Alternative: Use IMDSv1 if IMDSv2 is not enforced (older instances)
+# curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
 ```
 
 ### 5.2 Test Cross-Account Role Assumption
@@ -858,6 +867,7 @@ AWS_PROFILE=default aws iam list-attached-role-policies \
 1. Instance profile not attached to EC2 instance
 2. Wrong credential_source in ~/.aws/config
 3. Metadata service unavailable
+4. IMDSv2 required but token not provided (401 Unauthorized)
 
 **Fix**:
 ```bash
@@ -865,8 +875,13 @@ AWS_PROFILE=default aws iam list-attached-role-policies \
 aws ec2 describe-instances --instance-ids i-xxxxx \
     --query 'Reservations[0].Instances[0].IamInstanceProfile'
 
-# Test metadata service
-curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
+# Test metadata service (IMDSv2 - required for newer instances)
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+    http://169.254.169.254/latest/meta-data/iam/security-credentials/
+
+# If you get "401 - Unauthorized" without token, IMDSv2 is enforced (expected for security)
 
 # Verify ~/.aws/config has credential_source = Ec2InstanceMetadata
 ```
