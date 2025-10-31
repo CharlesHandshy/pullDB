@@ -11,6 +11,7 @@ This script tests:
 import contextlib
 import sys
 
+
 try:
     import boto3
     from botocore.exceptions import ClientError, NoCredentialsError
@@ -63,10 +64,14 @@ def test_cross_account_role(profile_name: str, expected_account: str) -> bool:
     except Exception as e:
         print(f"   ❌ Error: {e}")
         return False
-def test_s3_access(profile_name: str, bucket: str, prefix: str) -> dict[str, object]:
+
+
+def test_s3_access(
+    profile_name: str, bucket: str, prefix: str
+) -> dict[str, bool | int | str | None]:
     """Test S3 bucket access."""
     print(f"\n3. Testing S3 Access ({bucket}/{prefix})...")
-    results = {
+    results: dict[str, bool | int | str | None] = {
         "list": False,
         "head": False,
         "get": False,
@@ -76,11 +81,9 @@ def test_s3_access(profile_name: str, bucket: str, prefix: str) -> dict[str, obj
 
     try:
         session = boto3.Session(profile_name=profile_name)
-        s3 = session.client("s3")        # Test ListBucket
+        s3 = session.client("s3")  # Test ListBucket
         try:
-            response = s3.list_objects_v2(
-                Bucket=bucket, Prefix=prefix, MaxKeys=10
-            )
+            response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, MaxKeys=10)
             contents = response.get("Contents", [])
             results["backup_count"] = len(contents)
             results["list"] = True
@@ -92,13 +95,11 @@ def test_s3_access(profile_name: str, bucket: str, prefix: str) -> dict[str, obj
         except ClientError as e:
             print(f"   ❌ ListBucket failed: {e.response['Error']['Code']}")
             return results
-        
+
         # Test HeadObject
         if results["test_key"]:
             try:
-                metadata = s3.head_object(
-                    Bucket=bucket, Key=results["test_key"]
-                )
+                metadata = s3.head_object(Bucket=bucket, Key=results["test_key"])
                 results["head"] = True
                 size_mb = metadata["ContentLength"] / (1024 * 1024)
                 print(f"   ✅ HeadObject: {size_mb:.2f} MB")
@@ -128,6 +129,8 @@ def test_s3_access(profile_name: str, bucket: str, prefix: str) -> dict[str, obj
     except Exception as e:
         print(f"   ❌ Error: {e}")
         return results
+
+
 def test_write_denied(profile_name: str, bucket: str) -> bool:
     """Test that write operations are denied."""
     print("\n4. Testing Write Operations (should be denied)...")
@@ -137,9 +140,7 @@ def test_write_denied(profile_name: str, bucket: str) -> bool:
 
         # Try to put an object
         try:
-            s3.put_object(
-                Bucket=bucket, Key="test-write-access.txt", Body=b"test"
-            )
+            s3.put_object(Bucket=bucket, Key="test-write-access.txt", Body=b"test")
             print("   ❌ WARNING: Write access allowed (should be denied!)")
 
             # Clean up if write succeeded
@@ -156,40 +157,37 @@ def test_write_denied(profile_name: str, bucket: str) -> bool:
     except Exception as e:
         print(f"   ❌ Error: {e}")
         return False
-def main():
+
+
+def main() -> None:
     """Run all verification tests."""
     print("=" * 70)
     print("pullDB AWS Access Verification")
     print("=" * 70)
-    
+
     # Test 1: Instance profile
     if not test_instance_profile():
         print("\n❌ FAILED: Instance profile not working. Cannot continue.")
         sys.exit(1)
-    
+
     # Test 2: Staging account
     staging_ok = test_cross_account_role("pr-staging", "333204494849")
 
     # Test 3: Staging S3 access
     if staging_ok:
-        s3_results = test_s3_access(
-            "pr-staging", "pestroutesrdsdbs", "daily/stg/"
-        )
+        s3_results = test_s3_access("pr-staging", "pestroutesrdsdbs", "daily/stg/")
 
         # Test 4: Write denied
         write_denied = test_write_denied("pr-staging", "pestroutesrdsdbs")
     else:
         print("\n⚠️  Skipping S3 tests (cross-account role not working)")
         s3_results = {"list": False, "head": False, "get": False}
-        write_denied = False    # Summary
+        write_denied = False  # Summary
     print("\n" + "=" * 70)
     print("Summary")
     print("=" * 70)
     print(f"Instance Profile:        {'✅ Working' if True else '❌ Failed'}")
-    print(
-        f"Cross-Account Role:      "
-        f"{'✅ Working' if staging_ok else '❌ Failed'}"
-    )
+    print(f"Cross-Account Role:      {'✅ Working' if staging_ok else '❌ Failed'}")
     print(
         f"S3 ListBucket:           "
         f"{'✅ Working' if s3_results['list'] else '❌ Failed'}"
@@ -199,15 +197,11 @@ def main():
         f"{'✅ Working' if s3_results['head'] else '❌ Failed'}"
     )
     print(
-        f"S3 GetObject:            "
-        f"{'✅ Working' if s3_results['get'] else '❌ Failed'}"
+        f"S3 GetObject:            {'✅ Working' if s3_results['get'] else '❌ Failed'}"
     )
-    print(
-        f"Write Operations Denied: "
-        f"{'✅ Working' if write_denied else '❌ Failed'}"
-    )
+    print(f"Write Operations Denied: {'✅ Working' if write_denied else '❌ Failed'}")
     print(f"Backups Found:           {s3_results.get('backup_count', 0)}")
-    
+
     # Overall status
     all_good = (
         staging_ok
@@ -216,7 +210,7 @@ def main():
         and s3_results["get"]
         and write_denied
     )
-    
+
     print("\n" + "=" * 70)
     if all_good:
         print("✅ ALL TESTS PASSED - AWS access properly configured")
