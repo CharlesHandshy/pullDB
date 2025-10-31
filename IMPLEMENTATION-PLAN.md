@@ -228,53 +228,147 @@ sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
 
 **Status**: ✅ Complete - Production-ready with 14/14 tests passing
 
-### Milestone 2: MySQL Infrastructure (Week 1-2)
+### Milestone 2: MySQL Repository Layer (Week 1-2)
 
-#### 2.1 MySQL Repository Layer
+> **Detailed Plan**: See `design/milestone-2-plan.md` for comprehensive implementation guide
 
-**File**: `pulldb/infra/mysql.py`
+**Summary**: Implement repository pattern for all MySQL operations with domain models and comprehensive test coverage.
+
+**Files**:
+- `pulldb/domain/models.py` (NEW) - Domain dataclasses (Job, User, JobEvent, DBHost, Setting)
+- `pulldb/infra/mysql.py` (EXTEND) - Add 4 repository classes
+- `pulldb/tests/test_repositories.py` (NEW) - 23+ repository tests
+
+#### 2.1 Domain Models
+
+**File**: `pulldb/domain/models.py`
 
 **Tasks**:
-- [ ] Implement connection pool with context managers
-- [ ] Create JobRepository class:
-  - [ ] `enqueue_job(job: Job) -> str` (returns job_id)
-  - [ ] `get_next_queued_job() -> Optional[Job]`
-  - [ ] `mark_job_running(job_id: str)`
-  - [ ] `mark_job_complete(job_id: str)`
-  - [ ] `mark_job_failed(job_id: str, error: str)`
-  - [ ] `append_job_event(job_id: str, event_type: str, detail: str)`
-  - [ ] `get_active_jobs() -> List[Job]`
-  - [ ] `check_target_exclusivity(target: str, dbhost: str) -> bool`
-- [ ] Create UserRepository class:
-  - [ ] `get_or_create_user(username: str) -> User`
-  - [ ] `generate_user_code(username: str) -> str` (collision handling)
-- [ ] Create HostRepository class:
-  - [ ] `get_host_config(dbhost: str) -> HostConfig`
-  - [ ] `check_host_capacity(dbhost: str) -> bool`
-- [ ] Create SettingsRepository class:
-  - [ ] `get_setting(key: str) -> str`
-  - [ ] `set_setting(key: str, value: str)`
-- [ ] Unit tests with in-memory/test MySQL instance
+- [ ] Create new file for domain dataclasses
+- [ ] Implement JobStatus enum (queued, running, failed, complete, canceled)
+- [ ] Implement User dataclass (frozen=True, all fields from auth_users)
+- [ ] Implement Job dataclass (frozen=True, all fields from jobs table)
+- [ ] Implement JobEvent dataclass (frozen=True, all fields from job_events)
+- [ ] Implement DBHost dataclass (frozen=True, all fields from db_hosts)
+- [ ] Implement Setting dataclass (frozen=True, all fields from settings)
+- [ ] Add Google-style docstrings to all classes
+- [ ] Add type hints using typing module (Optional, datetime, etc.)
 
-**Example**:
-```python
-class JobRepository:
-    def __init__(self, connection_pool):
-        self.pool = connection_pool
+#### 2.2 JobRepository
 
-    def enqueue_job(self, job: Job) -> str:
-        """Insert job into MySQL, return job_id."""
-        with self.pool.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO jobs
-                (id, owner_user_id, target, staging_name, dbhost, status, options_json)
-                VALUES (%s, %s, %s, %s, %s, 'queued', %s)
-            """, (job.id, job.owner_user_id, job.target, job.staging_name,
-                  job.dbhost, json.dumps(job.options)))
-            conn.commit()
-            return job.id
-```
+**File**: `pulldb/infra/mysql.py` (extend existing)
+
+**Tasks**:
+- [ ] Implement JobRepository class with MySQLPool dependency
+- [ ] `enqueue_job(job: Job) -> str` - Insert job, return job_id
+- [ ] `get_next_queued_job() -> Optional[Job]` - FIFO queue retrieval
+- [ ] `get_job_by_id(job_id: str) -> Optional[Job]` - Single job lookup
+- [ ] `mark_job_running(job_id: str)` - Transition to running, set started_at
+- [ ] `mark_job_complete(job_id: str)` - Transition to complete, set completed_at
+- [ ] `mark_job_failed(job_id: str, error: str)` - Transition to failed with error
+- [ ] `get_active_jobs() -> list[Job]` - Use active_jobs view
+- [ ] `get_jobs_by_user(user_id: str) -> list[Job]` - User job history
+- [ ] `check_target_exclusivity(target: str, dbhost: str) -> bool` - Per-target lock check
+- [ ] `append_job_event(job_id: str, event_type: str, detail: str)` - Event logging
+- [ ] `get_job_events(job_id: str) -> list[JobEvent]` - Event retrieval
+- [ ] Handle IntegrityError for per-target exclusivity violations
+- [ ] Convert MySQL rows to Job/JobEvent dataclasses
+
+#### 2.3 UserRepository
+
+**File**: `pulldb/infra/mysql.py` (extend existing)
+
+**Tasks**:
+- [ ] Implement UserRepository class with MySQLPool dependency
+- [ ] `get_user_by_username(username: str) -> Optional[User]` - Username lookup
+- [ ] `get_user_by_id(user_id: str) -> Optional[User]` - User ID lookup
+- [ ] `create_user(username: str, user_code: str) -> User` - Insert new user
+- [ ] `get_or_create_user(username: str) -> User` - Get existing or create with code generation
+- [ ] `generate_user_code(username: str) -> str` - **CRITICAL**: User code algorithm with collision handling
+- [ ] `check_user_code_exists(user_code: str) -> bool` - Collision detection
+- [ ] Implement collision algorithm: try positions 5, 4, 3 (max 3 adjustments)
+- [ ] Raise ValueError if username has < 6 letters or collision limit exceeded
+- [ ] Handle IntegrityError for duplicate username/user_code
+
+**User Code Algorithm** (Critical Business Logic):
+1. Extract first 6 alphabetic characters (lowercase, letters only)
+2. Check if code is unique in database
+3. If collision, replace 6th char with next unused letter from username
+4. If still collision, try 5th char, then 4th char (max 3 adjustments)
+5. Fail if unique code cannot be generated
+
+#### 2.4 HostRepository
+
+**File**: `pulldb/infra/mysql.py` (extend existing)
+
+**Tasks**:
+- [ ] Implement HostRepository class with MySQLPool + CredentialResolver dependencies
+- [ ] `get_host_by_hostname(hostname: str) -> Optional[DBHost]` - Host lookup
+- [ ] `get_enabled_hosts() -> list[DBHost]` - All enabled hosts
+- [ ] `get_host_credentials(hostname: str) -> MySQLCredentials` - Resolve credentials via CredentialResolver
+- [ ] `check_host_capacity(hostname: str) -> bool` - Check running jobs vs max_concurrent_restores
+- [ ] Integrate with existing CredentialResolver from Milestone 1.4
+- [ ] Raise ValueError if host not found or disabled
+- [ ] Let CredentialResolutionError bubble up from secrets module
+
+#### 2.5 SettingsRepository
+
+**File**: `pulldb/infra/mysql.py` (extend existing)
+
+**Tasks**:
+- [ ] Implement SettingsRepository class with MySQLPool dependency
+- [ ] `get_setting(key: str) -> Optional[str]` - Single setting lookup
+- [ ] `get_setting_required(key: str) -> str` - Required setting with ValueError
+- [ ] `set_setting(key: str, value: str, description: Optional[str])` - INSERT or UPDATE
+- [ ] `get_all_settings() -> dict[str, str]` - Bulk retrieval as dictionary
+- [ ] Use INSERT ... ON DUPLICATE KEY UPDATE for set_setting
+
+#### 2.6 Repository Tests
+
+**File**: `pulldb/tests/test_repositories.py` (NEW)
+
+**Tasks**:
+- [ ] Create test database fixture with setup/teardown
+- [ ] Create connection pool fixture
+- [ ] Test JobRepository (8+ tests):
+  - [ ] test_enqueue_job - Basic job insertion
+  - [ ] test_get_next_queued_job - FIFO ordering
+  - [ ] test_mark_job_running - Status transition
+  - [ ] test_mark_job_complete - Completion with timestamp
+  - [ ] test_mark_job_failed - Failure with error detail
+  - [ ] test_per_target_exclusivity - Constraint violation
+  - [ ] test_append_job_event - Event logging
+  - [ ] test_get_job_events - Event retrieval
+- [ ] Test UserRepository (8+ tests):
+  - [ ] test_generate_user_code_basic - First 6 letters
+  - [ ] test_generate_user_code_collision_6th_char - Replace position 5
+  - [ ] test_generate_user_code_collision_5th_char - Replace position 4
+  - [ ] test_generate_user_code_collision_4th_char - Replace position 3
+  - [ ] test_generate_user_code_exhausted - All strategies fail
+  - [ ] test_generate_user_code_insufficient_letters - < 6 letters
+  - [ ] test_get_or_create_user_existing - Existing user
+  - [ ] test_get_or_create_user_new - New user with code generation
+- [ ] Test HostRepository (3+ tests):
+  - [ ] test_get_host_by_hostname - Host lookup
+  - [ ] test_get_host_credentials - Credential resolution (mock AWS)
+  - [ ] test_check_host_capacity - Capacity checking
+- [ ] Test SettingsRepository (4+ tests):
+  - [ ] test_get_setting - Single setting
+  - [ ] test_set_setting_insert - New setting
+  - [ ] test_set_setting_update - Update existing
+  - [ ] test_get_all_settings - Bulk retrieval
+- [ ] Target: 23+ tests, 100% coverage of repository methods
+- [ ] All tests must pass with real MySQL instance
+
+#### 2.7 Integration Updates
+
+**File**: `pulldb/domain/config.py` (UPDATE)
+
+**Tasks**:
+- [ ] Import SettingsRepository
+- [ ] Update `from_env_and_mysql()` to use SettingsRepository.get_all_settings()
+- [ ] Remove raw SQL from _load_settings_from_mysql() method
+- [ ] Simplify code with repository abstraction
 
 ### Milestone 3: CLI Implementation (Week 2)
 
