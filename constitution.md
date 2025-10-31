@@ -15,26 +15,30 @@ Deliver a dependable, minimal restore pipeline that prioritizes correctness, cla
 1. **Document First**: capture intent in `README.md`, `docs/mysql-schema.md`, and design notes before writing code. Every feature starts as prose and diagrams.
 2. **KISS**: prefer the simplest solution that works; avoid clever abstractions until experience proves they are required.
 3. **Function Over Fashion**: choose reliability and transparency over stylistic novelty. Consistency matters more than novelty.
-4. **Minimal Is Best**: ship the smallest viable slice (CLI + daemon + MySQL) and iterate deliberately.
+4. **Minimal Is Best**: ship the smallest viable slice (CLI + daemon REST API + MySQL) and iterate deliberately.
 5. **Prototype Before Scale**: validate workflows end-to-end with constrained scope before layering on options, services, or automation.
 
 ## Architecture Charter
 
-- Single CLI funnels requests into MySQL; one daemon owns validation, execution, and status updates.
+- CLI is a thin client that calls API service via HTTP; CLI has no AWS or MySQL access.
+- API service accepts job requests, validates input, inserts jobs to MySQL, provides status queries; API service has no AWS or myloader access.
+- Worker service polls MySQL queue, downloads from S3, executes restores via myloader; worker service has no HTTP exposure.
+- API and Worker services coordinate exclusively via MySQL - never communicate directly.
 - MySQL is the sole coordination layer. Enforce per-target exclusivity through schema constraints.
-- S3 remains the system of record for backups; the daemon downloads on demand, cleans up temp storage afterward.
+- S3 remains the system of record for backups; worker service downloads on demand, cleans up temp storage afterward.
 - Configuration lives outside binaries (environment variables, MySQL settings table). Never hardcode secrets or host-specific settings.
 - System always runs in development environment with read-only access to production S3 backups.
 - Reference `Tools/pullDB/README.md` for flow diagrams, option scope, and future roadmap.
 - See `.github/copilot-instructions.md` for architectural principles and critical design constraints.
+- See `design/two-service-architecture.md` for detailed API/Worker service separation.
 
 ## Tooling & Language Policy
 
-- **Python 3.11+**: primary implementation language for the CLI and daemon.
-- **MySQL**: use `mysql-connector-python` or `PyMySQL` for coordination database access; wrap access in thin repositories to keep SQL close to the domain.
-- **AWS S3**: interact via `boto3` with least-privilege IAM roles. Mock calls in tests using moto or local stubs.
-- **MySQL Restore**: orchestrate `myloader` or compatible utilities for ingestion into MySQL 8.x. Shell out through well-audited helpers and capture logs for diagnostics.
-- **MySQL Client Libraries**: use `mysql-connector-python` or `PyMySQL` for light metadata queries. Keep credentials external.
+- **Python 3.11+**: primary implementation language for the CLI, API service, and worker service.
+- **MySQL**: API and worker services use `mysql-connector-python` or `PyMySQL` for coordination database access; wrap access in thin repositories to keep SQL close to the domain. CLI does not access MySQL.
+- **AWS S3**: worker service interacts via `boto3` with least-privilege IAM roles. Mock calls in tests using moto or local stubs. CLI and API service do not access S3.
+- **MySQL Restore**: worker service orchestrates `myloader` or compatible utilities for ingestion into MySQL 8.x. Shell out through well-audited helpers and capture logs for diagnostics.
+- **REST API**: API service provides HTTP REST API using Flask or FastAPI. CLI calls this API for all operations.
 - **Shell Utilities**: prefer Python wrappers; when shells are necessary ensure commands are idempotent and checked for non-zero exit codes.
 
 ## Coding Standards

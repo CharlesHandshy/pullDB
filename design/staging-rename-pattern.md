@@ -68,7 +68,7 @@ The system must enforce target name length limits during user_code generation an
 
 The literal suffix `qatemplate` is 10 characters:
 - user_code: 6 chars
-- "qatemplate": 10 chars  
+- "qatemplate": 10 chars
 - Total target: 16 chars max
 - Staging name: 16 + 13 = 29 chars (well under 64 limit)
 
@@ -80,54 +80,54 @@ The literal suffix `qatemplate` is 10 characters:
 def cleanup_orphaned_staging_databases(target: str, dbhost: str) -> list:
     """
     Drop any orphaned staging databases for the same target.
-    
+
     When a user re-restores the same customer/template, we assume they're done
     examining previous staging databases and drop them automatically.
-    
+
     Args:
         target: Final target database name (e.g., 'jdoecustomer')
         dbhost: Target database server
-    
+
     Returns:
         list: Names of dropped staging databases
     """
     # Find all staging databases matching the pattern: target_*
     # Pattern: target name + underscore + 12 hex chars
     staging_pattern = f"{target}_" + "[0-9a-f]" * 12
-    
+
     cursor.execute("""
-        SELECT SCHEMA_NAME 
-        FROM information_schema.SCHEMATA 
+        SELECT SCHEMA_NAME
+        FROM information_schema.SCHEMATA
         WHERE SCHEMA_NAME REGEXP %s
     """, (f"^{target}_[0-9a-f]{{12}}$",))
-    
+
     orphaned = [row['SCHEMA_NAME'] for row in cursor.fetchall()]
-    
+
     if orphaned:
         logger.info(f"Found {len(orphaned)} orphaned staging database(s) for target {target}")
         for staging_db in orphaned:
             logger.info(f"Dropping orphaned staging database: {staging_db}")
             cursor.execute(f"DROP DATABASE IF EXISTS `{staging_db}`")
-            emit_job_event(job_id, 'staging_cleanup', 
+            emit_job_event(job_id, 'staging_cleanup',
                           f"Dropped orphaned staging database: {staging_db}")
-    
+
     return orphaned
 
 def validate_staging_name(target: str, job_id: str, dbhost: str) -> str:
     """
     Generate staging name and verify it doesn't conflict.
-    
+
     NOTE: Call cleanup_orphaned_staging_databases() BEFORE this function
     to automatically remove old staging databases for the same target.
-    
+
     Args:
         target: Final target database name (max 51 chars)
         job_id: UUID for this restore job
         dbhost: Target database server
-    
+
     Returns:
         staging_name: Unique staging database name (max 64 chars)
-        
+
     Raises:
         ValidationException: If staging name would exceed MySQL limit or already exists
     """
@@ -138,18 +138,18 @@ def validate_staging_name(target: str, job_id: str, dbhost: str) -> str:
             f"Maximum allowed is 51 chars to accommodate staging suffix. "
             f"This should have been caught during target name generation."
         )
-    
+
     # Extract first 12 chars of UUID (remove hyphens)
     job_id_short = job_id.replace('-', '')[:12]
     staging_name = f"{target}_{job_id_short}"
-    
+
     # Verify staging name length (defensive check)
     if len(staging_name) > 64:
         raise ValidationException(
             f"Staging name exceeds MySQL limit: {len(staging_name)} chars (max 64). "
             f"Target: {target} ({len(target)} chars), Suffix: _{job_id_short} (13 chars)"
         )
-    
+
     # Verify staging name doesn't exist (collision check)
     # This should never happen after cleanup, but check defensively
     cursor.execute(
@@ -161,7 +161,7 @@ def validate_staging_name(target: str, job_id: str, dbhost: str) -> str:
             f"Staging database {staging_name} already exists after cleanup. "
             f"This indicates a UUID collision or concurrent job with same job_id."
         )
-    
+
     return staging_name
 ```
     cursor.execute(
@@ -173,13 +173,13 @@ def validate_staging_name(target: str, job_id: str, dbhost: str) -> str:
             f"Staging database {staging_name} already exists. "
             f"This indicates a previous job cleanup failure or UUID collision."
         )
-    
+
     # Verify name length within MySQL limits (64 chars)
     if len(staging_name) > 64:
         raise ValidationException(
             f"Staging name too long: {len(staging_name)} chars (max 64)"
         )
-    
+
     return staging_name
 ```
 
@@ -189,7 +189,7 @@ def validate_staging_name(target: str, job_id: str, dbhost: str) -> str:
 def restore_to_staging(staging_name: str, myloader_dir: str, dbhost: str):
     """
     Execute myloader to restore into staging database.
-    
+
     - Creates staging database if needed
     - Restores all tables via myloader
     - Does NOT modify target database
@@ -203,7 +203,7 @@ def restore_to_staging(staging_name: str, myloader_dir: str, dbhost: str):
         '--overwrite-tables',
         # ... other options
     ]
-    
+
     subprocess.run(myloader_cmd, check=True)
 ```
 
@@ -213,15 +213,15 @@ def restore_to_staging(staging_name: str, myloader_dir: str, dbhost: str):
 def execute_post_restore_sql(staging_name: str, sql_dir: str, dbhost: str) -> dict:
     """
     Execute post-restore SQL scripts against staging database.
-    
+
     Returns:
         dict: {filename: 'success'|'failed', ...}
     """
     results = {}
     sql_files = sorted(Path(sql_dir).glob('*.sql'))
-    
+
     conn = mysql.connector.connect(host=dbhost, database=staging_name, ...)
-    
+
     for sql_file in sql_files:
         try:
             with open(sql_file) as f:
@@ -237,7 +237,7 @@ def execute_post_restore_sql(staging_name: str, sql_dir: str, dbhost: str) -> di
             conn.rollback()
             results[sql_file.name] = f'failed: {str(e)}'
             raise  # Abort entire job on SQL failure
-    
+
     conn.close()
     return results
 ```
@@ -245,11 +245,11 @@ def execute_post_restore_sql(staging_name: str, sql_dir: str, dbhost: str) -> di
 ### Phase 4: Add Restore Metadata
 
 ```python
-def add_restore_metadata(staging_name: str, job_id: str, backup_file: str, 
+def add_restore_metadata(staging_name: str, job_id: str, backup_file: str,
                          post_sql_results: dict, dbhost: str):
     """
     Create pullDB metadata table in staging database.
-    
+
     This table tracks:
     - Who restored the database
     - When it was restored
@@ -258,7 +258,7 @@ def add_restore_metadata(staging_name: str, job_id: str, backup_file: str,
     """
     conn = mysql.connector.connect(host=dbhost, database=staging_name, ...)
     cursor = conn.cursor()
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pullDB (
             job_id CHAR(36) PRIMARY KEY,
@@ -269,13 +269,13 @@ def add_restore_metadata(staging_name: str, job_id: str, backup_file: str,
             restore_completed_at TIMESTAMP(6) NOT NULL
         )
     """)
-    
+
     cursor.execute("""
-        INSERT INTO pullDB 
+        INSERT INTO pullDB
         (job_id, restored_by, restored_at, backup_file, post_restore_sql_status, restore_completed_at)
         VALUES (%s, %s, UTC_TIMESTAMP(6), %s, %s, UTC_TIMESTAMP(6))
     """, (job_id, username, backup_file, json.dumps(post_sql_results)))
-    
+
     conn.commit()
     conn.close()
 ```
@@ -286,25 +286,25 @@ def add_restore_metadata(staging_name: str, job_id: str, backup_file: str,
 def atomic_rename_to_target(staging_name: str, target: str, dbhost: str):
     """
     Atomically rename staging database to target.
-    
+
     This is the critical cutover moment:
     1. Drop existing target database (if exists)
     2. Create empty target database
     3. Rename all tables from staging to target
     4. Drop empty staging database
-    
+
     Uses MySQL stored procedure for table-by-table RENAME TABLE operations.
     """
     conn = mysql.connector.connect(host=dbhost, ...)
     cursor = conn.cursor()
-    
+
     try:
         # Step 1: Drop existing target database
         cursor.execute(f"DROP DATABASE IF EXISTS `{target}`")
-        
+
         # Step 2: Create empty target database
         cursor.execute(f"CREATE DATABASE `{target}`")
-        
+
         # Step 3: Create stored procedure for batch table rename
         cursor.execute("DROP PROCEDURE IF EXISTS RenameDatabase")
         cursor.execute("""
@@ -315,41 +315,41 @@ def atomic_rename_to_target(staging_name: str, target: str, dbhost: str):
             BEGIN
                 DECLARE done BOOLEAN DEFAULT FALSE;
                 DECLARE rename_stmt VARCHAR(500);
-                
+
                 DECLARE cur CURSOR FOR
-                SELECT CONCAT('RENAME TABLE `', source_db, '`.`', table_name, 
+                SELECT CONCAT('RENAME TABLE `', source_db, '`.`', table_name,
                               '` TO `', dest_db, '`.`', table_name, '`;')
                 FROM information_schema.TABLES
                 WHERE table_schema = source_db;
-                
+
                 DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
-                
+
                 OPEN cur;
-                
+
                 read_loop: LOOP
                     FETCH cur INTO rename_stmt;
                     IF done THEN
                         LEAVE read_loop;
                     END IF;
-                    
+
                     SET @query = rename_stmt;
                     PREPARE stmt FROM @query;
                     EXECUTE stmt;
                     DEALLOCATE PREPARE stmt;
                 END LOOP;
-                
+
                 CLOSE cur;
             END
         """)
-        
+
         # Step 4: Execute rename procedure
         cursor.execute(f"CALL RenameDatabase('{staging_name}', '{target}')")
-        
+
         # Step 5: Drop empty staging database
         cursor.execute(f"DROP DATABASE IF EXISTS `{staging_name}`")
-        
+
         conn.commit()
-        
+
     except Exception as e:
         conn.rollback()
         # Staging database still exists for forensics
@@ -420,8 +420,8 @@ Failed jobs leave staging databases for investigation:
 Manual cleanup (if needed):
 ```sql
 -- View orphaned staging databases
-SELECT SCHEMA_NAME 
-FROM information_schema.SCHEMATA 
+SELECT SCHEMA_NAME
+FROM information_schema.SCHEMATA
 WHERE SCHEMA_NAME REGEXP '_[0-9a-f]{12}$';
 
 -- Drop specific staging database
@@ -457,12 +457,12 @@ UUIDs provide sufficient entropy:
 ### jobs Table - Add staging_name Column
 
 ```sql
-ALTER TABLE jobs 
+ALTER TABLE jobs
 ADD COLUMN staging_name VARCHAR(128) AFTER target;
 
 -- Update constraint to include staging_name
-CREATE UNIQUE INDEX idx_jobs_staging_active 
-ON jobs(staging_name) 
+CREATE UNIQUE INDEX idx_jobs_staging_active
+ON jobs(staging_name)
 WHERE status IN ('queued', 'running');
 ```
 
@@ -495,17 +495,17 @@ The automatic cleanup during restore handles most orphaned staging databases, bu
 def scheduled_staging_cleanup(age_threshold_days: int = 7):
     """
     Background job to clean up abandoned staging databases.
-    
+
     Runs daily via cron. Identifies staging databases associated with
     failed jobs that are older than threshold and have no active restore
     attempts for the same target.
-    
+
     Args:
         age_threshold_days: Minimum age before staging database is eligible for cleanup
     """
     # Query failed jobs with staging databases older than threshold
     cursor.execute("""
-        SELECT DISTINCT 
+        SELECT DISTINCT
             j.id as job_id,
             j.staging_name,
             j.target,
@@ -517,38 +517,38 @@ def scheduled_staging_cleanup(age_threshold_days: int = 7):
             AND j.completed_at < NOW() - INTERVAL %s DAY
             AND NOT EXISTS (
                 -- Ensure no active jobs for same target
-                SELECT 1 FROM jobs j2 
-                WHERE j2.target = j.target 
+                SELECT 1 FROM jobs j2
+                WHERE j2.target = j.target
                   AND j2.dbhost = j.dbhost
                   AND j2.status IN ('queued', 'running')
             )
         ORDER BY j.dbhost, j.completed_at
     """, (age_threshold_days,))
-    
+
     failed_jobs = cursor.fetchall()
-    
+
     # Group by dbhost for efficient cleanup
     by_host = {}
     for job in failed_jobs:
         if job['dbhost'] not in by_host:
             by_host[job['dbhost']] = []
         by_host[job['dbhost']].append(job)
-    
+
     cleanup_summary = {
         'total_scanned': 0,
         'total_dropped': 0,
         'total_size_mb': 0,
         'by_host': {}
     }
-    
+
     # Process each host
     for dbhost, jobs in by_host.items():
         host_conn = get_connection(dbhost)
         host_cursor = host_conn.cursor()
-        
+
         # Get all actual staging databases on this host
         host_cursor.execute("""
-            SELECT 
+            SELECT
                 SCHEMA_NAME,
                 ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) as size_mb
             FROM information_schema.SCHEMATA s
@@ -556,66 +556,66 @@ def scheduled_staging_cleanup(age_threshold_days: int = 7):
             WHERE SCHEMA_NAME REGEXP '_[0-9a-f]{12}$'
             GROUP BY SCHEMA_NAME
         """)
-        
+
         actual_staging_dbs = {row['SCHEMA_NAME']: row['size_mb'] for row in host_cursor.fetchall()}
-        
+
         cleanup_summary['total_scanned'] += len(actual_staging_dbs)
         cleanup_summary['by_host'][dbhost] = {
             'scanned': len(actual_staging_dbs),
             'dropped': 0,
             'size_mb': 0
         }
-        
+
         # Drop staging databases from eligible failed jobs
         for job in jobs:
             staging_name = job['staging_name']
-            
+
             # Verify database still exists
             if staging_name not in actual_staging_dbs:
                 logger.debug(f"Staging database already gone: {staging_name}")
                 continue
-            
+
             # Safety check: verify target has no active jobs (redundant but safe)
             cursor.execute("""
                 SELECT COUNT(*) as active_count
                 FROM jobs
                 WHERE target = %s AND dbhost = %s AND status IN ('queued', 'running')
             """, (job['target'], job['dbhost']))
-            
+
             if cursor.fetchone()['active_count'] > 0:
                 logger.warning(f"Skipping {staging_name}: active job detected for target {job['target']}")
                 continue
-            
+
             # Drop the staging database
             size_mb = actual_staging_dbs[staging_name]
             try:
                 host_cursor.execute(f"DROP DATABASE IF EXISTS `{staging_name}`")
                 host_conn.commit()
-                
+
                 # Log the cleanup
                 cursor.execute("""
-                    INSERT INTO job_events 
+                    INSERT INTO job_events
                     (job_id, event_type, event_time, detail)
                     VALUES (%s, 'scheduled_staging_cleanup', UTC_TIMESTAMP(6), %s)
                 """, (job['job_id'], f"Dropped abandoned staging database: {staging_name} ({size_mb} MB, age: {age_threshold_days}+ days)"))
-                
+
                 cleanup_summary['total_dropped'] += 1
                 cleanup_summary['total_size_mb'] += size_mb
                 cleanup_summary['by_host'][dbhost]['dropped'] += 1
                 cleanup_summary['by_host'][dbhost]['size_mb'] += size_mb
-                
+
                 logger.info(f"Dropped abandoned staging database: {staging_name} ({size_mb} MB)")
-                
+
             except Exception as e:
                 logger.error(f"Failed to drop {staging_name}: {e}")
-        
+
         host_cursor.close()
         host_conn.close()
-    
+
     # Emit metrics
     emit_metric('staging_cleanup.databases_dropped', cleanup_summary['total_dropped'])
     emit_metric('staging_cleanup.disk_reclaimed_mb', cleanup_summary['total_size_mb'])
-    
+
     return cleanup_summary
 ```
 
@@ -662,7 +662,7 @@ If needed, inspect staging database before scheduled cleanup removes it:
 
 ```sql
 -- Find staging databases eligible for cleanup (7+ days old)
-SELECT 
+SELECT
     j.id,
     j.staging_name,
     j.target,
@@ -740,18 +740,19 @@ Add staging pattern steps:
 ```markdown
 ## Restore Lifecycle
 
-1. CLI enqueues job with target=`jdoecustomer`
-2. Daemon dequeues job and marks status=`running`
-3. **Daemon auto-drops orphaned staging databases: `jdoecustomer_*` (from previous failed jobs)**
-4. Daemon generates new staging_name=`jdoecustomer_550e8400e29b`
-5. Daemon verifies staging name doesn't exist (should never exist after cleanup)
-6. Daemon downloads backup from S3
-7. Daemon restores to staging database via myloader
-8. Daemon executes post-restore SQL scripts
-9. Daemon adds pullDB metadata table
-10. Daemon performs atomic rename (staging → target)
-11. Daemon drops empty staging database
-12. Job status → `complete`
+1. CLI calls daemon API to enqueue job with target=`jdoecustomer`
+2. Daemon API validates and inserts job into MySQL
+3. Daemon worker dequeues job and marks status=`running`
+4. **Daemon auto-drops orphaned staging databases: `jdoecustomer_*` (from previous failed jobs)**
+5. Daemon generates new staging_name=`jdoecustomer_550e8400e29b`
+6. Daemon verifies staging name doesn't exist (should never exist after cleanup)
+7. Daemon downloads backup from S3
+8. Daemon restores to staging database via myloader
+9. Daemon executes post-restore SQL scripts
+10. Daemon adds pullDB metadata table
+11. Daemon performs atomic rename (staging → target)
+12. Daemon drops empty staging database
+13. Job status → `complete`
 ```
 
 ### 4. design/runbook-failure.md
@@ -785,8 +786,8 @@ If you need to inspect staging database before it's auto-cleaned:
 
 ```sql
 -- View orphaned staging databases
-SELECT SCHEMA_NAME 
-FROM information_schema.SCHEMATA 
+SELECT SCHEMA_NAME
+FROM information_schema.SCHEMATA
 WHERE SCHEMA_NAME REGEXP '_[0-9a-f]{12}$';
 
 -- Inspect staging database
@@ -840,13 +841,13 @@ CREATE TABLE jobs (
 );
 
 -- Prevent concurrent restores to same target
-CREATE UNIQUE INDEX idx_jobs_target_active 
-ON jobs(target) 
+CREATE UNIQUE INDEX idx_jobs_target_active
+ON jobs(target)
 WHERE status IN ('queued', 'running');
 
 -- Prevent staging name collisions
-CREATE UNIQUE INDEX idx_jobs_staging_active 
-ON jobs(staging_name) 
+CREATE UNIQUE INDEX idx_jobs_staging_active
+ON jobs(staging_name)
 WHERE status IN ('queued', 'running');
 ```
 
@@ -873,10 +874,10 @@ Add to "MySQL Restore Behavior" section:
 ```python
 def test_staging_name_generation():
     """Verify staging name format and uniqueness checks."""
-    
+
 def test_staging_name_collision_detection():
     """Ensure pre-existing staging names are caught."""
-    
+
 def test_staging_name_length_validation():
     """Verify 64-char MySQL limit not exceeded."""
 ```
@@ -886,10 +887,10 @@ def test_staging_name_length_validation():
 ```python
 def test_full_staging_rename_flow():
     """End-to-end test of staging → target rename."""
-    
+
 def test_rename_failure_preserves_staging():
     """Verify staging database persists on rename failure."""
-    
+
 def test_concurrent_restore_prevention():
     """Verify UNIQUE constraint prevents overlapping restores."""
 ```

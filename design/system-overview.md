@@ -1,28 +1,40 @@
 # System Overview
 
-> **Prerequisites**: Read `../.github/copilot-instructions.md` for architectural principles and `../constitution.md` for coding standards before diving into these implementation details.
+> **Prerequisites**: Read `../.github/copilot-instructions.md` for architectural principles, `../constitution.md` for coding standards, and `two-service-architecture.md` for service separation before diving into these implementation details.
 
-The pullDB prototype consists of a CLI that validates user intent and inserts jobs into MySQL, plus a long-running daemon that executes restores. This document expands on the high-level flow described in `../README.md`.
+The pullDB prototype consists of three components: a CLI that validates user intent and calls an API service, an API service that manages job requests via MySQL, and a worker service that executes restores. This document expands on the high-level flow described in `../README.md`.
 
 ## Component Responsibilities
 
 - **CLI**
   - Validate option combinations (`user`, `customer`/`qatemplate`, `overwrite`, optional `dbhost`).
-  - Inject jobs into MySQL with `status=queued` while enforcing per-target uniqueness.
-  - Provide a `status` command that reads active job summaries from the `active_jobs` view.
-- **Daemon**
-  - Poll MySQL for queued work, acquiring per-target locks before mutation.
-  - Stream backups from S3, verify disk capacity, extract to a workspace, and invoke MySQL restore tooling (`myloader`).
+  - Generate user_code and target database name.
+  - Call API service via HTTP to enqueue jobs.
+  - Provide a `status` command that queries API service for active job summaries.
+- **API Service**
+  - Accept HTTP job requests from CLI.
+  - Validate input parameters (user, customer/qatemplate, dbhost, overwrite).
+  - Generate user_code and sanitize target database names.
+  - Check for existing jobs to prevent duplicates.
+  - Insert validated jobs into MySQL with `status='queued'`.
+  - Provide status query endpoints for CLI.
+  - Does NOT access S3 or execute myloader.
+- **Worker Service**
+  - Poll MySQL for jobs with `status='queued'`.
+  - Acquire per-target locks before mutation.
+  - Stream backups from S3, verify disk capacity, extract to workspace.
+  - Invoke MySQL restore tooling (`myloader`) to staging database.
   - Execute post-restore SQL scripts, emit `job_events`, and update job status.
-  - Publish metrics (queue depth, disk alerts) and structured logs.
+  - Does NOT accept HTTP requests.
 - **MySQL Coordination Database**
   - Serves as the coordination plane for jobs, events, configuration, and locks.
+  - Accessed by API service (INSERT/SELECT) and worker service (SELECT/UPDATE).
   - Enforces invariants through constraints and triggers defined in `../docs/mysql-schema.md`.
 - **MySQL Target Hosts**
   - Receive restored databases using least-privilege service accounts.
   - Track capacity via `db_hosts.max_db_count` to prevent over-allocation.
 
-Refer to `../constitution.md` for coding standards, tooling choices, and deployment workflow.
+Refer to `../constitution.md` for coding standards, tooling choices, and deployment workflow. See `two-service-architecture.md` for complete details on API/Worker service separation.
 
 ## Diagrams
 
@@ -57,4 +69,4 @@ pullDB operates in a cross-account AWS environment with defense-in-depth securit
   - Layer 8: Access Patterns (read-only, least privilege)
   - Layer 9: Operational Security (rotation, restrictions)
 
-See `../docs/aws-cross-account-setup.md` for complete setup instructions implementing these security controls.
+See `../docs/aws-authentication-setup.md` for complete setup instructions implementing these security controls.

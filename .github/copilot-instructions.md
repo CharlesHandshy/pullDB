@@ -21,23 +21,28 @@ pullDB is a database restoration tool that pulls production MySQL backups from S
 
 ## Architecture Principles
 
-- **Single CLI + Daemon**: CLI validates and enqueues jobs, daemon executes them
-- **MySQL as Coordination Layer**: All state, locks, and job tracking via MySQL database
+- **Three-Service Architecture**: CLI (thin client) → API Service (job management) → Worker Service (job execution)
+- **API Service**: Accepts HTTP requests, validates input, inserts jobs to MySQL, provides status/discovery endpoints (read-only S3 access for backup listing)
+- **Worker Service**: Polls MySQL queue, executes restores via S3 + myloader (full S3 read access for downloads, no HTTP exposure)
+- **MySQL as Coordination Layer**: All state, locks, and job tracking via MySQL (accessed by API and Worker services)
 - **Download-Per-Job**: No archive reuse in prototype - download fresh each time
 - **Per-Target Exclusivity**: MySQL constraints prevent concurrent restores to same target database
+- **Independent Services**: API and Worker never communicate directly - only via MySQL queue
+- **CLI Capabilities Preserved**: All original functionality available through API service HTTP endpoints
 
 ## Key Files & Directory Structure
 
 ```
 .github/copilot-instructions.md  # THIS FILE - Primary AI agent reference
 constitution.md                   # Coding standards and development workflow (co-primary)
+design/
+  └── two-service-architecture.md # API Service + Worker Service split (CRITICAL)
 docs/
   ├── coding-standards.md         # Comprehensive style guide for all file types
   ├── mysql-schema.md             # Complete database schema with invariants
-  ├── aws-setup.md                # AWS CLI and SDK configuration overview
-  ├── aws-cross-account-setup.md  # Cross-account S3 access with IAM user (local dev)
-  ├── aws-service-role-setup.md   # Cross-account S3 access with service roles (production)
-  ├── aws-iam-setup.md            # IAM users, roles, and policies
+  ├── aws-authentication-setup.md # AWS cross-account setup for EC2 (RECOMMENDED)
+  ├── aws-ec2-deployment-setup.md # EC2 deployment complete guide
+  ├── vscode-diagnostics.md       # VS Code diagnostic integration
   └── parameter-store-setup.md    # Secure credential storage in AWS
 customers_after_sql/              # Post-restore SQL for customer databases (PII removal)
   ├── 010.remove_customer_pii.sql
@@ -96,10 +101,11 @@ pullDB status
 ### Project Structure (from `design/implementation-notes.md`)
 ```python
 pulldb/
-  cli/           # Command validation, option parsing, MySQL job insertion
-  daemon/        # Job polling, S3 download, MySQL restore orchestration
-  infra/         # MySQL, S3, logging abstractions
-  domain/        # Job, JobEvent, configuration dataclasses
+  cli/           # Command validation, option parsing, API calls
+  api/           # API Service - HTTP endpoints, job creation, status queries
+  worker/        # Worker Service - Job polling, S3 download, MySQL restore orchestration
+  infra/         # MySQL, S3, logging abstractions (shared by API + Worker)
+  domain/        # Job, JobEvent, configuration dataclasses (shared)
   tests/         # Unit tests with test MySQL instances, integration smoke tests
 ```
 
@@ -221,7 +227,7 @@ class JobRepository:
 - Don't allow multiple active jobs per target database
 - Don't implement cancellation, history, or admin commands in prototype
 - Ensure all database operations are wrapped in transactions
-- Validate CLI options before MySQL insertion, not in daemon
+- Validate CLI options before calling daemon API, daemon validates again before MySQL insertion
 
 ## Key Domain Concepts
 

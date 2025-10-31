@@ -6,78 +6,80 @@ graph TB
         DevUser[IAM User: pulldb-dev-user<br/>Access Keys in ~/.aws/credentials]
         DevProfile[AWS Profile: pr-dev<br/>Base Credentials]
         CrossAccountProfile[AWS Profile: pr-prod-cross-account<br/>role_arn + source_profile + external_id]
-        
+
         subgraph "pullDB Application"
-            CLI[CLI Agent<br/>Validates & Enqueues Jobs]
-            Daemon[Daemon Process<br/>Executes Restore Workflow]
+            CLI[CLI<br/>Validates & Calls API Service]
+            API[API Service<br/>Job Management Endpoints]
+            Worker[Worker Service<br/>Executes Restore Workflow]
             Config[Config Loader<br/>Resolves Parameter Store Refs]
         end
-        
+
         EC2Instance[EC2 Instance<br/>Optional: Instance Profile]
-        
+
         DevUser -->|authenticates| DevProfile
         DevProfile -->|source credentials| CrossAccountProfile
         CrossAccountProfile -.->|STS AssumeRole| STSService
         EC2Instance -.->|instance metadata| CrossAccountProfile
-        
-        CLI -->|loads| Config
-        Daemon -->|loads| Config
+
+        CLI -->|calls| API
+        API -->|loads| Config
+        Worker -->|loads| Config
         Config -->|uses| CrossAccountProfile
     end
-    
+
     subgraph "AWS STS Service"
         STSService[AWS STS<br/>sts:AssumeRole API]
         TempCreds[Temporary Security Credentials<br/>Access Key + Secret + Session Token<br/>Valid for max_session_duration]
     end
-    
+
     subgraph "Production AWS Account (448509429610)"
         subgraph "IAM"
             CrossAccountRole[IAM Role:<br/>pulldb-cross-account-read-role]
             TrustPolicy[Trust Policy:<br/>Allows dev account + ExternalId]
             PermissionPolicy[Permission Policy:<br/>S3 Read + SSM Read + KMS Decrypt]
-            
+
             CrossAccountRole -->|has| TrustPolicy
             CrossAccountRole -->|has| PermissionPolicy
         end
-        
+
         subgraph "S3"
             S3Bucket[S3 Bucket:<br/>pestroutes-rds-backup-prod]
             BucketPolicy[Bucket Policy:<br/>Allows cross-account role]
             S3Objects[Backup Files:<br/>daily/prod/customer/mydumper_*.tar]
             KMSKey[KMS Key:<br/>SSE-KMS Encryption]
             KMSPolicy[KMS Key Policy:<br/>Allows role to decrypt]
-            
+
             S3Bucket -->|enforces| BucketPolicy
             S3Objects -->|encrypted by| KMSKey
             KMSKey -->|enforces| KMSPolicy
         end
-        
+
         subgraph "Parameter Store"
             SSMParams[SSM Parameters:<br/>/pulldb/prod/mysql/*]
             SSMEncryption[SecureString:<br/>KMS Encrypted]
             ParamKMSKey[Parameter Store KMS Key]
-            
+
             SSMParams -->|encrypted by| SSMEncryption
             SSMEncryption -->|uses| ParamKMSKey
         end
-        
+
         TrustPolicy -.->|validates| ExternalID[External ID:<br/>pulldb-dev-access-2025<br/>Prevents Confused Deputy]
         PermissionPolicy -->|grants| S3Permissions[s3:ListBucket<br/>s3:GetObject<br/>DENY s3:PutObject/DeleteObject]
         PermissionPolicy -->|grants| SSMPermissions[ssm:GetParameter<br/>ssm:GetParameters]
         PermissionPolicy -->|grants| KMSPermissions[kms:Decrypt<br/>via S3 and SSM services only]
     end
-    
+
     subgraph "Security Flow"
         STSService -->|validates trust policy| TrustPolicy
         STSService -->|checks ExternalId| ExternalID
         STSService -->|issues| TempCreds
         TempCreds -.->|returned to| CrossAccountProfile
-        
+
         CrossAccountProfile -->|authorizes with| CrossAccountRole
         CrossAccountRole -->|allows| S3Access[S3 Access]
         CrossAccountRole -->|allows| SSMAccess[Parameter Store Access]
         CrossAccountRole -->|allows| KMSAccess[KMS Decryption]
-        
+
         S3Access -->|list & get| S3Objects
         S3Access -->|requires| KMSKey
         SSMAccess -->|get parameters| SSMParams
@@ -85,20 +87,23 @@ graph TB
         KMSAccess -->|decrypt| S3Objects
         KMSAccess -->|decrypt| SSMParams
     end
-    
+
     subgraph "pullDB Operations"
-        Daemon -->|1. Load config| Config
-        Config -->|2. Resolve /pulldb/prod/mysql/host| SSMParams
-        Config -->|3. Resolve /pulldb/prod/mysql/password| SSMParams
-        Daemon -->|4. List backups| S3Objects
-        Daemon -->|5. Download .tar file| S3Objects
-        S3Objects -->|6. Decrypt during download| KMSKey
+        CLI -->|1. POST /api/jobs| API
+        API -->|2. Validate & insert to MySQL| DB[MySQL Queue]
+        Worker -->|3. Poll jobs| DB
+        Worker -->|4. Load config| Config
+        Config -->|5. Resolve /pulldb/prod/mysql/host| SSMParams
+        Config -->|6. Resolve /pulldb/prod/mysql/password| SSMParams
+        Worker -->|7. List backups| S3Objects
+        Worker -->|8. Download .tar file| S3Objects
+        S3Objects -->|9. Decrypt during download| KMSKey
     end
-    
+
     subgraph "Audit & Monitoring"
         CloudTrail[AWS CloudTrail<br/>AssumeRole Events<br/>S3 Access Logs<br/>SSM Parameter Access]
         CloudWatch[CloudWatch Alarms<br/>Unauthorized Access Attempts<br/>Excessive Role Assumptions]
-        
+
         STSService -.->|logs| CloudTrail
         S3Access -.->|logs| CloudTrail
         SSMAccess -.->|logs| CloudTrail
@@ -109,8 +114,8 @@ graph TB
     classDef prodAccount fill:#fff4e1,stroke:#cc6600,stroke-width:2px
     classDef security fill:#ffe1e1,stroke:#cc0000,stroke-width:2px
     classDef flow fill:#e1ffe1,stroke:#00cc00,stroke-width:2px
-    
-    class DevUser,DevProfile,CrossAccountProfile,CLI,Daemon,Config,EC2Instance devAccount
+
+    class DevUser,DevProfile,CrossAccountProfile,CLI,API,Worker,Config,EC2Instance devAccount
     class CrossAccountRole,TrustPolicy,PermissionPolicy,S3Bucket,BucketPolicy,S3Objects,KMSKey,SSMParams prodAccount
     class ExternalID,TempCreds,STSService,KMSPermissions security
     class S3Access,SSMAccess,KMSAccess,CloudTrail,CloudWatch flow

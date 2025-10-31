@@ -14,9 +14,9 @@ scripts/setup-aws-credentials.sh
 #   - Configure AWS profile: aws configure --profile pr-prod
 #   - Edit .env and set PULLDB_AWS_PROFILE=pr-prod
 #   - Verify credentials work
-# NOTE: For cross-account S3 access:
-#   - Local dev: see docs/aws-cross-account-setup.md (IAM user)
-#   - Production: see docs/aws-service-role-setup.md (EC2/ECS/Lambda roles)
+# NOTE: For cross-account S3 access setup, see:
+#   - EC2 Deployment: docs/aws-ec2-deployment-setup.md (Developer SSH access + service deployment)
+#   - Service Auth: docs/aws-authentication-setup.md (EC2 instance profile - RECOMMENDED)
 
 # 3. Install MySQL and create database schema
 sudo scripts/setup-mysql.sh
@@ -52,7 +52,7 @@ It checks:
 
 ## Purpose
 
-`pullDB` pulls production database backups from S3, stores them in a local archive, and restores them into development environments. The prototype release keeps the surface tight: a CLI funnels requests into MySQL and a single long-running daemon validates, queues, and executes the restores end-to-end. We will reintroduce additional components once the simplified flow proves reliable.
+`pullDB` pulls production database backups from S3 and restores them into development environments. The prototype architecture consists of three services: a CLI that calls an API service, an API service that manages job requests via MySQL, and a worker service that executes restores. The services coordinate exclusively through MySQL.
 
 **Multi-Environment Context**:
 - Prototype supports single backup source (staging or production, TBD during implementation)
@@ -63,7 +63,8 @@ It checks:
 
 ## Development Strategy
 
-- **Prototype first**: deliver the minimal restore loop (CLI + daemon + MySQL job store) before layering on extra commands or services.
+- **Prototype first**: deliver the minimal restore loop (CLI + API service + worker service + MySQL job store) before layering on extra commands or services.
+- **Service separation**: API service manages requests (no S3/myloader access), worker service executes restores (no HTTP exposure) - see `design/two-service-architecture.md`.
 - **Use staging for development**: Staging account contains both mydumper formats, allowing format testing without production access.
 - **Single format initially**: prototype will support one mydumper format; multi-format support added pre-production.
 - **Single backup source initially**: prototype connects to one S3 bucket (staging recommended); multi-environment support added as needed.
@@ -111,10 +112,13 @@ See `constitution.md` for development workflow and complete coding standards. Se
 
 ## Prototype Architecture
 
-- **CLI (Agent)**: validates required options, prevents conflicting flags, and inserts restore jobs into MySQL. The CLI remains the only user-facing entry point in the prototype.
-- **Daemon**: combines the former queue service and worker roles. It runs continuously, dequeues pending work, performs download/extract/restore tasks, and emits status updates back into MySQL.
-- **MySQL Queue**: single source of truth for job state, audit breadcrumbs, and simple per-target locking. Both the CLI and daemon collaborate solely through this datastore.
-- **S3 + Local Storage**: the daemon always downloads requested backups (no archive reuse in v0) and stages them locally only for the lifetime of the restore.
+- **CLI**: Thin client that validates required options, prevents conflicting flags, and calls the API service via HTTP to enqueue restore jobs and query system state. The CLI remains the only user-facing entry point in the prototype.
+- **API Service**: Accepts HTTP job requests from CLI, validates input, inserts jobs into MySQL with `status='queued'`, and returns job IDs. Provides status endpoints, backup discovery (read-only S3 listing), and customer listing. Has read-only S3 access (ListBucket, HeadObject) but cannot download archives.
+- **Worker Service**: Polls MySQL for jobs with `status='queued'`, acquires per-target locks, performs download/extract/restore tasks, executes post-restore SQL, and emits status updates back into MySQL. Has full S3 read access (GetObject) for downloads but no HTTP exposure.
+- **MySQL Coordination Database**: Single source of truth for job state, audit breadcrumbs, and simple per-target locking. Accessed by API service (INSERT/SELECT) and worker service (SELECT/UPDATE). Not accessed by CLI.
+- **S3 + Local Storage**: The worker service downloads requested backups on demand (no archive reuse in v0) and stages them locally only for the lifetime of the restore. The API service lists available backups for CLI discovery.
+
+**Service Independence**: API and worker services never communicate directly - only via MySQL queue. This enables independent scaling, deployment, and fault isolation. Both services have S3 access with different permissions: API has read-only listing for discovery, worker has full read for downloads. See `design/two-service-architecture.md` for complete details.
 
 ## Usage
 
@@ -126,13 +130,13 @@ See `constitution.md` for development workflow and complete coding standards. Se
 | `customer=<id>` | Restore the latest backup for a specific customer. | Conditional | Mutually exclusive with `qatemplate`. Restores to `user_code` + sanitized customer token. |
 | `qatemplate` | Restore the latest QA template backup. | Conditional | Mutually exclusive with `customer`. Restores to `user_code + 'qatemplate'`. |
 | `dbhost=<hostname>` | Target database server when the default development host is not desired. | Optional | Prototype assumes a single default host; override cases must match a pre-registered host entry. |
-| `overwrite` | Allow restoring over an existing target database without an interactive prompt. | Optional | When omitted and the target exists, the CLI exits with guidance to re-run using `--overwrite`. |
+| `overwrite` | Allow restoring over an existing target database without an interactive prompt. | Optional | When omitted and the target exists, daemon API returns error and CLI exits with guidance to re-run using `overwrite`. |
 
 The CLI fails validation when `customer` and `qatemplate` are supplied together or both omitted. All other historical flags (cancel, history, user admin, filtering, snapshot targeting) are deferred to post-prototype milestones.
 
 ### Host Registration Requirements
 
-- All target `dbhost` entries must be registered in the MySQL configuration (`db_hosts` table captures credentials, max active limits, and maximum database counts). The agent verifies membership before accepting a restore request and fails fast if the host is unknown.
+- All target `dbhost` entries must be registered in the MySQL configuration (`db_hosts` table captures credentials, max active limits, and maximum database counts). The daemon verifies membership before accepting a restore request and fails fast if the host is unknown.
 - Credentials are stored securely and surfaced to the daemon through environment configuration on the corresponding EC2 host.
 - **Pre-populated Hosts**: Three database servers are registered during deployment to support legacy team segregation:
   - `db-mysql-db3-dev` - Development team (legacy `--type=DEV`)
@@ -168,7 +172,7 @@ Users of the legacy `pullDB-auth` tool should note these mappings:
   - Staging suffix: 13 characters (`_` + 12-char job_id)
   - Total staging name: maximum 64 characters (51 + 13)
 - The CLI validates target name length during option parsing and rejects requests that would exceed the 51-character limit.
-- Sanitized target names are stored verbatim in MySQL and reused consistently by the CLI and daemon.
+- Sanitized target names are validated by the CLI and daemon, stored in MySQL by the daemon, and reused consistently during restore operations.
 
 ### Authentication Model
 
@@ -197,8 +201,18 @@ pullDB \
 
 ## Prototype Operational Commands
 
-- `pullDB status`: prints queue depth, disk headroom, and active restore count as observed by the daemon. Non-admin views match admin views in the prototype (admins-only visibility arrives later).
+### Status Query
+- `pullDB status`: prints queue depth, disk headroom, and active restore count as observed by the API service (which queries MySQL and optionally worker-reported metrics). Non-admin views match admin views in the prototype (admins-only visibility arrives later).
+
+### Discovery Commands (Prototype)
+- `pullDB list-backups [customer=<id>|qatemplate]`: Lists available backups in S3 for the specified customer or QA template. API service queries S3 (read-only ListBucket) and returns backup names, timestamps, and sizes. Helps users verify backup availability before requesting restore.
+- `pullDB list-customers`: Lists all customer IDs with available backups in S3. API service scans S3 prefixes and returns customer list with latest backup timestamps. Useful for discovering what can be restored.
+
+### Job Management
+- `pullDB job-status <job_id>`: Shows detailed status and event history for a specific job. API service queries MySQL `jobs` and `job_events` tables.
 - Queue listing, cancellation, and history-style reporting are intentionally deferred until the core restore loop proves stable.
+
+**Note**: All discovery commands are implemented as HTTP calls to API service endpoints. The API service has read-only S3 access (ListBucket, HeadObject) specifically to support these commands without requiring CLI to have AWS credentials.
 
 ## Retry Policy
 
@@ -249,7 +263,7 @@ Tables such as `history_cache`, per-user/host concurrency overrides, and detaile
 - Confirm required files exist before transfer (`*-schema-create.sql.zst` must be present); if missing, fail fast to avoid wasted downloads.
 - Download the archive for every run, extract into a working area, and purge temporary files after the restore completes.
 - Before extraction, fetch the object size from S3 and ensure at least `size * 1.8` free space is available on the data directory volume.
-- CLI invocations may run in parallel; they rely on MySQL locks keyed by target database name to prevent duplicate restores.
+- CLI invocations may run in parallel; the daemon uses MySQL locks keyed by target database name to prevent duplicate restores.
 
 ### Disk Capacity Management (Daemon)
 
@@ -261,7 +275,7 @@ Tables such as `history_cache`, per-user/host concurrency overrides, and detaile
 
 ### Restore Execution
 - Create the target database name (`user_code` + sanitized customer token or `qatemplate`). Prototype forbids custom overrides.
-- If the target database already exists and `overwrite` was not supplied, the CLI exits prior to queueing the job with instructions to rerun using `--overwrite`.
+- If the target database already exists and `overwrite` was not supplied, the CLI queries the daemon API which checks the database and returns an error with instructions to rerun using `overwrite`.
 - Before starting work, the daemon verifies the designated `dbhost` is registered and checks that the projected database count does not exceed the configured limit. If it would, the job fails fast with guidance to free capacity.
 - The daemon updates `started_at` and `status=running` before executing download/extract/restore steps. Single-threaded per-target locks prevent concurrent restores for the same destination.
 - After a successful restore, the daemon executes SQL files from the appropriate directory (`customers_after_sql/` for customer restores, `qa_template_after_sql/` for QA template restores) and adds a single `pullDB` table to the restored database containing restore metadata (user who restored, restore timestamp, backup filename used, and JSON report of post-restore SQL script execution status).
@@ -283,12 +297,12 @@ Tables such as `history_cache`, per-user/host concurrency overrides, and detaile
 
 ## Validation and Safeguards
 
-1. Verify `user=` against `auth_users` before accepting a restore; ensure six alphabetic characters exist to derive a `user_code` and reject duplicates.
-2. Honor the `overwrite` flag by checking target database existence in the CLI and aborting early when it is missing.
+1. Verify `user=` against `auth_users` in daemon API before accepting a restore; ensure six alphabetic characters exist to derive a `user_code` and reject duplicates.
+2. Honor the `overwrite` flag by having daemon check target database existence and rejecting when it exists without the flag.
 3. Ensure every job receives a UUID plus timestamp trio (`submitted`, `started`, `completed`). The daemon owns status transitions and writes them atomically.
 4. Validate disk space ahead of extraction using the S3 object size and reject jobs that cannot satisfy the `1.8x` buffer.
 5. Use MySQL advisory locks to prevent more than one active job per target database name; no additional concurrency tiers are enforced in the prototype.
-6. Prevent duplicate queue inserts for the same target by checking existing `queued` or `running` jobs before writing a new record.
+6. Prevent duplicate queue inserts for the same target by daemon checking existing `queued` or `running` jobs before writing a new record.
 7. Check the `dbhost` registration and projected database count before restore. Unknown hosts or over-capacity projections cause the daemon to fail the job immediately.
 8. Do not auto-retry failures; capture error context in `job_events` and require operators to resubmit once issues are resolved.
 
@@ -314,11 +328,11 @@ Tables such as `history_cache`, per-user/host concurrency overrides, and detaile
 
 ```mermaid
 flowchart TD
-  Agent["CLI Submits Restore"] --> Validate["Daemon: Validate Options"]
+  CLI["CLI calls API: POST /api/jobs"] --> Validate["Daemon API: Validate Options"]
   Validate --> S3Check{Check S3 for schema file}
   S3Check -->|found| QueueInsert["Persist job in MySQL queue"]
   S3Check -->|missing| FailFast["Fail job with guidance"]
-  QueueInsert --> StartRestore["Begin restore when slots free"]
+  QueueInsert --> StartRestore["Worker begins restore when slots free"]
   FailFast --> AuditLog["Write audit + job event"]
 ```
 
@@ -380,12 +394,14 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  CLI["CLI Agent"] -->|submit restore| MySQL[(MySQL Queue)]
-  Daemon["Daemon"] -->|poll queued jobs| MySQL
-  Daemon -->|download backup| S3[(S3 Backups)]
-  Daemon -->|restore + post-SQL + metadata| DevDB[(Target Database)]
-  Daemon -->|status + events| MySQL
-  MySQL -->|status for status cmd| CLI
+  CLI["CLI"] -->|HTTP POST /api/jobs| API["Daemon REST API"]
+  API -->|insert job| MySQL[(MySQL Queue)]
+  Worker["Daemon Worker"] -->|poll queued jobs| MySQL
+  Worker -->|download backup| S3[(S3 Backups)]
+  Worker -->|restore + post-SQL + metadata| DevDB[(Target Database)]
+  Worker -->|status + events| MySQL
+  API -->|GET /api/jobs| MySQL
+  CLI -->|GET /api/jobs| API
 ```
 
 ### Restore Lifecycle
@@ -393,23 +409,30 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   participant CLI as CLI
+  participant API as Daemon REST API
   participant DB as MySQL Queue
-  participant D as Daemon
+  participant W as Daemon Worker
   participant S3 as S3 Backups
   participant DevDB as Target Database
-  CLI->>DB: insert job (status=queued)
-  D->>DB: lock job + mark running
-  D->>S3: fetch latest backup
-  D->>D: verify disk space & extract
-  D->>DevDB: cleanup orphaned staging databases
-  D->>DevDB: restore to staging_name (myloader)
-  D->>DevDB: execute post-restore SQL scripts on staging
-  D->>DevDB: add pullDB metadata table to staging
-  D->>DevDB: atomic rename staging tables → target
-  D->>DevDB: drop staging database
-  D->>DB: mark complete + append events
-  CLI->>DB: poll via status command
-  DB-->>CLI: job state summary
+  CLI->>API: POST /api/jobs (user, customer/qatemplate, dbhost, overwrite)
+  API->>API: Validate options, generate user_code, target name
+  API->>DB: Check for existing queued/running jobs for target
+  API->>DB: Insert job (status=queued)
+  API-->>CLI: 201 Created {job_id, target, status}
+  W->>DB: Poll for queued jobs
+  W->>DB: Lock job + mark running
+  W->>S3: Fetch latest backup
+  W->>W: Verify disk space & extract
+  W->>DevDB: Cleanup orphaned staging databases
+  W->>DevDB: Restore to staging_name (myloader)
+  W->>DevDB: Execute post-restore SQL scripts on staging
+  W->>DevDB: Add pullDB metadata table to staging
+  W->>DevDB: Atomic rename staging tables → target
+  W->>DevDB: Drop staging database
+  W->>DB: Mark complete + append events
+  CLI->>API: GET /api/jobs (poll for status)
+  API->>DB: Query job status
+  API-->>CLI: 200 OK {job status, events}
 ```
 
 ## Logging Strategy
@@ -421,11 +444,9 @@ sequenceDiagram
 ## Documentation
 
 ### Setup & Configuration
-- [AWS Setup Guide](docs/aws-setup.md) - AWS CLI installation and profile configuration
-- [AWS Cross-Account Setup (IAM User)](docs/aws-cross-account-setup.md) - Cross-account S3 access for local development
-- [AWS Service Role Setup](docs/aws-service-role-setup.md) - Cross-account S3 access for production services (EC2/ECS/Lambda)
-- [AWS IAM Setup](docs/aws-iam-setup.md) - IAM users, roles, and policies
+- [AWS Authentication Setup](docs/aws-authentication-setup.md) - **PRIMARY**: EC2 instance profile with cross-account S3 access (staging + production)
 - [AWS Parameter Store Setup](docs/parameter-store-setup.md) - Secure credential storage
+- [Two-Service Architecture](design/two-service-architecture.md) - API Service + Worker Service separation
 
 ### Architecture & Schema
 - [MySQL Schema Documentation](docs/mysql-schema.md) - Complete database schema reference

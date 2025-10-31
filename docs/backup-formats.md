@@ -144,5 +144,5 @@ When production migrates to newer mydumper format:
 ## References
 
 - [Design Roadmap - Multi-Format Support](../design/roadmap.md#multiple-mydumper-format-support)
-- [AWS Cross-Account Setup](aws-cross-account-setup.md) - Configuring access to multiple accounts
+- [AWS Authentication Setup](aws-authentication-setup.md) - Configuring access to multiple accounts
 - [System Overview](../design/system-overview.md) - S3 backup discovery logic

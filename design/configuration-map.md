@@ -7,18 +7,22 @@ This guide captures where configuration values live, how they flow into the CLI 
 ## Sources
 
 1. **Environment Variables**
-   - `PULLDB_MYSQL_HOST`: MySQL coordination database host (or AWS Parameter Store path starting with `/`).
-   - `PULLDB_MYSQL_USER`: MySQL coordination database username (or AWS Parameter Store path).
-   - `PULLDB_MYSQL_PASSWORD`: MySQL coordination database password (or AWS Parameter Store path).
-   - `PULLDB_MYSQL_DATABASE`: MySQL coordination database name.
-   - `PULLDB_AWS_PROFILE`: AWS profile name for S3 and Parameter Store access (required, no explicit credentials supported).
-   - `PULLDB_BACKUP_SOURCE`: Which backup environment to use (`production` or `staging`). Default: `staging` (recommended for development). **Deferred feature** - see roadmap.md.
-   - `PULLDB_S3_BUCKET_PATH`: S3 URI including prefix (e.g., `s3://pestroutesrdsdbs/daily/stg/` for staging, recommended for development).
-   - `PULLDB_S3_STAGING_BUCKET_PATH`: S3 URI for staging backups (e.g., `s3://pestroutesrdsdbs/daily/stg/`). **Deferred feature** - will be used when multi-environment support is implemented.
-   - `PULLDB_DEFAULT_DBHOST`: default MySQL host for restores.
-   - `PULLDB_WORK_DIR`: filesystem workspace for extractions.
-   - `PULLDB_CUSTOMERS_AFTER_SQL_DIR`: directory containing post-restore SQL scripts for customer databases.
-   - `PULLDB_QA_TEMPLATE_AFTER_SQL_DIR`: directory containing post-restore SQL scripts for QA template databases.
+   - **Daemon Only**:
+     - `PULLDB_MYSQL_HOST`: MySQL coordination database host (or AWS Parameter Store path starting with `/`).
+     - `PULLDB_MYSQL_USER`: MySQL coordination database username (or AWS Parameter Store path).
+     - `PULLDB_MYSQL_PASSWORD`: MySQL coordination database password (or AWS Parameter Store path).
+     - `PULLDB_MYSQL_DATABASE`: MySQL coordination database name.
+     - `PULLDB_AWS_PROFILE`: AWS profile name for S3 and Parameter Store access (required, no explicit credentials supported).
+     - `PULLDB_S3_BUCKET_PATH`: S3 URI including prefix (e.g., `s3://pestroutesrdsdbs/daily/stg/` for staging, recommended for development).
+     - `PULLDB_S3_STAGING_BUCKET_PATH`: S3 URI for staging backups (e.g., `s3://pestroutesrdsdbs/daily/stg/`). **Deferred feature** - will be used when multi-environment support is implemented.
+     - `PULLDB_DEFAULT_DBHOST`: default MySQL host for restores.
+     - `PULLDB_WORK_DIR`: filesystem workspace for extractions.
+     - `PULLDB_CUSTOMERS_AFTER_SQL_DIR`: directory containing post-restore SQL scripts for customer databases.
+     - `PULLDB_QA_TEMPLATE_AFTER_SQL_DIR`: directory containing post-restore SQL scripts for QA template databases.
+     - `PULLDB_BACKUP_SOURCE`: Which backup environment to use (`production` or `staging`). Default: `staging` (recommended for development). **Deferred feature** - see roadmap.md.
+   - **CLI Only**:
+     - `PULLDB_API_URL`: Daemon REST API endpoint (e.g., `http://localhost:8080`).
+     - `PULLDB_API_TIMEOUT`: HTTP request timeout in seconds (default: 30).
 2. **AWS Parameter Store** (recommended for production)
    - Values starting with `/` are automatically fetched from AWS Systems Manager Parameter Store.
    - Example: `PULLDB_MYSQL_PASSWORD=/pulldb/prod/mysql/password`
@@ -31,7 +35,7 @@ This guide captures where configuration values live, how they flow into the CLI 
 
 ## MySQL Settings Table
 
-Key-value pairs stored in `settings` provide operational overrides that both CLI and daemon read at runtime.
+Key-value pairs stored in `settings` provide operational overrides that the daemon reads at runtime. CLI does not access MySQL directly.
 
 | Key | Description | Source |
 | --- | --- | --- |
@@ -47,10 +51,10 @@ Populate defaults during migrations; allow environment overrides on startup.
 
 ## Flow
 
-1. Process-level environment variables bootstrap CLI/daemon.
-2. Config class resolves Parameter Store references (values starting with `/`).
-3. Daemon reads MySQL `settings` table for operational overrides.
-4. CLI consults MySQL for dynamic values (e.g., default host) while remaining environment-driven.
+1. **CLI**: Loads `PULLDB_API_URL` and `PULLDB_API_TIMEOUT` from environment. Makes HTTP requests to daemon API.
+2. **Daemon**: Process-level environment variables bootstrap daemon on startup.
+3. **Daemon**: Config class resolves Parameter Store references (values starting with `/`).
+4. **Daemon**: Reads MySQL `settings` table for operational overrides on startup and periodically.
 
 ## Security Considerations
 

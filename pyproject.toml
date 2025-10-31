@@ -21,7 +21,9 @@ dependencies = [
   "boto3>=1.28.0",
   "click>=8.1.0",
   "pydantic>=2.0.0",
-  "python-dotenv>=1.0.0"
+  "python-dotenv>=1.0.0",
+  "fastapi>=0.110.0",
+  "uvicorn>=0.29.0"
 ]
 
 [project.optional-dependencies]
@@ -38,7 +40,8 @@ dev = [
 
 [project.scripts]
 pulldb = "pulldb.cli.main:main"
-pulldb-daemon = "pulldb.daemon.main:main"
+pulldb-api = "pulldb.api.main:main"
+pulldb-worker = "pulldb.worker.service:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

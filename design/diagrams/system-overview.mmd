@@ -1,13 +1,15 @@
 %% Mermaid flowchart describing the prototype topology
 flowchart LR
-  CLI["CLI Agent"] -->|submit restore| MySQLQueue[(MySQL Queue)]
-  CLI -->|status query| MySQLQueue
-  Daemon["Daemon"] -->|poll queued jobs| MySQLQueue
-  Daemon -->|download backup| S3[(AWS S3<br/>Cross-Account)]
-  Daemon -->|restore + post-SQL| MySQLTarget[(MySQL 8 Host)]
-  Daemon -->|emit events| MySQLQueue
-  Daemon -->|metrics + logs| Observability[(Datadog)]
-  MySQLQueue -->|configuration| CLI
-  MySQLQueue -->|status| Daemon
-  CLI -.->|AWS credentials<br/>via profile| AWSProfile[AWS Profile<br/>+ Parameter Store]
-  Daemon -.->|AWS credentials<br/>via profile| AWSProfile
+  CLI["CLI"] -->|HTTP POST /api/jobs| API["API Service"]
+  CLI -->|HTTP GET /api/jobs| API
+  API -->|insert/query| MySQLQueue[(MySQL Queue)]
+  Worker["Worker Service"] -->|poll queued jobs| MySQLQueue
+  Worker -->|download backup| S3[(AWS S3<br/>Cross-Account)]
+  Worker -->|restore + post-SQL| MySQLTarget[(MySQL 8 Host)]
+  Worker -->|emit events| MySQLQueue
+  Worker -->|metrics + logs| Observability[(Datadog)]
+  API -.->|no AWS/myloader access| NoAPIAccess[API has MySQL only]
+  CLI -.->|no AWS/MySQL access| NoCLIAccess[CLI has HTTP only]
+  Worker -.->|AWS credentials<br/>via profile| AWSProfile[AWS Profile<br/>+ Parameter Store]
+  Worker -.->|no HTTP exposure| NoWorkerHTTP[Worker polls MySQL only]
+

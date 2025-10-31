@@ -448,7 +448,7 @@ See the [Python documentation][python-docs] for details.
 See [Installation](#installation) section below.
 
 <!-- Links to other documents -->
-See [AWS Setup Guide](aws-setup.md) for configuration.
+See [AWS Authentication Setup Guide](aws-authentication-setup.md) for configuration.
 ```
 
 ### Tables
@@ -945,21 +945,23 @@ sequenceDiagram
     Note over User,CLI: User submits restore request
 
     User->>CLI: pulldb user=jdoe customer=acme
-    CLI->>DB: Validate user and target
-    DB-->>CLI: Validation OK
+    CLI->>API: POST /api/jobs
+    API->>DB: Validate user and target
+    DB-->>API: Validation OK
 
-    Note over CLI,DB: Job enqueued
-    CLI->>DB: INSERT INTO jobs
-    DB-->>CLI: job_id returned
+    Note over API,DB: Job enqueued
+    API->>DB: INSERT INTO jobs
+    DB-->>API: job_id returned
+    API-->>CLI: 201 Created {job_id}
     CLI-->>User: Job queued: abc-123
 
-    Note over Daemon,S3: Daemon polls and processes
-    Daemon->>DB: SELECT pending jobs
-    DB-->>Daemon: Job abc-123
-    Daemon->>S3: Download backup
-    S3-->>Daemon: Backup file
-    Daemon->>Daemon: Extract and restore
-    Daemon->>DB: UPDATE job status=complete
+    Note over Worker,S3: Daemon worker polls and processes
+    Worker->>DB: SELECT pending jobs
+    DB-->>Worker: Job abc-123
+    Worker->>S3: Download backup
+    S3-->>Worker: Backup file
+    Worker->>Worker: Extract and restore
+    Worker->>DB: UPDATE job status=complete
 ```
 
 ### Entity Relationship Diagrams

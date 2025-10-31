@@ -1,23 +1,30 @@
 %% Mermaid sequence diagram for restore lifecycle
 sequenceDiagram
   participant CLI as CLI
+  participant API as API Service
   participant DB as MySQL Queue
-  participant D as Daemon
+  participant W as Worker Service
   participant S3 as AWS S3
   participant MySQL as MySQL Host
 
-  CLI->>DB: insert job (status=queued)
-  D->>DB: poll for queued job
-  D->>DB: acquire lock + mark running
-  D->>S3: fetch latest backup
-  D->>D: verify disk space
-  D->>D: extract archive to workspace
-  D->>D: cleanup orphaned staging databases
-  D->>MySQL: run myloader restore to staging_name
-  D->>MySQL: execute post-restore SQL scripts on staging
-  D->>MySQL: add pullDB metadata table to staging
-  D->>MySQL: atomic rename staging tables to target
-  D->>MySQL: drop staging database
-  D->>DB: mark complete + append events
-  CLI->>DB: status query
-  DB-->>CLI: job status = complete
+  CLI->>API: POST /api/jobs (user, customer, dbhost, overwrite)
+  API->>API: Validate options, generate user_code, target
+  API->>DB: Check for existing queued/running jobs
+  API->>DB: INSERT job (status=queued)
+  API-->>CLI: 201 Created {job_id, target, status}
+  W->>DB: Poll for queued jobs
+  W->>DB: Acquire lock + mark running
+  W->>S3: Fetch latest backup
+  W->>W: Verify disk space
+  W->>W: Extract archive to workspace
+  W->>MySQL: Cleanup orphaned staging databases
+  W->>MySQL: Run myloader restore to staging_name
+  W->>MySQL: Execute post-restore SQL scripts on staging
+  W->>MySQL: Add pullDB metadata table to staging
+  W->>MySQL: Atomic rename staging tables to target
+  W->>MySQL: Drop staging database
+  W->>DB: Mark complete + append events
+  CLI->>API: GET /api/jobs (status query)
+  API->>DB: Query job status
+  API-->>CLI: 200 OK {job status, events}
+

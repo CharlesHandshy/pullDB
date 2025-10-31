@@ -6,8 +6,9 @@ This roadmap records deferred features and the documentation prerequisites befor
 
 ## Phase 0 – Prototype (Current)
 
-- CLI enqueue + status command.
-- Daemon polling, download, restore, post-restore SQL execution, logging, metrics.
+- CLI calls daemon REST API for job submission and status queries.
+- Daemon REST API accepts job requests, validates, enqueues in MySQL.
+- Daemon worker polls MySQL, downloads from S3, restores, executes post-restore SQL, logs events, publishes metrics.
 - MySQL schema as defined in `../docs/mysql-schema.md`.
 - Authentication via trusted wrapper (sudo context).
 - **Initial single-format support** (format TBD during implementation).
@@ -52,7 +53,7 @@ Dev Account (345321506926)
    [profile pr-prod]
    role_arn = arn:aws:iam::448509429610:role/PullDB-CrossAccount-ReadOnly
    ...
-   
+
    [profile pr-staging]
    role_arn = arn:aws:iam::333204494849:role/PullDB-CrossAccount-ReadOnly
    ...
@@ -78,7 +79,7 @@ Dev Account (345321506926)
 ### Documentation Requirements
 
 When implementing multi-environment support:
-- Update aws-cross-account-setup.md to cover staging account setup
+- Update aws-authentication-setup.md to cover staging account setup
 - Add staging bucket details to system-overview.md
 - Document source selection logic in implementation-notes.md
 - Add source parameter to README.md usage examples
@@ -93,7 +94,7 @@ pullDB must support **two different mydumper backup formats**:
    - Available in staging account (for testing)
    - Currently in production account (will migrate after pullDB completion)
    - Format details TBD when implementation begins
-   
+
 2. **Newer mydumper format**
    - Available in staging account (for testing)
    - Production will migrate to this format after pullDB is complete
