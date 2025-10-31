@@ -856,3 +856,125 @@ class HostRepository:
             enabled=bool(row["enabled"]),
             created_at=row["created_at"],
         )
+
+
+class SettingsRepository:
+    """Repository for settings operations.
+
+    Manages configuration settings stored in the database. Settings supplement
+    environment variables and provide runtime configuration that can be updated
+    without redeployment.
+
+    Example:
+        >>> repo = SettingsRepository(pool)
+        >>> default_host = repo.get_setting("default_dbhost")
+        >>> print(default_host)  # "db-mysql-db4-dev"
+        >>> all_settings = repo.get_all_settings()
+        >>> print(all_settings["s3_bucket_path"])
+    """
+
+    def __init__(self, pool: MySQLPool) -> None:
+        """Initialize SettingsRepository with connection pool.
+
+        Args:
+            pool: MySQL connection pool for coordination database access.
+        """
+        self.pool = pool
+
+    def get_setting(self, key: str) -> str | None:
+        """Get setting value by key.
+
+        Args:
+            key: Setting key to look up.
+
+        Returns:
+            Setting value if found, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT setting_value
+                FROM settings
+                WHERE setting_key = %s
+                """,
+                (key,),
+            )
+            row = cursor.fetchone()
+            return row["setting_value"] if row else None
+
+    def get_setting_required(self, key: str) -> str:
+        """Get required setting value.
+
+        Args:
+            key: Setting key to look up.
+
+        Returns:
+            Setting value.
+
+        Raises:
+            ValueError: If setting not found.
+        """
+        value = self.get_setting(key)
+        if value is None:
+            raise ValueError(f"Required setting '{key}' not found")
+        return value
+
+    def set_setting(self, key: str, value: str, description: str | None = None) -> None:
+        """Set setting value (INSERT or UPDATE).
+
+        Uses INSERT ... ON DUPLICATE KEY UPDATE to handle both new settings
+        and updates to existing settings in a single operation.
+
+        Args:
+            key: Setting key.
+            value: Setting value.
+            description: Optional description of setting purpose.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            if description is not None:
+                cursor.execute(
+                    """
+                    INSERT INTO settings
+                        (setting_key, setting_value, description, updated_at)
+                    VALUES (%s, %s, %s, UTC_TIMESTAMP(6))
+                    ON DUPLICATE KEY UPDATE
+                        setting_value = VALUES(setting_value),
+                        description = VALUES(description),
+                        updated_at = UTC_TIMESTAMP(6)
+                    """,
+                    (key, value, description),
+                )
+            else:
+                # Don't update description if not provided
+                cursor.execute(
+                    """
+                    INSERT INTO settings
+                        (setting_key, setting_value, updated_at)
+                    VALUES (%s, %s, UTC_TIMESTAMP(6))
+                    ON DUPLICATE KEY UPDATE
+                        setting_value = VALUES(setting_value),
+                        updated_at = UTC_TIMESTAMP(6)
+                    """,
+                    (key, value),
+                )
+            conn.commit()
+
+    def get_all_settings(self) -> dict[str, str]:
+        """Get all settings as dictionary.
+
+        Returns:
+            Dictionary mapping setting keys to values.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT setting_key, setting_value
+                FROM settings
+                ORDER BY setting_key ASC
+                """
+            )
+            rows = cursor.fetchall()
+            return {row["setting_key"]: row["setting_value"] for row in rows}

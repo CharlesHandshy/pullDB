@@ -324,12 +324,14 @@ sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
 **File**: `pulldb/infra/mysql.py` (extend existing)
 
 **Tasks**:
-- [ ] Implement SettingsRepository class with MySQLPool dependency
-- [ ] `get_setting(key: str) -> Optional[str]` - Single setting lookup
-- [ ] `get_setting_required(key: str) -> str` - Required setting with ValueError
-- [ ] `set_setting(key: str, value: str, description: Optional[str])` - INSERT or UPDATE
-- [ ] `get_all_settings() -> dict[str, str]` - Bulk retrieval as dictionary
-- [ ] Use INSERT ... ON DUPLICATE KEY UPDATE for set_setting
+- [x] Implement SettingsRepository class with MySQLPool dependency
+- [x] `get_setting(key: str) -> Optional[str]` - Single setting lookup
+- [x] `get_setting_required(key: str) -> str` - Required setting with ValueError
+- [x] `set_setting(key: str, value: str, description: Optional[str])` - INSERT or UPDATE
+- [x] `get_all_settings() -> dict[str, str]` - Bulk retrieval as dictionary
+- [x] Use INSERT ... ON DUPLICATE KEY UPDATE for set_setting
+
+**Status**: ✅ Complete - 4 public methods, simple CRUD operations
 
 #### 2.6 Repository Tests
 
