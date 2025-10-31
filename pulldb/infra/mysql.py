@@ -13,7 +13,7 @@ from contextlib import contextmanager
 
 import mysql.connector
 
-from pulldb.domain.models import Job, JobEvent, JobStatus
+from pulldb.domain.models import Job, JobEvent, JobStatus, User
 
 
 class MySQLPool:
@@ -206,9 +206,7 @@ class JobRepository:
                 (job_id,),
             )
             if cursor.rowcount == 0:
-                raise ValueError(
-                    f"Job {job_id} not found or not in queued status"
-                )
+                raise ValueError(f"Job {job_id} not found or not in queued status")
             conn.commit()
 
     def mark_job_complete(self, job_id: str) -> None:
@@ -463,3 +461,247 @@ class JobRepository:
             logged_at=row["logged_at"],
         )
 
+
+class UserRepository:
+    """Repository for user operations.
+
+    Manages user creation, lookup, and user_code generation with collision
+    handling. The user_code is a critical identifier used in database naming.
+
+    Example:
+        >>> repo = UserRepository(pool)
+        >>> user = repo.get_or_create_user("jdoe")
+        >>> print(user.user_code)  # "jdoejd" (first 6 letters)
+    """
+
+    def __init__(self, pool: MySQLPool) -> None:
+        """Initialize UserRepository with connection pool.
+
+        Args:
+            pool: MySQL connection pool for database access.
+        """
+        self.pool = pool
+
+    def get_user_by_username(self, username: str) -> User | None:
+        """Get user by username.
+
+        Args:
+            username: Username to look up.
+
+        Returns:
+            User instance if found, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT user_id, username, user_code, is_admin, created_at,
+                       disabled_at
+                FROM auth_users
+                WHERE username = %s
+                """,
+                (username,),
+            )
+            row = cursor.fetchone()
+            return self._row_to_user(row) if row else None
+
+    def get_user_by_id(self, user_id: str) -> User | None:
+        """Get user by user_id.
+
+        Args:
+            user_id: User UUID to look up.
+
+        Returns:
+            User instance if found, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT user_id, username, user_code, is_admin, created_at,
+                       disabled_at
+                FROM auth_users
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            return self._row_to_user(row) if row else None
+
+    def create_user(self, username: str, user_code: str) -> User:
+        """Create new user with generated UUID.
+
+        Args:
+            username: Username for new user.
+            user_code: Generated user code (6 characters).
+
+        Returns:
+            Newly created User instance.
+
+        Raises:
+            ValueError: If username or user_code already exists.
+        """
+        user_id = str(uuid.uuid4())
+
+        try:
+            with self.pool.connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(
+                    """
+                    INSERT INTO auth_users
+                        (user_id, username, user_code, is_admin, created_at)
+                    VALUES (%s, %s, %s, FALSE, UTC_TIMESTAMP(6))
+                    """,
+                    (user_id, username, user_code),
+                )
+                conn.commit()
+
+                # Fetch the created user
+                cursor.execute(
+                    """
+                    SELECT user_id, username, user_code, is_admin,
+                           created_at, disabled_at
+                    FROM auth_users
+                    WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    raise ValueError(
+                        f"Failed to retrieve user after creation: {user_id}"
+                    )
+                return self._row_to_user(row)
+
+        except mysql.connector.IntegrityError as e:
+            if "username" in str(e):
+                raise ValueError(f"Username '{username}' already exists") from e
+            if "user_code" in str(e):
+                raise ValueError(f"User code '{user_code}' already exists") from e
+            raise
+
+    def get_or_create_user(self, username: str) -> User:
+        """Get existing user or create new one with generated user_code.
+
+        This method handles the complete user lifecycle:
+        1. Check if user exists
+        2. If not, generate unique user_code
+        3. Create new user
+        4. Return user (existing or new)
+
+        Args:
+            username: Username to get or create.
+
+        Returns:
+            User instance (existing or newly created).
+
+        Raises:
+            ValueError: If user_code cannot be generated or username invalid.
+        """
+        # Try to get existing user
+        user = self.get_user_by_username(username)
+        if user:
+            return user
+
+        # Generate unique user_code and create new user
+        user_code = self.generate_user_code(username)
+        return self.create_user(username, user_code)
+
+    def generate_user_code(self, username: str) -> str:
+        """Generate unique 6-character user code from username.
+
+        Algorithm:
+        1. Extract first 6 alphabetic characters (lowercase, letters only)
+        2. Check if code is unique in database
+        3. If collision, replace 6th char with next unused letter from username
+        4. If still collision, try 5th char, then 4th char (max 3 adjustments)
+        5. Fail if unique code cannot be generated
+
+        Examples:
+            "jdoe" → ValueError (< 6 letters)
+            "johndoe" → "johndo"
+            "johndoe" (collision) → "johned" (try 6th position)
+            "johndoe" (collision) → "johnoe" (try 5th position)
+            "johndoe" (collision) → "johode" (try 4th position)
+
+        Args:
+            username: Username to generate code from.
+
+        Returns:
+            Unique 6-character code (lowercase letters only).
+
+        Raises:
+            ValueError: If unique code cannot be generated or username has
+                < 6 letters.
+        """
+        # Step 1: Extract letters only, lowercase
+        letters = [c.lower() for c in username if c.isalpha()]
+
+        if len(letters) < 6:
+            raise ValueError(
+                f"Username '{username}' has insufficient letters "
+                f"(need 6+, found {len(letters)})"
+            )
+
+        # Step 2: Try first 6 letters
+        base_code = "".join(letters[:6])
+        if not self.check_user_code_exists(base_code):
+            return base_code
+
+        # Step 3: Collision handling - try positions 5, 4, 3 (max 3 adjustments)
+        for position in [5, 4, 3]:
+            # Get unused letters after position
+            used_letters = set(base_code[: position + 1])
+            available = [c for c in letters[position + 1 :] if c not in used_letters]
+
+            for replacement in available:
+                candidate = (
+                    base_code[:position] + replacement + base_code[position + 1 :]
+                )
+                if not self.check_user_code_exists(candidate):
+                    return candidate
+
+        # Step 4: All collision strategies exhausted
+        raise ValueError(
+            f"Cannot generate unique user_code for '{username}' "
+            "(collision limit exceeded after 3 adjustments)"
+        )
+
+    def check_user_code_exists(self, user_code: str) -> bool:
+        """Check if user_code already exists in database.
+
+        Args:
+            user_code: 6-character code to check.
+
+        Returns:
+            True if code exists, False otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM auth_users WHERE user_code = %s",
+                (user_code,),
+            )
+            result = cursor.fetchone()
+            if result is None:
+                return False
+            count: int = result[0]
+            return count > 0
+
+    def _row_to_user(self, row: dict) -> User:
+        """Convert database row to User dataclass.
+
+        Args:
+            row: Dictionary from cursor.fetchone(dictionary=True).
+
+        Returns:
+            User instance with all fields populated.
+        """
+        return User(
+            user_id=row["user_id"],
+            username=row["username"],
+            user_code=row["user_code"],
+            is_admin=bool(row["is_admin"]),
+            created_at=row["created_at"],
+            disabled_at=row.get("disabled_at"),
+        )

@@ -136,108 +136,108 @@ class Setting:
 ```python
 class JobRepository:
     """Repository for job operations."""
-    
+
     def __init__(self, pool: MySQLPool) -> None:
         """Initialize with connection pool."""
-        
+
     def enqueue_job(self, job: Job) -> str:
         """Insert new job into queue.
-        
+
         Args:
             job: Job to enqueue
-            
+
         Returns:
             job_id of created job
-            
+
         Raises:
             IntegrityError: If per-target exclusivity constraint violated
         """
-        
+
     def get_next_queued_job(self) -> Optional[Job]:
         """Get next queued job (FIFO by submitted_at).
-        
+
         Returns:
             Next queued job or None if queue empty
         """
-        
+
     def get_job_by_id(self, job_id: str) -> Optional[Job]:
         """Get job by ID.
-        
+
         Args:
             job_id: UUID of job
-            
+
         Returns:
             Job or None if not found
         """
-        
+
     def mark_job_running(self, job_id: str) -> None:
         """Mark job as running and set started_at.
-        
+
         Args:
             job_id: UUID of job
-            
+
         Raises:
             ValueError: If job not in queued status
         """
-        
+
     def mark_job_complete(self, job_id: str) -> None:
         """Mark job as complete and set completed_at.
-        
+
         Args:
             job_id: UUID of job
         """
-        
+
     def mark_job_failed(self, job_id: str, error: str) -> None:
         """Mark job as failed with error detail.
-        
+
         Args:
             job_id: UUID of job
             error: Error message to store
         """
-        
+
     def get_active_jobs(self) -> list[Job]:
         """Get all active jobs (queued or running).
-        
+
         Returns:
             List of active jobs ordered by submitted_at
         """
-        
+
     def get_jobs_by_user(self, user_id: str) -> list[Job]:
         """Get all jobs for a user.
-        
+
         Args:
             user_id: User UUID
-            
+
         Returns:
             List of jobs ordered by submitted_at DESC
         """
-        
+
     def check_target_exclusivity(self, target: str, dbhost: str) -> bool:
         """Check if target can accept new job (no active jobs).
-        
+
         Args:
             target: Target database name
             dbhost: Target host
-            
+
         Returns:
             True if no active jobs for target, False otherwise
         """
-        
+
     def append_job_event(self, job_id: str, event_type: str, detail: Optional[str] = None) -> None:
         """Append event to job audit log.
-        
+
         Args:
             job_id: UUID of job
             event_type: Type of event (queued, running, failed, etc.)
             detail: Optional detail message
         """
-        
+
     def get_job_events(self, job_id: str) -> list[JobEvent]:
         """Get all events for a job.
-        
+
         Args:
             job_id: UUID of job
-            
+
         Returns:
             List of events ordered by logged_at
         """
@@ -278,83 +278,83 @@ class JobRepository:
 ```python
 class UserRepository:
     """Repository for user operations."""
-    
+
     def __init__(self, pool: MySQLPool) -> None:
         """Initialize with connection pool."""
-        
+
     def get_user_by_username(self, username: str) -> Optional[User]:
         """Get user by username.
-        
+
         Args:
             username: Username to look up
-            
+
         Returns:
             User or None if not found
         """
-        
+
     def get_user_by_id(self, user_id: str) -> Optional[User]:
         """Get user by ID.
-        
+
         Args:
             user_id: User UUID
-            
+
         Returns:
             User or None if not found
         """
-        
+
     def create_user(self, username: str, user_code: str) -> User:
         """Create new user.
-        
+
         Args:
             username: Username
             user_code: Generated user code (6 chars)
-            
+
         Returns:
             Created user
-            
+
         Raises:
             IntegrityError: If username or user_code already exists
         """
-        
+
     def get_or_create_user(self, username: str) -> User:
         """Get existing user or create new one with generated user_code.
-        
+
         Args:
             username: Username
-            
+
         Returns:
             User (existing or newly created)
-            
+
         Raises:
             ValueError: If user_code cannot be generated (collision limit exceeded)
         """
-        
+
     def generate_user_code(self, username: str) -> str:
         """Generate unique 6-character user code from username.
-        
+
         Algorithm:
         1. Extract first 6 alphabetic characters (lowercase, letters only)
         2. Check if code is unique in database
         3. If collision, replace 6th char with next unused letter from username
         4. If still collision, try 5th char, then 4th char (max 3 adjustments)
         5. Fail if unique code cannot be generated
-        
+
         Args:
             username: Username to generate code from
-            
+
         Returns:
             Unique 6-character code
-            
+
         Raises:
             ValueError: If unique code cannot be generated or username has < 6 letters
         """
-        
+
     def check_user_code_exists(self, user_code: str) -> bool:
         """Check if user_code already exists.
-        
+
         Args:
             user_code: Code to check
-            
+
         Returns:
             True if exists, False otherwise
         """
@@ -367,26 +367,26 @@ def generate_user_code(self, username: str) -> str:
     """Generate unique 6-character user code."""
     # Step 1: Extract letters only, lowercase
     letters = [c.lower() for c in username if c.isalpha()]
-    
+
     if len(letters) < 6:
         raise ValueError(f"Username '{username}' has insufficient letters (need 6+)")
-    
+
     # Step 2: Try first 6 letters
     base_code = ''.join(letters[:6])
     if not self.check_user_code_exists(base_code):
         return base_code
-    
+
     # Step 3: Collision handling - try replacing positions 5, 4, 3 (indices 5, 4, 3)
     for position in [5, 4, 3]:  # Max 3 adjustments
         # Get unused letters after position
         used_letters = set(base_code[:position+1])
         available = [c for c in letters[position+1:] if c not in used_letters]
-        
+
         for replacement in available:
             candidate = base_code[:position] + replacement + base_code[position+1:]
             if not self.check_user_code_exists(candidate):
                 return candidate
-    
+
     # Step 4: All collision strategies exhausted
     raise ValueError(f"Cannot generate unique user_code for '{username}' (collision limit exceeded)")
 ```
@@ -411,54 +411,54 @@ def generate_user_code(self, username: str) -> str:
 ```python
 class HostRepository:
     """Repository for database host operations."""
-    
+
     def __init__(self, pool: MySQLPool, credential_resolver: CredentialResolver) -> None:
         """Initialize with connection pool and credential resolver.
-        
+
         Args:
             pool: MySQL connection pool
             credential_resolver: Resolver for AWS credentials
         """
-        
+
     def get_host_by_hostname(self, hostname: str) -> Optional[DBHost]:
         """Get host by hostname.
-        
+
         Args:
             hostname: Hostname to look up
-            
+
         Returns:
             DBHost or None if not found
         """
-        
+
     def get_enabled_hosts(self) -> list[DBHost]:
         """Get all enabled hosts.
-        
+
         Returns:
             List of enabled hosts
         """
-        
+
     def get_host_credentials(self, hostname: str) -> MySQLCredentials:
         """Get resolved MySQL credentials for host.
-        
+
         Args:
             hostname: Hostname to get credentials for
-            
+
         Returns:
             Resolved MySQL credentials
-            
+
         Raises:
             ValueError: If host not found or disabled
             CredentialResolutionError: If credentials cannot be resolved
         """
-        
+
     def check_host_capacity(self, hostname: str) -> bool:
         """Check if host can accept new restore job.
-        
+
         Checks running job count against max_concurrent_restores limit.
-        
+
         Args:
             hostname: Hostname to check
-            
+
         Returns:
             True if host has capacity, False otherwise
         """
@@ -483,45 +483,45 @@ class HostRepository:
 ```python
 class SettingsRepository:
     """Repository for settings operations."""
-    
+
     def __init__(self, pool: MySQLPool) -> None:
         """Initialize with connection pool."""
-        
+
     def get_setting(self, key: str) -> Optional[str]:
         """Get setting value by key.
-        
+
         Args:
             key: Setting key
-            
+
         Returns:
             Setting value or None if not found
         """
-        
+
     def get_setting_required(self, key: str) -> str:
         """Get required setting value.
-        
+
         Args:
             key: Setting key
-            
+
         Returns:
             Setting value
-            
+
         Raises:
             ValueError: If setting not found
         """
-        
+
     def set_setting(self, key: str, value: str, description: Optional[str] = None) -> None:
         """Set setting value (INSERT or UPDATE).
-        
+
         Args:
             key: Setting key
             value: Setting value
             description: Optional description
         """
-        
+
     def get_all_settings(self) -> dict[str, str]:
         """Get all settings as dictionary.
-        
+
         Returns:
             Dictionary mapping keys to values
         """
@@ -550,7 +550,7 @@ class SettingsRepository:
 ```python
 import pytest
 from pulldb.infra.mysql import (
-    MySQLPool, JobRepository, UserRepository, 
+    MySQLPool, JobRepository, UserRepository,
     HostRepository, SettingsRepository
 )
 from pulldb.domain.models import Job, JobStatus, User
@@ -574,82 +574,82 @@ def pool(test_db):
 
 class TestJobRepository:
     """Tests for JobRepository."""
-    
+
     def test_enqueue_job(self, pool):
         """Test job enqueue."""
-        
+
     def test_get_next_queued_job(self, pool):
         """Test FIFO queue ordering."""
-        
+
     def test_mark_job_running(self, pool):
         """Test status transition to running."""
-        
+
     def test_mark_job_complete(self, pool):
         """Test status transition to complete."""
-        
+
     def test_mark_job_failed(self, pool):
         """Test status transition to failed with error detail."""
-        
+
     def test_per_target_exclusivity(self, pool):
         """Test unique constraint on active_target_key."""
-        
+
     def test_append_job_event(self, pool):
         """Test event logging."""
-        
+
     def test_get_job_events(self, pool):
         """Test event retrieval."""
 
 class TestUserRepository:
     """Tests for UserRepository."""
-    
+
     def test_generate_user_code_basic(self, pool):
         """Test basic user code generation."""
-        
+
     def test_generate_user_code_collision_6th_char(self, pool):
         """Test collision handling at position 6."""
-        
+
     def test_generate_user_code_collision_5th_char(self, pool):
         """Test collision handling at position 5."""
-        
+
     def test_generate_user_code_collision_4th_char(self, pool):
         """Test collision handling at position 4."""
-        
+
     def test_generate_user_code_exhausted(self, pool):
         """Test failure when all collision strategies exhausted."""
-        
+
     def test_generate_user_code_insufficient_letters(self, pool):
         """Test failure with username < 6 letters."""
-        
+
     def test_get_or_create_user_existing(self, pool):
         """Test get_or_create with existing user."""
-        
+
     def test_get_or_create_user_new(self, pool):
         """Test get_or_create with new user."""
 
 class TestHostRepository:
     """Tests for HostRepository."""
-    
+
     def test_get_host_by_hostname(self, pool):
         """Test host lookup."""
-        
+
     def test_get_host_credentials(self, pool, mock_secrets_manager):
         """Test credential resolution integration."""
-        
+
     def test_check_host_capacity(self, pool):
         """Test capacity checking."""
 
 class TestSettingsRepository:
     """Tests for SettingsRepository."""
-    
+
     def test_get_setting(self, pool):
         """Test setting retrieval."""
-        
+
     def test_set_setting_insert(self, pool):
         """Test setting creation."""
-        
+
     def test_set_setting_update(self, pool):
         """Test setting update."""
-        
+
     def test_get_all_settings(self, pool):
         """Test bulk retrieval."""
 ```

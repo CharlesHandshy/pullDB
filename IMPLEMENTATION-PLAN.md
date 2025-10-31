@@ -283,16 +283,16 @@ sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
 **File**: `pulldb/infra/mysql.py` (extend existing)
 
 **Tasks**:
-- [ ] Implement UserRepository class with MySQLPool dependency
-- [ ] `get_user_by_username(username: str) -> Optional[User]` - Username lookup
-- [ ] `get_user_by_id(user_id: str) -> Optional[User]` - User ID lookup
-- [ ] `create_user(username: str, user_code: str) -> User` - Insert new user
-- [ ] `get_or_create_user(username: str) -> User` - Get existing or create with code generation
-- [ ] `generate_user_code(username: str) -> str` - **CRITICAL**: User code algorithm with collision handling
-- [ ] `check_user_code_exists(user_code: str) -> bool` - Collision detection
-- [ ] Implement collision algorithm: try positions 5, 4, 3 (max 3 adjustments)
-- [ ] Raise ValueError if username has < 6 letters or collision limit exceeded
-- [ ] Handle IntegrityError for duplicate username/user_code
+- [x] Implement UserRepository class with MySQLPool dependency
+- [x] `get_user_by_username(username: str) -> Optional[User]` - Username lookup
+- [x] `get_user_by_id(user_id: str) -> Optional[User]` - User ID lookup
+- [x] `create_user(username: str, user_code: str) -> User` - Insert new user
+- [x] `get_or_create_user(username: str) -> User` - Get existing or create with code generation
+- [x] `generate_user_code(username: str) -> str` - **CRITICAL**: User code algorithm with collision handling
+- [x] `check_user_code_exists(user_code: str) -> bool` - Collision detection
+- [x] Implement collision algorithm: try positions 5, 4, 3 (max 3 adjustments)
+- [x] Raise ValueError if username has < 6 letters or collision limit exceeded
+- [x] Handle IntegrityError for duplicate username/user_code
 
 **User Code Algorithm** (Critical Business Logic):
 1. Extract first 6 alphabetic characters (lowercase, letters only)
@@ -300,6 +300,8 @@ sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
 3. If collision, replace 6th char with next unused letter from username
 4. If still collision, try 5th char, then 4th char (max 3 adjustments)
 5. Fail if unique code cannot be generated
+
+**Status**: ✅ Complete - 7 public methods + 1 helper method, comprehensive collision handling
 
 #### 2.4 HostRepository
 
