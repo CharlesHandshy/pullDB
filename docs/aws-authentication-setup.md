@@ -647,14 +647,26 @@ aws iam attach-role-policy \
 
 ## Step 4: AWS Profile Configuration
 
-Configure AWS profiles on the EC2 instance for both services to use.
+Configure AWS profiles on the EC2 instance for the `pulldb` service user.
 
-### 4.1 Create AWS Config
+### 4.1 Create Service User and AWS Directory
 
 ```bash
-# On EC2 instance (as pulldb service user)
-mkdir -p ~/.aws
-cat > ~/.aws/config <<'EOF'
+# Create dedicated service user (if not already exists)
+sudo useradd -r -s /bin/bash -d /opt/pulldb -m pulldb
+
+# Create AWS configuration directory with proper permissions
+sudo mkdir -p /opt/pulldb/.aws/cli/cache
+sudo chown -R pulldb:pulldb /opt/pulldb/.aws
+sudo chmod 700 /opt/pulldb/.aws
+sudo chmod 700 /opt/pulldb/.aws/cli
+```
+
+### 4.2 Create AWS Config
+
+```bash
+# Create AWS config file as root, then fix ownership
+sudo tee /opt/pulldb/.aws/config > /dev/null <<'EOF'
 [profile pr-staging]
 role_arn = arn:aws:iam::333204494849:role/pulldb-cross-account-readonly
 credential_source = Ec2InstanceMetadata
@@ -667,38 +679,72 @@ credential_source = Ec2InstanceMetadata
 external_id = pulldb-dev-access-2025
 region = us-east-1
 EOF
+
+# Set proper ownership and permissions
+sudo chown pulldb:pulldb /opt/pulldb/.aws/config
+sudo chmod 600 /opt/pulldb/.aws/config
+
+# Verify setup
+sudo ls -la /opt/pulldb/.aws/
 ```
 
 **Key Settings**:
 - `credential_source = Ec2InstanceMetadata` - Uses instance profile instead of access keys
 - `external_id` - Prevents confused deputy problem
 - No `[default]` profile needed - services explicitly use named profiles
+- Config file owned by `pulldb` user with restrictive permissions (600)
 
-### 4.2 Environment Configuration
+### 4.3 Environment Configuration
 
 ```bash
-# /etc/pulldb/api.env (API Service)
+# Create environment files directory
+sudo mkdir -p /etc/pulldb
+sudo chown pulldb:pulldb /etc/pulldb
+sudo chmod 755 /etc/pulldb
+
+# Create API service environment file
+sudo tee /etc/pulldb/api.env > /dev/null <<'EOF'
+# API Service Environment Variables
 PULLDB_AWS_PROFILE=pr-staging
 PULLDB_S3_BUCKET_STAGING=pestroutesrdsdbs
 PULLDB_S3_BUCKET_PROD=pestroutes-rds-backup-prod-vpc-us-east-1-s3
 PULLDB_S3_PREFIX_STAGING=daily/stg
 PULLDB_S3_PREFIX_PROD=daily/prod
+HOME=/opt/pulldb
+EOF
 
-# /etc/pulldb/worker.env (Worker Service)
+# Create Worker service environment file
+sudo tee /etc/pulldb/worker.env > /dev/null <<'EOF'
+# Worker Service Environment Variables
 PULLDB_AWS_PROFILE=pr-staging
 PULLDB_S3_BUCKET_STAGING=pestroutesrdsdbs
 PULLDB_S3_BUCKET_PROD=pestroutes-rds-backup-prod-vpc-us-east-1-s3
 PULLDB_S3_PREFIX_STAGING=daily/stg
 PULLDB_S3_PREFIX_PROD=daily/prod
 PULLDB_WORK_DIR=/mnt/data/pulldb/work
+HOME=/opt/pulldb
+EOF
+
+# Set proper permissions
+sudo chown pulldb:pulldb /etc/pulldb/*.env
+sudo chmod 600 /etc/pulldb/*.env
+
+# Create work directory
+sudo mkdir -p /mnt/data/pulldb/work
+sudo chown -R pulldb:pulldb /mnt/data/pulldb
+sudo chmod 755 /mnt/data/pulldb
 ```
+
+**Important**: `HOME=/opt/pulldb` ensures AWS SDK finds config in `/opt/pulldb/.aws/config`
 
 ## Step 5: Verification
 
 ### 5.1 Test Instance Profile
 
 ```bash
-# SSH to EC2 instance
+# Test as pulldb service user
+sudo -u pulldb bash
+
 # Get IMDSv2 session token (required for newer EC2 instances)
 TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
     -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
@@ -722,6 +768,9 @@ curl -H "X-aws-ec2-metadata-token: $TOKEN" \
 ### 5.2 Test Cross-Account Role Assumption
 
 ```bash
+# Test as pulldb service user
+sudo -u pulldb bash
+
 # Test staging account access
 AWS_PROFILE=pr-staging aws sts get-caller-identity
 
@@ -736,25 +785,50 @@ AWS_PROFILE=pr-staging aws sts get-caller-identity
 AWS_PROFILE=pr-prod aws sts get-caller-identity
 
 # Should return production account (448509429610)
+
+# Exit pulldb user shell
+exit
+```
+
+**Troubleshooting Permission Denied Errors**:
+```bash
+# If you see "[Errno 13] Permission denied: '/opt/pulldb/.aws/cli'"
+# Fix AWS directory permissions:
+sudo mkdir -p /opt/pulldb/.aws/cli/cache
+sudo chown -R pulldb:pulldb /opt/pulldb/.aws
+sudo chmod 700 /opt/pulldb/.aws
+sudo chmod 700 /opt/pulldb/.aws/cli
+
+# Verify ownership
+sudo ls -la /opt/pulldb/.aws/
+# Should show: drwx------ pulldb pulldb
 ```
 
 ### 5.3 Test S3 Access
 
 ```bash
+# Test as pulldb service user
+sudo -u pulldb bash
+
 # List staging backups
 AWS_PROFILE=pr-staging aws s3 ls s3://pestroutesrdsdbs/daily/stg/
 
 # List production backups
 AWS_PROFILE=pr-prod aws s3 ls s3://pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/
 
-# Test read access
+# Test read access (adjust path to actual backup)
 AWS_PROFILE=pr-staging aws s3api head-object \
     --bucket pestroutesrdsdbs \
     --key daily/stg/customer/daily_mydumper_customer_2025-10-30T03-00-00Z_Wed_dbimp.tar
 
 # Verify write is denied
+echo "test" > /tmp/test.txt
 AWS_PROFILE=pr-staging aws s3 cp /tmp/test.txt s3://pestroutesrdsdbs/test.txt
 # Should return: Access Denied error
+
+# Cleanup
+rm /tmp/test.txt
+exit
 ```
 
 ### 5.4 Test from Python (Services)
@@ -865,9 +939,10 @@ AWS_PROFILE=default aws iam list-attached-role-policies \
 
 **Causes**:
 1. Instance profile not attached to EC2 instance
-2. Wrong credential_source in ~/.aws/config
+2. Wrong credential_source in `/opt/pulldb/.aws/config`
 3. Metadata service unavailable
 4. IMDSv2 required but token not provided (401 Unauthorized)
+5. AWS directory permissions incorrect (owned by root instead of pulldb user)
 
 **Fix**:
 ```bash
@@ -883,7 +958,14 @@ curl -H "X-aws-ec2-metadata-token: $TOKEN" \
 
 # If you get "401 - Unauthorized" without token, IMDSv2 is enforced (expected for security)
 
-# Verify ~/.aws/config has credential_source = Ec2InstanceMetadata
+# Fix AWS directory permissions if owned by wrong user
+sudo chown -R pulldb:pulldb /opt/pulldb/.aws
+sudo chmod 700 /opt/pulldb/.aws
+sudo mkdir -p /opt/pulldb/.aws/cli/cache
+sudo chmod 700 /opt/pulldb/.aws/cli
+
+# Verify config file has credential_source = Ec2InstanceMetadata
+sudo cat /opt/pulldb/.aws/config
 ```
 
 ### Error: KMS Decrypt Access Denied
