@@ -31,7 +31,7 @@
 - [x] AWS credential resolution module (`pulldb/infra/secrets.py` - 405 lines, production-ready)
 - [x] Configuration module with MySQL settings integration (`pulldb/domain/config.py` - 227 lines)
 - [x] MySQL connection pool (`pulldb/infra/mysql.py` - 59 lines)
-- [x] Python tests - **24/24 passing** (14 secrets + 7 config unit + 3 config integration)
+- [x] Python tests - **28/28 passing** (14 secrets + 7 config unit + 3 config integration + 4 import tests)
 
 ### Infrastructure (Partially Provisioned ⚙️)
 - [x] MySQL 8.0.43 server installed and running
@@ -71,7 +71,7 @@
 
 ### Milestone 1: Foundation (Week 1) - ✅ COMPLETE
 
-**Summary**: Project structure, MySQL schema deployment, configuration module, and AWS credential resolution are production-ready. All 24 tests passing.
+**Summary**: Project structure, MySQL schema deployment, configuration module, and AWS credential resolution are production-ready. All 28 tests passing.
 
 **Completion Date**: October 31, 2025
 
@@ -125,8 +125,8 @@ pulldb/
 - [x] Create pulldb schema deployment script
 -- [x] Initialize Python project with setuptools (PEP 621 metadata)
 -- [x] Create directory structure (`pulldb/` package scaffolding)
-- [ ] Set up pytest configuration
-- [ ] Configure linting (ruff/black) and type checking (mypy)
+- [x] Set up pytest configuration (integration marker registered in pyproject.toml)
+- [x] Configure linting (ruff/black) and type checking (mypy)
 - [ ] Create basic `__init__.py` files
 
 **Dependencies**:
