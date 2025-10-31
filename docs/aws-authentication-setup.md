@@ -848,23 +848,45 @@ response = s3_client.list_objects_v2(
 )
 print(f"Found {len(response.get('Contents', []))} backups")
 
-# Head object metadata (allowed)
-metadata = s3_client.head_object(
-    Bucket='pestroutesrdsdbs',
-    Key='daily/stg/customer/daily_mydumper_customer_2025-10-30T03-00-00Z_Wed_dbimp.tar'
-)
-print(f"Backup size: {metadata['ContentLength']} bytes")
+# Get first backup for testing (if any exist)
+if response.get('Contents'):
+    first_backup = response['Contents'][0]
+    backup_key = first_backup['Key']
+    print(f"Testing with: {backup_key}")
 
-# Download object (allowed for worker, depends on IAM policy)
-try:
-    s3_client.download_file(
-        'pestroutesrdsdbs',
-        'daily/stg/customer/daily_mydumper_customer_2025-10-30T03-00-00Z_Wed_dbimp.tar',
-        '/tmp/test-backup.tar'
+    # Head object metadata (allowed)
+    metadata = s3_client.head_object(
+        Bucket='pestroutesrdsdbs',
+        Key=backup_key
     )
-    print("Download successful")
-except Exception as e:
-    print(f"Download failed: {e}")
+    print(f"Backup size: {metadata['ContentLength']:,} bytes")
+    print(f"Last modified: {metadata['LastModified']}")
+
+    # Test download (allowed for worker service)
+    # Note: Only test with small files or use Range header for large backups
+    try:
+        # For large tar files, just verify access without full download
+        print("Verifying download access (not downloading full file)...")
+        response = s3_client.get_object(
+            Bucket='pestroutesrdsdbs',
+            Key=backup_key,
+            Range='bytes=0-1023'  # Just get first 1KB
+        )
+        print(f"Download access: ✅ Verified (read {len(response['Body'].read())} bytes)")
+    except Exception as e:
+        print(f"Download access: ❌ Failed - {e}")
+else:
+    print("No backups found in daily/stg/ - check bucket path")
+```
+
+**Expected Output**:
+```
+Found 10 backups
+Testing with: daily/stg/qatemplate/daily_mydumper_qatemplate_2025-10-30T03-00-00Z_Wed_dbimp.tar
+Backup size: 45,678,901 bytes
+Last modified: 2025-10-30 03:15:23+00:00
+Verifying download access (not downloading full file)...
+Download access: ✅ Verified (read 1024 bytes)
 ```
 
 ## Permission Matrix
