@@ -46,7 +46,8 @@
 - [x] EC2 instance for daemon (operating on the instance)
 - [x] AWS credentials and IAM roles (pulldb-ec2-service-role created in development account)
 - [x] AWS Secrets Manager secret created: `/pulldb/mysql/coordination-db`
-- [ ] Database host registrations (db3-dev, db4-dev, db5-dev credentials in Secrets Manager)
+- [x] Database host registrations (db3-dev, db4-dev, db5-dev credentials in Secrets Manager) ✅
+  - **Note**: AWS region (`AWS_DEFAULT_REGION=us-east-1`) must be set for credential resolution
 
 ## Phase 0 Goals (Prototype)
 
