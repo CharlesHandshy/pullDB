@@ -39,7 +39,7 @@
 - [x] AWS Python libraries installed (boto3 1.40.63, botocore 1.40.63, s3transfer 0.14.0)
 - [ ] AWS profile/role configuration (pending environment decision)
 - [x] pulldb coordination database (schema deployed)
-- [ ] EC2 instance for daemon
+- [x] EC2 instance for daemon (operating on the instance)
 - [ ] AWS credentials and IAM roles
 - [ ] Database host registrations
 
