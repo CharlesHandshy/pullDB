@@ -109,3 +109,8 @@ convention = "google"  # Google-style docstrings
 [tool.bandit]
 exclude_dirs = ["tests", "pulldb/tests"]
 skips = ["B101"]  # Skip assert_used check (needed for tests)
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: Integration tests (real database, real AWS)",
+]

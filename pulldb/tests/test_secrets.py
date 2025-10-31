@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Generator
 
 import pytest
 from moto import mock_aws
@@ -24,7 +25,7 @@ DEFAULT_MYSQL_PORT = 3306
 
 
 @pytest.fixture(autouse=True)
-def clear_aws_profile():
+def clear_aws_profile() -> Generator[None, None, None]:
     """Clear AWS profile environment variable for tests."""
     old_profile = os.environ.pop("PULLDB_AWS_PROFILE", None)
     old_aws_profile = os.environ.pop("AWS_PROFILE", None)

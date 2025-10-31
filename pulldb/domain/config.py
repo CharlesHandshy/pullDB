@@ -1,14 +1,19 @@
 """Configuration dataclass with AWS Secrets Manager and Parameter Store support.
 
-Milestone 1.3 implementation: Full loading from env + MySQL settings + AWS Secrets Manager.
-Supports both AWS Secrets Manager (recommended) and SSM Parameter Store for credentials.
+Milestone 1.3 implementation: Full loading from env + MySQL settings
++ AWS Secrets Manager.
+Supports both AWS Secrets Manager (recommended) and SSM Parameter Store
+for credentials.
 """
 
 from __future__ import annotations
 
 import os
+import typing as t
 from dataclasses import dataclass
 from pathlib import Path
+
+import boto3
 
 
 @dataclass(slots=True)
@@ -122,4 +127,97 @@ class Config:
             s3_bucket_path=os.getenv("PULLDB_S3_BUCKET_PATH"),
             aws_profile=aws_profile,
             default_dbhost=os.getenv("PULLDB_DEFAULT_DBHOST"),
+        )
+
+    @classmethod
+    def from_env_and_mysql(cls, mysql_conn: t.Any) -> Config:
+        """Load configuration from environment variables and MySQL settings.
+
+        Two-phase loading pattern:
+        1. Bootstrap from environment (MySQL credentials, AWS profile)
+        2. Override operational settings from MySQL settings table
+
+        The environment provides bootstrap credentials and AWS configuration.
+        MySQL settings table provides operational overrides (S3 paths, work
+        directories, default dbhost).
+
+        Args:
+            mysql_conn: Active MySQL connection to pulldb coordination database
+
+        Returns:
+            Fully configured Config instance with environment + MySQL settings
+
+        Raises:
+            ValueError: If required settings are missing or invalid
+
+        Examples:
+            >>> # Bootstrap: Load minimal config from environment
+            >>> bootstrap_config = Config.minimal_from_env()
+            >>> # Connect to MySQL using bootstrap credentials
+            >>> from pulldb.infra.mysql import build_default_pool
+            >>> pool = build_default_pool(
+            ...     host=bootstrap_config.mysql_host,
+            ...     user=bootstrap_config.mysql_user,
+            ...     password=bootstrap_config.mysql_password,
+            ...     database=bootstrap_config.mysql_database,
+            ... )
+            >>> # Enrich: Load full config with MySQL overrides
+            >>> with pool.connection() as conn:
+            ...     config = Config.from_env_and_mysql(conn)
+        """
+        # Phase 1: Load base config from environment
+        base_config = cls.minimal_from_env()
+
+        # Phase 2: Query MySQL settings table for overrides
+        cursor = mysql_conn.cursor(dictionary=True)
+        cursor.execute("SELECT setting_key, setting_value FROM settings")
+        settings = {
+            row["setting_key"]: row["setting_value"] for row in cursor.fetchall()
+        }
+        cursor.close()
+
+        # Phase 3: Apply MySQL overrides (environment takes precedence if set)
+        s3_bucket_path: str | None = (
+            os.getenv("PULLDB_S3_BUCKET_PATH")
+            or settings.get("s3_bucket_stg")  # Use staging as default for dev
+            or settings.get("s3_bucket_prod")
+        )
+
+        default_dbhost: str | None = os.getenv("PULLDB_DEFAULT_DBHOST") or settings.get(
+            "default_dbhost"
+        )
+
+        work_dir_str: str = (
+            os.getenv("PULLDB_WORK_DIR")
+            or settings.get("work_directory")
+            or "/tmp/pulldb-work"
+        )
+
+        customers_after_sql_dir_str: str = (
+            os.getenv("PULLDB_CUSTOMERS_AFTER_SQL_DIR")
+            or settings.get("customers_after_sql_dir")
+            or "customers_after_sql"
+        )
+
+        qa_template_after_sql_dir_str: str = (
+            os.getenv("PULLDB_QA_TEMPLATE_AFTER_SQL_DIR")
+            or settings.get("qa_template_after_sql_dir")
+            or "qa_template_after_sql"
+        )
+
+        # Phase 4: Return fully configured instance
+        return cls(
+            # MySQL credentials from environment (Phase 1)
+            mysql_host=base_config.mysql_host,
+            mysql_user=base_config.mysql_user,
+            mysql_password=base_config.mysql_password,
+            mysql_database=base_config.mysql_database,
+            # AWS profile from environment
+            aws_profile=base_config.aws_profile,
+            # Operational settings from MySQL (with environment override)
+            s3_bucket_path=s3_bucket_path,
+            default_dbhost=default_dbhost,
+            work_dir=Path(work_dir_str),
+            customers_after_sql_dir=Path(customers_after_sql_dir_str),
+            qa_template_after_sql_dir=Path(qa_template_after_sql_dir_str),
         )

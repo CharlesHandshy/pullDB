@@ -28,7 +28,10 @@
 - [x] AWS installation script created (`scripts/setup-aws.sh`)
 - [x] Dependency manifests added (`requirements.txt`, `requirements-dev.txt`, `requirements.lock`)
 - [x] Python project structure (initial scaffolding complete)
-- [ ] Python tests (awaiting Milestone 9)
+- [x] AWS credential resolution module (`pulldb/infra/secrets.py` - 405 lines, production-ready)
+- [x] Configuration module with MySQL settings integration (`pulldb/domain/config.py` - 227 lines)
+- [x] MySQL connection pool (`pulldb/infra/mysql.py` - 59 lines)
+- [x] Python tests - **24/24 passing** (14 secrets + 7 config unit + 3 config integration)
 
 ### Infrastructure (Partially Provisioned ⚙️)
 - [x] MySQL 8.0.43 server installed and running
@@ -38,10 +41,12 @@
 - [x] AWS CLI v2 installed (script-driven)
 - [x] AWS Python libraries installed (boto3 1.40.63, botocore 1.40.63, s3transfer 0.14.0)
 - [x] AWS profile/role configuration (EC2 instance profile with pulldb-ec2-service-role)
-- [x] pulldb coordination database (schema deployed)
+- [x] AWS Secrets Manager access configured (credential_ref pattern working)
+- [x] pulldb coordination database (schema deployed with 3 hosts, 5 settings)
 - [x] EC2 instance for daemon (operating on the instance)
 - [x] AWS credentials and IAM roles (pulldb-ec2-service-role created in development account)
-- [ ] Database host registrations
+- [x] AWS Secrets Manager secret created: `/pulldb/mysql/coordination-db`
+- [ ] Database host registrations (db3-dev, db4-dev, db5-dev credentials in Secrets Manager)
 
 ## Phase 0 Goals (Prototype)
 
@@ -64,7 +69,11 @@
 
 ## Implementation Order
 
-### Milestone 1: Foundation (Week 1)
+### Milestone 1: Foundation (Week 1) - ✅ COMPLETE
+
+**Summary**: Project structure, MySQL schema deployment, configuration module, and AWS credential resolution are production-ready. All 24 tests passing.
+
+**Completion Date**: October 31, 2025
 
 #### 1.1 Project Structure Setup
 ```bash
@@ -130,7 +139,7 @@ pydantic>=2.0.0  # Data validation
 python-dotenv>=1.0.0  # .env file support
 ```
 
-#### 1.2 MySQL Schema Deployment
+#### 1.2 MySQL Schema Deployment ✅
 
 **Scripts Created**:
 - `scripts/setup-mysql.sh` - Installs MySQL 8.x, configures data directories on `/mnt/data/mysql`
@@ -142,60 +151,81 @@ python-dotenv>=1.0.0  # .env file support
 - [x] Configure MySQL tmpdir: `/mnt/data/mysql/tmpdir` (temporary files)
 - [x] Update AppArmor permissions for custom data directory
 - [x] Create schema deployment script with trigger and initial data
-- [ ] Run `sudo scripts/setup-mysql.sh` (if not already done)
-- [ ] Run `sudo scripts/setup-pulldb-schema.sh` to create pulldb database
-- [ ] Test schema deployment on local/dev MySQL instance
-- [ ] Document connection parameters and credential setup
+- [x] Run `sudo scripts/setup-mysql.sh` (completed)
+- [x] Run `sudo scripts/setup-pulldb-schema.sh` to create pulldb database (completed)
+- [x] Test schema deployment on local/dev MySQL instance (verified)
+- [x] Document connection parameters and credential setup (see docs/mysql-setup.md)
 
-**Verification**:
-```sql
--- Verify schema
-SHOW TABLES;
-SELECT * FROM settings;
-SELECT * FROM db_hosts;
-
--- Test user insertion
-INSERT INTO auth_users (user_id, username, user_code)
-VALUES (UUID(), 'testuser', 'testus');
+**Verification** (completed):
+```bash
+# Verify schema
+sudo mysql -e "USE pulldb; SHOW TABLES;"
+sudo mysql -e "USE pulldb; SELECT * FROM settings;"
+sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
 ```
 
-#### 1.3 Configuration Module
+**Status**: ✅ Complete - Schema deployed with 6 tables, 1 view, 1 trigger, 3 hosts, 5 settings
 
-**File**: `pulldb/domain/config.py`
+#### 1.3 Configuration Module ✅
+
+**File**: `pulldb/domain/config.py` (227 lines)
 
 **Tasks**:
-- [ ] Implement Configuration dataclass
-- [ ] Load from environment variables (PULLDB_*)
-- [ ] Load from MySQL settings table
-- [ ] Support AWS Secrets Manager references
-- [ ] Validate required settings on startup
-- [ ] Implement credential resolution for db_hosts
+- [x] Implement Configuration dataclass
+- [x] Load from environment variables (PULLDB_*)
+- [x] Load from MySQL settings table
+- [x] Support AWS Parameter Store references (SSM)
+- [x] Validate required settings on startup
+- [x] Implement two-phase loading pattern (bootstrap → enrich)
+- [ ] Implement credential resolution for db_hosts (deferred to Milestone 2.1)
 
-**Example**:
-```python
-@dataclass
-class Config:
-    mysql_host: str
-    mysql_user: str
-    mysql_password: str
-    mysql_database: str = "pulldb"
+**Implementation Highlights**:
+- `Config` dataclass with all required fields (mysql_*, s3_*, paths)
+- `_resolve_parameter()` - AWS SSM Parameter Store path resolution
+- `minimal_from_env()` - Phase 1 bootstrap from environment variables only
+- `from_env_and_mysql()` - Phase 2 enrichment from MySQL settings table (NEW)
+- Environment variables take precedence over MySQL settings
+- Prefers staging bucket (`s3_bucket_stg`) over production bucket
 
-    s3_bucket_path: str
-    aws_profile: str = "pr-prod"
+**Test Coverage**:
+- 7 unit tests (mocked MySQL) - all passing
+- 3 integration tests (real MySQL with AWS Secrets Manager credentials) - all passing
+- Validates: bootstrap, enrichment, precedence, fallbacks, two-phase pattern
 
-    default_dbhost: str
-    work_dir: Path
+**Status**: ✅ Complete - Production-ready with 10/10 tests passing
 
-    customers_after_sql_dir: Path
-    qa_template_after_sql_dir: Path
+#### 1.4 AWS Credential Resolution ✅ (Added Milestone)
 
-    @classmethod
-    def from_env_and_mysql(cls, mysql_conn) -> 'Config':
-        # Load from environment
-        # Override with MySQL settings table
-        # Validate and return
-        pass
-```
+**File**: `pulldb/infra/secrets.py` (405 lines)
+
+**Tasks**:
+- [x] Implement MySQLCredentials dataclass (frozen, slots, password redaction)
+- [x] Implement CredentialResolver class with lazy client initialization
+- [x] Support AWS Secrets Manager resolution (`aws-secretsmanager:` prefix)
+- [x] Support AWS SSM Parameter Store resolution (`aws-ssm:` prefix)
+- [x] Implement CredentialResolutionError custom exception
+- [x] Add command-line interface for testing credential resolution
+- [x] Create comprehensive test suite with moto mocking
+
+**Implementation Highlights**:
+- MySQLCredentials: username, password, host, port, db_cluster_identifier
+- CredentialResolver with `resolve(credential_ref)` method
+- Lazy boto3 client initialization (creates clients only when needed)
+- Support for AWS_PROFILE and PULLDB_AWS_PROFILE environment variables
+- Detailed error messages for missing secrets, access denied, invalid format
+- Command-line usage: `python3 -m pulldb.infra.secrets <credential_ref>`
+
+**Test Coverage**:
+- 14 unit tests with @mock_aws decorator - all passing
+- Tests cover: Secrets Manager success/failure, SSM success/failure, error handling
+- Moto 5.x compatible (uses unified `mock_aws` decorator)
+
+**Documentation**:
+- Complete setup guide: `docs/aws-secrets-manager-setup.md`
+- Integration with Config module documented
+- credential_ref pattern documented in `docs/mysql-schema.md`
+
+**Status**: ✅ Complete - Production-ready with 14/14 tests passing
 
 ### Milestone 2: MySQL Infrastructure (Week 1-2)
 

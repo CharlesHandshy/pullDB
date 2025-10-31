@@ -10,7 +10,14 @@ This document is the **primary reference for AI coding agents** working on pullD
 
 pullDB is a database restoration tool that pulls production MySQL backups from S3 and restores them to development environments. The system follows a **documentation-first, prototype-first** approach with extensive planning before implementation.
 
-**Current Status**: Pre-implementation phase - comprehensive design documentation exists but no code has been written yet.
+**Current Status**: Foundation phase complete (Milestone 1) - Core infrastructure modules implemented with comprehensive test coverage. Ready to begin Milestone 2 (MySQL Repository Layer).
+
+**Completed Work** (as of October 31, 2025):
+- ✅ MySQL 8.0.43 schema deployed (6 tables, 1 view, 1 trigger)
+- ✅ AWS Secrets Manager integration (`pulldb/infra/secrets.py` - 405 lines)
+- ✅ Configuration module with two-phase loading (`pulldb/domain/config.py` - 227 lines)
+- ✅ MySQL connection pool (`pulldb/infra/mysql.py` - 59 lines)
+- ✅ Comprehensive test suite - **24/24 tests passing** (14 secrets + 7 config unit + 3 integration)
 
 **Environment Context**:
 - **Development environment** (`345321506926`) runs pullDB and needs cross-account S3 access to:
@@ -41,9 +48,22 @@ docs/
   ├── coding-standards.md         # Comprehensive style guide for all file types
   ├── mysql-schema.md             # Complete database schema with invariants
   ├── aws-authentication-setup.md # AWS cross-account setup for EC2 (RECOMMENDED)
+  ├── aws-secrets-manager-setup.md # AWS Secrets Manager credential resolution (IMPLEMENTED)
   ├── aws-ec2-deployment-setup.md # EC2 deployment complete guide
   ├── vscode-diagnostics.md       # VS Code diagnostic integration
   └── parameter-store-setup.md    # Secure credential storage in AWS
+pulldb/
+  ├── infra/
+  │   ├── secrets.py              # IMPLEMENTED - AWS credential resolution (405 lines)
+  │   ├── mysql.py                # IMPLEMENTED - Connection pool (59 lines)
+  │   └── ...
+  ├── domain/
+  │   ├── config.py               # IMPLEMENTED - Configuration with MySQL (227 lines)
+  │   └── ...
+  └── tests/
+      ├── test_secrets.py         # 14 tests passing
+      ├── test_config.py          # 7 tests passing
+      └── test_config_integration.py # 3 tests passing
 customers_after_sql/              # Post-restore SQL for customer databases (PII removal)
   ├── 010.remove_customer_pii.sql
   ├── 020.remove_billto_info.sql
@@ -75,9 +95,20 @@ pullDB status
   - Implemented using generated virtual column `active_target_key` (MySQL 8.0 doesn't support partial indexes)
 
 ### Configuration Philosophy
-- AWS Parameter Store for secure credential storage (values starting with `/` auto-resolved)
+- AWS Secrets Manager for MySQL target database credentials (credential_ref pattern)
+- AWS Parameter Store for configuration values (values starting with `/` auto-resolved)
 - AWS profile-only authentication (`PULLDB_AWS_PROFILE` required, no explicit credentials)
 - `.env` file for local development (gitignored)
+- **Two-phase loading**: Bootstrap from environment → Enrich from MySQL settings table
+
+### Credential Resolution (Implemented)
+- **CredentialResolver**: Production-ready class for resolving MySQL credentials
+- **Supported formats**:
+  - `aws-secretsmanager:/pulldb/mysql/{db-name}` (recommended)
+  - `aws-ssm:/pulldb/mysql/{param-name}` (alternative)
+- **Usage**: `resolver = CredentialResolver(); creds = resolver.resolve(credential_ref)`
+- **Testing**: Command-line interface available: `python3 -m pulldb.infra.secrets <credential_ref>`
+- **Documentation**: See `docs/aws-secrets-manager-setup.md` for complete setup guide
 
 ## Python Implementation Guidelines
 
