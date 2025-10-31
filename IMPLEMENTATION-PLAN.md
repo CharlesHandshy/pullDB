@@ -37,10 +37,10 @@
 - [x] Python MySQL libraries installed (mysql-connector-python 9.5.0, pymysql 1.4.6)
 - [x] AWS CLI v2 installed (script-driven)
 - [x] AWS Python libraries installed (boto3 1.40.63, botocore 1.40.63, s3transfer 0.14.0)
-- [ ] AWS profile/role configuration (pending environment decision)
+- [x] AWS profile/role configuration (EC2 instance profile with pulldb-ec2-service-role)
 - [x] pulldb coordination database (schema deployed)
 - [x] EC2 instance for daemon (operating on the instance)
-- [ ] AWS credentials and IAM roles
+- [x] AWS credentials and IAM roles (pulldb-ec2-service-role created in development account)
 - [ ] Database host registrations
 
 ## Phase 0 Goals (Prototype)
@@ -155,7 +155,7 @@ SELECT * FROM settings;
 SELECT * FROM db_hosts;
 
 -- Test user insertion
-INSERT INTO auth_users (user_id, username, user_code) 
+INSERT INTO auth_users (user_id, username, user_code)
 VALUES (UUID(), 'testuser', 'testus');
 ```
 
@@ -179,16 +179,16 @@ class Config:
     mysql_user: str
     mysql_password: str
     mysql_database: str = "pulldb"
-    
+
     s3_bucket_path: str
     aws_profile: str = "pr-prod"
-    
+
     default_dbhost: str
     work_dir: Path
-    
+
     customers_after_sql_dir: Path
     qa_template_after_sql_dir: Path
-    
+
     @classmethod
     def from_env_and_mysql(cls, mysql_conn) -> 'Config':
         # Load from environment
@@ -230,16 +230,16 @@ class Config:
 class JobRepository:
     def __init__(self, connection_pool):
         self.pool = connection_pool
-    
+
     def enqueue_job(self, job: Job) -> str:
         """Insert job into MySQL, return job_id."""
         with self.pool.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO jobs 
+                INSERT INTO jobs
                 (id, owner_user_id, target, staging_name, dbhost, status, options_json)
                 VALUES (%s, %s, %s, %s, %s, 'queued', %s)
-            """, (job.id, job.owner_user_id, job.target, job.staging_name, 
+            """, (job.id, job.owner_user_id, job.target, job.staging_name,
                   job.dbhost, json.dumps(job.options)))
             conn.commit()
             return job.id
@@ -337,7 +337,7 @@ def main():
     config = Config.from_env_and_mysql()
     logger = setup_logger(config)
     job_repo = JobRepository(config.mysql_pool)
-    
+
     while True:
         try:
             job = job_repo.get_next_queued_job()
@@ -381,32 +381,32 @@ class Worker:
     def execute(self, job: Job):
         try:
             self.job_repo.append_job_event(job.id, 'started', '')
-            
+
             # Phase 1: Cleanup
             self.cleanup_orphaned_staging(job.target, job.dbhost)
-            
+
             # Phase 2: Download
             backup_file = self.downloader.find_latest_backup(job.customer_id)
             local_path = self.downloader.download(backup_file)
-            
+
             # Phase 3: Restore
             staging_name = self.generate_staging_name(job.target, job.id)
             self.restorer.restore_to_staging(local_path, staging_name, job.dbhost)
-            
+
             # Phase 4: Post-SQL
             self.cleaner.execute_post_sql(staging_name, job.customer_type, job.dbhost)
-            
+
             # Phase 5: Metadata
             self.cleaner.add_metadata_table(staging_name, job, backup_file)
-            
+
             # Phase 6: Rename
             self.restorer.atomic_rename(staging_name, job.target, job.dbhost)
-            
+
             # Phase 7: Cleanup
             self.cleanup_temp_files(local_path)
-            
+
             self.job_repo.mark_job_complete(job.id)
-            
+
         except Exception as e:
             logger.error(f"Job {job.id} failed: {e}")
             self.job_repo.mark_job_failed(job.id, str(e))
@@ -440,7 +440,7 @@ class S3Downloader:
         )
         # Parse filenames, sort by date, return latest
         pass
-    
+
     def download(self, s3_key: str, local_path: Path) -> Path:
         """Download and extract backup."""
         # Check disk space
@@ -473,24 +473,24 @@ class MySQLRestorer:
         conn = self.get_host_connection(dbhost)
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT SCHEMA_NAME 
-            FROM information_schema.SCHEMATA 
+            SELECT SCHEMA_NAME
+            FROM information_schema.SCHEMATA
             WHERE SCHEMA_NAME REGEXP %s
         """, (f"^{target}_[0-9a-f]{{12}}$",))
-        
+
         for row in cursor.fetchall():
             staging_db = row['SCHEMA_NAME']
             logger.info(f"Dropping orphaned staging: {staging_db}")
             cursor.execute(f"DROP DATABASE IF EXISTS `{staging_db}`")
             self.job_repo.append_job_event(
-                job.id, 'staging_auto_cleanup', 
+                job.id, 'staging_auto_cleanup',
                 f"Dropped: {staging_db}"
             )
-    
+
     def restore_to_staging(self, backup_dir: Path, staging_name: str, dbhost: str):
         """Execute myloader to restore into staging database."""
         host_config = self.host_repo.get_host_config(dbhost)
-        
+
         cmd = [
             'myloader',
             f'--directory={backup_dir}',
@@ -502,30 +502,30 @@ class MySQLRestorer:
             '--threads=4',
             '--verbose=3'
         ]
-        
+
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise Exception(f"myloader failed: {result.stderr}")
-    
+
     def atomic_rename(self, staging_name: str, target: str, dbhost: str):
         """Atomically rename staging → target using stored procedure."""
         conn = self.get_host_connection(dbhost)
         cursor = conn.cursor()
-        
+
         # Drop existing target
         cursor.execute(f"DROP DATABASE IF EXISTS `{target}`")
         cursor.execute(f"CREATE DATABASE `{target}`")
-        
+
         # Create rename procedure
         cursor.execute("DROP PROCEDURE IF EXISTS RenameDatabase")
         cursor.execute(RENAME_PROCEDURE_SQL)  # From staging-rename-pattern.md
-        
+
         # Execute rename
         cursor.execute(f"CALL RenameDatabase('{staging_name}', '{target}')")
-        
+
         # Drop empty staging database
         cursor.execute(f"DROP DATABASE IF EXISTS `{staging_name}`")
-        
+
         conn.commit()
 ```
 
@@ -553,36 +553,36 @@ class PostRestoreCleaner:
             sql_dir = self.config.customers_after_sql_dir
         else:
             sql_dir = self.config.qa_template_after_sql_dir
-        
+
         conn = self.get_host_connection(dbhost)
         results = {}
-        
+
         sql_files = sorted(Path(sql_dir).glob('*.sql'))
         for sql_file in sql_files:
             try:
                 with open(sql_file) as f:
                     sql = f.read()
-                
+
                 cursor = conn.cursor()
                 for statement in sql.split(';'):
                     if statement.strip():
                         cursor.execute(statement)
                 conn.commit()
                 results[sql_file.name] = 'success'
-                
+
             except Exception as e:
                 conn.rollback()
                 results[sql_file.name] = f'failed: {str(e)}'
                 raise  # Abort job on SQL failure
-        
+
         return results
-    
-    def add_metadata_table(self, staging_name: str, job: Job, 
+
+    def add_metadata_table(self, staging_name: str, job: Job,
                           backup_file: str, post_sql_results: dict, dbhost: str):
         """Create pullDB metadata table in staging database."""
         conn = self.get_host_connection(dbhost)
         cursor = conn.cursor()
-        
+
         cursor.execute(f"USE `{staging_name}`")
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS pullDB (
@@ -594,11 +594,11 @@ class PostRestoreCleaner:
                 restore_completed_at TIMESTAMP(6) NOT NULL
             )
         """)
-        
+
         cursor.execute("""
             INSERT INTO pullDB VALUES (%s, %s, UTC_TIMESTAMP(6), %s, %s, UTC_TIMESTAMP(6))
         """, (job.id, job.owner_username, backup_file, json.dumps(post_sql_results)))
-        
+
         conn.commit()
 ```
 
@@ -626,7 +626,7 @@ class StructuredLogger:
         handler = logging.FileHandler(log_file)
         handler.setFormatter(self.JSONFormatter())
         self.logger.addHandler(handler)
-    
+
     class JSONFormatter(logging.Formatter):
         def format(self, record):
             log_obj = {
@@ -841,6 +841,6 @@ WantedBy=multi-user.target
 
 ---
 
-**Status**: Ready to begin implementation  
-**Approval Required**: Review and approve this plan before starting  
+**Status**: Ready to begin implementation
+**Approval Required**: Review and approve this plan before starting
 **Questions**: Document any questions or concerns before proceeding
