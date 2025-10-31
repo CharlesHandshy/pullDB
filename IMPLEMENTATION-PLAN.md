@@ -308,14 +308,16 @@ sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
 **File**: `pulldb/infra/mysql.py` (extend existing)
 
 **Tasks**:
-- [ ] Implement HostRepository class with MySQLPool + CredentialResolver dependencies
-- [ ] `get_host_by_hostname(hostname: str) -> Optional[DBHost]` - Host lookup
-- [ ] `get_enabled_hosts() -> list[DBHost]` - All enabled hosts
-- [ ] `get_host_credentials(hostname: str) -> MySQLCredentials` - Resolve credentials via CredentialResolver
-- [ ] `check_host_capacity(hostname: str) -> bool` - Check running jobs vs max_concurrent_restores
-- [ ] Integrate with existing CredentialResolver from Milestone 1.4
-- [ ] Raise ValueError if host not found or disabled
-- [ ] Let CredentialResolutionError bubble up from secrets module
+- [x] Implement HostRepository class with MySQLPool + CredentialResolver dependencies
+- [x] `get_host_by_hostname(hostname: str) -> Optional[DBHost]` - Host lookup
+- [x] `get_enabled_hosts() -> list[DBHost]` - All enabled hosts
+- [x] `get_host_credentials(hostname: str) -> MySQLCredentials` - Resolve credentials via CredentialResolver
+- [x] `check_host_capacity(hostname: str) -> bool` - Check running jobs vs max_concurrent_restores
+- [x] Integrate with existing CredentialResolver from Milestone 1.4
+- [x] Raise ValueError if host not found or disabled
+- [x] Let CredentialResolutionError bubble up from secrets module
+
+**Status**: ✅ Complete - 4 public methods + 1 helper method, credential resolution integrated
 
 #### 2.5 SettingsRepository
 

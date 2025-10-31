@@ -13,7 +13,8 @@ from contextlib import contextmanager
 
 import mysql.connector
 
-from pulldb.domain.models import Job, JobEvent, JobStatus, User
+from pulldb.domain.models import DBHost, Job, JobEvent, JobStatus, User
+from pulldb.infra.secrets import CredentialResolver, MySQLCredentials
 
 
 class MySQLPool:
@@ -704,4 +705,154 @@ class UserRepository:
             is_admin=bool(row["is_admin"]),
             created_at=row["created_at"],
             disabled_at=row.get("disabled_at"),
+        )
+
+
+class HostRepository:
+    """Repository for database host operations.
+
+    Manages host configuration and credential resolution for target MySQL
+    servers. Integrates with AWS Secrets Manager for secure credential
+    storage.
+
+    Example:
+        >>> resolver = CredentialResolver()
+        >>> repo = HostRepository(pool, resolver)
+        >>> host = repo.get_host_by_hostname("db-mysql-db4-dev")
+        >>> creds = repo.get_host_credentials("db-mysql-db4-dev")
+        >>> print(creds.username)  # "root" (from Secrets Manager)
+    """
+
+    def __init__(
+        self, pool: MySQLPool, credential_resolver: CredentialResolver
+    ) -> None:
+        """Initialize HostRepository with pool and credential resolver.
+
+        Args:
+            pool: MySQL connection pool for coordination database access.
+            credential_resolver: Resolver for AWS credential references.
+        """
+        self.pool = pool
+        self.credential_resolver = credential_resolver
+
+    def get_host_by_hostname(self, hostname: str) -> DBHost | None:
+        """Get host configuration by hostname.
+
+        Args:
+            hostname: Hostname to look up (e.g., "db-mysql-db4-dev").
+
+        Returns:
+            DBHost instance if found, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, hostname, credential_ref, max_concurrent_restores,
+                       enabled, created_at
+                FROM db_hosts
+                WHERE hostname = %s
+                """,
+                (hostname,),
+            )
+            row = cursor.fetchone()
+            return self._row_to_dbhost(row) if row else None
+
+    def get_enabled_hosts(self) -> list[DBHost]:
+        """Get all enabled database hosts.
+
+        Returns:
+            List of enabled DBHost instances, ordered by hostname.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, hostname, credential_ref, max_concurrent_restores,
+                       enabled, created_at
+                FROM db_hosts
+                WHERE enabled = TRUE
+                ORDER BY hostname ASC
+                """
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_dbhost(row) for row in rows]
+
+    def get_host_credentials(self, hostname: str) -> MySQLCredentials:
+        """Get resolved MySQL credentials for host.
+
+        Looks up the host configuration, then resolves its credential_ref
+        using the CredentialResolver (AWS Secrets Manager or SSM).
+
+        Args:
+            hostname: Hostname to get credentials for.
+
+        Returns:
+            Resolved MySQLCredentials instance.
+
+        Raises:
+            ValueError: If host not found or disabled.
+            CredentialResolutionError: If credentials cannot be resolved
+                from AWS Secrets Manager or SSM Parameter Store.
+        """
+        host = self.get_host_by_hostname(hostname)
+        if host is None:
+            raise ValueError(f"Host '{hostname}' not found")
+        if not host.enabled:
+            raise ValueError(f"Host '{hostname}' is disabled")
+
+        # Delegate to CredentialResolver (from Milestone 1.4)
+        return self.credential_resolver.resolve(host.credential_ref)
+
+    def check_host_capacity(self, hostname: str) -> bool:
+        """Check if host has capacity for new restore job.
+
+        Compares count of running jobs against max_concurrent_restores limit.
+
+        Args:
+            hostname: Hostname to check capacity for.
+
+        Returns:
+            True if host has capacity (running < max), False otherwise.
+
+        Raises:
+            ValueError: If host not found.
+        """
+        host = self.get_host_by_hostname(hostname)
+        if host is None:
+            raise ValueError(f"Host '{hostname}' not found")
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM jobs
+                WHERE dbhost = %s AND status = 'running'
+                """,
+                (hostname,),
+            )
+            result = cursor.fetchone()
+            if result is None:
+                running_count: int = 0
+            else:
+                running_count = result[0]
+
+            return running_count < host.max_concurrent_restores
+
+    def _row_to_dbhost(self, row: dict) -> DBHost:
+        """Convert database row to DBHost dataclass.
+
+        Args:
+            row: Dictionary from cursor.fetchone(dictionary=True).
+
+        Returns:
+            DBHost instance with all fields populated.
+        """
+        return DBHost(
+            id=row["id"],
+            hostname=row["hostname"],
+            credential_ref=row["credential_ref"],
+            max_concurrent_restores=row["max_concurrent_restores"],
+            enabled=bool(row["enabled"]),
+            created_at=row["created_at"],
         )
