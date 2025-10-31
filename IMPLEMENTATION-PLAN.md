@@ -239,20 +239,22 @@ sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
 - `pulldb/infra/mysql.py` (EXTEND) - Add 4 repository classes
 - `pulldb/tests/test_repositories.py` (NEW) - 23+ repository tests
 
-#### 2.1 Domain Models
+#### 2.1 Domain Models ✅
 
-**File**: `pulldb/domain/models.py`
+**File**: `pulldb/domain/models.py` (192 lines)
 
 **Tasks**:
-- [ ] Create new file for domain dataclasses
-- [ ] Implement JobStatus enum (queued, running, failed, complete, canceled)
-- [ ] Implement User dataclass (frozen=True, all fields from auth_users)
-- [ ] Implement Job dataclass (frozen=True, all fields from jobs table)
-- [ ] Implement JobEvent dataclass (frozen=True, all fields from job_events)
-- [ ] Implement DBHost dataclass (frozen=True, all fields from db_hosts)
-- [ ] Implement Setting dataclass (frozen=True, all fields from settings)
-- [ ] Add Google-style docstrings to all classes
-- [ ] Add type hints using typing module (Optional, datetime, etc.)
+- [x] Create new file for domain dataclasses
+- [x] Implement JobStatus enum (queued, running, failed, complete, canceled)
+- [x] Implement User dataclass (frozen=True, all fields from auth_users)
+- [x] Implement Job dataclass (frozen=True, all fields from jobs table)
+- [x] Implement JobEvent dataclass (frozen=True, all fields from job_events)
+- [x] Implement DBHost dataclass (frozen=True, all fields from db_hosts)
+- [x] Implement Setting dataclass (frozen=True, all fields from settings)
+- [x] Add Google-style docstrings to all classes
+- [x] Add type hints using modern Python 3.10+ syntax (X | None)
+
+**Status**: ✅ Complete - All 5 dataclasses implemented with comprehensive documentation
 
 #### 2.2 JobRepository
 
