@@ -94,12 +94,56 @@ Both services run on an **EC2 instance** in the development AWS account and use 
 
 ## Step 1: Development Account Setup
 
-### 1.1 Create EC2 Service Role
+### 1.1 Create or Modify EC2 Service Role
 
-This role will be attached to the EC2 instance via instance profile.
+The `pulldb-ec2-service-role` should already exist in the development account. Verify and modify it if needed.
 
+**Current Role Configuration**:
+- **Role Name**: `pulldb-ec2-service-role`
+- **Role ARN**: `arn:aws:iam::345321506926:role/pulldb-ec2-service-role`
+- **Description**: EC2 service role for pullDB API and Worker services
+- **Tags**: `Service=pulldb`, `Environment=development`
+
+**Trust Policy** (allows EC2 and RDS Export services):
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": [
+          "export.rds.amazonaws.com",
+          "ec2.amazonaws.com"
+        ]
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+
+**Attached Policies** (existing policies to preserve):
+- `pestroutes-dev-pr-vpc-us-east-1-agents-policy` - CloudWatch agent permissions
+- `pestroutes-dev-pr-vpc-us-east-1-s3-policy` - S3 access for dev VPC
+- `pestroutes-dev-pr-vpc-us-east-1-ssm-policy` - Systems Manager permissions
+- `pestroutes-dev-pr-vpc-us-east-1-codedeploy-policy` - CodeDeploy permissions
+- `AmazonRDSFullAccess` - RDS management (AWS managed)
+- `AmazonSQSFullAccess` - SQS access (AWS managed)
+- `pulldb-cross-account-assume-role` - Cross-account S3 access (add if missing)
+
+**Verify Role Exists**:
 ```bash
-# Create trust policy for EC2
+# Check role configuration
+aws iam get-role --role-name pulldb-ec2-service-role
+
+# List attached policies
+aws iam list-attached-role-policies --role-name pulldb-ec2-service-role
+```
+
+**If role doesn't exist, create it**:
+```bash
+# Create trust policy for EC2 and RDS Export
 cat > /tmp/pulldb-ec2-trust-policy.json <<'EOF'
 {
   "Version": "2012-10-17",
@@ -107,7 +151,10 @@ cat > /tmp/pulldb-ec2-trust-policy.json <<'EOF'
     {
       "Effect": "Allow",
       "Principal": {
-        "Service": "ec2.amazonaws.com"
+        "Service": [
+          "export.rds.amazonaws.com",
+          "ec2.amazonaws.com"
+        ]
       },
       "Action": "sts:AssumeRole"
     }
@@ -123,10 +170,20 @@ aws iam create-role \
     --tags Key=Service,Value=pulldb Key=Environment,Value=development
 ```
 
-### 1.2 Create Cross-Account Assumption Policy
+### 1.2 Add Cross-Account Assumption Policy
 
 This policy allows the EC2 role to assume roles in staging and production accounts.
 
+**Check if policy already exists**:
+```bash
+# Check for existing policy
+aws iam get-policy --policy-arn arn:aws:iam::345321506926:policy/pulldb-cross-account-assume-role 2>/dev/null
+
+# If policy exists, verify it's attached to role
+aws iam list-attached-role-policies --role-name pulldb-ec2-service-role | grep pulldb-cross-account-assume-role
+```
+
+**If policy doesn't exist, create it**:
 ```bash
 cat > /tmp/pulldb-assume-role-policy.json <<'EOF'
 {
@@ -158,15 +215,21 @@ cat > /tmp/pulldb-assume-role-policy.json <<'EOF'
 }
 EOF
 
-# Create and attach policy
+# Create policy
 aws iam create-policy \
     --policy-name pulldb-cross-account-assume-role \
     --policy-document file:///tmp/pulldb-assume-role-policy.json \
     --description "Allows pullDB to assume cross-account roles for S3 access"
+```
 
+**Attach policy to role** (if not already attached):
+```bash
 aws iam attach-role-policy \
     --role-name pulldb-ec2-service-role \
     --policy-arn arn:aws:iam::345321506926:policy/pulldb-cross-account-assume-role
+
+# Verify attachment
+aws iam list-attached-role-policies --role-name pulldb-ec2-service-role
 ```
 
 ### 1.3 Create Instance Profile
