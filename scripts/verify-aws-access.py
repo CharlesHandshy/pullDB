@@ -93,7 +93,8 @@ def test_s3_access(
                 results["test_key"] = contents[0]["Key"]
                 print(f"   Test object: {results['test_key']}")
         except ClientError as e:
-            print(f"   ❌ ListBucket failed: {e.response['Error']['Code']}")
+            error_code = e.response.get("Error", {}).get("Code", "Unknown")
+            print(f"   ❌ ListBucket failed: {error_code}")
             return results
 
         # Test HeadObject
@@ -108,7 +109,9 @@ def test_s3_access(
                 if "ServerSideEncryption" in metadata:
                     print(f"   Encryption: {metadata['ServerSideEncryption']}")
             except ClientError as e:
-                print(f"   ❌ HeadObject failed: {e.response['Error']['Code']}")
+                error_code = e.response.get("Error", {}).get("Code", "Unknown")
+                print(f"   ❌ HeadObject failed: {error_code}")
+                return results
 
         # Test GetObject (just first 1KB to verify access)
         if results["test_key"]:
@@ -122,7 +125,9 @@ def test_s3_access(
                 results["get"] = True
                 print(f"   ✅ GetObject: Verified (read {len(data)} bytes)")
             except ClientError as e:
-                print(f"   ❌ GetObject failed: {e.response['Error']['Code']}")
+                error_code = e.response.get("Error", {}).get("Code", "Unknown")
+                print(f"   ❌ GetObject failed: {error_code}")
+                return results
 
         return results
 
@@ -148,11 +153,12 @@ def test_write_denied(profile_name: str, bucket: str) -> bool:
                 s3.delete_object(Bucket=bucket, Key="test-write-access.txt")
             return False
         except ClientError as e:
-            if e.response["Error"]["Code"] in ["AccessDenied", "403"]:
+            error_code = e.response.get("Error", {}).get("Code", "Unknown")
+            if error_code in ["AccessDenied", "403"]:
                 print("   ✅ Write operations properly denied")
                 return True
 
-            print(f"   ⚠️  Unexpected error: {e.response['Error']['Code']}")
+            print(f"   ⚠️  Unexpected error: {error_code}")
             return False
     except Exception as e:
         print(f"   ❌ Error: {e}")
