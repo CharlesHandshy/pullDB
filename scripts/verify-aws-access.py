@@ -10,11 +10,14 @@ This script tests:
 
 import contextlib
 import sys
+from typing import cast
 
 
 try:
     import boto3
     from botocore.exceptions import ClientError, NoCredentialsError
+    from mypy_boto3_s3.client import S3Client
+    from mypy_boto3_sts.client import STSClient
 except ImportError:
     print("❌ boto3 not installed. Run: pip install boto3")
     sys.exit(1)
@@ -25,7 +28,7 @@ def test_instance_profile() -> bool:
     print("\n1. Testing EC2 Instance Profile...")
     try:
         session = boto3.Session()
-        sts = session.client("sts")
+        sts = cast(STSClient, session.client("sts"))
         identity = sts.get_caller_identity()
         print("   ✅ Instance profile working")
         print(f"   Account: {identity['Account']}")
@@ -44,7 +47,7 @@ def test_cross_account_role(profile_name: str, expected_account: str) -> bool:
     print(f"\n2. Testing Cross-Account Access (profile: {profile_name})...")
     try:
         session = boto3.Session(profile_name=profile_name)
-        sts = session.client("sts")
+        sts = cast(STSClient, session.client("sts"))
         identity = sts.get_caller_identity()
 
         if identity["Account"] != expected_account:
@@ -81,7 +84,7 @@ def test_s3_access(
 
     try:
         session = boto3.Session(profile_name=profile_name)
-        s3 = session.client("s3")  # Test ListBucket
+        s3 = cast(S3Client, session.client("s3"))  # Test ListBucket
         try:
             response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, MaxKeys=10)
             contents = response.get("Contents", [])
@@ -90,17 +93,20 @@ def test_s3_access(
             print(f"   ✅ ListBucket: Found {len(contents)} objects")
 
             if contents:
-                results["test_key"] = contents[0]["Key"]
-                print(f"   Test object: {results['test_key']}")
+                test_key = contents[0].get("Key")
+                if test_key:
+                    results["test_key"] = test_key
+                    print(f"   Test object: {results['test_key']}")
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
             print(f"   ❌ ListBucket failed: {error_code}")
             return results
 
         # Test HeadObject
-        if results["test_key"]:
+        if isinstance(results["test_key"], str):
+            test_key = results["test_key"]
             try:
-                metadata = s3.head_object(Bucket=bucket, Key=results["test_key"])
+                metadata = s3.head_object(Bucket=bucket, Key=test_key)
                 results["head"] = True
                 size_mb = metadata["ContentLength"] / (1024 * 1024)
                 print(f"   ✅ HeadObject: {size_mb:.2f} MB")
@@ -114,14 +120,15 @@ def test_s3_access(
                 return results
 
         # Test GetObject (just first 1KB to verify access)
-        if results["test_key"]:
+        if isinstance(results["test_key"], str):
+            test_key = results["test_key"]
             try:
-                response = s3.get_object(
+                get_response = s3.get_object(
                     Bucket=bucket,
-                    Key=results["test_key"],
+                    Key=test_key,
                     Range="bytes=0-1023",
                 )
-                data = response["Body"].read()
+                data = get_response["Body"].read()
                 results["get"] = True
                 print(f"   ✅ GetObject: Verified (read {len(data)} bytes)")
             except ClientError as e:
@@ -141,7 +148,7 @@ def test_write_denied(profile_name: str, bucket: str) -> bool:
     print("\n4. Testing Write Operations (should be denied)...")
     try:
         session = boto3.Session(profile_name=profile_name)
-        s3 = session.client("s3")
+        s3 = cast(S3Client, session.client("s3"))
 
         # Try to put an object
         try:
