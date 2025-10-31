@@ -383,13 +383,73 @@ aws iam attach-role-policy \
 
 ### 2.3 Update S3 Bucket Policy
 
+**IMPORTANT**: This step requires manually merging the new statement with any existing bucket policy to avoid overwriting existing permissions.
+
 ```bash
 # Get existing bucket policy
-aws s3api get-bucket-policy --bucket pestroutesrdsdbs > /tmp/current-bucket-policy.json
+aws s3api get-bucket-policy --bucket pestroutesrdsdbs --query Policy --output text > /tmp/current-bucket-policy.json
 
-# Add pullDB access to bucket policy
-cat > /tmp/updated-bucket-policy.json <<'EOF'
+# View current policy
+cat /tmp/current-bucket-policy.json | jq .
+
+# Create the statement to add (DO NOT apply directly - merge manually)
+cat > /tmp/pulldb-statement-to-add.json <<'EOF'
 {
+  "Sid": "AllowPullDBCrossAccountRead",
+  "Effect": "Allow",
+  "Principal": {
+    "AWS": "arn:aws:iam::333204494849:role/pulldb-cross-account-readonly"
+  },
+  "Action": [
+    "s3:GetObject",
+    "s3:GetObjectMetadata",
+    "s3:ListBucket"
+  ],
+  "Resource": [
+    "arn:aws:s3:::pestroutesrdsdbs",
+    "arn:aws:s3:::pestroutesrdsdbs/daily/stg/*"
+  ]
+}
+EOF
+
+echo "=== MANUAL MERGE REQUIRED ==="
+echo "1. Review the current bucket policy above"
+echo "2. Add the pullDB statement to the existing policy's Statement array"
+echo "3. Save the merged policy to /tmp/updated-bucket-policy.json"
+echo "4. Validate JSON: cat /tmp/updated-bucket-policy.json | jq ."
+echo "5. Apply: aws s3api put-bucket-policy --bucket pestroutesrdsdbs --policy file:///tmp/updated-bucket-policy.json"
+echo ""
+echo "Example merged policy structure:"
+cat <<'EXAMPLE'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    ... existing statements here ...,
+    {
+      "Sid": "AllowPullDBCrossAccountRead",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::333204494849:role/pulldb-cross-account-readonly"
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectMetadata",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::pestroutesrdsdbs",
+        "arn:aws:s3:::pestroutesrdsdbs/daily/stg/*"
+      ]
+    }
+  ]
+}
+EXAMPLE
+```
+
+**Alternative: If bucket has no existing policy**:
+```bash
+# Only use this if the bucket currently has NO policy
+aws s3api put-bucket-policy --bucket pestroutesrdsdbs --policy '{
   "Version": "2012-10-17",
   "Statement": [
     {
@@ -409,11 +469,7 @@ cat > /tmp/updated-bucket-policy.json <<'EOF'
       ]
     }
   ]
-}
-EOF
-
-# Apply updated policy
-aws s3api put-bucket-policy --bucket pestroutesrdsdbs --policy file:///tmp/updated-bucket-policy.json
+}'
 ```
 
 ### 2.4 Update KMS Key Policy
