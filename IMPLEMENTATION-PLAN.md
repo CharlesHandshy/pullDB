@@ -256,25 +256,27 @@ sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
 
 **Status**: ✅ Complete - All 5 dataclasses implemented with comprehensive documentation
 
-#### 2.2 JobRepository
+#### 2.2 JobRepository ✅
 
-**File**: `pulldb/infra/mysql.py` (extend existing)
+**File**: `pulldb/infra/mysql.py` (465 lines total, 406 lines added)
 
 **Tasks**:
-- [ ] Implement JobRepository class with MySQLPool dependency
-- [ ] `enqueue_job(job: Job) -> str` - Insert job, return job_id
-- [ ] `get_next_queued_job() -> Optional[Job]` - FIFO queue retrieval
-- [ ] `get_job_by_id(job_id: str) -> Optional[Job]` - Single job lookup
-- [ ] `mark_job_running(job_id: str)` - Transition to running, set started_at
-- [ ] `mark_job_complete(job_id: str)` - Transition to complete, set completed_at
-- [ ] `mark_job_failed(job_id: str, error: str)` - Transition to failed with error
-- [ ] `get_active_jobs() -> list[Job]` - Use active_jobs view
-- [ ] `get_jobs_by_user(user_id: str) -> list[Job]` - User job history
-- [ ] `check_target_exclusivity(target: str, dbhost: str) -> bool` - Per-target lock check
-- [ ] `append_job_event(job_id: str, event_type: str, detail: str)` - Event logging
-- [ ] `get_job_events(job_id: str) -> list[JobEvent]` - Event retrieval
-- [ ] Handle IntegrityError for per-target exclusivity violations
-- [ ] Convert MySQL rows to Job/JobEvent dataclasses
+- [x] Implement JobRepository class with MySQLPool dependency
+- [x] `enqueue_job(job: Job) -> str` - Insert job, return job_id
+- [x] `get_next_queued_job() -> Optional[Job]` - FIFO queue retrieval
+- [x] `get_job_by_id(job_id: str) -> Optional[Job]` - Single job lookup
+- [x] `mark_job_running(job_id: str)` - Transition to running, set started_at
+- [x] `mark_job_complete(job_id: str)` - Transition to complete, set completed_at
+- [x] `mark_job_failed(job_id: str, error: str)` - Transition to failed with error
+- [x] `get_active_jobs() -> list[Job]` - Use active_jobs view
+- [x] `get_jobs_by_user(user_id: str) -> list[Job]` - User job history
+- [x] `check_target_exclusivity(target: str, dbhost: str) -> bool` - Per-target lock check
+- [x] `append_job_event(job_id: str, event_type: str, detail: str)` - Event logging
+- [x] `get_job_events(job_id: str) -> list[JobEvent]` - Event retrieval
+- [x] Handle IntegrityError for per-target exclusivity violations
+- [x] Convert MySQL rows to Job/JobEvent dataclasses
+
+**Status**: ✅ Complete - 12 public methods + 3 helper methods, comprehensive error handling
 
 #### 2.3 UserRepository
 
