@@ -22,7 +22,7 @@ pullDB is a database restoration tool that pulls production MySQL backups from S
 
 **Not Yet Implemented (Drift vs Initial Plan)**:
 - ✅ myloader subprocess wrapper (execution + failure mapping) – orchestration (staging lifecycle + post‑SQL + rename) still pending
-- ❌ Post‑restore SQL executor + metadata table injection
+- ✅ Post‑restore SQL executor (sequential script execution with FAIL HARD on first error) – metadata table injection still pending
 - ❌ Staging DB orphan cleanup & atomic rename procedure
 - ❌ CLI argument validation + real enqueue/status calls
 - ❌ Metrics emission (queue depth, restore durations, disk failures)
@@ -99,9 +99,9 @@ pulldb/
   │   ├── errors.py               # IMPLEMENTED - Structured FAIL HARD runtime errors
   │   └── (restore_models.py)     # PLANNED – myloader + post-SQL DTOs
   └── tests/
-      ├── ...                     # 87 passing test modules (discovery, downloader, repos, errors, loop, logging)
+      ├── ...                     # 98 passing test modules (discovery, downloader, repos, errors, loop, logging, exec, restore, post_sql)
 
-> Current suite: 87 modules (expanded with discovery, downloader, logging, and error coverage).
+> Current suite: 98 modules (expanded with discovery, downloader, logging, error coverage, myloader wrapper, and post-SQL executor).
 customers_after_sql/              # Post-restore SQL for customer databases (PII removal)
   ├── 010.remove_customer_pii.sql
   ├── 020.remove_billto_info.sql
@@ -347,13 +347,14 @@ Maintain a living drift ledger until restore workflow is complete:
 - S3 discovery & downloader (disk capacity guard + streaming): ✅ Implemented (item 3 complete)
 - CLI validation & enqueue/status: 🚧 Placeholder (echo) – planned milestone task (item 8)
 - myloader execution subprocess wrapper: ✅ Implemented (command building, timeout + non‑zero translation)
+- Post‑SQL executor: ✅ Implemented (sequential script execution, FAIL HARD on first error, timing + rowcount capture)
 - Restore orchestration (staging lifecycle integration + post‑SQL chaining): ❌ Missing – planned milestone task (item 4 continuation / items 5–6)
-- Post‑SQL executor & metadata table injection: ❌ Missing – planned milestone task (item 5)
+- Metadata table injection: ❌ Missing – planned milestone task (item 5 continuation)
 - Staging lifecycle (orphan cleanup + atomic rename procedure): ❌ Missing – planned milestone task (item 6)
 - Integration tests (end‑to‑end restore workflow incl. failure modes: missing backup, disk insufficient, myloader error, post‑SQL failure): ❌ Missing – planned milestone task (item 9)
 - Metrics emission (queue depth, restore durations, disk failures): ❌ Missing – planned milestone task (item 10)
 
-Test Suite Expansion: Current suite has grown from initial 9 modules to 95 passing tests (adds exec + myloader wrapper tests for success, non‑zero exit, timeout, large output truncation). Future end‑to‑end restore workflow tests will be added after staging lifecycle + post‑SQL implementation.
+Test Suite Expansion: Current suite has grown from initial 9 modules to 98 passing tests (adds exec + myloader wrapper + post-SQL executor tests for success, non‑zero exit, timeout, large output truncation, script failure). Future end‑to‑end restore workflow tests will be added after staging lifecycle implementation.
 
 Testing Note (myloader wrapper): We deliberately monkeypatch `run_command` in restore tests to keep them deterministic and OS/binary agnostic—no dependency on a real `myloader` binary while still exercising error translation paths.
 
