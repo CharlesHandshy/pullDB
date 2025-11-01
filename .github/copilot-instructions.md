@@ -15,17 +15,10 @@ pullDB is a database restoration tool that pulls production MySQL backups from S
 **Completed Work** (verified Nov 1 2025):
 - ✅ MySQL 8.0.43 schema deployed (6 tables, 1 view, 1 trigger)
 - ✅ Credential resolution (`pulldb/infra/secrets.py` ~399 lines) with Secrets Manager + SSM support
-- ✅ Two‑phase configuration loader (`pulldb/domain/config.py` ~228 lines) enriched from `settings` table
-- ✅ Repository layer scaffolding (`pulldb/infra/mysql.py` ~981 lines) for Job/User/Host/Settings operations & user_code collision logic
-- ✅ Domain models (`pulldb/domain/models.py`) for Job, JobEvent, User, DBHost, Setting
-- ✅ Initial test suite (9 test modules covering secrets, config, repositories) – all passing locally
+- ✅ Test suite (112 tests: secrets, config, repos, logging, errors, exec, restore, post-SQL, staging) – passing in 55s
 
 **Not Yet Implemented (Drift vs Initial Plan)**:
-- ✅ myloader subprocess wrapper (execution + failure mapping) – orchestration (staging lifecycle + post‑SQL + rename) still pending
-- ✅ Post‑restore SQL executor (sequential script execution with FAIL HARD on first error) – metadata table injection still pending
-- ❌ Staging DB orphan cleanup & atomic rename procedure
-- ❌ CLI argument validation + real enqueue/status calls
-- ❌ Metrics emission (queue depth, restore durations, disk failures)
+- ✅ Staging DB orphan cleanup (pattern matching + DROP operations) – atomic rename procedure still pending
 
 Implemented Since Original Plan (previously marked missing):
 - ✅ Structured JSON logging abstraction (baseline)
