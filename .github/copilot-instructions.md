@@ -10,14 +10,40 @@ This document is the **primary reference for AI coding agents** working on pullD
 
 pullDB is a database restoration tool that pulls production MySQL backups from S3 and restores them to development environments. The system follows a **documentation-first, prototype-first** approach with extensive planning before implementation.
 
-**Current Status**: Foundation phase complete (Milestone 1) - Core infrastructure modules implemented with comprehensive test coverage. Ready to begin Milestone 2 (MySQL Repository Layer).
+**Current Status (Nov 1 2025)**: Foundation primitives (credentials, configuration, repositories) are implemented; the executable restore workflow (S3 discovery, download, disk capacity checks, myloader execution, post‑SQL processing, staging rename) is **not yet implemented**. CLI and worker service are placeholders (echo / heartbeat only). We are entering the "Restore Workflow Bootstrap" milestone to build end‑to‑end execution.
 
-**Completed Work** (as of October 31, 2025):
+**Completed Work** (verified Nov 1 2025):
 - ✅ MySQL 8.0.43 schema deployed (6 tables, 1 view, 1 trigger)
-- ✅ AWS Secrets Manager integration (`pulldb/infra/secrets.py` - 405 lines)
-- ✅ Configuration module with two-phase loading (`pulldb/domain/config.py` - 227 lines)
-- ✅ MySQL connection pool (`pulldb/infra/mysql.py` - 59 lines)
-- ✅ Comprehensive test suite - **24/24 tests passing** (14 secrets + 7 config unit + 3 integration)
+- ✅ Credential resolution (`pulldb/infra/secrets.py` ~399 lines) with Secrets Manager + SSM support
+- ✅ Two‑phase configuration loader (`pulldb/domain/config.py` ~228 lines) enriched from `settings` table
+- ✅ Repository layer scaffolding (`pulldb/infra/mysql.py` ~981 lines) for Job/User/Host/Settings operations & user_code collision logic
+- ✅ Domain models (`pulldb/domain/models.py`) for Job, JobEvent, User, DBHost, Setting
+- ✅ Initial test suite (9 test modules covering secrets, config, repositories) – all passing locally
+
+**Not Yet Implemented (Drift vs Initial Plan)**:
+- ❌ S3 backup discovery & selection logic
+- ❌ Downloader (stream + disk space preflight + extraction)
+- ❌ myloader subprocess wrapper & restore orchestration
+- ❌ Post‑restore SQL executor + metadata table injection
+- ❌ Staging DB orphan cleanup & atomic rename procedure
+- ❌ Structured JSON logging abstraction (print still used in worker stub)
+- ❌ Metrics emission (queue depth, restore durations, disk failures)
+- ❌ CLI argument validation + real enqueue/status calls
+- ❌ Worker polling loop (currently single heartbeat)
+
+**Immediate Milestone Goals (Restore Workflow Bootstrap)**:
+1. Introduce logging & domain error classes (FAIL HARD runtime scaffolding)
+2. Implement worker poll loop + event emission for `queued`→`running` transitions
+3. Add S3 discovery + downloader with disk capacity guard
+4. Integrate myloader execution (subprocess wrapper capturing stdout/stderr)
+5. Execute post‑SQL scripts + record structured results JSON
+6. Implement staging lifecycle (name generation, orphan cleanup, placeholder atomic rename)
+7. Wire events + status updates in repositories (failed/complete)
+8. Replace CLI placeholders with validation + enqueue + status listing
+9. Add integration tests for happy path & failure modes (missing backup, disk insufficient, myloader error, post‑SQL failure)
+10. Introduce metrics emission after baseline stability
+
+**Quality Guardrail**: Each milestone increment MUST preserve 100% passing tests and extend coverage for new failure paths (FAIL HARD diagnostics required).
 
 **Environment Context**:
 - **Development environment** (`345321506926`) runs pullDB and needs cross-account S3 access to:
@@ -28,6 +54,7 @@ pullDB is a database restoration tool that pulls production MySQL backups from S
 
 ## Architecture Principles
 
+- **FAIL HARD Philosophy**: When operations cannot complete as designed, **fail immediately** with comprehensive diagnostics. Never silently degrade or work around issues. Always provide: (1) what was attempted, (2) what failed and why, (3) ranked solutions. See `constitution.md` for complete FAIL HARD requirements.
 - **Three-Service Architecture**: CLI (thin client) → API Service (job management) → Worker Service (job execution)
 - **API Service**: Accepts HTTP requests, validates input, inserts jobs to MySQL, provides status/discovery endpoints (read-only S3 access for backup listing)
 - **Worker Service**: Polls MySQL queue, executes restores via S3 + myloader (full S3 read access for downloads, no HTTP exposure)
@@ -47,6 +74,7 @@ design/
 docs/
   ├── coding-standards.md         # Comprehensive style guide for all file types
   ├── mysql-schema.md             # Complete database schema with invariants
+  ├── testing.md                  # Testing guide with AWS integration (NEW Nov 2025)
   ├── aws-authentication-setup.md # AWS cross-account setup for EC2 (RECOMMENDED)
   ├── aws-secrets-manager-setup.md # AWS Secrets Manager credential resolution (IMPLEMENTED)
   ├── aws-ec2-deployment-setup.md # EC2 deployment complete guide
@@ -54,16 +82,25 @@ docs/
   └── parameter-store-setup.md    # Secure credential storage in AWS
 pulldb/
   ├── infra/
-  │   ├── secrets.py              # IMPLEMENTED - AWS credential resolution (405 lines)
-  │   ├── mysql.py                # IMPLEMENTED - Connection pool (59 lines)
-  │   └── ...
+  │   ├── secrets.py              # IMPLEMENTED - Credential resolution (Secrets Manager + SSM)
+  │   ├── mysql.py                # IMPLEMENTED - Repositories (Job/User/Host/Settings) + thin pool wrapper
+  │   └── (logging.py / s3.py / exec.py) # PLANNED – restore workflow bootstrap
   ├── domain/
-  │   ├── config.py               # IMPLEMENTED - Configuration with MySQL (227 lines)
-  │   └── ...
+  │   ├── config.py               # IMPLEMENTED - Two-phase environment + MySQL settings enrichment
+  │   ├── models.py               # IMPLEMENTED - Dataclasses (Job, JobEvent, etc.)
+  │   └── (errors.py / restore_models.py) # PLANNED – structured FAIL HARD runtime errors + restore DTOs
   └── tests/
-      ├── test_secrets.py         # 14 tests passing
-      ├── test_config.py          # 7 tests passing
-      └── test_config_integration.py # 3 tests passing
+      ├── test_secrets.py         # Secrets Manager & SSM resolution
+      ├── test_config.py          # Configuration loader unit tests
+      ├── test_config_integration.py # Env + MySQL enrichment integration
+      ├── test_job_repository.py  # Job enqueue / status transitions (partial)
+      ├── test_user_repository.py # user_code generation & collision handling
+      ├── test_host_repository.py # Host credential resolution
+      ├── test_settings_repository.py # Settings retrieval
+      ├── test_constants.py       # (if present) constant invariants
+      ├── test_imports.py         # Import hygiene / package surface
+
+> Current suite: 9 modules (expanding in upcoming milestone to include restore workflow tests).
 customers_after_sql/              # Post-restore SQL for customer databases (PII removal)
   ├── 010.remove_customer_pii.sql
   ├── 020.remove_billto_info.sql
@@ -73,6 +110,9 @@ qa_template_after_sql/            # Post-restore SQL for QA templates (currently
 reference/                        # Legacy PHP implementations (read-only)
   ├── pullDB-auth                 # Customer restore with obfuscation
   └── pullQA-auth                 # QA template restore
+scripts/
+  ├── verify-secrets-perms.sh     # Secrets Manager permission verification (Nov 2025)
+  └── README.md                   # Script usage documentation
 ```
 
 **Documentation Hierarchy**: This file + constitution.md are top-level guides. All other docs elaborate on specific aspects defined here.
@@ -111,6 +151,53 @@ pullDB status
 - **Documentation**: See `docs/aws-secrets-manager-setup.md` for complete setup guide
 
 ## Python Implementation Guidelines
+### Test Database Credential Mandate (Effective Nov 2025)
+
+**MANDATORY**: All integration and repository tests must use AWS Secrets Manager for database login. Direct test user logins (e.g., 'pulldb_test'@'localhost') are deprecated and must not be used for DB authentication in tests. Application test users (for business logic) remain valid for app-level testing.
+
+**Implementation Status** (as of November 1, 2025):
+- ✅ Test fixtures updated to use AWS Secrets Manager (`pulldb/tests/conftest.py`)
+- ✅ Secret residency verification added (`verify_secret_residency` fixture)
+- ✅ Graceful degradation for offline development (local override support)
+- ✅ Comprehensive test documentation (`docs/testing.md`)
+- ✅ All 50 tests passing with AWS integration
+
+**Secret Residency Enforcement**:
+- New `verify_secret_residency` fixture validates secrets exist only in development account (345321506926)
+- Automatically asserts secret ARN contains correct account ID
+- Gracefully skips when AWS unavailable (offline development)
+- Fails with clear error message if secret found in wrong account (staging/prod)
+
+**Migration Steps** (COMPLETED):
+- ✅ Update all test fixtures to resolve DB credentials via AWS Secrets Manager (use CredentialResolver).
+- ✅ Store test DB credentials in `/pulldb/mysql/coordination-db` secret.
+- ✅ Remove any direct use of test user credentials in test connection pools.
+- ✅ Document this pattern in all setup and test documentation.
+
+**Rationale:**
+- Ensures test and production credential resolution paths are identical.
+- Prevents drift between test and production authentication logic.
+- Simplifies credential rotation and audit.
+- Validates secrets exist in correct AWS account (dev-only constraint).
+
+**Reference:** See `docs/testing.md` for complete testing guide and `docs/aws-secrets-manager-setup.md` for credential setup.
+#### Development Override (Temporary)
+
+For local development only (never CI or production), a temporary override path
+is available when the coordination DB secret hostname is unreachable or AWS
+read permissions are pending. The test fixture logic will prefer the following
+environment variables when all are set:
+
+- `PULLDB_TEST_MYSQL_HOST`
+- `PULLDB_TEST_MYSQL_USER`
+- `PULLDB_TEST_MYSQL_PASSWORD`
+- `PULLDB_TEST_MYSQL_DATABASE`
+
+This bypass exists solely to keep momentum during secret propagation delays.
+It must not be used in committed code examples, CI pipelines, or documentation
+outside this section. Remove the override once the canonical secret
+(`/pulldb/mysql/coordination-db`) resolves successfully in the development
+account. All tests must still exercise the CredentialResolver path by default.
 
 ### Proactive Error Checking
 
@@ -249,6 +336,151 @@ class JobRepository:
 2. **Test-Driven**: Write tests covering success/failure cases before implementation
 3. **Schema-Driven**: MySQL constraints enforce business rules
 4. **Migration-Safe**: Forward-only SQL migrations, no downgrades supported
+
+### Implementation Drift Tracking (Nov 1 2025)
+
+Maintain a living drift ledger until restore workflow is complete:
+- Repositories & credential/config layers: ✅ Implemented
+- Logging abstraction & domain error classes: ✅ Implemented (item 1 complete)
+- Worker poll loop & event emission: ✅ Implemented (item 2 complete)
+- S3 discovery & downloader (disk capacity guard + streaming): ✅ Implemented (item 3 complete)
+- CLI validation & enqueue/status: 🚧 Placeholder (echo) – planned milestone task (item 8)
+- myloader execution subprocess wrapper & orchestration: ❌ Missing – planned milestone task (item 4)
+- Post‑SQL executor & metadata table injection: ❌ Missing – planned milestone task (item 5)
+- Staging lifecycle (orphan cleanup + atomic rename procedure): ❌ Missing – planned milestone task (item 6)
+- Integration tests (end‑to‑end restore workflow incl. failure modes: missing backup, disk insufficient, myloader error, post‑SQL failure): ❌ Missing – planned milestone task (item 9)
+- Metrics emission (queue depth, restore durations, disk failures): ❌ Missing – planned milestone task (item 10)
+
+Test Suite Expansion: Current suite has grown from initial 9 modules to 87 passing tests (includes discovery and downloader unit tests plus extended repository/error coverage). Future end‑to‑end restore workflow tests will be added after myloader + staging lifecycle implementation.
+
+Agents MUST update this section when a missing component lands (replace ❌/🚧 with ✅ and retain remaining incomplete rows). Do not remove incomplete rows prematurely; always preserve chronological progress for audit.
+
+## AI Agent FAIL HARD Mandate
+
+**CRITICAL**: When debugging issues or implementing features, AI agents must follow the FAIL HARD philosophy (see `constitution.md` for complete requirements).
+
+### Diagnostic Protocol
+
+When encountering failures, AI agents must:
+
+1. **Detect the Failure**
+   - Use `get_errors` tool to check VS Code diagnostics
+   - Run commands and verify exit codes
+   - Read logs and error messages completely
+   - Don't assume - verify actual state
+
+2. **Research Root Cause**
+   - Gather context: read relevant files, check configuration, verify permissions
+   - Use appropriate tools: `grep_search`, `read_file`, `run_in_terminal`
+   - Trace the failure path back to the originating condition
+   - Validate hypothesis with concrete evidence (don't speculate)
+
+3. **Present Structured Findings**
+
+   **Goal**: What was the intended outcome?
+   - Example: "Configure test suite to use AWS Secrets Manager for MySQL credentials"
+
+   **Problem**: What actually happened? (Be specific)
+   - Example: "All 50 tests skipped with message 'Cannot verify secret residency: Secrets Manager can't find the specified secret'"
+
+   **Root Cause**: Why did it fail? (Validated diagnosis)
+   - Example: "Tests running without AWS credentials (AWS_PROFILE not set). The `verify_secret_residency` fixture calls boto3.client() which defaults to looking for credentials in standard locations. When no credentials found, boto3 raises NoCredentialsError, caught by fixture's broad exception handler, triggering skip."
+
+   **Solutions** (ranked by effectiveness):
+   1. **Best Solution**: "Set AWS_PROFILE environment variable to 'default' before running tests. This uses EC2 instance profile credentials."
+      - Pros: Matches production authentication, validates full AWS integration
+      - Cons: Requires AWS access
+   2. **Alternative**: "Use local override variables (PULLDB_TEST_MYSQL_*) to bypass AWS entirely"
+      - Pros: Works offline, faster test execution
+      - Cons: Doesn't validate AWS integration path, skips residency check
+   3. **Workaround**: "Mock boto3 client in tests to simulate secret retrieval"
+      - Pros: No AWS dependency
+      - Cons: Doesn't validate real AWS behavior, test complexity increases
+
+4. **Implement and Verify**
+   - Apply the chosen solution
+   - Run verification commands to confirm fix
+   - Check for regressions using `get_errors`
+   - Document the resolution if it reveals architectural decisions
+
+### Prohibited Behaviors
+
+**NEVER**:
+- ❌ Silently catch exceptions without logging or user notification
+- ❌ Add `try/except: pass` blocks that hide failures
+- ❌ Return empty results or None when operation fails
+- ❌ Implement workarounds without explaining why direct fix isn't used
+- ❌ Skip diagnostic steps and jump to solutions
+- ❌ Present speculation as fact ("this might be because...")
+
+**ALWAYS**:
+- ✅ Use specific exception types in error handling
+- ✅ Preserve stack traces with `raise ... from e`
+- ✅ Log failures with context (job_id, operation, inputs)
+- ✅ Return errors to caller, don't swallow them
+- ✅ Verify root cause before proposing solutions
+- ✅ Present evidence-based diagnosis
+
+### Error Message Standards
+
+Code must produce actionable error messages:
+
+```python
+# ❌ BAD: Vague, no context, no solution
+raise Exception("Operation failed")
+
+# ❌ BAD: Swallows original error
+try:
+    operation()
+except Exception:
+    raise ValueError("Something went wrong")
+
+# ✅ GOOD: Specific, contextualized, actionable
+try:
+    client.describe_secret(SecretId=secret_id)
+except ClientError as e:
+    if e.response["Error"]["Code"] == "ResourceNotFoundException":
+        raise SecretNotFoundError(
+            f"Secret '{secret_id}' does not exist in AWS Secrets Manager. "
+            f"Create it with: aws secretsmanager create-secret "
+            f"--name {secret_id} --secret-string '{{...}}' "
+            f"See docs/aws-secrets-manager-setup.md for complete setup."
+        ) from e
+    elif e.response["Error"]["Code"] == "AccessDenied":
+        raise PermissionError(
+            f"Access denied reading secret '{secret_id}'. "
+            f"Ensure IAM role has 'secretsmanager:GetSecretValue' permission. "
+            f"Verify policy attachment: aws iam list-attached-role-policies "
+            f"--role-name pulldb-ec2-service-role"
+        ) from e
+    else:
+        raise  # Unexpected error - preserve original
+```
+
+### Test Fixture Behavior
+
+Test fixtures must fail with clear messages, not silently skip:
+
+```python
+# ❌ BAD: Silent degradation
+def mysql_credentials():
+    try:
+        return resolver.resolve(secret_id)
+    except:
+        return MySQLCredentials("localhost", "root", "")  # Hides failure
+
+# ✅ GOOD: Explicit skip with diagnostic message
+def mysql_credentials():
+    try:
+        return resolver.resolve(secret_id)
+    except NoCredentialsError as e:
+        pytest.skip(
+            f"AWS credentials not configured. "
+            f"Set AWS_PROFILE environment variable or configure "
+            f"~/.aws/credentials. See docs/testing.md for setup. "
+            f"Original error: {e}"
+        )
+```
 
 ## Common Pitfalls to Avoid
 

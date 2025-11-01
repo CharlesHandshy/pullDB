@@ -11,12 +11,13 @@ sudo scripts/setup-aws.sh
 # 2. Configure AWS credentials (creates .env file)
 scripts/setup-aws-credentials.sh
 # Follow prompts to:
-#   - Configure AWS profile: aws configure --profile pr-prod
-#   - Edit .env and set PULLDB_AWS_PROFILE=pr-prod
+#   - Configure AWS profile: aws configure --profile pr-staging  (staging-first for prototype)
+#   - Edit .env and set PULLDB_AWS_PROFILE=pr-staging (switch to pr-prod only for production backup access)
 #   - Verify credentials work
-# NOTE: For cross-account S3 access setup, see:
-#   - EC2 Deployment: docs/aws-ec2-deployment-setup.md (Developer SSH access + service deployment)
-#   - Service Auth: docs/aws-authentication-setup.md (EC2 instance profile - RECOMMENDED)
+# NOTE: Authentication, cross-account S3 access, and instance profile setup are fully documented in:
+#   - docs/aws-authentication-setup.md (CANONICAL AWS guide)
+#   - docs/aws-ec2-deployment-setup.md (Developer SSH access + service deployment)
+# TESTS: All integration/repository tests resolve DB credentials from the development account Secrets Manager secret `/pulldb/mysql/coordination-db` (dev account only; not replicated to staging/prod). See docs/aws-secrets-manager-setup.md. No direct MySQL user credentials are allowed.
 
 # 3. Install MySQL and create database schema
 sudo scripts/setup-mysql.sh
@@ -53,6 +54,71 @@ It checks:
 ## Purpose
 
 `pullDB` pulls production database backups from S3 and restores them into development environments. The prototype architecture consists of three services: a CLI that calls an API service, an API service that manages job requests via MySQL, and a worker service that executes restores. The services coordinate exclusively through MySQL.
+
+### Current Implementation Status (Nov 1 2025)
+
+Foundation primitives are in place (credential resolution, configuration loading, repositories, domain models). The executable restore workflow (S3 discovery → download → disk capacity checks → myloader execution → post‑SQL processing → staging rename) is not yet implemented. CLI and worker service remain placeholders (echo / heartbeat only). We are entering the "Restore Workflow Bootstrap" milestone.
+
+Bootstrap Milestone Goals:
+1. Logging & domain error classes (FAIL HARD runtime scaffolding)
+2. Worker poll loop + event emission (`queued`→`running`)
+3. S3 discovery + downloader with disk capacity guard
+4. myloader subprocess wrapper & restore orchestration
+5. Post‑SQL script executor + structured results JSON
+6. Staging lifecycle (orphan cleanup, name generation, atomic rename placeholder)
+7. Event wiring + job status updates (`failed`/`complete` transitions)
+8. CLI validation + real enqueue & status commands
+9. Integration tests (happy path + failure modes: missing backup, insufficient disk, myloader error, post‑SQL failure)
+10. Metrics emission (queue depth, restore durations, disk failures) after baseline stability
+
+Quality Guardrail: Each increment must preserve 100% passing tests and extend coverage for new failure paths (FAIL HARD diagnostics required).
+
+### Drift Ledger (Update as Features Land)
+- Repositories & credential/config layers: ✅ Implemented
+- Logging abstraction & domain error classes: ✅ Implemented (goal item 1 complete)
+- Worker poll loop & event emission: ✅ Implemented (goal item 2 complete)
+- S3 discovery & downloader (disk capacity guard + streaming): ✅ Implemented (goal item 3 complete)
+- CLI validation & enqueue/status: 🚧 Placeholder (planned goal item 8)
+- myloader execution subprocess wrapper & orchestration: ❌ Missing (planned goal item 4)
+- Post‑SQL executor & metadata table injection: ❌ Missing (planned goal item 5)
+- Staging lifecycle (orphan cleanup + atomic rename procedure): ❌ Missing (planned goal item 6)
+- Integration tests (end‑to‑end restore workflow incl. failure modes: missing backup, disk insufficient, myloader error, post‑SQL failure): ❌ Missing (planned goal item 9)
+- Metrics emission (queue depth, restore durations, disk failures): ❌ Missing (planned goal item 10)
+
+Test Suite Expansion: Initial 9 modules has grown to 87 passing tests (includes discovery and downloader coverage). End‑to‑end restore workflow tests will be added after myloader + staging lifecycle implementation.
+
+Agents and maintainers MUST update this ledger as components are delivered (replace ❌/🚧 with ✅). Do not remove incomplete lines prematurely; preserve historical progression for audit.
+
+## FAIL HARD Standard (pullDB)
+
+All pullDB operations, diagnostics, tests, and architectural changes MUST follow the **FAIL HARD** protocol defined in `constitution.md` and `.github/copilot-instructions.md`.
+
+Protocol Template:
+1. Goal – What was attempted (single sentence intent)
+2. Problem – Exact symptom or error (verbatim message)
+3. Root Cause – Validated reason (evidence-based; no speculation)
+4. Ranked Solutions – Ordered list (1 = best alignment, least blast radius)
+
+Non‑Negotiables:
+- Never silently degrade or work around failures
+- Never return empty success objects for error paths
+- Local dev-only overrides MUST emit a diagnostic skip message
+- Always preserve tracebacks (`raise ... from e`)
+- Error messages MUST include attempted operation + failing subsystem + actionable remediation (copy/paste command when possible)
+
+Example:
+```
+Goal: Restore customer 'acme' to dev host db-mysql-db4-dev
+Problem: S3 GetObject AccessDenied for key daily_mydumper_acme_2025-11-01T03-15-00Z_Saturday_dbimp.tar
+Root Cause: IAM role pulldb-ec2-service-role missing s3:GetObject on prefix pestroutesrdsdbs/daily/stg/acme/
+Solutions:
+  1. Attach policy pulldb-s3-read-access (least privilege grant)
+  2. Add inline statement granting s3:GetObject to specific bucket prefix
+  3. Temporary: use staging backup exclusively for format inspection (does not achieve production parity)
+```
+
+Automation:
+`scripts/ensure_fail_hard.py` (planned) will validate presence of this section across control documents and append if missing.
 
 **Multi-Environment Context**:
 - Prototype supports single backup source (staging or production, TBD during implementation)
@@ -109,6 +175,17 @@ ruff rule D101            # Show documentation for specific rule
 - See `docs/vscode-diagnostics.md` for complete workflow and examples
 
 See `constitution.md` for development workflow and complete coding standards. See `docs/vscode-diagnostics.md` for VS Code diagnostic integration.
+
+### FAIL HARD Enforcement Script
+
+To verify all control documents include the required FAIL HARD sections:
+
+```bash
+python3 scripts/ensure_fail_hard.py --check   # Validate presence
+python3 scripts/ensure_fail_hard.py --fix     # Auto-append canonical block if missing
+```
+
+CI runs the check on every push/PR (workflow: `.github/workflows/fail-hard-check.yml`). Failures must be resolved before merging.
 
 ## Prototype Architecture
 
