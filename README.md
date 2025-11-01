@@ -2,6 +2,8 @@
 
 > **For AI Agents & New Developers**: Start with `.github/copilot-instructions.md` for architectural overview and critical constraints, then read `constitution.md` for coding standards and workflow. This README provides complete API reference and usage patterns.
 
+> Naming note: The repository root keeps the historical product name `pullDB` (capital D) for familiarity, while the Python importable package is lowercase `pulldb` per PEP 8—use `import pulldb...` in code and retain `pullDB` in user-facing docs/CLI branding.
+
 ## Quick Start
 
 ```bash
