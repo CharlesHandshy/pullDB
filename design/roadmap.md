@@ -4,15 +4,44 @@
 
 This roadmap records deferred features and the documentation prerequisites before implementation begins. Always update this file before expanding scope.
 
-## Phase 0 – Prototype (Current)
+## FAIL HARD Roadmap Guardrail
 
-- CLI calls daemon REST API for job submission and status queries.
-- Daemon REST API accepts job requests, validates, enqueues in MySQL.
-- Daemon worker polls MySQL, downloads from S3, restores, executes post-restore SQL, logs events, publishes metrics.
-- MySQL schema as defined in `../docs/mysql-schema.md`.
-- Authentication via trusted wrapper (sudo context).
-- **Initial single-format support** (format TBD during implementation).
-- **Use staging account for development** - contains both older and newer mydumper formats for testing.
+Every future feature MUST document its failure boundaries pre-implementation:
+- Hard-stop vs permissible dev-only downgrade conditions
+- Observability additions required (metrics / events) to surface Problem + Root Cause
+- Ranked remediation strategies drafted before code
+
+Features lacking these remain deferred until documentation satisfies FAIL HARD standards.
+
+## Phase 0 – Prototype (Current Status: Mid Restore Workflow Bootstrap)
+
+Current implemented slice (Milestone items 1–3 complete):
+- MySQL schema provisioned
+- Credential resolution (Secrets Manager + SSM) implemented
+- Configuration loader (two-phase) implemented
+- Repository layer (Job/User/Host/Settings) implemented
+- Domain models implemented
+- Structured JSON logging abstraction implemented
+- Domain error classes implemented
+- Worker poll loop & event emission implemented
+- S3 backup discovery & selection logic implemented
+- Downloader (stream + disk capacity guard) implemented
+
+Outstanding restore workflow components (in progress / planned): myloader subprocess wrapper, post-SQL executor, staging lifecycle (orphan cleanup + atomic rename), integration tests for restore workflow, metrics emission, CLI validation & enqueue/status wiring.
+
+### Bootstrap Milestone Scope (Progress Tracked)
+1. Logging abstraction + domain error classes – ✅
+2. Worker poll loop & basic event emission – ✅
+3. S3 backup discovery & selection logic – ✅
+4. Downloader (stream + disk capacity preflight + extraction) – ✅ (extraction deferred; streaming download & capacity guard done)
+5. myloader subprocess wrapper & restore orchestration – ❌
+6. Post-restore SQL executor + results JSON + metadata table – ❌
+7. Staging lifecycle (orphan cleanup, name generation, atomic rename placeholder) – ❌
+8. CLI argument validation + enqueue + status listing – 🚧 (placeholder)
+9. Integration tests (happy path + failure modes) – ❌
+10. Metrics emission (queue depth, restore durations, disk failures) – ❌
+
+Each item must ship with tests and must not regress existing passing suite (100% required). Items may be merged incrementally once their tests pass and documentation sections are updated (README drift ledger + copilot instructions drift tracking).
 
 ### Deferred for Post-Prototype
 

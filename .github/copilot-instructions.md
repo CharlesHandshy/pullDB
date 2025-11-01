@@ -10,7 +10,7 @@ This document is the **primary reference for AI coding agents** working on pullD
 
 pullDB is a database restoration tool that pulls production MySQL backups from S3 and restores them to development environments. The system follows a **documentation-first, prototype-first** approach with extensive planning before implementation.
 
-**Current Status (Nov 1 2025)**: Foundation primitives (credentials, configuration, repositories) are implemented; the executable restore workflow (S3 discovery, download, disk capacity checks, myloader execution, post‑SQL processing, staging rename) is **not yet implemented**. CLI and worker service are placeholders (echo / heartbeat only). We are entering the "Restore Workflow Bootstrap" milestone to build end‑to‑end execution.
+**Current Status (Nov 1 2025)**: Foundation primitives (credentials, configuration, repositories) plus logging abstraction, domain error classes, worker poll loop, S3 backup discovery, downloader, and disk capacity guard are implemented (Milestone items 1–3 complete). Remaining restore workflow pieces (myloader execution, post‑SQL processing, staging lifecycle/rename) are in progress (not yet implemented). CLI still a placeholder (validation + enqueue/status pending). We are mid "Restore Workflow Bootstrap" milestone advancing toward end‑to‑end execution.
 
 **Completed Work** (verified Nov 1 2025):
 - ✅ MySQL 8.0.43 schema deployed (6 tables, 1 view, 1 trigger)
@@ -21,15 +21,17 @@ pullDB is a database restoration tool that pulls production MySQL backups from S
 - ✅ Initial test suite (9 test modules covering secrets, config, repositories) – all passing locally
 
 **Not Yet Implemented (Drift vs Initial Plan)**:
-- ❌ S3 backup discovery & selection logic
-- ❌ Downloader (stream + disk space preflight + extraction)
 - ❌ myloader subprocess wrapper & restore orchestration
 - ❌ Post‑restore SQL executor + metadata table injection
 - ❌ Staging DB orphan cleanup & atomic rename procedure
-- ❌ Structured JSON logging abstraction (print still used in worker stub)
-- ❌ Metrics emission (queue depth, restore durations, disk failures)
 - ❌ CLI argument validation + real enqueue/status calls
-- ❌ Worker polling loop (currently single heartbeat)
+- ❌ Metrics emission (queue depth, restore durations, disk failures)
+
+Implemented Since Original Plan (previously marked missing):
+- ✅ Structured JSON logging abstraction (baseline)
+- ✅ Worker polling loop + event emission
+- ✅ S3 backup discovery & selection logic
+- ✅ Downloader (stream + disk space preflight + streaming extraction input)
 
 **Immediate Milestone Goals (Restore Workflow Bootstrap)**:
 1. Introduce logging & domain error classes (FAIL HARD runtime scaffolding)
@@ -84,23 +86,22 @@ pulldb/
   ├── infra/
   │   ├── secrets.py              # IMPLEMENTED - Credential resolution (Secrets Manager + SSM)
   │   ├── mysql.py                # IMPLEMENTED - Repositories (Job/User/Host/Settings) + thin pool wrapper
-  │   └── (logging.py / s3.py / exec.py) # PLANNED – restore workflow bootstrap
+  │   ├── logging.py              # IMPLEMENTED - Structured JSON logging
+  │   ├── s3.py                   # IMPLEMENTED - Backup discovery & selection
+  │   └── (exec.py)               # PLANNED – subprocess wrapper (myloader)
+  ├── worker/
+  │   ├── service.py             # IMPLEMENTED - Poll loop + event emission
+  │   ├── downloader.py          # IMPLEMENTED - Stream download + disk capacity guard
+  │   └── (restore.py / staging.py / post_sql.py) # PLANNED – remaining workflow pieces
   ├── domain/
   │   ├── config.py               # IMPLEMENTED - Two-phase environment + MySQL settings enrichment
   │   ├── models.py               # IMPLEMENTED - Dataclasses (Job, JobEvent, etc.)
-  │   └── (errors.py / restore_models.py) # PLANNED – structured FAIL HARD runtime errors + restore DTOs
+  │   ├── errors.py               # IMPLEMENTED - Structured FAIL HARD runtime errors
+  │   └── (restore_models.py)     # PLANNED – myloader + post-SQL DTOs
   └── tests/
-      ├── test_secrets.py         # Secrets Manager & SSM resolution
-      ├── test_config.py          # Configuration loader unit tests
-      ├── test_config_integration.py # Env + MySQL enrichment integration
-      ├── test_job_repository.py  # Job enqueue / status transitions (partial)
-      ├── test_user_repository.py # user_code generation & collision handling
-      ├── test_host_repository.py # Host credential resolution
-      ├── test_settings_repository.py # Settings retrieval
-      ├── test_constants.py       # (if present) constant invariants
-      ├── test_imports.py         # Import hygiene / package surface
+      ├── ...                     # 87 passing test modules (discovery, downloader, repos, errors, loop, logging)
 
-> Current suite: 9 modules (expanding in upcoming milestone to include restore workflow tests).
+> Current suite: 87 modules (expanded with discovery, downloader, logging, and error coverage).
 customers_after_sql/              # Post-restore SQL for customer databases (PII removal)
   ├── 010.remove_customer_pii.sql
   ├── 020.remove_billto_info.sql
@@ -160,7 +161,7 @@ pullDB status
 - ✅ Secret residency verification added (`verify_secret_residency` fixture)
 - ✅ Graceful degradation for offline development (local override support)
 - ✅ Comprehensive test documentation (`docs/testing.md`)
-- ✅ All 50 tests passing with AWS integration
+- ✅ All 87 tests passing with AWS integration
 
 **Secret Residency Enforcement**:
 - New `verify_secret_residency` fixture validates secrets exist only in development account (345321506926)

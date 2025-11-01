@@ -59,7 +59,7 @@ It checks:
 
 ### Current Implementation Status (Nov 1 2025)
 
-Foundation primitives are in place (credential resolution, configuration loading, repositories, domain models). The executable restore workflow (S3 discovery → download → disk capacity checks → myloader execution → post‑SQL processing → staging rename) is not yet implemented. CLI and worker service remain placeholders (echo / heartbeat only). We are entering the "Restore Workflow Bootstrap" milestone.
+Foundation primitives (credential resolution, configuration loading, repositories, domain models) plus logging abstraction, domain error classes, worker poll loop, S3 backup discovery, downloader, and disk capacity guard are implemented (milestone items 1–3 complete). Remaining restore workflow pieces (myloader execution, post‑SQL processing, staging lifecycle/rename) are not yet implemented. CLI still a placeholder (validation + enqueue/status pending). We are mid "Restore Workflow Bootstrap" milestone advancing toward end‑to‑end execution.
 
 Bootstrap Milestone Goals:
 1. Logging & domain error classes (FAIL HARD runtime scaffolding)
