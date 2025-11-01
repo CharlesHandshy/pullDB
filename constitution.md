@@ -59,6 +59,21 @@ Every failure must provide:
 ### When to Fail Hard
 
 - **Missing permissions**: Don't retry with degraded access - demand correct permissions
+
+## Operational Hygiene Enforcement
+
+The **Pre-Commit Hygiene Protocol** (defined in `.github/copilot-instructions.md`) is mandatory for every change. It enforces:
+
+- Formatting (`ruff format`) followed by lint (`ruff check`) with zero violations
+- Strict typing (`mypy .`) with no ignored errors
+- Test execution under timeout guard (`pytest --timeout=60 --timeout-method=thread`)
+- Drift ledger synchronization (feature status accurately reflected)
+- `.gitignore` audit (exclude transient artifacts; retain business SQL & design docs)
+- Commit message compliance (includes test count + hygiene declaration)
+
+Any failure in the protocol triggers a FAIL HARD diagnostic report (Goal / Problem / Root Cause / Solutions) and blocks the commit until resolved. This ensures architectural intent, test coverage integrity, and repository cleanliness remain aligned.
+
+Future automation (scripted pre-commit verifier, performance regression alerts, dependency security scanning) will extend this enforcement but must never bypass FAIL HARD transparency.
 - **Configuration errors**: Don't fall back to defaults - require explicit correction
 - **External service failures**: Don't mask AWS/MySQL errors - surface them with context
 - **Schema mismatches**: Don't skip validations - halt until schema is correct

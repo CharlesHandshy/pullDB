@@ -518,6 +518,10 @@ sequenceDiagram
 
 - **Audit Logging**: capture authorization failures and other security-related events (e.g., unknown `user=` attempts, host validation failures).
 - **General Logging**: record operational events for the CLI wrapper and daemon, including disk checks, download phases, restore timing, post-restore SQL execution, and metadata table creation.
+
+## Development Workflow Note
+
+Before every commit, follow the Pre-Commit Hygiene Protocol (format, lint, types, tests with timeout, drift ledger sync, gitignore audit). Full protocol details live in `.github/copilot-instructions.md`.
 - **Job Logging**: emit single-line records for each job transition (queued, running, failed, complete). Cancellation entries will join once that feature ships.
 
 ## Documentation

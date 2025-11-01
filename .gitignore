@@ -81,3 +81,26 @@ local.conf
 .env
 .env.local
 venv/
+
+# Runtime / analysis caches
+.mypy_cache/
+.ruff_cache/
+
+# Benchmarking / profiling artifacts
+.benchmarks/
+profile/
+profiling/
+
+# Daemon / process artifacts
+*.pid
+*.out
+*.trace
+*.stackdump
+
+# pullDB working/extraction directories (never versioned)
+pulldb_work_*/
+pulldb_extract_*/
+pulldb_tmp_*/
+tmp_pulldb_*/
+
+# NOTE: Do NOT ignore business SQL scripts in customers_after_sql/ or qa_template_after_sql/

@@ -480,6 +480,71 @@ def mysql_credentials():
         )
 ```
 
+## Pre-Commit Hygiene Protocol
+
+**Purpose**: Guarantee every commit preserves code quality, test integrity, documentation accuracy (drift ledger + README status), and excludes transient artifacts. Integrates with FAIL HARD—any failed step aborts with actionable diagnostics.
+
+### Ordered Checklist (Abort on First Failure)
+1. Working tree sanity: `git status` shows only intended changes; no stray large archives or dumps.
+2. Formatting: `ruff format .` (must produce no diffs on second run).
+3. Lint: `ruff check .` (zero errors/warnings required for commit).
+4. Types: `mypy .` (no errors; introduce stubs or refactors instead of ignoring).
+5. Tests: `pytest -q --timeout=60 --timeout-method=thread` (all pass; invoke Timeout Monitoring Protocol if timeouts).
+6. Drift ledger sync: Update in `copilot-instructions.md`—Completed Work + Not Yet Implemented + Implementation Drift Tracking—reflect new components or status changes (add ✅/❌ transitions only with evidence).
+7. Test count & duration: Capture latest line (e.g., `112 passed in 55.3s`) and ensure commit message includes it.
+8. .gitignore audit: Confirm newly introduced transient patterns are ignored (extraction dirs, profiling output) and no essential assets are accidentally excluded.
+9. README status block: Update only if milestone progress (feature implemented or promoted from pending).
+10. Commit message uses standard template (see below).
+
+### Commit Message Template
+```
+pullDB: <component>: <short summary>
+
+Component: <files/modules>
+Change-Type: feature|fix|refactor|docs|hygiene
+Tests: <N> tests passing in <S.SS>s (timeout=60s)
+Drift: Updated <sections touched>
+Hygiene: ruff+mypy+pytest clean; gitignore audited; docs synced
+```
+
+### Artifact Classification
+| Category | Tracked | Ignored |
+|----------|---------|---------|
+| Source & Domain | `pulldb/`, design docs, SQL scripts in `customers_after_sql/`, `qa_template_after_sql/` | Generated caches (`__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`) |
+| Backups / Dumps | (Never) | `*.sql*`, `*.tar*`, `*.dump`, extracted working dirs (`pulldb_work_*`) |
+| Environment | Required examples in docs | `.env`, local overrides, virtual env dirs (`venv/`, `.venv/`) |
+| Diagnostics | FAIL HARD logs embedded in exceptions | `*.log`, profiling (`profile/`, `profiling/`), benchmarking (`.benchmarks/`) |
+| Processes | N/A | PID/trace artifacts (`*.pid`, `*.out`, `*.trace`, `*.stackdump`) |
+
+### Failure Protocol (Example)
+```
+Goal: Run mypy type checks pre-commit
+Problem: mypy reported 2 incompatible type errors in staging.py
+Root Cause: Row access uses generic Any without explicit tuple type; missing cast/ignore
+Solutions:
+ 1. Add typed protocol or cast for cursor.fetchall rows (preferred)
+ 2. Introduce TypedDict/NamedTuple for database rows
+ 3. As last resort, narrow ignore with type: ignore[index] and explain in code comment
+```
+
+### Safeguards
+- Never ignore business SQL sanitization scripts.
+- Do not auto-commit if test count decreased without explicit rationale.
+- Avoid broad patterns (e.g., `*work*`)—use specific prefixes (`pulldb_work_`).
+- Re-run ruff and mypy after doc edits (docs can introduce trailing whitespace issues).
+
+### Future Extensions
+- Add `scripts/precommit-verify.py` to automate checklist (planned).
+- Integrate performance baseline alerts (average test duration trending upward >10%).
+- Security scan injection (dependency vulnerability checks) after core workflow completes.
+
+### Success Criteria
+- All steps green.
+- Commit message contains hygiene block.
+- Drift ledger and test count correct.
+- No transient artifacts added.
+
+
 ## Test Timeout Monitoring Protocol
 
 **CRITICAL**: All test executions must include timeout monitoring to detect hanging tests, resource leaks, and deadlocks early. This protocol ensures test suite reliability and provides diagnostic data for FAIL HARD resolution.
@@ -526,13 +591,13 @@ pytest -q --timeout=60 --timeout-method=thread
    ```bash
    # Check for orphaned processes
    ps aux | grep -E "(myloader|pytest|python)" | grep -v grep
-   
+
    # Check for unclosed MySQL connections
    mysql -e "SHOW PROCESSLIST" | grep pulldb
-   
+
    # Check for open file handles (if test PID known)
    lsof -p <pytest_pid>
-   
+
    # Check for temp files not cleaned up
    ls -la /tmp/*pulldb* 2>/dev/null
    ```
@@ -544,17 +609,17 @@ pytest -q --timeout=60 --timeout-method=thread
    Test: test_module.py::test_function_name
    Timeout: 60 seconds
    Last Output: [captured output before timeout]
-   
+
    DIAGNOSTIC RE-RUN
    =================
    Command: pytest -vv -s --timeout=120 -p no:xdist test_module.py::test_function_name
    Result: [timeout again | passed | failed with error]
    Duration: [actual time if completed]
-   
+
    ROOT CAUSE ANALYSIS
    ===================
    [Evidence-based diagnosis: which operation hung, resource state]
-   
+
    RECOMMENDED SOLUTIONS
    =====================
    1. [Most effective fix with code example]
