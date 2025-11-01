@@ -335,3 +335,14 @@ class BackupValidationError(JobExecutionError):
                 "missing_files": missing_files,
             },
         )
+
+
+class StagingError(Exception):
+    """Staging database lifecycle operation failed.
+
+    Raised when staging name generation, orphan cleanup, or uniqueness
+    verification fails. Uses simplified error format for operations that
+    don't warrant full FAIL HARD structure (e.g., input validation).
+    """
+
+    pass
