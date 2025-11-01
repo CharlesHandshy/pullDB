@@ -93,20 +93,18 @@ PULLDB_S3_STAGING_BUCKET_PATH=s3://pestroutesrdsdbs/daily/stg/
 PULLDB_BACKUP_SOURCE=staging  # Use staging for development/testing
 ```
 
-AWS profiles:
+AWS profiles (canonical staging-first pattern; see `aws-authentication-setup.md`):
 ```ini
-# Staging account cross-account role (PRIMARY FOR DEVELOPMENT)
 [profile pr-staging]
-role_arn = arn:aws:iam::333204494849:role/PullDB-CrossAccount-ReadOnly
-source_profile = pulldb-dev
-external_id = pulldb-dev-to-staging-20250101
+role_arn = arn:aws:iam::333204494849:role/pulldb-cross-account-readonly
+credential_source = Ec2InstanceMetadata
+external_id = pulldb-dev-access-2025
 region = us-east-1
 
-# Production account cross-account role (future)
 [profile pr-prod]
-role_arn = arn:aws:iam::448509429610:role/PullDB-CrossAccount-ReadOnly
-source_profile = pulldb-dev
-external_id = pulldb-dev-to-prod-20250101
+role_arn = arn:aws:iam::448509429610:role/pulldb-cross-account-readonly
+credential_source = Ec2InstanceMetadata
+external_id = pulldb-dev-access-2025
 region = us-east-1
 ```
 

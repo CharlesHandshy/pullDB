@@ -1,48 +1,113 @@
-"""Structured logging placeholder.
+"""Structured logging for pullDB.
 
-Will be expanded in Milestone 8.
+Provides JSON-formatted logging with consistent field injection for job context,
+phase tracking, and operational visibility. All log statements include timestamps,
+severity, and optional structured fields (job_id, target, phase).
+
+Example:
+    >>> logger = get_logger("pulldb.worker")
+    >>> logger.info("Job started", extra={"job_id": "123", "phase": "download"})
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
+import sys
+from typing import Any
 
 
-def build_logger(name: str = "pulldb", log_file: Path | None = None) -> logging.Logger:
-    """Build a structured JSON logger.
+class JSONFormatter(logging.Formatter):
+    """JSON log formatter with structured fields.
 
-    Creates a logger that outputs JSON-formatted log messages. Supports both
-    file and console output with optional structured fields (job_id, phase).
+    Converts log records to single-line JSON for parsing by log aggregation
+    systems (Datadog, CloudWatch, etc.). Includes timestamp, level, logger name,
+    message, and any extra fields passed via the `extra` parameter.
+
+    Attributes:
+        None (inherits from logging.Formatter)
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Format log record as JSON string.
+
+        Args:
+            record: LogRecord to format.
+
+        Returns:
+            Single-line JSON string with structured log data.
+        """
+        log_data: dict[str, Any] = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+
+        # Add exception info if present
+        if record.exc_info:
+            log_data["exception"] = self.formatException(record.exc_info)
+
+        # Merge extra fields (job_id, target, phase, etc.)
+        for key, value in record.__dict__.items():
+            if key not in {
+                "name",
+                "msg",
+                "args",
+                "created",
+                "filename",
+                "funcName",
+                "levelname",
+                "levelno",
+                "lineno",
+                "module",
+                "msecs",
+                "message",
+                "pathname",
+                "process",
+                "processName",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+            }:
+                log_data[key] = value
+
+        return json.dumps(log_data)
+
+
+def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
+    """Get or create a structured JSON logger.
+
+    Creates a logger with JSON formatting that writes to stdout. Repeated calls
+    with the same name return the same logger instance (Python logging behavior).
 
     Args:
-        name: Logger name, defaults to "pulldb".
-        log_file: Optional file path for log output. If None, logs to stderr.
+        name: Logger name (typically module path like 'pulldb.worker.restore').
+        level: Minimum log level (default: INFO).
 
     Returns:
-        Configured logger instance with JSON formatting.
+        Configured Logger instance with JSON formatter.
+
+    Example:
+        >>> logger = get_logger("pulldb.worker")
+        >>> logger.info("Starting restore", extra={"job_id": "abc123"})
+        {"timestamp": "2025-11-01 10:30:00", "level": "INFO", ...}
     """
     logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
+
+    # Only configure if not already configured (prevent duplicate handlers)
     if not logger.handlers:
-        handler: logging.Handler = (
-            logging.FileHandler(log_file) if log_file else logging.StreamHandler()
-        )
+        logger.setLevel(level)
 
-        class JsonFormatter(logging.Formatter):
-            def format(self, record: logging.LogRecord) -> str:
-                payload = {
-                    "timestamp": self.formatTime(record),
-                    "level": record.levelname,
-                    "message": record.getMessage(),
-                    "logger": record.name,
-                }
-                for extra_key in ("job_id", "phase"):
-                    if hasattr(record, extra_key):
-                        payload[extra_key] = getattr(record, extra_key)
-                return json.dumps(payload)
-
-        handler.setFormatter(JsonFormatter())
+        # Console handler with JSON formatting
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(JSONFormatter())
         logger.addHandler(handler)
+
+        # Prevent propagation to root logger (avoid duplicate logs)
+        logger.propagate = False
+
     return logger

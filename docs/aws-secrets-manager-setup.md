@@ -1,6 +1,10 @@
 # AWS Secrets Manager Setup for pullDB
 
-> **Purpose**: Configure AWS Secrets Manager access for pullDB to retrieve MySQL credentials for target database servers (db3-dev, db4-dev, db5-dev).
+> STATUS: ACTIVE (Implementation Guide)
+> Canonical Authentication Reference: See `aws-authentication-setup.md` for the authoritative end-to-end AWS architecture (accounts, roles, instance profile, cross-account access). This file focuses narrowly on MySQL credential storage and retrieval mechanics. If guidance here conflicts with `aws-authentication-setup.md`, the canonical document wins.
+> Scope Reduction (2025-11-01): Architecture diagrams, cross-account role creation, and instance profile steps were consolidated into `aws-authentication-setup.md` to eliminate duplication. Future updates should only extend credential patterns (rotation, schema integration, testing mandate).
+
+> **Purpose**: Configure AWS Secrets Manager access for pullDB to retrieve MySQL credentials for target database servers (db3-dev, db4-dev, db5-dev) and the coordination database secret `/pulldb/mysql/coordination-db` used by all tests.
 
 ## Overview
 
@@ -80,11 +84,15 @@ When connecting to a target database server, pullDB:
 
 ## Step 1: Create Secrets in AWS Secrets Manager
 
+> Use profile names standardized in `aws-authentication-setup.md`: `pr-staging` (primary prototype backups) and `pr-prod` (production backups). For development account operations (creating secrets shown below) run under the development account (instance profile or an admin profile in that account). Previous examples using `pr-dev` have been deprecated.
+
 ### 1.1 Create Secret for db3-dev (DEV Team)
 
 ```bash
-# Set AWS profile for development account
-export AWS_PROFILE=pr-dev
+# Development account context ONLY (account: 345321506926). Do NOT use cross-account staging/production profiles to create dev secrets.
+# If running on the EC2 instance with the instance profile attached, omit AWS_PROFILE entirely.
+# If running locally with a named dev admin profile, set that profile (example: dev-admin).
+export AWS_PROFILE=dev-admin  # Example; replace with your actual dev account admin profile name or omit when on EC2
 
 # Create secret with MySQL credentials
 aws secretsmanager create-secret \
@@ -139,7 +147,7 @@ aws secretsmanager create-secret \
 aws secretsmanager describe-secret --secret-id /pulldb/mysql/db5-dev
 ```
 
-### 1.4 Create Secret for Coordination Database
+### 1.4 Create Secret for Coordination Database (MANDATORY FOR TESTS)
 
 ```bash
 # Create secret for pullDB's own coordination MySQL database
@@ -159,6 +167,8 @@ aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db
 ```
 
 ## Step 2: Update IAM Policy for Secrets Manager Access
+
+> IAM role and instance profile creation details live in `aws-authentication-setup.md`. Only the incremental Secrets Manager permissions are documented here.
 
 ### 2.1 Create Secrets Manager Policy
 
@@ -575,6 +585,21 @@ print(f"   Host: {creds['host']}")
 
 print("\n✅ All Secrets Manager credential resolutions successful!")
 EOF
+
+### 6.4 Profile Usage Clarification
+
+Secret creation and retrieval for paths under `/pulldb/mysql/*` occur in the **development account (345321506926)**. Cross-account profiles `pr-staging` and `pr-prod` are for accessing backup objects in staging/production S3 buckets—do not use them to create or update development secrets. If you previously used a legacy profile name like `dev-pulldb` and secret access stopped working:
+
+1. Confirm you are either on the EC2 instance (instance profile) or using a valid dev admin profile (e.g. `dev-admin`).
+2. Avoid setting `AWS_PROFILE=pr-staging` for secret CRUD; this may attempt role assumption into staging instead of the dev account.
+3. Re-run:
+```bash
+unset AWS_PROFILE  # if on EC2
+aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db --region us-east-1 --query 'ARN'
+```
+4. If AccessDenied persists, verify the `pulldb-secrets-manager-access` policy is attached to `pulldb-ec2-service-role` (see Step 2) and that the secret resides in the dev account (expected ARN account id matches 345321506926).
+
+Temporary overrides for tests (`PULLDB_TEST_MYSQL_HOST` etc.) should only be used when this secret retrieval is blocked during initial IAM propagation—not as a long-term solution.
 ```
 
 ### 6.3 Test MySQL Connection with Resolved Credentials
@@ -764,11 +789,11 @@ aws cloudtrail lookup-events \
 
 ## Related Documentation
 
-- **AWS Authentication Setup**: See `aws-authentication-setup.md` for EC2 instance profile setup
-- **Parameter Store Setup**: See `parameter-store-setup.md` for SSM Parameter Store alternative
-- **MySQL Schema**: See `mysql-schema.md` for complete db_hosts table structure
-- **MySQL Setup**: See `mysql-setup.md` for database and user creation
-- **Two-Service Architecture**: See `design/two-service-architecture.md` for API/Worker separation
+- `aws-authentication-setup.md` (Canonical AWS authentication & cross-account access)
+- `parameter-store-setup.md` (Optional non-secret config pattern; not for MySQL credentials in tests)
+- `mysql-schema.md` (Complete db_hosts table structure and coordination DB schema)
+- `design/two-service-architecture.md` (API/Worker separation context)
+- `SECRETS-MANAGER-SUMMARY.md` (High-level recap; superseded for detailed steps by this file)
 
 ## Summary
 

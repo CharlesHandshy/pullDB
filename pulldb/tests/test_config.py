@@ -63,22 +63,26 @@ class TestMinimalFromEnv:
 
 
 class TestFromEnvAndMySQL:
-    """Test Config.from_env_and_mysql() - environment + MySQL settings."""
+    """Test Config.from_env_and_mysql() using mocked MySQLPool abstraction."""
+
+    def _build_pool_with_settings(self, settings: list[dict[str, str]]) -> MagicMock:
+        """Helper to build a mock MySQLPool returning provided settings rows."""
+        mock_pool = MagicMock()
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_pool.connection.return_value.__enter__.return_value = mock_conn
+        mock_pool.connection.return_value.__exit__.return_value = False
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchall.return_value = settings
+        return mock_pool
 
     def test_load_with_mysql_overrides(self) -> None:
-        """Test config loading with MySQL settings overrides."""
-        # Set up environment
+        """MySQL settings populate missing operational configuration fields."""
         os.environ["PULLDB_MYSQL_HOST"] = "localhost"
         os.environ["PULLDB_MYSQL_USER"] = "root"
         os.environ["PULLDB_MYSQL_PASSWORD"] = "testpass"
 
-        # Mock MySQL connection and cursor
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-
-        # Simulate settings table query results
-        mock_cursor.fetchall.return_value = [
+        settings_rows = [
             {
                 "setting_key": "default_dbhost",
                 "setting_value": "db-mysql-db4-dev.example.com",
@@ -91,32 +95,21 @@ class TestFromEnvAndMySQL:
                 "setting_value": "/opt/pulldb/customers_after_sql",
             },
         ]
+        mock_pool = self._build_pool_with_settings(settings_rows)
 
-        # Load config
-        config = Config.from_env_and_mysql(mock_conn)
+        config = Config.from_env_and_mysql(mock_pool)
 
-        # Verify MySQL credentials came from environment
         assert config.mysql_host == "localhost"
         assert config.mysql_user == "root"
         assert config.mysql_password == "testpass"
         assert config.mysql_database == "pulldb"
-
-        # Verify operational settings came from MySQL
         assert config.s3_bucket_path == "pestroutesrdsdbs"
         assert config.default_dbhost == "db-mysql-db4-dev.example.com"
         assert config.work_dir == Path("/var/lib/pulldb")
         assert config.customers_after_sql_dir == Path("/opt/pulldb/customers_after_sql")
 
-        # Verify cursor was used correctly
-        mock_conn.cursor.assert_called_once_with(dictionary=True)
-        mock_cursor.execute.assert_called_once_with(
-            "SELECT setting_key, setting_value FROM settings"
-        )
-        mock_cursor.close.assert_called_once()
-
     def test_environment_takes_precedence_over_mysql(self) -> None:
-        """Test that environment variables override MySQL settings."""
-        # Set up environment with explicit values
+        """Environment variables override MySQL settings rows."""
         os.environ["PULLDB_MYSQL_HOST"] = "localhost"
         os.environ["PULLDB_MYSQL_USER"] = "root"
         os.environ["PULLDB_MYSQL_PASSWORD"] = "testpass"
@@ -124,82 +117,55 @@ class TestFromEnvAndMySQL:
         os.environ["PULLDB_DEFAULT_DBHOST"] = "env-dbhost"
         os.environ["PULLDB_WORK_DIR"] = "/tmp/env-work"
 
-        # Mock MySQL connection
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-
-        # MySQL settings (should be overridden by environment)
-        mock_cursor.fetchall.return_value = [
+        settings_rows = [
             {"setting_key": "s3_bucket_stg", "setting_value": "mysql-bucket"},
             {"setting_key": "default_dbhost", "setting_value": "mysql-dbhost"},
             {"setting_key": "work_directory", "setting_value": "/var/mysql-work"},
         ]
+        mock_pool = self._build_pool_with_settings(settings_rows)
 
-        config = Config.from_env_and_mysql(mock_conn)
+        config = Config.from_env_and_mysql(mock_pool)
 
-        # Environment should win
         assert config.s3_bucket_path == "s3://env-bucket/"
         assert config.default_dbhost == "env-dbhost"
         assert config.work_dir == Path("/tmp/env-work")
 
     def test_mysql_settings_fallback_to_defaults(self) -> None:
-        """Test that defaults are used when neither env nor MySQL provide values."""
-        # Minimal environment (just credentials)
+        """Defaults used when neither environment nor MySQL provide values."""
         os.environ["PULLDB_MYSQL_HOST"] = "localhost"
         os.environ["PULLDB_MYSQL_USER"] = "root"
         os.environ["PULLDB_MYSQL_PASSWORD"] = "testpass"
 
-        # Mock MySQL connection with empty settings
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = []
+        mock_pool = self._build_pool_with_settings([])
+        config = Config.from_env_and_mysql(mock_pool)
 
-        config = Config.from_env_and_mysql(mock_conn)
-
-        # Should use hardcoded defaults
         assert config.work_dir == Path("/tmp/pulldb-work")
         assert config.customers_after_sql_dir == Path("customers_after_sql")
         assert config.qa_template_after_sql_dir == Path("qa_template_after_sql")
 
     def test_prefers_staging_bucket_over_prod(self) -> None:
-        """Test that s3_bucket_stg is preferred over s3_bucket_prod."""
+        """Staging bucket preferred when both staging and prod provided."""
         os.environ["PULLDB_MYSQL_HOST"] = "localhost"
         os.environ["PULLDB_MYSQL_USER"] = "root"
         os.environ["PULLDB_MYSQL_PASSWORD"] = "testpass"
 
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-
-        # Both staging and production buckets present
-        mock_cursor.fetchall.return_value = [
+        settings_rows = [
             {"setting_key": "s3_bucket_stg", "setting_value": "staging-bucket"},
             {"setting_key": "s3_bucket_prod", "setting_value": "prod-bucket"},
         ]
-
-        config = Config.from_env_and_mysql(mock_conn)
-
-        # Should prefer staging
+        mock_pool = self._build_pool_with_settings(settings_rows)
+        config = Config.from_env_and_mysql(mock_pool)
         assert config.s3_bucket_path == "staging-bucket"
 
     def test_falls_back_to_prod_bucket_if_no_staging(self) -> None:
-        """Test fallback to production bucket when staging not available."""
+        """Production bucket used when staging bucket absent."""
         os.environ["PULLDB_MYSQL_HOST"] = "localhost"
         os.environ["PULLDB_MYSQL_USER"] = "root"
         os.environ["PULLDB_MYSQL_PASSWORD"] = "testpass"
 
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-
-        # Only production bucket present
-        mock_cursor.fetchall.return_value = [
+        settings_rows = [
             {"setting_key": "s3_bucket_prod", "setting_value": "prod-bucket"},
         ]
-
-        config = Config.from_env_and_mysql(mock_conn)
-
-        # Should use production
+        mock_pool = self._build_pool_with_settings(settings_rows)
+        config = Config.from_env_and_mysql(mock_pool)
         assert config.s3_bucket_path == "prod-bucket"

@@ -1,4 +1,9 @@
-# AWS Cross-Account Access Setup for pullDB (IAM User)
+# AWS Cross-Account Access Setup for pullDB (IAM User) (OBSOLETE)
+
+> DEPRECATION DATE: 2025-11-01
+> REPLACED BY: `aws-authentication-setup.md` (Cross-Account Staging & Production setup).
+> RATIONALE: Consolidates IAM user and role patterns; discourages IAM user access key reliance.
+> ACTION: Use only instance profile + assume-role approach in canonical guide.
 
 ## Overview
 
@@ -385,7 +390,7 @@ aws iam get-user --user-name pulldb-dev-user
 }
 ```
 
-**Important:** 
+**Important:**
 - Replace `111111111111` with your **production account ID**
 - Use the **same ExternalId** as defined in the trust policy (Step 1.1)
 
@@ -810,7 +815,7 @@ sts:AssumeRole on resource: arn:aws:iam::111111111111:role/pulldb-cross-account-
    ```bash
    # Check user's attached policies
    AWS_PROFILE=dev-admin aws iam list-attached-user-policies --user-name pulldb-dev-user
-   
+
    # Verify the assume role policy is attached
    ```
 
@@ -818,7 +823,7 @@ sts:AssumeRole on resource: arn:aws:iam::111111111111:role/pulldb-cross-account-
    ```bash
    # Check role trust policy in production account
    AWS_PROFILE=prod-admin aws iam get-role --role-name pulldb-cross-account-read-role --query 'Role.AssumeRolePolicyDocument'
-   
+
    # Verify dev account ID is in Principal.AWS
    ```
 
@@ -840,12 +845,12 @@ Access Denied
    ```bash
    # Check attached policies on the cross-account role
    AWS_PROFILE=prod-admin aws iam list-attached-role-policies --role-name pulldb-cross-account-read-role
-   
+
    # View policy document
    POLICY_ARN=$(aws iam list-attached-role-policies \
        --role-name pulldb-cross-account-read-role \
        --query 'AttachedPolicies[0].PolicyArn' --output text)
-   
+
    aws iam get-policy-version \
        --policy-arn "$POLICY_ARN" \
        --version-id v1

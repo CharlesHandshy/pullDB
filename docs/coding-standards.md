@@ -2,6 +2,37 @@
 
 This document provides detailed coding standards for all file types used in the pullDB project. These standards are based on industry best practices and community-accepted style guides.
 
+## FAIL HARD Coding Standard
+
+Error handling MUST conform to the FAIL HARD protocol (see `../constitution.md`).
+
+Minimum Requirements:
+- Provide Goal / Problem / Root Cause / Ranked Solutions for user-facing failures (exceptions crossing subsystem boundaries, CLI error output, daemon job failures).
+- Use specific exception subclasses; avoid bare `Exception` for domain logic.
+- Always chain exceptions: `raise DomainError("context") from e`.
+- NEVER silently swallow exceptions (`except: pass` forbidden).
+- NEVER return partially valid objects as success.
+- Tests assert failure message contains remediation guidance.
+
+Example:
+```python
+try:
+    backup = s3_client.get_object(Bucket=bucket, Key=key)
+except ClientError as e:
+    code = e.response.get("Error", {}).get("Code")
+    if code == "AccessDenied":
+        raise BackupDownloadError(
+            "Goal: Download backup archive\n"
+            f"Problem: AccessDenied for key {key}\n"
+            "Root Cause: IAM role missing s3:GetObject on prefix\n"
+            "Solutions:\n"
+            "  1. Attach pulldb-s3-read-access policy\n"
+            "  2. Validate role session (aws sts get-caller-identity)\n"
+            "  3. Verify bucket policy grants required action"
+        ) from e
+    raise
+```
+
 **Quick Reference**:
 - Python: [PEP 8](https://peps.python.org/pep-0008/), [PEP 484](https://peps.python.org/pep-0484/) (Type Hints)
 - Markdown: CommonMark, GitHub Flavored Markdown

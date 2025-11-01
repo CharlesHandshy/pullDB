@@ -1,0 +1,156 @@
+"""Backup downloader with disk capacity guard.
+
+Milestone 3: Streams selected S3 tar archive to a local staging directory
+and validates sufficient disk space prior to download (size * 1.8 rule).
+
+Responsibilities:
+  * Verify available disk space on target volume (FAIL HARD early)
+  * Stream S3 object to file (no full in-memory buffering)
+  * Provide progress logging (every N MB) - placeholder basic logging
+  * Return path to downloaded tar archive for extraction phase (future)
+
+Extraction (mydumper tar unpack) will be implemented in a later milestone.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+from typing import Any
+
+from pulldb.domain.errors import DiskCapacityError, DownloadError
+from pulldb.infra.logging import get_logger
+from pulldb.infra.s3 import BackupSpec, S3Client
+
+
+logger = get_logger("pulldb.worker.downloader")
+
+BUFFER_SIZE = 8 * 1024 * 1024  # 8MB streaming chunks
+PROGRESS_INTERVAL_MB = 64  # Log every 64MB downloaded
+
+
+def ensure_disk_capacity(job_id: str, required_bytes: int, path: str) -> None:
+    """Ensure volume containing path has required free space.
+
+    Applies size * 1.8 rule (caller passes pre-multiplied required_bytes).
+
+    Args:
+        job_id: Job identifier.
+        required_bytes: Total bytes required (already multiplied).
+        path: Target file path (used to derive volume path).
+
+    Raises:
+        DiskCapacityError: When available space < required_bytes.
+    """
+    volume = os.path.dirname(os.path.abspath(path)) or "/"
+    usage = shutil.disk_usage(volume)
+    available = usage.free
+    if available < required_bytes:
+        required_gb = required_bytes / (1024**3)
+        available_gb = available / (1024**3)
+        raise DiskCapacityError(
+            job_id=job_id,
+            required_gb=required_gb,
+            available_gb=available_gb,
+            volume=volume,
+        )
+    logger.info(
+        "Disk capacity verified",
+        extra={
+            "phase": "download_preflight",
+            "job_id": job_id,
+            "required_bytes": required_bytes,
+            "available_bytes": available,
+            "volume": volume,
+        },
+    )
+
+
+def download_backup(
+    s3: S3Client,
+    spec: BackupSpec,
+    job_id: str,
+    dest_dir: str,
+) -> str:
+    """Download backup tar archive with disk capacity preflight.
+
+    Args:
+        s3: Initialized S3 client.
+        spec: Discovered backup specification.
+        job_id: Job identifier for logging.
+        dest_dir: Directory to place downloaded file (created if absent).
+
+    Returns:
+        Absolute path to downloaded tar archive.
+
+    Raises:
+        DiskCapacityError: Insufficient disk space.
+        DownloadError: AWS GetObject failure.
+    """
+    os.makedirs(dest_dir, exist_ok=True)
+    dest_path = os.path.join(dest_dir, spec.filename)
+
+    # Disk capacity preflight (size * 1.8 rule)
+    required_bytes = int(spec.size_bytes * 1.8)
+    ensure_disk_capacity(job_id, required_bytes, dest_path)
+
+    logger.info(
+        "Starting S3 download",
+        extra={
+            "phase": "download_start",
+            "job_id": job_id,
+            "bucket": spec.bucket,
+            "key": spec.key,
+            "size_bytes": spec.size_bytes,
+            "dest_path": dest_path,
+        },
+    )
+
+    try:
+        response: dict[str, Any] = s3.get_object(spec.bucket, spec.key)
+    except Exception as e:  # pragma: no cover - network errors hard to unit test
+        error_code = getattr(e, "response", {}).get("Error", {}).get("Code", "Unknown")
+        raise DownloadError(
+            job_id=job_id,
+            backup_key=spec.key,
+            error_code=error_code,
+            message=str(e),
+        ) from e
+
+    body = response["Body"]  # Streaming body object
+    downloaded = 0
+    next_progress = PROGRESS_INTERVAL_MB * 1024 * 1024
+
+    with open(dest_path, "wb") as f:  # binary write
+        while True:
+            chunk = body.read(BUFFER_SIZE)
+            if not isinstance(chunk, bytes):  # defensive: boto may return None
+                chunk = b""
+            if not chunk:
+                break
+            f.write(chunk)
+            downloaded += len(chunk)
+            if downloaded >= next_progress:
+                logger.info(
+                    "Download progress",
+                    extra={
+                        "phase": "download_progress",
+                        "job_id": job_id,
+                        "downloaded_bytes": downloaded,
+                        "total_bytes": spec.size_bytes,
+                    },
+                )
+                next_progress += PROGRESS_INTERVAL_MB * 1024 * 1024
+
+    logger.info(
+        "Download complete",
+        extra={
+            "phase": "download_complete",
+            "job_id": job_id,
+            "dest_path": dest_path,
+            "downloaded_bytes": downloaded,
+            "expected_bytes": spec.size_bytes,
+        },
+    )
+
+    return dest_path

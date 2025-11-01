@@ -1,4 +1,9 @@
-# AWS IAM Setup for pullDB
+# AWS IAM Setup for pullDB (OBSOLETE)
+
+> DEPRECATION DATE: 2025-11-01
+> REPLACED BY: `aws-authentication-setup.md` (all IAM policies, trust, external ID practices).
+> RATIONALE: Prevent outdated policy examples and drift; centralize permission matrix.
+> ACTION: Remove references to this file; point contributors to canonical guide.
 
 Complete guide for setting up AWS IAM users, roles, and policies for pullDB.
 
@@ -427,7 +432,7 @@ aws cloudtrail start-logging --name pulldb-audit-trail
    ```bash
    # For user
    aws iam list-attached-user-policies --user-name pulldb-dev-user
-   
+
    # For role
    aws iam list-attached-role-policies --role-name pulldb-prod-role
    ```
@@ -436,7 +441,7 @@ aws cloudtrail start-logging --name pulldb-audit-trail
    ```bash
    # Get policy ARN
    aws iam list-policies --query 'Policies[?PolicyName==`pulldb-dev-policy`].Arn'
-   
+
    # View policy document
    aws iam get-policy-version \
        --policy-arn arn:aws:iam::ACCOUNT_ID:policy/pulldb-dev-policy \

@@ -2,6 +2,8 @@
 
 > **Foundation Documents**: This schema implements the architectural principles defined in `../.github/copilot-instructions.md` and coding standards from `../constitution.md`.
 
+> **Schema Update Mandate**: All schema changes must be reflected in `scripts/setup-pulldb-schema.sh` and `scripts/setup-tests-dbdata.sh`, and applied via `sudo`. See `.github/copilot-instructions.md` and `docs/mysql-setup.md` for full workflow and rationale.
+
 ## Prototype Charter
 
 - **Single source of truth**: MySQL captures every restore request, its lifecycle, and audit breadcrumbs for the CLI and daemon.
@@ -96,7 +98,7 @@ CREATE INDEX idx_job_events_job_id ON job_events(job_id, logged_at);
 
 ```sql
 CREATE TABLE db_hosts (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id CHAR(36) PRIMARY KEY,
     hostname VARCHAR(255) NOT NULL UNIQUE,
     credential_ref VARCHAR(512) NOT NULL,
     max_concurrent_restores INT NOT NULL DEFAULT 1,
@@ -167,26 +169,29 @@ CREATE INDEX idx_jobs_owner_status
 
 ### Database Hosts (Legacy appType Support)
 
-Pre-populate `db_hosts` with the three existing development database servers to support legacy `--type=` behavior via `dbhost=` parameter:
+Pre-populate `db_hosts` with the three existing development database servers to support legacy `--type=` behavior via `dbhost=` parameter. Use UUIDs for `id`:
 
 ```sql
 -- DEV team database server (legacy --type=DEV)
-INSERT INTO db_hosts (hostname, credential_ref, max_concurrent_restores, enabled) VALUES
-    ('db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
+INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
+    ('550e8400-e29b-41d4-a716-446655440000',
+     'db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
      'aws-secretsmanager:/pulldb/mysql/db3-dev',
      1,
      TRUE);
 
 -- SUPPORT team database server (legacy --type=SUPPORT, default)
-INSERT INTO db_hosts (hostname, credential_ref, max_concurrent_restores, enabled) VALUES
-    ('db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
+INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
+    ('550e8400-e29b-41d4-a716-446655440001',
+     'db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
      'aws-secretsmanager:/pulldb/mysql/db4-dev',
      1,
      TRUE);
 
 -- IMPLEMENTATION team database server (legacy --type=IMPLEMENTATION)
-INSERT INTO db_hosts (hostname, credential_ref, max_concurrent_restores, enabled) VALUES
-    ('db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
+INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
+    ('550e8400-e29b-41d4-a716-446655440002',
+     'db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
      'aws-secretsmanager:/pulldb/mysql/db5-dev',
      1,
      TRUE);

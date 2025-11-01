@@ -2,6 +2,22 @@
 
 This document summarizes the protections that guard pullDB operations. Revisit it whenever new capabilities are proposed.
 
+## FAIL HARD Security Enforcement
+
+Security violations (auth failures, secret access issues, cross-account drift, missing IAM permissions) MUST produce immediate hard failures with structured diagnostics:
+
+```
+Goal: Resolve MySQL credentials via AWS Secrets Manager
+Problem: AccessDenied on secretsmanager:GetSecretValue for /pulldb/mysql/coordination-db
+Root Cause: Role pulldb-ec2-service-role missing pulldb-secrets-manager-access attachment
+Solutions:
+	1. Attach managed policy arn:aws:iam::<dev-acct>:policy/pulldb-secrets-manager-access
+	2. Verify region/profile exports (AWS_PROFILE + AWS_DEFAULT_REGION)
+	3. Recreate secret if deleted: aws secretsmanager create-secret --name /pulldb/mysql/coordination-db ...
+```
+
+No silent fallbacks to hardcoded credentials. Local development overrides MUST emit a notice with remediation steps.
+
 ## Authentication & Authorization
 
 - **Host Access**: Operators authenticate to the underlying EC2 host via corporate mechanisms (e.g., SSO + SSH). The wrapper script supplies the `user=` flag.

@@ -13,10 +13,11 @@ Deliver a dependable, minimal restore pipeline that prioritizes correctness, cla
 ## Guiding Principles
 
 1. **Document First**: capture intent in `README.md`, `docs/mysql-schema.md`, and design notes before writing code. Every feature starts as prose and diagrams.
-2. **KISS**: prefer the simplest solution that works; avoid clever abstractions until experience proves they are required.
-3. **Function Over Fashion**: choose reliability and transparency over stylistic novelty. Consistency matters more than novelty.
-4. **Minimal Is Best**: ship the smallest viable slice (CLI + daemon REST API + MySQL) and iterate deliberately.
-5. **Prototype Before Scale**: validate workflows end-to-end with constrained scope before layering on options, services, or automation.
+2. **FAIL HARD, Not Soft**: when something breaks, **stop immediately** and surface the root cause with diagnostic context. Never silently degrade, work around, or mask failures. Present users with: (1) what was attempted, (2) what failed and why, (3) potential solutions ranked by likelihood of success. Graceful degradation is acceptable only when explicitly documented as a fallback path with clear user notification.
+3. **KISS**: prefer the simplest solution that works; avoid clever abstractions until experience proves they are required.
+4. **Function Over Fashion**: choose reliability and transparency over stylistic novelty. Consistency matters more than novelty.
+5. **Minimal Is Best**: ship the smallest viable slice (CLI + daemon REST API + MySQL) and iterate deliberately.
+6. **Prototype Before Scale**: validate workflows end-to-end with constrained scope before layering on options, services, or automation.
 
 ## Architecture Charter
 
@@ -31,6 +32,92 @@ Deliver a dependable, minimal restore pipeline that prioritizes correctness, cla
 - Reference `Tools/pullDB/README.md` for flow diagrams, option scope, and future roadmap.
 - See `.github/copilot-instructions.md` for architectural principles and critical design constraints.
 - See `design/two-service-architecture.md` for detailed API/Worker service separation.
+
+## FAIL HARD Philosophy
+
+**Core Principle**: When an operation cannot complete as designed, **fail immediately** with comprehensive diagnostics rather than silently degrading or working around the issue.
+
+### Fail Hard Requirements
+
+Every failure must provide:
+
+1. **Goal Context**: What was the system attempting to accomplish?
+   - Example: "Attempting to restore customer database 'acme' from S3 backup dated 2025-10-31"
+
+2. **Failure Point**: Where exactly did the operation fail?
+   - Example: "S3 GetObject failed for key `daily/prod/acme/daily_mydumper_acme_2025-10-31T03-15-00Z_Sunday_dbimp.tar`"
+
+3. **Root Cause Analysis**: Why did it fail?
+   - Example: "AccessDenied: IAM role `pulldb-ec2-service-role` lacks `s3:GetObject` permission on production bucket"
+
+4. **Ranked Solutions**: Potential fixes ordered by likelihood of success and alignment with original goal
+   - Example:
+     1. "Attach managed policy `pulldb-s3-read-access` to role (recommended - preserves least privilege)"
+     2. "Grant inline policy with `s3:GetObject` on `arn:aws:s3:::prod-bucket/*`"
+     3. "Switch to staging bucket with existing permissions (workaround - changes data source)"
+
+### When to Fail Hard
+
+- **Missing permissions**: Don't retry with degraded access - demand correct permissions
+- **Configuration errors**: Don't fall back to defaults - require explicit correction
+- **External service failures**: Don't mask AWS/MySQL errors - surface them with context
+- **Schema mismatches**: Don't skip validations - halt until schema is correct
+- **Credential resolution failures**: Don't use hardcoded fallbacks - fail until proper credential source is configured
+
+### When Graceful Degradation Is Acceptable
+
+Graceful degradation is permitted **only when**:
+
+1. **Explicitly Documented**: The fallback path is described in design documents
+2. **User Visible**: Clear warning/notice shown to user about degraded mode
+3. **Non-Critical Path**: The degradation doesn't compromise data integrity or security
+4. **Temporary Override**: Intended for local development only (never production/CI)
+
+**Examples of Acceptable Degradation**:
+- Test fixtures falling back to local MySQL credentials when AWS Secrets Manager unavailable (dev-only, with clear skip message)
+- Skipping optional telemetry when metrics endpoint unreachable (logged warning)
+- Using cached metadata when S3 list operation times out (logged, retried on next run)
+
+**Examples of Unacceptable Degradation**:
+- ❌ Continuing restore when disk space check fails
+- ❌ Skipping post-restore SQL scripts when one fails
+- ❌ Proceeding with invalid IAM permissions
+- ❌ Masking database connection errors with empty results
+
+### Implementation Patterns
+
+**Error Messages Must Include**:
+```python
+raise OperationError(
+    f"Failed to {goal}: {specific_error}. "
+    f"Root cause: {diagnosis}. "
+    f"Solutions: (1) {best_solution}, (2) {alternative}, (3) {workaround}"
+) from original_exception
+```
+
+**Diagnostic Scripts**:
+- Verification scripts (like `verify-secrets-perms.sh`) must fail with exit code != 0
+- Print remediation steps to stderr
+- Include commands user can copy-paste to fix issues
+
+**Test Behavior**:
+- Tests should fail loudly when preconditions not met
+- Skip messages must explain what's missing and how to fix it
+- Never hide test failures behind broad exception catching
+
+### AI Agent Guidance
+
+When implementing features or debugging issues:
+
+1. **Detect the failure** using appropriate tools (`get_errors`, `run_in_terminal`, etc.)
+2. **Research the root cause** - don't assume; verify with actual data/logs
+3. **Present findings** in structured format:
+   - **Goal**: What was supposed to happen
+   - **Problem**: What actually happened (specific error/symptom)
+   - **Root Cause**: Why it happened (validated diagnosis, not speculation)
+   - **Solutions**: Ranked list of fixes with pros/cons
+4. **Implement the fix** that best aligns with project architecture
+5. **Verify the fix** resolves the root cause (not just the symptom)
 
 ## Tooling & Language Policy
 

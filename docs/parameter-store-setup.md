@@ -1,5 +1,9 @@
 # AWS Parameter Store Setup for pullDB
 
+> STATUS: ACTIVE (Secondary Configuration Store)
+> Canonical AWS Authentication Reference: `aws-authentication-setup.md` (instance profile, cross-account roles, S3 access). This document only covers using SSM Parameter Store for non-secret configuration and legacy optional credential storage. MySQL credentials for tests MUST use Secrets Manager (`/pulldb/mysql/coordination-db`).
+> Deprecation Notice (2025-11-01): Prior references to `aws-iam-setup.md` and `aws-setup.md` are obsolete. Replace all IAM / profile guidance with `aws-authentication-setup.md`.
+
 This guide covers configuring AWS Systems Manager Parameter Store to securely store MySQL credentials for pullDB.
 
 ## Overview
@@ -93,7 +97,7 @@ aws ssm get-parameter \
 
 The IAM user/role running pullDB needs permission to read these parameters.
 
-**For detailed IAM setup instructions, see [docs/aws-iam-setup.md](aws-iam-setup.md).**
+IAM role and policy creation guidance: See `aws-authentication-setup.md` (this file intentionally omits duplicate IAM instructions).
 
 Quick reference - required permissions:
 
@@ -147,7 +151,7 @@ PULLDB_MYSQL_DATABASE=/pulldb/prod/mysql/database
 # ============================================
 # AWS Configuration
 # ============================================
-PULLDB_AWS_PROFILE=pr-prod
+PULLDB_AWS_PROFILE=pr-staging  # or pr-prod when operating on production backups; align with canonical guide
 
 # ... rest of configuration
 ```
@@ -285,10 +289,10 @@ Before deploying to production:
 ## Next Steps
 
 After Parameter Store setup:
-1. Review complete IAM permissions: [docs/aws-iam-setup.md](aws-iam-setup.md)
-2. Update deployment documentation with parameter paths
-3. Configure systemd service with AWS_PROFILE environment variable
-4. Test full restore workflow with production credentials
-5. Set up credential rotation schedule (quarterly recommended)
+1. Review IAM and cross-account configuration (see `aws-authentication-setup.md`).
+2. Update deployment documentation with parameter paths (environment-specific).
+3. Ensure systemd service environment exports correct `PULLDB_AWS_PROFILE` (typically `pr-staging`).
+4. Test full restore workflow with production credentials only after staging validation.
+5. Plan quarterly rotation for SecureString parameters (manual process).
 
-See `docs/aws-setup.md` for AWS profile configuration.
+AWS profile configuration examples now live exclusively in `aws-authentication-setup.md`.

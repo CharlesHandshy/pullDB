@@ -375,10 +375,23 @@ sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
 **File**: `pulldb/domain/config.py` (UPDATE)
 
 **Tasks**:
-- [ ] Import SettingsRepository
-- [ ] Update `from_env_and_mysql()` to use SettingsRepository.get_all_settings()
-- [ ] Remove raw SQL from _load_settings_from_mysql() method
-- [ ] Simplify code with repository abstraction
+- [x] Import SettingsRepository
+- [x] Update `from_env_and_mysql()` to use SettingsRepository.get_all_settings()
+- [x] Remove raw SQL from _load_settings_from_mysql() method
+- [x] Simplify code with repository abstraction
+
+**Status**: ✅ Complete (November 1, 2025)
+
+**Audit Summary**:
+- Refactored `Config.from_env_and_mysql()` to accept `MySQLPool` instead of direct connection, aligning with repository pattern used across infrastructure layer.
+- Eliminated manual cursor management and inline SQL (`SELECT setting_key, setting_value FROM settings`) in favor of `SettingsRepository.get_all_settings()` abstraction.
+- Updated all unit and integration tests (5 unit + 3 integration impacted) to pass `MySQLPool` mocks or concrete pool directly. Test suite restored to 28/28 passing.
+- Added forward type reference (`if TYPE_CHECKING:`) for `MySQLPool` to avoid runtime import cycles.
+- Ensured environment override precedence logic preserved (staging bucket over production, env vars over MySQL settings, default fallbacks intact).
+- Verified no regression in two-phase loading pattern (bootstrap via `minimal_from_env()` then enrich via repository-backed method).
+- Improved maintainability: future settings changes isolated to `SettingsRepository` without touching configuration domain logic.
+- Risk Assessment: Low. Change is an internal refactor; external API behavior unchanged for callers using two-phase pattern. All prior behaviors covered by existing tests.
+- Next Steps: Implement deferred repository test suite (Milestone 2.6) or proceed to CLI parser (Milestone 3.1) per roadmap.
 
 ### Milestone 3: CLI Implementation (Week 2)
 

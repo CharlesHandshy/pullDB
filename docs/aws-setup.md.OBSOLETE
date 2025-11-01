@@ -1,4 +1,9 @@
-# AWS CLI & SDK Setup for pullDB
+# AWS CLI & SDK Setup for pullDB (OBSOLETE)
+
+> DEPRECATION DATE: 2025-11-01
+> REPLACED BY: `aws-authentication-setup.md` (authentication + profiles), `aws-secrets-manager-setup.md` (MySQL credentials), `parameter-store-setup.md` (non-secret config).
+> RATIONALE: Eliminates duplication of IAM policy/profile setup and prevents divergence.
+> ACTION: Do not update this file. Redirect all references to the canonical documents.
 
 This guide covers installing and configuring the AWS CLI and Python AWS SDK libraries used by pullDB.
 

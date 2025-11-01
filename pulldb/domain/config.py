@@ -4,6 +4,8 @@ Milestone 1.3 implementation: Full loading from env + MySQL settings
 + AWS Secrets Manager.
 Supports both AWS Secrets Manager (recommended) and SSM Parameter Store
 for credentials.
+
+Milestone 2.7 update: Uses SettingsRepository for MySQL settings access.
 """
 
 from __future__ import annotations
@@ -14,6 +16,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import boto3
+
+
+if t.TYPE_CHECKING:
+    from pulldb.infra.mysql import MySQLPool
 
 
 @dataclass(slots=True)
@@ -130,7 +136,7 @@ class Config:
         )
 
     @classmethod
-    def from_env_and_mysql(cls, mysql_conn: t.Any) -> Config:
+    def from_env_and_mysql(cls, pool: MySQLPool) -> Config:
         """Load configuration from environment variables and MySQL settings.
 
         Two-phase loading pattern:
@@ -142,7 +148,7 @@ class Config:
         directories, default dbhost).
 
         Args:
-            mysql_conn: Active MySQL connection to pulldb coordination database
+            pool: MySQL connection pool to pulldb coordination database
 
         Returns:
             Fully configured Config instance with environment + MySQL settings
@@ -154,27 +160,25 @@ class Config:
             >>> # Bootstrap: Load minimal config from environment
             >>> bootstrap_config = Config.minimal_from_env()
             >>> # Connect to MySQL using bootstrap credentials
-            >>> from pulldb.infra.mysql import build_default_pool
-            >>> pool = build_default_pool(
+            >>> from pulldb.infra.mysql import MySQLPool
+            >>> pool = MySQLPool(
             ...     host=bootstrap_config.mysql_host,
             ...     user=bootstrap_config.mysql_user,
             ...     password=bootstrap_config.mysql_password,
             ...     database=bootstrap_config.mysql_database,
             ... )
             >>> # Enrich: Load full config with MySQL overrides
-            >>> with pool.connection() as conn:
-            ...     config = Config.from_env_and_mysql(conn)
+            >>> config = Config.from_env_and_mysql(pool)
         """
+        # Import here to avoid circular dependency
+        from pulldb.infra.mysql import SettingsRepository
+
         # Phase 1: Load base config from environment
         base_config = cls.minimal_from_env()
 
-        # Phase 2: Query MySQL settings table for overrides
-        cursor = mysql_conn.cursor(dictionary=True)
-        cursor.execute("SELECT setting_key, setting_value FROM settings")
-        settings = {
-            row["setting_key"]: row["setting_value"] for row in cursor.fetchall()
-        }
-        cursor.close()
+        # Phase 2: Load settings from MySQL using repository pattern
+        repo = SettingsRepository(pool)
+        settings = repo.get_all_settings()
 
         # Phase 3: Apply MySQL overrides (environment takes precedence if set)
         s3_bucket_path: str | None = (

@@ -13,7 +13,6 @@ import pytest
 
 from pulldb.domain.config import Config
 from pulldb.infra.mysql import build_default_pool
-from pulldb.infra.secrets import CredentialResolver
 
 
 @pytest.fixture(autouse=True)
@@ -28,40 +27,19 @@ def clear_env() -> Generator[None, None, None]:
         os.environ[key] = value
 
 
-@pytest.fixture
-def mysql_credentials() -> tuple[str, str, str]:
-    """Resolve MySQL credentials from AWS Secrets Manager.
-
-    Returns:
-        Tuple of (host, username, password) for localhost MySQL connection.
-
-    Note:
-        Uses network login (localhost:3306) instead of unix socket to avoid
-        mysql-connector-python authentication limitations. The secret contains
-        RDS hostname, but we override to localhost for local dev testing.
-    """
-    # Set AWS region for boto3 (required for Secrets Manager)
-    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
-
-    resolver = CredentialResolver()
-    creds = resolver.resolve("aws-secretsmanager:/pulldb/mysql/coordination-db")
-    # Override host to localhost for local MySQL testing
-    return ("localhost", creds.username, creds.password)
-
-
 @pytest.mark.integration
 class TestConfigIntegration:
     """Integration tests with real MySQL database."""
 
     def test_load_from_real_database(
-        self, mysql_credentials: tuple[str, str, str]
+        self, mysql_network_credentials: tuple[str, str, str]
     ) -> None:
         """Test loading config from actual pulldb database.
 
         Uses localhost network login with credentials from AWS Secrets Manager.
         Verifies MySQL settings table is read correctly.
         """
-        host, username, password = mysql_credentials
+        host, username, password = mysql_network_credentials
 
         # Set up minimal environment (credentials from AWS Secrets Manager)
         os.environ["PULLDB_MYSQL_HOST"] = host
@@ -78,10 +56,8 @@ class TestConfigIntegration:
             password=bootstrap_config.mysql_password,
             database=bootstrap_config.mysql_database,
         )
-
-        # Load full config with MySQL settings
-        with pool.connection() as conn:
-            config = Config.from_env_and_mysql(conn)
+        # Load full config with MySQL settings (pool passed directly)
+        config = Config.from_env_and_mysql(pool)
 
         # Verify MySQL credentials came from environment
         assert config.mysql_host == host
@@ -95,10 +71,10 @@ class TestConfigIntegration:
         assert "db-mysql-db4-dev" in config.default_dbhost
 
     def test_environment_override_with_real_database(
-        self, mysql_credentials: tuple[str, str, str]
+        self, mysql_network_credentials: tuple[str, str, str]
     ) -> None:
         """Test that environment variables override MySQL settings."""
-        host, username, password = mysql_credentials
+        host, username, password = mysql_network_credentials
 
         # Set environment variables that should override MySQL
         os.environ["PULLDB_MYSQL_HOST"] = host
@@ -114,23 +90,22 @@ class TestConfigIntegration:
             password=bootstrap_config.mysql_password,
             database=bootstrap_config.mysql_database,
         )
-
-        with pool.connection() as conn:
-            config = Config.from_env_and_mysql(conn)
+        # Pool passed directly to from_env_and_mysql()
+        config = Config.from_env_and_mysql(pool)
 
         # Environment should take precedence
         assert config.s3_bucket_path == "s3://override-bucket/"
         assert config.default_dbhost == "override-dbhost"
 
     def test_two_phase_loading_pattern(
-        self, mysql_credentials: tuple[str, str, str]
+        self, mysql_network_credentials: tuple[str, str, str]
     ) -> None:
         """Test the recommended two-phase loading pattern.
 
         Phase 1: minimal_from_env() for bootstrap credentials
         Phase 2: from_env_and_mysql() for full configuration
         """
-        host, username, password = mysql_credentials
+        host, username, password = mysql_network_credentials
 
         os.environ["PULLDB_MYSQL_HOST"] = host
         os.environ["PULLDB_MYSQL_USER"] = username
@@ -149,8 +124,8 @@ class TestConfigIntegration:
             database=bootstrap.mysql_database,
         )
 
-        with pool.connection() as conn:
-            full_config = Config.from_env_and_mysql(conn)
+        # Phase 2: Load full config from MySQL (pool passed directly)
+        full_config = Config.from_env_and_mysql(pool)
 
         # Now we have operational settings from MySQL
         assert full_config.s3_bucket_path is not None

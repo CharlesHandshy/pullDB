@@ -4,6 +4,24 @@
 
 The pullDB prototype consists of three components: a CLI that validates user intent and calls an API service, an API service that manages job requests via MySQL, and a worker service that executes restores. This document expands on the high-level flow described in `../README.md`.
 
+## Current Implementation Snapshot (Nov 1 2025)
+
+Implemented: credential resolver, configuration loader, repository layer (jobs/users/hosts/settings), domain models, MySQL schema. Pending: S3 backup discovery, download/extraction, disk capacity enforcement, myloader execution, post-SQL script runner, staging lifecycle (cleanup + atomic rename), structured logging, metrics, integration tests. CLI and worker remain placeholders. See drift ledger in `../README.md` and `.github/copilot-instructions.md` milestone goals.
+
+## FAIL HARD Reference
+
+All component interactions MUST fail fast when invariants or preconditions cannot be satisfied (see `../constitution.md` and `.github/copilot-instructions.md`).
+
+| Layer | Goal | Problem (Example) | Root Cause (Example) | Ranked Solution #1 |
+|-------|------|-------------------|----------------------|--------------------|
+| CLI Validation | Accept restore request | "invalid target length" | Sanitized customer id >51 chars | Reject with guidance; user shortens identifier |
+| API Insert | Enqueue job | 409 duplicate target | Existing queued/running job | Fail immediately; reference existing job id |
+| Worker Disk Check | Prepare extraction | Insufficient space error | Available < required (size*1.8) | Abort; free space then resubmit |
+| S3 Fetch | Download backup | AccessDenied | Missing s3:GetObject permission | Attach read policy; rerun |
+| Post-SQL | Sanitize database | Script 030 fails | Script drift / missing table | Halt; fix script; rerun job |
+
+Never skip a failing phase; staging database remains for inspection if restore fails after creation.
+
 ## Component Responsibilities
 
 - **CLI**

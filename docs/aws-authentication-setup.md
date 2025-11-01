@@ -92,6 +92,125 @@ Both services run on an **EC2 instance** in the development AWS account and use 
 - **Worker Service IAM Policy**: Allows full S3 read including `s3:GetObject` for downloads
 - Both services share same instance profile but have different code paths enforcing least privilege
 
+### Current Secret Residency (2025-11-01)
+All Secrets Manager secrets referenced by pullDB (`/pulldb/mysql/db3-dev`, `/pulldb/mysql/db4-dev`, `/pulldb/mysql/db5-dev`, `/pulldb/mysql/coordination-db`) exist only in the development account (345321506926). They are not replicated to staging or production accounts. Use the instance profile or a dev admin profile for secret CRUD; do not use `pr-staging` or `pr-prod` profiles for these operations. If future replication is required it will be documented prior to implementation.
+
+### Secrets Manager Permission Evaluation (MANDATORY)
+
+The runtime (API + Worker) only needs to READ MySQL credential secrets. Write / admin operations are restricted to provisioning workflows and are intentionally excluded from the `pulldb-ec2-service-role` to preserve least privilege.
+
+Required runtime actions:
+- `secretsmanager:GetSecretValue` (retrieve credential JSON)
+- `secretsmanager:DescribeSecret` (optional metadata checks / future rotation planning)
+- `kms:Decrypt` (if the secret is encrypted with a customer managed KMS key)
+
+Optional discovery action (already granted with tag condition):
+- `secretsmanager:ListSecrets` (filtering by `Service=pulldb` tag for diagnostic tooling)
+
+Intentionally NOT granted to the instance profile (reserved for admin roles):
+- `secretsmanager:CreateSecret`, `UpdateSecret`, `TagResource`, `UntagResource`, `RotateSecret`, `PutSecretValue`, `DeleteSecret`, `RestoreSecret`
+
+Current policy (`pulldb-secrets-manager-access`) already grants:
+```jsonc
+{
+  "Sid": "GetPullDBSecrets", // Get + Describe for /pulldb/mysql/*
+  "Sid": "ListSecretsForDiscovery", // ListSecrets with tag condition
+  "Sid": "DecryptSecretsWithKMS" // kms:Decrypt + kms:DescribeKey via Secrets Manager
+}
+```
+
+#### Verification Procedure
+
+**IMPORTANT**: The verification script requires IAM read permissions (`iam:ListAttachedRolePolicies`, `iam:GetRole`, `iam:SimulatePrincipalPolicy`) which the EC2 instance profile does NOT have. You must run these commands using an AWS CLI profile with IAM read access (e.g., a user or role with `IAMReadOnlyAccess` or equivalent).
+
+**Automated Verification Script**:
+```bash
+# Run with an admin profile that has IAM read permissions
+./scripts/verify-secrets-perms.sh --profile default
+```
+
+This script performs comprehensive verification:
+1. Checks policy attachment (`pulldb-secrets-manager-access` on `pulldb-ec2-service-role`)
+2. Simulates required actions (GetSecretValue, DescribeSecret, ListSecrets, kms:Decrypt)
+3. Live secret operations (DescribeSecret + GetSecretValue)
+4. Negative simulation (admin actions should be denied)
+5. Optional KMS key policy inspection
+
+**Manual Verification** (requires IAM read permissions):
+
+Run the following commands using a profile with IAM read access (not the instance profile):
+
+```bash
+# 1. Confirm policy attached (requires iam:ListAttachedRolePolicies)
+aws iam list-attached-role-policies --role-name pulldb-ec2-service-role \
+  --query 'AttachedPolicies[?PolicyName==`pulldb-secrets-manager-access`].PolicyName' \
+  --profile dev-admin
+
+# 2. Simulate allowed actions on a target secret (requires iam:SimulatePrincipalPolicy)
+aws iam simulate-principal-policy \
+  --policy-source-arn arn:aws:iam::345321506926:role/pulldb-ec2-service-role \
+  --action-names secretsmanager:GetSecretValue secretsmanager:DescribeSecret secretsmanager:ListSecrets kms:Decrypt \
+  --resource-arns arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/coordination-db-* \
+  --profile dev-admin
+
+# 3. Describe secret (metadata)
+aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db \
+  --query '{Name:Name,ARN:ARN,RotationEnabled:RotationEnabled}'
+
+# 4. Get secret value (first 120 chars for sanity) – should succeed
+aws secretsmanager get-secret-value --secret-id /pulldb/mysql/coordination-db \
+  --query 'SecretString' --output text | head -c 120; echo
+
+# 5. Negative test: Simulate denied admin actions (should return Decision=implicitDeny)
+aws iam simulate-principal-policy \
+  --policy-source-arn arn:aws:iam::345321506926:role/pulldb-ec2-service-role \
+  --action-names secretsmanager:CreateSecret secretsmanager:PutSecretValue secretsmanager:DeleteSecret \
+  --resource-arns arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/coordination-db-* \
+  --profile dev-admin
+```
+
+**Note on Secret Access from EC2**: Once the policy is attached, the EC2 instance profile CAN read secrets directly (commands #3 and #4 work without `--profile`). However, IAM introspection commands (#1, #2, #5) require a separate admin profile because the instance profile doesn't (and shouldn't) have `iam:*` permissions for least privilege.
+
+Expected results:
+- Actions `GetSecretValue`, `DescribeSecret`, `ListSecrets` (conditional), and `kms:Decrypt` show `allowed`.
+- Admin actions show `implicitDeny` (unless a broader admin role is used instead of the instance profile).
+
+#### KMS Key Considerations
+If using a customer managed KMS key for secret encryption, ensure the key policy does NOT restrict the instance profile. The current policy stanza allowing `kms:Decrypt` with condition `"kms:ViaService": "secretsmanager.us-east-1.amazonaws.com"` is sufficient for Secrets Manager decryption.
+
+Quick key policy check:
+```bash
+SECRET_ARN=$(aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db --query 'ARN' --output text)
+KEY_ID=$(aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db --query 'KmsKeyId' --output text)
+aws kms get-key-policy --key-id "$KEY_ID" --policy-name default | grep -E 'pulldb|Decrypt' || echo 'Review key policy – ensure decrypt allowed.'
+```
+
+#### CI Test Path Readiness
+Before adding test assertions on secret residency or ARN account ID, confirm all CI runners:
+1. Use the instance profile or federated role with identical permissions.
+2. Successfully pass the simulation and live retrieval commands above.
+3. Never trigger fallback local credential overrides during normal test runs.
+
+Once confirmed, a test can parse the secret ARN and assert account `345321506926`.
+
+### FAIL HARD AWS Authentication Guardrail
+
+All AWS authentication failures MUST halt operations with diagnostic output; no silent retries with downgraded behaviour.
+
+Template:
+```
+Goal: Retrieve secret /pulldb/mysql/coordination-db
+Problem: ResourceNotFoundException
+Root Cause: Secret not created in development account (expected 345321506926)
+Solutions:
+  1. Create secret (see docs/aws-secrets-manager-setup.md)
+  2. Verify AWS_PROFILE and region exports
+  3. Re-run verification script: ./scripts/verify-secrets-perms.sh --profile dev-admin
+```
+
+Apply this pattern for IAM AccessDenied, STS credential issues, and Secrets Manager retrieval errors.
+
+
 ## Step 1: Development Account Setup
 
 ### 1.1 Create or Modify EC2 Service Role
@@ -491,7 +610,7 @@ aws sts assume-role \
 
 ```bash
 # Get existing bucket policy
-aws s3api get-bucket-policy --bucket pestroutesrdsdbs --query Policy --output text > /tmp/current-bucket-policy.json
+aws s3api get-bucket-policy --bucket pestroutesrdbs --query Policy --output text > /tmp/current-bucket-policy.json
 
 # View current policy
 cat /tmp/current-bucket-policy.json | jq .
@@ -892,19 +1011,19 @@ sudo ls -la /opt/pulldb/.aws/
 sudo -u pulldb bash
 
 # List staging backups
-AWS_PROFILE=pr-staging aws s3 ls s3://pestroutesrdsdbs/daily/stg/
+AWS_PROFILE=pr-staging aws s3 ls s3://pestroutesrdbs/daily/stg/
 
 # List production backups
 AWS_PROFILE=pr-prod aws s3 ls s3://pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/
 
 # Test read access (adjust path to actual backup)
 AWS_PROFILE=pr-staging aws s3api head-object \
-    --bucket pestroutesrdsdbs \
+    --bucket pestroutesrdbs \
     --key daily/stg/customer/daily_mydumper_customer_2025-10-30T03-00-00Z_Wed_dbimp.tar
 
 # Verify write is denied
 echo "test" > /tmp/test.txt
-AWS_PROFILE=pr-staging aws s3 cp /tmp/test.txt s3://pestroutesrdsdbs/test.txt
+AWS_PROFILE=pr-staging aws s3 cp /tmp/test.txt s3://pestroutesrdbs/test.txt
 # Should return: Access Denied error
 
 # Cleanup
@@ -923,7 +1042,7 @@ s3_client = session.client('s3')
 
 # List objects (allowed)
 response = s3_client.list_objects_v2(
-    Bucket='pestroutesrdsdbs',
+    Bucket='pestroutesrdbs',
     Prefix='daily/stg/',
     MaxKeys=10
 )
@@ -937,7 +1056,7 @@ if response.get('Contents'):
 
     # Head object metadata (allowed)
     metadata = s3_client.head_object(
-        Bucket='pestroutesrdsdbs',
+        Bucket='pestroutesrdbs',
         Key=backup_key
     )
     print(f"Backup size: {metadata['ContentLength']:,} bytes")
@@ -949,7 +1068,7 @@ if response.get('Contents'):
         # For large tar files, just verify access without full download
         print("Verifying download access (not downloading full file)...")
         response = s3_client.get_object(
-            Bucket='pestroutesrdsdbs',
+            Bucket='pestroutesrdbs',
             Key=backup_key,
             Range='bytes=0-1023'  # Just get first 1KB
         )
@@ -1073,6 +1192,72 @@ sudo cat /opt/pulldb/.aws/config
 ```
 
 ### Error: KMS Decrypt Access Denied
+### Error: AccessDeniedException retrieving `/pulldb/mysql/coordination-db`
+
+**Symptom**: `secretsmanager:GetSecretValue AccessDeniedException` while tests attempt to load coordination DB credentials.
+
+**Causes**:
+1. `pulldb-secrets-manager-access` policy not attached to `pulldb-ec2-service-role`.
+2. Secret created in a different account/region than expected (verify account id 345321506926 and region `us-east-1`).
+3. AWS profile mismatch (using a legacy profile name like `dev-pulldb` instead of `pr-staging` or instance profile context).
+4. Secret name typo (`/pulldb/mysql/coordination-db` must match exactly).
+
+**Fix Steps**:
+```bash
+# 1. Verify policy attachment
+aws iam list-attached-role-policies --role-name pulldb-ec2-service-role \
+  --query 'AttachedPolicies[?PolicyName==`pulldb-secrets-manager-access`].PolicyName'
+
+# 2. Describe secret in dev account (no profile if on EC2 with instance profile)
+aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db --region us-east-1 \
+  --query 'ARN'
+
+# 3. Test retrieval (staging profile only affects cross-account S3; Secrets are local to dev account)
+AWS_PROFILE=pr-staging aws secretsmanager get-secret-value \
+  --secret-id /pulldb/mysql/coordination-db --region us-east-1 \
+  --query 'SecretString' --output text | head -c 200
+
+# 4. If policy missing, create/attach (idempotent check first)
+aws iam get-policy --policy-arn arn:aws:iam::345321506926:policy/pulldb-secrets-manager-access 2>/dev/null || {
+  echo 'Creating secrets manager policy';
+  cat > /tmp/pulldb-secrets-manager-policy.json <<'EOF'
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "GetPullDBSecrets",
+        "Effect": "Allow",
+        "Action": ["secretsmanager:GetSecretValue","secretsmanager:DescribeSecret"],
+        "Resource": ["arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*"]
+      },
+      {
+        "Sid": "DecryptSecretsWithKMS",
+        "Effect": "Allow",
+        "Action": ["kms:Decrypt","kms:DescribeKey"],
+        "Resource": "*",
+        "Condition": {"StringEquals": {"kms:ViaService": ["secretsmanager.us-east-1.amazonaws.com"]}}
+      }
+    ]
+  }
+EOF
+  aws iam create-policy --policy-name pulldb-secrets-manager-access \
+    --policy-document file:///tmp/pulldb-secrets-manager-policy.json \
+    --description 'Allows pullDB to retrieve MySQL credentials from Secrets Manager';
+}
+
+aws iam attach-role-policy --role-name pulldb-ec2-service-role \
+  --policy-arn arn:aws:iam::345321506926:policy/pulldb-secrets-manager-access || true
+
+# 5. Re-test
+AWS_PROFILE=pr-staging aws secretsmanager get-secret-value \
+  --secret-id /pulldb/mysql/coordination-db --region us-east-1 --query 'SecretString' --output text | jq .
+```
+
+**Legacy Profile Cleanup**:
+Replace any usage of `dev-pulldb`, `pulldb-dev`, or similar with `pr-staging` (prototype primary) or `pr-prod` (production backups). Profiles in `~/.aws/config` should only define these two plus any temporary override used for external ID rotation.
+
+**Test Suite Mandate**:
+All integration/repository tests must resolve coordination DB credentials via the secret—environment variable overrides (`PULLDB_TEST_MYSQL_HOST` etc.) are temporary local-development fallbacks only.
 
 **Symptom**: `An error occurred (AccessDenied) when calling the GetObject operation: Access Denied`
 
@@ -1081,7 +1266,7 @@ sudo cat /opt/pulldb/.aws/config
 **Fix**:
 ```bash
 # Get KMS key ID from bucket encryption
-KEY_ID=$(aws s3api get-bucket-encryption --bucket pestroutesrdsdbs \
+KEY_ID=$(aws s3api get-bucket-encryption --bucket pestroutesrdbs \
     --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.KMSMasterKeyID' \
     --output text)
 

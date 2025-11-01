@@ -10,7 +10,7 @@ This document is the **primary reference for AI coding agents** working on pullD
 
 pullDB is a database restoration tool that pulls production MySQL backups from S3 and restores them to development environments. The system follows a **documentation-first, prototype-first** approach with extensive planning before implementation.
 
-**Current Status (Nov 1 2025)**: Foundation primitives (credentials, configuration, repositories) plus logging abstraction, domain error classes, worker poll loop, S3 backup discovery, downloader, and disk capacity guard are implemented (Milestone items 1–3 complete). Remaining restore workflow pieces (myloader execution, post‑SQL processing, staging lifecycle/rename) are in progress (not yet implemented). CLI still a placeholder (validation + enqueue/status pending). We are mid "Restore Workflow Bootstrap" milestone advancing toward end‑to‑end execution.
+**Current Status (Nov 1 2025)**: Foundation primitives (credentials, configuration, repositories) plus logging abstraction, domain error classes, worker poll loop, S3 backup discovery, downloader, disk capacity guard, and the myloader subprocess wrapper (command execution + error translation) are implemented (Milestone items 1–4 wrapper portion complete). Remaining restore workflow pieces (post‑SQL processing, staging lifecycle/rename orchestration) are in progress. CLI still a placeholder (validation + enqueue/status pending). We are mid "Restore Workflow Bootstrap" milestone advancing toward end‑to‑end execution.
 
 **Completed Work** (verified Nov 1 2025):
 - ✅ MySQL 8.0.43 schema deployed (6 tables, 1 view, 1 trigger)
@@ -21,7 +21,7 @@ pullDB is a database restoration tool that pulls production MySQL backups from S
 - ✅ Initial test suite (9 test modules covering secrets, config, repositories) – all passing locally
 
 **Not Yet Implemented (Drift vs Initial Plan)**:
-- ❌ myloader subprocess wrapper & restore orchestration
+- ✅ myloader subprocess wrapper (execution + failure mapping) – orchestration (staging lifecycle + post‑SQL + rename) still pending
 - ❌ Post‑restore SQL executor + metadata table injection
 - ❌ Staging DB orphan cleanup & atomic rename procedure
 - ❌ CLI argument validation + real enqueue/status calls
@@ -346,13 +346,16 @@ Maintain a living drift ledger until restore workflow is complete:
 - Worker poll loop & event emission: ✅ Implemented (item 2 complete)
 - S3 discovery & downloader (disk capacity guard + streaming): ✅ Implemented (item 3 complete)
 - CLI validation & enqueue/status: 🚧 Placeholder (echo) – planned milestone task (item 8)
-- myloader execution subprocess wrapper & orchestration: ❌ Missing – planned milestone task (item 4)
+- myloader execution subprocess wrapper: ✅ Implemented (command building, timeout + non‑zero translation)
+- Restore orchestration (staging lifecycle integration + post‑SQL chaining): ❌ Missing – planned milestone task (item 4 continuation / items 5–6)
 - Post‑SQL executor & metadata table injection: ❌ Missing – planned milestone task (item 5)
 - Staging lifecycle (orphan cleanup + atomic rename procedure): ❌ Missing – planned milestone task (item 6)
 - Integration tests (end‑to‑end restore workflow incl. failure modes: missing backup, disk insufficient, myloader error, post‑SQL failure): ❌ Missing – planned milestone task (item 9)
 - Metrics emission (queue depth, restore durations, disk failures): ❌ Missing – planned milestone task (item 10)
 
-Test Suite Expansion: Current suite has grown from initial 9 modules to 87 passing tests (includes discovery and downloader unit tests plus extended repository/error coverage). Future end‑to‑end restore workflow tests will be added after myloader + staging lifecycle implementation.
+Test Suite Expansion: Current suite has grown from initial 9 modules to 95 passing tests (adds exec + myloader wrapper tests for success, non‑zero exit, timeout, large output truncation). Future end‑to‑end restore workflow tests will be added after staging lifecycle + post‑SQL implementation.
+
+Testing Note (myloader wrapper): We deliberately monkeypatch `run_command` in restore tests to keep them deterministic and OS/binary agnostic—no dependency on a real `myloader` binary while still exercising error translation paths.
 
 Agents MUST update this section when a missing component lands (replace ❌/🚧 with ✅ and retain remaining incomplete rows). Do not remove incomplete rows prematurely; always preserve chronological progress for audit.
 

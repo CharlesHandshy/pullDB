@@ -1,4 +1,9 @@
-# AWS Service Role Setup for pullDB (Cross-Account S3 Access)
+# AWS Service Role Setup for pullDB (Cross-Account S3 Access) (OBSOLETE)
+
+> DEPRECATION DATE: 2025-11-01
+> REPLACED BY: `aws-authentication-setup.md` (Development Account Setup + Cross-Account Role Sections).
+> RATIONALE: Single authoritative source for instance profile and assume-role configuration.
+> ACTION: Replace links to this file with `aws-authentication-setup.md`.
 
 ## Overview
 

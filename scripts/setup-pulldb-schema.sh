@@ -188,7 +188,7 @@ CREATE TABLE job_events (
 -- credential_ref format: aws-secretsmanager:/pulldb/mysql/{db-name}
 -- -----------------------------------------------------------------------------
 CREATE TABLE db_hosts (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id CHAR(36) PRIMARY KEY,
     hostname VARCHAR(255) NOT NULL UNIQUE,
     credential_ref VARCHAR(512) NOT NULL,
     max_concurrent_restores INT NOT NULL DEFAULT 1,
@@ -216,6 +216,7 @@ CREATE TABLE locks (
 CREATE TABLE settings (
     setting_key VARCHAR(255) PRIMARY KEY,
     setting_value TEXT NOT NULL,
+    description TEXT,
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -277,20 +278,20 @@ DELIMITER ;
 -- NOTE: Update hostnames with actual RDS endpoints before production use
 -- NOTE: Create secrets in AWS Secrets Manager first (see docs/aws-secrets-manager-setup.md)
 -- -----------------------------------------------------------------------------
-INSERT INTO db_hosts (hostname, credential_ref, max_concurrent_restores, enabled) VALUES
-    (
+INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
+    ('550e8400-e29b-41d4-a716-446655440000',
         'db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com',
         'aws-secretsmanager:/pulldb/mysql/db3-dev',
         1,
         TRUE
     ),
-    (
+    ('550e8400-e29b-41d4-a716-446655440001',
         'db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com',
         'aws-secretsmanager:/pulldb/mysql/db4-dev',
         1,
         TRUE
     ),
-    (
+    ('550e8400-e29b-41d4-a716-446655440002',
         'db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com',
         'aws-secretsmanager:/pulldb/mysql/db5-dev',
         1,

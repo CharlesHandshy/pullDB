@@ -2,6 +2,14 @@
 
 Follow this checklist when performing or validating a restore with pullDB.
 
+## FAIL HARD Operational Guardrail
+
+At ANY deviation from expected flow (validation rejection, disk check failure, missing S3 object, post-SQL error):
+1. Stop progression (do not skip phase).
+2. Capture Goal / Problem / Root Cause / Ranked Solutions.
+3. Persist failure detail in `job_events` with actionable remediation text.
+4. Apply primary solution; avoid workaround-first culture.
+
 ## Pre-flight
 
 1. Confirm operator exists in `auth_users` and is not disabled.

@@ -133,7 +133,8 @@ sudo scripts/setup-pulldb-schema.sh
 
 ### Create pulldb_app User
 
-After installing MySQL and creating the database, create the `pulldb_app` user for application access:
+
+After installing MySQL and creating the database, create the `pulldb_app` user for application access and the `pulldb_test` user for integration tests:
 
 ```bash
 # Connect to MySQL as root
@@ -141,18 +142,19 @@ sudo mysql
 
 # Create pulldb_app user with strong password
 CREATE USER 'pulldb_app'@'localhost' IDENTIFIED BY 'REPLACE_WITH_STRONG_PASSWORD';
-
-# Grant all privileges on pulldb database
 GRANT ALL PRIVILEGES ON pulldb.* TO 'pulldb_app'@'localhost';
-
-# Grant SELECT privilege on mysql.user for authentication queries (optional)
 GRANT SELECT ON mysql.user TO 'pulldb_app'@'localhost';
+
+# Create pulldb_test user for integration tests
+CREATE USER 'pulldb_test'@'localhost' IDENTIFIED BY 'testpass';
+GRANT ALL PRIVILEGES ON pulldb.* TO 'pulldb_test'@'localhost';
+GRANT SELECT ON mysql.user TO 'pulldb_test'@'localhost';
 
 # Apply privilege changes
 FLUSH PRIVILEGES;
 
-# Verify user was created
-SELECT user, host FROM mysql.user WHERE user = 'pulldb_app';
+# Verify users were created
+SELECT user, host FROM mysql.user WHERE user IN ('pulldb_app', 'pulldb_test');
 
 # Exit MySQL
 EXIT;
@@ -222,36 +224,97 @@ SELECT * FROM settings;
 ```
 
 ## Database Schema
+## Database Schema Update Workflow (MANDATORY)
+
+All database structure changes must follow this workflow:
+
+1. Update `docs/mysql-schema.md` to reflect the desired schema changes.
+2. Update `scripts/setup-pulldb-schema.sh` and `scripts/setup-tests-dbdata.sh` to match the new schema.
+3. Use `sudo` for all database admin tasks (schema changes, migrations, resets) on development databases.
+4. Apply changes by running:
+   ```bash
+   sudo scripts/setup-pulldb-schema.sh
+   sudo scripts/setup-tests-dbdata.sh
+   ```
+5. Verify schema and initial data with:
+   ```bash
+   sudo mysql -e "USE pulldb; SHOW TABLES;"
+   sudo mysql -e "USE pulldb; SELECT * FROM settings;"
+   sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
+   ```
+6. Update all documentation and tests to match the new schema and credential patterns.
+
+**MANDATE:**
+- Never apply schema changes manually; always use the setup scripts.
+- Always use `sudo` for database admin operations in development.
+- Keep setup scripts and documentation in sync at all times.
+
+db-mysql-db3-dev     | TRUE
+db-mysql-db4-dev     | TRUE    (SUPPORT default)
+db-mysql-db5-dev     | TRUE
+default_dbhost               | db-mysql-db4-dev
+s3_bucket_path               | pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod
+work_dir                     | /mnt/data/pulldb/work
+customers_after_sql_dir      | /opt/pulldb/customers_after_sql
+qa_template_after_sql_dir    | /opt/pulldb/qa_template_after_sql
+## Database Schema
 
 ### Core Tables
 
 1. **auth_users** - User authentication and user_code generation
 2. **jobs** - Restore job queue with lifecycle tracking
 3. **job_events** - Audit log for job status transitions
-4. **db_hosts** - Target database server configurations
-5. **settings** - Runtime configuration (S3 paths, defaults)
+4. **db_hosts** - Target database server configurations (UUID primary key)
+5. **settings** - Runtime configuration (S3 paths, defaults, description column)
 6. **locks** - Distributed locking for coordination
+
+## Database Schema Update Workflow (MANDATORY)
+
+All database structure changes must follow this workflow:
+
+1. **Update documentation first**: Edit `docs/mysql-schema.md` to reflect the desired schema changes.
+2. **Update setup scripts**: Modify `scripts/setup-pulldb-schema.sh` and create/update `scripts/setup-tests-dbdata.sh` to match the new schema.
+3. **Use sudo for all admin tasks**: All database schema changes, migrations, and resets on development databases must use `sudo`.
+4. **Apply changes by running**:
+   ```bash
+   sudo scripts/setup-pulldb-schema.sh
+   # If test data setup script exists:
+   sudo scripts/setup-tests-dbdata.sh
+   ```
+5. **Verify schema and initial data**:
+   ```bash
+   sudo mysql -e "USE pulldb; SHOW TABLES;"
+   sudo mysql -e "USE pulldb; SELECT * FROM settings;"
+   sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
+   ```
+6. **Update tests and documentation**: Ensure all tests and documentation match the new schema and credential patterns.
+
+**CRITICAL MANDATES**:
+- Never apply schema changes manually via MySQL client; always use the setup scripts.
+- Always use `sudo` for database admin operations in development.
+- Keep setup scripts and documentation in sync at all times.
+- All tests must use AWS Secrets Manager for database login (see `.github/copilot-instructions.md`).
 
 ### Initial Data
 
 **db_hosts**:
 ```sql
-hostname             | enabled
----------------------|--------
-db-mysql-db3-dev     | TRUE
-db-mysql-db4-dev     | TRUE    (SUPPORT default)
-db-mysql-db5-dev     | TRUE
+id                                 | hostname             | enabled
+------------------------------------|---------------------|--------
+550e8400-e29b-41d4-a716-446655440000 | db-mysql-db3-dev     | TRUE
+550e8400-e29b-41d4-a716-446655440001 | db-mysql-db4-dev     | TRUE    (SUPPORT default)
+550e8400-e29b-41d4-a716-446655440002 | db-mysql-db5-dev     | TRUE
 ```
 
 **settings**:
 ```sql
-setting_key                  | setting_value
------------------------------|--------------------------------------------------
-default_dbhost               | db-mysql-db4-dev
-s3_bucket_path               | pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod
-work_dir                     | /mnt/data/pulldb/work
-customers_after_sql_dir      | /opt/pulldb/customers_after_sql
-qa_template_after_sql_dir    | /opt/pulldb/qa_template_after_sql
+setting_key                  | setting_value                                   | description
+-----------------------------|------------------------------------------------|-----------------------------
+default_dbhost               | db-mysql-db4-dev                               | Default database host
+s3_bucket_path               | pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod | S3 backup bucket path
+work_dir                     | /mnt/data/pulldb/work                          | Working directory for restores
+customers_after_sql_dir      | /opt/pulldb/customers_after_sql                | Post-restore SQL for customers
+qa_template_after_sql_dir    | /opt/pulldb/qa_template_after_sql              | Post-restore SQL for QA templates
 ```
 
 ## Python MySQL Libraries
@@ -413,7 +476,7 @@ After MySQL setup is complete:
 2. ✅ Data directories configured on `/mnt/data/mysql`
 3. ✅ Python MySQL libraries installed
 4. ⏭️ **Run schema setup**: `sudo scripts/setup-pulldb-schema.sh`
-5. ⏭️ **Create pulldb_app user**: See "MySQL User Creation" section above
+5. ⏭️ **Create pulldb_app and pulldb_test users**: See "MySQL User Creation" section above
 6. ⏭️ **Store credentials in Secrets Manager**: See `aws-secrets-manager-setup.md`
 7. ⏭️ **Begin Python implementation** (Milestone 1.3 - Configuration Module)
 

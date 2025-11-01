@@ -1,0 +1,27 @@
+name: FAIL HARD Enforcement
+
+on:
+  pull_request:
+    paths:
+      - '**/*.md'
+      - 'scripts/ensure_fail_hard.py'
+      - '.github/workflows/fail-hard-check.yml'
+  push:
+    branches: [ pulldb, main ]
+
+jobs:
+  fail-hard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run FAIL HARD enforcement
+        run: |
+          python scripts/ensure_fail_hard.py --check || {
+            echo 'FAIL HARD section missing in one or more control documents.'
+            exit 1
+          }
