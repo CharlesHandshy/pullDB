@@ -635,13 +635,14 @@ class UserRepository:
             ValueError: If unique code cannot be generated or username has
                 < 6 letters.
         """
+        user_letters_required = 6  # Magic number constant for user_code length
         # Step 1: Extract letters only, lowercase
         letters = [c.lower() for c in username if c.isalpha()]
 
-        if len(letters) < 6:
+        if len(letters) < user_letters_required:
             raise ValueError(
                 f"Username '{username}' has insufficient letters "
-                f"(need 6+, found {len(letters)})"
+                f"(need {user_letters_required}+, found {len(letters)})"
             )
 
         # Step 2: Try first 6 letters
@@ -650,6 +651,7 @@ class UserRepository:
             return base_code
 
         # Step 3: Collision handling - try positions 5, 4, 3 (max 3 adjustments)
+        # Positions tried for collision resolution (6th, then 5th, then 4th char)
         for position in [5, 4, 3]:
             # Get unused letters after position
             used_letters = set(base_code[: position + 1])
@@ -689,7 +691,7 @@ class UserRepository:
             count: int = result[0]
             return count > 0
 
-    def _row_to_user(self, row: dict) -> User:
+    def _row_to_user(self, row: dict[str, t.Any]) -> User:
         """Convert database row to User dataclass.
 
         Args:
@@ -839,7 +841,7 @@ class HostRepository:
 
             return running_count < host.max_concurrent_restores
 
-    def _row_to_dbhost(self, row: dict) -> DBHost:
+    def _row_to_dbhost(self, row: dict[str, t.Any]) -> DBHost:
         """Convert database row to DBHost dataclass.
 
         Args:

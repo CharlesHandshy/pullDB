@@ -9,6 +9,8 @@ Tests validate:
 - Post-cleanup uniqueness verification
 """
 
+from __future__ import annotations
+
 import uuid
 from typing import Any
 from unittest.mock import MagicMock
@@ -16,12 +18,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from pulldb.domain.errors import StagingError
-
-# Import private function for unit testing pattern matching logic
 from pulldb.worker.staging import (
     StagingConnectionSpec,
-    _find_orphaned_staging_databases,
     cleanup_orphaned_staging,
+    find_orphaned_staging_databases,
     generate_staging_name,
 )
 
@@ -94,7 +94,7 @@ def test_find_orphaned_staging_databases_none() -> None:
         "jdoecustomer",  # Target exists, but not a staging DB
     ]
 
-    orphans = _find_orphaned_staging_databases(target_db, all_databases)
+    orphans = find_orphaned_staging_databases(target_db, all_databases)
 
     assert orphans == []
 
@@ -108,7 +108,7 @@ def test_find_orphaned_staging_databases_single() -> None:
         "jdoecustomer",  # Target
     ]
 
-    orphans = _find_orphaned_staging_databases(target_db, all_databases)
+    orphans = find_orphaned_staging_databases(target_db, all_databases)
 
     assert orphans == ["jdoecustomer_550e8400e29b"]
 
@@ -124,7 +124,7 @@ def test_find_orphaned_staging_databases_multiple() -> None:
         "jdoecustomer_abcdef123456",  # Orphan 3
     ]
 
-    orphans = _find_orphaned_staging_databases(target_db, all_databases)
+    orphans = find_orphaned_staging_databases(target_db, all_databases)
 
     # Should be sorted
     assert orphans == [
@@ -146,7 +146,7 @@ def test_find_orphaned_staging_databases_wrong_pattern() -> None:
         "othercustomer_550e8400e29b",  # Different target
     ]
 
-    orphans = _find_orphaned_staging_databases(target_db, all_databases)
+    orphans = find_orphaned_staging_databases(target_db, all_databases)
 
     # None should match the exact pattern
     assert orphans == []

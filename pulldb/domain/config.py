@@ -93,7 +93,7 @@ class Config:
             if aws_profile:
                 os.environ["AWS_PROFILE"] = aws_profile
 
-            ssm = boto3.client("ssm")
+            ssm: t.Any = boto3.client("ssm")  # boto3 lacks precise type stubs here
             response = ssm.get_parameter(Name=value, WithDecryption=True)
             parameter_value: str = response["Parameter"]["Value"]
             return parameter_value
@@ -170,8 +170,8 @@ class Config:
             >>> # Enrich: Load full config with MySQL overrides
             >>> config = Config.from_env_and_mysql(pool)
         """
-        # Import here to avoid circular dependency
-        from pulldb.infra.mysql import SettingsRepository
+        # Import here to avoid circular dependency (module-level would create loop)
+        from pulldb.infra.mysql import SettingsRepository  # noqa: PLC0415
 
         # Phase 1: Load base config from environment
         base_config = cls.minimal_from_env()

@@ -1,103 +1,32 @@
-"""Pre-Commit Hygiene Protocol verifier (stub).
+"""Redirect entrypoint for hygiene verification.
 
-This script provides a scaffold for automated enforcement of the hygiene
-checklist defined in `.github/copilot-instructions.md`.
-
-Future Enhancements:
-- Parse `pytest` output to extract test count & duration
-- Validate commit message template against staged changes
-- Compare drift ledger sections against actual code modifications
-- Emit structured JSON diagnostics for CI integration
-
-For now it performs lightweight presence and command dry-run checks.
+This legacy script delegates to the canonical tool in `dna_repo/tools/`
+to avoid duplicate module definitions for mypy while preserving backwards
+compatibility with existing CI references.
 """
+
 from __future__ import annotations
 
-import shutil
-import subprocess
+import runpy
 import sys
-from collections.abc import Sequence
-from dataclasses import dataclass
+from pathlib import Path
 
 
-REQUIRED_COMMANDS: Sequence[str] = ("ruff", "mypy", "pytest")
-
-
-@dataclass(slots=True)
-class CheckResult:
-    """Result for an individual hygiene command availability check.
-
-    Attributes:
-        name: Command name evaluated.
-        passed: True if command found in PATH.
-        detail: Explanation or diagnostic message.
-    """
-
-    name: str
-    passed: bool
-    detail: str
-
-
-def check_commands() -> list[CheckResult]:
-    """Verify required commands are available in PATH.
+def main() -> int:  # pragma: no cover
+    """Delegate execution to canonical dna_repo hygiene script.
 
     Returns:
-        List of CheckResult objects describing availability state for each
-        required hygiene tool.
+        Exit status code (always 0; delegated script handles failures).
     """
-    results: list[CheckResult] = []
-    for cmd in REQUIRED_COMMANDS:
-        if shutil.which(cmd) is None:
-            results.append(
-                CheckResult(cmd, False, f"Command '{cmd}' not found in PATH")
-            )
-        else:
-            results.append(CheckResult(cmd, True, "available"))
-    return results
-
-
-def main() -> int:
-    """Execute stub hygiene verification sequence.
-
-    Performs availability checks and dry-run executions of lint, type, and test
-    commands. Future versions will enforce PASS states and parse structured
-    outputs.
-
-    Returns:
-        Exit code integer (0 = success, 1 = missing dependencies).
-    """
-    print("Pre-Commit Hygiene Protocol (stub)\n")
-
-    # 1. Command availability
-    cmd_results = check_commands()
-    for res in cmd_results:
-        status = "OK" if res.passed else "MISSING"
-        print(f"[commands] {res.name}: {status} - {res.detail}")
-
-    if not all(r.passed for r in cmd_results):
-        print(
-            "\nFAIL: Required commands missing; install dependencies before commit."
-        )
-        return 1
-
-    # 2. Dry-run ruff & mypy (exit codes ignored intentionally)
-    print("\n[lint] ruff check (dry run)")
-    subprocess.run(["ruff", "check", "."], timeout=30, check=False)
-
-    print("\n[types] mypy (dry run)")
-    subprocess.run(["mypy", "."], timeout=60, check=False)
-
-    print("\n[tests] pytest (dry run, timeout flag)")
-    subprocess.run(
-        ["pytest", "-q", "--timeout=60", "--timeout-method=thread"],
-        timeout=600,
-        check=False,
+    target = (
+        Path(__file__).resolve().parent.parent
+        / "dna_repo"
+        / "tools"
+        / "precommit-verify.py"
     )
-
-    print(
-        "\nStub complete (non-blocking). Future versions will enforce required PASS"
-        " states."
-    )
+    runpy.run_path(str(target), run_name="__main__")
+    # The delegated script handles its own exit code printing. We cannot easily
+    # capture it without modifying the target; assume process exit will occur.
     return 0
 
 

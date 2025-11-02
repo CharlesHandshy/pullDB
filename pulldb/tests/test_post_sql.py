@@ -4,6 +4,7 @@ Uses a temporary directory with simple SQL scripts. We simulate MySQL by
 monkeypatching mysql.connector.connect to return a lightweight fake
 connection + cursor object implementing the subset we use.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -97,6 +98,7 @@ def test_execute_post_sql_success(
     import mysql.connector
 
     fc = _FakeCursor([])
+
     def _connect_factory2(**_k: object) -> _FakeConnection:
         return _FakeConnection(fc)
 
@@ -136,6 +138,7 @@ def test_execute_post_sql_failure(
     import mysql.connector
 
     failing_cursor = _FakeCursor([], fail_on="missing_table")
+
     def _connect_factory3(**_k: object) -> _FakeConnection:
         return _FakeConnection(failing_cursor)
 

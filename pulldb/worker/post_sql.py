@@ -17,9 +17,11 @@ Deferred / Future Enhancements:
 - Transactional wrapping for smaller batches of scripts
 - Parallelizable categorization (not needed for current sanitized scripts)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 # ruff: noqa: I001
 from datetime import UTC, datetime
 from pathlib import Path
@@ -75,9 +77,7 @@ def _discover_scripts(directory: Path) -> list[Path]:
     if not directory.exists():
         return []
     scripts = [
-        p
-        for p in directory.iterdir()
-        if p.is_file() and p.suffix == SCRIPT_EXTENSION
+        p for p in directory.iterdir() if p.is_file() and p.suffix == SCRIPT_EXTENSION
     ]
     scripts.sort(key=lambda p: p.name)
     return scripts

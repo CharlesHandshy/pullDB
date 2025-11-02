@@ -12,6 +12,7 @@ LOCAL TESTING: If AWS secret resolves to unreachable host, override via:
 from __future__ import annotations
 
 import os
+from typing import Any, cast
 
 import pytest
 
@@ -104,31 +105,26 @@ def verify_secret_residency(
 
     try:
         session = boto3.Session(**session_kwargs)
-        client = session.client("secretsmanager")
-
-        # Describe secret to get ARN (boto3 client methods are dynamic)
-        response = client.describe_secret(SecretId=secret_id)
-        secret_arn = str(response["ARN"])
-
-        # Extract account ID from ARN: arn:aws:secretsmanager:region:ACCOUNT:secret:name
-        # ARN format has 6+ parts, account is at index 4
-        arn_parts = secret_arn.split(":")
-        min_arn_parts = 5
-        if len(arn_parts) >= min_arn_parts:
-            account_id = arn_parts[4]
-
-            # Assert secret is in development account
-            assert account_id == dev_account_id, (
-                f"Secret {secret_id} must exist in development account "
-                f"({dev_account_id}), but found in account {account_id}. "
-                f"Staging={staging_account_id}, Prod={prod_account_id}"
-            )
-        else:
-            pytest.fail(f"Invalid ARN format: {secret_arn}")
-
-    except Exception as e:
-        # Allow graceful degradation if AWS access fails during local dev
+        client = cast(Any, session.client("secretsmanager"))
+        response = cast(dict[str, Any], client.describe_secret(SecretId=secret_id))
+        secret_arn = str(response.get("ARN", ""))
+    except Exception as e:  # pragma: no cover - allow graceful skip for local dev
         pytest.skip(f"Cannot verify secret residency: {e}")
+
+    # Extract account ID from ARN: arn:aws:secretsmanager:region:ACCOUNT:secret:name
+    # ARN format has 6+ parts, account is at index 4
+    arn_parts = secret_arn.split(":")
+    min_arn_parts = 5
+    if len(arn_parts) >= min_arn_parts:
+        account_id = arn_parts[4]
+        # Assert secret is in development account
+        assert account_id == dev_account_id, (
+            f"Secret {secret_id} must exist in development account "
+            f"({dev_account_id}), but found in account {account_id}. "
+            f"Staging={staging_account_id}, Prod={prod_account_id}"
+        )
+    else:
+        pytest.fail(f"Invalid ARN format: {secret_arn}")
 
 
 @pytest.fixture(scope="session")
@@ -220,7 +216,7 @@ def seed_settings(mysql_pool: MySQLPool) -> None:
 
     Uses INSERT ... ON DUPLICATE KEY to avoid test flakiness if rows exist.
     """
-    with mysql_pool.connection() as conn:  # type: ignore[attr-defined]
+    with mysql_pool.connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """

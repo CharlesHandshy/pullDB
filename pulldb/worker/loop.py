@@ -152,10 +152,13 @@ def _transition_to_running(job_repo: JobRepository, job: Job) -> None:
             "event_type": "running",
             "detail": f"Job started by worker (target: {job.target})",
         }
-        if hasattr(job_repo, "append_event"):
-            job_repo.append_event(**event_kwargs)  # type: ignore[attr-defined]
-        else:  # pragma: no cover - fallback path
-            job_repo.append_job_event(**event_kwargs)  # type: ignore[attr-defined]
+        # Append running event to audit log. Support legacy/mocked name
+        # append_event in tests while using append_job_event in real repo.
+        append_event_method = getattr(job_repo, "append_event", None)
+        if callable(append_event_method):  # test mocks provide append_event
+            append_event_method(**event_kwargs)
+        else:
+            job_repo.append_job_event(**event_kwargs)
 
         logger.info(
             "Job transitioned to running",

@@ -61,7 +61,14 @@ CONTROL_FILES = [
     ROOT / ".github/copilot-instructions.md",
 ]
 
-CANONICAL_BLOCK = """\n## FAIL HARD Auto-Appended\n\nThis document was missing a FAIL HARD section. Added by automation.\nSee `constitution.md` and `.github/copilot-instructions.md` for full protocol.\nTemplate:\n1. Goal\n2. Problem\n3. Root Cause\n4. Ranked Solutions\n\nNon-Negotiables: No silent degradation; preserve traceback; actionable remediation.\n"""
+CANONICAL_BLOCK = (
+    "\n## FAIL HARD Auto-Appended\n\n"
+    "This document was missing a FAIL HARD section. Added by automation.\n"
+    "See `constitution.md` and `.github/copilot-instructions.md` for full protocol.\n"
+    "Template:\n1. Goal\n2. Problem\n3. Root Cause\n4. Ranked Solutions\n\n"
+    "Non-Negotiables: No silent degradation; preserve traceback; actionable "
+    "remediation.\n"
+)
 
 MARKER = "FAIL HARD"
 

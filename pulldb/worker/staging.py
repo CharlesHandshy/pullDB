@@ -130,23 +130,30 @@ def _find_orphaned_staging_databases(
     target_db: str,
     all_databases: Sequence[str],
 ) -> list[str]:
-    """Identify orphaned staging databases matching target pattern.
+    """(Private) Identify orphaned staging databases matching target pattern.
 
-    Finds databases matching: {target}_[0-9a-f]{12}
-
-    Args:
-        target_db: Target database name to match.
-        all_databases: List of all database names from MySQL.
-
-    Returns:
-        List of orphaned staging database names (sorted).
+    Internal helper; prefer :func:`find_orphaned_staging_databases` for
+    external usage and tests.
     """
     pattern = STAGING_PATTERN_TEMPLATE.format(target=re.escape(target_db))
     regex = re.compile(pattern)
+    return sorted([db for db in all_databases if regex.match(db)])
 
-    orphans = [db for db in all_databases if regex.match(db)]
 
-    return sorted(orphans)
+def find_orphaned_staging_databases(
+    target_db: str,
+    all_databases: Sequence[str],
+) -> list[str]:
+    """Public wrapper to list orphaned staging databases for a target.
+
+    Args:
+        target_db: Target database name to match.
+        all_databases: Collection of all database names.
+
+    Returns:
+        Sorted list of orphaned staging database names.
+    """
+    return _find_orphaned_staging_databases(target_db, all_databases)
 
 
 def cleanup_orphaned_staging(

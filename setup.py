@@ -1,7 +1,11 @@
+"""Legacy setup.py shim.
+
+Primary build configuration lives in `pyproject.toml`. This file remains to
+support environments or tooling that still invoke `setup.py` directly.
+"""
+
 from setuptools import setup
 
-# Minimal shim for environments that still invoke setup.py directly.
-# Primary configuration lives in pyproject.toml (PEP 621).
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     setup()

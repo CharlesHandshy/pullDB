@@ -2,6 +2,8 @@
 
 > **For AI Agents & New Developers**: Start with `.github/copilot-instructions.md` for architectural overview and critical constraints, then read `constitution.md` for coding standards and workflow. This README provides complete API reference and usage patterns.
 
+> **Engineering DNA**: Shared development protocols (FAIL HARD, Hygiene, Timeout Monitoring) are available via the `engineering-dna` submodule. See `engineering-dna/README.md` for complete documentation and `docs/engineering-dna-dev.md` for adoption guidance.
+
 > Naming note: The repository root keeps the historical product name `pullDB` (capital D) for familiarity, while the Python importable package is lowercase `pulldb` per PEP 8—use `import pulldb...` in code and retain `pullDB` in user-facing docs/CLI branding.
 
 ## Quick Start
@@ -88,6 +90,21 @@ Quality Guardrail: Each increment must preserve 100% passing tests and extend co
 - Metrics emission (queue depth, restore durations, disk failures): ❌ Missing (planned goal item 10)
 
 Test Suite Expansion: Initial 9 modules has grown to 87 passing tests (includes discovery and downloader coverage). End‑to‑end restore workflow tests will be added after myloader + staging lifecycle implementation.
+
+### Engineering DNA Integration
+
+The `engineering-dna` submodule (https://github.com/CharlesHandshy/engineering-dna) provides:
+
+- Enforcement scripts: `precommit-verify.py`, `ensure_fail_hard.py`, `drift_auditor.py`.
+- JSON Schema: `engineering-dna/schemas/dna-config.schema.json` (future gating config).
+- Standards: Python, SQL, Shell, Markdown, YAML with linter configurations.
+
+Planned adoption sequence:
+1. Pre-commit hook executing `python3 engineering-dna/tools/precommit-verify.py`.
+2. CI workflow invoking verify + drift audit.
+3. Introduce `dna-config.json` describing enabled gates.
+
+Submodule Update: Run `git submodule update --remote engineering-dna` to pull latest from main branch.
 
 Agents and maintainers MUST update this ledger as components are delivered (replace ❌/🚧 with ✅). Do not remove incomplete lines prematurely; preserve historical progression for audit.
 

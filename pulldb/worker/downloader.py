@@ -4,10 +4,10 @@ Milestone 3: Streams selected S3 tar archive to a local staging directory
 and validates sufficient disk space prior to download (size * 1.8 rule).
 
 Responsibilities:
-  * Verify available disk space on target volume (FAIL HARD early)
-  * Stream S3 object to file (no full in-memory buffering)
-  * Provide progress logging (every N MB) - placeholder basic logging
-  * Return path to downloaded tar archive for extraction phase (future)
+    * Verify available disk space on target volume (FAIL HARD early)
+    * Stream S3 object to file (no full in-memory buffering)
+    * Provide progress logging (every N MB) - placeholder basic logging
+    * Return path to downloaded tar archive for extraction phase (future)
 
 Extraction (mydumper tar unpack) will be implemented in a later milestone.
 """
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import os
 import shutil
-from typing import Any
 
 from pulldb.domain.errors import DiskCapacityError, DownloadError
 from pulldb.infra.logging import get_logger
@@ -107,7 +106,7 @@ def download_backup(
     )
 
     try:
-        response: dict[str, Any] = s3.get_object(spec.bucket, spec.key)
+        response = s3.get_object(spec.bucket, spec.key)
     except Exception as e:  # pragma: no cover - network errors hard to unit test
         error_code = getattr(e, "response", {}).get("Error", {}).get("Code", "Unknown")
         raise DownloadError(
@@ -124,9 +123,7 @@ def download_backup(
     with open(dest_path, "wb") as f:  # binary write
         while True:
             chunk = body.read(BUFFER_SIZE)
-            if not isinstance(chunk, bytes):  # defensive: boto may return None
-                chunk = b""
-            if not chunk:
+            if not isinstance(chunk, bytes) or not chunk:  # None or empty -> done
                 break
             f.write(chunk)
             downloaded += len(chunk)

@@ -45,8 +45,8 @@ def test_json_formatter_extra_fields() -> None:
         exc_info=None,
     )
     # Add extra fields as attributes
-    record.job_id = "abc123"  # type: ignore[attr-defined]
-    record.phase = "download"  # type: ignore[attr-defined]
+    record.job_id = "abc123"
+    record.phase = "download"
 
     output = formatter.format(record)
     data = json.loads(output)

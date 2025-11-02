@@ -4,7 +4,7 @@
 
 This document establishes the foundational principles, standards, and workflows for the pullDB project. Together with `.github/copilot-instructions.md` (which provides architectural overview and AI agent guidance), this constitution forms the top-level governance for all implementation decisions.
 
-**For AI Agents**: Read `.github/copilot-instructions.md` first for architectural context, then refer to this document for coding standards and workflow requirements.
+**For AI Agents**: Read `.github/copilot-instructions.md` first for architectural context, then refer to this document for coding standards and workflow requirements. The vendored Engineering DNA snapshot (`dna_repo/`) contains shared protocols (FAIL HARD, Pre-Commit Hygiene, Test Timeout Monitoring) and enforcement scripts; integrate these via pre-commit and CI as described in `design/engineering-dna-adoption.md`.
 
 ## Mission
 
