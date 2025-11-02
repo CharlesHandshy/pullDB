@@ -106,6 +106,15 @@ Planned adoption sequence:
 
 Submodule Update: Run `git submodule update --remote engineering-dna` to pull latest from main branch.
 
+Automated Maintenance:
+```bash
+# Update submodule to latest main and commit pointer
+scripts/update-engineering-dna.sh --push
+
+# Validate freshness during hygiene gates
+scripts/precommit-verify.py  # emits warning if behind
+```
+
 Agents and maintainers MUST update this ledger as components are delivered (replace ❌/🚧 with ✅). Do not remove incomplete lines prematurely; preserve historical progression for audit.
 
 ## FAIL HARD Standard (pullDB)
