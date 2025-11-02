@@ -115,6 +115,23 @@ scripts/update-engineering-dna.sh --push
 scripts/precommit-verify.py  # emits warning if behind
 ```
 
+CI Freshness Enforcement:
+The workflow `.github/workflows/engineering-dna-freshness.yml` FAILS if the submodule commit is behind upstream `main`.
+
+Failure diagnostic example:
+```
+FAIL HARD DIAGNOSTIC
+GOAL: Enforce engineering-dna freshness in CI
+PROBLEM: Submodule commit (<current>) is behind remote main (<remote>)
+ROOT CAUSE: Submodule pointer not updated after upstream changes
+SOLUTIONS:
+1. Run scripts/update-engineering-dna.sh --push
+2. Re-run python3 scripts/precommit-verify.py to confirm freshness
+3. (Temporary) If intentional pin, add justification section in README
+```
+
+Remediate by advancing the pointer unless an intentional, documented pin exists (pins discouraged during alpha).
+
 Agents and maintainers MUST update this ledger as components are delivered (replace ❌/🚧 with ✅). Do not remove incomplete lines prematurely; preserve historical progression for audit.
 
 ## FAIL HARD Standard (pullDB)

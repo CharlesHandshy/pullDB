@@ -1,0 +1,34 @@
+name: Engineering DNA Freshness
+
+on:
+  push:
+    branches: [ pulldb ]
+  pull_request:
+    branches: [ pulldb ]
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Verify engineering-dna submodule up to date
+        run: |
+          CURRENT_SHA=$(git -C Tools/pullDB/engineering-dna rev-parse HEAD)
+          REMOTE_SHA=$(git -C Tools/pullDB/engineering-dna ls-remote origin main | awk '{print $1}')
+          echo "Current: $CURRENT_SHA"; echo "Remote: $REMOTE_SHA"
+          if [ "$CURRENT_SHA" != "$REMOTE_SHA" ]; then
+            echo "FAIL HARD DIAGNOSTIC" >&2
+            echo "GOAL: Enforce engineering-dna freshness in CI" >&2
+            echo "PROBLEM: Submodule commit ($CURRENT_SHA) is behind remote main ($REMOTE_SHA)" >&2
+            echo "ROOT CAUSE: Submodule pointer not updated after upstream changes" >&2
+            echo "SOLUTIONS:" >&2
+            echo "1. Run scripts/update-engineering-dna.sh --push locally" >&2
+            echo "2. Re-run precommit-verify.py to confirm freshness" >&2
+            echo "3. If intentional pin, add exception note to README (not recommended during alpha)" >&2
+            exit 1
+          fi
+          echo "Submodule is fresh."
