@@ -72,6 +72,40 @@ def check_submodule_freshness() -> None:
                 "         Run: scripts/update-engineering-dna.sh --push to advance "
                 "and commit pointer"
             )
+        # Enforce baseline commit requirement if .engineering-dna-baseline exists
+        baseline_file = Path(".engineering-dna-baseline")
+        if baseline_file.exists():
+            baseline_sha = None
+            for raw_line in baseline_file.read_text().splitlines():
+                trimmed = raw_line.strip()
+                if not trimmed or trimmed.startswith("#"):
+                    continue
+                baseline_sha = trimmed
+                break
+            if baseline_sha and current != baseline_sha:
+                print("\nFAIL HARD DIAGNOSTIC")
+                print("GOAL: Enforce engineering-dna minimum required commit baseline")
+                print(
+                    "PROBLEM: Submodule at "
+                    f"{current[:12]} does not match baseline {baseline_sha[:12]}"
+                )
+                print(
+                    "ROOT CAUSE: Submodule pointer not advanced after mandatory "
+                    "upstream update"
+                )
+                print("SOLUTIONS:")
+                print(
+                    "1. Run scripts/update-engineering-dna.sh --push to update pointer"
+                )
+                print(
+                    "2. If upstream commit intentionally deferred, update "
+                    ".engineering-dna-baseline with justification comment"
+                )
+                print(
+                    "3. If baseline obsolete, bump SHA in .engineering-dna-baseline "
+                    "and commit (ensure protocols remain satisfied)"
+                )
+                sys.exit(1)
     except Exception as e:
         print(f"[warning] engineering-dna freshness check skipped: {e}")
 

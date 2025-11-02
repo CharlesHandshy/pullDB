@@ -1,0 +1,7 @@
+# Engineering DNA Minimum Required Commit
+# This file enforces that the submodule pointer is at or beyond the required baseline.
+# Update this commit when upstream changes introduce mandatory protocols or schema updates.
+# CI and pre-commit scripts will read this file and fail if the submodule is behind.
+# Format: single SHA on first non-comment line. Additional comments allowed below.
+
+c711c3ed4224a122ca88cc8acd88c8aab988a0fe

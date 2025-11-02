@@ -132,6 +132,17 @@ SOLUTIONS:
 
 Remediate by advancing the pointer unless an intentional, documented pin exists (pins discouraged during alpha).
 
+Baseline Commit Gate:
+The file `.engineering-dna-baseline` defines the minimum required upstream commit SHA. Pre-commit hygiene (`scripts/precommit-verify.py`) FAILS if the submodule pointer differs from this baseline, ensuring mandatory protocol updates are consumed promptly.
+
+To update baseline after upstream changes:
+1. Run `scripts/update-engineering-dna.sh --push` to advance pointer.
+2. Edit `.engineering-dna-baseline` replacing the SHA with the new required commit (add justification comment if needed).
+3. Re-run `python3 scripts/precommit-verify.py` (should pass without baseline failure).
+4. Commit and push.
+
+If intentionally deferring (rare): add a comment below the SHA explaining defer reason and target resolution date; remove comment once updated. Deferrals are discouraged during alpha.
+
 Agents and maintainers MUST update this ledger as components are delivered (replace ❌/🚧 with ✅). Do not remove incomplete lines prematurely; preserve historical progression for audit.
 
 ## FAIL HARD Standard (pullDB)
