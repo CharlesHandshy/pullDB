@@ -61,6 +61,7 @@ temp/
 
 # Database files (test databases, dumps, backups)
 *.sql
+!docs/atomic_rename_procedure.sql
 *.sql.gz
 *.sql.zst
 *.tar

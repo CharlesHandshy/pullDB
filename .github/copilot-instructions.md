@@ -15,7 +15,9 @@ pullDB is a database restoration tool that pulls production MySQL backups from S
 **Completed Work** (verified Nov 2 2025):
 - ✅ MySQL 8.0.43 schema deployed (6 tables, 1 view, 1 trigger)
 - ✅ Credential resolution (`pulldb/infra/secrets.py` ~399 lines) with Secrets Manager + SSM support
-- ✅ Test suite (149 tests passed, 1 skipped, 1 xpassed: secrets, config, repos, logging, errors, exec, restore, post-SQL, staging, discovery, downloader, disk capacity integration) – latest run 56.6s
+- ✅ Atomic rename stored procedure SQL file (`docs/atomic_rename_procedure.sql`) added
+- ✅ Deployment script validation (dry-run, host conflict, missing SQL file, connection failure, drop failure, create failure, success) via unit tests
+- ✅ Test suite (156 tests passed, 1 skipped, 1 xpassed: secrets, config, repos, logging, errors, exec, restore, post-SQL, staging, discovery, downloader, disk capacity integration, atomic rename invocation, CLI parsing, procedure deployment) – latest run 56.7s
 
 **Not Yet Implemented (Drift vs Initial Plan)**:
 - ✅ Staging DB orphan cleanup (pattern matching + DROP operations) – atomic rename procedure still pending
@@ -25,6 +27,7 @@ Implemented Since Original Plan (previously marked missing):
 - ✅ Worker polling loop + event emission
 - ✅ S3 backup discovery & selection logic
 - ✅ Downloader (stream + disk space preflight + streaming extraction input)
+- ✅ Atomic rename stored procedure deployment validation (script + tests)
 
 **Immediate Milestone Goals (Restore Workflow Bootstrap)**:
 1. Introduce logging & domain error classes (FAIL HARD runtime scaffolding)
@@ -94,7 +97,7 @@ pulldb/
   └── tests/
       ├── ...                     # Comprehensive suite (unit + integration: discovery, downloader, repos, errors, loop, logging, exec, restore, post_sql, disk capacity)
 
-> Current suite: 149 passing tests (+1 skipped, +1 xpassed) covering discovery, downloader (including new disk capacity integration tests replacing prior xfail workflow disk test), logging, errors, myloader wrapper, post-SQL executor, restore orchestration, and metadata injection.
+> Current suite: 156 passing tests (+1 skipped, +1 xpassed) covering discovery, downloader (including disk capacity integration tests), logging, errors, myloader wrapper, post-SQL executor, restore orchestration, metadata injection, atomic rename invocation, CLI parsing, and procedure deployment script scenarios.
 customers_after_sql/              # Post-restore SQL for customer databases (PII removal)
   ├── 010.remove_customer_pii.sql
   ├── 020.remove_billto_info.sql
@@ -343,15 +346,17 @@ Maintain a living drift ledger until restore workflow is complete:
 - Post‑SQL executor: ✅ Implemented (sequential script execution, FAIL HARD on first error, timing + rowcount capture)
 - Engineering-dna freshness CI gate: ✅ Implemented (workflow enforces submodule up-to-date)
 - Engineering-dna baseline commit gate: ✅ Implemented (pre-commit + CI enforce tag-based baseline)
-- Restore orchestration (staging lifecycle integration + post‑SQL chaining): ✅ Implemented (atomic rename module integrated; stored procedure deployment/validation tests pending)
+- Restore orchestration (staging lifecycle integration + post‑SQL chaining): ✅ Implemented (atomic rename module + stored procedure deployment validated with tests)
 - Metadata table injection: ✅ Implemented (staging metadata table creation + JSON script report)
-- Staging lifecycle: ✅ Orphan cleanup implemented (drop‑all); ✅ Atomic rename invocation module added (procedure existence validated at runtime; deployment script & tests pending)
-- Integration tests (end‑to‑end restore workflow incl. failure modes: missing backup, disk insufficient, myloader error, post‑SQL failure): ✅ Implemented (happy path, optional real S3 listing, myloader failure, post‑SQL failure, disk insufficient, missing backup).
+- Staging lifecycle: ✅ Orphan cleanup implemented (drop‑all); ✅ Atomic rename invocation module added (procedure existence validated at runtime); ✅ Stored procedure deployment script and tests implemented
+- Integration tests (end‑to‑end restore workflow incl. failure modes: missing backup, disk insufficient, myloader error, post‑SQL failure): ✅ Implemented (happy path, optional real S3 listing, myloader failure, post‑SQL failure, disk insufficient, missing backup). Stored procedure deployment covered via unit tests (non-network fakes) ensuring FAIL HARD diagnostics.
 - Metrics emission (queue depth, restore durations, disk failures): ✅ Implemented (logging-based counters/gauges/timers/events)
 
-Test Suite Expansion: Current suite has grown from initial 9 tests to 149 passing tests (adds exec + myloader wrapper + post-SQL executor tests for success, non‑zero exit, timeout, large output truncation, script failure; downloader disk capacity unit + integration tests; restore orchestration happy path & failure modes). Future end‑to‑end restore workflow hardening & stored procedure deployment validation tests still planned.
+Test Suite Expansion: Current suite has grown from initial 9 tests to 156 passing tests (adds exec + myloader wrapper + post-SQL executor tests for success, non‑zero exit, timeout, large output truncation, script failure; downloader disk capacity unit + integration tests; restore orchestration happy path & failure modes; atomic rename invocation module; CLI parsing validations; stored procedure deployment script tests). Future hardening will focus on staging cutover edge cases and performance profiling.
 
 Testing Note (myloader wrapper): We deliberately monkeypatch `run_command` in restore tests to keep them deterministic and OS/binary agnostic—no dependency on a real `myloader` binary while still exercising error translation paths.
+
+Testing Note (atomic rename deployment): Deployment script tests isolate behaviors without real MySQL by faking `mysql.connector.connect` and cursor execution paths, asserting FAIL HARD diagnostics for each failure mode before success.
 
 Agents MUST update this section when a missing component lands (replace ❌/🚧 with ✅ and retain remaining incomplete rows). Do not remove incomplete rows prematurely; always preserve chronological progress for audit.
 
