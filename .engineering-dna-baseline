@@ -2,6 +2,10 @@
 # This file enforces that the submodule pointer is at or beyond the required baseline.
 # Update this commit when upstream changes introduce mandatory protocols or schema updates.
 # CI and pre-commit scripts will read this file and fail if the submodule is behind.
-# Format: single SHA on first non-comment line. Additional comments allowed below.
+# Format: TAG <annotated-tag> <commit-sha>
+# The commit SHA must match the tag object for verification. Pre-commit & CI parse first non-comment line.
+# Update by bumping tag and sha together. Keep historical lines commented below if needed.
 
-c711c3ed4224a122ca88cc8acd88c8aab988a0fe
+TAG v0.1.3-alpha 6ca74887a46cab0b33b95777b8c8ec622987d396
+
+# Previous baseline (raw commit format): c711c3ed4224a122ca88cc8acd88c8aab988a0fe

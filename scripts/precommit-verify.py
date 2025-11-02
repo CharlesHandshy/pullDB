@@ -19,6 +19,8 @@ GATES = [
     ("tests", "pytest -q --timeout=60 --timeout-method=thread"),
 ]
 
+TAG_LINE_PARTS = 3  # Expected part count for 'TAG <tag> <sha>' format
+
 
 def run_gate(command: str) -> None:
     """Execute a hygiene gate command and fail fast on non-zero exit.
@@ -76,11 +78,20 @@ def check_submodule_freshness() -> None:
         baseline_file = Path(".engineering-dna-baseline")
         if baseline_file.exists():
             baseline_sha = None
+            baseline_tag = None
             for raw_line in baseline_file.read_text().splitlines():
                 trimmed = raw_line.strip()
                 if not trimmed or trimmed.startswith("#"):
                     continue
-                baseline_sha = trimmed
+                # Support formats:
+                #   TAG <tag-name> <commit-sha>
+                #   <commit-sha>
+                parts = trimmed.split()
+                if parts[0] == "TAG" and len(parts) == TAG_LINE_PARTS:
+                    baseline_tag = parts[1]
+                    baseline_sha = parts[2]
+                else:
+                    baseline_sha = parts[0]
                 break
             if baseline_sha and current != baseline_sha:
                 print("\nFAIL HARD DIAGNOSTIC")
@@ -89,6 +100,11 @@ def check_submodule_freshness() -> None:
                     "PROBLEM: Submodule at "
                     f"{current[:12]} does not match baseline {baseline_sha[:12]}"
                 )
+                if baseline_tag:
+                    print(
+                        "DETAIL: Baseline tag "
+                        f"{baseline_tag} expects commit {baseline_sha}"
+                    )
                 print(
                     "ROOT CAUSE: Submodule pointer not advanced after mandatory "
                     "upstream update"
