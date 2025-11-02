@@ -341,6 +341,8 @@ Maintain a living drift ledger until restore workflow is complete:
 - CLI validation & enqueue/status: 🚧 Placeholder (echo) – planned milestone task (item 8)
 - myloader execution subprocess wrapper: ✅ Implemented (command building, timeout + non‑zero translation)
 - Post‑SQL executor: ✅ Implemented (sequential script execution, FAIL HARD on first error, timing + rowcount capture)
+- Engineering-dna freshness CI gate: ✅ Implemented (workflow enforces submodule up-to-date)
+- Engineering-dna baseline commit gate: ✅ Implemented (pre-commit + CI enforce tag-based baseline)
 - Restore orchestration (staging lifecycle integration + post‑SQL chaining): ❌ Missing – planned milestone task (item 4 continuation / items 5–6)
 - Metadata table injection: ❌ Missing – planned milestone task (item 5 continuation)
 - Staging lifecycle (orphan cleanup + atomic rename procedure): ❌ Missing – planned milestone task (item 6)
