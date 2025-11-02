@@ -1,0 +1,54 @@
+name: Engineering DNA Baseline
+
+on:
+  push:
+    branches: [ pulldb ]
+  pull_request:
+    branches: [ pulldb ]
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Enforce baseline commit
+        run: |
+          if [ ! -f .engineering-dna-baseline ]; then
+            echo "FAIL HARD DIAGNOSTIC" >&2
+            echo "GOAL: Enforce engineering-dna baseline" >&2
+            echo "PROBLEM: Missing .engineering-dna-baseline file" >&2
+            echo "ROOT CAUSE: Baseline not committed" >&2
+            echo "SOLUTIONS:" >&2
+            echo "1. Create file with required upstream commit SHA" >&2
+            echo "2. Consult README baseline gate section" >&2
+            exit 1
+          fi
+          BASELINE_SHA=$(grep -v '^#' .engineering-dna-baseline | head -n1 | tr -d ' \t')
+          if [ -z "$BASELINE_SHA" ]; then
+            echo "FAIL HARD DIAGNOSTIC" >&2
+            echo "GOAL: Parse baseline SHA" >&2
+            echo "PROBLEM: No non-comment SHA found in .engineering-dna-baseline" >&2
+            echo "ROOT CAUSE: File missing commit line" >&2
+            echo "SOLUTIONS:" >&2
+            echo "1. Add upstream commit SHA on first non-comment line" >&2
+            echo "2. Run scripts/precommit-verify.py locally to validate" >&2
+            exit 1
+          fi
+          CURRENT_SHA=$(git -C Tools/pullDB/engineering-dna rev-parse HEAD)
+          echo "Baseline: $BASELINE_SHA"; echo "Current: $CURRENT_SHA"
+          if [ "$CURRENT_SHA" != "$BASELINE_SHA" ]; then
+            echo "FAIL HARD DIAGNOSTIC" >&2
+            echo "GOAL: Enforce engineering-dna baseline commit" >&2
+            echo "PROBLEM: Submodule commit $CURRENT_SHA does not match baseline $BASELINE_SHA" >&2
+            echo "ROOT CAUSE: Submodule pointer not advanced (or baseline outdated)" >&2
+            echo "SOLUTIONS:" >&2
+            echo "1. Run scripts/update-engineering-dna.sh --push to advance pointer" >&2
+            echo "2. If baseline obsolete, update .engineering-dna-baseline and commit" >&2
+            echo "3. Add justification comment if intentional defer (discouraged)" >&2
+            exit 1
+          fi
+          echo "Baseline satisfied."
