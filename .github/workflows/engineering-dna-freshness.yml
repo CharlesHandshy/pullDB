@@ -15,6 +15,12 @@ jobs:
         with:
           submodules: true
 
+      - name: Sync & Update Submodules
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive
+          echo "Submodules synchronized and updated recursively."
+
       - name: Verify engineering-dna submodule up to date
         run: |
           CURRENT_SHA=$(git -C Tools/pullDB/engineering-dna rev-parse HEAD)
