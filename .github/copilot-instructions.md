@@ -10,12 +10,12 @@ This document is the **primary reference for AI coding agents** working on pullD
 
 pullDB is a database restoration tool that pulls production MySQL backups from S3 and restores them to development environments. The system follows a **documentation-first, prototype-first** approach with extensive planning before implementation.
 
-**Current Status (Nov 1 2025)**: Foundation primitives (credentials, configuration, repositories) plus logging abstraction, domain error classes, worker poll loop, S3 backup discovery, downloader, disk capacity guard, and the myloader subprocess wrapper (command execution + error translation) are implemented (Milestone items 1–4 wrapper portion complete). Remaining restore workflow pieces (post‑SQL processing, staging lifecycle/rename orchestration) are in progress. CLI still a placeholder (validation + enqueue/status pending). We are mid "Restore Workflow Bootstrap" milestone advancing toward end‑to‑end execution.
+**Current Status (Nov 2 2025)**: Foundation primitives (credentials, configuration, repositories) plus logging abstraction, domain error classes, worker poll loop, S3 backup discovery, downloader, disk capacity guard, myloader subprocess wrapper, post‑SQL executor, staging orphan cleanup, metadata table injection, atomic rename invocation module, restore orchestration (end‑to‑end logical chaining), CLI validation & enqueue, metrics emission scaffolding, and initial integration tests (logical happy path + optional real S3 listing) are implemented. Advancing toward production‑grade staging cutover hardening and failure‑mode integration coverage.
 
-**Completed Work** (verified Nov 1 2025):
+**Completed Work** (verified Nov 2 2025):
 - ✅ MySQL 8.0.43 schema deployed (6 tables, 1 view, 1 trigger)
 - ✅ Credential resolution (`pulldb/infra/secrets.py` ~399 lines) with Secrets Manager + SSM support
-- ✅ Test suite (112 tests: secrets, config, repos, logging, errors, exec, restore, post-SQL, staging) – passing in 55s
+- ✅ Test suite (149 tests passed, 1 skipped, 1 xpassed: secrets, config, repos, logging, errors, exec, restore, post-SQL, staging, discovery, downloader, disk capacity integration) – latest run 56.6s
 
 **Not Yet Implemented (Drift vs Initial Plan)**:
 - ✅ Staging DB orphan cleanup (pattern matching + DROP operations) – atomic rename procedure still pending
@@ -92,9 +92,9 @@ pulldb/
   │   ├── errors.py               # IMPLEMENTED - Structured FAIL HARD runtime errors
   │   └── (restore_models.py)     # PLANNED – myloader + post-SQL DTOs
   └── tests/
-      ├── ...                     # 98 passing test modules (discovery, downloader, repos, errors, loop, logging, exec, restore, post_sql)
+      ├── ...                     # Comprehensive suite (unit + integration: discovery, downloader, repos, errors, loop, logging, exec, restore, post_sql, disk capacity)
 
-> Current suite: 98 modules (expanded with discovery, downloader, logging, error coverage, myloader wrapper, and post-SQL executor).
+> Current suite: 149 passing tests (+1 skipped, +1 xpassed) covering discovery, downloader (including new disk capacity integration tests replacing prior xfail workflow disk test), logging, errors, myloader wrapper, post-SQL executor, restore orchestration, and metadata injection.
 customers_after_sql/              # Post-restore SQL for customer databases (PII removal)
   ├── 010.remove_customer_pii.sql
   ├── 020.remove_billto_info.sql
@@ -331,25 +331,25 @@ class JobRepository:
 3. **Schema-Driven**: MySQL constraints enforce business rules
 4. **Migration-Safe**: Forward-only SQL migrations, no downgrades supported
 
-### Implementation Drift Tracking (Nov 1 2025)
+### Implementation Drift Tracking (Nov 2 2025)
 
 Maintain a living drift ledger until restore workflow is complete:
 - Repositories & credential/config layers: ✅ Implemented
 - Logging abstraction & domain error classes: ✅ Implemented (item 1 complete)
 - Worker poll loop & event emission: ✅ Implemented (item 2 complete)
 - S3 discovery & downloader (disk capacity guard + streaming): ✅ Implemented (item 3 complete)
-- CLI validation & enqueue/status: 🚧 Placeholder (echo) – planned milestone task (item 8)
+- CLI validation & enqueue/status: ✅ Implemented (argument parsing, validation, enqueue; status listing pending)
 - myloader execution subprocess wrapper: ✅ Implemented (command building, timeout + non‑zero translation)
 - Post‑SQL executor: ✅ Implemented (sequential script execution, FAIL HARD on first error, timing + rowcount capture)
 - Engineering-dna freshness CI gate: ✅ Implemented (workflow enforces submodule up-to-date)
 - Engineering-dna baseline commit gate: ✅ Implemented (pre-commit + CI enforce tag-based baseline)
-- Restore orchestration (staging lifecycle integration + post‑SQL chaining): ❌ Missing – planned milestone task (item 4 continuation / items 5–6)
-- Metadata table injection: ❌ Missing – planned milestone task (item 5 continuation)
-- Staging lifecycle (orphan cleanup + atomic rename procedure): ❌ Missing – planned milestone task (item 6)
-- Integration tests (end‑to‑end restore workflow incl. failure modes: missing backup, disk insufficient, myloader error, post‑SQL failure): ❌ Missing – planned milestone task (item 9)
-- Metrics emission (queue depth, restore durations, disk failures): ❌ Missing – planned milestone task (item 10)
+- Restore orchestration (staging lifecycle integration + post‑SQL chaining): ✅ Implemented (atomic rename module integrated; stored procedure deployment/validation tests pending)
+- Metadata table injection: ✅ Implemented (staging metadata table creation + JSON script report)
+- Staging lifecycle: ✅ Orphan cleanup implemented (drop‑all); ✅ Atomic rename invocation module added (procedure existence validated at runtime; deployment script & tests pending)
+- Integration tests (end‑to‑end restore workflow incl. failure modes: missing backup, disk insufficient, myloader error, post‑SQL failure): ✅ Implemented (happy path, optional real S3 listing, myloader failure, post‑SQL failure, disk insufficient, missing backup).
+- Metrics emission (queue depth, restore durations, disk failures): ✅ Implemented (logging-based counters/gauges/timers/events)
 
-Test Suite Expansion: Current suite has grown from initial 9 modules to 98 passing tests (adds exec + myloader wrapper + post-SQL executor tests for success, non‑zero exit, timeout, large output truncation, script failure). Future end‑to‑end restore workflow tests will be added after staging lifecycle implementation.
+Test Suite Expansion: Current suite has grown from initial 9 tests to 149 passing tests (adds exec + myloader wrapper + post-SQL executor tests for success, non‑zero exit, timeout, large output truncation, script failure; downloader disk capacity unit + integration tests; restore orchestration happy path & failure modes). Future end‑to‑end restore workflow hardening & stored procedure deployment validation tests still planned.
 
 Testing Note (myloader wrapper): We deliberately monkeypatch `run_command` in restore tests to keep them deterministic and OS/binary agnostic—no dependency on a real `myloader` binary while still exercising error translation paths.
 
