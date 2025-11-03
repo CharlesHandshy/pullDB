@@ -11,9 +11,13 @@ creation, post-SQL, rename) will reside elsewhere.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from pulldb.domain.errors import MyLoaderError
+from pulldb.domain.models import Job
 from pulldb.domain.restore_models import MyLoaderResult, MyLoaderSpec
 from pulldb.infra.exec import (
     CommandExecutionError,
@@ -21,11 +25,57 @@ from pulldb.infra.exec import (
     CommandTimeoutError,
     run_command,
 )
+from pulldb.infra.metrics import (
+    MetricLabels,
+    emit_counter,
+    emit_event,
+    emit_timer,
+    time_operation,
+)
+from pulldb.worker.atomic_rename import (
+    AtomicRenameConnectionSpec,
+    AtomicRenameSpec,
+    atomic_rename_staging_to_target,
+)
+from pulldb.worker.metadata import (
+    MetadataConnectionSpec,
+    MetadataSpec,
+    inject_metadata_table,
+)
+from pulldb.worker.post_sql import PostSQLConnectionSpec, execute_post_sql
+from pulldb.worker.staging import (
+    StagingConnectionSpec,
+    cleanup_orphaned_staging,
+)
 
 
 DEFAULT_MYLOADER_PATH = "myloader"  # Allow PATH resolution; override via extra_args
 STDOUT_TAIL_LIMIT = 5000
 STDERR_TAIL_LIMIT = 5000
+
+
+@dataclass(slots=True, frozen=True)
+class RestoreWorkflowSpec:
+    """Specification for complete restore workflow orchestration.
+
+    Groups all required parameters for the restore workflow to satisfy
+    argument count style limit (<= 5 arguments).
+
+    Attributes:
+        job: Job metadata including id, target, owner.
+        backup_filename: S3 backup filename used for restore.
+        staging_conn: MySQL connection spec for staging operations.
+        post_sql_conn: Connection + script directory spec for post-SQL.
+        myloader_spec: Myloader command specification.
+        timeout: Optional myloader timeout in seconds.
+    """
+
+    job: Job
+    backup_filename: str
+    staging_conn: StagingConnectionSpec
+    post_sql_conn: PostSQLConnectionSpec
+    myloader_spec: MyLoaderSpec
+    timeout: float | None = None
 
 
 def _build_command(spec: MyLoaderSpec) -> list[str]:
@@ -105,4 +155,209 @@ def run_myloader(
     )
 
 
-__all__: Sequence[str] = ["MyLoaderResult", "MyLoaderSpec", "run_myloader"]
+def orchestrate_restore_workflow(
+    spec: RestoreWorkflowSpec,
+) -> dict[str, object]:
+    """Orchestrate the full restore workflow for a single job.
+
+    Steps:
+        1. Staging lifecycle: cleanup orphaned staging DBs
+        2. Myloader restore to staging DB
+        3. Post-SQL execution (if scripts exist)
+        4. Metadata table injection
+        5. Atomic rename staging → target
+
+    Args:
+        spec: Complete workflow specification.
+
+    Returns:
+        dict: Structured result with all phase outputs and diagnostics.
+
+    Raises:
+        Exception: FAIL HARD on any error with actionable diagnostics.
+    """
+    logger = logging.getLogger("pulldb.restore.workflow")
+    result: dict[str, object] = {}
+    restore_started_at = datetime.now(UTC)
+    job = spec.job
+
+    try:
+        # 1. Staging lifecycle: cleanup orphaned staging databases
+        logger.info(
+            {
+                "phase": "staging",
+                "job_id": job.id,
+                "target": job.target,
+            }
+        )
+        with time_operation(
+            "staging_cleanup_duration_seconds",
+            MetricLabels(job_id=job.id, target=job.target, phase="staging"),
+        ):
+            staging_result = cleanup_orphaned_staging(
+                spec.staging_conn,
+                job.target,
+                job.id,
+            )
+        emit_counter(
+            "staging_cleanup_total",
+            labels=MetricLabels(job_id=job.id, target=job.target, phase="staging"),
+        )
+        result["staging"] = staging_result
+
+        # 2. Myloader restore to staging database
+        logger.info(
+            {
+                "phase": "myloader",
+                "job_id": job.id,
+                "staging_db": staging_result.staging_db,
+            }
+        )
+        with time_operation(
+            "myloader_duration_seconds",
+            MetricLabels(job_id=job.id, target=job.target, phase="myloader"),
+        ):
+            myloader_result = run_myloader(spec.myloader_spec, timeout=spec.timeout)
+        result["myloader"] = myloader_result
+
+        # 3. Post-SQL execution (if scripts exist in script_dir)
+        logger.info(
+            {
+                "phase": "post_sql",
+                "job_id": job.id,
+                "staging_db": staging_result.staging_db,
+            }
+        )
+        with time_operation(
+            "post_sql_duration_seconds",
+            MetricLabels(job_id=job.id, target=job.target, phase="post_sql"),
+        ):
+            post_sql_result = execute_post_sql(spec.post_sql_conn)
+        result["post_sql"] = post_sql_result
+
+        restore_completed_at = datetime.now(UTC)
+
+        # 4. Metadata table injection
+        logger.info(
+            {
+                "phase": "metadata",
+                "job_id": job.id,
+                "staging_db": staging_result.staging_db,
+            }
+        )
+        metadata_conn = MetadataConnectionSpec(
+            staging_db=staging_result.staging_db,
+            mysql_host=spec.staging_conn.mysql_host,
+            mysql_port=spec.staging_conn.mysql_port,
+            mysql_user=spec.staging_conn.mysql_user,
+            mysql_password=spec.staging_conn.mysql_password,
+            timeout_seconds=spec.staging_conn.timeout_seconds,
+        )
+        metadata_spec = MetadataSpec(
+            job_id=job.id,
+            owner_username=job.owner_username,
+            target_db=job.target,
+            backup_filename=spec.backup_filename,
+            restore_started_at=restore_started_at,
+            restore_completed_at=restore_completed_at,
+            post_sql_result=post_sql_result,
+        )
+        with time_operation(
+            "metadata_injection_duration_seconds",
+            MetricLabels(job_id=job.id, target=job.target, phase="metadata"),
+        ):
+            inject_metadata_table(metadata_conn, metadata_spec)
+        result["metadata"] = "injected"
+
+        # 5. Atomic rename staging → target
+        logger.info(
+            {
+                "phase": "atomic_rename",
+                "job_id": job.id,
+                "staging_db": staging_result.staging_db,
+                "target_db": job.target,
+            }
+        )
+        rename_conn = AtomicRenameConnectionSpec(
+            mysql_host=spec.staging_conn.mysql_host,
+            mysql_port=spec.staging_conn.mysql_port,
+            mysql_user=spec.staging_conn.mysql_user,
+            mysql_password=spec.staging_conn.mysql_password,
+            timeout_seconds=spec.staging_conn.timeout_seconds,
+        )
+        rename_spec = AtomicRenameSpec(
+            job_id=job.id,
+            staging_db=staging_result.staging_db,
+            target_db=job.target,
+        )
+        with time_operation(
+            "atomic_rename_duration_seconds",
+            MetricLabels(job_id=job.id, target=job.target, phase="atomic_rename"),
+        ):
+            atomic_rename_staging_to_target(rename_conn, rename_spec)
+        result["atomic_rename"] = "complete"
+
+        logger.info(
+            {
+                "phase": "workflow_complete",
+                "job_id": job.id,
+                "target": job.target,
+                "duration_seconds": (
+                    restore_completed_at - restore_started_at
+                ).total_seconds(),
+            }
+        )
+        emit_timer(
+            "restore_workflow_duration_seconds",
+            (restore_completed_at - restore_started_at).total_seconds(),
+            MetricLabels(job_id=job.id, target=job.target, phase="workflow"),
+        )
+        emit_counter(
+            "restore_workflow_success_total",
+            labels=MetricLabels(
+                job_id=job.id,
+                target=job.target,
+                phase="workflow",
+                status="success",
+            ),
+        )
+
+        return result
+    except Exception as e:
+        logger.error(
+            {
+                "phase": "fail_hard",
+                "job_id": job.id,
+                "target": job.target,
+                "error": str(e),
+            }
+        )
+        emit_event(
+            "restore_workflow_failure",
+            str(e),
+            MetricLabels(
+                job_id=job.id,
+                target=job.target,
+                phase="workflow",
+                status="failed",
+            ),
+        )
+        emit_counter(
+            "restore_workflow_failure_total",
+            labels=MetricLabels(
+                job_id=job.id,
+                target=job.target,
+                phase="workflow",
+                status="failed",
+            ),
+        )
+        raise
+
+
+__all__: Sequence[str] = [
+    "MyLoaderResult",
+    "MyLoaderSpec",
+    "RestoreWorkflowSpec",
+    "orchestrate_restore_workflow",
+    "run_myloader",
+]

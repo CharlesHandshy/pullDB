@@ -161,14 +161,20 @@ def cleanup_orphaned_staging(
     target_db: str,
     job_id: str,
 ) -> StagingResult:
-    """Clean up orphaned staging databases and prepare for restore.
+    """Drop all orphaned staging databases for the target before a new restore.
+
+    Updated requirement: Any existing staging databases matching the pattern
+    ``{target}_[0-9a-f]{12}`` MUST be dropped prior to starting a new job. We
+    do not retain or reuse prior staging databases. This enforces FAIL HARD
+    isolation and guarantees the workflow begins from a clean slate.
 
     Steps:
-    1. Generate staging database name from target + job_id
-    2. List all databases on target MySQL server
-    3. Find orphaned staging databases matching {target}_[0-9a-f]{12}
-    4. Drop all orphaned staging databases
-    5. Verify staging database doesn't exist after cleanup
+        1. Generate staging database name from target + job_id
+        2. Connect to MySQL server (no specific database selected)
+        3. List all databases
+        4. Identify staging candidates matching pattern
+        5. Drop all identified staging databases
+        6. Re-list databases and verify generated staging name does not exist
 
     Args:
         conn_spec: MySQL connection parameters.
@@ -176,15 +182,15 @@ def cleanup_orphaned_staging(
         job_id: Job UUID for generating staging name.
 
     Returns:
-        StagingResult with staging name and dropped orphans list.
+        StagingResult containing the generated staging database name, target
+        name, and list of dropped orphan databases.
 
     Raises:
-        StagingError: If staging database exists after cleanup, connection
-            fails, or drop operations fail.
+        StagingError: On connection failure, listing failure, drop failure, or
+        staging name collision after cleanup.
     """
     staging_db = generate_staging_name(target_db, job_id)
 
-    # Connect to MySQL server (not to any specific database)
     try:
         connection = mysql.connector.connect(
             host=conn_spec.mysql_host,
@@ -196,15 +202,14 @@ def cleanup_orphaned_staging(
         )
     except mysql.connector.Error as e:
         raise StagingError(
-            f"Failed to connect to MySQL server {conn_spec.mysql_host}:"
-            f"{conn_spec.mysql_port} for staging cleanup: {e}. "
-            f"Verify credentials and network connectivity."
+            "Failed to connect to MySQL server "
+            f"{conn_spec.mysql_host}:{conn_spec.mysql_port} "
+            f"for staging cleanup: {e}. "
+            "Verify credentials and network connectivity."
         ) from e
 
     try:
         cursor = connection.cursor()
-
-        # List all databases
         try:
             cursor.execute("SHOW DATABASES")
             rows = cursor.fetchall()
@@ -215,35 +220,38 @@ def cleanup_orphaned_staging(
                 f"Verify user {conn_spec.mysql_user} has SHOW DATABASES privilege."
             ) from e
 
-        # Find orphaned staging databases
-        orphans = _find_orphaned_staging_databases(target_db, all_databases)
+        staging_candidates = _find_orphaned_staging_databases(target_db, all_databases)
+        orphans_dropped: list[str] = []
 
-        # Drop each orphaned database
-        for orphan_db in orphans:
+        for orphan_db in staging_candidates:
             try:
-                # Use parameterized identifier (MySQL 8.0+ supports this pattern)
-                drop_sql = f"DROP DATABASE IF EXISTS `{orphan_db}`"
-                cursor.execute(drop_sql)
+                cursor.execute(f"DROP DATABASE IF EXISTS `{orphan_db}`")
+                orphans_dropped.append(orphan_db)
             except mysql.connector.Error as e:
                 raise StagingError(
-                    f"Failed to drop orphaned staging database '{orphan_db}': {e}. "
+                    f"Failed to drop staging database '{orphan_db}': {e}. "
                     f"Verify user {conn_spec.mysql_user} has DROP privilege."
                 ) from e
 
-        # Verify staging database doesn't exist after cleanup
-        cursor.execute("SHOW DATABASES")
-        remaining_rows = cursor.fetchall()
-        remaining_databases = [str(row[0]) for row in remaining_rows]  # type: ignore[index]
+            # Collision check (should not occur - dropped above if existed)
+        try:
+            cursor.execute("SHOW DATABASES")
+            remaining_rows = cursor.fetchall()
+            remaining_databases = [str(row[0]) for row in remaining_rows]  # type: ignore[index]
+        except mysql.connector.Error as e:
+            raise StagingError(
+                "Failed to re-list databases after cleanup on "
+                f"{conn_spec.mysql_host}: {e}."
+            ) from e
 
         if staging_db in remaining_databases:
             raise StagingError(
-                f"Staging database '{staging_db}' still exists after cleanup. "
-                f"This should never happen - indicates concurrency issue or "
-                f"privilege problem preventing DROP."
+                f"Generated staging database name '{staging_db}' still exists after "
+                "cleanup; concurrency issue or UUID collision detected. Retry "
+                "with a new job id."
             )
 
         cursor.close()
-
     finally:
         with suppress(Exception):
             connection.close()
@@ -251,5 +259,5 @@ def cleanup_orphaned_staging(
     return StagingResult(
         staging_db=staging_db,
         target_db=target_db,
-        orphans_dropped=orphans,
+        orphans_dropped=orphans_dropped,
     )

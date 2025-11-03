@@ -57,3 +57,22 @@ ORDER BY event_time;
 - Ensure temporary workspace directory is empty (daemon should remove automatically).
 - Review daemon logs for WARN/ERROR entries related to the run.
 - Update related documentation or tickets with job ID and validation results.
+
+## Staging Database Lifecycle (Critical)
+
+Before every restore job starts, the worker drops ALL existing staging databases
+matching the pattern `{target}_[0-9a-f]{12}`. No retention, reuse, or age-based
+policy is applied. This guarantees:
+
+1. Clean slate: Prevents subtle contamination from prior exploratory sessions.
+2. Deterministic collision detection: Newly generated staging name must not exist post-cleanup.
+3. Operational clarity: Re-restoring a target implicitly discards prior staging revisions.
+
+If a generated staging database name still exists after cleanup, the job FAILS HARD
+with a `StagingError` indicating a concurrency issue or UUID collision. Operators
+should re-submit the job (generates a new UUID). Investigate simultaneous runs
+against the same target if this recurs.
+
+Cutover (atomic rename) occurs only after successful restore, post‑SQL execution,
+and metadata injection. On failure prior to rename, the staging database is preserved
+for diagnostics and will be removed automatically on the next restore for that target.

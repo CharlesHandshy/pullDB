@@ -337,6 +337,63 @@ class BackupValidationError(JobExecutionError):
         )
 
 
+class MetadataInjectionError(JobExecutionError):
+    """Metadata table injection failed.
+
+    Raised when pullDB metadata table creation or record insertion fails
+    after successful restore. Staging database is preserved with restored data.
+    """
+
+    def __init__(
+        self,
+        job_id: str,
+        operation: str,
+        error_message: str,
+    ) -> None:
+        """Initialize metadata injection error.
+
+        Args:
+            job_id: Job UUID.
+            operation: Operation that failed ('connect', 'create_table', 'insert').
+            error_message: MySQL error message with context.
+        """
+        solutions = []
+        if operation == "connect":
+            solutions = [
+                "Verify staging database exists (check myloader output)",
+                "Verify MySQL credentials have database access privilege",
+                "Check network connectivity to target MySQL host",
+            ]
+        elif operation == "create_table":
+            solutions = [
+                "Verify MySQL user has CREATE TABLE privilege",
+                "Check if database has exceeded table limit",
+                "Inspect MySQL error logs for storage engine issues",
+            ]
+        elif operation == "insert":
+            solutions = [
+                "Verify pullDB table schema matches expected structure",
+                "Check for existing record with same job_id (duplicate key)",
+                "Inspect post-SQL JSON for invalid characters or size limit",
+            ]
+        else:
+            solutions = [
+                f"Inspect error message for '{operation}' operation details",
+                "Contact DBA for MySQL-level diagnostics",
+            ]
+
+        super().__init__(
+            goal=f"Inject pullDB metadata table into staging database for job {job_id}",
+            problem=f"Metadata {operation} operation failed",
+            root_cause=error_message,
+            solutions=solutions,
+            detail={
+                "job_id": job_id,
+                "operation": operation,
+            },
+        )
+
+
 class StagingError(Exception):
     """Staging database lifecycle operation failed.
 

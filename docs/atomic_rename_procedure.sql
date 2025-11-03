@@ -1,4 +1,18 @@
 -- Atomic rename stored procedure for pullDB
+-- Version: 1.0.0
+--
+-- IMPORTANT: Procedure version MUST match expected version in deployment
+-- tooling and worker compatibility checks. Bump this version ONLY when
+-- procedure logic changes in a way that requires redeployment across all
+-- hosts. Versioning allows:
+--   * Worker-side compatibility validation
+--   * Controlled rollout (verify version before restore)
+--   * Benchmark correlations (performance evolution across versions)
+--
+-- Preview companion procedure (pulldb_atomic_rename_preview) is provided
+-- to safely inspect the RENAME TABLE statement without executing it.
+-- Deployment script may optionally deploy both procedures; preview can be
+-- used for benchmarking and diagnostics.
 --
 -- Name: pulldb_atomic_rename
 -- Purpose: Atomically cut over restored staging database to target database
@@ -110,5 +124,52 @@ BEGIN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = CONCAT('Atomic rename produced empty target ', p_target_db);
     END IF;
+END $$
+DELIMITER ;
+
+-- Preview procedure: returns the atomic RENAME TABLE statement that would be
+-- executed for a given staging->target pair without performing any changes.
+-- Useful for:
+--   * Diagnostic validation before deployment
+--   * Benchmarking string build performance
+--   * Dry-run tooling in CI or staging
+--
+-- Behavior:
+--   1. Validate staging database contains tables
+--   2. Build the single RENAME TABLE statement
+--   3. Return it via SELECT (single row, single column rename_sql)
+--
+-- NOTE: Does NOT check or manipulate target database existence.
+-- NOTE: Caller must ensure inputs meet naming constraints (<64 chars).
+DELIMITER $$
+DROP PROCEDURE IF EXISTS pulldb_atomic_rename_preview $$
+CREATE PROCEDURE pulldb_atomic_rename_preview(IN p_staging_db VARCHAR(64), IN p_target_db VARCHAR(64))
+BEGIN
+    DECLARE v_table_count INT DEFAULT 0;
+    DECLARE v_rename_sql TEXT;
+
+    SELECT COUNT(*) INTO v_table_count
+    FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = p_staging_db;
+
+    IF v_table_count = 0 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = CONCAT('Staging database ', p_staging_db, ' has no tables (empty or missing)');
+    END IF;
+
+    SELECT GROUP_CONCAT(
+        CONCAT('`', p_staging_db, '`.`', TABLE_NAME, '` TO `', p_target_db, '`.`', TABLE_NAME, '`')
+        SEPARATOR ', '
+    ) INTO v_rename_sql
+    FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = p_staging_db;
+
+    IF v_rename_sql IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Failed to build RENAME TABLE statement (no tables)';
+    END IF;
+
+    SET @rename_preview_sql = CONCAT('RENAME TABLE ', v_rename_sql);
+    SELECT @rename_preview_sql AS rename_sql;
 END $$
 DELIMITER ;

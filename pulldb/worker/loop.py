@@ -18,6 +18,12 @@ import typing as t
 
 from pulldb.domain.models import Job
 from pulldb.infra.logging import get_logger
+from pulldb.infra.metrics import (
+    MetricLabels,
+    emit_event,
+    emit_gauge,
+    time_operation,
+)
 
 
 if t.TYPE_CHECKING:
@@ -56,17 +62,23 @@ def run_poll_loop(
     current_interval = poll_interval
 
     logger.info("Poll loop started", extra={"phase": "startup"})
+    emit_event("worker_start", "Worker poll loop started")
 
     while max_iterations is None or iteration < max_iterations:
         iteration += 1
 
         try:
             # Attempt to fetch next queued job
-            job = job_repo.get_next_queued_job()
+            with time_operation(
+                "queue_poll_duration_seconds",
+                MetricLabels(phase="queue_poll"),
+            ):
+                job = job_repo.get_next_queued_job()
 
             if job:
                 # Reset backoff on successful job fetch
                 current_interval = poll_interval
+                emit_gauge("queue_backoff_interval_seconds", current_interval)
 
                 logger.info(
                     "Job acquired from queue",
@@ -104,6 +116,11 @@ def run_poll_loop(
                         "phase": "backoff",
                     },
                 )
+                emit_event(
+                    "queue_empty",
+                    f"backoff={current_interval}",
+                    MetricLabels(phase="backoff"),
+                )
 
                 time.sleep(current_interval)
 
@@ -115,6 +132,7 @@ def run_poll_loop(
 
         except KeyboardInterrupt:
             logger.info("Poll loop interrupted by user", extra={"phase": "shutdown"})
+            emit_event("worker_interrupt", "Worker poll loop interrupted")
             break
 
         except Exception as e:
@@ -124,6 +142,9 @@ def run_poll_loop(
                 extra={"error": str(e), "phase": "error"},
                 exc_info=True,
             )
+            emit_event(
+                "worker_poll_error", str(e), MetricLabels(phase="error", status="error")
+            )
             # Brief sleep before retry to avoid tight error loop
             time.sleep(1.0)
 
@@ -131,6 +152,7 @@ def run_poll_loop(
         "Poll loop stopped",
         extra={"iterations": iteration, "phase": "shutdown"},
     )
+    emit_event("worker_stop", f"iterations={iteration}", MetricLabels(phase="shutdown"))
 
 
 def _transition_to_running(job_repo: JobRepository, job: Job) -> None:

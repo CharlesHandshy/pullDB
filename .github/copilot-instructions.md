@@ -17,7 +17,12 @@ pullDB is a database restoration tool that pulls production MySQL backups from S
 - ✅ Credential resolution (`pulldb/infra/secrets.py` ~399 lines) with Secrets Manager + SSM support
 - ✅ Atomic rename stored procedure SQL file (`docs/atomic_rename_procedure.sql`) added
 - ✅ Deployment script validation (dry-run, host conflict, missing SQL file, connection failure, drop failure, create failure, success) via unit tests
-- ✅ Test suite (156 tests passed, 1 skipped, 1 xpassed: secrets, config, repos, logging, errors, exec, restore, post-SQL, staging, discovery, downloader, disk capacity integration, atomic rename invocation, CLI parsing, procedure deployment) – latest run 56.7s
+- ✅ Test suite (170 tests passed, 1 skipped, 1 xpassed: secrets, config, repos, logging, errors, exec, restore, post-SQL, staging, discovery, downloader, disk capacity integration, atomic rename invocation, CLI parsing, procedure deployment, procedure versioning, preview procedure stripping logic, benchmark script validation) – latest run 56.6s
+- ✅ Versioned atomic rename stored procedure (header comment `Version: 1.0.0`)
+- ✅ Preview stored procedure (`pulldb_atomic_rename_preview`) for safe inspection of atomic RENAME TABLE statement
+- ✅ Deployment script enhancements: version validation, preview deployment flag, skip-version-check override, conditional preview stripping
+- ✅ Benchmark script for atomic rename SQL build performance (`scripts/benchmark_atomic_rename.py`) with FAIL HARD input validation
+- ✅ Expanded deployment + benchmark test coverage (version presence/missing/skip, preview include/exclude, benchmark JSON + error paths)
 
 **Not Yet Implemented (Drift vs Initial Plan)**:
 - ✅ Staging DB orphan cleanup (pattern matching + DROP operations) – atomic rename procedure still pending
@@ -97,7 +102,7 @@ pulldb/
   └── tests/
       ├── ...                     # Comprehensive suite (unit + integration: discovery, downloader, repos, errors, loop, logging, exec, restore, post_sql, disk capacity)
 
-> Current suite: 156 passing tests (+1 skipped, +1 xpassed) covering discovery, downloader (including disk capacity integration tests), logging, errors, myloader wrapper, post-SQL executor, restore orchestration, metadata injection, atomic rename invocation, CLI parsing, and procedure deployment script scenarios.
+> Current suite: 170 passing tests (+1 skipped, +1 xpassed) covering discovery, downloader (including disk capacity integration tests), logging, errors, myloader wrapper, post-SQL executor, restore orchestration, metadata injection, atomic rename invocation, CLI parsing, procedure deployment, versioned + preview procedures, and benchmark script scenarios.
 customers_after_sql/              # Post-restore SQL for customer databases (PII removal)
   ├── 010.remove_customer_pii.sql
   ├── 020.remove_billto_info.sql

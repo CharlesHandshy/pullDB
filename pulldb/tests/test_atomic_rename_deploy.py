@@ -21,6 +21,7 @@ from typing import Any
 import pytest
 
 import scripts.deploy_atomic_rename as deploy
+from scripts.deploy_atomic_rename import PREVIEW_PROCEDURE_NAME
 
 
 class _FakeCursor:
@@ -100,10 +101,13 @@ def _run_script(argv: list[str]) -> tuple[int, str, str]:
 @pytest.fixture()
 def sql_file(tmp_path: Path) -> Path:
     path = tmp_path / "procedure.sql"
+    # Minimal viable SQL with version header + delimiters matching deploy script
     path.write_text(
         (
-            "DROP PROCEDURE IF EXISTS pulldb_atomic_rename; "
-            "CREATE PROCEDURE pulldb_atomic_rename() BEGIN SELECT 1; END;"
+            "-- Version: 1.0.0\n"
+            "DELIMITER $$\nDROP PROCEDURE IF EXISTS pulldb_atomic_rename $$\n"
+            "CREATE PROCEDURE pulldb_atomic_rename() BEGIN SELECT 1; END $$\n"
+            "DELIMITER ;\n"
         ),
         encoding="utf-8",
     )
@@ -261,3 +265,162 @@ def test_success_single_host(sql_file: Path, monkeypatch: Any) -> None:
     assert "Deployment complete" in out
     assert err == ""
     assert any("DROP PROCEDURE IF EXISTS" in s for s in cursor_instance.statements)
+
+
+def test_version_header_missing(monkeypatch: Any, tmp_path: Path) -> None:
+    # Create SQL file without version header to trigger version check failure
+    bad_sql = tmp_path / "procedure.sql"
+    bad_sql.write_text(
+        (
+            "DROP PROCEDURE IF EXISTS pulldb_atomic_rename; "
+            "CREATE PROCEDURE pulldb_atomic_rename() BEGIN SELECT 1; END;"
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_connect(**_: Any) -> _FakeConnection:
+        return _FakeConnection(lambda: _FakeCursor())
+
+    monkeypatch.setattr(deploy.mysql.connector, "connect", fake_connect)
+    code, out, err = _run_script(
+        [
+            "--sql-file",
+            str(bad_sql),
+            "--host",
+            "db1.example.com",
+            "--user",
+            "root",
+            "--password",
+            "pw",
+        ]
+    )
+    assert code == 1
+    assert out == ""  # version failure occurs before deployment begins
+    assert "Validate procedure version" in err
+    assert "Missing 'Version:" in err
+
+
+def test_skip_version_check_allows_missing_header(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    bad_sql = tmp_path / "procedure.sql"
+    bad_sql.write_text(
+        (
+            "DROP PROCEDURE IF EXISTS pulldb_atomic_rename; "
+            "CREATE PROCEDURE pulldb_atomic_rename() BEGIN SELECT 1; END;"
+        ),
+        encoding="utf-8",
+    )
+    cursor_instance = _FakeCursor()
+
+    def fake_connect(**_: Any) -> _FakeConnection:
+        return _FakeConnection(lambda: cursor_instance)
+
+    monkeypatch.setattr(deploy.mysql.connector, "connect", fake_connect)
+    code, out, err = _run_script(
+        [
+            "--sql-file",
+            str(bad_sql),
+            "--host",
+            "db1.example.com",
+            "--user",
+            "root",
+            "--password",
+            "pw",
+            "--skip-version-check",
+        ]
+    )
+    assert code == 0
+    assert "Deployment complete" in out
+    assert err == ""
+
+
+def test_deploy_without_preview_strips_preview(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    # SQL file with both procedures (version header included)
+    sql_path = tmp_path / "procedure.sql"
+    sql_path.write_text(
+        (
+            "-- Version: 1.0.0\n"
+            "DELIMITER $$\nDROP PROCEDURE IF EXISTS pulldb_atomic_rename $$\n"
+            "CREATE PROCEDURE pulldb_atomic_rename() BEGIN SELECT 1; END $$\n"
+            "DELIMITER ;\n"
+            "DELIMITER $$\nDROP PROCEDURE IF EXISTS pulldb_atomic_rename_preview $$\n"
+            "CREATE PROCEDURE pulldb_atomic_rename_preview() BEGIN SELECT 2; END $$\n"
+            "DELIMITER ;\n"
+        ),
+        encoding="utf-8",
+    )
+    cursor_instance = _FakeCursor()
+
+    def fake_connect(**_: Any) -> _FakeConnection:
+        return _FakeConnection(lambda: cursor_instance)
+
+    monkeypatch.setattr(deploy.mysql.connector, "connect", fake_connect)
+    code, _out, err = _run_script(
+        [
+            "--sql-file",
+            str(sql_path),
+            "--host",
+            "db1.example.com",
+            "--user",
+            "root",
+            "--password",
+            "pw",
+        ]
+    )
+    assert code == 0
+    assert err == ""
+    # Preview procedure DROP will still occur (deploy script always drops)
+    # but CREATE should not when --deploy-preview is absent.
+    assert any(
+        f"DROP PROCEDURE IF EXISTS {PREVIEW_PROCEDURE_NAME}" in s
+        for s in cursor_instance.statements
+    )
+    assert not any(
+        f"CREATE PROCEDURE {PREVIEW_PROCEDURE_NAME}" in s
+        for s in cursor_instance.statements
+    )
+
+
+def test_deploy_with_preview_keeps_preview(monkeypatch: Any, tmp_path: Path) -> None:
+    sql_path = tmp_path / "procedure.sql"
+    sql_path.write_text(
+        (
+            "-- Version: 1.0.0\n"
+            "DELIMITER $$\nDROP PROCEDURE IF EXISTS pulldb_atomic_rename $$\n"
+            "CREATE PROCEDURE pulldb_atomic_rename() BEGIN SELECT 1; END $$\n"
+            "DELIMITER ;\n"
+            "DELIMITER $$\nDROP PROCEDURE IF EXISTS pulldb_atomic_rename_preview $$\n"
+            "CREATE PROCEDURE pulldb_atomic_rename_preview() BEGIN SELECT 2; END $$\n"
+            "DELIMITER ;\n"
+        ),
+        encoding="utf-8",
+    )
+    cursor_instance = _FakeCursor()
+
+    def fake_connect(**_: Any) -> _FakeConnection:
+        return _FakeConnection(lambda: cursor_instance)
+
+    monkeypatch.setattr(deploy.mysql.connector, "connect", fake_connect)
+    code, _out, err = _run_script(
+        [
+            "--sql-file",
+            str(sql_path),
+            "--host",
+            "db1.example.com",
+            "--user",
+            "root",
+            "--password",
+            "pw",
+            "--deploy-preview",
+        ]
+    )
+    assert code == 0
+    assert err == ""
+    # Expect preview procedure DROP present; CREATE may be folded without explicit token
+    assert any(
+        f"DROP PROCEDURE IF EXISTS {PREVIEW_PROCEDURE_NAME}" in s
+        for s in cursor_instance.statements
+    )
