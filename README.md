@@ -1,14 +1,31 @@
 # pullDB Tool
 
+[![Release](https://img.shields.io/github/v/release/PestRoutes/infra.devops?filter=pulldb*&label=version&color=blue)](https://github.com/PestRoutes/infra.devops/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-183%20passing-success.svg)](pulldb/tests/)
+[![Type Check](https://img.shields.io/badge/mypy-passing-success.svg)](pulldb/)
+
 > **For AI Agents & New Developers**: Start with `.github/copilot-instructions.md` for architectural overview and critical constraints, then read `constitution.md` for coding standards and workflow. This README provides complete API reference and usage patterns.
 
 > **Engineering DNA**: Shared development protocols (FAIL HARD, Hygiene, Timeout Monitoring) are available via the `engineering-dna` submodule. See `engineering-dna/README.md` for complete documentation and `docs/engineering-dna-dev.md` for adoption guidance.
 
 > Naming note: The repository root keeps the historical product name `pullDB` (capital D) for familiarity, while the Python importable package is lowercase `pulldb` per PEP 8—use `import pulldb...` in code and retain `pullDB` in user-facing docs/CLI branding.
 
+## 📚 Quick Links
+
+- **[Latest Release](https://github.com/PestRoutes/infra.devops/releases/latest)** - Download Debian package
+- **[CHANGELOG](CHANGELOG.md)** - Version history and release notes
+- **[Releases Page](https://github.com/PestRoutes/infra.devops/releases)** - All releases and artifacts
+- **[AWS Setup Guide](docs/aws-quickstart.md)** - Fast track AWS configuration
+- **[Testing Guide](docs/testing.md)** - Running tests with AWS integration
+
 ## Quick Start
 
 ```bash
+# Interactive installer (preferred)
+sudo scripts/install_pulldb.sh
+
 # 1. Install AWS CLI
 sudo scripts/setup-aws.sh
 
@@ -37,6 +54,82 @@ pulldb --help
 pulldb-daemon
 ```
 
+### Installation & Packaging
+
+Two supported installation paths:
+
+1. Interactive/non-interactive script (recommended for first-time setup):
+```bash
+sudo scripts/install_pulldb.sh                    # fully interactive prompts
+sudo scripts/install_pulldb.sh --yes \            # auto-confirm
+  --prefix /opt/pulldb \                          # custom install prefix
+  --aws-profile dev \                             # set AWS profile
+  --secret /pulldb/mysql/coordination-db \        # coordination DB secret
+  --validate                                      # attempt AWS + secret checks
+```
+Prompts for:
+- Install directory (defaults /opt/pulldb)
+- AWS profile (PULLDB_AWS_PROFILE)
+- Coordination DB secret name (/pulldb/mysql/coordination-db)
+Creates: virtualenv, .env, optional systemd unit enabling and start (unless `--no-systemd`).
+
+Script flags:
+| Flag | Purpose |
+|------|---------|
+| `--prefix DIR` | Install path (default `/opt/pulldb`) |
+| `--aws-profile NAME` | Sets `PULLDB_AWS_PROFILE` in `.env` |
+| `--secret NAME` | Sets `PULLDB_COORDINATION_SECRET` in `.env` |
+| `--yes` | Assume yes for confirmations (non-interactive) |
+| `--no-systemd` | Skip systemd unit install/enable |
+| `--validate` | Run lightweight AWS profile + secret existence checks (warn-only) |
+| `--python BIN` | Alternate Python interpreter for virtualenv |
+| `--help` | Display usage and exit |
+
+Validation notes:
+- `--validate` invokes `aws sts get-caller-identity` and `aws secretsmanager describe-secret` (warnings only; does not abort on failure).
+- Ensure AWS CLI is installed and profile configured prior to using `--validate`.
+
+2. Debian package build (prototype skeleton with maintainer scripts):
+```bash
+./scripts/build_deb.sh
+sudo dpkg -i pulldb_0.0.1.dev0_amd64.deb
+sudo /opt/pulldb/scripts/install_pulldb.sh --yes --validate  # finalize & customize
+```
+The .deb lays down `/opt/pulldb` with installer, unit template, and creates a system user `pulldb` plus initial directory layout (`logs`, `work`, `scripts`). Maintainer `postinst` writes a baseline `.env` and installs the unit file under `/etc/systemd/system/pulldb-worker.service` (disabled by default). Use the installer script for customization after package installation.
+
+Package lifecycle behaviors:
+| Script | Behavior |
+|--------|----------|
+| `postinst` | Create `pulldb` system user, directory layout, write `.env`, copy unit, `systemctl daemon-reload`, enable unit (not started) |
+| `prerm` | Stop + disable unit if present |
+| `postrm (purge)` | Remove unit file, reload systemd, delete install prefix |
+
+Systemd unit template: `packaging/systemd/pulldb-worker.service` (EnvironmentFile auto-injected by installer). After installation you can:
+```bash
+sudo systemctl enable pulldb-worker.service
+sudo systemctl start pulldb-worker.service
+```
+
+Verify:
+```bash
+systemctl status pulldb-worker.service
+journalctl -u pulldb-worker -o cat --since "5 minutes ago"
+```
+
+Uninstall (manual prototype procedure, if not using dpkg purge):
+```bash
+sudo systemctl stop pulldb-worker.service || true
+sudo systemctl disable pulldb-worker.service || true
+sudo rm -f /etc/systemd/system/pulldb-worker.service
+sudo systemctl daemon-reload
+sudo rm -rf /opt/pulldb
+```
+Or using dpkg purge (invokes `postrm` cleanup):
+```bash
+sudo dpkg --purge pulldb
+```
+```
+
 Documentation:
 - MySQL Database Schema: [docs/mysql-schema.md](docs/mysql-schema.md)
 
@@ -59,37 +152,67 @@ It checks:
 
 `pullDB` pulls production database backups from S3 and restores them into development environments. The prototype architecture consists of three services: a CLI that calls an API service, an API service that manages job requests via MySQL, and a worker service that executes restores. The services coordinate exclusively through MySQL.
 
-### Current Implementation Status (Nov 1 2025)
+### Current Implementation Status (Nov 3 2025) - Phase 0: 100% Complete (Release Freeze Initiated)
 
-Foundation primitives (credential resolution, configuration loading, repositories, domain models) plus logging abstraction, domain error classes, worker poll loop, S3 backup discovery, downloader, and disk capacity guard are implemented (milestone items 1–3 complete). Remaining restore workflow pieces (myloader execution, post‑SQL processing, staging lifecycle/rename) are not yet implemented. CLI still a placeholder (validation + enqueue/status pending). We are mid "Restore Workflow Bootstrap" milestone advancing toward end‑to‑end execution.
+**Major Achievement**: Core restore workflow complete and tested (181/181 tests passing; 1 skipped, 1 xpassed). The system accepts restore jobs via CLI, lists active jobs with `pulldb status`, orchestrates complete database restores (staging → myloader → post-SQL → metadata → atomic rename), emits structured logs/metrics, and runs under a systemd-managed daemon (graceful shutdown confirmed). Project entered release freeze (bug/security fixes only) on Nov 3 2025 after final installer + packaging & daemon service runner validation.
 
-Bootstrap Milestone Goals:
-1. Logging & domain error classes (FAIL HARD runtime scaffolding)
-2. Worker poll loop + event emission (`queued`→`running`)
-3. S3 discovery + downloader with disk capacity guard
-4. myloader subprocess wrapper & restore orchestration
-5. Post‑SQL script executor + structured results JSON
-6. Staging lifecycle (orphan cleanup, name generation, atomic rename placeholder)
-7. Event wiring + job status updates (`failed`/`complete` transitions)
-8. CLI validation + real enqueue & status commands
-9. Integration tests (happy path + failure modes: missing backup, insufficient disk, myloader error, post‑SQL failure)
-10. Metrics emission (queue depth, restore durations, disk failures) after baseline stability
+**Completed Milestones**:
+- ✅ Milestone 1: Foundation (MySQL schema, config, credentials, logging) - 100%
+- ✅ Milestone 2: Repository Layer (4 repositories, domain models, 87 tests) - 100%
+- ✅ Milestone 2.5: Worker Foundation (restore workflow, 48 tests) - 100%
+- ✅ Milestone 2.6: Atomic Rename Enhancements (deployment tooling, 14 tests) - 100%
+- ✅ Milestone 3: CLI Implementation (parser/validator/enqueue/status complete) - 100%
+- ✅ Milestone 5: S3 Integration (discovery, download, disk capacity) - 100%
+- ✅ Milestone 6: MySQL Restore (staging pattern, myloader, atomic rename) - 100%
+- ✅ Milestone 7: Post-Restore SQL (script execution, metadata injection) - 100%
+- ✅ Milestone 8: Logging & Metrics (JSON logging, metrics emission) - 100%
+- ✅ Milestone 9: Testing (175 tests, 100% pass rate) - 100%
+- ✅ Milestone 10: Deployment (daemon service runner + systemd unit + packaging + installer tests) - 100%
 
-Quality Guardrail: Each increment must preserve 100% passing tests and extend coverage for new failure paths (FAIL HARD diagnostics required).
+**Test Suite**: 181 passing tests, 1 skipped, 1 xpassed (75.14s total execution, 60s timeout per test)
+- 87 repository + integration tests
+- 23 worker unit tests
+- 25+ integration tests (happy path + failure modes)
+- 14 deployment + benchmark tests
+- 14 secrets tests
+- 7 config tests
+- 5 CLI tests (status command)
+- 6 installer tests (flags, validation, systemd skip, root enforcement)
 
-### Drift Ledger (Update as Features Land)
-- Repositories & credential/config layers: ✅ Implemented
-- Logging abstraction & domain error classes: ✅ Implemented (goal item 1 complete)
-- Worker poll loop & event emission: ✅ Implemented (goal item 2 complete)
-- S3 discovery & downloader (disk capacity guard + streaming): ✅ Implemented (goal item 3 complete)
-- CLI validation & enqueue/status: 🚧 Placeholder (planned goal item 8)
-- myloader execution subprocess wrapper & orchestration: ❌ Missing (planned goal item 4)
-- Post‑SQL executor & metadata table injection: ❌ Missing (planned goal item 5)
-- Staging lifecycle (orphan cleanup + atomic rename procedure): ❌ Missing (planned goal item 6)
-- Integration tests (end‑to‑end restore workflow incl. failure modes: missing backup, disk insufficient, myloader error, post‑SQL failure): ❌ Missing (planned goal item 9)
-- Metrics emission (queue depth, restore durations, disk failures): ❌ Missing (planned goal item 10)
+**Remaining Work (Release Readiness)**:
+1. Production deployment & 2-week stability monitoring window
+2. Prepare Phase 1 roadmap refinement (post-freeze)
 
-Test Suite Expansion: Initial 9 modules has grown to 87 passing tests (includes discovery and downloader coverage). End‑to‑end restore workflow tests will be added after myloader + staging lifecycle implementation.
+**Complete Status Report**: See `STATUS-REPORT-2025-11-03.md` (with addendum) for detailed milestone breakdown, metrics, and recommendations.
+
+### Release Freeze (Nov 3 2025)
+
+The project is now in a release freeze. Only the following change categories are permitted until post‑deployment stability sign‑off:
+
+| Allowed | Description |
+|---------|-------------|
+| Bug Fix | Correct behavior that deviates from documented design |
+| Security Fix | Address vulnerabilities (dependency CVE, secret exposure) |
+| Critical Ops | Deployment scripting reliability (non-feature) |
+| Documentation Correction | Factual updates (no new feature docs) |
+
+| Disallowed | Rationale |
+|------------|-----------|
+| New Features | Risk of scope creep; deferred to Phase 1 |
+| Refactors Without Defect | Freeze preserves stability |
+| Performance Optimizations | Profile & optimize post-release |
+| Non-critical Style Tweaks | Avoid churn before release |
+
+Freeze Exit Criteria:
+1. ≥10 successful production restores
+2. Zero unhandled exceptions in daemon logs over 14 days
+3. Average restore duration < 30 minutes
+4. Metrics (queue depth, disk failures) validated in monitoring
+5. Post‑SQL scripts all succeed for customer & QA template restores
+6. Staging cleanup consistently removes orphaned staging DBs
+7. Security scan (dependencies + secrets) clean
+
+See `RELEASE-FREEZE.md` for authoritative policy.
 
 ### Engineering DNA Integration
 
