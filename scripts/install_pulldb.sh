@@ -204,6 +204,10 @@ Next Steps:
 4. Run CLI help: ${INSTALL_PREFIX}/venv/bin/pulldb --help
 5. Tail logs (example): journalctl -u pulldb-worker -f -o cat
 
+Additional AWS guidance:
+  See ${REPO_ROOT}/docs/aws-quickstart.md for example AWS CLI validation commands and
+  minimum IAM policy snippets required for Secrets Manager / SSM and S3 access.
+
 Uninstall (manual):
   systemctl stop pulldb-worker.service || true
   systemctl disable pulldb-worker.service || true
