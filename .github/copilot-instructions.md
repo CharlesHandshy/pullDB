@@ -10,19 +10,20 @@ This document is the **primary reference for AI coding agents** working on pullD
 
 pullDB is a database restoration tool that pulls production MySQL backups from S3 and restores them to development environments. The system follows a **documentation-first, prototype-first** approach with extensive planning before implementation.
 
-**Current Status (Nov 2 2025)**: Foundation primitives (credentials, configuration, repositories) plus logging abstraction, domain error classes, worker poll loop, S3 backup discovery, downloader, disk capacity guard, myloader subprocess wrapper, post‑SQL executor, staging orphan cleanup, metadata table injection, atomic rename invocation module, restore orchestration (end‑to‑end logical chaining), CLI validation & enqueue, metrics emission scaffolding, and initial integration tests (logical happy path + optional real S3 listing) are implemented. Advancing toward production‑grade staging cutover hardening and failure‑mode integration coverage.
+**Current Status (Nov 3 2025)**: All Phase 0 milestones complete: credentials/config/repositories, logging abstraction, domain error classes, worker poll loop, S3 backup discovery, downloader, disk capacity guard, myloader subprocess wrapper, post‑SQL executor, staging orphan cleanup, metadata table injection, atomic rename invocation module, restore orchestration (end‑to‑end logical chaining), CLI validation & enqueue & status command, daemon service runner (graceful shutdown + lifecycle metrics), metrics emission scaffolding, installer + packaging (interactive/non‑interactive + Debian maintainer scripts + systemd unit), and comprehensive integration tests (happy path + failure modes). Phase 0: 100% complete. Project in RELEASE FREEZE (bug/security fixes only) as of Nov 3 2025 (see `RELEASE-FREEZE.md`).
 
-**Completed Work** (verified Nov 2 2025):
+**Completed Work** (verified Nov 3 2025):
 - ✅ MySQL 8.0.43 schema deployed (6 tables, 1 view, 1 trigger)
 - ✅ Credential resolution (`pulldb/infra/secrets.py` ~399 lines) with Secrets Manager + SSM support
 - ✅ Atomic rename stored procedure SQL file (`docs/atomic_rename_procedure.sql`) added
 - ✅ Deployment script validation (dry-run, host conflict, missing SQL file, connection failure, drop failure, create failure, success) via unit tests
-- ✅ Test suite (170 tests passed, 1 skipped, 1 xpassed: secrets, config, repos, logging, errors, exec, restore, post-SQL, staging, discovery, downloader, disk capacity integration, atomic rename invocation, CLI parsing, procedure deployment, procedure versioning, preview procedure stripping logic, benchmark script validation) – latest run 56.6s
+- ✅ Test suite (181 tests passed, 1 skipped, 1 xpassed: secrets, config, repos, logging, errors, exec, restore, post-SQL, staging, discovery, downloader, disk capacity integration, atomic rename invocation, CLI parsing + status command, procedure deployment, procedure versioning, preview procedure stripping logic, benchmark script validation, installer flags/validation/root enforcement) – latest run 75.14s
 - ✅ Versioned atomic rename stored procedure (header comment `Version: 1.0.0`)
 - ✅ Preview stored procedure (`pulldb_atomic_rename_preview`) for safe inspection of atomic RENAME TABLE statement
 - ✅ Deployment script enhancements: version validation, preview deployment flag, skip-version-check override, conditional preview stripping
 - ✅ Benchmark script for atomic rename SQL build performance (`scripts/benchmark_atomic_rename.py`) with FAIL HARD input validation
 - ✅ Expanded deployment + benchmark test coverage (version presence/missing/skip, preview include/exclude, benchmark JSON + error paths)
+- ✅ CLI status command with --json, --wide, --limit options (5 tests)
 
 **Not Yet Implemented (Drift vs Initial Plan)**:
 - ✅ Staging DB orphan cleanup (pattern matching + DROP operations) – atomic rename procedure still pending
@@ -102,7 +103,7 @@ pulldb/
   └── tests/
       ├── ...                     # Comprehensive suite (unit + integration: discovery, downloader, repos, errors, loop, logging, exec, restore, post_sql, disk capacity)
 
-> Current suite: 170 passing tests (+1 skipped, +1 xpassed) covering discovery, downloader (including disk capacity integration tests), logging, errors, myloader wrapper, post-SQL executor, restore orchestration, metadata injection, atomic rename invocation, CLI parsing, procedure deployment, versioned + preview procedures, and benchmark script scenarios.
+> Current suite: 181 passing tests (+1 skipped, +1 xpassed) covering discovery, downloader (including disk capacity integration tests), logging, errors, myloader wrapper, post-SQL executor, restore orchestration, metadata injection, atomic rename invocation, CLI parsing, procedure deployment, versioned + preview procedures, benchmark script scenarios, and installer behaviors (flags, systemd skip, validation warnings, root enforcement).
 customers_after_sql/              # Post-restore SQL for customer databases (PII removal)
   ├── 010.remove_customer_pii.sql
   ├── 020.remove_billto_info.sql
@@ -346,7 +347,7 @@ Maintain a living drift ledger until restore workflow is complete:
 - Logging abstraction & domain error classes: ✅ Implemented (item 1 complete)
 - Worker poll loop & event emission: ✅ Implemented (item 2 complete)
 - S3 discovery & downloader (disk capacity guard + streaming): ✅ Implemented (item 3 complete)
-- CLI validation & enqueue/status: ✅ Implemented (argument parsing, validation, enqueue; status listing pending)
+- CLI validation & enqueue & status: ✅ Implemented (argument parsing, validation, enqueue, status command with --json/--wide/--limit)
 - myloader execution subprocess wrapper: ✅ Implemented (command building, timeout + non‑zero translation)
 - Post‑SQL executor: ✅ Implemented (sequential script execution, FAIL HARD on first error, timing + rowcount capture)
 - Engineering-dna freshness CI gate: ✅ Implemented (workflow enforces submodule up-to-date)
@@ -357,7 +358,7 @@ Maintain a living drift ledger until restore workflow is complete:
 - Integration tests (end‑to‑end restore workflow incl. failure modes: missing backup, disk insufficient, myloader error, post‑SQL failure): ✅ Implemented (happy path, optional real S3 listing, myloader failure, post‑SQL failure, disk insufficient, missing backup). Stored procedure deployment covered via unit tests (non-network fakes) ensuring FAIL HARD diagnostics.
 - Metrics emission (queue depth, restore durations, disk failures): ✅ Implemented (logging-based counters/gauges/timers/events)
 
-Test Suite Expansion: Current suite has grown from initial 9 tests to 156 passing tests (adds exec + myloader wrapper + post-SQL executor tests for success, non‑zero exit, timeout, large output truncation, script failure; downloader disk capacity unit + integration tests; restore orchestration happy path & failure modes; atomic rename invocation module; CLI parsing validations; stored procedure deployment script tests). Future hardening will focus on staging cutover edge cases and performance profiling.
+Test Suite Expansion: Current suite has grown from initial 9 tests to 181 passing tests (adds exec + myloader wrapper + post-SQL executor tests for success, non-zero exit, timeout, large output truncation, script failure; downloader disk capacity unit + integration tests; restore orchestration happy path & failure modes; atomic rename invocation module; CLI parsing + status command tests; stored procedure deployment script tests; daemon stop callback test; installer flag parsing, validation, systemd skip, root requirement enforcement). Future hardening deferred until post-freeze (Phase 1) focusing on staging cutover edge cases and performance profiling.
 
 Testing Note (myloader wrapper): We deliberately monkeypatch `run_command` in restore tests to keep them deterministic and OS/binary agnostic—no dependency on a real `myloader` binary while still exercising error translation paths.
 
@@ -430,6 +431,33 @@ When encountering failures, AI agents must:
 - ✅ Return errors to caller, don't swallow them
 - ✅ Verify root cause before proposing solutions
 - ✅ Present evidence-based diagnosis
+
+### Warning Eradication Principle (NEW Nov 3 2025)
+
+Treat every warning (lint, type-check, schema, formatting) as an **incubating error** that will become
+harder and more expensive to fix later. Agents must prefer **eliminating** the underlying cause over
+silencing it. This principle extends FAIL HARD: silent deferral of minor issues violates forward
+stability. Acceptable responses to warnings:
+
+1. Remove the root cause (refactor, annotate, tighten types, adjust schema).
+2. Strengthen validation (add explicit guards, TypeGuards, assertions) so tools gain certainty.
+3. Document the limitation AND open a tracked work item when immediate removal is impossible.
+
+Unacceptable responses:
+- Adding broad `type: ignore` or blanket suppression without justification.
+- Leaving a warning unaddressed in production code because it is "low priority".
+- Converting warnings into ignores in bulk commits.
+
+Narrow (scoped) ignores are permitted only when:
+- Tooling exhibits a verified false positive AND
+- A precise, single‑line ignore is annotated with a rationale AND
+- A follow‑up improvement path is documented (e.g., pending library stub update).
+
+Metric: Warning count in critical paths (infra/, domain/, worker/, cli/) SHOULD trend to **zero**.
+Test files may carry temporary structured ignores only when they exercise intentionally invalid
+inputs. Each ignore must include a justification string.
+
+Commit Message Tag: When removing warnings, include `WarnFix:` line summarizing count reduced.
 
 ### Error Message Standards
 
