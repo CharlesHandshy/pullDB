@@ -47,6 +47,98 @@ Tests resolve MySQL credentials in the following order:
 - `seed_settings`: Ensures required settings rows exist
 - `mysql_network_credentials`: Returns (host, user, password) tuple for network login
 
+## Test Environment Setup
+
+### Automated Virtual Environment Creation
+
+pullDB provides `scripts/setup_test_env.sh` for reproducible test environment setup. This script creates a virtual environment with all required testing dependencies.
+
+#### Basic Usage
+
+```bash
+# Create default virtual environment (./venv)
+bash scripts/setup_test_env.sh
+
+# Create named virtual environment
+bash scripts/setup_test_env.sh --venv .venv-test
+
+# Use specific Python version
+bash scripts/setup_test_env.sh --python python3.12
+
+# Preview without making changes
+bash scripts/setup_test_env.sh --dry-run
+```
+
+#### Options Reference
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--venv PATH` | Virtual environment directory | `./venv` |
+| `--python INTERPRETER` | Python interpreter to use | `python3` |
+| `--refresh` | Delete and recreate if exists | `false` |
+| `--dry-run` | Show what would be done | `false` |
+| `--freeze` | Generate requirements lockfile | `false` (creates venv) |
+
+#### Dependency Locking for CI
+
+The `--freeze` option generates `requirements-test.txt` with pinned versions for reproducible CI builds:
+
+```bash
+# Generate locked requirements
+bash scripts/setup_test_env.sh --venv .venv-lock --freeze
+
+# The lockfile is created at: requirements-test.txt
+# Use in CI: pip install -r requirements-test.txt
+```
+
+#### Package List (17 core + transitive dependencies)
+
+The script installs these packages (see `setup_test_env.sh` for complete list):
+
+- **Type checking**: mypy, mypy-boto3-* (S3, Secrets Manager, SSM)
+- **Testing**: pytest, pytest-timeout
+- **Linting**: ruff
+- **Database**: mysql-connector-python
+- **AWS**: boto3, moto (S3 mocking)
+- **CLI**: click
+- **API**: fastapi, uvicorn
+- **Validation**: jsonschema
+
+#### Workflow Examples
+
+**Local development setup**:
+```bash
+# Initial setup
+bash scripts/setup_test_env.sh
+source venv/bin/activate
+
+# Run tests
+pytest -q --timeout=60 --timeout-method=thread
+
+# Deactivate when done
+deactivate
+```
+
+**Refresh environment** (after dependency changes):
+```bash
+bash scripts/setup_test_env.sh --refresh
+source venv/bin/activate
+```
+
+**CI lockfile update** (when adding/upgrading dependencies):
+```bash
+# Update setup_test_env.sh with new package
+# Regenerate lockfile
+bash scripts/setup_test_env.sh --venv .venv-lock --freeze
+
+# Verify lockfile
+git diff requirements-test.txt
+
+# Commit if changes are correct
+git add requirements-test.txt scripts/setup_test_env.sh
+git commit -m "pullDB: dependencies: Update test dependencies"
+```
+
 ## Running Tests
 
 ### Quick Start (Local Development)
