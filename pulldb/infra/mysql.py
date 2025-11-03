@@ -7,6 +7,7 @@ business rules and provide clean abstractions.
 
 from __future__ import annotations
 
+import json
 import typing as t
 import uuid
 from contextlib import contextmanager
@@ -121,7 +122,7 @@ class JobRepository:
                         job.staging_name,
                         job.dbhost,
                         job.status.value,
-                        job.options_json,
+                        json.dumps(job.options_json) if job.options_json else None,
                         job.retry_count,
                     ),
                 )
@@ -399,6 +400,11 @@ class JobRepository:
         Returns:
             Job instance with all fields populated.
         """
+        # Deserialize options_json if present (MySQL connector returns JSON as string)
+        options_json = row.get("options_json")
+        if options_json and isinstance(options_json, str):
+            options_json = json.loads(options_json)
+
         return Job(
             id=row["id"],
             owner_user_id=row["owner_user_id"],
@@ -411,7 +417,7 @@ class JobRepository:
             submitted_at=row["submitted_at"],
             started_at=row.get("started_at"),
             completed_at=row.get("completed_at"),
-            options_json=row.get("options_json"),
+            options_json=options_json,
             retry_count=row.get("retry_count", 0),
             error_detail=row.get("error_detail"),
         )
