@@ -10,14 +10,11 @@ This script tests:
 
 import contextlib
 import sys
-from typing import cast
 
 
 try:
     import boto3  # pyright: ignore[reportMissingTypeStubs]
     from botocore.exceptions import ClientError, NoCredentialsError
-    from mypy_boto3_s3.client import S3Client
-    from mypy_boto3_sts.client import STSClient
 except ImportError:
     print("❌ boto3 not installed. Run: pip install boto3")
     sys.exit(1)
@@ -28,7 +25,7 @@ def test_instance_profile() -> bool:
     print("\n1. Testing EC2 Instance Profile...")
     try:
         session = boto3.Session()
-        sts = cast(STSClient, session.client("sts"))  # pyright: ignore[reportUnknownVariableType]
+        sts = session.client("sts")  # pyright: ignore[reportUnknownVariableType]
         identity = sts.get_caller_identity()
         print("   ✅ Instance profile working")
         print(f"   Account: {identity['Account']}")
@@ -47,7 +44,7 @@ def test_cross_account_role(profile_name: str, expected_account: str) -> bool:
     print(f"\n2. Testing Cross-Account Access (profile: {profile_name})...")
     try:
         session = boto3.Session(profile_name=profile_name)
-        sts = cast(STSClient, session.client("sts"))  # pyright: ignore[reportUnknownVariableType]
+        sts = session.client("sts")  # pyright: ignore[reportUnknownVariableType]
         identity = sts.get_caller_identity()
 
         if identity["Account"] != expected_account:
@@ -84,7 +81,7 @@ def test_s3_access(
 
     try:
         session = boto3.Session(profile_name=profile_name)
-        s3 = cast(S3Client, session.client("s3"))  # pyright: ignore[reportUnknownVariableType]
+        s3 = session.client("s3")  # pyright: ignore[reportUnknownVariableType]
         try:
             response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, MaxKeys=10)
             contents = response.get("Contents", [])
@@ -148,7 +145,7 @@ def test_write_denied(profile_name: str, bucket: str) -> bool:
     print("\n4. Testing Write Operations (should be denied)...")
     try:
         session = boto3.Session(profile_name=profile_name)
-        s3 = cast(S3Client, session.client("s3"))  # pyright: ignore[reportUnknownVariableType]
+        s3 = session.client("s3")  # pyright: ignore[reportUnknownVariableType]
 
         # Try to put an object
         try:

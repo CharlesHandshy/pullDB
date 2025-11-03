@@ -163,7 +163,7 @@ def test_workflow_post_sql_failure(
 
     monkeypatch.setattr(restore_mod, "run_myloader", _fake_loader)
 
-    def _fail_post_sql(conn_spec: PostSQLConnectionSpec) -> None:  # type: ignore[no-untyped-def]
+    def _fail_post_sql(conn_spec: PostSQLConnectionSpec) -> None:
         raise PostSQLError(
             job_id=job.id,
             script_name="010.fail.sql",

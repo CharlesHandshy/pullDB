@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Generator
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from moto import mock_aws
@@ -18,7 +18,7 @@ from pulldb.infra.s3 import S3Client, discover_latest_backup
 
 
 if TYPE_CHECKING:
-    from mypy_boto3_s3.service_resource import S3ServiceResource
+    pass
 
 
 @pytest.fixture(autouse=True)
@@ -40,9 +40,7 @@ def moto_s3_empty() -> Generator[None, None, None]:
     with mock_aws():
         import boto3
 
-        s3_resource = cast(
-            "S3ServiceResource", boto3.resource("s3", region_name="us-east-1")
-        )
+        s3_resource = boto3.resource("s3", region_name="us-east-1")
         s3_resource.create_bucket(Bucket="test-backup-bucket")
         yield
 
@@ -68,8 +66,5 @@ def test_missing_backup_discovery(moto_s3_empty: None) -> None:
     assert "missing_files" in detail
     missing_files = detail.get("missing_files")
     assert isinstance(missing_files, list), "missing_files should be a list"
-    # Cast to list[str] after validation to satisfy mypy type narrowing
-    missing_files_list = cast(list[str], missing_files)
-    assert len(missing_files_list) > 0, (
-        "missing_files should contain at least one entry"
-    )
+    # Type narrowing satisfied by isinstance check above
+    assert len(missing_files) > 0, "missing_files should contain at least one entry"

@@ -104,7 +104,10 @@ def verify_secret_residency(
         session_kwargs["profile_name"] = aws_profile
 
     try:
-        session = boto3.Session(**session_kwargs)
+        session = boto3.Session(
+            profile_name=session_kwargs.get("profile_name"),
+            region_name=session_kwargs.get("region_name"),
+        )
         client = cast(Any, session.client("secretsmanager"))
         response = cast(dict[str, Any], client.describe_secret(SecretId=secret_id))
         secret_arn = str(response.get("ARN", ""))
