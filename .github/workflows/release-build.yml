@@ -45,6 +45,13 @@ jobs:
         run: |
           mypy . --exclude engineering-dna
       
+      - name: Security scan with pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit --requirement requirements-test.txt --desc --format json --output audit-report.json || true
+          pip-audit --requirement requirements-test.txt --desc
+        continue-on-error: false
+      
       - name: Run pytest
         run: |
           pytest -q --timeout=60 --timeout-method=thread
