@@ -1,0 +1,115 @@
+name: Release Build & Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to upload release assets
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+      
+      - name: Sync & Update Submodules
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive
+          echo "Submodules synchronized and updated recursively."
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies from lockfile
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+      
+      - name: Run ruff format check
+        run: |
+          ruff format --check .
+      
+      - name: Run ruff linting
+        run: |
+          ruff check . --exclude engineering-dna
+      
+      - name: Run mypy type checking
+        run: |
+          mypy . --exclude engineering-dna
+      
+      - name: Run pytest
+        run: |
+          pytest -q --timeout=60 --timeout-method=thread
+        env:
+          # AWS credentials from GitHub Secrets for test suite
+          AWS_PROFILE: ${{ secrets.AWS_PROFILE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+          # Test database credentials override (if needed for CI)
+          PULLDB_TEST_MYSQL_HOST: ${{ secrets.PULLDB_TEST_MYSQL_HOST }}
+          PULLDB_TEST_MYSQL_USER: ${{ secrets.PULLDB_TEST_MYSQL_USER }}
+          PULLDB_TEST_MYSQL_PASSWORD: ${{ secrets.PULLDB_TEST_MYSQL_PASSWORD }}
+          PULLDB_TEST_MYSQL_DATABASE: ${{ secrets.PULLDB_TEST_MYSQL_DATABASE }}
+      
+      - name: Build Debian package
+        run: |
+          bash scripts/build_deb.sh
+      
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "version=${TAG_NAME#v}" >> $GITHUB_OUTPUT
+      
+      - name: Generate checksums
+        id: checksums
+        run: |
+          DEB_FILE="pulldb_${{ steps.version.outputs.version }}_amd64.deb"
+          if [[ ! -f "$DEB_FILE" ]]; then
+            echo "ERROR: Expected .deb file not found: $DEB_FILE"
+            exit 1
+          fi
+          
+          SHA256=$(sha256sum "$DEB_FILE" | awk '{print $1}')
+          MD5=$(md5sum "$DEB_FILE" | awk '{print $1}')
+          
+          echo "sha256=${SHA256}" >> $GITHUB_OUTPUT
+          echo "md5=${MD5}" >> $GITHUB_OUTPUT
+          echo "filename=${DEB_FILE}" >> $GITHUB_OUTPUT
+          
+          echo "### Checksums"
+          echo "- SHA256: ${SHA256}"
+          echo "- MD5: ${MD5}"
+      
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.checksums.outputs.filename }}
+          body: |
+            ## Checksums
+            
+            **${{ steps.checksums.outputs.filename }}**
+            - SHA256: `${{ steps.checksums.outputs.sha256 }}`
+            - MD5: `${{ steps.checksums.outputs.md5 }}`
+            
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ steps.version.outputs.tag }}/CHANGELOG.md) for complete release notes.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Report success
+        run: |
+          echo "✅ Release ${{ steps.version.outputs.tag }} built and published successfully"
+          echo "📦 Package: ${{ steps.checksums.outputs.filename }}"
+          echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}"
