@@ -14,6 +14,7 @@ import re
 from collections.abc import Sequence
 from contextlib import suppress
 from dataclasses import dataclass
+from typing import Any, cast
 
 import mysql.connector
 
@@ -212,8 +213,8 @@ def cleanup_orphaned_staging(
         cursor = connection.cursor()
         try:
             cursor.execute("SHOW DATABASES")
-            rows = cursor.fetchall()
-            all_databases = [str(row[0]) for row in rows]  # type: ignore[index]
+            rows = cast(list[tuple[Any, ...]], cursor.fetchall())
+            all_databases = [str(row[0]) for row in rows]
         except mysql.connector.Error as e:
             raise StagingError(
                 f"Failed to list databases on {conn_spec.mysql_host}: {e}. "
@@ -236,8 +237,8 @@ def cleanup_orphaned_staging(
             # Collision check (should not occur - dropped above if existed)
         try:
             cursor.execute("SHOW DATABASES")
-            remaining_rows = cursor.fetchall()
-            remaining_databases = [str(row[0]) for row in remaining_rows]  # type: ignore[index]
+            remaining_rows = cast(list[tuple[Any, ...]], cursor.fetchall())
+            remaining_databases = [str(row[0]) for row in remaining_rows]
         except mysql.connector.Error as e:
             raise StagingError(
                 "Failed to re-list databases after cleanup on "

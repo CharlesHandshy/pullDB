@@ -1,13 +1,17 @@
 CHANGELOG
-========= 
+=========
 
 Unreleased
 ---------
 
-- Prepare v0.0.1 release (2025-11-03)
+v0.0.1 - 2025-11-03
+-------------------
+- Initial release baseline
   - mypy fixes for `pulldb/infra/s3.py`
-  - Expose `MyLoaderSpec.binary_path` and add `build_myloader_command` helper
-  - Installer help/docs: clarified `--aws-profile` and `--secret` flags
-  - Added `docs/aws-quickstart.md` and updated packaging README
-  - Debian packaging: bumped package version to 0.0.1
+  - Exposed `MyLoaderSpec.binary_path` + `build_myloader_command` helper
+  - Installer help/docs: clarified `--aws-profile` & `--secret` flags
+  - Added `docs/aws-quickstart.md`; expanded Debian README AWS flag guidance
+  - Added `scripts/setup_test_env.sh` for reproducible test env provisioning
+  - Added tests: installer help reference + test env dry-run script
+  - Debian packaging: version bump to 0.0.1 / release branch created
 

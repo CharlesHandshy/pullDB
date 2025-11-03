@@ -32,7 +32,6 @@ from datetime import datetime
 
 import boto3
 from botocore.exceptions import ProfileNotFound
-from mypy_boto3_s3 import S3Client as Boto3S3Client
 from mypy_boto3_s3.type_defs import (
     GetObjectOutputTypeDef,
     HeadObjectOutputTypeDef,
@@ -95,46 +94,36 @@ class S3Client:
             region: Optional AWS region; if omitted boto3 resolves via
                 environment / profile configuration.
         """
-        session_kwargs: dict[str, str] = {}
-        if profile:
-            session_kwargs["profile_name"] = profile
-        if region:
-            session_kwargs["region_name"] = region
-
-        # Guard against environment default profile pointing at a name that
-        # does not exist locally (common in isolated test/moto runs). If any
-        # profile resolution fails, fall back to a direct client construction
-        # which moto intercepts without needing config files.
+        # Construct a Session without relying on **kwargs expansion to keep
+        # mypy strict mode happy and avoid arg-type confusion. Only pass
+        # explicitly provided values.
         try:
-            session = boto3.Session(**session_kwargs)
-            self._s3 = t.cast(Boto3S3Client, session.client("s3"))
+            if profile is not None and region is not None:
+                session = boto3.Session(profile_name=profile, region_name=region)
+            elif profile is not None:
+                session = boto3.Session(profile_name=profile)
+            elif region is not None:
+                session = boto3.Session(region_name=region)
+            else:
+                session = boto3.Session()
+            self._s3 = session.client("s3")
         except ProfileNotFound:
             # Temporarily remove AWS_PROFILE to avoid recursive failures when
             # constructing a client in hermetic/moto environments where that
             # profile is not configured locally.
             env_profile = os.environ.pop("AWS_PROFILE", None)
             try:
-                self._s3 = t.cast(
-                    Boto3S3Client,
-                    boto3.client(
-                        "s3",
-                        region_name=(
-                            region or session_kwargs.get("region_name") or "us-east-1"
-                        ),
-                    ),
+                self._s3 = boto3.client(
+                    "s3",
+                    region_name=(region or "us-east-1"),
                 )
             finally:
                 if env_profile is not None:
                     os.environ["AWS_PROFILE"] = env_profile
         except Exception:  # pragma: no cover - defensive catch for strange local env
-            self._s3 = t.cast(
-                Boto3S3Client,
-                boto3.client(
-                    "s3",
-                    region_name=(
-                        region or session_kwargs.get("region_name") or "us-east-1"
-                    ),
-                ),
+            self._s3 = boto3.client(
+                "s3",
+                region_name=(region or "us-east-1"),
             )
 
     def list_keys(
@@ -166,13 +155,15 @@ class S3Client:
         self, bucket: str, key: str
     ) -> HeadObjectOutputTypeDef:  # pragma: no cover - thin
         """Return object metadata (HEAD)."""
-        return self._s3.head_object(Bucket=bucket, Key=key)
+        resp: HeadObjectOutputTypeDef = self._s3.head_object(Bucket=bucket, Key=key)
+        return resp
 
     def get_object(
         self, bucket: str, key: str
     ) -> GetObjectOutputTypeDef:  # pragma: no cover - thin
         """Return object (streaming body)."""
-        return self._s3.get_object(Bucket=bucket, Key=key)
+        resp: GetObjectOutputTypeDef = self._s3.get_object(Bucket=bucket, Key=key)
+        return resp
 
 
 def discover_latest_backup(
