@@ -1,0 +1,23 @@
+{
+  "accounts": {
+    "development": "345321506926",
+    "staging": "333204494849",
+    "production": "448509429610"
+  },
+  "s3": {
+    "staging_bucket": "pestroutesrdsdbs",
+    "staging_prefix": "daily/stg/",
+    "production_bucket": "pestroutes-rds-backup-prod-vpc-us-east-1-s3",
+    "production_prefix": "daily/prod/"
+  },
+  "iam": {
+    "dev_ec2_role": "arn:aws:iam::345321506926:role/pulldb-ec2-service-role",
+    "staging_cross_account_role": "arn:aws:iam::333204494849:role/pulldb-cross-account-readonly",
+    "production_cross_account_role": "arn:aws:iam::448509429610:role/pulldb-cross-account-readonly",
+    "instance_profile": "pulldb-instance-profile"
+  },
+  "secrets": {
+    "coordination_db": "/pulldb/mysql/coordination-db",
+    "targets": ["/pulldb/mysql/db3-dev","/pulldb/mysql/db4-dev","/pulldb/mysql/db5-dev"]
+  }
+}
