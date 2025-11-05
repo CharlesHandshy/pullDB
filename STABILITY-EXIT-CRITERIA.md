@@ -205,30 +205,35 @@ No known vulnerabilities found
 
 **Target**: Queue depth & disk failure metrics validated
 
-**Status**: 🚧 **Not validated in production workflow**
+**Status**: � **Phase A Complete** | **Phase B Pending**
 
-**Blockers**:
-1. Metrics emission exists but not validated end-to-end
-2. Need to verify metrics appear in real restore workflow
-3. Need to confirm structured logging captures all events
+**Phase A: Metrics Emission** ✅ **Validated** (Nov 5, 2025)
+- Structured JSON logging confirmed working
+- All metric types validated (counter, gauge, timer, event)
+- Test script: `scripts/validate-metrics-emission.py`
+- Sample output shows correct structure:
+  - `metric_type`, `metric_name`, `metric_value` fields present
+  - Labels properly attached (`phase`, `job_id`, `target`)
+  - Timestamps and log levels correct
+
+**Phase B: Production Workflow** 🚧 **Pending Deployment**
+- Need to validate in actual restore workflow:
+  - Queue depth tracking during job execution
+  - Disk space checks with real capacity validation
+  - Restore timing end-to-end
+  - Post-SQL script duration per file
 
 **Next Steps**:
-1. Execute production restore with metrics monitoring
-2. Verify all expected metrics appear:
-   - Queue depth (active jobs count)
-   - Disk space checks (available/required/sufficient)
-   - Restore duration (start to complete)
-   - Post-SQL script execution (per-script timing)
-3. Confirm structured JSON logging includes:
-   - job_id in all log entries
-   - phase field for workflow tracking
-   - error details with FAIL HARD structure
+1. Deploy pullDB to development environment (build .deb, install via dpkg)
+2. Execute first production restore
+3. Verify expected metrics appear in logs:
+   - `pulldb.queue.depth` during poll loop
+   - `pulldb.disk.check` before download
+   - `pulldb.restore.duration` for complete workflow
+   - `pulldb.postsql.duration` per script execution
+4. Confirm metrics are parseable by monitoring tools
 
-**Expected Metrics** (from design):
-- `pulldb.queue.depth` - Current count of queued jobs
-- `pulldb.restore.duration` - Time from start to completion
-- `pulldb.disk.check` - Disk capacity validation events
-- `pulldb.postsql.duration` - Per-script execution time
+**Blockers**: Phase B requires deployed system (not available in dev workspace)
 
 ---
 
@@ -240,15 +245,22 @@ No known vulnerabilities found
 - [ ] Set up monitoring/alerting (Datadog or equivalent)
 - [x] Define rollback procedure (included in validation procedure)
 
-### Phase 2: Initial Production Validation (Week 1)
-- [ ] Execute first 3 production restores (low-risk targets)
-- [ ] Collect timing data
-- [ ] Validate metrics emission
-- [ ] Document any issues
+### Phase 1.5: Metrics Validation (Two-Phase Approach) ✅ **Phase A Complete**
+- [x] **Phase A**: Validate metrics emission in development workspace (`scripts/validate-metrics-emission.py`)
+- [ ] **Phase B**: Validate metrics in production restore workflow (post-deployment)
+
+### Phase 2: Deployment & Initial Validation (Next - Week 1)
+- [ ] Build pullDB .deb package (`scripts/build_deb.sh`)
+- [ ] Deploy to development EC2 instance (install via dpkg)
+- [ ] Start worker service (`systemctl start pulldb-worker`)
+- [ ] Execute first 3 production restores (low-risk QA templates)
+- [ ] Collect timing data and validate Phase B metrics
+- [ ] Document any issues in `PRODUCTION-RESTORE-LOG.md`
 
 ### Phase 3: Extended Validation (Week 2)
-- [ ] Execute 7 more production restores (varied targets)
+- [ ] Execute 7 more production restores (varied targets: customers + templates)
 - [ ] Confirm average duration < 30 min
+- [ ] Validate Criterion 7 Phase B (metrics in real workflow)
 - [ ] Begin 14-day exception monitoring period
 
 ### Phase 4: Monitoring Period (Weeks 3-4)
@@ -291,6 +303,7 @@ None currently identified
 | Nov 5, 2025 | Staging cleanup met | 10 unit tests + integration tests confirm no orphaned databases |
 | Nov 5, 2025 | Progress: 4/7 criteria (57%) | Quick wins complete, focus shifts to production validation |
 | Nov 5, 2025 | Production validation infrastructure complete | Created procedure + log templates, ready for restore execution |
+| Nov 5, 2025 | Metrics emission validated (Phase A) | All metric types emit correctly with structured JSON logging |
 
 ---
 
