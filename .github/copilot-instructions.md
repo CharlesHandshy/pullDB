@@ -4,7 +4,7 @@
 
 This document is the **primary reference for AI coding agents** working on pullDB. It distills the essential architecture, patterns, and constraints from the comprehensive documentation. Always read this file first, then consult other documents as needed.
 
-**Related Documents**: 
+**Related Documents**:
 - **`engineering-dna/standards/ai-agent-code-generation.md`** - **MANDATORY for AI agents**: Modern Python patterns, file generation protocols, FAIL HARD standards, anti-patterns to avoid (created Nov 2025)
 - **`constitution.md`** - Coding standards, tooling philosophy, and development workflow
 - **`docs/coding-standards.md`** - Comprehensive style guidelines for all file types (Python, Markdown, SQL, Shell, YAML, Mermaid)
