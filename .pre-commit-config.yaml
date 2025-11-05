@@ -96,3 +96,14 @@ repos:
       - id: bandit
         args: [-c, pyproject.toml, -ll]
         exclude: ^pulldb/tests/
+
+  # Local ownership & permission drift audit (Development File Ownership Principle)
+  - repo: local
+    hooks:
+      - id: permission-audit
+        name: permission-audit (test-env)
+        entry: bash scripts/audit-permissions.sh test-env
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^scripts/audit-permissions.sh$

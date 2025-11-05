@@ -1,0 +1,32 @@
+; Example systemd unit file for pullDB worker daemon
+; Install path: /etc/systemd/system/pulldb-worker.service
+; Enable: systemctl enable pulldb-worker.service
+; Start:  systemctl start pulldb-worker.service
+; Logs captured via structured JSON (consider journalctl -u pulldb-worker -o cat)
+
+[Unit]
+Description=pullDB Restore Worker Daemon
+After=network.target mysql.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+Environment=PULLDB_AWS_PROFILE=dev
+WorkingDirectory=/opt/pulldb
+ExecStart=/usr/bin/env pulldb-worker
+Restart=on-failure
+RestartSec=5
+User=pulldb
+Group=pulldb
+KillSignal=SIGTERM
+TimeoutStopSec=30
+# Hardening (extend as deployment matures)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

@@ -4,17 +4,17 @@ on:
   # Weekly scan every Monday at 9 AM UTC
   schedule:
     - cron: '0 9 * * 1'
-  
+
   # Run on pull requests that modify dependencies
   pull_request:
     paths:
       - 'requirements-test.txt'
       - 'scripts/setup_test_env.sh'
       - '.github/workflows/security-scan.yml'
-  
+
   # Manual trigger for ad-hoc scans
   workflow_dispatch:
-  
+
   # Run on pushes to main/pulldb branches
   push:
     branches: [ main, pulldb ]
@@ -27,21 +27,21 @@ jobs:
     permissions:
       contents: read
       security-events: write  # For GitHub Security tab integration
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      
+
       - name: Install pip-audit
         run: |
           python -m pip install --upgrade pip
           pip install pip-audit
-      
+
       - name: Run pip-audit on requirements-test.txt
         id: audit
         run: |
@@ -51,7 +51,7 @@ jobs:
           echo "**Python Version:** $(python --version)" >> $GITHUB_STEP_SUMMARY
           echo "**pip-audit Version:** $(pip-audit --version)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           # Run audit and capture exit code
           set +e
           pip-audit --requirement requirements-test.txt \
@@ -60,10 +60,10 @@ jobs:
             --output audit-report.json
           AUDIT_EXIT_CODE=$?
           set -e
-          
+
           # Generate human-readable output
           pip-audit --requirement requirements-test.txt --desc || true
-          
+
           if [ $AUDIT_EXIT_CODE -eq 0 ]; then
             echo "✅ **No vulnerabilities found**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -75,9 +75,9 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Download the audit-report.json artifact for full details." >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           exit $AUDIT_EXIT_CODE
-      
+
       - name: Upload audit report
         if: always()
         uses: actions/upload-artifact@v4
@@ -85,7 +85,7 @@ jobs:
           name: pip-audit-report-${{ github.run_id }}
           path: audit-report.json
           retention-days: 90
-      
+
       - name: Notify on failure
         if: failure() && github.event_name == 'schedule'
         run: |
@@ -98,11 +98,11 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
         with:

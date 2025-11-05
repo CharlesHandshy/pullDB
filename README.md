@@ -13,11 +13,6 @@
 > Naming note: The repository root keeps the historical product name `pullDB` (capital D) for familiarity, while the Python importable package is lowercase `pulldb` per PEP 8—use `import pulldb...` in code and retain `pullDB` in user-facing docs/CLI branding.
 
 ## 📚 Quick Links
-
-- **[Latest Release](https://github.com/PestRoutes/infra.devops/releases/latest)** - Download Debian package
-- **[CHANGELOG](CHANGELOG.md)** - Version history and release notes
-- **[Releases Page](https://github.com/PestRoutes/infra.devops/releases)** - All releases and artifacts
-- **[AWS Setup Guide](docs/aws-quickstart.md)** - Fast track AWS configuration
 - **[Testing Guide](docs/testing.md)** - Running tests with AWS integration
 
 ## Quick Start
@@ -52,9 +47,6 @@ scripts/setup-python-project.sh
 # 5. Use pullDB (once implementation is complete)
 pulldb --help
 pulldb-daemon
-```
-
-### Installation & Packaging
 
 Two supported installation paths:
 
@@ -70,8 +62,6 @@ sudo scripts/install_pulldb.sh --yes \            # auto-confirm
 Prompts for:
 - Install directory (defaults /opt/pulldb)
 - AWS profile (PULLDB_AWS_PROFILE)
-- Coordination DB secret name (/pulldb/mysql/coordination-db)
-Creates: virtualenv, .env, optional systemd unit enabling and start (unless `--no-systemd`).
 
 Script flags:
 | Flag | Purpose |

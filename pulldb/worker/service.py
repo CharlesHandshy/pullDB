@@ -1,16 +1,25 @@
-"""Worker Service with polling loop.
+"""Worker daemon service entrypoint.
 
-Milestone 2: Polls MySQL queue for jobs, transitions them to running status,
-and emits events. Restore workflow execution remains a stub (milestone 3+).
+Provides long-running worker process that polls the MySQL coordination queue
+for restore jobs. Adds graceful shutdown via SIGINT/SIGTERM, metrics emission
+for active worker state, and integrates with the polling loop's stop callback.
+
+This module intentionally keeps orchestration minimal—full restore workflow
+execution (download + myloader + post-SQL + atomic rename) is handled in
+subsequent modules; the service only manages lifecycle and infrastructure.
 """
 
 from __future__ import annotations
 
+import signal
 import sys
+import threading
 import typing as t
+from types import FrameType
 
 from pulldb.domain.config import Config
 from pulldb.infra.logging import get_logger
+from pulldb.infra.metrics import MetricLabels, emit_event, emit_gauge
 from pulldb.infra.mysql import JobRepository, build_default_pool
 from pulldb.worker.loop import run_poll_loop
 
@@ -19,21 +28,37 @@ logger = get_logger("pulldb.worker")
 
 
 def main(argv: t.Sequence[str] | None = None) -> int:
-    """Worker service main entry point.
+    """Worker daemon main entry point.
 
-    Loads configuration, connects to MySQL coordination database, and runs
-    the job polling loop. Continues until interrupted or fatal error occurs.
+    Responsibilities:
+    - Load configuration from environment
+    - Establish MySQL coordination pool
+    - Register signal handlers for graceful shutdown
+    - Emit lifecycle metrics (start, active gauge, stop)
+    - Run polling loop until stop requested
 
     Args:
-        argv: Command-line arguments (currently unused).
+        argv: Optional CLI arguments (unused; reserved for future flags).
 
     Returns:
-        Exit code (0 for success, non-zero for error).
+        Process exit code (0 normal termination, non-zero on fatal error).
     """
-    try:
-        # Load minimal configuration (MySQL coordination DB only for now)
-        config = Config.minimal_from_env()
+    stop_event = threading.Event()
 
+    def _handle_signal(signum: int, _: FrameType | None) -> None:
+        if not stop_event.is_set():  # only log first signal distinctly
+            logger.info(
+                "Shutdown signal received",
+                extra={"phase": "shutdown", "signal": signum},
+            )
+        stop_event.set()
+
+    # Register handlers early (KeyboardInterrupt still raises normally)
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+
+    try:
+        config = Config.minimal_from_env()
         logger.info(
             "Worker starting",
             extra={
@@ -42,33 +67,44 @@ def main(argv: t.Sequence[str] | None = None) -> int:
                 "mysql_database": config.mysql_database,
             },
         )
+        emit_event("worker_daemon_start", "daemon process starting")
 
-        # Build MySQL connection pool for coordination database
         pool = build_default_pool(
             host=config.mysql_host,
             user=config.mysql_user,
             password=config.mysql_password,
             database=config.mysql_database,
         )
-
-        # Create job repository
         job_repo = JobRepository(pool)
 
-        # Run polling loop (blocks until interrupted or max iterations reached)
-        run_poll_loop(job_repo, max_iterations=None)
+        # Active worker gauge (1 while process running)
+        emit_gauge("worker_active", 1, MetricLabels(phase="startup"))
 
+        # Run until stop_event is set by signal handler
+        while not stop_event.is_set():
+            run_poll_loop(job_repo, max_iterations=None, should_stop=stop_event.is_set)
+            # The loop internally handles backoff & sleep; we only re-enter if
+            # it returned due to should_stop or KeyboardInterrupt.
+
+        emit_event(
+            "worker_daemon_stop",
+            "daemon process stopping",
+            MetricLabels(phase="shutdown"),
+        )
+        emit_gauge("worker_active", 0, MetricLabels(phase="shutdown"))
         logger.info("Worker stopped normally", extra={"phase": "shutdown"})
         return 0
 
-    except KeyboardInterrupt:
-        logger.info("Worker interrupted by user", extra={"phase": "shutdown"})
-        return 0
-
-    except Exception as e:
+    except Exception as e:  # FAIL HARD startup errors
         logger.error(
-            "Worker failed to start",
-            extra={"error": str(e), "phase": "startup"},
+            "Worker fatal error",
+            extra={"error": str(e), "phase": "fatal"},
             exc_info=True,
+        )
+        emit_event(
+            "worker_daemon_fatal",
+            str(e),
+            MetricLabels(phase="fatal", status="error"),
         )
         return 1
 

@@ -49,7 +49,7 @@ from pulldb.worker.staging import (
 )
 
 
-DEFAULT_MYLOADER_PATH = "myloader"  # Allow PATH resolution; override via extra_args
+# Use `MyLoaderSpec.binary_path` to select the myloader binary to execute.
 STDOUT_TAIL_LIMIT = 5000
 STDERR_TAIL_LIMIT = 5000
 
@@ -88,7 +88,7 @@ def _build_command(spec: MyLoaderSpec) -> list[str]:
           semantics are fully documented.
     """
     cmd: list[str] = [
-        DEFAULT_MYLOADER_PATH,
+        spec.binary_path,
         f"--database={spec.staging_db}",
         f"--host={spec.mysql_host}",
         f"--port={spec.mysql_port}",
@@ -98,6 +98,15 @@ def _build_command(spec: MyLoaderSpec) -> list[str]:
     ]
     cmd.extend(spec.extra_args)
     return cmd
+
+
+def build_myloader_command(spec: MyLoaderSpec) -> list[str]:
+    """Public helper for tests and external callers to build myloader command.
+
+    This wraps the internal `_build_command` to provide a stable public API
+    while keeping `_build_command` available for internal use.
+    """
+    return _build_command(spec)
 
 
 def run_myloader(

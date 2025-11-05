@@ -72,6 +72,9 @@ temp/
 test_db/
 test_data/
 
+# Debian packages (build artifacts)
+*.deb
+
 # OS
 .DS_Store
 Thumbs.db
@@ -103,5 +106,11 @@ pulldb_work_*/
 pulldb_extract_*/
 pulldb_tmp_*/
 tmp_pulldb_*/
+
+# Test environment (local development only)
+test-env/
+
+# Session notes (local context, not tracked)
+.session-context.md
 
 # NOTE: Do NOT ignore business SQL scripts in customers_after_sql/ or qa_template_after_sql/

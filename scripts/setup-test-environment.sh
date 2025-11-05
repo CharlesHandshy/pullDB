@@ -56,6 +56,7 @@ DRY_RUN=false
 SKIP_MYSQL=false
 SKIP_AWS=false
 CLEAN=false
+NORMALIZE_PERMS=false
 
 usage() {
     cat <<EOF
@@ -68,6 +69,7 @@ Options:
     --skip-mysql        Skip MySQL database setup (assume already configured)
     --skip-aws          Skip AWS credentials validation
     --clean             Remove existing test environment before setup
+    --normalize-perms   Normalize ownership & permissions after setup (Development File Ownership Principle)
     -h, --help          Show this help message
 
 Examples:
@@ -104,6 +106,10 @@ parse_args() {
                 ;;
             --clean)
                 CLEAN=true
+                shift
+                ;;
+            --normalize-perms)
+                NORMALIZE_PERMS=true
                 shift
                 ;;
             -h|--help)
@@ -209,7 +215,13 @@ setup_mysql_database() {
     fi
 
     # Create database
-    mysql -u root -p <<EOF
+    # Use socket authentication when possible; only append -p if MYSQL_ROOT_PASS is set.
+    local mysql_cmd="mysql -u root"
+    if [[ -n "${MYSQL_ROOT_PASS:-}" ]]; then
+        mysql_cmd+=" -p\"${MYSQL_ROOT_PASS}\""
+    fi
+    # Execute creation commands
+    eval "$mysql_cmd" <<EOF
 CREATE DATABASE IF NOT EXISTS ${TEST_DB_NAME};
 CREATE USER IF NOT EXISTS '${TEST_DB_USER}'@'localhost' IDENTIFIED BY '${TEST_DB_PASS}';
 GRANT ALL PRIVILEGES ON ${TEST_DB_NAME}.* TO '${TEST_DB_USER}'@'localhost';
@@ -222,7 +234,7 @@ EOF
     local schema_file="${PROJECT_ROOT}/schema/pulldb.sql"
     if [[ -f "$schema_file" ]]; then
         info "Deploying pullDB schema..."
-        mysql -u "${TEST_DB_USER}" -p"${TEST_DB_PASS}" "${TEST_DB_NAME}" < "$schema_file"
+    mysql -u "${TEST_DB_USER}" -p"${TEST_DB_PASS}" "${TEST_DB_NAME}" < "$schema_file"
         success "Schema deployed"
     else
         warn "Schema file not found: $schema_file"
@@ -339,12 +351,22 @@ create_test_venv() {
 
     python3 -m venv "$venv_dir"
 
+    # Normalize ownership if running under sudo so non-root user can modify venv
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        chown -R "${SUDO_USER}:${SUDO_USER}" "$venv_dir" || warn "Failed to chown venv (continuing)"
+    fi
+
     # Install pulldb package in editable mode
     source "${venv_dir}/bin/activate"
     pip install --upgrade pip
     pip install -e "${PROJECT_ROOT}"
     pip install mypy-boto3-s3  # Type stubs for S3 operations
     deactivate
+
+    # Verify venv writable
+    if [[ ! -w "$venv_dir/pyvenv.cfg" ]]; then
+        warn "Virtual environment appears non-writable; ownership or permissions may be incorrect"
+    fi
 
     success "Python virtual environment created"
 }
@@ -440,6 +462,31 @@ aws sts get-caller-identity --profile "${PULLDB_AWS_PROFILE}" >/dev/null || {
     echo "  Run: aws configure --profile ${PULLDB_AWS_PROFILE}"
 }
 
+# Normalize permissions according to Development File Ownership Principle
+normalize_permissions() {
+    if [[ "$NORMALIZE_PERMS" == false ]]; then
+        return
+    fi
+    info "Normalizing ownership & permissions (Development File Ownership Principle)"
+    if [[ "$DRY_RUN" == true ]]; then
+        info "[DRY-RUN] Would chown -R ${SUDO_USER:-$USER}:${SUDO_USER:-$USER} $TEST_ENV_DIR"
+        info "[DRY-RUN] Would set directory modes to 750, scripts/bin to 750, regular files to 640, credentials to 600"
+        return
+    fi
+    local owner="${SUDO_USER:-$USER}"; local group="${SUDO_USER:-$USER}"
+    chown -R "$owner:$group" "$TEST_ENV_DIR" || warn "Ownership normalization encountered an error"
+    # Directories
+    find "$TEST_ENV_DIR" -type d -exec chmod 750 {} +
+    # Scripts & executables
+    find "$TEST_ENV_DIR" -type f -name '*.sh' -exec chmod 750 {} +
+    find "$TEST_ENV_DIR/venv/bin" -type f -exec chmod 750 {} + 2>/dev/null || true
+    # Credentials tightened
+    if [[ -f "$TEST_ENV_DIR/config/mysql-credentials.txt" ]]; then chmod 600 "$TEST_ENV_DIR/config/mysql-credentials.txt"; fi
+    # Regular files (exclude executables already handled)
+    find "$TEST_ENV_DIR" -type f -not -path "*/venv/bin/*" -not -name '*.sh' -exec chmod 640 {} +
+    success "Permissions normalized"
+}
+
 # Test 4: Import test
 echo "✓ Testing Python imports..."
 python3 -c "
@@ -456,6 +503,20 @@ EOF
     chmod +x "${TEST_ENV_DIR}/run-quick-test.sh"
 
     success "Convenience scripts created"
+}
+
+# Run smoke tests automatically unless DRY_RUN
+post_setup_self_test() {
+    if [[ "$DRY_RUN" == true ]]; then
+        info "[DRY-RUN] Would execute post-setup smoke tests"
+        return
+    fi
+    info "Executing post-setup smoke tests..."
+    if bash "${TEST_ENV_DIR}/run-quick-test.sh" >/dev/null 2>&1; then
+        success "Post-setup smoke tests passed"
+    else
+        fail "Post-setup smoke tests failed – environment not ready"
+    fi
 }
 
 print_summary() {
@@ -527,6 +588,8 @@ main() {
     create_test_config
     create_test_venv
     create_convenience_scripts
+    normalize_permissions
+    post_setup_self_test
 
     if [[ "$DRY_RUN" == false ]]; then
         print_summary

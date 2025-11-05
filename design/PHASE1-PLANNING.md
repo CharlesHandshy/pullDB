@@ -2,7 +2,7 @@
 
 **Status**: PLANNING ONLY - No implementation until freeze exits per RELEASE-FREEZE.md
 
-**Created**: Nov 3 2025  
+**Created**: Nov 3 2025
 **Freeze Exit Target**: After meeting all stability criteria in RELEASE-FREEZE.md
 
 This document captures Phase 1 feature backlog for evaluation after Phase 0 stabilizes. All items remain deferred until v0.1.0 release and freeze lift.
@@ -288,6 +288,6 @@ Before starting Phase 1 implementation:
 - Regular backlog grooming sessions every 2 weeks during freeze to refine estimates
 
 ---
-Document version: 1.0.0  
-Next review: After freeze exit  
+Document version: 1.0.0
+Next review: After freeze exit
 Owner: Technical Lead

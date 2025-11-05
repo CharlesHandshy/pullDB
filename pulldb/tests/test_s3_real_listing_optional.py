@@ -59,14 +59,22 @@ def test_real_staging_backup_listing_optional() -> None:  # pragma: no cover
         raise
 
     matching_keys: list[str] = []
-    for page in pages:
-        for item in page.get("Contents", []) or []:
-            key = item.get("Key")
-            if not isinstance(key, str):
-                continue
-            filename = key.rsplit("/", 1)[-1]
-            if BACKUP_FILENAME_REGEX.match(filename):
-                matching_keys.append(key)
+    try:
+        for page in pages:
+            for item in page.get("Contents", []) or []:
+                key = item.get("Key")
+                if not isinstance(key, str):
+                    continue
+                filename = key.rsplit("/", 1)[-1]
+                if BACKUP_FILENAME_REGEX.match(filename):
+                    matching_keys.append(key)
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code")
+        if code == "AccessDenied":
+            pytest.skip(
+                "Skipping real S3 listing: AccessDenied during paginator iteration"
+            )
+        raise
 
     if not matching_keys:
         pytest.fail(

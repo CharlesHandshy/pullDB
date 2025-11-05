@@ -14,6 +14,7 @@ This short stub documents the two foundational execution layers now implemented 
 
 2. `pulldb.worker.restore` (`run_myloader`)
    - Builds `myloader` command from `MyLoaderSpec`.
+    - Note: `schema.sql.gz` is produced by older mydumper/myloader (0.9.x). Newer backups include `*-schema-create.sql.zst` which map to newer myloader releases. The `MyLoaderSpec.binary_path` can be used to select the appropriate myloader binary for the detected format.
    - Invokes `run_command` and translates failure modes into `MyLoaderError` (FAIL HARD diagnostics).
    - Truncates stdout/stderr to 5KB tails for inclusion in error detail and result model.
    - Isolation: Only handles command construction + failure mapping. Orchestration (staging DB provisioning, post‑SQL scripts, atomic rename) deliberately deferred to future modules (`staging.py`, `post_sql.py`).

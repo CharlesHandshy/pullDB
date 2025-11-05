@@ -11,6 +11,101 @@ pullDB consists of two services that need AWS access with different permission l
 
 Both services run on an **EC2 instance** in the development AWS account and use **EC2 instance profile** for authentication (no access keys, automatic credential rotation).
 
+## Setup Decision Tree
+
+**For Staging Bucket Access** (account 333204494849):
+- ✅ **Recommended**: Direct cross-account access
+  - Development account: Steps 1.1-1.6 (add `pulldb-staging-s3-read` policy)
+  - Staging account: Step 2.3 (bucket policy allowing dev account role)
+  - Advantage: No profile switching, no AssumeRole latency
+
+- Alternative: Cross-account role assumption
+  - Development account: Steps 1.1-1.3 (add `pulldb-cross-account-assume-role` policy)
+  - Staging account: Steps 2.1-2.3 (create assumable role with S3 permissions)
+  - Advantage: External ID validation, separate audit trail per account
+
+**For Production Bucket Access** (account 448509429610):
+- ✅ **Recommended**: Cross-account role assumption
+  - Development account: Steps 1.1-1.3
+  - Production account: Steps 3.1-3.2
+  - Advantage: Stricter security boundary, explicit external ID requirement
+
+**For Both**: Add Secrets Manager policy (Step 1.2) for MySQL credential resolution.
+
+> Fast Path (Development Convenience)
+> ----------------------------------
+> For development access to staging backups, you have two options:
+>
+- **Complete Setup Guide**: See `AWS-SETUP.md` for consolidated AWS setup instructions
+>
+> The optional real S3 listing test skips gracefully on `AccessDenied` to avoid blocking the suite when permissions are not yet configured.
+
+### Direct EC2 Role Usage (After Step 1.6 Setup)
+
+After attaching the staging S3 read policy to your instance role:
+
+```bash
+# Confirm instance role identity (should show the dev account ID)
+aws sts get-caller-identity
+
+# List staging backups directly using instance role credentials
+aws s3 ls s3://pestroutesrdsdbs/daily/stg/ | head
+
+# Head one object (replace with an existing key)
+aws s3api head-object \
+  --bucket pestroutesrdsdbs \
+  --key daily/stg/qatemplate/daily_mydumper_qatemplate_2025-10-30T03-00-00Z_Wed_dbimp.tar || true
+
+# (Optional) Partial object read without full download
+aws s3api get-object \
+  --bucket pestroutesrdsdbs \
+  --key daily/stg/qatemplate/daily_mydumper_qatemplate_2025-10-30T03-00-00Z_Wed_dbimp.tar \
+  --range bytes=0-1023 /tmp/preview.part || true
+```
+
+If these commands succeed, S3 access is working. If you prefer cross‑account role assumption instead, continue to profile configuration sections below.
+
+### When to Use Each Approach
+
+**Direct Instance Profile (Step 1.6)** - Best for:
+- Development environments with single staging bucket
+- Simplified configuration (no profile switching)
+- Faster iteration (no AssumeRole latency)
+
+**Cross-Account Assumption (Steps 2-4)** - Required for:
+- Production bucket access (different AWS account)
+- Multi-account environments with strict separation
+- Audit requirements needing external ID validation
+
+### Minimal IAM Actions Required
+
+| Action | Purpose | Required For |
+|--------|---------|--------------|
+| `s3:ListBucket` | Enumerate backup keys under `daily/stg/` | API + Worker |
+| `s3:GetObject` | Download backup archives / schema files | Worker (API may only need small schema reads) |
+| `s3:HeadObject` | Size / metadata preflight | API + Worker |
+
+All other actions (Put/Delete) should remain absent or explicitly denied.
+
+### Optional Test Behavior
+
+The test `test_real_staging_backup_listing_optional` now treats an `AccessDenied` encountered **during paginator iteration** as a skip:
+
+```
+Skipping real S3 listing: AccessDenied during paginator iteration
+```
+
+This ensures lack of list permission does not mark the suite as failed. Once `s3:ListBucket` permission is granted the test will proceed and assert at least one matching backup key exists.
+
+### When to Add Identity-Based Policy
+
+Add a scoped inline or managed policy granting only the three S3 read actions above when:
+1. You begin restricting the instance role’s broader inherited permissions.
+2. You need explicit audit separation (e.g. CloudTrail queries by policy Sid).
+3. You introduce production access patterns requiring different bucket ARNs.
+
+Until then, direct instance profile usage keeps configuration minimal and avoids drift between documentation and runtime behavior.
+
 ## Account Architecture
 
 ```
@@ -249,8 +344,10 @@ The `pulldb-ec2-service-role` should already exist in the development account. V
 - `pestroutes-dev-pr-vpc-us-east-1-codedeploy-policy` - CodeDeploy permissions
 - `AmazonRDSFullAccess` - RDS management (AWS managed)
 - `AmazonSQSFullAccess` - SQS access (AWS managed)
-- `pulldb-cross-account-assume-role` - Cross-account S3 access (add if missing)
-- `pulldb-secrets-manager-access` - Secrets Manager for MySQL credentials (add if missing)
+- `pulldb-cross-account-assume-role` - Cross-account S3 access (add if missing, Step 1.3)
+- `pulldb-secrets-manager-access` - Secrets Manager for MySQL credentials (add if missing, Step 1.2)
+- `pulldb-staging-s3-read` - Direct staging S3 access (add if missing, Step 1.6)
+- `pulldb-production-s3-read` - Direct production S3 access (optional, Step 1.7)
 
 **Verify Role Exists**:
 ```bash
@@ -471,6 +568,149 @@ aws ec2 associate-iam-instance-profile \
 aws ec2 start-instances --instance-ids $INSTANCE_ID
 ```
 
+### 1.6 Add Staging S3 Read Policy (Same-Account Access)
+
+This policy allows the EC2 role to read from the staging S3 bucket **in the same account** (333204494849).
+
+**Check if policy already exists**:
+```bash
+# Check for existing policy
+aws iam get-policy --policy-arn arn:aws:iam::345321506926:policy/pulldb-staging-s3-read 2>/dev/null
+
+# If policy exists, verify it's attached to role
+aws iam list-attached-role-policies --role-name pulldb-ec2-service-role | grep pulldb-staging-s3-read
+```
+
+**If policy doesn't exist, create it**:
+```bash
+cat > /tmp/pulldb-staging-s3-read.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListStagingBucket",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
+      "Resource": "arn:aws:s3:::pestroutesrdsdbs"
+    },
+    {
+      "Sid": "ReadStagingBackups",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:GetObjectVersion", "s3:HeadObject"],
+      "Resource": "arn:aws:s3:::pestroutesrdsdbs/daily/stg/*"
+    },
+    {
+      "Sid": "DenyWriteOperations",
+      "Effect": "Deny",
+      "Action": ["s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"],
+      "Resource": "arn:aws:s3:::pestroutesrdsdbs/*"
+    },
+    {
+      "Sid": "KMSDecryptForS3",
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt", "kms:DescribeKey"],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "s3.us-east-1.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
+EOF
+
+# Create policy
+aws iam create-policy \
+    --policy-name pulldb-staging-s3-read \
+    --policy-document file:///tmp/pulldb-staging-s3-read.json \
+    --description "Read-only access to staging S3 backups in same account"
+```
+
+**Attach policy to role** (if not already attached):
+```bash
+aws iam attach-role-policy \
+    --role-name pulldb-ec2-service-role \
+    --policy-arn arn:aws:iam::345321506926:policy/pulldb-staging-s3-read
+
+# Verify attachment
+aws iam list-attached-role-policies --role-name pulldb-ec2-service-role
+```
+
+**Test access**:
+```bash
+# Should now succeed without --profile flag (uses instance profile)
+aws s3 ls s3://pestroutesrdsdbs/daily/stg/ | head
+
+# Head object test
+aws s3api head-object \
+    --bucket pestroutesrdsdbs \
+    --key daily/stg/qatemplate/daily_mydumper_qatemplate_2025-10-30T03-00-00Z_Wed_dbimp.tar
+```
+
+> **Note**: This policy grants access to the staging bucket which resides in the **staging account 333204494849** (cross-account access from dev account 345321506926). The bucket owner (staging account) must also grant access via:
+> 1. **Bucket policy** allowing the dev account role as principal (Step 2.3), OR
+> 2. **IAM role assumption** where dev account assumes a role in staging account with bucket permissions (Steps 1.3 + 2.1-2.2)
+>
+> **Recommended approach for staging**: Use direct cross-account bucket access (Steps 1.6 + 2.3 bucket policy). This avoids AssumeRole latency and profile switching.
+>
+> **Recommended approach for production**: Use cross-account role assumption (Steps 1.3 + 3.x) for stricter audit trail and external ID validation.
+
+### 1.7 Add Production S3 Read Policy (Optional)
+
+Similar to staging, you can add direct access to the production bucket if it also resides in an account you control.
+
+**If policy doesn't exist, create it**:
+```bash
+cat > /tmp/pulldb-production-s3-read.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListProductionBucket",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
+      "Resource": "arn:aws:s3:::pestroutes-rds-backup-prod-vpc-us-east-1-s3"
+    },
+    {
+      "Sid": "ReadProductionBackups",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:GetObjectVersion", "s3:HeadObject"],
+      "Resource": "arn:aws:s3:::pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/*"
+    },
+    {
+      "Sid": "DenyWriteOperations",
+      "Effect": "Deny",
+      "Action": ["s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"],
+      "Resource": "arn:aws:s3:::pestroutes-rds-backup-prod-vpc-us-east-1-s3/*"
+    },
+    {
+      "Sid": "KMSDecryptForS3",
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt", "kms:DescribeKey"],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "s3.us-east-1.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
+EOF
+
+# Create policy
+aws iam create-policy \
+    --policy-name pulldb-production-s3-read \
+    --policy-document file:///tmp/pulldb-production-s3-read.json \
+    --description "Read-only access to production S3 backups"
+
+# Attach to role
+aws iam attach-role-policy \
+    --role-name pulldb-ec2-service-role \
+    --policy-arn arn:aws:iam::345321506926:policy/pulldb-production-s3-read
+```
+
 ## Step 2: Staging Account Setup (333204494849)
 
 > **Prerequisites**: Staging account admin must have AWS console or CLI access to account `333204494849`.
@@ -581,9 +821,12 @@ aws iam attach-role-policy \
     --policy-arn arn:aws:iam::333204494849:policy/pulldb-staging-s3-readonly
 ```
 
-### 2.3 Update S3 Bucket Policy (Optional)
+### 2.3 Update S3 Bucket Policy
 
-**IMPORTANT**: This step is **only required if the bucket policy explicitly blocks cross-account access**. In most cases, the IAM role permissions from Step 2.2 are sufficient.
+**When Required**:
+- **Option A (Step 1.6 direct access)**: Required to allow dev account role `pulldb-ec2-service-role` to access bucket
+- **Option B (Step 1.3 cross-account assumption)**: Required to allow assumed role `pulldb-cross-account-readonly` to access bucket
+- **Skip if**: Bucket already has permissive policy or uses IAM-only authorization
 
 **Check if bucket policy modification is needed**:
 ```bash
@@ -616,7 +859,31 @@ aws s3api get-bucket-policy --bucket pestroutesrdbs --query Policy --output text
 cat /tmp/current-bucket-policy.json | jq .
 
 # Create the statement to add (DO NOT apply directly - merge manually)
-cat > /tmp/pulldb-statement-to-add.json <<'EOF'
+# Choose the appropriate principal ARN based on your approach:
+
+# Option A: Direct access from dev account (Step 1.6)
+cat > /tmp/pulldb-statement-direct-access.json <<'EOF'
+{
+  "Sid": "AllowPullDBDevAccountDirectRead",
+  "Effect": "Allow",
+  "Principal": {
+    "AWS": "arn:aws:iam::345321506926:role/pulldb-ec2-service-role"
+  },
+  "Action": [
+    "s3:GetObject",
+    "s3:GetObjectMetadata",
+    "s3:ListBucket",
+    "s3:HeadObject"
+  ],
+  "Resource": [
+    "arn:aws:s3:::pestroutesrdsdbs",
+    "arn:aws:s3:::pestroutesrdsdbs/daily/stg/*"
+  ]
+}
+EOF
+
+# Option B: Cross-account role assumption (Steps 1.3 + 2.1-2.2)
+cat > /tmp/pulldb-statement-assumed-role.json <<'EOF'
 {
   "Sid": "AllowPullDBCrossAccountRead",
   "Effect": "Allow",
@@ -626,7 +893,8 @@ cat > /tmp/pulldb-statement-to-add.json <<'EOF'
   "Action": [
     "s3:GetObject",
     "s3:GetObjectMetadata",
-    "s3:ListBucket"
+    "s3:ListBucket",
+    "s3:HeadObject"
   ],
   "Resource": [
     "arn:aws:s3:::pestroutesrdsdbs",
@@ -637,12 +905,13 @@ EOF
 
 echo "=== MANUAL MERGE REQUIRED ==="
 echo "1. Review the current bucket policy above"
-echo "2. Add the pullDB statement to the existing policy's Statement array"
-echo "3. Save the merged policy to /tmp/updated-bucket-policy.json"
-echo "4. Validate JSON: cat /tmp/updated-bucket-policy.json | jq ."
-echo "5. Apply: aws s3api put-bucket-policy --bucket pestroutesrdsdbs --policy file:///tmp/updated-bucket-policy.json"
+echo "2. Choose Option A (direct) or Option B (assumed role) statement from above"
+echo "3. Add the chosen pullDB statement to the existing policy's Statement array"
+echo "4. Save the merged policy to /tmp/updated-bucket-policy.json"
+echo "5. Validate JSON: cat /tmp/updated-bucket-policy.json | jq ."
+echo "6. Apply: aws s3api put-bucket-policy --bucket pestroutesrdsdbs --policy file:///tmp/updated-bucket-policy.json"
 echo ""
-echo "Example merged policy structure:"
+echo "Example merged policy structure (using Option A - direct access):"
 cat <<'EXAMPLE'
 {
   "Version": "2012-10-17",

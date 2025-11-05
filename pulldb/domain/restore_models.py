@@ -43,6 +43,9 @@ class MyLoaderSpec:
     mysql_password: str
     extra_args: Sequence[str] = ()
     env: Mapping[str, str] | None = None
+    # Path to myloader binary (allows overriding PATH resolution). Default
+    # intentionally kept as the simple binary name to allow PATH lookup.
+    binary_path: str = "myloader"
 
 
 @dataclass(slots=True)

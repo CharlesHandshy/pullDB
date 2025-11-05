@@ -6,6 +6,7 @@ be implemented in Milestone 3.
 
 from __future__ import annotations
 
+import json as json_module
 import sys
 import typing as t
 import uuid
@@ -188,14 +189,154 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     click.echo("\nUse 'pulldb status' to monitor progress.")
 
 
-@cli.command("status", help="Show active/queued jobs (prototype placeholder)")
-def status_cmd() -> None:
-    """Show active and queued jobs (prototype placeholder).
+MAX_STATUS_LIMIT = 1000
 
-    Displays current restore job status including pending, running, completed,
-    and failed jobs from the MySQL queue.
+
+@cli.command("status", help="Show active (queued/running) jobs")
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of table",
+)
+@click.option(
+    "--wide",
+    is_flag=True,
+    help="Show additional columns",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=100,
+    show_default=True,
+    help="Limit number of rows",
+)
+def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
+    """Show active jobs (queued or running) ordered by submission time.
+
+    Provides a quick view of work in progress. By default outputs a table; use
+    --json for machine-readable output.
+
+    FAIL HARD behaviors:
+      * Configuration load failures surface with actionable guidance.
+      * MySQL connectivity failures include host/database context.
+      * Invalid limit (<=0 or >1000) aborts with usage error.
+
+    Args:
+        json_out: Emit JSON list of jobs.
+        wide: Include staging_name column.
+        limit: Max number of rows to display (guard against runaway output).
     """
-    click.echo("[pulldb] status command not yet implemented.")
+    if limit <= 0 or limit > MAX_STATUS_LIMIT:
+        raise click.UsageError(f"--limit must be between 1 and {MAX_STATUS_LIMIT}")
+
+    # Load minimal configuration (same path as restore)
+    try:
+        config = Config.minimal_from_env()
+    except Exception as e:  # FAIL HARD surface
+        raise click.ClickException(
+            f"Configuration error: {e}\n"
+            f"Ensure PULLDB_MYSQL_* environment variables are set or use .env file."
+        ) from e
+
+    # Connect to coordination database
+    try:
+        pool = build_default_pool(
+            host=config.mysql_host,
+            user=config.mysql_user,
+            password=config.mysql_password,
+            database=config.mysql_database,
+        )
+        job_repo = JobRepository(pool)
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to connect to coordination database at "
+            f"{config.mysql_host}/{config.mysql_database}: {e}"
+        ) from e
+
+    # Fetch active jobs (queued or running)
+    try:
+        jobs = job_repo.get_active_jobs()[:limit]
+    except Exception as e:
+        raise click.ClickException(f"Failed querying active jobs: {e}") from e
+
+    if not jobs:
+        click.echo(
+            "No active jobs. Submit a restore with:\n"
+            "  pullDB user=<username> customer=<id>"
+        )
+        return
+
+    if json_out:
+        # Emit compact JSON objects
+        out: list[dict[str, t.Any]] = []
+        for j in jobs:
+            started_dt = getattr(j, "started_at", None)
+            out.append(
+                {
+                    "id": j.id,
+                    "target": j.target,
+                    "status": j.status.value,
+                    "user_code": j.owner_user_code,
+                    "submitted_at": (
+                        j.submitted_at.isoformat() if j.submitted_at else None
+                    ),
+                    "started_at": (
+                        started_dt.isoformat() if started_dt is not None else None
+                    ),
+                    **(
+                        {"staging_name": j.staging_name}
+                        if wide and getattr(j, "staging_name", None)
+                        else {}
+                    ),
+                }
+            )
+        click.echo(json_module.dumps(out, separators=(",", ":")))
+        return
+
+    # Table output
+    # Determine column widths
+    def _fmt_dt(dt: datetime | None) -> str:
+        return dt.isoformat(timespec="seconds") if dt else "—"
+
+    rows: list[tuple[str, str, str, str, str, str]] = []
+    for j in jobs:
+        rows.append(
+            (
+                j.status.value,
+                j.id[:8],
+                j.target,
+                j.owner_user_code,
+                _fmt_dt(j.submitted_at),
+                _fmt_dt(getattr(j, "started_at", None)),
+            )
+        )
+
+    headers = ["STATUS", "JOB_ID", "TARGET", "USER", "SUBMITTED", "STARTED"]
+    if wide:
+        headers.append("STAGING")
+    # Compute widths
+    col_widths = [
+        max(len(h), *(len(r[i]) for r in rows)) for i, h in enumerate(headers[:6])
+    ]
+    if wide:
+        staging_vals = [getattr(j, "staging_name", "") for j in jobs]
+        col_widths.append(max(len("STAGING"), *(len(v) for v in staging_vals)))
+
+    # Print header
+    header_line = "  ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers))
+    click.echo(header_line)
+    click.echo("  ".join("-" * w for w in col_widths))
+
+    # Print rows
+    for idx, row in enumerate(rows):
+        line = "  ".join(row[i].ljust(col_widths[i]) for i in range(len(row)))
+        if wide:
+            staging_val = getattr(jobs[idx], "staging_name", "")
+            line = f"{line}  {staging_val.ljust(col_widths[-1])}"
+        click.echo(line)
+
+    click.echo(f"\n{len(rows)} active job(s) displayed (limit={limit}).")
 
 
 def main(argv: t.Sequence[str] | None = None) -> int:

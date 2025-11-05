@@ -41,6 +41,7 @@ def run_poll_loop(
     job_repo: JobRepository,
     max_iterations: int | None = None,
     poll_interval: float = MIN_POLL_INTERVAL_SECONDS,
+    should_stop: t.Callable[[], bool] | None = None,
 ) -> None:
     """Poll job queue and process jobs.
 
@@ -52,11 +53,19 @@ def run_poll_loop(
         job_repo: Repository for job operations.
         max_iterations: Maximum poll iterations (None = infinite loop).
         poll_interval: Initial poll interval in seconds.
+        should_stop: Optional callback returning True to request loop stop.
+            Checked at start of each iteration for graceful shutdown (e.g.,
+            signal handler sets an Event).
 
     Example:
         >>> pool = MySQLPool(...)
         >>> repo = JobRepository(pool)
         >>> run_poll_loop(repo, max_iterations=100)  # Poll 100 times then exit
+        >>> # Graceful stop after external condition:
+        >>> stop = False
+        >>> def _should_stop():
+        ...     return stop
+        >>> run_poll_loop(repo, should_stop=_should_stop)  # Infinite until stop
     """
     iteration = 0
     current_interval = poll_interval
@@ -64,7 +73,9 @@ def run_poll_loop(
     logger.info("Poll loop started", extra={"phase": "startup"})
     emit_event("worker_start", "Worker poll loop started")
 
-    while max_iterations is None or iteration < max_iterations:
+    while (max_iterations is None or iteration < max_iterations) and not (
+        should_stop and should_stop()
+    ):
         iteration += 1
 
         try:

@@ -41,6 +41,11 @@ Dev Account (345321506926)
 - **myloader Command**: TBD
 - **Restore Flags**: TBD
 
+### Schema file mapping
+
+- `schema.sql.gz` : corresponds to older myloader (0.9.x) dumps. Use the older myloader flags/binary when restoring archives that contain this schema file.
+- `*-schema-create.sql.zst` (other newer-schema files) : corresponds to newer myloader versions (0.19.x+). Use the newer myloader binary/flags for these archives.
+
 ### Newer mydumper Format
 
 - **Used by**: Staging account (current and for testing), Production account (future)
