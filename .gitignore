@@ -52,6 +52,9 @@ htmlcov/
 *.log
 logs/
 
+# Security scan reports (timestamped, regenerate on demand)
+security-scan-*.json
+
 # Temporary files and working directories
 tmp/
 temp/

@@ -4,26 +4,32 @@
 
 This document is the **primary reference for AI coding agents** working on pullDB. It distills the essential architecture, patterns, and constraints from the comprehensive documentation. Always read this file first, then consult other documents as needed.
 
-**Related Documents**: Read `constitution.md` for coding standards, tooling philosophy, and development workflow. Read `docs/coding-standards.md` for comprehensive style guidelines for all file types (Python, Markdown, SQL, Shell, YAML, Mermaid). These documents form the foundation—all other documentation flows from these principles.
+**Related Documents**: 
+- **`engineering-dna/standards/ai-agent-code-generation.md`** - **MANDATORY for AI agents**: Modern Python patterns, file generation protocols, FAIL HARD standards, anti-patterns to avoid (created Nov 2025)
+- **`constitution.md`** - Coding standards, tooling philosophy, and development workflow
+- **`docs/coding-standards.md`** - Comprehensive style guidelines for all file types (Python, Markdown, SQL, Shell, YAML, Mermaid)
+
+These documents form the foundation—all other documentation flows from these principles. **AI agents MUST follow the standards in `engineering-dna/standards/ai-agent-code-generation.md` when generating any code.**
 
 ## Project Overview
 
 pullDB is a database restoration tool that pulls production MySQL backups from S3 and restores them to development environments. The system follows a **documentation-first, prototype-first** approach with extensive planning before implementation.
 
-**Current Status (Nov 3 2025)**: All Phase 0 milestones complete: credentials/config/repositories, logging abstraction, domain error classes, worker poll loop, S3 backup discovery, downloader, disk capacity guard, myloader subprocess wrapper, post‑SQL executor, staging orphan cleanup, metadata table injection, atomic rename invocation module, restore orchestration (end‑to‑end logical chaining), CLI validation & enqueue & status command, daemon service runner (graceful shutdown + lifecycle metrics), metrics emission scaffolding, installer + packaging (interactive/non‑interactive + Debian maintainer scripts + systemd unit), and comprehensive integration tests (happy path + failure modes). Phase 0: 100% complete. Project in RELEASE FREEZE (bug/security fixes only) as of Nov 3 2025 (see `RELEASE-FREEZE.md`).
+**Current Status (Nov 5 2025)**: All Phase 0 milestones complete: credentials/config/repositories, logging abstraction, domain error classes, worker poll loop, S3 backup discovery, downloader, disk capacity guard, myloader subprocess wrapper, post‑SQL executor, staging orphan cleanup, metadata table injection, atomic rename invocation module, restore orchestration (end‑to‑end logical chaining), CLI validation & enqueue & status command, daemon service runner (graceful shutdown + lifecycle metrics), metrics emission scaffolding, installer + packaging (interactive/non‑interactive + Debian maintainer scripts + systemd unit), and comprehensive integration tests (happy path + failure modes). Phase 0: 100% complete. Project in RELEASE FREEZE (bug/security fixes only) as of Nov 3 2025 (see `RELEASE-FREEZE.md`). **Security scan: 0 CVEs** (verified Nov 5 2025).
 
-**Completed Work** (verified Nov 3 2025):
+**Completed Work** (verified Nov 5 2025):
 - ✅ MySQL 8.0.43 schema deployed (6 tables, 1 view, 1 trigger)
 - ✅ Credential resolution (`pulldb/infra/secrets.py` ~399 lines) with Secrets Manager + SSM support
 - ✅ Atomic rename stored procedure SQL file (`docs/atomic_rename_procedure.sql`) added
 - ✅ Deployment script validation (dry-run, host conflict, missing SQL file, connection failure, drop failure, create failure, success) via unit tests
-- ✅ Test suite (181 tests passed, 1 skipped, 1 xpassed: secrets, config, repos, logging, errors, exec, restore, post-SQL, staging, discovery, downloader, disk capacity integration, atomic rename invocation, CLI parsing + status command, procedure deployment, procedure versioning, preview procedure stripping logic, benchmark script validation, installer flags/validation/root enforcement) – latest run 75.14s
+- ✅ Test suite (184 tests passed, 1 skipped, 1 xpassed: secrets, config, repos, logging, errors, exec, restore, post-SQL, staging, discovery, downloader, disk capacity integration, atomic rename invocation, CLI parsing + status command, procedure deployment, procedure versioning, preview procedure stripping logic, benchmark script validation, installer flags/validation/root enforcement, worker service lifecycle) – latest run 75.49s
 - ✅ Versioned atomic rename stored procedure (header comment `Version: 1.0.0`)
 - ✅ Preview stored procedure (`pulldb_atomic_rename_preview`) for safe inspection of atomic RENAME TABLE statement
 - ✅ Deployment script enhancements: version validation, preview deployment flag, skip-version-check override, conditional preview stripping
 - ✅ Benchmark script for atomic rename SQL build performance (`scripts/benchmark_atomic_rename.py`) with FAIL HARD input validation
 - ✅ Expanded deployment + benchmark test coverage (version presence/missing/skip, preview include/exclude, benchmark JSON + error paths)
 - ✅ CLI status command with --json, --wide, --limit options (5 tests)
+- ✅ AI Agent Code Generation Standards (engineering-dna submodule) with modern Python patterns and FAIL HARD protocols
 
 **Not Yet Implemented (Drift vs Initial Plan)**:
 - ✅ Staging DB orphan cleanup (pattern matching + DROP operations) – atomic rename procedure still pending
