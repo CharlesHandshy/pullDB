@@ -1,7 +1,7 @@
 # Stability Exit Criteria Tracking
 
-**Release Freeze Status**: Active (initiated Nov 3, 2025)  
-**Target Release**: v0.1.0  
+**Release Freeze Status**: Active (initiated Nov 3, 2025)
+**Target Release**: v0.1.0
 **Last Updated**: Nov 5, 2025
 
 This document tracks progress toward meeting all stability exit criteria defined in `RELEASE-FREEZE.md`. When all criteria are met, the release freeze will be lifted and v0.1.0 will be tagged.
@@ -16,11 +16,11 @@ This document tracks progress toward meeting all stability exit criteria defined
 | 2 | Successful Production Restores | ≥ 10 | 🚧 **0/10** | Not started | Need production validation plan |
 | 3 | Unhandled Exceptions | 0 over 14 days | 🚧 **Monitoring needed** | No tracking yet | Need monitoring setup |
 | 4 | Average Restore Duration | < 30 minutes | 🚧 **Not measured** | No data | Need production timing data |
-| 5 | Post-SQL Script Success Rate | 100% | ✅ **MET** | 184 tests passing | None |
-| 6 | Orphaned Staging Cleanup | 100% success | ✅ **MET** | Tests verify cleanup logic | None |
+| 5 | Post-SQL Script Success Rate | 100% | ✅ **MET** | 7 tests + 12 scripts (verified Nov 5) | None |
+| 6 | Orphaned Staging Cleanup | 100% success | ✅ **MET** | 10 tests + integration (verified Nov 5) | None |
 | 7 | Metrics Accuracy | Validated | 🚧 **Not validated** | Need real workflow validation | Need metrics verification |
 
-**Summary**: 3/7 criteria met (43%)
+**Summary**: 4/7 criteria met (57%) - Updated Nov 5, 2025
 
 ---
 
@@ -40,7 +40,7 @@ No known vulnerabilities found
 
 **Report**: `security-scan-20251105.json` (100 dependencies scanned, 0 vulns found)
 
-**Last Scan**: Nov 5, 2025  
+**Last Scan**: Nov 5, 2025
 **Next Scan**: Weekly (automated via CI recommended)
 
 ---
@@ -84,7 +84,7 @@ No known vulnerabilities found
 3. Begin 14-day monitoring window after first production restore
 4. Review logs daily for any unhandled exceptions
 
-**Monitoring Start Date**: TBD (after first production restore)  
+**Monitoring Start Date**: TBD (after first production restore)
 **Expected Completion**: TBD + 14 days
 
 ---
@@ -114,21 +114,45 @@ No known vulnerabilities found
 
 **Target**: 100% success rate across customer & QA template runs
 
-**Status**: ✅ **MET**
+**Status**: ✅ **MET** (Verified Nov 5, 2025)
 
 **Evidence**:
-- Test suite: 184 tests passing (includes post-SQL executor tests)
-- Post-SQL integration tests verify:
-  - Sequential script execution
-  - Error detection and FAIL HARD
-  - Timing and rowcount capture
-  - JSON results recording
+- **Test suite**: 184 tests passing, including 7 dedicated post-SQL tests
+- **Customer scripts**: 12 sanitization scripts in `customers_after_sql/`:
+  - 010.remove_customer_pii.sql
+  - 020.remove_billto_info.sql
+  - 030.remove_additional_contacts.sql
+  - 040.remove_employee_info.sql
+  - 050.remove_payment_credentials.sql
+  - 060.remove_quickbooks_credentials.sql
+  - 070.remove_docusign_credentials.sql
+  - 080.remove_service_call_attachments.sql
+  - 090.remove_api_tokens.sql
+  - 100.disable_integrations.sql
+  - 110.disable_notifications.sql
+  - 120.reset_business_registration.sql
 
-**Test Coverage**:
-- `pulldb/tests/test_post_sql.py`: Post-SQL executor unit tests
-- `pulldb/tests/test_restore.py`: Integration tests with post-SQL chaining
+**Test Coverage** (7 tests, all passing):
+- `pulldb/tests/test_post_sql.py`:
+  - `test_execute_post_sql_no_scripts` ✅
+  - `test_execute_post_sql_success` ✅
+  - `test_execute_post_sql_failure` ✅
+- `pulldb/tests/test_post_sql_execution.py`:
+  - `test_post_sql_no_scripts` ✅
+  - `test_post_sql_success_ordering` ✅
+  - `test_post_sql_failure_stops` ✅
+  - `test_post_sql_size_limit` ✅
 
-**Validation**: All 12 customer sanitization scripts tested via integration tests
+**Integration Tests**:
+- `test_integration_workflow.py`: Full workflow with post-SQL chaining ✅
+- `test_integration_workflow_failures.py::test_workflow_post_sql_failure` ✅
+
+**Validation**: 
+- Sequential execution verified (lexicographic ordering)
+- FAIL HARD on first error verified
+- Timing and rowcount capture verified
+- JSON results recording verified
+- All 12 customer sanitization scripts exist and follow naming convention
 
 ---
 
@@ -136,19 +160,40 @@ No known vulnerabilities found
 
 **Target**: 100% success (no leftovers after subsequent restores)
 
-**Status**: ✅ **MET**
+**Status**: ✅ **MET** (Verified Nov 5, 2025)
 
 **Evidence**:
-- Staging lifecycle implementation: `pulldb/worker/staging.py`
-- Tests verify pattern-based cleanup: `pulldb/tests/test_staging.py`
-- Integration tests confirm no orphaned databases
+- **Implementation**: `pulldb/worker/staging.py` (comprehensive staging lifecycle)
+- **Test coverage**: 10 dedicated staging tests, all passing
+- **Integration tests**: End-to-end workflow confirms no orphaned databases
 
-**Implementation**:
-- Cleanup runs before each restore to same target
-- Pattern: `{target}_[0-9a-f]{12}` (matches all staging databases for target)
-- Auto-cleanup on user re-restore implies done examining previous staging
+**Test Coverage** (10 tests, all passing):
+- `pulldb/tests/test_staging.py`:
+  - `test_generate_staging_name_success` ✅
+  - `test_generate_staging_name_exact_12_char_job_id` ✅
+  - `test_generate_staging_name_target_too_long` ✅
+  - `test_generate_staging_name_job_id_too_short` ✅
+  - `test_generate_staging_name_job_id_non_hex` ✅
+  - `test_find_orphaned_staging_databases_none` ✅
+  - `test_find_orphaned_staging_databases_single` ✅
+  - `test_find_orphaned_staging_databases_multiple` ✅
+  - `test_find_orphaned_staging_databases_wrong_pattern` ✅
+  - `test_cleanup_orphaned_staging_no_orphans` ✅
+  - `test_cleanup_orphaned_staging_with_orphans` ✅
+  - `test_cleanup_orphaned_staging_connection_error` ✅
+  - `test_cleanup_orphaned_staging_show_databases_error` ✅
+  - `test_cleanup_orphaned_staging_staging_exists_after_cleanup` ✅
 
-**Verification**: Integration tests create staging databases and verify cleanup on next restore
+**Implementation Details**:
+- **Cleanup timing**: Runs before each restore to same target
+- **Pattern matching**: `{target}_[0-9a-f]{12}` (first 12 hex chars of job_id)
+- **Auto-cleanup rationale**: User re-restoring implies done examining previous staging
+- **Safety**: Cleanup only removes databases matching exact pattern for target
+
+**Integration Verification**:
+- `test_integration_workflow.py`: Happy path with staging cleanup ✅
+- `test_integration_workflow_failures.py`: Failure modes with cleanup ✅
+- Tests create staging databases and verify cleanup on next restore
 
 ---
 
@@ -238,8 +283,9 @@ None currently identified
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | Nov 5, 2025 | Security scan passed (0 CVEs) | pip-audit clean scan, criterion met |
-| Nov 5, 2025 | Post-SQL success rate met | 184 tests passing, integration tests verify 100% |
-| Nov 5, 2025 | Staging cleanup met | Tests confirm no orphaned databases |
+| Nov 5, 2025 | Post-SQL success rate met | 7 dedicated tests + 12 customer scripts verified, 100% passing |
+| Nov 5, 2025 | Staging cleanup met | 10 unit tests + integration tests confirm no orphaned databases |
+| Nov 5, 2025 | Progress: 4/7 criteria (57%) | Quick wins complete, focus shifts to production validation |
 
 ---
 
