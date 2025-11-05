@@ -51,19 +51,23 @@ No known vulnerabilities found
 
 **Status**: 🚧 **0/10 restores completed**
 
-**Blockers**:
-1. No production validation plan documented
-2. Need rollback procedure
-3. Need monitoring checklist
+**Infrastructure**: ✅ Complete
+- Production validation procedure documented (`PRODUCTION-VALIDATION-PROCEDURE.md`)
+- Restore tracking log created (`PRODUCTION-RESTORE-LOG.md`)
+- Rollback procedures defined
+- Monitoring checklist included
+- Success criteria per restore defined
+
+**Blockers**: None (ready for execution)
 
 **Next Steps**:
-1. Document first production restore attempt procedure
-2. Select low-risk target for initial validation (small QA template)
-3. Execute restore with full monitoring
-4. Document results and any issues
+1. Execute first restore (QA template, low-risk)
+2. Monitor progress with `journalctl -u pulldb-worker -f`
+3. Validate completion with 7-point checklist
+4. Record results in `PRODUCTION-RESTORE-LOG.md`
 5. Iterate until 10 successful restores achieved
 
-**Tracking**: Create `PRODUCTION-RESTORE-LOG.md` to document each attempt
+**Tracking**: `PRODUCTION-RESTORE-LOG.md` (committed Nov 5, 2025)
 
 ---
 
@@ -147,7 +151,7 @@ No known vulnerabilities found
 - `test_integration_workflow.py`: Full workflow with post-SQL chaining ✅
 - `test_integration_workflow_failures.py::test_workflow_post_sql_failure` ✅
 
-**Validation**: 
+**Validation**:
 - Sequential execution verified (lexicographic ordering)
 - FAIL HARD on first error verified
 - Timing and rowcount capture verified
@@ -230,11 +234,11 @@ No known vulnerabilities found
 
 ## Exit Path
 
-### Phase 1: Documentation & Planning (Current)
-- [ ] Document production restore procedure
-- [ ] Create production restore log template
+### Phase 1: Documentation & Planning ✅ **Complete**
+- [x] Document production restore procedure (`PRODUCTION-VALIDATION-PROCEDURE.md`)
+- [x] Create production restore log template (`PRODUCTION-RESTORE-LOG.md`)
 - [ ] Set up monitoring/alerting (Datadog or equivalent)
-- [ ] Define rollback procedure
+- [x] Define rollback procedure (included in validation procedure)
 
 ### Phase 2: Initial Production Validation (Week 1)
 - [ ] Execute first 3 production restores (low-risk targets)
@@ -286,6 +290,7 @@ None currently identified
 | Nov 5, 2025 | Post-SQL success rate met | 7 dedicated tests + 12 customer scripts verified, 100% passing |
 | Nov 5, 2025 | Staging cleanup met | 10 unit tests + integration tests confirm no orphaned databases |
 | Nov 5, 2025 | Progress: 4/7 criteria (57%) | Quick wins complete, focus shifts to production validation |
+| Nov 5, 2025 | Production validation infrastructure complete | Created procedure + log templates, ready for restore execution |
 
 ---
 
