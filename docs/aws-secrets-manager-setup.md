@@ -87,7 +87,7 @@ When connecting to a target database server, pullDB:
 
 ## Step 1: Create Secrets in AWS Secrets Manager
 
-> Use profile names standardized in `aws-authentication-setup.md`: `pr-staging` (primary prototype backups) and `pr-prod` (production backups). For development account operations (creating secrets shown below) run under the development account (instance profile or an admin profile in that account). Previous examples using `pr-dev` have been deprecated.
+> Use profile names standardized in `aws-authentication-setup.md`: `pr-dev` for development account Secrets Manager work, `pr-staging` for staging-bucket access, and `pr-prod` for production-bucket access. When running directly on the EC2 host you can omit `AWS_PROFILE` entirely and rely on the instance profile (preferred).
 
 ### 1.1 Create Secret for db-local-dev (Local Sandbox)
 

@@ -36,6 +36,21 @@ Tests resolve MySQL credentials in the following order:
    - Triggers clear skip message for secret residency check
    - Never used in CI or production
 
+### AWS Profile Matrix (Updated Nov 14 2025)
+
+| Profile / Context | Primary Use | Permissions Expected | Notes |
+|-------------------|-------------|----------------------|-------|
+| *(unset)* (EC2 instance profile) | Default when running directly on the dev EC2 host | `secretsmanager:GetSecretValue`, `DescribeSecret`, `kms:Decrypt`, S3 read scoped via attached policies | **Preferred** for on-box testing. Leave `AWS_PROFILE` unset so boto3 uses the instance metadata credentials automatically. |
+| `pr-dev` | Local/off-box development that still needs dev-account secrets | Same as instance profile (Secrets Manager + coordination DB access) | Use for `pytest ... test_secrets.py`, repository/worker/api suites, and any CLI/API run that touches MySQL credentials. |
+| `pr-staging` | Access to staging backups in `s3://pestroutesrdsdbs/daily/stg/` | `s3:ListBucket`, `s3:GetObject` on staging bucket | Use only for S3 discovery or manual staging backup inspection. Does **not** have Secrets Manager access. |
+| `pr-prod` | Access to production backups in `s3://pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/` | `s3:ListBucket`, `s3:GetObject` on prod bucket via cross-account assume-role | Same pattern as `pr-staging`, but against the production bucket. Never use for dev Secrets Manager operations. |
+
+**Key rules**:
+
+- Secrets (coordination DB credentials, MySQL repositories, etc.) always come from the dev account. Use the instance profile or `pr-dev` only; `pr-staging`/`pr-prod` lack the necessary IAM permissions.
+- The optional real S3 listing pytest (`pulldb/tests/test_s3_real_listing_optional.py`) can be run with `AWS_PROFILE=pr-staging` *after* setting `PULLDB_TEST_MYSQL_*` overrides to bypass Secrets Manager fixtures.
+- When switching between profiles locally, always reset `AWS_PROFILE`/`PULLDB_AWS_PROFILE` before returning to Secrets Manager-backed tests to avoid AccessDenied skips.
+
 ### Test Fixtures
 
 - `aws_region`: Ensures AWS region is set (default: us-east-1)

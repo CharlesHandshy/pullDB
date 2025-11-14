@@ -1,8 +1,22 @@
 # pullDB Implementation Plan
 
-> **Status**: Ready to begin Phase 0 (Prototype) implementation
+> **Status**: Phase 0 completion in progress (focus reset Nov 14 2025)
 > **Start Date**: October 30, 2025
 > **Target**: Minimum viable prototype with core restore functionality
+
+## Immediate Focus (Nov 14 2025)
+
+1. **Restore CLI status flow** – diagnose `/api/jobs/active` 500 response,
+    land regression tests, and return `pulldb status` to green.
+2. **Finish worker service runner** – deliver `pulldb/worker/service.py`
+    entry point, graceful shutdown, and packaging + docs so the daemon can run
+    unattended.
+3. **Validate end-to-end restore in staging** – execute a full restore using
+    current tooling, capture metrics/logs, and confirm post-SQL and atomic
+    rename paths using production-format backups.
+4. **Stand up release-readiness tracking** – create lightweight tracking for
+    Phase 0 exit criteria (successful restores, exception counts, metrics) so
+    the next freeze decision is driven by real data.
 
 ## Current State Assessment
 
@@ -73,12 +87,14 @@
 **Objective**: Deliver minimal viable restore loop that proves the architecture.
 
 **Success Criteria**:
-**Success Criteria** (Status: 4/5 Complete):
-1. ✅ User can submit restore job via CLI (validation + enqueue implemented, status listing pending)
-2. ✅ Daemon picks up job, downloads from S3, restores to staging, executes post-restore SQL, performs atomic rename (complete workflow orchestrated)
-3. ⚠️ Job status visible via `pullDB status` command (CLI status subcommand pending implementation)
-4. ✅ All operations logged to files and structured for Datadog ingestion (JSON structured logging complete)
-5. ✅ Metrics emitted: queue depth, disk capacity failures (logging-based metrics complete)
+**Success Criteria** (Status: regression review Nov 14 2025):
+1. ✅ User can submit restore job via CLI (validation + enqueue implemented).
+2. ⚠️ Daemon runs unattended: worker orchestration complete, but dedicated
+    service runner + packaging remain outstanding.
+3. ❌ Job status visible via `pullDB status`: CLI currently receives HTTP 500
+    from `/api/jobs/active`; fix and add regression coverage.
+4. ✅ All operations logged to files and structured for Datadog ingestion (JSON structured logging complete).
+5. ✅ Metrics emitted: queue depth, disk capacity failures (logging-based metrics complete).
 
 **Out of Scope for Phase 0**:
 

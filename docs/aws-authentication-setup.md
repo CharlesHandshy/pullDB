@@ -11,6 +11,17 @@ pullDB consists of two services that need AWS access with different permission l
 
 Both services run on an **EC2 instance** in the development AWS account and use **EC2 instance profile** for authentication (no access keys, automatic credential rotation).
 
+### Profile Reference (Updated Nov 14 2025)
+
+| Profile | Scope | Typical Usage |
+|---------|-------|----------------|
+| *(unset)* (EC2 instance profile) | Development account (345321506926) | Preferred for all in-environment services/tests. Automatically grants Secrets Manager + staging S3 read per attached policies. |
+| `pr-dev` | Development account | Local/off-instance workflows that need the same Secrets Manager + MySQL permissions as the EC2 role. Use for pytest, CLI, and scripts that resolve `/pulldb/mysql/*` secrets. |
+| `pr-staging` | Staging account (333204494849) | Cross-account read-only access to `s3://pestroutesrdsdbs/daily/stg/`. Use for discovery tests or manual inspection of staging backups. |
+| `pr-prod` | Production account (448509429610) | Cross-account read-only access to `s3://pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/`. Never expose Secrets Manager access here. |
+
+**Rule of thumb**: Secrets and MySQL coordination live in the dev account—use the instance profile or `pr-dev`. Reserve `pr-staging`/`pr-prod` exclusively for their respective S3 buckets to prevent accidental AccessDenied errors in tests and scripts.
+
 ## Setup Decision Tree
 
 **For Staging Bucket Access** (account 333204494849):

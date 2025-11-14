@@ -1,8 +1,25 @@
 # Release Freeze Policy (Initiated Nov 3 2025)
 
-The pullDB project has entered a release freeze following Phase 0 completion.
-Only critical fixes are allowed until stability criteria are met. This document
-defines allowed change types, required validation, and exit conditions.
+> **Status**: Freeze lifted on Nov 14 2025 to resume Phase 0 completion work.
+
+The pullDB project entered a release freeze following Phase 0 completion
+milestone reviews. As of November 14, 2025 the freeze has been formally lifted
+so the team can address remaining Phase 0 gaps (daemon service readiness,
+status-command reliability, production validation). This document remains as a
+historical record of the freeze rules and should not be treated as active
+policy.
+
+## Early Exit Summary (Nov 14 2025)
+
+- **Reason**: Critical Phase 0 deliverables (operational daemon runner,
+	end-to-end CLI status flow, production verification) still require code
+	changes that exceed “bug fix only” scope.
+- **Decision**: Leadership approved resuming normal development to close out
+	the outstanding Phase 0 tasks before re-entering any stability lock.
+- **Implication**: Teams may land scoped feature work directly tied to Phase 0
+	completion. Standard hygiene gates (ruff, mypy, pytest) remain mandatory.
+- **Next Checkpoint**: Conduct a new readiness review once the reopened task
+	list is complete; only then consider reinstating a freeze prior to release.
 
 ## Scope
 

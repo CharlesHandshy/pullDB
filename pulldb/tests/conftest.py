@@ -36,6 +36,7 @@ def aws_region() -> str:
 def aws_profile(aws_region: str) -> str:
     """Get AWS profile for credential resolution."""
     profile = os.getenv("PULLDB_AWS_PROFILE", os.getenv("AWS_PROFILE", "default"))
+
     # If an explicitly specified profile looks like a production profile and may
     # not exist in local AWS config, fall back to 'default' to avoid ProfileNotFound
     # during secret resolution in local dev test runs.
@@ -213,9 +214,10 @@ def mysql_pool(mysql_credentials: MySQLCredentials) -> MySQLPool:
 def seed_settings(mysql_pool: MySQLPool) -> None:
     """Seed required settings rows for integration tests.
 
-    Ensures settings table contains values for:
-      - default_dbhost
-      - s3_bucket_stg (mapped to config.s3_bucket_path)
+        Ensures settings table contains values for:
+            - default_dbhost
+            - s3_bucket_stg (mapped to config.s3_bucket_path)
+            - s3_bucket_path (legacy compat)
 
     Uses INSERT ... ON DUPLICATE KEY to avoid test flakiness if rows exist.
     """
@@ -225,6 +227,13 @@ def seed_settings(mysql_pool: MySQLPool) -> None:
             """
             INSERT INTO settings (setting_key, setting_value)
             VALUES ('default_dbhost','localhost')
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO settings (setting_key, setting_value)
+            VALUES ('s3_bucket_stg','pestroutesrdsdbs')
             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
             """
         )

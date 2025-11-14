@@ -158,6 +158,7 @@ pullDB status
 - **Usage**: `resolver = CredentialResolver(); creds = resolver.resolve(credential_ref)`
 - **Testing**: Command-line interface available: `python3 -m pulldb.infra.secrets <credential_ref>`
 - **Documentation**: See `docs/aws-secrets-manager-setup.md` for complete setup guide
+- **Profile Split (Nov 14 2025)**: Use the EC2 instance profile (preferred) or `pr-dev` for Secrets Manager/MySQL access. `pr-staging` and `pr-prod` are reserved for staging/production S3 reads and deliberately lack secret permissions.
 
 ## Python Implementation Guidelines
 ### Test Database Credential Mandate (Effective Nov 2025)
