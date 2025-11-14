@@ -1,6 +1,10 @@
 # pullDB Scripts
 
-## verify-secrets-perms.sh
+This directory collects operational tooling, installer helpers, and diagnostics used to manage pullDB during the release freeze. Some historical scripts have been archived under `scripts/archived/` to preserve provenance without encouraging their use in new environments.
+
+## Active Scripts
+
+### verify-secrets-perms.sh
 
 Diagnostic script to verify that the `pulldb-ec2-service-role` has correct Secrets Manager permissions.
 
@@ -99,3 +103,12 @@ For automated verification in CI pipelines:
 2. Run script as pre-deployment health check
 3. Parse exit code (0 = success, non-zero = failure)
 4. Include script output in build logs for audit trail
+
+## Archived Scripts
+
+| Script | Replacement |
+| --- | --- |
+| `setup-pulldb-schema.sh` | Apply `schema/pulldb.sql` directly (e.g. `mysql < schema/pulldb.sql`) |
+| `setup-python-project.sh` | Activate a virtualenv and run `python -m pip install -e .[dev]` |
+
+See `scripts/archived/README.md` for the original copies retained for reference.

@@ -15,6 +15,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # Function to print colored output
 print_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -155,7 +158,7 @@ print_info "Data directory: /mnt/data/mysql/data"
 print_info "Temp directory: /mnt/data/mysql/tmpdir"
 print_info ""
 print_info "Next steps:"
-print_info "1. Run setup-pulldb-schema.sh to create the pulldb database with updated UUID schema (db_hosts.id CHAR(36)) and settings description column."
+print_info "1. Load schema: mysql -u root -p < $PROJECT_ROOT/schema/pulldb.sql"
 print_info "2. Install Python MySQL libraries in your venv:"
 print_info "   source venv/bin/activate"
 print_info "   pip install mysql-connector-python pymysql"

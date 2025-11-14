@@ -65,7 +65,7 @@ class TestConfigIntegration:
         assert config.mysql_password == password
 
         # Verify operational settings came from MySQL settings table
-        # (these were populated by scripts/setup-pulldb-schema.sh)
+        # (these are populated by applying schema/pulldb.sql)
         assert config.s3_bucket_path == "pestroutesrdsdbs"  # s3_bucket_stg
         assert config.default_dbhost is not None
         assert "db-mysql-db4-dev" in config.default_dbhost

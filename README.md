@@ -35,18 +35,18 @@ scripts/setup-aws-credentials.sh
 #   - docs/aws-ec2-deployment-setup.md (Developer SSH access + service deployment)
 # TESTS: All integration/repository tests resolve DB credentials from the development account Secrets Manager secret `/pulldb/mysql/coordination-db` (dev account only; not replicated to staging/prod). See docs/aws-secrets-manager-setup.md. No direct MySQL user credentials are allowed.
 
-# 3. Install MySQL and create database schema
+# 3. Install MySQL and load the coordination schema
 sudo scripts/setup-mysql.sh
-sudo scripts/setup-pulldb-schema.sh
+mysql -u root -p < schema/pulldb.sql
 
 # 4. Set up Python environment
 python3 -m venv venv
 source venv/bin/activate
-scripts/setup-python-project.sh
+python -m pip install --upgrade pip
+python -m pip install -e .[dev]
 
 # 5. Use pullDB (once implementation is complete)
 pulldb --help
-pulldb-daemon
 
 Two supported installation paths:
 

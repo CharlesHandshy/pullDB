@@ -13,22 +13,28 @@ Rationale:
 
 ## Editable Install
 
-Use the helper script:
+Follow the explicit commands below (the old helper script now lives in `scripts/archived/` for reference only):
 
 ```bash
-scripts/setup-python-project.sh
+python3 -m venv venv          # or reuse .venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .[dev]
+
+# Optional smoke test
+python - <<'PY'
+import pulldb
+from pulldb.cli import main as cli_main
+print("pulldb version", getattr(pulldb, "__version__", "unknown"))
+print("CLI main:", cli_main.__name__)
+PY
 ```
 
-This will:
-1. Activate `venv` or `.venv` if present
-2. Upgrade `pip`
-3. Install `pulldb` with dev extras (`pytest`, `mypy`, `ruff`)
-4. Run a smoke import test
+Console entry points available after installation:
 
-Console scripts exposed:
 ```bash
 pulldb --version
-pulldb-daemon
+pulldb status --help
 ```
 
 ## Structure

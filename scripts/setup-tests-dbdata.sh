@@ -5,7 +5,7 @@
 #
 # PREREQUISITES:
 #   1. MySQL 8.0+ installed and running
-#   2. pulldb database created (run setup-pulldb-schema.sh first)
+#   2. pulldb database created (apply schema/pulldb.sql first)
 #   3. AWS Secrets Manager secret created: /pulldb/mysql/coordination-db
 #
 # WHAT THIS SCRIPT DOES:
@@ -53,7 +53,7 @@ fi
 DB_EXISTS=$(mysql -sN -e "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = 'pulldb';")
 
 if [ -z "$DB_EXISTS" ]; then
-    print_error "pulldb database does not exist. Run setup-pulldb-schema.sh first."
+    print_error "pulldb database does not exist. Apply schema/pulldb.sql first."
     exit 1
 fi
 

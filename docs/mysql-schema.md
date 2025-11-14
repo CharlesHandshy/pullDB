@@ -2,7 +2,7 @@
 
 > **Foundation Documents**: This schema implements the architectural principles defined in `../.github/copilot-instructions.md` and coding standards from `../constitution.md`.
 
-> **Schema Update Mandate**: All schema changes must be reflected in `scripts/setup-pulldb-schema.sh` and `scripts/setup-tests-dbdata.sh`, and applied via `sudo`. See `.github/copilot-instructions.md` and `docs/mysql-setup.md` for full workflow and rationale.
+> **Schema Update Mandate**: All schema changes must be reflected in `schema/pulldb.sql` and mirrored in `scripts/setup-tests-dbdata.sh`. See `.github/copilot-instructions.md` and `docs/mysql-setup.md` for the complete workflow. The legacy `scripts/setup-pulldb-schema.sh` helper now lives in `scripts/archived/` for historical reference.
 
 ## Prototype Charter
 

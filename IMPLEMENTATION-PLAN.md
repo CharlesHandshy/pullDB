@@ -24,7 +24,7 @@
 ### Code (Phase 0 Prototype - 85% Complete ✅)
 - [x] Python virtual environment created (Python 3.12.3)
 - [x] MySQL setup script created (`scripts/setup-mysql.sh`)
-- [x] Schema setup script created (`scripts/setup-pulldb-schema.sh`)
+- [x] Schema SQL published (`schema/pulldb.sql`; legacy shell wrapper archived under `scripts/archived/`)
 - [x] AWS installation script created (`scripts/setup-aws.sh`)
 - [x] Dependency manifests added (`requirements.txt`, `requirements-dev.txt`, `requirements.lock`)
 - [x] Python project structure (complete with 59 files, ~5187 source LOC)
@@ -131,14 +131,16 @@ pulldb/
 │       └── fixtures/
 └── scripts/
     ├── setup-mysql.sh               # MySQL 8.x installation script
-    ├── setup-pulldb-schema.sh       # pulldb database creation script
     └── deploy-daemon.sh             # Deployment helper (future)
+
+schema/
+└── pulldb.sql                       # Coordination database schema (canonical)
 ```
 
 **Tasks**:
 - [x] Initialize Python virtual environment (Python 3.12.3)
 - [x] Create MySQL installation script with custom data directory setup
-- [x] Create pulldb schema deployment script
+- [x] Publish canonical schema SQL (`schema/pulldb.sql`)
 -- [x] Initialize Python project with setuptools (PEP 621 metadata)
 -- [x] Create directory structure (`pulldb/` package scaffolding)
 - [x] Set up pytest configuration (integration marker registered in pyproject.toml)
@@ -157,18 +159,18 @@ python-dotenv>=1.0.0  # .env file support
 
 #### 1.2 MySQL Schema Deployment ✅
 
-**Scripts Created**:
+**Artifacts Produced**:
 - `scripts/setup-mysql.sh` - Installs MySQL 8.x, configures data directories on `/mnt/data/mysql`
-- `scripts/setup-pulldb-schema.sh` - Creates `pulldb` database with all tables and initial data
+- `schema/pulldb.sql` - Defines the `pulldb` database with all tables, view, trigger, and seed data
 
 **Tasks**:
 - [x] Create MySQL installation script with automated setup
 - [x] Configure MySQL data directory: `/mnt/data/mysql/data` (working data)
 - [x] Configure MySQL tmpdir: `/mnt/data/mysql/tmpdir` (temporary files)
 - [x] Update AppArmor permissions for custom data directory
-- [x] Create schema deployment script with trigger and initial data
+- [x] Produce schema SQL with trigger and initial data
 - [x] Run `sudo scripts/setup-mysql.sh` (completed)
-- [x] Run `sudo scripts/setup-pulldb-schema.sh` to create pulldb database (completed)
+- [x] Apply schema via `mysql -u root -p < schema/pulldb.sql` (completed)
 - [x] Test schema deployment on local/dev MySQL instance (verified)
 - [x] Document connection parameters and credential setup (see docs/mysql-setup.md)
 

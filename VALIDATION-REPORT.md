@@ -133,9 +133,9 @@ pulldb/
 | Script | Status | Purpose |
 |--------|--------|---------|
 | `scripts/validate-config.sh` | ✅ Good | Config validation (ran successfully) |
-| `scripts/setup-python-project.sh` | ✅ Present | Python environment setup |
+| `python -m pip install -e .[dev]` | ✅ Documented | Python environment setup |
 | `scripts/setup-mysql.sh` | ✅ Present | MySQL server setup |
-| `scripts/setup-pulldb-schema.sh` | ✅ Present | Schema installation |
+| `schema/pulldb.sql` | ✅ Present | Schema installation (apply via `mysql < schema/pulldb.sql`) |
 | `scripts/setup-aws-credentials.sh` | ✅ Present | AWS credential setup |
 | `scripts/setup-aws.sh` | ✅ Present | AWS profile configuration |
 
@@ -210,7 +210,7 @@ Status: Connection failed
 **Required Actions**:
 1. Install and start MySQL 8.0+ server OR
 2. Update `.env` to point to accessible MySQL instance
-3. Run `scripts/setup-pulldb-schema.sh` to create tables
+3. Apply `schema/pulldb.sql` to create tables (`mysql -u root -p < schema/pulldb.sql`)
 
 ### 5.3 File System
 
@@ -331,7 +331,7 @@ mkdir pulldb/worker
 
 3. **Setup Development Environment** (30 minutes)
    - Install local MySQL 8.0+ OR configure remote connection
-   - Run `scripts/setup-pulldb-schema.sh`
+   - Run `mysql -u root -p < schema/pulldb.sql`
    - Fix work directory (use `/tmp/pulldb-work` for dev)
 
 ### 8.2 Documentation Cleanup (Optional)
