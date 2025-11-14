@@ -52,6 +52,7 @@ pullDB uses a three-account architecture with cross-account S3 access:
 │  ┌──────────────────────────────────────────────────────────── │
 │  │ AWS Secrets Manager                                          │
 │  │ • /pulldb/mysql/coordination-db (test + runtime)            │
+│  │ • /pulldb/mysql/db-local-dev                                │
 │  │ • /pulldb/mysql/db3-dev                                     │
 │  │ • /pulldb/mysql/db4-dev                                     │
 │  │ • /pulldb/mysql/db5-dev                                     │
@@ -675,6 +676,25 @@ aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db
 
 Create secrets for each target MySQL server where databases will be restored.
 
+**Local sandbox (default):**
+
+```bash
+aws secretsmanager create-secret \
+  --name /pulldb/mysql/db-local-dev \
+  --description "MySQL credentials for local sandbox restore target" \
+  --secret-string '{
+    "username": "pulldb_app",
+    "password": "REPLACE_WITH_ACTUAL_PASSWORD",
+    "host": "localhost",
+    "port": 3306,
+    "database": "pulldb_sandbox"
+  }' \
+  --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=local-sandbox
+
+# Verify
+aws secretsmanager describe-secret --secret-id /pulldb/mysql/db-local-dev
+```
+
 **db3-dev (DEV team):**
 
 ```bash
@@ -690,12 +710,12 @@ aws secretsmanager create-secret \
     --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Team,Value=DEV
 ```
 
-**db4-dev (SUPPORT team, default):**
+**db4-dev (SUPPORT team):**
 
 ```bash
 aws secretsmanager create-secret \
     --name /pulldb/mysql/db4-dev \
-    --description "MySQL credentials for db4-dev target database server (default)" \
+  --description "MySQL credentials for db4-dev target database server (support team)" \
     --secret-string '{
         "username": "pulldb_app",
         "password": "REPLACE_WITH_ACTUAL_PASSWORD",
@@ -722,7 +742,7 @@ aws secretsmanager create-secret \
 
 **Summary - Secrets Manager:**
 - ✅ Coordination database secret created
-- ✅ Target database secrets created (db3-dev, db4-dev, db5-dev)
+- ✅ Target database secrets created (db-local-dev, db3-dev, db4-dev, db5-dev)
 
 ---
 
@@ -775,6 +795,12 @@ aws secretsmanager get-secret-value --secret-id /pulldb/mysql/coordination-db \
     --query SecretString --output text | jq .
 
 # Should show JSON with username, password, host, port
+
+# Test local sandbox secret
+aws secretsmanager get-secret-value --secret-id /pulldb/mysql/db-local-dev \
+  --query SecretString --output text | jq .
+
+# Should show JSON with localhost host, optional database
 
 # Test target database secrets
 aws secretsmanager get-secret-value --secret-id /pulldb/mysql/db3-dev \
@@ -910,8 +936,8 @@ aws iam get-role --role-name pulldb-cross-account-readonly \
 
 ### AWS Secrets Manager
 
-**Current Setup** (4 secrets):
-- 4 secrets × $0.40/month = **$1.60/month**
+**Current Setup** (5 secrets):
+- 5 secrets × $0.40/month = **$2.00/month**
 - API calls: ~10,000/month × $0.05/10k = **$0.05/month**
 - **Total**: ~$1.65/month
 

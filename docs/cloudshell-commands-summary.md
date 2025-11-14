@@ -207,6 +207,19 @@ aws secretsmanager create-secret \
     }' \
     --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=coordination
 
+# Create db-local-dev secret (local sandbox default)
+aws secretsmanager create-secret \
+  --name /pulldb/mysql/db-local-dev \
+  --description "MySQL credentials for local sandbox restore target" \
+  --secret-string '{
+    "username": "pulldb_app",
+    "password": "REPLACE_WITH_ACTUAL_PASSWORD",
+    "host": "localhost",
+    "port": 3306,
+    "database": "pulldb_sandbox"
+  }' \
+  --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=local-sandbox
+
 # Create db3-dev secret
 aws secretsmanager create-secret \
     --name /pulldb/mysql/db3-dev \
@@ -219,10 +232,10 @@ aws secretsmanager create-secret \
     }' \
     --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Team,Value=DEV
 
-# Create db4-dev secret (default)
+# Create db4-dev secret (SUPPORT team)
 aws secretsmanager create-secret \
     --name /pulldb/mysql/db4-dev \
-    --description "MySQL credentials for db4-dev target database server (default)" \
+  --description "MySQL credentials for db4-dev target database server (support team)" \
     --secret-string '{
         "username": "pulldb_app",
         "password": "REPLACE_WITH_ACTUAL_PASSWORD",
@@ -501,7 +514,7 @@ PYTHON
 - [ ] Instance profile created
 - [ ] Instance profile attached to EC2 instance
 - [ ] Coordination DB secret created
-- [ ] Target DB secrets created (db3-dev, db4-dev, db5-dev)
+- [ ] Target DB secrets created (db-local-dev, db3-dev, db4-dev, db5-dev)
 
 ### Staging Account (333204494849)
 - [ ] Bucket policy updated with dev account role principal

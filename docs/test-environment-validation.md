@@ -207,7 +207,7 @@ pulldb invalid-command 2>&1 | head -5
 - [ ] 6 tables exist: auth_users, jobs, job_events, db_hosts, locks, settings
 - [ ] 1 view exists: active_jobs
 - [ ] Indices created correctly
-- [ ] db_hosts has 3 rows (DEV, SUPPORT, IMPLEMENTATION)
+- [ ] db_hosts has 4 rows (local sandbox + legacy DEV/SUPPORT/IMPLEMENTATION)
 - [ ] settings has 5 rows (default_dbhost, s3_bucket_path, etc.)
 - [ ] Empty tables: auth_users, jobs, job_events, locks
 
@@ -291,7 +291,7 @@ bash test-env/run-quick-test.sh
 #### Test 7a: Missing Schema File
 
 **Steps**:
-1. Temporarily rename schema/pulldb.sql
+1. Temporarily rename the `schema/pulldb/` directory
 2. Run setup
 3. Verify warning displayed but setup continues
 
@@ -303,11 +303,11 @@ bash test-env/run-quick-test.sh
 
 **Commands**:
 ```bash
-sudo mv schema/pulldb.sql schema/pulldb.sql.backup
+sudo mv schema/pulldb schema/pulldb.backup
 sudo bash scripts/setup-test-environment.sh --clean
 mysql -u pulldb_usability_test -p pulldb_test_coordination -e "SHOW TABLES;"
 # Should show empty
-sudo mv schema/pulldb.sql.backup schema/pulldb.sql
+sudo mv schema/pulldb.backup schema/pulldb
 ```
 
 #### Test 7b: Skip MySQL Flag

@@ -65,10 +65,9 @@ class TestConfigIntegration:
         assert config.mysql_password == password
 
         # Verify operational settings came from MySQL settings table
-        # (these are populated by applying schema/pulldb.sql)
+        # (these are populated by applying schema/pulldb/*.sql)
         assert config.s3_bucket_path == "pestroutesrdsdbs"  # s3_bucket_stg
-        assert config.default_dbhost is not None
-        assert "db-mysql-db4-dev" in config.default_dbhost
+        assert config.default_dbhost == "localhost"
 
     def test_environment_override_with_real_database(
         self, mysql_network_credentials: tuple[str, str, str]

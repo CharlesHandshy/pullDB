@@ -9,7 +9,7 @@ This document describes the MySQL 8.x installation and configuration for pullDB.
 sudo scripts/setup-mysql.sh
 
 # 2. Create pulldb coordination database
-mysql -u root -p < schema/pulldb.sql
+cat schema/pulldb/*.sql | mysql -u root -p
 
 # 3. Install Python MySQL libraries (in venv)
 source venv/bin/activate
@@ -93,14 +93,14 @@ sudo scripts/setup-mysql.sh
 - Temp directory: `/mnt/data/mysql/tmpdir`
 - Configuration backup: `/etc/mysql/mysql.conf.d/mysqld.cnf.backup`
 
-### Apply schema/pulldb.sql
+### Apply schema/pulldb/*.sql
 
-`schema/pulldb.sql` is the canonical definition of the coordination database. Import it directly to create all tables, views, triggers, and seed data.
+The numbered files under `schema/pulldb/` are the canonical definition of the coordination database. Apply them in lexicographic order to create all tables, views, and seed data.
 
 **Usage**:
 
 ```bash
-mysql -u root -p < schema/pulldb.sql
+cat schema/pulldb/*.sql | mysql -u root -p
 ```
 
 **What it provides**:
@@ -109,6 +109,10 @@ mysql -u root -p < schema/pulldb.sql
 3. Establishes indexes, foreign keys, and generated columns (including `active_target_key`)
 4. Creates the `active_jobs` view and status-change trigger
 5. Seeds default `db_hosts` entries and baseline settings rows
+
+> **Why numbering matters**: Files are prefixed with zero-padded sequence numbers (`000_`, `010_`, ...). MySQL processes them in lexical order when using the `cat schema/pulldb/*.sql` pattern, ensuring dependencies (tables → views → seed data) load correctly.
+
+> **Historical context**: The previous monolithic definition lives at `schema/archived/pulldb.sql` for audit purposes. Do not use it for new environments.
 
 **Historical note**: The earlier `scripts/setup-pulldb-schema.sh` wrapper is now archived under `scripts/archived/` and should not be used for new environments.
 
@@ -212,11 +216,11 @@ SELECT * FROM settings;
 All database structure changes must follow this workflow:
 
 1. Update `docs/mysql-schema.md` to reflect the desired schema changes.
-2. Update `schema/pulldb.sql` and `scripts/setup-tests-dbdata.sh` to match the new schema.
+2. Update the numbered files under `schema/pulldb/` and `scripts/setup-tests-dbdata.sh` to match the new schema.
 3. Use `sudo` for all database admin tasks (schema changes, migrations, resets) on development databases.
 4. Apply changes by running:
    ```bash
-   mysql -u root -p < schema/pulldb.sql
+   cat schema/pulldb/*.sql | mysql -u root -p
    sudo scripts/setup-tests-dbdata.sh
    ```
 5. Verify schema and initial data with:
@@ -232,10 +236,11 @@ All database structure changes must follow this workflow:
 - Always use `sudo` for database admin operations in development.
 - Keep setup scripts and documentation in sync at all times.
 
-db-mysql-db3-dev     | TRUE
-db-mysql-db4-dev     | TRUE    (SUPPORT default)
-db-mysql-db5-dev     | TRUE
-default_dbhost               | db-mysql-db4-dev
+localhost            | TRUE    (local development default)
+db-mysql-db3-dev     | FALSE
+db-mysql-db4-dev     | FALSE
+db-mysql-db5-dev     | FALSE
+default_dbhost               | localhost
 s3_bucket_path               | pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod
 work_dir                     | /mnt/data/pulldb/work
 customers_after_sql_dir      | /opt/pulldb/customers_after_sql
@@ -256,11 +261,11 @@ qa_template_after_sql_dir    | /opt/pulldb/qa_template_after_sql
 All database structure changes must follow this workflow:
 
 1. **Update documentation first**: Edit `docs/mysql-schema.md` to reflect the desired schema changes.
-2. **Update schema assets**: Modify `schema/pulldb.sql` and create/update `scripts/setup-tests-dbdata.sh` to match the new schema.
+2. **Update schema assets**: Modify the numbered files under `schema/pulldb/` and create/update `scripts/setup-tests-dbdata.sh` to match the new schema.
 3. **Use sudo for all admin tasks**: All database schema changes, migrations, and resets on development databases must use `sudo`.
 4. **Apply changes by running**:
    ```bash
-   mysql -u root -p < schema/pulldb.sql
+   cat schema/pulldb/*.sql | mysql -u root -p
    # If test data setup script exists:
    sudo scripts/setup-tests-dbdata.sh
    ```
@@ -284,16 +289,17 @@ All database structure changes must follow this workflow:
 ```sql
 id                                 | hostname             | enabled
 ------------------------------------|---------------------|--------
-550e8400-e29b-41d4-a716-446655440000 | db-mysql-db3-dev     | TRUE
-550e8400-e29b-41d4-a716-446655440001 | db-mysql-db4-dev     | TRUE    (SUPPORT default)
-550e8400-e29b-41d4-a716-446655440002 | db-mysql-db5-dev     | TRUE
+550e8400-e29b-41d4-a716-446655440003 | localhost            | TRUE    (local development default)
+550e8400-e29b-41d4-a716-446655440000 | db-mysql-db3-dev     | FALSE
+550e8400-e29b-41d4-a716-446655440001 | db-mysql-db4-dev     | FALSE
+550e8400-e29b-41d4-a716-446655440002 | db-mysql-db5-dev     | FALSE
 ```
 
 **settings**:
 ```sql
 setting_key                  | setting_value                                   | description
 -----------------------------|------------------------------------------------|-----------------------------
-default_dbhost               | db-mysql-db4-dev                               | Default database host
+default_dbhost               | localhost                                     | Default database host (local sandbox)
 s3_bucket_path               | pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod | S3 backup bucket path
 work_dir                     | /mnt/data/pulldb/work                          | Working directory for restores
 customers_after_sql_dir      | /opt/pulldb/customers_after_sql                | Post-restore SQL for customers
@@ -458,7 +464,7 @@ After MySQL setup is complete:
 1. ✅ MySQL 8.x installed and running
 2. ✅ Data directories configured on `/mnt/data/mysql`
 3. ✅ Python MySQL libraries installed
-4. ⏭️ **Run schema setup**: `mysql -u root -p < schema/pulldb.sql`
+4. ⏭️ **Run schema setup**: `cat schema/pulldb/*.sql | mysql -u root -p`
 5. ⏭️ **Create pulldb_app and pulldb_test users**: See "MySQL User Creation" section above
 6. ⏭️ **Store credentials in Secrets Manager**: See `aws-secrets-manager-setup.md`
 7. ⏭️ **Begin Python implementation** (Milestone 1.3 - Configuration Module)

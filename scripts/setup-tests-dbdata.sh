@@ -5,7 +5,7 @@
 #
 # PREREQUISITES:
 #   1. MySQL 8.0+ installed and running
-#   2. pulldb database created (apply schema/pulldb.sql first)
+#   2. pulldb database created (apply schema/pulldb/*.sql first)
 #   3. AWS Secrets Manager secret created: /pulldb/mysql/coordination-db
 #
 # WHAT THIS SCRIPT DOES:
@@ -53,7 +53,7 @@ fi
 DB_EXISTS=$(mysql -sN -e "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = 'pulldb';")
 
 if [ -z "$DB_EXISTS" ]; then
-    print_error "pulldb database does not exist. Apply schema/pulldb.sql first."
+    print_error "pulldb database does not exist. Apply schema/pulldb/*.sql first."
     exit 1
 fi
 
@@ -77,6 +77,27 @@ ON DUPLICATE KEY UPDATE
 EOF
 
 print_info "✓ Test user inserted (testuser / testcd)"
+
+print_info "Seeding required settings for integration tests (default host + S3 paths)..."
+
+# Seed configuration settings used by integration tests. These mirror the
+# canonical values from schema/pulldb/*.sql so local environments behave like CI.
+mysql pulldb <<'EOF'
+INSERT INTO settings (setting_key, setting_value, description)
+VALUES
+    ('default_dbhost', 'localhost', 'Default target host (local development)'),
+    ('s3_bucket_stg', 'pestroutesrdsdbs', 'Staging S3 bucket name for restores'),
+    ('s3_bucket_path', 'pestroutesrdsdbs/daily/stg/', 'Legacy staging bucket path'),
+    ('customers_after_sql_dir', '/opt/pulldb/customers_after_sql/', 'Customer post-restore SQL directory'),
+    ('qa_template_after_sql_dir', '/opt/pulldb/qa_template_after_sql/', 'QA template post-restore SQL directory'),
+    ('work_dir', '/var/lib/pulldb/work/', 'Working directory for downloads and extraction')
+ON DUPLICATE KEY UPDATE
+    setting_value = VALUES(setting_value),
+    description = VALUES(description),
+    updated_at = UTC_TIMESTAMP(6);
+EOF
+
+print_info "✓ Settings seeded (default_dbhost, s3_bucket_stg, s3_bucket_path, directories)"
 
 echo ""
 print_info "=========================================="

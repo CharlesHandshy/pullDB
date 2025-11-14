@@ -224,7 +224,7 @@ def seed_settings(mysql_pool: MySQLPool) -> None:
         cursor.execute(
             """
             INSERT INTO settings (setting_key, setting_value)
-            VALUES ('default_dbhost','db-mysql-db4-dev.us-east-1.rds.amazonaws.com')
+            VALUES ('default_dbhost','localhost')
             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
             """
         )

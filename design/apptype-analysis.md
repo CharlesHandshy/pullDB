@@ -88,6 +88,8 @@ CREATE TABLE db_hosts (
 
 -- Example registrations
 INSERT INTO db_hosts (dbhost, credential_ref, max_db_count) VALUES
+    ('localhost', 
+     'ssm:///pulldb/db-local-dev/creds', 1000),
     ('db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com', 
      'ssm:///pulldb/db3-dev/creds', 1000),
     ('db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com', 
@@ -98,11 +100,11 @@ INSERT INTO db_hosts (dbhost, credential_ref, max_db_count) VALUES
 
 #### 2. Default Host Configuration
 
-Set default in `settings` table to match legacy SUPPORT default:
+Set default in `settings` table to the new local sandbox host while keeping legacy SUPPORT available via explicit override:
 
 ```sql
 INSERT INTO settings (`key`, `value`) VALUES
-    ('default_dbhost', 'db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com');
+    ('default_dbhost', 'localhost');
 ```
 
 #### 3. CLI Validation

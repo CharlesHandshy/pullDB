@@ -37,7 +37,7 @@ scripts/setup-aws-credentials.sh
 
 # 3. Install MySQL and load the coordination schema
 sudo scripts/setup-mysql.sh
-mysql -u root -p < schema/pulldb.sql
+cat schema/pulldb/*.sql | mysql -u root -p
 
 # 4. Set up Python environment
 python3 -m venv venv
@@ -94,7 +94,7 @@ Package lifecycle behaviors:
 | `prerm` | Stop + disable unit if present |
 | `postrm (purge)` | Remove unit file, reload systemd, delete install prefix |
 
-Systemd unit template: `packaging/systemd/pulldb-worker.service` (EnvironmentFile auto-injected by installer). After installation you can:
+Systemd unit template: `scripts/pulldb-worker.service` (EnvironmentFile auto-injected by installer). After installation you can:
 ```bash
 sudo systemctl enable pulldb-worker.service
 sudo systemctl start pulldb-worker.service
@@ -384,9 +384,10 @@ The CLI fails validation when `customer` and `qatemplate` are supplied together 
 
 - All target `dbhost` entries must be registered in the MySQL configuration (`db_hosts` table captures credentials, max active limits, and maximum database counts). The daemon verifies membership before accepting a restore request and fails fast if the host is unknown.
 - Credentials are stored securely and surfaced to the daemon through environment configuration on the corresponding EC2 host.
-- **Pre-populated Hosts**: Three database servers are registered during deployment to support legacy team segregation:
+- **Pre-populated Hosts**: Local development plus the three legacy team endpoints are registered during deployment:
+  - `localhost` - Local development sandbox (**default**)
   - `db-mysql-db3-dev` - Development team (legacy `--type=DEV`)
-  - `db-mysql-db4-dev` - Support team (legacy `--type=SUPPORT`, **default**)
+  - `db-mysql-db4-dev` - Support team (legacy `--type=SUPPORT`)
   - `db-mysql-db5-dev` - Implementation team (legacy `--type=IMPLEMENTATION`)
 
 ### Migration from Legacy pullDB-auth
@@ -402,7 +403,7 @@ Users of the legacy `pullDB-auth` tool should note these mappings:
 
 **Key Differences**:
 - The `--type=` parameter is replaced by explicit `dbhost=` for clarity
-- Default behavior matches legacy SUPPORT (db4 host)
+- Default behavior now targets the local sandbox (`localhost`); legacy SUPPORT host remains available via `dbhost=db-mysql-db4-dev`
 - Short hostnames (`db3-dev`, `db4-dev`, `db5-dev`) are supported alongside full FQDNs
 - Database host registration is now dynamic via `db_hosts` table instead of hardcoded switch statements
 
@@ -494,7 +495,7 @@ pullDB \
 - **db_hosts**: registry of allowable restore targets containing credentials references and `max_db_count` for safety checks.
 - **locks**: simple advisory rows keyed by target database name to serialize restores and prevent duplicate jobs.
 
-Tables such as `history_cache`, per-user/host concurrency overrides, and detailed job log fan-out remain defined in `Tools/pullDB/docs/mysql-schema.md` but are not required for the prototype runtime.
+Tables such as `history_cache`, per-user/host concurrency overrides, and detailed job log fan-out remain defined in `docs/mysql-schema.md` but are not required for the prototype runtime.
 
 ## Process Flow
 

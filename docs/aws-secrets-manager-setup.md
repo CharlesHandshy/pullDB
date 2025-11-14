@@ -4,11 +4,12 @@
 > Canonical Authentication Reference: See `aws-authentication-setup.md` for the authoritative end-to-end AWS architecture (accounts, roles, instance profile, cross-account access). This file focuses narrowly on MySQL credential storage and retrieval mechanics. If guidance here conflicts with `aws-authentication-setup.md`, the canonical document wins.
 > Scope Reduction (2025-11-01): Architecture diagrams, cross-account role creation, and instance profile steps were consolidated into `aws-authentication-setup.md` to eliminate duplication. Future updates should only extend credential patterns (rotation, schema integration, testing mandate).
 
-> **Purpose**: Configure AWS Secrets Manager access for pullDB to retrieve MySQL credentials for target database servers (db3-dev, db4-dev, db5-dev) and the coordination database secret `/pulldb/mysql/coordination-db` used by all tests.
+> **Purpose**: Configure AWS Secrets Manager access for pullDB to retrieve MySQL credentials for the local sandbox (`db-local-dev`), target database servers (db3-dev, db4-dev, db5-dev), and the coordination database secret `/pulldb/mysql/coordination-db` used by all tests.
 
 ## Overview
 
 pullDB stores MySQL credentials for target database servers in the `db_hosts` table with references to AWS Secrets Manager or SSM Parameter Store. The `credential_ref` field contains paths like:
+- `aws-secretsmanager:/pulldb/mysql/db-local-dev`
 - `aws-secretsmanager:/pulldb/mysql/db3-dev`
 - `aws-ssm:/pulldb/mysql/db3-dev-credentials`
 
@@ -60,6 +61,7 @@ When connecting to a target database server, pullDB:
 │                        │                                    │
 │         ┌──────────────▼──────────────────┐                │
 │         │ AWS Secrets Manager             │                │
+│         │ /pulldb/mysql/db-local-dev      │                │
 │         │ /pulldb/mysql/db3-dev           │                │
 │         │ /pulldb/mysql/db4-dev           │                │
 │         │ /pulldb/mysql/db5-dev           │                │
@@ -75,6 +77,7 @@ When connecting to a target database server, pullDB:
 │                                                              │
 │         ┌─────────────────────────────────┐                │
 │         │ Target MySQL Servers            │                │
+│         │ - localhost (local sandbox)     │                │
 │         │ - db3-dev (DEV team)            │                │
 │         │ - db4-dev (SUPPORT team)        │                │
 │         │ - db5-dev (IMPLEMENTATION team) │                │
@@ -86,7 +89,26 @@ When connecting to a target database server, pullDB:
 
 > Use profile names standardized in `aws-authentication-setup.md`: `pr-staging` (primary prototype backups) and `pr-prod` (production backups). For development account operations (creating secrets shown below) run under the development account (instance profile or an admin profile in that account). Previous examples using `pr-dev` have been deprecated.
 
-### 1.1 Create Secret for db3-dev (DEV Team)
+### 1.1 Create Secret for db-local-dev (Local Sandbox)
+
+```bash
+# Local sandbox secret used by default in development environments
+aws secretsmanager create-secret \
+    --name /pulldb/mysql/db-local-dev \
+    --description "MySQL credentials for local sandbox restore target" \
+    --secret-string '{
+        "username": "pulldb_app",
+        "password": "REPLACE_WITH_ACTUAL_PASSWORD",
+        "host": "localhost",
+        "port": 3306,
+        "database": "pulldb_sandbox"
+    }' \
+    --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=local-sandbox
+
+aws secretsmanager describe-secret --secret-id /pulldb/mysql/db-local-dev
+```
+
+### 1.2 Create Secret for db3-dev (DEV Team)
 
 ```bash
 # Development account context ONLY (account: 345321506926). Do NOT use cross-account staging/production profiles to create dev secrets.
@@ -111,12 +133,12 @@ aws secretsmanager create-secret \
 aws secretsmanager describe-secret --secret-id /pulldb/mysql/db3-dev
 ```
 
-### 1.2 Create Secret for db4-dev (SUPPORT Team, Default)
+### 1.3 Create Secret for db4-dev (SUPPORT Team)
 
 ```bash
 aws secretsmanager create-secret \
     --name /pulldb/mysql/db4-dev \
-    --description "MySQL credentials for db4-dev target database server (SUPPORT team, default)" \
+    --description "MySQL credentials for db4-dev target database server (SUPPORT team)" \
     --secret-string '{
         "username": "pulldb_app",
         "password": "REPLACE_WITH_ACTUAL_PASSWORD",
@@ -129,7 +151,7 @@ aws secretsmanager create-secret \
 aws secretsmanager describe-secret --secret-id /pulldb/mysql/db4-dev
 ```
 
-### 1.3 Create Secret for db5-dev (IMPLEMENTATION Team)
+### 1.4 Create Secret for db5-dev (IMPLEMENTATION Team)
 
 ```bash
 aws secretsmanager create-secret \
@@ -147,7 +169,7 @@ aws secretsmanager create-secret \
 aws secretsmanager describe-secret --secret-id /pulldb/mysql/db5-dev
 ```
 
-### 1.4 Create Secret for Coordination Database (MANDATORY FOR TESTS)
+### 1.5 Create Secret for Coordination Database (MANDATORY FOR TESTS)
 
 ```bash
 # Create secret for pullDB's own coordination MySQL database
@@ -278,7 +300,13 @@ aws secretsmanager describe-secret --secret-id /pulldb/mysql/db3-dev \
 ### 3.2 Enable Rotation for Other Secrets
 
 ```bash
-# db4-dev (SUPPORT, default)
+# db-local-dev (local sandbox)
+aws secretsmanager rotate-secret \
+    --secret-id /pulldb/mysql/db-local-dev \
+    --rotation-lambda-arn arn:aws:serverlessrepo:us-east-1:297356227924:applications/SecretsManagerRDSMySQLRotationSingleUser \
+    --rotation-rules AutomaticallyAfterDays=90
+
+# db4-dev (SUPPORT)
 aws secretsmanager rotate-secret \
     --secret-id /pulldb/mysql/db4-dev \
     --rotation-lambda-arn arn:aws:serverlessrepo:us-east-1:297356227924:applications/SecretsManagerRDSMySQLRotationSingleUser \
@@ -737,8 +765,8 @@ aws secretsmanager put-secret-value \
 
 ### Secrets Manager Costs
 
-**Current Setup** (4 secrets):
-- 4 secrets × $0.40/month = $1.60/month
+**Current Setup** (5 secrets):
+- 5 secrets × $0.40/month = $2.00/month
 - API calls: ~10,000/month × $0.05/10k = $0.05/month
 - **Total**: ~$1.65/month
 

@@ -2,7 +2,9 @@
 
 > **Foundation Documents**: This schema implements the architectural principles defined in `../.github/copilot-instructions.md` and coding standards from `../constitution.md`.
 
-> **Schema Update Mandate**: All schema changes must be reflected in `schema/pulldb.sql` and mirrored in `scripts/setup-tests-dbdata.sh`. See `.github/copilot-instructions.md` and `docs/mysql-setup.md` for the complete workflow. The legacy `scripts/setup-pulldb-schema.sh` helper now lives in `scripts/archived/` for historical reference.
+> **Schema Update Mandate**: All schema changes must be reflected in the numbered files under `schema/pulldb/` and mirrored in `scripts/setup-tests-dbdata.sh`. See `.github/copilot-instructions.md` and `docs/mysql-setup.md` for the complete workflow. The legacy `scripts/setup-pulldb-schema.sh` helper now lives in `scripts/archived/` for historical reference.
+>
+> The former monolithic dump is preserved at `schema/archived/pulldb.sql` for audit history only.
 
 ## Prototype Charter
 
@@ -167,26 +169,34 @@ CREATE INDEX idx_jobs_owner_status
 
 ## Initial Data Population
 
-### Database Hosts (Legacy appType Support)
+### Database Hosts (Local + Legacy)
 
-Pre-populate `db_hosts` with the three existing development database servers to support legacy `--type=` behavior via `dbhost=` parameter. Use UUIDs for `id`:
+Pre-populate `db_hosts` with a local sandbox plus the three legacy development database servers. Local development uses the sandbox by default; legacy endpoints remain registered (disabled) for explicit overrides:
 
 ```sql
+-- Local development sandbox (default)
+INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
+    ('550e8400-e29b-41d4-a716-446655440003',
+     'localhost',
+     'aws-secretsmanager:/pulldb/mysql/db-local-dev',
+     1,
+     TRUE);
+
 -- DEV team database server (legacy --type=DEV)
 INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
     ('550e8400-e29b-41d4-a716-446655440000',
      'db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
      'aws-secretsmanager:/pulldb/mysql/db3-dev',
      1,
-     TRUE);
+     FALSE);
 
--- SUPPORT team database server (legacy --type=SUPPORT, default)
+-- SUPPORT team database server (legacy --type=SUPPORT)
 INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
     ('550e8400-e29b-41d4-a716-446655440001',
      'db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
      'aws-secretsmanager:/pulldb/mysql/db4-dev',
      1,
-     TRUE);
+     FALSE);
 
 -- IMPLEMENTATION team database server (legacy --type=IMPLEMENTATION)
 INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
@@ -194,19 +204,19 @@ INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, ena
      'db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
      'aws-secretsmanager:/pulldb/mysql/db5-dev',
      1,
-     TRUE);
+     FALSE);
 ```
 
-**Note**: Credentials for these hosts must be created in AWS Secrets Manager before the Worker service can connect. See `aws-secrets-manager-setup.md` for setup instructions.
+**Note**: Credentials for these hosts must be created in AWS Secrets Manager before the Worker service can connect. See `aws-secrets-manager-setup.md` for setup instructions. The local sandbox secret (`/pulldb/mysql/db-local-dev`) is required for development setups; the legacy team secrets remain for historical restores.
 
 ### Configuration Settings
 
-Set default `dbhost` to match legacy SUPPORT default and configure other operational parameters:
+Set default `dbhost` to the local sandbox and configure other operational parameters:
 
 ```sql
--- Default database host (matches legacy SUPPORT default)
+-- Default database host (local development sandbox)
 INSERT INTO settings (setting_key, setting_value) VALUES
-    ('default_dbhost', 'db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com');
+    ('default_dbhost', 'localhost');
 
 -- S3 backup bucket path
 INSERT INTO settings (setting_key, setting_value) VALUES
@@ -222,7 +232,7 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('work_dir', '/var/lib/pulldb/work/');
 ```
 
-**Migration Note**: Users of legacy `pullDB-auth --type=SUPPORT` should use `pullDB user=<user> customer=<customer>` (default) or explicitly specify `dbhost=db-mysql-db4-dev` for clarity.
+**Migration Note**: Users of legacy `pullDB-auth --type=SUPPORT` should use `pullDB user=<user> customer=<customer>` (default, now targeting the local sandbox) or explicitly specify `dbhost=db-mysql-db4-dev` to reach the legacy SUPPORT host.
 
 ## Daemon-Oriented Triggers
 
