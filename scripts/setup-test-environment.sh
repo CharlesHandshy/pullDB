@@ -231,13 +231,16 @@ EOF
     success "MySQL test database created"
 
     # Deploy schema if exists
-    local schema_file="${PROJECT_ROOT}/schema/pulldb.sql"
-    if [[ -f "$schema_file" ]]; then
-        info "Deploying pullDB schema..."
-    mysql -u "${TEST_DB_USER}" -p"${TEST_DB_PASS}" "${TEST_DB_NAME}" < "$schema_file"
+    local schema_dir="${PROJECT_ROOT}/schema/pulldb"
+    if [[ -d "$schema_dir" ]] && compgen -G "${schema_dir}/*.sql" > /dev/null; then
+        info "Deploying pullDB schema from ${schema_dir}..."
+        for sql_file in "${schema_dir}"/*.sql; do
+            info "  -> $(basename "$sql_file")"
+            mysql -u "${TEST_DB_USER}" -p"${TEST_DB_PASS}" "${TEST_DB_NAME}" < "$sql_file"
+        done
         success "Schema deployed"
     else
-        warn "Schema file not found: $schema_file"
+        warn "Schema directory not found or empty: $schema_dir"
         warn "You'll need to deploy the schema manually:"
         warn "  See docs/mysql-schema.md for schema definition"
     fi
@@ -272,15 +275,23 @@ verify_aws_credentials() {
         return
     fi
 
-    # Test AWS credentials
-    if aws sts get-caller-identity --profile "$aws_profile" &>/dev/null; then
-        local account_id=$(aws sts get-caller-identity --profile "$aws_profile" --query 'Account' --output text)
+    # Test AWS credentials using explicit profile first, then fall back to default resolution chain (instance metadata).
+    local account_id=""
+    account_id=$(AWS_PROFILE="$aws_profile" aws sts get-caller-identity --query 'Account' --output text 2>/dev/null || true)
+    if [[ -n "$account_id" ]]; then
         success "AWS credentials valid (Account: $account_id, Profile: $aws_profile)"
-    else
-        warn "AWS credentials not configured or invalid"
-        warn "Run: aws configure --profile $aws_profile"
-        warn "Continuing anyway (AWS required for actual restore operations)"
+        return
     fi
+
+    account_id=$(aws sts get-caller-identity --query 'Account' --output text 2>/dev/null || true)
+    if [[ -n "$account_id" ]]; then
+        success "AWS credentials valid via default provider chain (Account: $account_id, metadata assumed)"
+        return
+    fi
+
+    warn "AWS credentials unavailable. Expected role: arn:aws:iam::333204494849:role/pulldb-staging-cross-account-readonly"
+    warn "If running on EC2, verify instance profile permissions. For local testing either configure a source profile with sts:AssumeRole or rerun with --skip-aws"
+    warn "Continuing anyway (AWS required for actual restore operations)"
 }
 
 install_package() {
@@ -343,6 +354,7 @@ create_test_venv() {
     info "Creating Python virtual environment..."
 
     local venv_dir="${TEST_ENV_DIR}/venv"
+    local requirements_test_file="${PROJECT_ROOT}/requirements-test.txt"
 
     if [[ "$DRY_RUN" == true ]]; then
         info "[DRY-RUN] Would create venv: $venv_dir"
@@ -360,7 +372,11 @@ create_test_venv() {
     source "${venv_dir}/bin/activate"
     pip install --upgrade pip
     pip install -e "${PROJECT_ROOT}"
-    pip install mypy-boto3-s3  # Type stubs for S3 operations
+    if [[ -f "${requirements_test_file}" ]]; then
+        pip install -r "${requirements_test_file}"
+    else
+        warn "requirements-test.txt not found; skipping automated test dependency installation"
+    fi
     deactivate
 
     # Verify venv writable
@@ -462,6 +478,24 @@ aws sts get-caller-identity --profile "${PULLDB_AWS_PROFILE}" >/dev/null || {
     echo "  Run: aws configure --profile ${PULLDB_AWS_PROFILE}"
 }
 
+# Test 4: Import test
+echo "✓ Testing Python imports..."
+python3 -c "
+from pulldb.cli import main
+from pulldb.infra import mysql, s3, secrets
+from pulldb.domain import config, models
+print('  All imports successful')
+" || { echo "✗ Import test failed"; exit 1; }
+
+echo ""
+echo "All smoke tests passed! ✓"
+EOF
+
+    chmod +x "${TEST_ENV_DIR}/run-quick-test.sh"
+
+    success "Convenience scripts created"
+}
+
 # Normalize permissions according to Development File Ownership Principle
 normalize_permissions() {
     if [[ "$NORMALIZE_PERMS" == false ]]; then
@@ -485,24 +519,6 @@ normalize_permissions() {
     # Regular files (exclude executables already handled)
     find "$TEST_ENV_DIR" -type f -not -path "*/venv/bin/*" -not -name '*.sh' -exec chmod 640 {} +
     success "Permissions normalized"
-}
-
-# Test 4: Import test
-echo "✓ Testing Python imports..."
-python3 -c "
-from pulldb.cli import main
-from pulldb.infra import mysql, s3, secrets
-from pulldb.domain import config, models
-print('  All imports successful')
-" || { echo "✗ Import test failed"; exit 1; }
-
-echo ""
-echo "All smoke tests passed! ✓"
-EOF
-
-    chmod +x "${TEST_ENV_DIR}/run-quick-test.sh"
-
-    success "Convenience scripts created"
 }
 
 # Run smoke tests automatically unless DRY_RUN

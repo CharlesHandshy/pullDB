@@ -108,7 +108,7 @@ For automated verification in CI pipelines:
 
 | Script | Replacement |
 | --- | --- |
-| `setup-pulldb-schema.sh` | Apply `schema/pulldb.sql` directly (e.g. `mysql < schema/pulldb.sql`) |
+| `setup-pulldb-schema.sh` | Apply numbered files in `schema/pulldb/` directly (e.g. `cat schema/pulldb/*.sql | mysql`) |
 | `setup-python-project.sh` | Activate a virtualenv and run `python -m pip install -e .[dev]` |
 
 See `scripts/archived/README.md` for the original copies retained for reference.

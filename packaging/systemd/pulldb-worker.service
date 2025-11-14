@@ -1,0 +1,27 @@
+; pullDB worker daemon systemd unit template
+; This file is installed to /opt/pulldb/scripts/pulldb-worker.service by the package
+
+[Unit]
+Description=pullDB Restore Worker Daemon
+After=network.target mysql.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/pulldb
+ExecStart=/usr/bin/env pulldb-worker
+Restart=on-failure
+RestartSec=5
+User=pulldb
+Group=pulldb
+KillSignal=SIGTERM
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

@@ -224,8 +224,8 @@ aws ssm put-parameter \
     --type "SecureString" \
     --overwrite
 
-# Restart pullDB daemon to pick up new value
-sudo systemctl restart pulldb-daemon
+# Restart pullDB worker service to pick up new value
+sudo systemctl restart pulldb-worker.service
 ```
 
 ## Security Best Practices

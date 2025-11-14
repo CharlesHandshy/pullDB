@@ -2,9 +2,9 @@ name: Engineering DNA Baseline
 
 on:
   push:
-    branches: [ pulldb ]
+    branches: [ main ]
   pull_request:
-    branches: [ pulldb ]
+    branches: [ main ]
 
 jobs:
   baseline:
@@ -44,7 +44,7 @@ jobs:
             echo "2. Run scripts/precommit-verify.py locally to validate" >&2
             exit 1
           fi
-          CURRENT_SHA=$(git -C Tools/pullDB/engineering-dna rev-parse HEAD)
+          CURRENT_SHA=$(git -C engineering-dna rev-parse HEAD)
           echo "Baseline: $BASELINE_SHA"; echo "Current: $CURRENT_SHA"
           if [ "$CURRENT_SHA" != "$BASELINE_SHA" ]; then
             echo "FAIL HARD DIAGNOSTIC" >&2

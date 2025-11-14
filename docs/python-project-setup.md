@@ -41,10 +41,11 @@ pulldb status --help
 
 ```
 pulldb/
+  api/            # HTTP API service entrypoints
   cli/            # CLI entrypoints (restore/status)
-  daemon/         # Daemon entrypoint and future worker loop
   domain/         # Dataclasses (Config, Job, User, etc.)
   infra/          # Adapters (MySQL, S3, logging)
+  worker/         # Long-running restore worker service
   tests/          # pytest tests
 ```
 
@@ -72,7 +73,7 @@ ruff check .
 - Implement configuration loader (`Config.from_env_and_mysql`)
 - Repository layer in `infra/mysql.py`
 - CLI validation logic in `cli/main.py`
-- Daemon polling loop in `daemon/main.py`
+- Worker polling loop in `worker/service.py`
 
 ## Notes
 

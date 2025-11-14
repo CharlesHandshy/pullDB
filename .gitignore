@@ -66,6 +66,8 @@ temp/
 # Database files (test databases, dumps, backups)
 *.sql
 !docs/atomic_rename_procedure.sql
+!schema/pulldb/*.sql
+!schema/archived/pulldb.sql
 *.sql.gz
 *.sql.zst
 *.tar

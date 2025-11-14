@@ -2,9 +2,9 @@ name: Engineering DNA Freshness
 
 on:
   push:
-    branches: [ pulldb ]
+    branches: [ main ]
   pull_request:
-    branches: [ pulldb ]
+    branches: [ main ]
 
 jobs:
   freshness:
@@ -23,8 +23,8 @@ jobs:
 
       - name: Verify engineering-dna submodule up to date
         run: |
-          CURRENT_SHA=$(git -C Tools/pullDB/engineering-dna rev-parse HEAD)
-          REMOTE_SHA=$(git -C Tools/pullDB/engineering-dna ls-remote origin main | awk '{print $1}')
+          CURRENT_SHA=$(git -C engineering-dna rev-parse HEAD)
+          REMOTE_SHA=$(git -C engineering-dna ls-remote origin main | awk '{print $1}')
           echo "Current: $CURRENT_SHA"; echo "Remote: $REMOTE_SHA"
           if [ "$CURRENT_SHA" != "$REMOTE_SHA" ]; then
             echo "FAIL HARD DIAGNOSTIC" >&2

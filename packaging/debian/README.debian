@@ -1,0 +1,41 @@
+pullDB Debian Package Notes
+===========================
+
+Overview
+--------
+The `pulldb` package installs the bootstrap assets required to run the
+pullDB restore worker on Debian-based systems. The maintainer scripts
+perform the following actions during installation:
+
+- Create the dedicated `pulldb` system user and group
+- Lay down the runtime directory structure under `/opt/pulldb`
+- Write a baseline `.env` file (safe defaults that you can edit later)
+- Install and enable the `pulldb-worker.service` systemd unit template
+
+After installing the package, run the interactive installer to finish
+configuration:
+
+```
+sudo /opt/pulldb/scripts/install_pulldb.sh --yes \
+  --aws-profile dev \
+  --secret /pulldb/mysql/coordination-db
+```
+
+The installer will create a Python virtual environment, install the
+Python package, generate an updated `.env`, and optionally start the
+worker service.
+
+Removal
+-------
+`sudo dpkg --purge pulldb` stops the worker service, removes the unit
+file, and deletes `/opt/pulldb`. Any custom data under `/opt/pulldb`
+should be backed up before purging.
+
+Troubleshooting
+---------------
+- Inspect `/var/log/syslog` or `journalctl -u pulldb-worker` for service
+  errors.
+- Ensure AWS credentials are configured for the profile referenced in
+  `/opt/pulldb/.env` before starting the worker.
+- For manual cleanup (without dpkg), remove the service file, reload
+  systemd, and delete `/opt/pulldb`.

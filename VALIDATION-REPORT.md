@@ -118,13 +118,14 @@ pulldb/
 **Code Actually Has**:
 ```python
 pulldb/
-  cli/           # ✅ Matches
-  daemon/        # ⚠️ Should be api/ + worker/
-  infra/         # ✅ Matches
-  domain/        # ✅ Matches
+   api/           # ✅ Matches
+   cli/           # ✅ Matches
+   domain/        # ✅ Matches
+   infra/         # ✅ Matches
+   worker/        # ✅ Matches
 ```
 
-**Issue**: Code uses old `daemon/` directory structure while docs describe new `api/` + `worker/` separation.
+**Status**: Directory layout reflects the api/ + worker split documented in milestone notes.
 
 ## 3. Scripts Review
 
@@ -135,7 +136,7 @@ pulldb/
 | `scripts/validate-config.sh` | ✅ Good | Config validation (ran successfully) |
 | `python -m pip install -e .[dev]` | ✅ Documented | Python environment setup |
 | `scripts/setup-mysql.sh` | ✅ Present | MySQL server setup |
-| `schema/pulldb.sql` | ✅ Present | Schema installation (apply via `mysql < schema/pulldb.sql`) |
+| `schema/pulldb/` | ✅ Present | Schema installation bundle (apply via `cat schema/pulldb/*.sql | mysql`) |
 | `scripts/setup-aws-credentials.sh` | ✅ Present | AWS credential setup |
 | `scripts/setup-aws.sh` | ✅ Present | AWS profile configuration |
 
@@ -210,7 +211,7 @@ Status: Connection failed
 **Required Actions**:
 1. Install and start MySQL 8.0+ server OR
 2. Update `.env` to point to accessible MySQL instance
-3. Apply `schema/pulldb.sql` to create tables (`mysql -u root -p < schema/pulldb.sql`)
+3. Apply the numbered schema bundle (`cat schema/pulldb/*.sql | mysql -u root -p`)
 
 ### 5.3 File System
 
@@ -331,7 +332,7 @@ mkdir pulldb/worker
 
 3. **Setup Development Environment** (30 minutes)
    - Install local MySQL 8.0+ OR configure remote connection
-   - Run `mysql -u root -p < schema/pulldb.sql`
+   - Run `cat schema/pulldb/*.sql | mysql -u root -p`
    - Fix work directory (use `/tmp/pulldb-work` for dev)
 
 ### 8.2 Documentation Cleanup (Optional)

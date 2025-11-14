@@ -1,0 +1,33 @@
+#!/bin/sh
+set -e
+
+INSTALL_PREFIX="/opt/pulldb"
+UNIT_DEST="/etc/systemd/system/pulldb-worker.service"
+
+cleanup_systemd() {
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl stop pulldb-worker.service >/dev/null 2>&1 || true
+        systemctl disable pulldb-worker.service >/dev/null 2>&1 || true
+        rm -f "${UNIT_DEST}" || true
+        systemctl daemon-reload || true
+    else
+        rm -f "${UNIT_DEST}" || true
+    fi
+}
+
+case "$1" in
+    purge)
+        cleanup_systemd
+        rm -rf "${INSTALL_PREFIX}" || true
+        ;;
+    remove)
+        ;;
+    abort-install|abort-upgrade|fail-upgrade)
+        ;;
+    upgrade)
+        ;;
+    *)
+        ;;
+esac
+
+exit 0

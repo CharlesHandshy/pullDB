@@ -175,8 +175,10 @@ class TestJobRepository:
         )
         from mysql.connector.errors import IntegrityError
 
-        with pytest.raises(IntegrityError):
+        with pytest.raises(ValueError) as excinfo:
             repo.enqueue_job(job2)
+        assert "already has an active job" in str(excinfo.value)
+        assert isinstance(excinfo.value.__cause__, IntegrityError)
         self._cleanup_job(mysql_pool, job_id1, target)
         # second job not inserted, but ensure cleanup if partial
         self._cleanup_job(mysql_pool, job_id2, target)

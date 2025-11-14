@@ -1,37 +1,179 @@
-"""Entry point for the `pulldb` CLI.
-
-Phase 0 prototype: currently provides placeholder commands. Real logic will
-be implemented in Milestone 3.
-"""
+"""Entry point for the `pulldb` CLI."""
 
 from __future__ import annotations
 
+import importlib
+import os
 import json as json_module
 import sys
 import typing as t
-import uuid
 from datetime import datetime
+from types import ModuleType
 
 import click
 
 from pulldb import __version__
 from pulldb.cli.parse import CLIParseError, parse_restore_args
-from pulldb.domain.config import Config
-from pulldb.domain.models import Job, JobStatus
-from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
-from pulldb.infra.mysql import JobRepository, UserRepository, build_default_pool
+
+DEFAULT_API_URL = "http://localhost:8080"
+DEFAULT_API_TIMEOUT_SECONDS = 30.0
+MAX_STATUS_LIMIT = 1000
+
+if t.TYPE_CHECKING:  # pragma: no cover - typing-only import
+    import requests as requests_module
+    from requests import RequestException, Response
+else:
+    requests_module = t.cast(ModuleType, importlib.import_module("requests"))
+    RequestException = t.cast(type[Exception], getattr(requests_module, "RequestException"))
+    Response = t.cast(type, getattr(requests_module, "Response"))
 
 
-def _sanitize_letters(value: str) -> str:
-    """Extract only letters from string (lowercase).
+class _APIError(RuntimeError):
+    """Raised when the API returns an unexpected payload."""
 
-    Args:
-        value: Input string.
 
-    Returns:
-        Lowercase letters-only string.
-    """
-    return "".join(c.lower() for c in value if c.isalpha())
+def _load_api_config() -> tuple[str, float]:
+    """Resolve API base URL and timeout from environment variables."""
+
+    base_url = os.getenv("PULLDB_API_URL", DEFAULT_API_URL).rstrip("/")
+    timeout_raw = os.getenv("PULLDB_API_TIMEOUT", str(DEFAULT_API_TIMEOUT_SECONDS))
+    try:
+        timeout = float(timeout_raw)
+    except ValueError as exc:  # FAIL HARD: invalid timeout configuration
+        raise click.ClickException(
+            "PULLDB_API_TIMEOUT must be a numeric value (seconds). "
+            f"Received '{timeout_raw}'."
+        ) from exc
+    if timeout <= 0:
+        raise click.ClickException("PULLDB_API_TIMEOUT must be greater than zero seconds.")
+    return base_url, timeout
+
+
+def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
+    base_url, timeout = _load_api_config()
+    url = f"{base_url}{path}"
+    try:
+        response = requests_module.post(url, json=payload, timeout=timeout)
+    except RequestException as exc:
+        raise click.ClickException(
+            f"Failed to reach pullDB API at {url}: {exc}. "
+            "Ensure the API service is running and reachable."
+        ) from exc
+    if response.status_code >= 400:
+        raise click.ClickException(_format_api_error(response))
+    payload = _parse_json_response(response)
+    if isinstance(payload, dict):
+        return payload
+    raise click.ClickException("Unexpected API response: expected object payload.")
+
+
+def _api_get(path: str, params: dict[str, t.Any]) -> list[dict[str, t.Any]]:
+    base_url, timeout = _load_api_config()
+    url = f"{base_url}{path}"
+    try:
+        response = requests_module.get(url, params=params, timeout=timeout)
+    except RequestException as exc:
+        raise click.ClickException(
+            f"Failed to reach pullDB API at {url}: {exc}. "
+            "Ensure the API service is running and reachable."
+        ) from exc
+    if response.status_code >= 400:
+        raise click.ClickException(_format_api_error(response))
+    payload = _parse_json_response(response)
+    if isinstance(payload, list):
+        return payload
+    raise click.ClickException(
+        "Unexpected API response: expected list payload from status endpoint."
+    )
+
+
+def _parse_json_response(response: Response) -> t.Any:
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise click.ClickException(
+            "pullDB API returned a non-JSON response. "
+            f"Status {response.status_code}, content: {response.text[:200]}"
+        ) from exc
+
+
+def _format_api_error(response: Response) -> str:
+    detail: str | None = None
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict):
+        raw_detail = payload.get("detail") or payload.get("message")
+        if isinstance(raw_detail, str) and raw_detail.strip():
+            detail = raw_detail.strip()
+    if detail:
+        return f"API error ({response.status_code}): {detail}"
+    text = response.text.strip()
+    if text:
+        return f"API error ({response.status_code}): {text[:200]}"
+    return f"API error ({response.status_code}): {response.reason}"
+
+
+def _parse_iso(value: t.Any) -> datetime | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, str):
+        iso_value = value.strip()
+        if not iso_value:
+            return None
+        if iso_value.endswith("Z"):
+            iso_value = iso_value[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(iso_value)
+        except ValueError:
+            return None
+    return None
+
+
+class _JobSummary(t.Protocol):
+    id: str
+    target: str
+    status: str
+    user_code: str
+    submitted_at: datetime | None
+    started_at: datetime | None
+    staging_name: str | None
+
+
+class _JobRow(t.NamedTuple):
+    id: str
+    target: str
+    status: str
+    user_code: str
+    submitted_at: datetime | None
+    started_at: datetime | None
+    staging_name: str | None
+
+
+def _job_row_from_payload(payload: dict[str, t.Any]) -> _JobRow:
+    try:
+        job_id = str(payload["id"])
+        target = str(payload["target"])
+        status = str(payload["status"])
+        user_code = str(payload["user_code"])
+    except KeyError as exc:
+        raise _APIError(f"Missing field in API response: {exc.args[0]}") from exc
+
+    submitted_at = _parse_iso(payload.get("submitted_at"))
+    started_at = _parse_iso(payload.get("started_at"))
+    staging_name_value = payload.get("staging_name")
+    staging_name = str(staging_name_value) if staging_name_value else None
+
+    return _JobRow(
+        id=job_id,
+        target=target,
+        status=status,
+        user_code=user_code,
+        submitted_at=submitted_at,
+        started_at=started_at,
+        staging_name=staging_name,
+    )
 
 
 @click.group(help="pullDB - Development database restore tool")
@@ -64,132 +206,41 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     except CLIParseError as e:  # FAIL HARD surface to user
         raise click.UsageError(str(e)) from e
 
-    # Step 2: Load configuration (MySQL coordination DB credentials)
-    try:
-        config = Config.minimal_from_env()
-    except Exception as e:
-        raise click.ClickException(
-            f"Configuration error: {e}\n"
-            f"Ensure PULLDB_MYSQL_* environment variables are set or "
-            f"use .env file in repo root."
-        ) from e
-
-    # Step 3: Connect to coordination database
-    try:
-        pool = build_default_pool(
-            host=config.mysql_host,
-            user=config.mysql_user,
-            password=config.mysql_password,
-            database=config.mysql_database,
-        )
-        user_repo = UserRepository(pool)
-        job_repo = JobRepository(pool)
-    except Exception as e:
-        raise click.ClickException(
-            f"Failed to connect to coordination database at "
-            f"{config.mysql_host}/{config.mysql_database}: {e}"
-        ) from e
-
-    # Step 4: Get or create user (handles user_code collision)
-    try:
-        user = user_repo.get_or_create_user(username=parsed.username)
-    except Exception as e:
-        raise click.ClickException(f"User creation/lookup failed: {e}") from e
-
-    # Step 5: Determine target database name (use finalized user_code)
-    if parsed.is_qatemplate:
-        target = f"{user.user_code}qatemplate"
-    else:
-        # Sanitize customer_id (already done in parse, but be explicit)
-        sanitized = _sanitize_letters(parsed.customer_id or "")
-        target = f"{user.user_code}{sanitized}"
-
-    # Step 6: Generate staging name (target + "_" + first 12 chars of job_id)
-    # We'll generate UUID here, then truncate for staging
-    job_id = str(uuid.uuid4())
-    staging_name = f"{target}_{job_id[:12]}"
-
-    # Step 7: Determine dbhost (default from config if not specified)
-    dbhost = parsed.dbhost if parsed.dbhost else config.mysql_host
-
-    # Step 8: Build options dict (not JSON string - Job model expects dict)
-    options_dict: dict[str, str] = {
-        "customer_id": parsed.customer_id or "",
-        "is_qatemplate": str(parsed.is_qatemplate),
-        "overwrite": str(parsed.overwrite),
-        "raw_tokens": " ".join(parsed.raw_tokens),
+    # Step 2: Relay request to API service
+    payload = {
+        "user": parsed.username,
+        "customer": parsed.customer_id,
+        "qatemplate": parsed.is_qatemplate,
+        "dbhost": parsed.dbhost,
+        "overwrite": parsed.overwrite,
     }
 
-    # Step 9: Create Job object
-    # Note: submitted_at placeholder; MySQL will set UTC_TIMESTAMP(6) on insert
-    job = Job(
-        id=job_id,
-        owner_user_id=user.user_id,
-        owner_username=user.username,
-        owner_user_code=user.user_code,
-        target=target,
-        staging_name=staging_name,
-        dbhost=dbhost,
-        status=JobStatus.QUEUED,
-        submitted_at=datetime.now(),
-        options_json=options_dict,
-        retry_count=0,
-    )
+    api_response = _api_post("/api/jobs", payload)
 
-    # Step 10: Enqueue job
-    try:
-        job_repo.enqueue_job(job)
-    except ValueError as e:
-        # Likely per-target exclusivity violation
-        emit_event(
-            "job_enqueue_conflict",
-            f"Target busy target={target} dbhost={dbhost}",
-            labels=MetricLabels(
-                job_id=job_id,
-                target=target,
-                phase="enqueue",
-                status="conflict",
-            ),
-        )
-        raise click.ClickException(
-            f"Job submission failed: {e}\n"
-            f"A restore is already queued or running for target '{target}' "
-            f"on host '{dbhost}'.\n"
-            f"Use 'pulldb status' to check active jobs."
-        ) from e
-    except Exception as e:
-        emit_event(
-            "job_enqueue_error",
-            str(e),
-            labels=MetricLabels(
-                job_id=job_id,
-                target=target,
-                phase="enqueue",
-                status="error",
-            ),
-        )
-        raise click.ClickException(f"Failed to enqueue job: {e}") from e
+    if not isinstance(api_response, dict):
+        raise click.ClickException("Unexpected API response when submitting job.")
 
-    # Step 11: Confirm to user
-    emit_counter(
-        "jobs_enqueued_total",
-        labels=MetricLabels(
-            job_id=job_id,
-            target=target,
-            phase="enqueue",
-            status="queued",
-        ),
-    )
+    job_id = str(api_response.get("job_id", ""))
+    target = str(api_response.get("target", ""))
+    staging_name = str(api_response.get("staging_name", ""))
+    status = str(api_response.get("status", "")) or "queued"
+    owner_username = str(api_response.get("owner_username", parsed.username))
+    owner_user_code = str(api_response.get("owner_user_code", ""))
+
+    if not job_id or not target:
+        raise click.ClickException("API response missing job_id or target fields.")
+
     click.echo("Job submitted successfully!")
     click.echo(f"  job_id: {job_id}")
     click.echo(f"  target: {target}")
-    click.echo(f"  staging_name: {staging_name}")
-    click.echo("  status: queued")
-    click.echo(f"  owner: {user.username} (user_code: {user.user_code})")
+    if staging_name:
+        click.echo(f"  staging_name: {staging_name}")
+    click.echo(f"  status: {status}")
+    click.echo(
+        f"  owner: {owner_username} "
+        f"(user_code: {owner_user_code if owner_user_code else 'unknown'})"
+    )
     click.echo("\nUse 'pulldb status' to monitor progress.")
-
-
-MAX_STATUS_LIMIT = 1000
 
 
 @cli.command("status", help="Show active (queued/running) jobs")
@@ -230,37 +281,19 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
     if limit <= 0 or limit > MAX_STATUS_LIMIT:
         raise click.UsageError(f"--limit must be between 1 and {MAX_STATUS_LIMIT}")
 
-    # Load minimal configuration (same path as restore)
     try:
-        config = Config.minimal_from_env()
-    except Exception as e:  # FAIL HARD surface
-        raise click.ClickException(
-            f"Configuration error: {e}\n"
-            f"Ensure PULLDB_MYSQL_* environment variables are set or use .env file."
-        ) from e
+        payloads = _api_get("/api/jobs/active", {"limit": limit})
+    except _APIError as exc:
+        raise click.ClickException(str(exc)) from exc
 
-    # Connect to coordination database
-    try:
-        pool = build_default_pool(
-            host=config.mysql_host,
-            user=config.mysql_user,
-            password=config.mysql_password,
-            database=config.mysql_database,
-        )
-        job_repo = JobRepository(pool)
-    except Exception as e:
-        raise click.ClickException(
-            f"Failed to connect to coordination database at "
-            f"{config.mysql_host}/{config.mysql_database}: {e}"
-        ) from e
+    summaries: list[_JobRow] = []
+    for payload in payloads[:limit]:
+        try:
+            summaries.append(_job_row_from_payload(payload))
+        except _APIError as exc:
+            raise click.ClickException(str(exc)) from exc
 
-    # Fetch active jobs (queued or running)
-    try:
-        jobs = job_repo.get_active_jobs()[:limit]
-    except Exception as e:
-        raise click.ClickException(f"Failed querying active jobs: {e}") from e
-
-    if not jobs:
+    if not summaries:
         click.echo(
             "No active jobs. Submit a restore with:\n"
             "  pullDB user=<username> customer=<id>"
@@ -268,30 +301,18 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
         return
 
     if json_out:
-        # Emit compact JSON objects
-        out: list[dict[str, t.Any]] = []
-        for j in jobs:
-            started_dt = getattr(j, "started_at", None)
-            out.append(
+        if wide:
+            filtered = payloads[:limit]
+        else:
+            filtered = [
                 {
-                    "id": j.id,
-                    "target": j.target,
-                    "status": j.status.value,
-                    "user_code": j.owner_user_code,
-                    "submitted_at": (
-                        j.submitted_at.isoformat() if j.submitted_at else None
-                    ),
-                    "started_at": (
-                        started_dt.isoformat() if started_dt is not None else None
-                    ),
-                    **(
-                        {"staging_name": j.staging_name}
-                        if wide and getattr(j, "staging_name", None)
-                        else {}
-                    ),
+                    key: value
+                    for key, value in entry.items()
+                    if key != "staging_name"
                 }
-            )
-        click.echo(json_module.dumps(out, separators=(",", ":")))
+                for entry in payloads[:limit]
+            ]
+        click.echo(json_module.dumps(filtered, separators=(",", ":")))
         return
 
     # Table output
@@ -299,29 +320,30 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
     def _fmt_dt(dt: datetime | None) -> str:
         return dt.isoformat(timespec="seconds") if dt else "—"
 
-    rows: list[tuple[str, str, str, str, str, str]] = []
-    for j in jobs:
-        rows.append(
-            (
-                j.status.value,
-                j.id[:8],
-                j.target,
-                j.owner_user_code,
-                _fmt_dt(j.submitted_at),
-                _fmt_dt(getattr(j, "started_at", None)),
-            )
+    primary_rows: list[list[str]] = []
+    staging_values: list[str] = []
+    for summary in summaries:
+        primary_rows.append(
+            [
+                summary.status,
+                summary.id[:8],
+                summary.target,
+                summary.user_code,
+                _fmt_dt(summary.submitted_at),
+                _fmt_dt(summary.started_at),
+            ]
         )
+        staging_values.append(summary.staging_name or "")
 
     headers = ["STATUS", "JOB_ID", "TARGET", "USER", "SUBMITTED", "STARTED"]
     if wide:
         headers.append("STAGING")
     # Compute widths
-    col_widths = [
-        max(len(h), *(len(r[i]) for r in rows)) for i, h in enumerate(headers[:6])
-    ]
+    col_widths: list[int] = []
+    for idx, header in enumerate(headers[:6]):
+        col_widths.append(max(len(header), *(len(row[idx]) for row in primary_rows)))
     if wide:
-        staging_vals = [getattr(j, "staging_name", "") for j in jobs]
-        col_widths.append(max(len("STAGING"), *(len(v) for v in staging_vals)))
+        col_widths.append(max(len("STAGING"), *(len(v) for v in staging_values)))
 
     # Print header
     header_line = "  ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers))
@@ -329,14 +351,14 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
     click.echo("  ".join("-" * w for w in col_widths))
 
     # Print rows
-    for idx, row in enumerate(rows):
-        line = "  ".join(row[i].ljust(col_widths[i]) for i in range(len(row)))
+    for idx, entry in enumerate(primary_rows):
+        line = "  ".join(entry[i].ljust(col_widths[i]) for i in range(6))
         if wide:
-            staging_val = getattr(jobs[idx], "staging_name", "")
+            staging_val = staging_values[idx]
             line = f"{line}  {staging_val.ljust(col_widths[-1])}"
         click.echo(line)
 
-    click.echo(f"\n{len(rows)} active job(s) displayed (limit={limit}).")
+    click.echo(f"\n{len(primary_rows)} active job(s) displayed (limit={limit}).")
 
 
 def main(argv: t.Sequence[str] | None = None) -> int:

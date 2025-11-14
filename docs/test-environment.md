@@ -10,9 +10,11 @@ The test environment provides an isolated space for validating the v0.0.1 releas
 
 - Dedicated MySQL test database (`pulldb_test_coordination`)
 - Python virtual environment with pullDB installed
+- Pinned test dependencies preinstalled (pytest, pytest-timeout, httpx, moto, responses)
 - Configuration files with random credentials
 - Smoke tests for basic validation
 - Convenience scripts for easy activation
+- AWS default profile configured to assume the staging cross-account read-only role via EC2 Instance Metadata
 
 **Location**: `test-env/` directory in project root
 **Setup Script**: `scripts/setup-test-environment.sh`
@@ -39,6 +41,9 @@ sudo bash scripts/setup-test-environment.sh --skip-mysql
 
 # Skip AWS verification (offline testing)
 sudo bash scripts/setup-test-environment.sh --skip-aws
+
+# Only install dependencies (already provisioned DB/AWS)
+sudo bash scripts/setup-test-environment.sh --skip-mysql --skip-aws
 ```
 
 ### Activate Environment
@@ -47,8 +52,11 @@ sudo bash scripts/setup-test-environment.sh --skip-aws
 # Activate test environment (loads config + venv)
 source test-env/activate-test-env.sh
 
-# Run smoke tests
+# Run smoke tests (also executed automatically at the end of setup)
 bash test-env/run-quick-test.sh
+
+# Verify AWS identity (optional; requires metadata-backed default profile)
+aws sts get-caller-identity --profile default
 ```
 
 ### Use Environment
@@ -142,6 +150,22 @@ PULLDB_WORK_DIR=/home/user/Projects/.../pullDB/test-env/work
 PULLDB_LOG_LEVEL=INFO
 ```
 
+### AWS Profile Expectations
+
+The setup assumes the **default** AWS CLI profile can assume the staging read-only role:
+
+```
+[default]
+role_arn = arn:aws:iam::333204494849:role/pulldb-staging-cross-account-readonly
+credential_source = Ec2InstanceMetadata
+external_id = pulldb-dev-access-2025
+region = us-east-1
+```
+
+- **On EC2**: Instance metadata provides credentials automatically—no extra steps required.
+- **Local workstations**: Either mirror the metadata configuration using a profile that can assume the role, or run the setup with `--skip-aws` and treat S3 restores as unsupported until credentials are provisioned.
+- The smoke test reports a warning (but still passes) when the profile cannot authenticate; this is expected when developing offline.
+
 ### test-env/config/mysql-credentials.txt
 
 Human-readable credentials for manual testing:
@@ -178,7 +202,7 @@ Running quick smoke tests...
 ✓ Testing database connectivity...
   MySQL version: 8.0.43-0ubuntu0.24.04.2
 ✓ Testing AWS credentials...
-  (AWS credentials not configured - optional for testing)
+  Account: 333204494849 (role pulldb-staging-cross-account-readonly)
 ✓ Testing Python imports...
   All imports successful
 
@@ -207,14 +231,27 @@ sudo chmod 644 test-env/.env
 sudo chown -R $USER:$USER test-env/venv
 ```
 
+> When metadata credentials are present the setup reports the assumed account. If both explicit and metadata providers fail, the script logs a warning and continues so offline development remains possible.
+### Issue: AWS profile unavailable
+
+**Symptom**: `The config profile (default) could not be found` or `Unable to locate credentials`
+
+**Solution**:
+1. Ensure `~/.aws/config` contains the metadata-based default profile snippet shown above.
+2. If working off-instance, configure a source profile with `sts:AssumeRole` permissions and map it to `default`, or rerun setup with `--skip-aws`.
+
 ### Issue: Module not found errors
 
-**Symptom**: `ModuleNotFoundError: No module named 'mypy_boto3_s3'`
+**Symptom**: `ModuleNotFoundError: No module named 'httpx'`
 
 **Solution**:
 ```bash
+# Re-run setup to reinstall pinned dependencies
+sudo bash scripts/setup-test-environment.sh --skip-mysql --skip-aws
+
+# Or repair in-place
 source test-env/activate-test-env.sh
-pip install mypy-boto3-s3
+pip install -r requirements-test.txt
 ```
 
 ### Issue: CLI command not found
@@ -244,7 +281,7 @@ mysql -u root -p -e "SHOW DATABASES LIKE 'pulldb_test%';"
 **Solution**: Deploy schema manually
 ```bash
 cat test-env/config/mysql-credentials.txt
-mysql -u pulldb_usability_test -p pulldb_test_coordination < schema/pulldb.sql
+cat schema/pulldb/*.sql | mysql -u pulldb_usability_test -p pulldb_test_coordination
 ```
 
 ---
@@ -375,6 +412,6 @@ mysql -u root -p -e "DROP USER IF EXISTS 'pulldb_usability_test'@'localhost';"
 
 ---
 
-**Last Updated**: November 3, 2025
+**Last Updated**: November 14, 2025
 **Version**: v0.0.1
 **Maintainer**: PestRoutes Engineering

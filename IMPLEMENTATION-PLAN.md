@@ -24,7 +24,7 @@
 ### Code (Phase 0 Prototype - 85% Complete ✅)
 - [x] Python virtual environment created (Python 3.12.3)
 - [x] MySQL setup script created (`scripts/setup-mysql.sh`)
-- [x] Schema SQL published (`schema/pulldb.sql`; legacy shell wrapper archived under `scripts/archived/`)
+- [x] Schema SQL published (`schema/pulldb/` numbered files; legacy shell wrapper archived under `scripts/archived/`)
 - [x] AWS installation script created (`scripts/setup-aws.sh`)
 - [x] Dependency manifests added (`requirements.txt`, `requirements-dev.txt`, `requirements.lock`)
 - [x] Python project structure (complete with 59 files, ~5187 source LOC)
@@ -101,18 +101,20 @@ pulldb/
 ├── .python-version         # Python 3.11+
 ├── pulldb/
 │   ├── __init__.py
+│   ├── api/
+│   │   ├── __init__.py
+│   │   └── main.py         # Entry point: pulldb-api service
 │   ├── cli/
 │   │   ├── __init__.py
 │   │   ├── main.py         # Entry point: pullDB command
 │   │   ├── validator.py    # Option validation
 │   │   └── formatter.py    # Output formatting
-│   ├── daemon/
+│   ├── worker/
 │   │   ├── __init__.py
-│   │   ├── main.py         # Entry point: pulldb-daemon
-│   │   ├── worker.py       # Job execution loop
+│   │   ├── service.py      # Entry point: pulldb-worker daemon
 │   │   ├── downloader.py   # S3 operations
-│   │   ├── restorer.py     # myloader wrapper + staging pattern
-│   │   └── cleaner.py      # Post-restore SQL + metadata
+│   │   ├── restore.py      # Orchestrates staging lifecycle
+│   │   └── post_sql.py     # Post-restore execution helpers
 │   ├── infra/
 │   │   ├── __init__.py
 │   │   ├── mysql.py        # MySQL connection pool + queries
@@ -125,13 +127,11 @@ pulldb/
 │   │   └── config.py       # Configuration dataclass
 │   └── tests/
 │       ├── __init__.py
-│       ├── test_cli/
-│       ├── test_daemon/
-│       ├── test_infra/
-│       └── fixtures/
+│       └── *.py             # Pytest suite (unit + integration)
 └── scripts/
     ├── setup-mysql.sh               # MySQL 8.x installation script
-    └── deploy-daemon.sh             # Deployment helper (future)
+    ├── install_pulldb.sh            # Post-install customization helper
+    └── pulldb-worker.service        # Systemd unit template (installed by package)
 
 schema/
 └── pulldb.sql                       # Coordination database schema (canonical)
@@ -140,7 +140,7 @@ schema/
 **Tasks**:
 - [x] Initialize Python virtual environment (Python 3.12.3)
 - [x] Create MySQL installation script with custom data directory setup
-- [x] Publish canonical schema SQL (`schema/pulldb.sql`)
+- [x] Publish canonical schema SQL (`schema/pulldb/` bundle)
 -- [x] Initialize Python project with setuptools (PEP 621 metadata)
 -- [x] Create directory structure (`pulldb/` package scaffolding)
 - [x] Set up pytest configuration (integration marker registered in pyproject.toml)
@@ -161,7 +161,7 @@ python-dotenv>=1.0.0  # .env file support
 
 **Artifacts Produced**:
 - `scripts/setup-mysql.sh` - Installs MySQL 8.x, configures data directories on `/mnt/data/mysql`
-- `schema/pulldb.sql` - Defines the `pulldb` database with all tables, view, trigger, and seed data
+- `schema/pulldb/` - Defines the `pulldb` database with all tables, view, trigger, and seed data (numbered SQL files)
 
 **Tasks**:
 - [x] Create MySQL installation script with automated setup
@@ -170,7 +170,7 @@ python-dotenv>=1.0.0  # .env file support
 - [x] Update AppArmor permissions for custom data directory
 - [x] Produce schema SQL with trigger and initial data
 - [x] Run `sudo scripts/setup-mysql.sh` (completed)
-- [x] Apply schema via `mysql -u root -p < schema/pulldb.sql` (completed)
+- [x] Apply schema via `cat schema/pulldb/*.sql | mysql -u root -p` (completed)
 - [x] Test schema deployment on local/dev MySQL instance (verified)
 - [x] Document connection parameters and credential setup (see docs/mysql-setup.md)
 
@@ -902,19 +902,19 @@ class StructuredLogger:
 - [x] MySQL credentials setup guide (`docs/aws-secrets-manager-setup.md`)
 - [x] Operational runbooks (`design/runbook-restore.md`, `design/runbook-failure.md`)
 - [x] Atomic rename procedure deployment script (`scripts/deploy_atomic_rename.py`)
+- [x] Systemd worker service unit (`scripts/pulldb-worker.service`)
+- [x] Worker service entry point (`pulldb/worker/service.py`)
+- [x] Installer customization script (`scripts/install_pulldb.sh`)
 
 **Pending** (estimated 2-3 days):
-- [ ] Systemd service file for daemon
-- [ ] Daemon service entry point script (`worker/service.py` placeholder exists)
-- [ ] General deployment script (package + deploy to EC2)
 - [ ] Monitoring dashboard template (Datadog)
 - [ ] Initial production deployment + 2-week stability monitoring
 
 #### 10.1 Deployment Package
 
 **Tasks**:
-- [ ] Create systemd service file for daemon (pending)
-- [ ] Create deployment script (pending)
+- [x] Create systemd service file for worker (scripts/pulldb-worker.service)
+- [x] Create installer/deployment script (`scripts/install_pulldb.sh`)
 - [x] Document IAM role requirements
 - [x] Document MySQL credentials setup
 - [ ] Create monitoring dashboard template (pending - metrics framework ready)
@@ -923,14 +923,14 @@ class StructuredLogger:
 **Example systemd service**:
 ```ini
 [Unit]
-Description=pullDB Daemon
+Description=pullDB Worker Service
 After=network.target
 
 [Service]
 Type=simple
 User=pulldb
 WorkingDirectory=/opt/pulldb
-ExecStart=/opt/pulldb/venv/bin/pulldb-daemon
+ExecStart=/opt/pulldb/venv/bin/pulldb-worker
 Restart=on-failure
 RestartSec=10
 
@@ -944,7 +944,7 @@ WantedBy=multi-user.target
 - [ ] Deploy MySQL coordination database
 - [ ] Populate db_hosts table with db3, db4, db5
 - [ ] Populate settings table with defaults
-- [ ] Deploy daemon to EC2 instance
+- [ ] Deploy worker service to EC2 instance
 - [ ] Configure AWS credentials and IAM
 - [ ] Deploy CLI to jump box / developer machines
 - [ ] Test end-to-end restore with real backup

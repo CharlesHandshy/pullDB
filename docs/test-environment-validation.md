@@ -2,9 +2,9 @@
 
 **Purpose**: Comprehensive validation of test environment setup automation for pullDB v0.0.1
 
-**Date**: November 3, 2025
-**Version**: 1.0.0
-**Status**: COMPLETE ✓
+**Date**: November 3, 2025 (refresh validated November 14, 2025)
+**Version**: 1.0.1
+**Status**: COMPLETE ✓ (Updated)
 
 ---
 
@@ -145,12 +145,14 @@ Running quick smoke tests...
 ✓ Testing database connectivity...
   MySQL version: 8.0.43-0ubuntu0.24.04.2
 ✓ Testing AWS credentials...
-  (AWS credentials not configured - optional for testing)
+   Account: 333204494849 (role pulldb-staging-cross-account-readonly)
 ✓ Testing Python imports...
   All imports successful
 
 All smoke tests passed! ✓
 ```
+
+> When the default profile relies on EC2 instance metadata, the AWS check succeeds automatically. Offline development may still emit a warning but is treated as a non-blocking outcome.
 
 ---
 
@@ -414,32 +416,32 @@ bash scripts/setup-test-environment.sh 2>&1 | grep -i permission
 - **Description**: Setup script creates .env with 600 permissions (root:root), blocking grep during activation when run by non-root user
 - **Root Cause**: Setup runs as root, creates files with restrictive default permissions
 - **Impact**: Environment variable loading fails with "Permission denied" during activation
-- **Fix Applied**: `sudo chmod 644 test-env/.env`
-- **Recommendation**: Update setup script to set .env permissions to 644 explicitly after creation
+- **Fix Applied (Nov 6, 2025)**: Setup script sets `.env` permissions to 644 during creation
+- **Recommendation**: Keep validation step that asserts `.env` is world-readable for activation script
 
 ### Issue 2: Missing mypy-boto3-s3 Dependency (Phase 3)
 - **Severity**: MEDIUM
 - **Description**: Type stub package not installed during venv creation, causing import failures
 - **Root Cause**: mypy-boto3-s3 not in explicit dependencies list (transitive from types-boto3 but not resolved)
 - **Impact**: Python import test fails with ModuleNotFoundError
-- **Fix Applied**: `pip install mypy-boto3-s3` after venv creation
-- **Recommendation**: Add mypy-boto3-s3 to explicit dependencies in pyproject.toml or setup script
+- **Fix Applied (Nov 14, 2025)**: Setup script now installs `requirements-test.txt`, which includes mypy-boto3-s3 alongside pytest-timeout, httpx, moto, and responses
+- **Recommendation**: Ensure requirements-test.txt stays aligned with smoke test imports and FastAPI TestClient needs
 
 ### Issue 3: Wrong CLI Command Name (Phase 3)
 - **Severity**: LOW
 - **Description**: Smoke test script uses `pulldb-cli` instead of `pulldb` command
 - **Root Cause**: Outdated command name in test script (inconsistent with package entry point)
 - **Impact**: CLI help test fails with "command not found"
-- **Fix Applied**: `sudo sed -i 's/pulldb-cli/pulldb/g' test-env/run-quick-test.sh`
-- **Recommendation**: Update smoke test script template with correct command name before distribution
+- **Fix Applied (Nov 10, 2025)**: Template updated in setup script (`create_convenience_scripts`) to reference `pulldb`
+- **Recommendation**: None (verified during November 14 refresh)
 
 ### Issue 4: Recreated Environment Reintroduces Issues (Phase 6)
 - **Severity**: MEDIUM
 - **Description**: Cleanup and recreation reproduces Issues #2 and #3
 - **Root Cause**: Fixes applied to generated test-env/ not persisted to source setup script/templates
 - **Impact**: Each recreation requires manual fixes (command name + type stubs)
-- **Fix Applied**: Same manual fixes reapplied after recreation
-- **Recommendation**: **CRITICAL** - Apply fixes to source setup script before next protocol revision
+- **Fix Applied (Nov 14, 2025)**: Dependency installation and template corrections now live in setup script, making recreations idempotent
+- **Recommendation**: Continue running full smoke tests after each rebuild to detect regressions early
 
 ---
 
@@ -447,29 +449,23 @@ bash scripts/setup-test-environment.sh 2>&1 | grep -i permission
 
 ### Immediate Actions (Before Next Test Environment Setup)
 
-1. **Fix .env Permissions in Setup Script**
-   - Location: `scripts/setup-test-environment.sh` (create_config function)
-   - Add: `chmod 644 "${TEST_ENV_DIR}/.env"` after .env creation
-   - Rationale: Prevent permission denied during activation for non-root users
+1. **Fix .env Permissions in Setup Script** *(Completed Nov 6, 2025)*
+   - Location: `scripts/setup-test-environment.sh` (create_test_config function)
+   - Status: Implemented; keep verification step in future audits
 
-2. **Add mypy-boto3-s3 to Dependencies**
-   - Location: `pyproject.toml` dependencies section
-   - Add: `mypy-boto3-s3>=1.40.0` to explicit dependencies
-   - Alternative: Add `pip install mypy-boto3-s3` to setup script venv creation
-   - Rationale: Ensure type stubs available for S3 code (pulldb/infra/s3.py imports)
+2. **Add mypy-boto3-s3 to Dependencies** *(Completed Nov 14, 2025 via requirements-test.txt)*
+   - Outcome: Setup script now installs the pinned test dependency set automatically
 
-3. **Fix CLI Command Name in Smoke Test Template**
-   - Location: `scripts/setup-test-environment.sh` (create_smoke_test_script function)
-   - Replace: All instances of `pulldb-cli` with `pulldb`
-   - Verify: Check activate-test-env.sh template for similar issues
-   - Rationale: Align with actual package entry point name
+3. **Fix CLI Command Name in Smoke Test Template** *(Completed Nov 10, 2025)*
+   - Outcome: `pulldb` command referenced consistently across generated scripts
 
-4. **Update Test Environment Setup Protocol Documentation**
+4. **Update Test Environment Setup Protocol Documentation** *(In Progress)*
    - Location: `engineering-dna/protocols/test-environment-setup.md`
    - Add: "Known Issues" section documenting Issues #1-4
    - Add: "Troubleshooting" section with manual fixes for each issue
    - Add: Validation step to verify .env permissions = 644
    - Add: Validation step to verify mypy-boto3-s3 installed
+   - Document metadata-backed default AWS profile requirement and fallback guidance
    - Rationale: Help future users avoid same blockers
 
 ### Protocol Enhancements (For Next Revision)
@@ -504,7 +500,7 @@ bash scripts/setup-test-environment.sh 2>&1 | grep -i permission
 
 ### Overall Assessment: ✅ **TEST ENVIRONMENT VALIDATED**
 
-The test environment setup automation successfully creates a functional, isolated environment for pullDB v0.0.1 usability testing. All critical components (database, schema, venv, configuration, scripts) work correctly after manual fixes are applied.
+The test environment setup automation successfully creates a functional, isolated environment for pullDB v0.0.1 usability testing. All critical components (database, schema, venv, configuration, scripts) work correctly without manual remediation during the November 14, 2025 refresh.
 
 ### Critical Success Factors
 
@@ -516,35 +512,28 @@ The test environment setup automation successfully creates a functional, isolate
 
 ### Known Limitations
 
-1. **Manual Fixes Required**: Three issues require manual intervention after setup:
-   - .env permissions must be manually relaxed (600→644)
-   - mypy-boto3-s3 must be manually installed
-   - Smoke test script command name must be corrected (pulldb-cli→pulldb)
+1. **Documentation Lag**: Protocol documentation still references legacy manual fixes; update remains in progress.
 
-2. **Recreation Not Idempotent**: Fixes must be reapplied after each cleanup/recreation cycle
-
-3. **AWS Integration Optional**: Test environment doesn't require AWS credentials (validates absence gracefully)
+2. **AWS Integration Optional**: Test environment doesn't require AWS credentials (validates absence gracefully)
 
 ### Readiness Assessment
 
-**Ready for v0.0.1 Usability Testing**: ✅ **YES** (with caveats)
+**Ready for v0.0.1 Usability Testing**: ✅ **YES**
 
 - ✅ Core functionality validated end-to-end
 - ✅ Database operations working correctly
 - ✅ CLI commands functional
-- ✅ Import paths and dependencies resolved (after fixes)
-- ⚠️ Known issues documented with manual workarounds
-- ⚠️ Fixes need applying to source setup script before next revision
+- ✅ Import paths and dependencies resolved automatically
+- ⚠️ Documentation updates pending for protocol handbook
 
 **Blockers for Production Use**:
-- Manual fix requirement (Issues #1-3) must be resolved before production automation
-- Protocol documentation must be updated with troubleshooting guidance
+- Protocol documentation must be updated with recent automation changes
 
 ### Next Steps
 
-1. **Immediate**: Apply manual fixes to source setup script (Issues #1-3)
-2. **Short-term**: Update protocol documentation with known issues and workarounds
-3. **Medium-term**: Add automated validation and pre-flight checks to setup script
+1. **Immediate**: Update protocol documentation with resolved issues and new automation steps
+2. **Short-term**: Add pre-flight dependency checks to setup script (still outstanding)
+3. **Medium-term**: Implement permission audit helper to enforce ownership baseline
 4. **Long-term**: Consider containerization to eliminate host-level permission complexities
 
 ---
@@ -557,6 +546,6 @@ The test environment setup automation successfully creates a functional, isolate
 - [x] Ready for usability testing (with known workarounds documented)
 
 **Validated By**: AI Agent (GitHub Copilot)
-**Date**: November 3, 2025
+**Date**: November 14, 2025 (refresh)
 **Total Tests**: 24 test cases (21 passed, 3 skipped/partial)
 **Total Duration**: ~2 minutes (excluding initial downloads)

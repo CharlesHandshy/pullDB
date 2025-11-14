@@ -1,0 +1,12 @@
+Package: pulldb
+Version: 0.0.1
+Section: admin
+Priority: optional
+Architecture: amd64
+Maintainer: PestRoutes Engineering <engineering@pestroutes.com>
+Depends: python3 (>= 3.12), python3-venv, systemd, adduser, bash
+Homepage: https://github.com/CharlesHandshy/pullDB
+Description: pullDB database restore tooling
+ pullDB retrieves production backups and restores them into development
+ environments. This package installs the system scaffolding, service
+ templates, and installer used to configure the worker daemon.
