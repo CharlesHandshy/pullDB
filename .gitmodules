@@ -1,4 +1,4 @@
-[submodule "Tools/pullDB/engineering-dna"]
-	path = Tools/pullDB/engineering-dna
+[submodule "engineering-dna"]
+	path = engineering-dna
 	url = https://github.com/CharlesHandshy/engineering-dna.git
 	branch = main
