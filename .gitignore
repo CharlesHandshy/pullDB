@@ -8,6 +8,7 @@ __pycache__/
 *.so
 .Python
 build/
+pulldb.egg-info/
 develop-eggs/
 dist/
 downloads/
@@ -77,6 +78,9 @@ test_data/
 
 # Debian packages (build artifacts)
 *.deb
+
+# Vendor binaries (re-download from upstream release archives; never tracked)
+binaries/
 
 # OS
 .DS_Store
