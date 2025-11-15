@@ -8,14 +8,36 @@ business rules and provide clean abstractions.
 from __future__ import annotations
 
 import json
+import logging
 import typing as t
 import uuid
 from contextlib import contextmanager
 
 import mysql.connector
+from mysql.connector import errorcode
+from mysql.connector import errors as mysql_errors
 
 from pulldb.domain.models import DBHost, Job, JobEvent, JobStatus, User
 from pulldb.infra.secrets import CredentialResolver, MySQLCredentials
+
+
+logger = logging.getLogger(__name__)
+
+
+_ACTIVE_JOBS_VIEW_QUERY = """
+SELECT id, owner_user_id, owner_username, owner_user_code, target,
+    status, submitted_at, started_at
+FROM active_jobs
+ORDER BY submitted_at ASC
+"""
+
+_ACTIVE_JOBS_TABLE_QUERY = """
+SELECT id, owner_user_id, owner_username, owner_user_code, target,
+    status, submitted_at, started_at
+FROM jobs
+WHERE status IN ('queued','running')
+ORDER BY submitted_at ASC
+"""
 
 
 class MySQLPool:
@@ -83,6 +105,7 @@ class JobRepository:
             pool: MySQL connection pool for coordination database.
         """
         self.pool = pool
+        self._active_jobs_view_available = True
 
     def enqueue_job(self, job: Job) -> str:
         """Insert new job into queue.
@@ -266,16 +289,32 @@ class JobRepository:
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
-            cursor.execute(
-                """
-                SELECT id, owner_user_id, owner_username, owner_user_code, target,
-                       status, submitted_at, started_at
-                FROM active_jobs
-                ORDER BY submitted_at ASC
-                """
-            )
-            rows = cursor.fetchall()
+            rows = self._fetch_active_job_rows(cursor)
             return [self._row_to_active_job(row) for row in rows]
+
+    def _fetch_active_job_rows(self, cursor: t.Any) -> list[dict[str, t.Any]]:
+        """Fetch active jobs using view when available.
+
+        Older coordination databases might be missing the active_jobs view,
+        so we fall back to a direct jobs table query on error 1146.
+        """
+
+        if self._active_jobs_view_available:
+            try:
+                cursor.execute(_ACTIVE_JOBS_VIEW_QUERY)
+                return t.cast(list[dict[str, t.Any]], cursor.fetchall())
+            except mysql_errors.ProgrammingError as exc:
+                if getattr(exc, "errno", None) == errorcode.ER_NO_SUCH_TABLE:
+                    self._active_jobs_view_available = False
+                    logger.warning(
+                        "active_jobs view missing (errno %s); falling back to jobs table query",
+                        getattr(exc, "errno", "unknown"),
+                    )
+                else:  # pragma: no cover - unexpected MySQL programming error
+                    raise
+
+        cursor.execute(_ACTIVE_JOBS_TABLE_QUERY)
+        return t.cast(list[dict[str, t.Any]], cursor.fetchall())
 
     def get_jobs_by_user(self, user_id: str) -> list[Job]:
         """Get all jobs for a user.

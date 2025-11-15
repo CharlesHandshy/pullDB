@@ -12,7 +12,9 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-Environment=PULLDB_AWS_PROFILE=dev
+# Secrets + MySQL live in dev account: use pr-dev profile for credential resolution
+Environment=PULLDB_AWS_PROFILE=pr-dev
+# AWS_PROFILE remains unset so the EC2 instance profile handles S3 access.
 WorkingDirectory=/opt/pulldb
 ExecStart=/usr/bin/env pulldb-worker
 Restart=on-failure

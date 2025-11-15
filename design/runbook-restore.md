@@ -17,6 +17,19 @@ At ANY deviation from expected flow (validation rejection, disk check failure, m
 3. Ensure daemon is running and monitoring metrics (queue depth, disk capacity).
 4. Check workspace disk space (`df -h`) to verify baseline capacity.
 
+### Worker daemon control (systemd + diagnostics)
+
+- **Systemd service** lives at `/etc/systemd/system/pulldb-worker.service` and runs `pulldb-worker` with `PULLDB_AWS_PROFILE=pr-dev` so Secrets Manager + MySQL calls always hit the development account. Leave `AWS_PROFILE` unset on hosts that have the proper instance profile; only override it when debugging with a local profile that mirrors the host role.
+- For targeted diagnostics, run the worker once without systemd:
+
+```bash
+PULLDB_AWS_PROFILE=pr-dev pulldb-worker --oneshot --poll-interval 0.5
+```
+
+  - `--oneshot` forces a single poll iteration (max-iterations=1) while bypassing exponential backoff so you can quickly validate queue access.
+  - `--poll-interval` only applies when not in oneshot mode; in oneshot runs it is clamped to the minimum interval automatically.
+- When you need to inspect staging or production S3 backups outside the worker (e.g., manual `aws s3 ls` or `pytest pulldb/tests/test_s3_real_listing_optional.py`), switch `AWS_PROFILE` to `pr-staging` or `pr-prod` respectively **but keep** `PULLDB_AWS_PROFILE=pr-dev` so credential resolution remains in the dev account.
+
 ## Submit Restore
 
 ```bash
