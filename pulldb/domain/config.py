@@ -39,7 +39,6 @@ class S3BackupLocationConfig:
 
     def aliases_for_target(self, target: str) -> tuple[str, ...]:
         """Return configured alias tuple for target (empty tuple when missing)."""
-
         return self.target_aliases.get(target, ())
 
 
@@ -314,9 +313,9 @@ class Config:
                     source="settings.myloader_threads",
                 )
 
-        backup_locations_source = os.getenv("PULLDB_S3_BACKUP_LOCATIONS") or settings.get(
-            "s3_backup_locations"
-        )
+        backup_locations_source = os.getenv(
+            "PULLDB_S3_BACKUP_LOCATIONS"
+        ) or settings.get("s3_backup_locations")
         s3_backup_locations = _load_s3_backup_locations(
             backup_locations_source,
             s3_bucket_path,
@@ -348,7 +347,6 @@ class Config:
 
 def _strip_or_none(value: str | None) -> str | None:
     """Return stripped value or None when empty."""
-
     if value is None:
         return None
     stripped = value.strip()
@@ -357,7 +355,6 @@ def _strip_or_none(value: str | None) -> str | None:
 
 def _parse_extra_args(value: str | None, *, source: str) -> tuple[str, ...]:
     """Parse space-delimited CLI args into tuple preserving order."""
-
     if not value:
         return ()
     try:
@@ -372,11 +369,12 @@ def _parse_extra_args(value: str | None, *, source: str) -> tuple[str, ...]:
 
 def _parse_positive_float(value: str, *, source: str) -> float:
     """Parse positive float from string with FAIL HARD diagnostics."""
-
     try:
         parsed = float(value)
     except ValueError as exc:  # pragma: no cover - invalid literal
-        raise ValueError(f"{source} must be a positive number; received '{value}'") from exc
+        raise ValueError(
+            f"{source} must be a positive number; received '{value}'"
+        ) from exc
     if parsed <= 0:
         raise ValueError(f"{source} must be greater than zero; received '{value}'")
     return parsed
@@ -384,11 +382,12 @@ def _parse_positive_float(value: str, *, source: str) -> float:
 
 def _parse_positive_int(value: str, *, source: str) -> int:
     """Parse positive integer from string with FAIL HARD diagnostics."""
-
     try:
         parsed = int(value)
     except ValueError as exc:  # pragma: no cover - invalid literal
-        raise ValueError(f"{source} must be a positive integer; received '{value}'") from exc
+        raise ValueError(
+            f"{source} must be a positive integer; received '{value}'"
+        ) from exc
     if parsed <= 0:
         raise ValueError(f"{source} must be a positive integer; received '{value}'")
     return parsed
@@ -399,7 +398,6 @@ def _load_s3_backup_locations(
     fallback_bucket_path: str | None,
 ) -> tuple[S3BackupLocationConfig, ...]:
     """Parse configured S3 backup locations or build fallback from bucket path."""
-
     if raw_locations:
         return _parse_s3_backup_locations(raw_locations)
 
@@ -446,7 +444,9 @@ def _parse_s3_backup_locations(
         raw_aliases = entry.get("target_aliases") or {}
         target_aliases: dict[str, tuple[str, ...]] = {}
         if not isinstance(raw_aliases, dict):
-            raise ValueError("target_aliases must be an object mapping target to alias list")
+            raise ValueError(
+                "target_aliases must be an object mapping target to alias list"
+            )
         for target_key, aliases in raw_aliases.items():
             if not isinstance(target_key, str):
                 raise ValueError("target_aliases keys must be strings")

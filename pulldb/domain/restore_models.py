@@ -104,7 +104,6 @@ def build_configured_myloader_spec(
     Returns:
         Configured MyLoaderSpec honoring environment/settings overrides.
     """
-
     merged_args: list[str] = list(config.myloader_extra_args)
     if extra_args:
         merged_args.extend(extra_args)

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import importlib
-import os
 import json as json_module
+import os
 import sys
 import typing as t
 from datetime import datetime
@@ -15,6 +15,7 @@ import click
 from pulldb import __version__
 from pulldb.cli.parse import CLIParseError, parse_restore_args
 
+
 DEFAULT_API_URL = "http://localhost:8080"
 DEFAULT_API_TIMEOUT_SECONDS = 30.0
 MAX_STATUS_LIMIT = 1000
@@ -24,8 +25,10 @@ if t.TYPE_CHECKING:  # pragma: no cover - typing-only import
     from requests import RequestException, Response
 else:
     requests_module = t.cast(ModuleType, importlib.import_module("requests"))
-    RequestException = t.cast(type[Exception], getattr(requests_module, "RequestException"))
-    Response = t.cast(type, getattr(requests_module, "Response"))
+    RequestException = t.cast(
+        type[Exception], requests_module.RequestException
+    )
+    Response = t.cast(type, requests_module.Response)
 
 
 class _APIError(RuntimeError):
@@ -34,7 +37,6 @@ class _APIError(RuntimeError):
 
 def _load_api_config() -> tuple[str, float]:
     """Resolve API base URL and timeout from environment variables."""
-
     base_url = os.getenv("PULLDB_API_URL", DEFAULT_API_URL).rstrip("/")
     timeout_raw = os.getenv("PULLDB_API_TIMEOUT", str(DEFAULT_API_TIMEOUT_SECONDS))
     try:
@@ -45,7 +47,9 @@ def _load_api_config() -> tuple[str, float]:
             f"Received '{timeout_raw}'."
         ) from exc
     if timeout <= 0:
-        raise click.ClickException("PULLDB_API_TIMEOUT must be greater than zero seconds.")
+        raise click.ClickException(
+            "PULLDB_API_TIMEOUT must be greater than zero seconds."
+        )
     return base_url, timeout
 
 
@@ -305,11 +309,7 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
             filtered = payloads[:limit]
         else:
             filtered = [
-                {
-                    key: value
-                    for key, value in entry.items()
-                    if key != "staging_name"
-                }
+                {key: value for key, value in entry.items() if key != "staging_name"}
                 for entry in payloads[:limit]
             ]
         click.echo(json_module.dumps(filtered, separators=(",", ":")))

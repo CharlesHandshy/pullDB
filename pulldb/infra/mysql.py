@@ -298,7 +298,6 @@ class JobRepository:
         Older coordination databases might be missing the active_jobs view,
         so we fall back to a direct jobs table query on error 1146.
         """
-
         if self._active_jobs_view_available:
             try:
                 cursor.execute(_ACTIVE_JOBS_VIEW_QUERY)

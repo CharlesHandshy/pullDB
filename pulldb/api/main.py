@@ -4,20 +4,26 @@ from __future__ import annotations
 
 import typing as t
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import fastapi
-from fastapi import Depends, HTTPException, status
-from fastapi.concurrency import run_in_threadpool
 import pydantic
 import uvicorn
+from fastapi import Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 
 from pulldb.domain.config import Config
 from pulldb.domain.errors import StagingError
 from pulldb.domain.models import Job, JobStatus, User
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
-from pulldb.infra.mysql import JobRepository, MySQLPool, UserRepository, build_default_pool
+from pulldb.infra.mysql import (
+    JobRepository,
+    MySQLPool,
+    UserRepository,
+    build_default_pool,
+)
 from pulldb.worker.staging import generate_staging_name
+
 
 DEFAULT_STATUS_LIMIT = 100
 MAX_STATUS_LIMIT = 1000
@@ -25,7 +31,6 @@ MAX_STATUS_LIMIT = 1000
 
 def _letters_only(value: str) -> str:
     """Return lowercase letters-only subset of *value*."""
-
     return "".join(ch for ch in value.lower() if ch.isalpha())
 
 
@@ -77,7 +82,6 @@ class APIState(t.NamedTuple):
 
 def _initialize_state() -> APIState:
     """Build API state by loading configuration and repositories."""
-
     try:
         config = Config.minimal_from_env()
     except Exception as exc:  # FAIL HARD: configuration path invalid
@@ -109,14 +113,15 @@ def _initialize_state() -> APIState:
 
 def get_api_state() -> APIState:
     """FastAPI dependency returning shared API state."""
-
     state = t.cast(APIState | None, getattr(app.state, "api_state", None))
     if state is not None:
         return state
     try:
         state = _initialize_state()
     except RuntimeError as exc:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        ) from exc
     app.state.api_state = state
     return state
 
@@ -179,7 +184,7 @@ def _enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
         staging_name=staging_name,
         dbhost=dbhost,
         status=JobStatus.QUEUED,
-        submitted_at=datetime.now(timezone.utc),
+        submitted_at=datetime.now(UTC),
         options_json=_options_snapshot(req),
         retry_count=0,
     )
@@ -274,7 +279,9 @@ async def status_endpoint(state: APIState = Depends(get_api_state)) -> dict[str,
 
 
 @app.post("/api/jobs", status_code=status.HTTP_201_CREATED, response_model=JobResponse)
-async def submit_job(req: JobRequest, state: APIState = Depends(get_api_state)) -> JobResponse:
+async def submit_job(
+    req: JobRequest, state: APIState = Depends(get_api_state)
+) -> JobResponse:
     _validate_job_request(req)
     return await run_in_threadpool(_enqueue_job, state, req)
 

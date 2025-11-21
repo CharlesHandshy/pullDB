@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 
-from click.testing import CliRunner
 import pytest
 import responses
+from click.testing import CliRunner
 
 from pulldb.cli.main import cli
+
+
 def _base_url(monkeypatch: pytest.MonkeyPatch) -> str:
     base = "http://api.test"
     monkeypatch.setenv("PULLDB_API_URL", base)

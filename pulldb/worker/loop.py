@@ -68,12 +68,16 @@ def run_poll_loop(
         >>> pool = MySQLPool(...)
         >>> repo = JobRepository(pool)
         >>> executor = lambda job: None
-        >>> run_poll_loop(repo, executor, max_iterations=100)  # Poll 100 times then exit
+        >>> run_poll_loop(
+        ...     repo, executor, max_iterations=100
+        ... )  # Poll 100 times then exit
         >>> # Graceful stop after external condition:
         >>> stop = False
         >>> def _should_stop():
         ...     return stop
-        >>> run_poll_loop(repo, executor, should_stop=_should_stop)  # Infinite until stop
+        >>> run_poll_loop(
+        ...     repo, executor, should_stop=_should_stop
+        ... )  # Infinite until stop
     """
     iteration = 0
     current_interval = poll_interval
@@ -240,7 +244,6 @@ def _transition_to_running(job_repo: JobRepository, job: Job) -> None:
 
 def _execute_job(job_executor: JobExecutor, job: Job) -> None:
     """Execute job via provided callable with timing metrics."""
-
     with time_operation(
         "job_execution_duration_seconds",
         MetricLabels(phase="job_execute"),

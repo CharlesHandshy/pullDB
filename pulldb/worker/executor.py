@@ -63,7 +63,6 @@ def derive_backup_lookup_target(job: Job) -> str:
     user_code prefix (when present) and falls back to the options snapshot so
     discovery queries the correct S3 key namespace.
     """
-
     user_code = job.owner_user_code or ""
     target = job.target or ""
     if user_code and target.startswith(user_code):
@@ -98,7 +97,6 @@ def build_lookup_targets_for_location(
     location: S3BackupLocationConfig,
 ) -> list[str]:
     """Create ordered list of lookup targets for a job/location pair."""
-
     candidates: list[str] = []
     base_target = derive_backup_lookup_target(job)
 
@@ -170,9 +168,7 @@ class WorkerExecutorHooks:
     discover_backup: t.Callable[[S3Client, str, str, str], BackupSpec] = (
         discover_latest_backup
     )
-    download_backup: t.Callable[[S3Client, BackupSpec, str, str], str] = (
-        download_backup
-    )
+    download_backup: t.Callable[[S3Client, BackupSpec, str, str], str] = download_backup
     extract_archive: t.Callable[[str, Path, str], str] = _default_extract_archive
 
 
@@ -205,9 +201,7 @@ class WorkerJobExecutor:
         self.backup_locations = list(config.s3_backup_locations)
         if not self.backup_locations:
             if config.s3_bucket_path is None:
-                msg = (
-                    "Config must provide either s3_backup_locations or s3_bucket_path"
-                )
+                msg = "Config must provide either s3_backup_locations or s3_bucket_path"
                 raise ValueError(msg)
             bucket, prefix = parse_s3_bucket_path(config.s3_bucket_path)
             self.backup_locations.append(
@@ -435,12 +429,12 @@ class WorkerJobExecutor:
 
 
 __all__ = [
-    "build_lookup_targets_for_location",
-    "derive_backup_lookup_target",
     "JobExecutor",
     "WorkerExecutorDependencies",
     "WorkerExecutorHooks",
     "WorkerExecutorTimeouts",
     "WorkerJobExecutor",
+    "build_lookup_targets_for_location",
+    "derive_backup_lookup_target",
     "extract_tar_archive",
 ]

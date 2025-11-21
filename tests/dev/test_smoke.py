@@ -107,15 +107,16 @@ def test_dev_smoke_restore_then_status(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = CliRunner()
 
     with TestClient(app) as api_client:
+
         def _client_post(
             url: str,
             *,
             json: dict[str, Any],
             timeout: float,
         ) -> _ResponseProtocol:
-            assert url.startswith(
-                "http://testserver"
-            ), "CLI should target local TestClient"
+            assert url.startswith("http://testserver"), (
+                "CLI should target local TestClient"
+            )
             return cast(_ResponseProtocol, api_client.post(url, json=json))
 
         def _client_get(
@@ -124,9 +125,9 @@ def test_dev_smoke_restore_then_status(monkeypatch: pytest.MonkeyPatch) -> None:
             params: dict[str, Any],
             timeout: float,
         ) -> _ResponseProtocol:
-            assert url.startswith(
-                "http://testserver"
-            ), "CLI should target local TestClient"
+            assert url.startswith("http://testserver"), (
+                "CLI should target local TestClient"
+            )
             return cast(_ResponseProtocol, api_client.get(url, params=params))
 
         monkeypatch.setenv("PULLDB_API_URL", "http://testserver")

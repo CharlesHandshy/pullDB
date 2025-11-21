@@ -2,6 +2,7 @@ import json
 import os
 from typing import Any
 
+
 # Configuration
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUTPUT_FILE = os.path.join(ROOT_DIR, "graph-tools", "web", "flow_data.json")
@@ -57,9 +58,7 @@ class FlowGenerator:
             }
         )
 
-    def add_edge(
-        self, view: str, source: str, target: str, label: str = ""
-    ) -> None:
+    def add_edge(self, view: str, source: str, target: str, label: str = "") -> None:
         """Add an edge to a specific view."""
         self.views[view].append(
             {"data": {"source": source, "target": target, "label": label}}
@@ -94,9 +93,7 @@ class FlowGenerator:
 
     def build_cli_view(self) -> None:
         """Build the CLI detailed view."""
-        self.add_node(
-            "cli", "cli_start", "Start", "start", "User runs pullDB command"
-        )
+        self.add_node("cli", "cli_start", "Start", "start", "User runs pullDB command")
         self.add_node(
             "cli",
             "cli_parse",
@@ -118,9 +115,7 @@ class FlowGenerator:
             "decision",
             "Secrets Manager / SSM",
         )
-        self.add_node(
-            "cli", "cli_db", "MySQL", "database", "Check Host Capacity"
-        )
+        self.add_node("cli", "cli_db", "MySQL", "database", "Check Host Capacity")
         self.add_node(
             "cli", "cli_enqueue", "Enqueue Job", "process", "Insert into jobs table"
         )
@@ -135,9 +130,7 @@ class FlowGenerator:
 
     def build_worker_view(self) -> None:
         """Build the Worker detailed view."""
-        self.add_node(
-            "worker", "w_start", "Service Start", "start", "Daemon Init"
-        )
+        self.add_node("worker", "w_start", "Service Start", "start", "Daemon Init")
         self.add_node(
             "worker", "w_loop", "Poll Loop", "process", "Check for 'queued' jobs"
         )
@@ -145,21 +138,11 @@ class FlowGenerator:
         self.add_node(
             "worker", "w_claim", "Claim Job", "process", "Set status='running'"
         )
-        self.add_node(
-            "worker", "w_s3", "S3 Discovery", "process", "Find latest backup"
-        )
-        self.add_node(
-            "worker", "w_space", "Disk Check", "decision", "Is space > 1.8x?"
-        )
-        self.add_node(
-            "worker", "w_down", "Download", "process", "Stream from S3"
-        )
-        self.add_node(
-            "worker", "w_restore", "Restore", "process", "myloader execution"
-        )
-        self.add_node(
-            "worker", "w_post", "Post-SQL", "process", "Sanitization Scripts"
-        )
+        self.add_node("worker", "w_s3", "S3 Discovery", "process", "Find latest backup")
+        self.add_node("worker", "w_space", "Disk Check", "decision", "Is space > 1.8x?")
+        self.add_node("worker", "w_down", "Download", "process", "Stream from S3")
+        self.add_node("worker", "w_restore", "Restore", "process", "myloader execution")
+        self.add_node("worker", "w_post", "Post-SQL", "process", "Sanitization Scripts")
         self.add_node(
             "worker",
             "w_rename",
@@ -167,9 +150,7 @@ class FlowGenerator:
             "process",
             "Swap Staging -> Prod",
         )
-        self.add_node(
-            "worker", "w_end", "Complete", "end", "Update status='complete'"
-        )
+        self.add_node("worker", "w_end", "Complete", "end", "Update status='complete'")
 
         self.add_edge("worker", "w_start", "w_loop", "")
         self.add_edge("worker", "w_loop", "w_found", "")
@@ -221,14 +202,28 @@ class FlowGenerator:
         """Build Level 2: CLI Argument Parsing."""
         view = "cli_parse"
         self.add_node(view, "cp_start", "Start Parse", "start", "Input: Raw Tokens")
-        self.add_node(view, "cp_user", "Check user=", "decision", "First token must be user=...")
-        self.add_node(view, "cp_sanitize", "Sanitize", "process", "Lowercase, letters only")
+        self.add_node(
+            view, "cp_user", "Check user=", "decision", "First token must be user=..."
+        )
+        self.add_node(
+            view, "cp_sanitize", "Sanitize", "process", "Lowercase, letters only"
+        )
         self.add_node(view, "cp_len", "Length Check", "decision", "Must be >= 6 chars")
-        self.add_node(view, "cp_tokens", "Tokenize Rest", "process", "Loop through remaining args")
-        self.add_node(view, "cp_cust_qa", "Cust vs QA", "decision", "Exactly one required")
-        self.add_node(view, "cp_target", "Form Target", "process", "user_code + customer_id")
-        self.add_node(view, "cp_t_len", "Target Length", "decision", "Must be <= 51 chars")
-        self.add_node(view, "cp_return", "Return Options", "end", "Valid RestoreCLIOptions")
+        self.add_node(
+            view, "cp_tokens", "Tokenize Rest", "process", "Loop through remaining args"
+        )
+        self.add_node(
+            view, "cp_cust_qa", "Cust vs QA", "decision", "Exactly one required"
+        )
+        self.add_node(
+            view, "cp_target", "Form Target", "process", "user_code + customer_id"
+        )
+        self.add_node(
+            view, "cp_t_len", "Target Length", "decision", "Must be <= 51 chars"
+        )
+        self.add_node(
+            view, "cp_return", "Return Options", "end", "Valid RestoreCLIOptions"
+        )
 
         self.add_edge(view, "cp_start", "cp_user", "")
         self.add_edge(view, "cp_user", "cp_sanitize", "Found")
@@ -242,12 +237,24 @@ class FlowGenerator:
     def build_worker_s3_view(self) -> None:
         """Build Level 2: S3 Discovery."""
         view = "w_s3"
-        self.add_node(view, "s3_start", "Start Discovery", "start", "Input: Target Name")
+        self.add_node(
+            view, "s3_start", "Start Discovery", "start", "Input: Target Name"
+        )
         self.add_node(view, "s3_list", "List Objects", "process", "s3.list_objects_v2")
-        self.add_node(view, "s3_filter", "Filter Prefix", "process", "daily/prod/{target}")
-        self.add_node(view, "s3_regex", "Parse Filenames", "process", "Extract Date & Type")
+        self.add_node(
+            view, "s3_filter", "Filter Prefix", "process", "daily/prod/{target}"
+        )
+        self.add_node(
+            view, "s3_regex", "Parse Filenames", "process", "Extract Date & Type"
+        )
         self.add_node(view, "s3_sort", "Sort by Date", "process", "Descending Order")
-        self.add_node(view, "s3_schema", "Schema Exists?", "decision", "Check *-schema-create.sql.zst")
+        self.add_node(
+            view,
+            "s3_schema",
+            "Schema Exists?",
+            "decision",
+            "Check *-schema-create.sql.zst",
+        )
         self.add_node(view, "s3_return", "Return Spec", "end", "Latest Valid Backup")
 
         self.add_edge(view, "s3_start", "s3_list", "")
@@ -263,7 +270,9 @@ class FlowGenerator:
         self.add_node(view, "wd_start", "Start Download", "start", "Input: BackupSpec")
         self.add_node(view, "wd_mkdir", "Ensure Dir", "process", "os.makedirs(dest)")
         self.add_node(view, "wd_calc", "Calc Required", "process", "size * 1.8")
-        self.add_node(view, "wd_check", "Disk Space?", "decision", "shutil.disk_usage > required")
+        self.add_node(
+            view, "wd_check", "Disk Space?", "decision", "shutil.disk_usage > required"
+        )
         self.add_node(view, "wd_get", "S3 GetObject", "process", "boto3 get_object")
         self.add_node(view, "wd_stream", "Stream Loop", "process", "Read 8MB chunks")
         self.add_node(view, "wd_write", "Write File", "process", "Write to disk")
@@ -410,13 +419,25 @@ class FlowGenerator:
         view = "cp_tokens"
         self.add_node(view, "ct_start", "Start Loop", "start", "Input: Tokens[1:]")
         self.add_node(view, "ct_loop", "Next Token", "process", "For each token")
-        self.add_node(view, "ct_check_cust", "Is customer=?", "decision", "StartsWith 'customer='")
-        self.add_node(view, "ct_check_host", "Is dbhost=?", "decision", "StartsWith 'dbhost='")
-        self.add_node(view, "ct_check_over", "Is overwrite?", "decision", "== 'overwrite'")
-        self.add_node(view, "ct_check_qa", "Is qatemplate?", "decision", "== 'qatemplate'")
-        self.add_node(view, "ct_set_cust", "Set Customer", "process", "opts.customer = val")
+        self.add_node(
+            view, "ct_check_cust", "Is customer=?", "decision", "StartsWith 'customer='"
+        )
+        self.add_node(
+            view, "ct_check_host", "Is dbhost=?", "decision", "StartsWith 'dbhost='"
+        )
+        self.add_node(
+            view, "ct_check_over", "Is overwrite?", "decision", "== 'overwrite'"
+        )
+        self.add_node(
+            view, "ct_check_qa", "Is qatemplate?", "decision", "== 'qatemplate'"
+        )
+        self.add_node(
+            view, "ct_set_cust", "Set Customer", "process", "opts.customer = val"
+        )
         self.add_node(view, "ct_set_host", "Set Host", "process", "opts.dbhost = val")
-        self.add_node(view, "ct_set_over", "Set Overwrite", "process", "opts.overwrite = True")
+        self.add_node(
+            view, "ct_set_over", "Set Overwrite", "process", "opts.overwrite = True"
+        )
         self.add_node(view, "ct_set_qa", "Set QA", "process", "opts.qatemplate = True")
         self.add_node(view, "ct_error", "Unknown Arg", "end", "Raise ValueError")
         self.add_node(view, "ct_end", "Done", "end", "Return Options")
@@ -431,7 +452,7 @@ class FlowGenerator:
         self.add_edge(view, "ct_check_over", "ct_check_qa", "No")
         self.add_edge(view, "ct_check_qa", "ct_set_qa", "Yes")
         self.add_edge(view, "ct_check_qa", "ct_error", "No")
-        
+
         self.add_edge(view, "ct_set_cust", "ct_loop", "Next")
         self.add_edge(view, "ct_set_host", "ct_loop", "Next")
         self.add_edge(view, "ct_set_over", "ct_loop", "Next")
@@ -442,8 +463,16 @@ class FlowGenerator:
         """Build Level 3: S3 Schema Check."""
         view = "s3_schema"
         self.add_node(view, "ss_start", "Start Check", "start", "Input: Backup Key")
-        self.add_node(view, "ss_derive", "Derive Name", "process", "Replace .tar -> -schema-create.sql.zst")
-        self.add_node(view, "ss_check", "In List?", "decision", "Is schema_key in objects?")
+        self.add_node(
+            view,
+            "ss_derive",
+            "Derive Name",
+            "process",
+            "Replace .tar -> -schema-create.sql.zst",
+        )
+        self.add_node(
+            view, "ss_check", "In List?", "decision", "Is schema_key in objects?"
+        )
         self.add_node(view, "ss_true", "Valid", "end", "Return True")
         self.add_node(view, "ss_false", "Invalid", "end", "Return False")
 
@@ -457,7 +486,9 @@ class FlowGenerator:
         view = "wd_check"
         self.add_node(view, "dc_start", "Start Check", "start", "Input: Required Bytes")
         self.add_node(view, "dc_path", "Get Path", "process", "os.path.dirname(dest)")
-        self.add_node(view, "dc_usage", "Get Usage", "process", "shutil.disk_usage(path)")
+        self.add_node(
+            view, "dc_usage", "Get Usage", "process", "shutil.disk_usage(path)"
+        )
         self.add_node(view, "dc_calc", "Compare", "decision", "usage.free > required")
         self.add_node(view, "dc_pass", "Pass", "end", "Return True")
         self.add_node(view, "dc_fail", "Fail", "end", "Raise DiskSpaceError")
@@ -488,10 +519,16 @@ class FlowGenerator:
     def build_creds_view(self) -> None:
         """Build Level 3: Credential Resolution."""
         view = "cli_creds"
-        self.add_node(view, "cc_start", "Start Resolve", "start", "Input: Credential Ref")
+        self.add_node(
+            view, "cc_start", "Start Resolve", "start", "Input: Credential Ref"
+        )
         self.add_node(view, "cc_parse", "Parse Ref", "process", "Split Service:ID")
-        self.add_node(view, "cc_type", "Service Type", "decision", "SecretsManager or SSM?")
-        self.add_node(view, "cc_sm", "Get Secret", "process", "secretsmanager.get_secret_value")
+        self.add_node(
+            view, "cc_type", "Service Type", "decision", "SecretsManager or SSM?"
+        )
+        self.add_node(
+            view, "cc_sm", "Get Secret", "process", "secretsmanager.get_secret_value"
+        )
         self.add_node(view, "cc_ssm", "Get Param", "process", "ssm.get_parameter")
         self.add_node(view, "cc_json", "Parse JSON", "process", "json.loads(value)")
         self.add_node(view, "cc_ret", "Return", "end", "MySQLCredentials")
@@ -509,9 +546,15 @@ class FlowGenerator:
         view = "w_rename"
         self.add_node(view, "rn_start", "Start Rename", "start", "Input: Job ID")
         self.add_node(view, "rn_conn", "Get Conn", "process", "Get DB Connection")
-        self.add_node(view, "rn_check", "Check Staging", "decision", "Staging DB Exists?")
-        self.add_node(view, "rn_call", "Call Proc", "process", "CALL atomic_rename(...)")
-        self.add_node(view, "rn_drop", "Drop Staging", "process", "DROP DATABASE staging")
+        self.add_node(
+            view, "rn_check", "Check Staging", "decision", "Staging DB Exists?"
+        )
+        self.add_node(
+            view, "rn_call", "Call Proc", "process", "CALL atomic_rename(...)"
+        )
+        self.add_node(
+            view, "rn_drop", "Drop Staging", "process", "DROP DATABASE staging"
+        )
         self.add_node(view, "rn_end", "Complete", "end", "Return Success")
 
         self.add_edge(view, "rn_start", "rn_conn", "")
@@ -526,7 +569,9 @@ class FlowGenerator:
         view = "rn_call"
         self.add_node(view, "rc_start", "Start Call", "start", "Input: Conn, Names")
         self.add_node(view, "rc_cursor", "Get Cursor", "process", "conn.cursor()")
-        self.add_node(view, "rc_exec", "Execute", "process", "cursor.execute('CALL ...')")
+        self.add_node(
+            view, "rc_exec", "Execute", "process", "cursor.execute('CALL ...')"
+        )
         self.add_node(view, "rc_commit", "Commit", "process", "conn.commit()")
         self.add_node(view, "rc_close", "Close", "process", "cursor.close()")
         self.add_node(view, "rc_end", "Return", "end", "Success")
@@ -581,7 +626,9 @@ class FlowGenerator:
         self.add_node(view, "sl_start", "Start List", "start", "Input: Bucket, Prefix")
         self.add_node(view, "sl_page", "Get Paginator", "process", "s3.get_paginator")
         self.add_node(view, "sl_iter", "Iterate Pages", "process", "For page in pages")
-        self.add_node(view, "sl_cont", "Get Contents", "process", "page.get('Contents')")
+        self.add_node(
+            view, "sl_cont", "Get Contents", "process", "page.get('Contents')"
+        )
         self.add_node(view, "sl_ext", "Extend List", "process", "all_objs.extend()")
         self.add_node(view, "sl_next", "Next Page?", "decision", "More pages?")
         self.add_node(view, "sl_end", "Return", "end", "Full Object List")
@@ -600,7 +647,7 @@ class FlowGenerator:
         self.build_cli_view()
         self.build_worker_view()
         self.build_infra_view()
-        
+
         # Level 2
         self.build_cli_parse_view()
         self.build_worker_s3_view()
@@ -613,17 +660,17 @@ class FlowGenerator:
         self.build_s3_regex_view()
         self.build_download_stream_view()
         self.build_restore_cmd_view()
-        
+
         # New Level 3
         self.build_cli_tokens_view()
         self.build_s3_schema_view()
         self.build_disk_check_view()
         self.build_restore_mon_view()
         self.build_creds_view()
-        
+
         # New Level 2 (Missing)
         self.build_worker_rename_view()
-        
+
         # New Level 3 (Expanded)
         self.build_rename_call_view()
         self.build_post_sql_run_view()

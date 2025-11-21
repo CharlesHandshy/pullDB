@@ -147,9 +147,7 @@ def _build_job(**overrides: Any) -> Job:
     )
 
 
-def test_submit_job_customer_success(
-    client: TestClient, fake_state: FakeRepos
-) -> None:
+def test_submit_job_customer_success(client: TestClient, fake_state: FakeRepos) -> None:
     response = _post_json(
         client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme-123"}
     )
@@ -204,6 +202,4 @@ def test_active_jobs_endpoint(client: TestClient, fake_state: FakeRepos) -> None
     assert len(payload) == 2
     assert payload[0]["id"] == "job-1"
     assert payload[1]["status"] == "running"
-    assert (
-        payload[1]["staging_name"] == "janedoqatemplate_bbbbbbbbbbbb"
-    )
+    assert payload[1]["staging_name"] == "janedoqatemplate_bbbbbbbbbbbb"

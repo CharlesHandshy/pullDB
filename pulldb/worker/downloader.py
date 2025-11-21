@@ -133,9 +133,7 @@ def download_backup(
     return dest_path
 
 
-def _stream_download(
-    body: Any, dest_path: str, job_id: str, total_bytes: int
-) -> None:
+def _stream_download(body: Any, dest_path: str, job_id: str, total_bytes: int) -> None:
     """Stream data from body to file with progress logging.
 
     Extracted atom for testing.
@@ -161,4 +159,3 @@ def _stream_download(
                     },
                 )
                 next_progress += PROGRESS_INTERVAL_MB * 1024 * 1024
-

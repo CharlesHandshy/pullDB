@@ -14,8 +14,8 @@ from types import SimpleNamespace
 import pytest
 
 from pulldb.infra.mysql import JobRepository
-from pulldb.worker.loop import run_poll_loop
 from pulldb.worker import service as worker_service
+from pulldb.worker.loop import run_poll_loop
 
 
 class _FakeJobRepo:

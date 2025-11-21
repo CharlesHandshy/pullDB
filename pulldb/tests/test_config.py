@@ -58,7 +58,9 @@ class TestMinimalFromEnv:
         os.environ["PULLDB_S3_AWS_PROFILE"] = "staging-reader"
         os.environ["PULLDB_DEFAULT_DBHOST"] = "db-prod-01"
         os.environ["PULLDB_MYLOADER_BINARY"] = "/opt/bin/myloader-custom"
-        os.environ["PULLDB_MYLOADER_EXTRA_ARGS"] = "--rows-per-insert=1000 --skip-triggers"
+        os.environ["PULLDB_MYLOADER_EXTRA_ARGS"] = (
+            "--rows-per-insert=1000 --skip-triggers"
+        )
         os.environ["PULLDB_MYLOADER_TIMEOUT_SECONDS"] = "3600.5"
         os.environ["PULLDB_MYLOADER_THREADS"] = "16"
 

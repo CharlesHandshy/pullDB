@@ -58,6 +58,7 @@ def test_atom_cp_tokens() -> None:
 
     # Case 3: Error (Unknown)
     from pulldb.cli.parse import CLIParseError
+
     with pytest.raises(CLIParseError, match="Unrecognized token"):
         _tokenize(["unknown=1"])
 
@@ -79,6 +80,7 @@ def test_atom_s3_regex() -> None:
 # --- Atom: wd_stream ---
 def test_atom_wd_stream() -> None:
     """Verify download stream loop."""
+
     class FakeBody:
         def __init__(self, data: bytes, chunk_size: int):
             self.data = data
@@ -96,13 +98,13 @@ def test_atom_wd_stream() -> None:
 
     data = b"x" * 1000
     body = FakeBody(data, chunk_size=100)
-    
+
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         tmp_path = tmp.name
-    
+
     try:
         _stream_download(body, tmp_path, "job-1", len(data))
-        
+
         assert os.path.exists(tmp_path)
         with open(tmp_path, "rb") as f:
             assert f.read() == data
@@ -124,7 +126,7 @@ def test_atom_wr_cmd() -> None:
         mysql_password="pwd",
         binary_path="myloader",
         extra_args=["--threads=4"],
-        env={}
+        env={},
     )
     cmd = build_myloader_command(spec)
     assert cmd[0] == "myloader"
@@ -191,12 +193,12 @@ def test_atom_cfg_parse() -> None:
     # Extra args
     assert _parse_extra_args(None, source="test") == ()
     assert _parse_extra_args("--flag value", source="test") == ("--flag", "value")
-    
+
     # Float
     assert _parse_positive_float("10.5", source="test") == 10.5
     with pytest.raises(ValueError):
         _parse_positive_float("0", source="test")
-        
+
     # Int
     assert _parse_positive_int("10", source="test") == 10
     with pytest.raises(ValueError):
@@ -214,5 +216,5 @@ def test_atom_psql_disc(tmp_path: Path) -> None:
     scripts = _discover_scripts(tmp_path)
     names = [p.name for p in scripts]
     assert names == ["005.sql", "010.sql", "020.sql"]
-    
+
     assert _discover_scripts(tmp_path / "nonexistent") == []

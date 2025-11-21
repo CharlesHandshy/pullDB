@@ -193,9 +193,7 @@ def main(argv: t.Sequence[str] | None = None) -> int:
         _set_worker_active(0, "fatal")
         return 1
 
-    poll_interval = (
-        MIN_POLL_INTERVAL_SECONDS if args.oneshot else args.poll_interval
-    )
+    poll_interval = MIN_POLL_INTERVAL_SECONDS if args.oneshot else args.poll_interval
 
     _emit_startup_event(
         config,

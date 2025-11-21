@@ -101,11 +101,8 @@ def build_restore_workflow_spec(
     metadata into a ready-to-run workflow specification, ensuring new knobs
     (binary path, timeout, threads) automatically flow to myloader.
     """
-
     if not job.staging_name:
-        raise ValueError(
-            "job.staging_name is required to build restore workflow spec"
-        )
+        raise ValueError("job.staging_name is required to build restore workflow spec")
 
     myloader_spec = build_configured_myloader_spec(
         config=config,

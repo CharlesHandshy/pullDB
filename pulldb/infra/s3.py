@@ -76,7 +76,6 @@ class BackupSpec:
 
 def parse_s3_bucket_path(value: str) -> tuple[str, str]:
     """Parse bucket/prefix from configuration value."""
-
     trimmed = (value or "").strip()
     if not trimmed:
         raise ValueError("s3_bucket_path configuration is required")

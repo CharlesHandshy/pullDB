@@ -27,7 +27,6 @@ from pulldb.domain.models import Job, JobStatus
 from pulldb.domain.restore_models import MyLoaderResult, MyLoaderSpec
 from pulldb.worker.post_sql import PostSQLConnectionSpec
 from pulldb.worker.restore import (
-    RestoreWorkflowSpec,
     build_restore_workflow_spec,
     orchestrate_restore_workflow,
 )
