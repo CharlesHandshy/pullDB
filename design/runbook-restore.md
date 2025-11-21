@@ -30,6 +30,12 @@ PULLDB_AWS_PROFILE=pr-dev pulldb-worker --oneshot --poll-interval 0.5
   - `--poll-interval` only applies when not in oneshot mode; in oneshot runs it is clamped to the minimum interval automatically.
 - When you need to inspect staging or production S3 backups outside the worker (e.g., manual `aws s3 ls` or `pytest pulldb/tests/test_s3_real_listing_optional.py`), switch `AWS_PROFILE` to `pr-staging` or `pr-prod` respectively **but keep** `PULLDB_AWS_PROFILE=pr-dev` so credential resolution remains in the dev account.
 
+### Worker workflow reference (restore-only path)
+
+- See `docs/appalachian_workflow_plan.md` for the authoritative, restore-only worker plan that consolidates lessons learned, log-normalization templates, and per-stage stop logic (Download → Extract → Restore 0.19 → Restore 0.9 → Post-SQL → Cutover).
+- Section 7 of that document provides a runbook-ready stage checklist plus a Mermaid flow diagram you can embed or screenshot for status reviews.
+- When triaging jobs, rely on that document for: expected log markers (thread progress, benign warnings), error classification templates, and the heartbeat/cleanup rules the worker must honor. Link the relevant section in incident tickets to keep diagnostics consistent.
+
 ## Submit Restore
 
 ```bash

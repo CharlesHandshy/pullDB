@@ -9,7 +9,7 @@
 ## Overview
 
 pullDB stores MySQL credentials for target database servers in the `db_hosts` table with references to AWS Secrets Manager or SSM Parameter Store. The `credential_ref` field contains paths like:
-- `aws-secretsmanager:/pulldb/mysql/db-local-dev`
+- `aws-secretsmanager:/pulldb/mysql/localhost-test`
 - `aws-secretsmanager:/pulldb/mysql/db3-dev`
 - `aws-ssm:/pulldb/mysql/db3-dev-credentials`
 
@@ -61,7 +61,7 @@ When connecting to a target database server, pullDB:
 │                        │                                    │
 │         ┌──────────────▼──────────────────┐                │
 │         │ AWS Secrets Manager             │                │
-│         │ /pulldb/mysql/db-local-dev      │                │
+│         │ /pulldb/mysql/localhost-test    │                │
 │         │ /pulldb/mysql/db3-dev           │                │
 │         │ /pulldb/mysql/db4-dev           │                │
 │         │ /pulldb/mysql/db5-dev           │                │
@@ -89,12 +89,12 @@ When connecting to a target database server, pullDB:
 
 > Use profile names standardized in `aws-authentication-setup.md`: `pr-dev` for development account Secrets Manager work, `pr-staging` for staging-bucket access, and `pr-prod` for production-bucket access. When running directly on the EC2 host you can omit `AWS_PROFILE` entirely and rely on the instance profile (preferred).
 
-### 1.1 Create Secret for db-local-dev (Local Sandbox)
+### 1.1 Create Secret for localhost-test (Local Sandbox)
 
 ```bash
 # Local sandbox secret used by default in development environments
 aws secretsmanager create-secret \
-    --name /pulldb/mysql/db-local-dev \
+    --name /pulldb/mysql/localhost-test \
     --description "MySQL credentials for local sandbox restore target" \
     --secret-string '{
         "username": "pulldb_app",
@@ -105,7 +105,7 @@ aws secretsmanager create-secret \
     }' \
     --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=local-sandbox
 
-aws secretsmanager describe-secret --secret-id /pulldb/mysql/db-local-dev
+aws secretsmanager describe-secret --secret-id /pulldb/mysql/localhost-test
 ```
 
 ### 1.2 Create Secret for db3-dev (DEV Team)
@@ -302,7 +302,7 @@ aws secretsmanager describe-secret --secret-id /pulldb/mysql/db3-dev \
 ```bash
 # db-local-dev (local sandbox)
 aws secretsmanager rotate-secret \
-    --secret-id /pulldb/mysql/db-local-dev \
+    --secret-id /pulldb/mysql/localhost-test \
     --rotation-lambda-arn arn:aws:serverlessrepo:us-east-1:297356227924:applications/SecretsManagerRDSMySQLRotationSingleUser \
     --rotation-rules AutomaticallyAfterDays=90
 

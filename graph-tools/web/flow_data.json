@@ -1,0 +1,2505 @@
+{
+  "main": [
+    {
+      "data": {
+        "id": "cli",
+        "label": "CLI Client",
+        "type": "process",
+        "description": "User Interface & Job Submission"
+      }
+    },
+    {
+      "data": {
+        "id": "worker",
+        "label": "Worker Service",
+        "type": "process",
+        "description": "Job Execution Daemon"
+      }
+    },
+    {
+      "data": {
+        "id": "infra",
+        "label": "Infrastructure",
+        "type": "database",
+        "description": "Storage & State"
+      }
+    },
+    {
+      "data": {
+        "source": "cli",
+        "target": "infra",
+        "label": "Enqueue / Config"
+      }
+    },
+    {
+      "data": {
+        "source": "worker",
+        "target": "infra",
+        "label": "Poll / Restore"
+      }
+    }
+  ],
+  "cli": [
+    {
+      "data": {
+        "id": "cli_start",
+        "label": "Start",
+        "type": "start",
+        "description": "User runs pullDB command"
+      }
+    },
+    {
+      "data": {
+        "id": "cli_parse",
+        "label": "Parse Args",
+        "type": "process",
+        "description": "Validate inputs & generate user_code"
+      }
+    },
+    {
+      "data": {
+        "id": "cli_config",
+        "label": "Load Config",
+        "type": "process",
+        "description": "Env vars + Parameter Store"
+      }
+    },
+    {
+      "data": {
+        "id": "cli_creds",
+        "label": "Resolve Creds",
+        "type": "decision",
+        "description": "Secrets Manager / SSM"
+      }
+    },
+    {
+      "data": {
+        "id": "cli_db",
+        "label": "MySQL",
+        "type": "database",
+        "description": "Check Host Capacity"
+      }
+    },
+    {
+      "data": {
+        "id": "cli_enqueue",
+        "label": "Enqueue Job",
+        "type": "process",
+        "description": "Insert into jobs table"
+      }
+    },
+    {
+      "data": {
+        "id": "cli_end",
+        "label": "Exit",
+        "type": "end",
+        "description": "Return status to user"
+      }
+    },
+    {
+      "data": {
+        "source": "cli_start",
+        "target": "cli_parse",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cli_parse",
+        "target": "cli_config",
+        "label": "Valid"
+      }
+    },
+    {
+      "data": {
+        "source": "cli_config",
+        "target": "cli_creds",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cli_creds",
+        "target": "cli_db",
+        "label": "Auth OK"
+      }
+    },
+    {
+      "data": {
+        "source": "cli_db",
+        "target": "cli_enqueue",
+        "label": "Capacity OK"
+      }
+    },
+    {
+      "data": {
+        "source": "cli_enqueue",
+        "target": "cli_end",
+        "label": "Job ID"
+      }
+    }
+  ],
+  "worker": [
+    {
+      "data": {
+        "id": "w_start",
+        "label": "Service Start",
+        "type": "start",
+        "description": "Daemon Init"
+      }
+    },
+    {
+      "data": {
+        "id": "w_loop",
+        "label": "Poll Loop",
+        "type": "process",
+        "description": "Check for 'queued' jobs"
+      }
+    },
+    {
+      "data": {
+        "id": "w_found",
+        "label": "Job Found?",
+        "type": "decision",
+        "description": ""
+      }
+    },
+    {
+      "data": {
+        "id": "w_claim",
+        "label": "Claim Job",
+        "type": "process",
+        "description": "Set status='running'"
+      }
+    },
+    {
+      "data": {
+        "id": "w_s3",
+        "label": "S3 Discovery",
+        "type": "process",
+        "description": "Find latest backup"
+      }
+    },
+    {
+      "data": {
+        "id": "w_space",
+        "label": "Disk Check",
+        "type": "decision",
+        "description": "Is space > 1.8x?"
+      }
+    },
+    {
+      "data": {
+        "id": "w_down",
+        "label": "Download",
+        "type": "process",
+        "description": "Stream from S3"
+      }
+    },
+    {
+      "data": {
+        "id": "w_restore",
+        "label": "Restore",
+        "type": "process",
+        "description": "myloader execution"
+      }
+    },
+    {
+      "data": {
+        "id": "w_post",
+        "label": "Post-SQL",
+        "type": "process",
+        "description": "Sanitization Scripts"
+      }
+    },
+    {
+      "data": {
+        "id": "w_rename",
+        "label": "Atomic Rename",
+        "type": "process",
+        "description": "Swap Staging -> Prod"
+      }
+    },
+    {
+      "data": {
+        "id": "w_end",
+        "label": "Complete",
+        "type": "end",
+        "description": "Update status='complete'"
+      }
+    },
+    {
+      "data": {
+        "source": "w_start",
+        "target": "w_loop",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "w_loop",
+        "target": "w_found",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "w_found",
+        "target": "w_loop",
+        "label": "No Job"
+      }
+    },
+    {
+      "data": {
+        "source": "w_found",
+        "target": "w_claim",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "w_claim",
+        "target": "w_s3",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "w_s3",
+        "target": "w_space",
+        "label": "Backup Found"
+      }
+    },
+    {
+      "data": {
+        "source": "w_space",
+        "target": "w_down",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "w_down",
+        "target": "w_restore",
+        "label": "Stream OK"
+      }
+    },
+    {
+      "data": {
+        "source": "w_restore",
+        "target": "w_post",
+        "label": "Success"
+      }
+    },
+    {
+      "data": {
+        "source": "w_post",
+        "target": "w_rename",
+        "label": "Scripts OK"
+      }
+    },
+    {
+      "data": {
+        "source": "w_rename",
+        "target": "w_end",
+        "label": "Done"
+      }
+    }
+  ],
+  "infra": [
+    {
+      "data": {
+        "id": "i_mysql",
+        "label": "MySQL RDS",
+        "type": "database",
+        "description": "Coordination & Target DBs"
+      }
+    },
+    {
+      "data": {
+        "id": "i_s3",
+        "label": "S3 Buckets",
+        "type": "database",
+        "description": "Backups (Prod/Staging)"
+      }
+    },
+    {
+      "data": {
+        "id": "i_secrets",
+        "label": "Secrets Manager",
+        "type": "database",
+        "description": "DB Credentials"
+      }
+    },
+    {
+      "data": {
+        "id": "i_ssm",
+        "label": "Parameter Store",
+        "type": "database",
+        "description": "Config Values"
+      }
+    },
+    {
+      "data": {
+        "source": "i_secrets",
+        "target": "i_mysql",
+        "label": "Auth"
+      }
+    },
+    {
+      "data": {
+        "source": "i_ssm",
+        "target": "i_mysql",
+        "label": "Config"
+      }
+    }
+  ],
+  "cli_parse": [
+    {
+      "data": {
+        "id": "cp_start",
+        "label": "Start Parse",
+        "type": "start",
+        "description": "Input: Raw Tokens"
+      }
+    },
+    {
+      "data": {
+        "id": "cp_user",
+        "label": "Check user=",
+        "type": "decision",
+        "description": "First token must be user=..."
+      }
+    },
+    {
+      "data": {
+        "id": "cp_sanitize",
+        "label": "Sanitize",
+        "type": "process",
+        "description": "Lowercase, letters only"
+      }
+    },
+    {
+      "data": {
+        "id": "cp_len",
+        "label": "Length Check",
+        "type": "decision",
+        "description": "Must be >= 6 chars"
+      }
+    },
+    {
+      "data": {
+        "id": "cp_tokens",
+        "label": "Tokenize Rest",
+        "type": "process",
+        "description": "Loop through remaining args"
+      }
+    },
+    {
+      "data": {
+        "id": "cp_cust_qa",
+        "label": "Cust vs QA",
+        "type": "decision",
+        "description": "Exactly one required"
+      }
+    },
+    {
+      "data": {
+        "id": "cp_target",
+        "label": "Form Target",
+        "type": "process",
+        "description": "user_code + customer_id"
+      }
+    },
+    {
+      "data": {
+        "id": "cp_t_len",
+        "label": "Target Length",
+        "type": "decision",
+        "description": "Must be <= 51 chars"
+      }
+    },
+    {
+      "data": {
+        "id": "cp_return",
+        "label": "Return Options",
+        "type": "end",
+        "description": "Valid RestoreCLIOptions"
+      }
+    },
+    {
+      "data": {
+        "source": "cp_start",
+        "target": "cp_user",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cp_user",
+        "target": "cp_sanitize",
+        "label": "Found"
+      }
+    },
+    {
+      "data": {
+        "source": "cp_sanitize",
+        "target": "cp_len",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cp_len",
+        "target": "cp_tokens",
+        "label": ">= 6"
+      }
+    },
+    {
+      "data": {
+        "source": "cp_tokens",
+        "target": "cp_cust_qa",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cp_cust_qa",
+        "target": "cp_target",
+        "label": "Valid"
+      }
+    },
+    {
+      "data": {
+        "source": "cp_target",
+        "target": "cp_t_len",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cp_t_len",
+        "target": "cp_return",
+        "label": "<= 51"
+      }
+    }
+  ],
+  "w_down": [
+    {
+      "data": {
+        "id": "wd_start",
+        "label": "Start Download",
+        "type": "start",
+        "description": "Input: BackupSpec"
+      }
+    },
+    {
+      "data": {
+        "id": "wd_mkdir",
+        "label": "Ensure Dir",
+        "type": "process",
+        "description": "os.makedirs(dest)"
+      }
+    },
+    {
+      "data": {
+        "id": "wd_calc",
+        "label": "Calc Required",
+        "type": "process",
+        "description": "size * 1.8"
+      }
+    },
+    {
+      "data": {
+        "id": "wd_check",
+        "label": "Disk Space?",
+        "type": "decision",
+        "description": "shutil.disk_usage > required"
+      }
+    },
+    {
+      "data": {
+        "id": "wd_get",
+        "label": "S3 GetObject",
+        "type": "process",
+        "description": "boto3 get_object"
+      }
+    },
+    {
+      "data": {
+        "id": "wd_stream",
+        "label": "Stream Loop",
+        "type": "process",
+        "description": "Read 8MB chunks"
+      }
+    },
+    {
+      "data": {
+        "id": "wd_write",
+        "label": "Write File",
+        "type": "process",
+        "description": "Write to disk"
+      }
+    },
+    {
+      "data": {
+        "id": "wd_prog",
+        "label": "Log Progress?",
+        "type": "decision",
+        "description": "Every 64MB"
+      }
+    },
+    {
+      "data": {
+        "id": "wd_done",
+        "label": "Download Complete",
+        "type": "end",
+        "description": "Return file path"
+      }
+    },
+    {
+      "data": {
+        "source": "wd_start",
+        "target": "wd_mkdir",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wd_mkdir",
+        "target": "wd_calc",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wd_calc",
+        "target": "wd_check",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wd_check",
+        "target": "wd_get",
+        "label": "Space OK"
+      }
+    },
+    {
+      "data": {
+        "source": "wd_get",
+        "target": "wd_stream",
+        "label": "Body Stream"
+      }
+    },
+    {
+      "data": {
+        "source": "wd_stream",
+        "target": "wd_write",
+        "label": "Chunk"
+      }
+    },
+    {
+      "data": {
+        "source": "wd_write",
+        "target": "wd_prog",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wd_prog",
+        "target": "wd_stream",
+        "label": "Next Chunk"
+      }
+    },
+    {
+      "data": {
+        "source": "wd_prog",
+        "target": "wd_done",
+        "label": "EOF"
+      }
+    }
+  ],
+  "w_s3": [
+    {
+      "data": {
+        "id": "s3_start",
+        "label": "Start Discovery",
+        "type": "start",
+        "description": "Input: Target Name"
+      }
+    },
+    {
+      "data": {
+        "id": "s3_list",
+        "label": "List Objects",
+        "type": "process",
+        "description": "s3.list_objects_v2"
+      }
+    },
+    {
+      "data": {
+        "id": "s3_filter",
+        "label": "Filter Prefix",
+        "type": "process",
+        "description": "daily/prod/{target}"
+      }
+    },
+    {
+      "data": {
+        "id": "s3_regex",
+        "label": "Parse Filenames",
+        "type": "process",
+        "description": "Extract Date & Type"
+      }
+    },
+    {
+      "data": {
+        "id": "s3_sort",
+        "label": "Sort by Date",
+        "type": "process",
+        "description": "Descending Order"
+      }
+    },
+    {
+      "data": {
+        "id": "s3_schema",
+        "label": "Schema Exists?",
+        "type": "decision",
+        "description": "Check *-schema-create.sql.zst"
+      }
+    },
+    {
+      "data": {
+        "id": "s3_return",
+        "label": "Return Spec",
+        "type": "end",
+        "description": "Latest Valid Backup"
+      }
+    },
+    {
+      "data": {
+        "source": "s3_start",
+        "target": "s3_list",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "s3_list",
+        "target": "s3_filter",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "s3_filter",
+        "target": "s3_regex",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "s3_regex",
+        "target": "s3_sort",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "s3_sort",
+        "target": "s3_schema",
+        "label": "Top Candidate"
+      }
+    },
+    {
+      "data": {
+        "source": "s3_schema",
+        "target": "s3_return",
+        "label": "Yes"
+      }
+    }
+  ],
+  "w_restore": [
+    {
+      "data": {
+        "id": "wr_start",
+        "label": "Start Restore",
+        "type": "start",
+        "description": "Input: Tar Path"
+      }
+    },
+    {
+      "data": {
+        "id": "wr_cmd",
+        "label": "Build Command",
+        "type": "process",
+        "description": "myloader --user ..."
+      }
+    },
+    {
+      "data": {
+        "id": "wr_env",
+        "label": "Set Env",
+        "type": "process",
+        "description": "MYSQL_PWD=..."
+      }
+    },
+    {
+      "data": {
+        "id": "wr_exec",
+        "label": "Execute",
+        "type": "process",
+        "description": "subprocess.Popen"
+      }
+    },
+    {
+      "data": {
+        "id": "wr_mon",
+        "label": "Monitor",
+        "type": "process",
+        "description": "Read stdout/stderr"
+      }
+    },
+    {
+      "data": {
+        "id": "wr_wait",
+        "label": "Wait",
+        "type": "decision",
+        "description": "proc.wait()"
+      }
+    },
+    {
+      "data": {
+        "id": "wr_check",
+        "label": "Exit Code",
+        "type": "decision",
+        "description": "== 0?"
+      }
+    },
+    {
+      "data": {
+        "id": "wr_end",
+        "label": "Success",
+        "type": "end",
+        "description": "Return True"
+      }
+    },
+    {
+      "data": {
+        "source": "wr_start",
+        "target": "wr_cmd",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wr_cmd",
+        "target": "wr_env",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wr_env",
+        "target": "wr_exec",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wr_exec",
+        "target": "wr_mon",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wr_mon",
+        "target": "wr_wait",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wr_wait",
+        "target": "wr_check",
+        "label": "Done"
+      }
+    },
+    {
+      "data": {
+        "source": "wr_check",
+        "target": "wr_end",
+        "label": "Yes"
+      }
+    }
+  ],
+  "w_post": [
+    {
+      "data": {
+        "id": "wp_start",
+        "label": "Start Post-SQL",
+        "type": "start",
+        "description": "Input: DB Name"
+      }
+    },
+    {
+      "data": {
+        "id": "wp_list",
+        "label": "List Scripts",
+        "type": "process",
+        "description": "glob(*.sql)"
+      }
+    },
+    {
+      "data": {
+        "id": "wp_sort",
+        "label": "Sort",
+        "type": "process",
+        "description": "Lexicographical"
+      }
+    },
+    {
+      "data": {
+        "id": "wp_loop",
+        "label": "Loop Scripts",
+        "type": "process",
+        "description": "For each script"
+      }
+    },
+    {
+      "data": {
+        "id": "wp_read",
+        "label": "Read SQL",
+        "type": "process",
+        "description": "Read file content"
+      }
+    },
+    {
+      "data": {
+        "id": "wp_run",
+        "label": "Execute",
+        "type": "process",
+        "description": "cursor.execute(sql)"
+      }
+    },
+    {
+      "data": {
+        "id": "wp_log",
+        "label": "Log Result",
+        "type": "process",
+        "description": "Record success/fail"
+      }
+    },
+    {
+      "data": {
+        "id": "wp_next",
+        "label": "Next?",
+        "type": "decision",
+        "description": "More scripts?"
+      }
+    },
+    {
+      "data": {
+        "id": "wp_end",
+        "label": "Complete",
+        "type": "end",
+        "description": "Return Report"
+      }
+    },
+    {
+      "data": {
+        "source": "wp_start",
+        "target": "wp_list",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wp_list",
+        "target": "wp_sort",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wp_sort",
+        "target": "wp_loop",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wp_loop",
+        "target": "wp_read",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wp_read",
+        "target": "wp_run",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wp_run",
+        "target": "wp_log",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wp_log",
+        "target": "wp_next",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "wp_next",
+        "target": "wp_loop",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "wp_next",
+        "target": "wp_end",
+        "label": "No"
+      }
+    }
+  ],
+  "cp_sanitize": [
+    {
+      "data": {
+        "id": "cs_start",
+        "label": "Start Sanitize",
+        "type": "start",
+        "description": "Input: String"
+      }
+    },
+    {
+      "data": {
+        "id": "cs_lower",
+        "label": "Lowercase",
+        "type": "process",
+        "description": "str.lower()"
+      }
+    },
+    {
+      "data": {
+        "id": "cs_loop",
+        "label": "Loop Chars",
+        "type": "process",
+        "description": "For each char"
+      }
+    },
+    {
+      "data": {
+        "id": "cs_check",
+        "label": "Is Alpha?",
+        "type": "decision",
+        "description": "char.isalpha()"
+      }
+    },
+    {
+      "data": {
+        "id": "cs_keep",
+        "label": "Keep",
+        "type": "process",
+        "description": "Append to result"
+      }
+    },
+    {
+      "data": {
+        "id": "cs_skip",
+        "label": "Skip",
+        "type": "process",
+        "description": "Ignore char"
+      }
+    },
+    {
+      "data": {
+        "id": "cs_join",
+        "label": "Join",
+        "type": "process",
+        "description": "''.join(result)"
+      }
+    },
+    {
+      "data": {
+        "id": "cs_end",
+        "label": "Return",
+        "type": "end",
+        "description": "Sanitized String"
+      }
+    },
+    {
+      "data": {
+        "source": "cs_start",
+        "target": "cs_lower",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cs_lower",
+        "target": "cs_loop",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cs_loop",
+        "target": "cs_check",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cs_check",
+        "target": "cs_keep",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "cs_check",
+        "target": "cs_skip",
+        "label": "No"
+      }
+    },
+    {
+      "data": {
+        "source": "cs_keep",
+        "target": "cs_loop",
+        "label": "Next"
+      }
+    },
+    {
+      "data": {
+        "source": "cs_skip",
+        "target": "cs_loop",
+        "label": "Next"
+      }
+    },
+    {
+      "data": {
+        "source": "cs_loop",
+        "target": "cs_join",
+        "label": "Done"
+      }
+    },
+    {
+      "data": {
+        "source": "cs_join",
+        "target": "cs_end",
+        "label": ""
+      }
+    }
+  ],
+  "s3_regex": [
+    {
+      "data": {
+        "id": "sr_start",
+        "label": "Start Regex",
+        "type": "start",
+        "description": "Input: Filename"
+      }
+    },
+    {
+      "data": {
+        "id": "sr_match",
+        "label": "Match Pattern",
+        "type": "process",
+        "description": "re.match(PATTERN)"
+      }
+    },
+    {
+      "data": {
+        "id": "sr_check",
+        "label": "Match?",
+        "type": "decision",
+        "description": "Is not None?"
+      }
+    },
+    {
+      "data": {
+        "id": "sr_group",
+        "label": "Extract Groups",
+        "type": "process",
+        "description": "Date, Time, Type"
+      }
+    },
+    {
+      "data": {
+        "id": "sr_obj",
+        "label": "Create Spec",
+        "type": "process",
+        "description": "BackupSpec(...)"
+      }
+    },
+    {
+      "data": {
+        "id": "sr_fail",
+        "label": "Ignore",
+        "type": "end",
+        "description": "Not a backup"
+      }
+    },
+    {
+      "data": {
+        "id": "sr_end",
+        "label": "Return Spec",
+        "type": "end",
+        "description": "Valid BackupSpec"
+      }
+    },
+    {
+      "data": {
+        "source": "sr_start",
+        "target": "sr_match",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "sr_match",
+        "target": "sr_check",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "sr_check",
+        "target": "sr_group",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "sr_check",
+        "target": "sr_fail",
+        "label": "No"
+      }
+    },
+    {
+      "data": {
+        "source": "sr_group",
+        "target": "sr_obj",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "sr_obj",
+        "target": "sr_end",
+        "label": ""
+      }
+    }
+  ],
+  "wd_stream": [
+    {
+      "data": {
+        "id": "ds_start",
+        "label": "Start Stream",
+        "type": "start",
+        "description": "Input: Body, File"
+      }
+    },
+    {
+      "data": {
+        "id": "ds_read",
+        "label": "Read Chunk",
+        "type": "process",
+        "description": "body.read(8MB)"
+      }
+    },
+    {
+      "data": {
+        "id": "ds_check",
+        "label": "Empty?",
+        "type": "decision",
+        "description": "chunk is None/Empty"
+      }
+    },
+    {
+      "data": {
+        "id": "ds_write",
+        "label": "Write",
+        "type": "process",
+        "description": "f.write(chunk)"
+      }
+    },
+    {
+      "data": {
+        "id": "ds_track",
+        "label": "Update Total",
+        "type": "process",
+        "description": "downloaded += len"
+      }
+    },
+    {
+      "data": {
+        "id": "ds_prog",
+        "label": "Log?",
+        "type": "decision",
+        "description": ">= 64MB since last"
+      }
+    },
+    {
+      "data": {
+        "id": "ds_log",
+        "label": "Log Info",
+        "type": "process",
+        "description": "logger.info(...)"
+      }
+    },
+    {
+      "data": {
+        "id": "ds_end",
+        "label": "Finish",
+        "type": "end",
+        "description": "Close file"
+      }
+    },
+    {
+      "data": {
+        "source": "ds_start",
+        "target": "ds_read",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "ds_read",
+        "target": "ds_check",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "ds_check",
+        "target": "ds_write",
+        "label": "No"
+      }
+    },
+    {
+      "data": {
+        "source": "ds_check",
+        "target": "ds_end",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "ds_write",
+        "target": "ds_track",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "ds_track",
+        "target": "ds_prog",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "ds_prog",
+        "target": "ds_log",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "ds_prog",
+        "target": "ds_read",
+        "label": "No"
+      }
+    },
+    {
+      "data": {
+        "source": "ds_log",
+        "target": "ds_read",
+        "label": ""
+      }
+    }
+  ],
+  "wr_cmd": [
+    {
+      "data": {
+        "id": "rc_start",
+        "label": "Start Build",
+        "type": "start",
+        "description": "Input: Config"
+      }
+    },
+    {
+      "data": {
+        "id": "rc_base",
+        "label": "Base Cmd",
+        "type": "process",
+        "description": "['myloader']"
+      }
+    },
+    {
+      "data": {
+        "id": "rc_user",
+        "label": "Add User",
+        "type": "process",
+        "description": "--user={user}"
+      }
+    },
+    {
+      "data": {
+        "id": "rc_host",
+        "label": "Add Host",
+        "type": "process",
+        "description": "--host={host}"
+      }
+    },
+    {
+      "data": {
+        "id": "rc_dir",
+        "label": "Add Dir",
+        "type": "process",
+        "description": "--directory={dir}"
+      }
+    },
+    {
+      "data": {
+        "id": "rc_over",
+        "label": "Add Overwrite",
+        "type": "process",
+        "description": "--overwrite-tables"
+      }
+    },
+    {
+      "data": {
+        "id": "rc_verb",
+        "label": "Add Verbose",
+        "type": "process",
+        "description": "--verbose=3"
+      }
+    },
+    {
+      "data": {
+        "id": "rc_end",
+        "label": "Return List",
+        "type": "end",
+        "description": "Command List"
+      }
+    },
+    {
+      "data": {
+        "source": "rc_start",
+        "target": "rc_base",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rc_base",
+        "target": "rc_user",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rc_user",
+        "target": "rc_host",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rc_host",
+        "target": "rc_dir",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rc_dir",
+        "target": "rc_over",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rc_over",
+        "target": "rc_verb",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rc_verb",
+        "target": "rc_end",
+        "label": ""
+      }
+    }
+  ],
+  "cp_tokens": [
+    {
+      "data": {
+        "id": "ct_start",
+        "label": "Start Loop",
+        "type": "start",
+        "description": "Input: Tokens[1:]"
+      }
+    },
+    {
+      "data": {
+        "id": "ct_loop",
+        "label": "Next Token",
+        "type": "process",
+        "description": "For each token"
+      }
+    },
+    {
+      "data": {
+        "id": "ct_check_cust",
+        "label": "Is customer=?",
+        "type": "decision",
+        "description": "StartsWith 'customer='"
+      }
+    },
+    {
+      "data": {
+        "id": "ct_check_host",
+        "label": "Is dbhost=?",
+        "type": "decision",
+        "description": "StartsWith 'dbhost='"
+      }
+    },
+    {
+      "data": {
+        "id": "ct_check_over",
+        "label": "Is overwrite?",
+        "type": "decision",
+        "description": "== 'overwrite'"
+      }
+    },
+    {
+      "data": {
+        "id": "ct_check_qa",
+        "label": "Is qatemplate?",
+        "type": "decision",
+        "description": "== 'qatemplate'"
+      }
+    },
+    {
+      "data": {
+        "id": "ct_set_cust",
+        "label": "Set Customer",
+        "type": "process",
+        "description": "opts.customer = val"
+      }
+    },
+    {
+      "data": {
+        "id": "ct_set_host",
+        "label": "Set Host",
+        "type": "process",
+        "description": "opts.dbhost = val"
+      }
+    },
+    {
+      "data": {
+        "id": "ct_set_over",
+        "label": "Set Overwrite",
+        "type": "process",
+        "description": "opts.overwrite = True"
+      }
+    },
+    {
+      "data": {
+        "id": "ct_set_qa",
+        "label": "Set QA",
+        "type": "process",
+        "description": "opts.qatemplate = True"
+      }
+    },
+    {
+      "data": {
+        "id": "ct_error",
+        "label": "Unknown Arg",
+        "type": "end",
+        "description": "Raise ValueError"
+      }
+    },
+    {
+      "data": {
+        "id": "ct_end",
+        "label": "Done",
+        "type": "end",
+        "description": "Return Options"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_start",
+        "target": "ct_loop",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "ct_loop",
+        "target": "ct_check_cust",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "ct_check_cust",
+        "target": "ct_set_cust",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_check_cust",
+        "target": "ct_check_host",
+        "label": "No"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_check_host",
+        "target": "ct_set_host",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_check_host",
+        "target": "ct_check_over",
+        "label": "No"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_check_over",
+        "target": "ct_set_over",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_check_over",
+        "target": "ct_check_qa",
+        "label": "No"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_check_qa",
+        "target": "ct_set_qa",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_check_qa",
+        "target": "ct_error",
+        "label": "No"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_set_cust",
+        "target": "ct_loop",
+        "label": "Next"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_set_host",
+        "target": "ct_loop",
+        "label": "Next"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_set_over",
+        "target": "ct_loop",
+        "label": "Next"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_set_qa",
+        "target": "ct_loop",
+        "label": "Next"
+      }
+    },
+    {
+      "data": {
+        "source": "ct_loop",
+        "target": "ct_end",
+        "label": "No More Tokens"
+      }
+    }
+  ],
+  "s3_schema": [
+    {
+      "data": {
+        "id": "ss_start",
+        "label": "Start Check",
+        "type": "start",
+        "description": "Input: Backup Key"
+      }
+    },
+    {
+      "data": {
+        "id": "ss_derive",
+        "label": "Derive Name",
+        "type": "process",
+        "description": "Replace .tar -> -schema-create.sql.zst"
+      }
+    },
+    {
+      "data": {
+        "id": "ss_check",
+        "label": "In List?",
+        "type": "decision",
+        "description": "Is schema_key in objects?"
+      }
+    },
+    {
+      "data": {
+        "id": "ss_true",
+        "label": "Valid",
+        "type": "end",
+        "description": "Return True"
+      }
+    },
+    {
+      "data": {
+        "id": "ss_false",
+        "label": "Invalid",
+        "type": "end",
+        "description": "Return False"
+      }
+    },
+    {
+      "data": {
+        "source": "ss_start",
+        "target": "ss_derive",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "ss_derive",
+        "target": "ss_check",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "ss_check",
+        "target": "ss_true",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "ss_check",
+        "target": "ss_false",
+        "label": "No"
+      }
+    }
+  ],
+  "wd_check": [
+    {
+      "data": {
+        "id": "dc_start",
+        "label": "Start Check",
+        "type": "start",
+        "description": "Input: Required Bytes"
+      }
+    },
+    {
+      "data": {
+        "id": "dc_path",
+        "label": "Get Path",
+        "type": "process",
+        "description": "os.path.dirname(dest)"
+      }
+    },
+    {
+      "data": {
+        "id": "dc_usage",
+        "label": "Get Usage",
+        "type": "process",
+        "description": "shutil.disk_usage(path)"
+      }
+    },
+    {
+      "data": {
+        "id": "dc_calc",
+        "label": "Compare",
+        "type": "decision",
+        "description": "usage.free > required"
+      }
+    },
+    {
+      "data": {
+        "id": "dc_pass",
+        "label": "Pass",
+        "type": "end",
+        "description": "Return True"
+      }
+    },
+    {
+      "data": {
+        "id": "dc_fail",
+        "label": "Fail",
+        "type": "end",
+        "description": "Raise DiskSpaceError"
+      }
+    },
+    {
+      "data": {
+        "source": "dc_start",
+        "target": "dc_path",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "dc_path",
+        "target": "dc_usage",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "dc_usage",
+        "target": "dc_calc",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "dc_calc",
+        "target": "dc_pass",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "dc_calc",
+        "target": "dc_fail",
+        "label": "No"
+      }
+    }
+  ],
+  "wr_mon": [
+    {
+      "data": {
+        "id": "rm_start",
+        "label": "Start Monitor",
+        "type": "start",
+        "description": "Input: Popen Proc"
+      }
+    },
+    {
+      "data": {
+        "id": "rm_sel",
+        "label": "Select",
+        "type": "process",
+        "description": "select([stdout, stderr])"
+      }
+    },
+    {
+      "data": {
+        "id": "rm_read",
+        "label": "Read Line",
+        "type": "process",
+        "description": "pipe.readline()"
+      }
+    },
+    {
+      "data": {
+        "id": "rm_empty",
+        "label": "EOF?",
+        "type": "decision",
+        "description": "Line is empty?"
+      }
+    },
+    {
+      "data": {
+        "id": "rm_log",
+        "label": "Log",
+        "type": "process",
+        "description": "logger.info(line)"
+      }
+    },
+    {
+      "data": {
+        "id": "rm_end",
+        "label": "Done",
+        "type": "end",
+        "description": "Return"
+      }
+    },
+    {
+      "data": {
+        "source": "rm_start",
+        "target": "rm_sel",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rm_sel",
+        "target": "rm_read",
+        "label": "Ready"
+      }
+    },
+    {
+      "data": {
+        "source": "rm_read",
+        "target": "rm_empty",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rm_empty",
+        "target": "rm_log",
+        "label": "No"
+      }
+    },
+    {
+      "data": {
+        "source": "rm_log",
+        "target": "rm_sel",
+        "label": "Next"
+      }
+    },
+    {
+      "data": {
+        "source": "rm_empty",
+        "target": "rm_end",
+        "label": "Yes"
+      }
+    }
+  ],
+  "cli_creds": [
+    {
+      "data": {
+        "id": "cc_start",
+        "label": "Start Resolve",
+        "type": "start",
+        "description": "Input: Credential Ref"
+      }
+    },
+    {
+      "data": {
+        "id": "cc_parse",
+        "label": "Parse Ref",
+        "type": "process",
+        "description": "Split Service:ID"
+      }
+    },
+    {
+      "data": {
+        "id": "cc_type",
+        "label": "Service Type",
+        "type": "decision",
+        "description": "SecretsManager or SSM?"
+      }
+    },
+    {
+      "data": {
+        "id": "cc_sm",
+        "label": "Get Secret",
+        "type": "process",
+        "description": "secretsmanager.get_secret_value"
+      }
+    },
+    {
+      "data": {
+        "id": "cc_ssm",
+        "label": "Get Param",
+        "type": "process",
+        "description": "ssm.get_parameter"
+      }
+    },
+    {
+      "data": {
+        "id": "cc_json",
+        "label": "Parse JSON",
+        "type": "process",
+        "description": "json.loads(value)"
+      }
+    },
+    {
+      "data": {
+        "id": "cc_ret",
+        "label": "Return",
+        "type": "end",
+        "description": "MySQLCredentials"
+      }
+    },
+    {
+      "data": {
+        "source": "cc_start",
+        "target": "cc_parse",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cc_parse",
+        "target": "cc_type",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cc_type",
+        "target": "cc_sm",
+        "label": "SecretsManager"
+      }
+    },
+    {
+      "data": {
+        "source": "cc_type",
+        "target": "cc_ssm",
+        "label": "SSM"
+      }
+    },
+    {
+      "data": {
+        "source": "cc_sm",
+        "target": "cc_json",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cc_ssm",
+        "target": "cc_json",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cc_json",
+        "target": "cc_ret",
+        "label": ""
+      }
+    }
+  ],
+  "w_rename": [
+    {
+      "data": {
+        "id": "rn_start",
+        "label": "Start Rename",
+        "type": "start",
+        "description": "Input: Job ID"
+      }
+    },
+    {
+      "data": {
+        "id": "rn_conn",
+        "label": "Get Conn",
+        "type": "process",
+        "description": "Get DB Connection"
+      }
+    },
+    {
+      "data": {
+        "id": "rn_check",
+        "label": "Check Staging",
+        "type": "decision",
+        "description": "Staging DB Exists?"
+      }
+    },
+    {
+      "data": {
+        "id": "rn_call",
+        "label": "Call Proc",
+        "type": "process",
+        "description": "CALL atomic_rename(...)"
+      }
+    },
+    {
+      "data": {
+        "id": "rn_drop",
+        "label": "Drop Staging",
+        "type": "process",
+        "description": "DROP DATABASE staging"
+      }
+    },
+    {
+      "data": {
+        "id": "rn_end",
+        "label": "Complete",
+        "type": "end",
+        "description": "Return Success"
+      }
+    },
+    {
+      "data": {
+        "source": "rn_start",
+        "target": "rn_conn",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rn_conn",
+        "target": "rn_check",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rn_check",
+        "target": "rn_call",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "rn_check",
+        "target": "rn_end",
+        "label": "No (Error)"
+      }
+    },
+    {
+      "data": {
+        "source": "rn_call",
+        "target": "rn_drop",
+        "label": "Success"
+      }
+    },
+    {
+      "data": {
+        "source": "rn_drop",
+        "target": "rn_end",
+        "label": ""
+      }
+    }
+  ],
+  "rn_call": [
+    {
+      "data": {
+        "id": "rc_start",
+        "label": "Start Call",
+        "type": "start",
+        "description": "Input: Conn, Names"
+      }
+    },
+    {
+      "data": {
+        "id": "rc_cursor",
+        "label": "Get Cursor",
+        "type": "process",
+        "description": "conn.cursor()"
+      }
+    },
+    {
+      "data": {
+        "id": "rc_exec",
+        "label": "Execute",
+        "type": "process",
+        "description": "cursor.execute('CALL ...')"
+      }
+    },
+    {
+      "data": {
+        "id": "rc_commit",
+        "label": "Commit",
+        "type": "process",
+        "description": "conn.commit()"
+      }
+    },
+    {
+      "data": {
+        "id": "rc_close",
+        "label": "Close",
+        "type": "process",
+        "description": "cursor.close()"
+      }
+    },
+    {
+      "data": {
+        "id": "rc_end",
+        "label": "Return",
+        "type": "end",
+        "description": "Success"
+      }
+    },
+    {
+      "data": {
+        "source": "rc_start",
+        "target": "rc_cursor",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rc_cursor",
+        "target": "rc_exec",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rc_exec",
+        "target": "rc_commit",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rc_commit",
+        "target": "rc_close",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "rc_close",
+        "target": "rc_end",
+        "label": ""
+      }
+    }
+  ],
+  "wp_run": [
+    {
+      "data": {
+        "id": "pr_start",
+        "label": "Start Exec",
+        "type": "start",
+        "description": "Input: SQL"
+      }
+    },
+    {
+      "data": {
+        "id": "pr_try",
+        "label": "Try Block",
+        "type": "process",
+        "description": "Begin Try"
+      }
+    },
+    {
+      "data": {
+        "id": "pr_exec",
+        "label": "Execute",
+        "type": "process",
+        "description": "cursor.execute(sql)"
+      }
+    },
+    {
+      "data": {
+        "id": "pr_commit",
+        "label": "Commit",
+        "type": "process",
+        "description": "conn.commit()"
+      }
+    },
+    {
+      "data": {
+        "id": "pr_except",
+        "label": "Exception?",
+        "type": "decision",
+        "description": "Error Occurred?"
+      }
+    },
+    {
+      "data": {
+        "id": "pr_roll",
+        "label": "Rollback",
+        "type": "process",
+        "description": "conn.rollback()"
+      }
+    },
+    {
+      "data": {
+        "id": "pr_raise",
+        "label": "Raise",
+        "type": "end",
+        "description": "Re-raise Error"
+      }
+    },
+    {
+      "data": {
+        "id": "pr_end",
+        "label": "Success",
+        "type": "end",
+        "description": "Return"
+      }
+    },
+    {
+      "data": {
+        "source": "pr_start",
+        "target": "pr_try",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "pr_try",
+        "target": "pr_exec",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "pr_exec",
+        "target": "pr_commit",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "pr_commit",
+        "target": "pr_except",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "pr_except",
+        "target": "pr_roll",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "pr_roll",
+        "target": "pr_raise",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "pr_except",
+        "target": "pr_end",
+        "label": "No"
+      }
+    }
+  ],
+  "cli_config": [
+    {
+      "data": {
+        "id": "cl_start",
+        "label": "Start Load",
+        "type": "start",
+        "description": "Init Config"
+      }
+    },
+    {
+      "data": {
+        "id": "cl_env",
+        "label": "Load Env",
+        "type": "process",
+        "description": "os.environ.get()"
+      }
+    },
+    {
+      "data": {
+        "id": "cl_ssm",
+        "label": "Load SSM",
+        "type": "process",
+        "description": "Get Parameter Store"
+      }
+    },
+    {
+      "data": {
+        "id": "cl_merge",
+        "label": "Merge",
+        "type": "process",
+        "description": "Overlay SSM on Env"
+      }
+    },
+    {
+      "data": {
+        "id": "cl_valid",
+        "label": "Validate",
+        "type": "decision",
+        "description": "Required fields?"
+      }
+    },
+    {
+      "data": {
+        "id": "cl_err",
+        "label": "Error",
+        "type": "end",
+        "description": "Raise ConfigError"
+      }
+    },
+    {
+      "data": {
+        "id": "cl_end",
+        "label": "Return",
+        "type": "end",
+        "description": "Config Object"
+      }
+    },
+    {
+      "data": {
+        "source": "cl_start",
+        "target": "cl_env",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cl_env",
+        "target": "cl_ssm",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cl_ssm",
+        "target": "cl_merge",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cl_merge",
+        "target": "cl_valid",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "cl_valid",
+        "target": "cl_err",
+        "label": "Missing"
+      }
+    },
+    {
+      "data": {
+        "source": "cl_valid",
+        "target": "cl_end",
+        "label": "OK"
+      }
+    }
+  ],
+  "s3_list": [
+    {
+      "data": {
+        "id": "sl_start",
+        "label": "Start List",
+        "type": "start",
+        "description": "Input: Bucket, Prefix"
+      }
+    },
+    {
+      "data": {
+        "id": "sl_page",
+        "label": "Get Paginator",
+        "type": "process",
+        "description": "s3.get_paginator"
+      }
+    },
+    {
+      "data": {
+        "id": "sl_iter",
+        "label": "Iterate Pages",
+        "type": "process",
+        "description": "For page in pages"
+      }
+    },
+    {
+      "data": {
+        "id": "sl_cont",
+        "label": "Get Contents",
+        "type": "process",
+        "description": "page.get('Contents')"
+      }
+    },
+    {
+      "data": {
+        "id": "sl_ext",
+        "label": "Extend List",
+        "type": "process",
+        "description": "all_objs.extend()"
+      }
+    },
+    {
+      "data": {
+        "id": "sl_next",
+        "label": "Next Page?",
+        "type": "decision",
+        "description": "More pages?"
+      }
+    },
+    {
+      "data": {
+        "id": "sl_end",
+        "label": "Return",
+        "type": "end",
+        "description": "Full Object List"
+      }
+    },
+    {
+      "data": {
+        "source": "sl_start",
+        "target": "sl_page",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "sl_page",
+        "target": "sl_iter",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "sl_iter",
+        "target": "sl_cont",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "sl_cont",
+        "target": "sl_ext",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "sl_ext",
+        "target": "sl_next",
+        "label": ""
+      }
+    },
+    {
+      "data": {
+        "source": "sl_next",
+        "target": "sl_iter",
+        "label": "Yes"
+      }
+    },
+    {
+      "data": {
+        "source": "sl_next",
+        "target": "sl_end",
+        "label": "No"
+      }
+    }
+  ]
+}

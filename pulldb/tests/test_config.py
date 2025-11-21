@@ -4,6 +4,7 @@ Tests both minimal_from_env (environment only) and from_env_and_mysql
 (environment + MySQL settings table).
 """
 
+import json
 import os
 from collections.abc import Generator
 from pathlib import Path
@@ -11,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from pulldb.domain.config import Config
+from pulldb.domain.config import Config, _parse_s3_backup_locations
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +40,12 @@ class TestMinimalFromEnv:
         assert config.mysql_database == "pulldb"
         assert config.s3_bucket_path is None
         assert config.aws_profile is None
+        assert config.s3_aws_profile is None
         assert config.default_dbhost is None
+        assert config.myloader_binary == "myloader"
+        assert config.myloader_extra_args == ()
+        assert config.myloader_timeout_seconds == 7200.0
+        assert config.myloader_threads == 8
 
     def test_minimal_with_explicit_values(self) -> None:
         """Test minimal config with explicit environment variables."""
@@ -49,7 +55,12 @@ class TestMinimalFromEnv:
         os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb_prod"
         os.environ["PULLDB_S3_BUCKET_PATH"] = "s3://my-bucket/backups/"
         os.environ["PULLDB_AWS_PROFILE"] = "production"
+        os.environ["PULLDB_S3_AWS_PROFILE"] = "staging-reader"
         os.environ["PULLDB_DEFAULT_DBHOST"] = "db-prod-01"
+        os.environ["PULLDB_MYLOADER_BINARY"] = "/opt/bin/myloader-custom"
+        os.environ["PULLDB_MYLOADER_EXTRA_ARGS"] = "--rows-per-insert=1000 --skip-triggers"
+        os.environ["PULLDB_MYLOADER_TIMEOUT_SECONDS"] = "3600.5"
+        os.environ["PULLDB_MYLOADER_THREADS"] = "16"
 
         config = Config.minimal_from_env()
 
@@ -59,7 +70,25 @@ class TestMinimalFromEnv:
         assert config.mysql_database == "pulldb_prod"
         assert config.s3_bucket_path == "s3://my-bucket/backups/"
         assert config.aws_profile == "production"
+        assert config.s3_aws_profile == "staging-reader"
         assert config.default_dbhost == "db-prod-01"
+        assert config.myloader_binary == "/opt/bin/myloader-custom"
+        assert config.myloader_extra_args == (
+            "--rows-per-insert=1000",
+            "--skip-triggers",
+        )
+        assert config.myloader_timeout_seconds == pytest.approx(3600.5)
+        assert config.myloader_threads == 16
+
+    def test_invalid_threads_env_raises(self) -> None:
+        os.environ["PULLDB_MYLOADER_THREADS"] = "-1"
+        with pytest.raises(ValueError):
+            Config.minimal_from_env()
+
+    def test_s3_profile_defaults_to_aws_profile(self) -> None:
+        os.environ["PULLDB_AWS_PROFILE"] = "dev"
+        config = Config.minimal_from_env()
+        assert config.s3_aws_profile == "dev"
 
 
 class TestFromEnvAndMySQL:
@@ -94,6 +123,22 @@ class TestFromEnvAndMySQL:
                 "setting_key": "customers_after_sql_dir",
                 "setting_value": "/opt/pulldb/customers_after_sql",
             },
+            {
+                "setting_key": "myloader_binary",
+                "setting_value": "/usr/local/bin/myloader",
+            },
+            {
+                "setting_key": "myloader_extra_args",
+                "setting_value": "--skip-triggers --rows-per-insert=500",
+            },
+            {
+                "setting_key": "myloader_timeout_seconds",
+                "setting_value": "1800",
+            },
+            {
+                "setting_key": "myloader_threads",
+                "setting_value": "12",
+            },
         ]
         mock_pool = self._build_pool_with_settings(settings_rows)
 
@@ -107,6 +152,13 @@ class TestFromEnvAndMySQL:
         assert config.default_dbhost == "db-mysql-db4-dev.example.com"
         assert config.work_dir == Path("/var/lib/pulldb")
         assert config.customers_after_sql_dir == Path("/opt/pulldb/customers_after_sql")
+        assert config.myloader_binary == "/usr/local/bin/myloader"
+        assert config.myloader_extra_args == (
+            "--skip-triggers",
+            "--rows-per-insert=500",
+        )
+        assert config.myloader_timeout_seconds == 1800.0
+        assert config.myloader_threads == 12
 
     def test_environment_takes_precedence_over_mysql(self) -> None:
         """Environment variables override MySQL settings rows."""
@@ -116,11 +168,23 @@ class TestFromEnvAndMySQL:
         os.environ["PULLDB_S3_BUCKET_PATH"] = "s3://env-bucket/"
         os.environ["PULLDB_DEFAULT_DBHOST"] = "env-dbhost"
         os.environ["PULLDB_WORK_DIR"] = "/tmp/env-work"
+        os.environ["PULLDB_MYLOADER_BINARY"] = "env-loader"
+        os.environ["PULLDB_MYLOADER_EXTRA_ARGS"] = "--foo"
+        os.environ["PULLDB_MYLOADER_TIMEOUT_SECONDS"] = "99"
+        os.environ["PULLDB_MYLOADER_THREADS"] = "2"
 
         settings_rows = [
             {"setting_key": "s3_bucket_stg", "setting_value": "mysql-bucket"},
             {"setting_key": "default_dbhost", "setting_value": "mysql-dbhost"},
             {"setting_key": "work_directory", "setting_value": "/var/mysql-work"},
+            {
+                "setting_key": "myloader_binary",
+                "setting_value": "/usr/bin/mysql-myloader",
+            },
+            {
+                "setting_key": "myloader_extra_args",
+                "setting_value": "--bar",
+            },
         ]
         mock_pool = self._build_pool_with_settings(settings_rows)
 
@@ -129,6 +193,10 @@ class TestFromEnvAndMySQL:
         assert config.s3_bucket_path == "s3://env-bucket/"
         assert config.default_dbhost == "env-dbhost"
         assert config.work_dir == Path("/tmp/env-work")
+        assert config.myloader_binary == "env-loader"
+        assert config.myloader_extra_args == ("--foo",)
+        assert config.myloader_timeout_seconds == 99.0
+        assert config.myloader_threads == 2
 
     def test_mysql_settings_fallback_to_defaults(self) -> None:
         """Defaults used when neither environment nor MySQL provide values."""
@@ -169,3 +237,36 @@ class TestFromEnvAndMySQL:
         mock_pool = self._build_pool_with_settings(settings_rows)
         config = Config.from_env_and_mysql(mock_pool)
         assert config.s3_bucket_path == "prod-bucket"
+
+
+class TestS3BackupLocationParsing:
+    def test_parse_locations_with_aliases(self) -> None:
+        payload = json.dumps(
+            [
+                {
+                    "name": "prod",
+                    "bucket_path": "s3://backups/daily/prod",
+                    "format": "prod-legacy",
+                    "target_aliases": {
+                        "qatemplate": [
+                            "qatemplate",
+                            "qatemplate_legacy",
+                        ]
+                    },
+                }
+            ]
+        )
+
+        locations = _parse_s3_backup_locations(payload)
+
+        assert len(locations) == 1
+        loc = locations[0]
+        assert loc.name == "prod"
+        assert loc.bucket == "backups"
+        assert loc.prefix == "daily/prod/"
+        assert loc.format_tag == "prod-legacy"
+        assert loc.aliases_for_target("qatemplate") == (
+            "qatemplate",
+            "qatemplate_legacy",
+        )
+        assert loc.aliases_for_target("unknown") == ()

@@ -96,7 +96,7 @@ pullDB requires 5 secrets in AWS Secrets Manager:
 
 | Secret Name | Purpose | Team | Rotation |
 |-------------|---------|------|----------|
-| `/pulldb/mysql/db-local-dev` | Local sandbox restore target | Development | 90 days |
+| `/pulldb/mysql/localhost-test` | Local sandbox restore target | Development | 90 days |
 | `/pulldb/mysql/db3-dev` | Target database server credentials | DEV | 90 days |
 | `/pulldb/mysql/db4-dev` | Target database server credentials | SUPPORT | 90 days |
 | `/pulldb/mysql/db5-dev` | Target database server credentials | IMPLEMENTATION | 90 days |
@@ -113,7 +113,7 @@ pullDB requires 5 secrets in AWS Secrets Manager:
 }
 ```
 
-  The local sandbox secret (`/pulldb/mysql/db-local-dev`) uses the same structure but sets `host` to `localhost` and may omit the cluster identifier in favor of a `database` field when pointing at a standalone instance.
+  The local sandbox secret (`/pulldb/mysql/localhost-test`) uses the same structure but sets `host` to `localhost` and may omit the cluster identifier in favor of a `database` field when pointing at a standalone instance.
 
 ## Implementation Tasks
 

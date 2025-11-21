@@ -12,13 +12,18 @@ creation, post-SQL, rename) will reside elsewhere.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from pulldb.domain.config import Config
 from pulldb.domain.errors import MyLoaderError
 from pulldb.domain.models import Job
-from pulldb.domain.restore_models import MyLoaderResult, MyLoaderSpec
+from pulldb.domain.restore_models import (
+    MyLoaderResult,
+    MyLoaderSpec,
+    build_configured_myloader_spec,
+)
 from pulldb.infra.exec import (
     CommandExecutionError,
     CommandResult,
@@ -76,6 +81,57 @@ class RestoreWorkflowSpec:
     post_sql_conn: PostSQLConnectionSpec
     myloader_spec: MyLoaderSpec
     timeout: float | None = None
+
+
+def build_restore_workflow_spec(
+    *,
+    config: Config,
+    job: Job,
+    backup_filename: str,
+    backup_dir: str,
+    staging_conn: StagingConnectionSpec,
+    post_sql_conn: PostSQLConnectionSpec,
+    extra_myloader_args: Sequence[str] | None = None,
+    myloader_env: Mapping[str, str] | None = None,
+    timeout_override: float | None = None,
+) -> RestoreWorkflowSpec:
+    """Construct :class:`RestoreWorkflowSpec` using global configuration.
+
+    This helper centralizes how worker code translates configuration + job
+    metadata into a ready-to-run workflow specification, ensuring new knobs
+    (binary path, timeout, threads) automatically flow to myloader.
+    """
+
+    if not job.staging_name:
+        raise ValueError(
+            "job.staging_name is required to build restore workflow spec"
+        )
+
+    myloader_spec = build_configured_myloader_spec(
+        config=config,
+        job_id=job.id,
+        staging_db=job.staging_name,
+        backup_dir=backup_dir,
+        mysql_host=staging_conn.mysql_host,
+        mysql_port=staging_conn.mysql_port,
+        mysql_user=staging_conn.mysql_user,
+        mysql_password=staging_conn.mysql_password,
+        extra_args=extra_myloader_args,
+        env=myloader_env,
+    )
+
+    timeout = timeout_override
+    if timeout is None:
+        timeout = config.myloader_timeout_seconds
+
+    return RestoreWorkflowSpec(
+        job=job,
+        backup_filename=backup_filename,
+        staging_conn=staging_conn,
+        post_sql_conn=post_sql_conn,
+        myloader_spec=myloader_spec,
+        timeout=timeout,
+    )
 
 
 def _build_command(spec: MyLoaderSpec) -> list[str]:
@@ -367,6 +423,7 @@ __all__: Sequence[str] = [
     "MyLoaderResult",
     "MyLoaderSpec",
     "RestoreWorkflowSpec",
+    "build_restore_workflow_spec",
     "orchestrate_restore_workflow",
     "run_myloader",
 ]

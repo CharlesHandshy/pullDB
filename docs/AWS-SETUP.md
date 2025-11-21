@@ -52,7 +52,7 @@ pullDB uses a three-account architecture with cross-account S3 access:
 │  ┌──────────────────────────────────────────────────────────── │
 │  │ AWS Secrets Manager                                          │
 │  │ • /pulldb/mysql/coordination-db (test + runtime)            │
-│  │ • /pulldb/mysql/db-local-dev                                │
+│  │ • /pulldb/mysql/localhost-test                              │
 │  │ • /pulldb/mysql/db3-dev                                     │
 │  │ • /pulldb/mysql/db4-dev                                     │
 │  │ • /pulldb/mysql/db5-dev                                     │
@@ -680,7 +680,7 @@ Create secrets for each target MySQL server where databases will be restored.
 
 ```bash
 aws secretsmanager create-secret \
-  --name /pulldb/mysql/db-local-dev \
+  --name /pulldb/mysql/localhost-test \
   --description "MySQL credentials for local sandbox restore target" \
   --secret-string '{
     "username": "pulldb_app",
@@ -692,7 +692,7 @@ aws secretsmanager create-secret \
   --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=local-sandbox
 
 # Verify
-aws secretsmanager describe-secret --secret-id /pulldb/mysql/db-local-dev
+aws secretsmanager describe-secret --secret-id /pulldb/mysql/localhost-test
 ```
 
 **db3-dev (DEV team):**
@@ -797,7 +797,7 @@ aws secretsmanager get-secret-value --secret-id /pulldb/mysql/coordination-db \
 # Should show JSON with username, password, host, port
 
 # Test local sandbox secret
-aws secretsmanager get-secret-value --secret-id /pulldb/mysql/db-local-dev \
+aws secretsmanager get-secret-value --secret-id /pulldb/mysql/localhost-test \
   --query SecretString --output text | jq .
 
 # Should show JSON with localhost host, optional database

@@ -22,10 +22,15 @@ from pathlib import Path
 import pytest
 from moto import mock_aws
 
+from pulldb.domain.config import Config
 from pulldb.domain.models import Job, JobStatus
 from pulldb.domain.restore_models import MyLoaderResult, MyLoaderSpec
 from pulldb.worker.post_sql import PostSQLConnectionSpec
-from pulldb.worker.restore import RestoreWorkflowSpec, orchestrate_restore_workflow
+from pulldb.worker.restore import (
+    RestoreWorkflowSpec,
+    build_restore_workflow_spec,
+    orchestrate_restore_workflow,
+)
 from pulldb.worker.staging import StagingConnectionSpec
 
 
@@ -76,6 +81,10 @@ def _job() -> Job:
     )
 
 
+def _config() -> Config:
+    return Config(mysql_host="localhost", mysql_user="root", mysql_password="pw")
+
+
 def test_restore_workflow_happy_path(
     fake_myloader: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -104,18 +113,6 @@ def test_restore_workflow_happy_path(
         connect_timeout=5,
     )
 
-    # MyLoader spec referencing backup dir (empty path acceptable for fake)
-    myloader_spec = MyLoaderSpec(
-        job_id=job.id,
-        staging_db="integrcustomer_123e4567e89b",
-        backup_dir=str(tmp_path),
-        mysql_host="localhost",
-        mysql_port=3306,
-        mysql_user="root",
-        mysql_password="pw",
-        extra_args=(),
-    )
-
     # Monkeypatch MySQL-dependent operations by targeting symbols imported
     # inside restore.py (must patch restore module, not source modules).
     from pulldb.worker import restore as restore_mod
@@ -142,13 +139,16 @@ def test_restore_workflow_happy_path(
 
     monkeypatch.setattr(restore_mod, "atomic_rename_staging_to_target", _fake_rename)
 
-    spec = RestoreWorkflowSpec(
+    config = _config()
+
+    spec = build_restore_workflow_spec(
+        config=config,
         job=job,
         backup_filename="dummy_backup.tar",
+        backup_dir=str(tmp_path),
         staging_conn=staging_conn,
         post_sql_conn=post_sql_conn,
-        myloader_spec=myloader_spec,
-        timeout=2.0,
+        timeout_override=2.0,
     )
 
     result = orchestrate_restore_workflow(spec)

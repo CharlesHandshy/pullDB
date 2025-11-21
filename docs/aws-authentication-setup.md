@@ -199,7 +199,7 @@ Until then, direct instance profile usage keeps configuration minimal and avoids
 - Both services share same instance profile but have different code paths enforcing least privilege
 
 ### Current Secret Residency (2025-11-01)
- All Secrets Manager secrets referenced by pullDB (`/pulldb/mysql/db-local-dev`, `/pulldb/mysql/db3-dev`, `/pulldb/mysql/db4-dev`, `/pulldb/mysql/db5-dev`, `/pulldb/mysql/coordination-db`) exist only in the development account (345321506926). They are not replicated to staging or production accounts. Use the instance profile or a dev admin profile for secret CRUD; do not use `pr-staging` or `pr-prod` profiles for these operations. If future replication is required it will be documented prior to implementation.
+ All Secrets Manager secrets referenced by pullDB (`/pulldb/mysql/localhost-test`, `/pulldb/mysql/db3-dev`, `/pulldb/mysql/db4-dev`, `/pulldb/mysql/db5-dev`, `/pulldb/mysql/coordination-db`) exist only in the development account (345321506926). They are not replicated to staging or production accounts. Use the instance profile or a dev admin profile for secret CRUD; do not use `pr-staging` or `pr-prod` profiles for these operations. If future replication is required it will be documented prior to implementation.
 
 ### Secrets Manager Permission Evaluation (MANDATORY)
 

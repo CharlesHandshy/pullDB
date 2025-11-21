@@ -153,28 +153,46 @@ check_prerequisites() {
     success "All prerequisites satisfied"
 }
 
+teardown_test_env() {
+    local reason="$1"
+    info "Cleaning existing test environment (${reason})..."
+
+    if [[ -d "$TEST_ENV_DIR" ]]; then
+        if [[ "$DRY_RUN" == true ]]; then
+            info "[DRY-RUN] Would remove: $TEST_ENV_DIR"
+        else
+            rm -rf "$TEST_ENV_DIR"
+            success "Removed existing test environment"
+        fi
+    fi
+
+    if [[ "$SKIP_MYSQL" == false ]]; then
+        if [[ "$DRY_RUN" == true ]]; then
+            info "[DRY-RUN] Would drop database: $TEST_DB_NAME"
+        else
+            local mysql_cmd="mysql -u root"
+            if [[ -n "${MYSQL_ROOT_PASS:-}" ]]; then
+                mysql_cmd+=" -p\"${MYSQL_ROOT_PASS}\""
+            fi
+            eval "$mysql_cmd" <<EOF
+DROP DATABASE IF EXISTS ${TEST_DB_NAME};
+DROP USER IF EXISTS '${TEST_DB_USER}'@'localhost';
+EOF
+            success "Cleaned test database"
+        fi
+    fi
+}
+
 clean_test_env() {
     if [[ "$CLEAN" == true ]]; then
-        info "Cleaning existing test environment..."
+        teardown_test_env "--clean flag"
+    fi
+}
 
-        if [[ -d "$TEST_ENV_DIR" ]]; then
-            if [[ "$DRY_RUN" == true ]]; then
-                info "[DRY-RUN] Would remove: $TEST_ENV_DIR"
-            else
-                rm -rf "$TEST_ENV_DIR"
-                success "Removed existing test environment"
-            fi
-        fi
-
-        # Drop test database if exists
-        if [[ "$SKIP_MYSQL" == false ]]; then
-            if [[ "$DRY_RUN" == true ]]; then
-                info "[DRY-RUN] Would drop database: $TEST_DB_NAME"
-            else
-                mysql -u root -p -e "DROP DATABASE IF EXISTS ${TEST_DB_NAME}; DROP USER IF EXISTS '${TEST_DB_USER}'@'localhost';" 2>/dev/null || true
-                success "Cleaned test database"
-            fi
-        fi
+auto_cleanup_previous_env() {
+    if [[ -d "$TEST_ENV_DIR" && "$CLEAN" == false ]]; then
+        warn "Existing test environment detected at $TEST_ENV_DIR; tearing it down before proceeding"
+        teardown_test_env "previous environment detected"
     fi
 }
 
@@ -521,6 +539,31 @@ normalize_permissions() {
     success "Permissions normalized"
 }
 
+# Ensure final ownership reverts to invoking user so interactive work does not require sudo.
+restore_test_env_ownership() {
+    if [[ "$DRY_RUN" == true ]]; then
+        info "[DRY-RUN] Would chown -R ${SUDO_USER:-$USER}:${SUDO_USER:-$USER} $TEST_ENV_DIR"
+        return
+    fi
+
+    if [[ ! -d "$TEST_ENV_DIR" ]]; then
+        warn "Test environment directory not found during ownership restoration"
+        return
+    fi
+
+    local owner="${SUDO_USER:-$USER}"
+    if [[ -z "$owner" ]]; then
+        warn "Unable to determine invoking user for ownership restoration"
+        return
+    fi
+
+    if chown -R "$owner:$owner" "$TEST_ENV_DIR"; then
+        success "Restored test-env ownership to ${owner}:${owner}"
+    else
+        warn "Failed to restore test-env ownership; manual chown may be required"
+    fi
+}
+
 # Run smoke tests automatically unless DRY_RUN
 post_setup_self_test() {
     if [[ "$DRY_RUN" == true ]]; then
@@ -597,6 +640,7 @@ main() {
 
     check_prerequisites
     clean_test_env
+    auto_cleanup_previous_env
     create_test_directories
     setup_mysql_database
     verify_aws_credentials
@@ -606,6 +650,7 @@ main() {
     create_convenience_scripts
     normalize_permissions
     post_setup_self_test
+    restore_test_env_ownership
 
     if [[ "$DRY_RUN" == false ]]; then
         print_summary

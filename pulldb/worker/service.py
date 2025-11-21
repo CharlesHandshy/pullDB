@@ -21,7 +21,10 @@ from types import FrameType
 from pulldb.domain.config import Config
 from pulldb.infra.logging import get_logger
 from pulldb.infra.metrics import MetricLabels, emit_event, emit_gauge
-from pulldb.infra.mysql import JobRepository, build_default_pool
+from pulldb.infra.mysql import HostRepository, JobRepository, build_default_pool
+from pulldb.infra.s3 import S3Client
+from pulldb.infra.secrets import CredentialResolver
+from pulldb.worker.executor import WorkerExecutorDependencies, WorkerJobExecutor
 from pulldb.worker.loop import MIN_POLL_INTERVAL_SECONDS, run_poll_loop
 
 
@@ -79,6 +82,19 @@ def _build_job_repository(config: Config) -> JobRepository:
         database=config.mysql_database,
     )
     return JobRepository(pool)
+
+
+def _build_job_executor(config: Config, job_repo: JobRepository) -> WorkerJobExecutor:
+    credential_resolver = CredentialResolver(config.aws_profile)
+    host_repo = HostRepository(job_repo.pool, credential_resolver)
+    s3_profile = config.s3_aws_profile or config.aws_profile
+    s3_client = S3Client(profile=s3_profile)
+    deps = WorkerExecutorDependencies(
+        job_repo=job_repo,
+        host_repo=host_repo,
+        s3_client=s3_client,
+    )
+    return WorkerJobExecutor(config=config, deps=deps)
 
 
 def _register_signal_handlers(stop_event: threading.Event) -> None:
@@ -171,6 +187,7 @@ def main(argv: t.Sequence[str] | None = None) -> int:
 
     try:
         job_repo = _build_job_repository(config)
+        job_executor = _build_job_executor(config, job_repo)
     except Exception as exc:
         _emit_fatal(exc)
         _set_worker_active(0, "fatal")
@@ -191,6 +208,7 @@ def main(argv: t.Sequence[str] | None = None) -> int:
         max_iterations = 1 if args.oneshot else args.max_iterations
         run_poll_loop(
             job_repo,
+            job_executor,
             max_iterations=max_iterations,
             poll_interval=poll_interval,
             should_stop=stop_event.is_set,

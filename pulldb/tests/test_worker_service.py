@@ -50,6 +50,7 @@ def test_poll_loop_graceful_stop_callback() -> None:
     # when queue empty.
     run_poll_loop(
         t.cast(JobRepository, repo),
+        lambda _job: None,
         max_iterations=None,
         poll_interval=0.01,
         should_stop=should_stop,
@@ -71,22 +72,26 @@ def test_worker_service_main_invokes_poll_loop(monkeypatch: pytest.MonkeyPatch) 
         mysql_database="pulldb",
     )
     repo = t.cast(JobRepository, object())
+    job_executor = object()
     captured: dict[str, t.Any] = {}
 
     monkeypatch.setattr(worker_service, "_load_config", lambda: config)
     monkeypatch.setattr(worker_service, "_build_job_repository", lambda _: repo)
+    monkeypatch.setattr(worker_service, "_build_job_executor", lambda *_: job_executor)
     monkeypatch.setattr(worker_service.signal, "signal", lambda *_, **__: None)
     monkeypatch.setattr(worker_service, "emit_event", lambda *_, **__: None)
     monkeypatch.setattr(worker_service, "emit_gauge", lambda *_, **__: None)
 
     def _fake_loop(
         repo_arg: JobRepository,
+        executor_arg: t.Any,
         *,
         max_iterations: int | None,
         poll_interval: float,
         should_stop: t.Callable[[], bool],
     ) -> None:
         captured["repo"] = repo_arg
+        captured["executor"] = executor_arg
         captured["max_iterations"] = max_iterations
         captured["poll_interval"] = poll_interval
         captured["should_stop"] = should_stop()
@@ -97,6 +102,7 @@ def test_worker_service_main_invokes_poll_loop(monkeypatch: pytest.MonkeyPatch) 
 
     assert result == 0
     assert captured["repo"] is repo
+    assert captured["executor"] is job_executor
     assert captured["max_iterations"] == 5
     assert captured["poll_interval"] == 0.5
     assert captured["should_stop"] is False
@@ -113,7 +119,9 @@ def test_worker_service_oneshot_overrides_iterations(
     )
     monkeypatch.setattr(worker_service, "_load_config", lambda: config)
     repo = t.cast(JobRepository, object())
+    job_executor = object()
     monkeypatch.setattr(worker_service, "_build_job_repository", lambda _: repo)
+    monkeypatch.setattr(worker_service, "_build_job_executor", lambda *_: job_executor)
     monkeypatch.setattr(worker_service.signal, "signal", lambda *_, **__: None)
     monkeypatch.setattr(worker_service, "emit_event", lambda *_, **__: None)
     monkeypatch.setattr(worker_service, "emit_gauge", lambda *_, **__: None)

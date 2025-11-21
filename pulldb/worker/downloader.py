@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from typing import Any
 
 from pulldb.domain.errors import DiskCapacityError, DownloadError
 from pulldb.infra.logging import get_logger
@@ -117,6 +118,28 @@ def download_backup(
         ) from e
 
     body = response["Body"]  # Streaming body object
+    _stream_download(body, dest_path, job_id, spec.size_bytes)
+
+    logger.info(
+        "Download complete",
+        extra={
+            "phase": "download_complete",
+            "job_id": job_id,
+            "dest_path": dest_path,
+            "expected_bytes": spec.size_bytes,
+        },
+    )
+
+    return dest_path
+
+
+def _stream_download(
+    body: Any, dest_path: str, job_id: str, total_bytes: int
+) -> None:
+    """Stream data from body to file with progress logging.
+
+    Extracted atom for testing.
+    """
     downloaded = 0
     next_progress = PROGRESS_INTERVAL_MB * 1024 * 1024
 
@@ -134,20 +157,8 @@ def download_backup(
                         "phase": "download_progress",
                         "job_id": job_id,
                         "downloaded_bytes": downloaded,
-                        "total_bytes": spec.size_bytes,
+                        "total_bytes": total_bytes,
                     },
                 )
                 next_progress += PROGRESS_INTERVAL_MB * 1024 * 1024
 
-    logger.info(
-        "Download complete",
-        extra={
-            "phase": "download_complete",
-            "job_id": job_id,
-            "dest_path": dest_path,
-            "downloaded_bytes": downloaded,
-            "expected_bytes": spec.size_bytes,
-        },
-    )
-
-    return dest_path

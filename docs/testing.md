@@ -51,6 +51,22 @@ Tests resolve MySQL credentials in the following order:
 - The optional real S3 listing pytest (`pulldb/tests/test_s3_real_listing_optional.py`) can be run with `AWS_PROFILE=pr-staging` *after* setting `PULLDB_TEST_MYSQL_*` overrides to bypass Secrets Manager fixtures.
 - When switching between profiles locally, always reset `AWS_PROFILE`/`PULLDB_AWS_PROFILE` before returning to Secrets Manager-backed tests to avoid AccessDenied skips.
 
+#### Non-Blocking CLI Commands with Inline Env Vars
+
+Setting an environment variable inline (for example, `AWS_PROFILE=pr-dev aws ...`) does not block by itself—the blocking comes from the CLI call. When a command will take a while, launch it in the background and capture output so the prompt returns immediately:
+
+```bash
+AWS_PROFILE=pr-dev aws secretsmanager describe-secret \
+   --secret-id /pulldb/mysql/localhost-test \
+   > /tmp/describe-secret.log 2>&1 &
+```
+
+- Source `test-env/activate-test-env.sh` first so `PULLDB_*` values are exported.
+- Reuse this pattern for S3 listing, IAM diagnostics, etc.
+- Monitor progress with `tail -f /tmp/describe-secret.log` or `wait <pid>`.
+
+This mirrors how we validated Secrets Manager and S3 access during the Phase 0 restore dry run.
+
 ### Test Fixtures
 
 - `aws_region`: Ensures AWS region is set (default: us-east-1)
@@ -61,6 +77,24 @@ Tests resolve MySQL credentials in the following order:
 - `mysql_pool`: Creates shared connection pool for tests
 - `seed_settings`: Ensures required settings rows exist
 - `mysql_network_credentials`: Returns (host, user, password) tuple for network login
+
+### Bundled Binaries Location
+
+Functional tests that exercise real `myloader` binaries (both 0.9.x and 0.19.x)
+pull their executables from `pulldb/binaries/`. The directory is part of the
+Python package tree so relative paths remain stable in CI, local venvs, and the
+test environment. Validate the binaries exist before running loader-integrated
+tests:
+
+```bash
+ls -la pulldb/binaries
+```
+
+Expected files include the versioned `myloader-*` folders, legacy helper
+archives (`pullDB-auth`, `pullQA-auth`), and customer investigation captures
+under `pulldb/binaries/dumps/`. When introducing new loader builds for testing,
+place them in this directory so fixtures (e.g., `myloader_path` overrides) pick
+them up automatically.
 
 ## Test Environment Setup
 

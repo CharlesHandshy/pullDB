@@ -123,6 +123,23 @@ sudo dpkg --purge pulldb
 Documentation:
 - MySQL Database Schema: [docs/mysql-schema.md](docs/mysql-schema.md)
 
+### Binary Artifacts Directory
+
+All vendor-provided binaries (multiple myloader builds, historical PHP helpers,
+and captured restore artifacts) now live under `pulldb/binaries/`. This keeps
+them co-located with the Python package while preventing accidental mixing with
+source modules. Validate the directory exists and review its contents with:
+
+```bash
+ls -la pulldb/binaries
+```
+
+Typical contents include versioned myloader folders (e.g., `myloader-0.19.3-3`),
+legacy helper bundles (`pullDB-auth`, `pullQA-auth`), and customer-specific
+extractions captured during investigations. When new binaries are added for
+testing, drop them into this directory so documentation and automation can make
+consistent assumptions about their location.
+
 ### Configuration Validation
 
 After completing environment setup you can run the consolidated validator:

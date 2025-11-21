@@ -125,6 +125,26 @@ class DownloadError(JobExecutionError):
         )
 
 
+class ExtractionError(JobExecutionError):
+    """Extraction of downloaded backup archive failed."""
+
+    def __init__(self, job_id: str, archive_path: str, error_message: str) -> None:
+        super().__init__(
+            goal=f"Extract backup archive for job {job_id}",
+            problem="Extraction failed",
+            root_cause=error_message,
+            solutions=[
+                "Re-download the archive to rule out corruption",
+                "Verify GNU tar / libzstd are installed on the worker host",
+                "Check permissions and free space for the worker work_dir",
+            ],
+            detail={
+                "job_id": job_id,
+                "archive_path": archive_path,
+            },
+        )
+
+
 class DiskCapacityError(JobExecutionError):
     """Insufficient disk space for backup extraction.
 
@@ -334,6 +354,35 @@ class BackupValidationError(JobExecutionError):
                 "backup_key": backup_key,
                 "missing_files": missing_files,
             },
+        )
+
+
+class BackupDiscoveryError(JobExecutionError):
+    """Raised when no configured S3 location contains a matching backup."""
+
+    def __init__(
+        self,
+        job_id: str,
+        attempts: list[dict[str, str]],
+    ) -> None:
+        detail = {
+            "job_id": job_id,
+            "attempts": attempts,
+        }
+        super().__init__(
+            goal=f"Discover backup in configured S3 locations for job {job_id}",
+            problem="No S3 location yielded a valid backup archive",
+            root_cause=(
+                "Configured bucket/prefix combinations either lacked matching objects "
+                "or failed validation."
+            ),
+            solutions=[
+                "Verify target aliases match S3 directory names for each bucket",
+                "Inspect attempts list and check the corresponding S3 prefix",
+                "Add/adjust PULLDB_S3_BACKUP_LOCATIONS configuration to include legacy paths",
+                "Re-run backup creation process if archives are missing",
+            ],
+            detail=detail,
         )
 
 

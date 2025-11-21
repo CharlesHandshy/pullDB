@@ -209,7 +209,7 @@ aws secretsmanager create-secret \
 
 # Create db-local-dev secret (local sandbox default)
 aws secretsmanager create-secret \
-  --name /pulldb/mysql/db-local-dev \
+  --name /pulldb/mysql/localhost-test \
   --description "MySQL credentials for local sandbox restore target" \
   --secret-string '{
     "username": "pulldb_app",

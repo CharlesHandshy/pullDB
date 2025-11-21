@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pullDB Flow Chart</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+    <style>
+        body { 
+            margin: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            overflow: hidden;
+        }
+        #cy { 
+            width: 100vw; 
+            height: 100vh; 
+            display: block;
+        }
+        #controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(37, 37, 38, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            border: 1px solid #333;
+            z-index: 100;
+            min-width: 200px;
+        }
+        h1 { 
+            margin: 0 0 10px 0; 
+            font-size: 18px; 
+            color: #569cd6;
+        }
+        .breadcrumb {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 15px;
+            cursor: pointer;
+        }
+        .breadcrumb span:hover {
+            color: #d4d4d4;
+            text-decoration: underline;
+        }
+        .legend-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 12px; }
+        .legend-shape { width: 16px; height: 16px; margin-right: 10px; border: 1px solid #555; }
+        
+        /* Legend Shapes */
+        .shape-process { background: #3498db; border-radius: 2px; }
+        .shape-decision { background: #f1c40f; transform: rotate(45deg) scale(0.7); }
+        .shape-database { background: #9b59b6; border-radius: 0 0 5px 5px; border-top: 2px solid rgba(0,0,0,0.2); }
+        .shape-start { background: #2ecc71; border-radius: 50%; }
+        .shape-end { background: #e74c3c; border-radius: 50%; }
+
+        #tooltip {
+            position: absolute;
+            display: none;
+            background: #252526;
+            border: 1px solid #454545;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+            pointer-events: none;
+            max-width: 250px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <h1>pullDB Flow Chart</h1>
+        <div id="breadcrumbs" class="breadcrumb">
+            <span onclick="loadGraph('main')">Main</span>
+        </div>
+        
+        <div style="border-top: 1px solid #444; margin: 10px 0;"></div>
+        
+        <div class="legend-item"><div class="legend-shape shape-start"></div>Start</div>
+        <div class="legend-item"><div class="legend-shape shape-process"></div>Process</div>
+        <div class="legend-item"><div class="legend-shape shape-decision"></div>Decision</div>
+        <div class="legend-item"><div class="legend-shape shape-database"></div>Database</div>
+        <div class="legend-item"><div class="legend-shape shape-end"></div>End/Fail</div>
+        
+        <p style="font-size: 11px; color: #666; margin-top: 15px;">
+            Click a node to drill down.<br>
+            Scroll to zoom.<br>
+            Drag to pan.
+        </p>
+    </div>
+    
+    <div id="cy"></div>
+    <div id="tooltip"></div>
+
+    <script>
+        let cy;
+        let allData = {};
+        let history = ['main'];
+
+        function initCy() {
+            if (typeof cytoscape === 'undefined') {
+                console.error("Cytoscape library not loaded!");
+                return;
+            }
+            if (typeof dagre === 'undefined') {
+                console.error("Dagre library not loaded!");
+            }
+            
+            // Check if dagre extension is registered
+            // Note: cytoscape-dagre registers itself as 'dagre' layout
+            
+            cy = cytoscape({
+                container: document.getElementById('cy'),
+                boxSelectionEnabled: false,
+                autounselectify: true,
+                
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'content': 'data(label)',
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'color': '#fff',
+                            'font-size': '12px',
+                            'width': 'label',
+                            'height': 'label',
+                            'padding': '10px',
+                            'text-wrap': 'wrap',
+                            'text-max-width': '100px'
+                        }
+                    },
+                    {
+                        selector: 'node[type="start"]',
+                        style: {
+                            'shape': 'ellipse',
+                            'background-color': '#2ecc71',
+                            'width': 40,
+                            'height': 40,
+                            'padding': 0
+                        }
+                    },
+                    {
+                        selector: 'node[type="end"]',
+                        style: {
+                            'shape': 'ellipse',
+                            'background-color': '#e74c3c',
+                            'width': 40,
+                            'height': 40,
+                            'padding': 0
+                        }
+                    },
+                    {
+                        selector: 'node[type="process"]',
+                        style: {
+                            'shape': 'round-rectangle',
+                            'background-color': '#3498db',
+                            'border-width': 0
+                        }
+                    },
+                    {
+                        selector: 'node[type="decision"]',
+                        style: {
+                            'shape': 'diamond',
+                            'background-color': '#f1c40f',
+                            'color': '#000',
+                            'width': 60,
+                            'height': 60
+                        }
+                    },
+                    {
+                        selector: 'node[type="database"]',
+                        style: {
+                            'shape': 'barrel',
+                            'background-color': '#9b59b6',
+                            'width': 60,
+                            'height': 50
+                        }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'width': 2,
+                            'target-arrow-shape': 'triangle',
+                            'line-color': '#555',
+                            'target-arrow-color': '#555',
+                            'curve-style': 'bezier',
+                            'label': 'data(label)',
+                            'font-size': '10px',
+                            'color': '#aaa',
+                            'text-background-color': '#1e1e1e',
+                            'text-background-opacity': 1,
+                            'text-background-padding': '2px'
+                        }
+                    },
+                    {
+                        selector: ':selected',
+                        style: {
+                            'border-width': 2,
+                            'border-color': '#fff'
+                        }
+                    }
+                ]
+            });
+
+            cy.on('tap', 'node', function(evt){
+                const node = evt.target;
+                const id = node.id();
+                
+                // Check if we have drill-down data for this node
+                if (allData[id]) {
+                    history.push(id);
+                    updateBreadcrumbs();
+                    renderGraph(id);
+                } else {
+                    console.log("No drill-down data for:", id);
+                }
+            });
+
+            cy.on('mouseover', 'node', function(evt) {
+                const node = evt.target;
+                const desc = node.data('description');
+                if (desc) {
+                    const tooltip = document.getElementById('tooltip');
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (evt.renderedPosition.x + 20) + 'px';
+                    tooltip.style.top = (evt.renderedPosition.y + 20) + 'px';
+                    tooltip.innerHTML = `<strong>${node.data('label')}</strong><br>${desc}`;
+                }
+            });
+
+            cy.on('mouseout', 'node', function() {
+                document.getElementById('tooltip').style.display = 'none';
+            });
+        }
+
+        function renderGraph(key) {
+            console.log("Rendering graph:", key);
+            const elements = allData[key];
+            if (!elements) {
+                console.error("No data found for key:", key);
+                return;
+            }
+
+            cy.elements().remove();
+            cy.add(elements);
+            
+            try {
+                const layout = cy.layout({
+                    name: 'dagre',
+                    rankDir: 'TB',
+                    nodeSep: 50,
+                    rankSep: 80,
+                    padding: 20,
+                    animate: true,
+                    animationDuration: 500
+                });
+                layout.run();
+                console.log("Layout running...");
+            } catch (e) {
+                console.error("Layout failed:", e);
+                console.log("Falling back to grid layout");
+                cy.layout({ name: 'grid' }).run();
+            }
+        }
+
+        function updateBreadcrumbs() {
+            const container = document.getElementById('breadcrumbs');
+            container.innerHTML = history.map((item, index) => {
+                const isLast = index === history.length - 1;
+                return `<span onclick="jumpTo(${index})" style="${isLast ? 'color: #d4d4d4; cursor: default;' : ''}">${item}</span>`;
+            }).join(' > ');
+        }
+
+        window.jumpTo = function(index) {
+            if (index === history.length - 1) return;
+            history = history.slice(0, index + 1);
+            updateBreadcrumbs();
+            renderGraph(history[history.length - 1]);
+        }
+
+        window.loadGraph = function(key) {
+            history = [key];
+            updateBreadcrumbs();
+            renderGraph(key);
+        }
+
+        // Initialize
+        try {
+            initCy();
+            console.log("Cytoscape initialized");
+        } catch (e) {
+            console.error("Failed to init Cytoscape:", e);
+            alert("Failed to init Cytoscape: " + e);
+        }
+
+        // Load Data
+        console.log("Fetching flow_data.json...");
+        fetch('flow_data.json')
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                return res.json();
+            })
+            .then(data => {
+                console.log("Data loaded:", Object.keys(data));
+                allData = data;
+                renderGraph('main');
+            })
+            .catch(err => {
+                console.error("Failed to load flow data:", err);
+                alert("Failed to load flow data. Check console for details.");
+            });
+
+    </script>
+</body>
+</html>

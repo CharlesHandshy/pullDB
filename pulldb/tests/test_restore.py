@@ -8,15 +8,20 @@ non-zero exit translation, and timeout handling.
 from __future__ import annotations
 
 # ruff: noqa: I001
+from datetime import datetime
 import sys
 from typing import Any
 
 import pytest
 
+from pulldb.domain.config import Config
 from pulldb.domain.errors import MyLoaderError
+from pulldb.domain.models import Job, JobStatus
 from pulldb.domain.restore_models import MyLoaderSpec
 from pulldb.worker import restore as restore_module
-from pulldb.worker.restore import run_myloader
+from pulldb.worker.post_sql import PostSQLConnectionSpec
+from pulldb.worker.restore import build_restore_workflow_spec, run_myloader
+from pulldb.worker.staging import StagingConnectionSpec
 
 PY = sys.executable
 MYLOADER_ERROR_EXIT = 7
@@ -32,6 +37,22 @@ def _spec(tmp_path: Any) -> MyLoaderSpec:
         mysql_user="root",
         mysql_password="pw",
         extra_args=(),
+    )
+
+
+def _job_model() -> Job:
+    return Job(
+        id="123e4567e89b12d3a456426614174000",
+        owner_user_id="user-1",
+        owner_username="workeruser",
+        owner_user_code="worker",
+        target="workerdb",
+        staging_name="workerdb_123e4567e89b",
+        dbhost="localhost",
+        status=JobStatus.RUNNING,
+        submitted_at=datetime.now(),
+        options_json={},
+        retry_count=0,
     )
 
 
@@ -116,3 +137,87 @@ def test_run_myloader_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) ->
     # Either message contains 'timed out' or exit_code sentinel present
     msg = str(exc.value).lower()
     assert "timed" in msg or exc.value.detail.get("exit_code") in {-1, 0}
+
+
+def test_build_restore_workflow_spec_uses_config(tmp_path: Any) -> None:
+    job = _job_model()
+    staging_conn = StagingConnectionSpec(
+        mysql_host="mysql-host",
+        mysql_port=3307,
+        mysql_user="worker",
+        mysql_password="secret",
+        timeout_seconds=5,
+    )
+    script_dir = tmp_path / "post_sql"
+    script_dir.mkdir()
+    post_sql_conn = PostSQLConnectionSpec(
+        staging_db=job.staging_name,
+        script_dir=script_dir,
+        mysql_host="mysql-host",
+        mysql_port=3307,
+        mysql_user="worker",
+        mysql_password="secret",
+        connect_timeout=5,
+    )
+    config = Config(
+        mysql_host="cfg-host",
+        mysql_user="cfg-user",
+        mysql_password="cfg-pass",
+        myloader_binary="/opt/myloader",
+        myloader_extra_args=("--skip-triggers",),
+        myloader_timeout_seconds=1337.0,
+        myloader_threads=6,
+    )
+
+    spec = build_restore_workflow_spec(
+        config=config,
+        job=job,
+        backup_filename="backup.tar",
+        backup_dir=str(tmp_path),
+        staging_conn=staging_conn,
+        post_sql_conn=post_sql_conn,
+        extra_myloader_args=["--rows-per-insert=500"],
+    )
+
+    assert spec.timeout == pytest.approx(1337.0)
+    assert spec.myloader_spec.binary_path == "/opt/myloader"
+    assert spec.myloader_spec.extra_args == (
+        "--skip-triggers",
+        "--rows-per-insert=500",
+        "--threads=6",
+    )
+
+
+def test_build_restore_workflow_spec_allows_timeout_override(tmp_path: Any) -> None:
+    job = _job_model()
+    staging_conn = StagingConnectionSpec(
+        mysql_host="localhost",
+        mysql_port=3306,
+        mysql_user="root",
+        mysql_password="pw",
+        timeout_seconds=5,
+    )
+    script_dir = tmp_path / "post_sql"
+    script_dir.mkdir()
+    post_sql_conn = PostSQLConnectionSpec(
+        staging_db=job.staging_name,
+        script_dir=script_dir,
+        mysql_host="localhost",
+        mysql_port=3306,
+        mysql_user="root",
+        mysql_password="pw",
+        connect_timeout=5,
+    )
+    config = Config(mysql_host="cfg", mysql_user="user", mysql_password="pw")
+
+    spec = build_restore_workflow_spec(
+        config=config,
+        job=job,
+        backup_filename="backup.tar",
+        backup_dir=str(tmp_path),
+        staging_conn=staging_conn,
+        post_sql_conn=post_sql_conn,
+        timeout_override=42.0,
+    )
+
+    assert spec.timeout == 42.0

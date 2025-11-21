@@ -178,7 +178,7 @@ Pre-populate `db_hosts` with a local sandbox plus the three legacy development d
 INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
     ('550e8400-e29b-41d4-a716-446655440003',
      'localhost',
-     'aws-secretsmanager:/pulldb/mysql/db-local-dev',
+    'aws-secretsmanager:/pulldb/mysql/localhost-test',
      1,
      TRUE);
 
@@ -207,7 +207,7 @@ INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, ena
      FALSE);
 ```
 
-**Note**: Credentials for these hosts must be created in AWS Secrets Manager before the Worker service can connect. See `aws-secrets-manager-setup.md` for setup instructions. The local sandbox secret (`/pulldb/mysql/db-local-dev`) is required for development setups; the legacy team secrets remain for historical restores.
+**Note**: Credentials for these hosts must be created in AWS Secrets Manager before the Worker service can connect. See `aws-secrets-manager-setup.md` for setup instructions. The local sandbox secret (`/pulldb/mysql/localhost-test`) is required for development setups; the legacy team secrets remain for historical restores.
 
 ### Configuration Settings
 

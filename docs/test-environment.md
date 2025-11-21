@@ -209,12 +209,61 @@ Running quick smoke tests...
 All smoke tests passed! ✓
 ```
 
+
+## Full Functionality Test (End-to-End Restore)
+
+The script `test-env/run-full-functionality-test.sh` performs a real restore
+using the packaged CLI, API service, worker, downloader, myloader, and
+post-restore logic. Run it when you need to verify the complete workflow
+without mocks.
+
+### Prerequisites
+
+- Test environment created via `scripts/setup-test-environment.sh` (venv,
+  schema, config files, etc.).
+- AWS profile from `test-env/.env` can describe Secrets Manager entries and
+  read from `s3://pestroutesrdsdbs/daily/stg/`.
+- Secrets referenced in `db_hosts.credential_ref` exist (default host uses
+  `/pulldb/mysql/localhost-test`).
+- `myloader` installed on the host (worker requirement).
+- Known backup for the target (default script run targets the documented
+  `qatemplate` backups under `daily/stg/qatemplate/`).
+
+### Running the Script
+
+```bash
+# Default QA template restore (recommended starting point)
+bash test-env/run-full-functionality-test.sh --user qaengineer --qatemplate
+
+# Customer restore with explicit dbhost and overwrite flag
 ---
 
 ## Common Issues
 
 ### Issue: Permission denied on .env file
 
+```
+
+Key behaviors:
+
+- Sources `test-env/activate-test-env.sh`, exports `PULLDB_API_URL`, and
+  derives `PULLDB_S3_BUCKET_PATH` when only bucket/prefix values exist.
+- Verifies Secrets Manager/SSM references for the effective `dbhost` before
+  starting the worker so missing secrets fail fast.
+- Launches `pulldb-api` and `pulldb-worker` from the test environment venv,
+  then submits the restore via the CLI using the provided options.
+- Polls the `jobs` table until the job reaches `complete`/`failed`, honoring
+  the configurable `--timeout` and `--poll` intervals.
+- Captures diagnostics to `test-env/logs/`:
+  - API log: `full-test-api.log`
+  - Worker log: `full-test-worker.log`
+  - Job events: `full-test-events.log`
+  - CLI submission output: `full-test-restore-output.log`
+
+Use `--keep-processes` to leave the API and worker running for manual testing
+after the scripted run completes.
+
+---
 **Symptom**: `grep: test-env/.env: Permission denied`
 
 **Solution**:

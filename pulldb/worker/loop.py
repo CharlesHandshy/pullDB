@@ -8,7 +8,8 @@ Example:
     >>> from pulldb.infra.mysql import MySQLPool, JobRepository
     >>> pool = MySQLPool(host="localhost", user="worker", password="...")
     >>> repo = JobRepository(pool)
-    >>> run_poll_loop(repo, max_iterations=10)
+    >>> executor = lambda job: None
+    >>> run_poll_loop(repo, executor, max_iterations=10)
 """
 
 from __future__ import annotations
@@ -37,8 +38,13 @@ MAX_POLL_INTERVAL_SECONDS = 30.0
 BACKOFF_MULTIPLIER = 2.0
 
 
+JobExecutor = t.Callable[[Job], None]
+
+
 def run_poll_loop(
     job_repo: JobRepository,
+    job_executor: JobExecutor,
+    *,
     max_iterations: int | None = None,
     poll_interval: float = MIN_POLL_INTERVAL_SECONDS,
     should_stop: t.Callable[[], bool] | None = None,
@@ -51,6 +57,7 @@ def run_poll_loop(
 
     Args:
         job_repo: Repository for job operations.
+        job_executor: Callable that runs the restore workflow for a job.
         max_iterations: Maximum poll iterations (None = infinite loop).
         poll_interval: Initial poll interval in seconds.
         should_stop: Optional callback returning True to request loop stop.
@@ -60,12 +67,13 @@ def run_poll_loop(
     Example:
         >>> pool = MySQLPool(...)
         >>> repo = JobRepository(pool)
-        >>> run_poll_loop(repo, max_iterations=100)  # Poll 100 times then exit
+        >>> executor = lambda job: None
+        >>> run_poll_loop(repo, executor, max_iterations=100)  # Poll 100 times then exit
         >>> # Graceful stop after external condition:
         >>> stop = False
         >>> def _should_stop():
         ...     return stop
-        >>> run_poll_loop(repo, should_stop=_should_stop)  # Infinite until stop
+        >>> run_poll_loop(repo, executor, should_stop=_should_stop)  # Infinite until stop
     """
     iteration = 0
     current_interval = poll_interval
@@ -104,15 +112,29 @@ def run_poll_loop(
                 # Transition job to running status
                 _transition_to_running(job_repo, job)
 
-                # TODO: Execute restore workflow (placeholder for milestone 3+)
-                logger.info(
-                    "Job execution not yet implemented",
-                    extra={
-                        "job_id": job.id,
-                        "target": job.target,
-                        "phase": "restore_stub",
-                    },
-                )
+                try:
+                    _execute_job(job_executor, job)
+                    emit_event(
+                        "worker_job_success",
+                        f"job_id={job.id}",
+                        MetricLabels(phase="job_execute", status="success"),
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Job executor raised error",
+                        extra={
+                            "job_id": job.id,
+                            "target": job.target,
+                            "phase": "job_execute",
+                            "error": str(exc),
+                        },
+                        exc_info=True,
+                    )
+                    emit_event(
+                        "worker_job_error",
+                        str(exc),
+                        MetricLabels(phase="job_execute", status="error"),
+                    )
 
             else:
                 # No job found - apply exponential backoff
@@ -214,3 +236,13 @@ def _transition_to_running(job_repo: JobRepository, job: Job) -> None:
             exc_info=True,
         )
         raise
+
+
+def _execute_job(job_executor: JobExecutor, job: Job) -> None:
+    """Execute job via provided callable with timing metrics."""
+
+    with time_operation(
+        "job_execution_duration_seconds",
+        MetricLabels(phase="job_execute"),
+    ):
+        job_executor(job)

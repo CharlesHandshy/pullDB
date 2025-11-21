@@ -1,0 +1,754 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BMAD Code Graph</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            overflow: hidden;
+        }
+        #graph-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        .node circle {
+            fill: #fff;
+            stroke: steelblue;
+            stroke-width: 3px;
+            cursor: pointer;
+        }
+        .node text {
+            font: 12px sans-serif;
+            pointer-events: none;
+            text-shadow: 0 1px 0 #fff, 1px 0 0 #fff, 0 -1px 0 #fff, -1px 0 0 #fff;
+        }
+        .link {
+            fill: none;
+            stroke: #ccc;
+            stroke-width: 2px;
+        }
+        #controls-panel {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            top: auto;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: row;
+            gap: 10px;
+            z-index: 1000;
+            align-items: center;
+        }
+        #details-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 350px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: none;
+            max-height: 85vh;
+            overflow-y: auto;
+            z-index: 1000;
+            border: 1px solid #eee;
+        }
+        .type-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 5px;
+        }
+        /* VS Code / Modern IDE inspired palette */
+        .type-class { background-color: #4EC9B0; color: black; }
+        .type-interface { background-color: #B8D7A3; color: black; }
+        .type-method { background-color: #DCDCAA; color: black; }
+        .type-function { background-color: #DCDCAA; color: black; }
+        .type-property { background-color: #9CDCFE; color: black; }
+        .type-variable { background-color: #9CDCFE; color: black; }
+        .type-file { background-color: #569CD6; color: white; }
+        .type-folder { background-color: #D4B600; color: black; }
+        .type-category { background-color: #808080; color: white; }
+        .type-root { background-color: #333333; color: white; }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 5px;
+            margin-left: 5px;
+            background-color: #ff9900;
+        }
+        
+        button {
+            padding: 8px 12px;
+            background-color: #007acc;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #005999;
+        }
+        button.secondary {
+            background-color: #6c757d;
+        }
+        button.secondary:hover {
+            background-color: #5a6268;
+        }
+        input[type="text"] {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .vscode-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 6px 10px;
+            background-color: #2c3e50;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .vscode-link:hover {
+            background-color: #1a252f;
+        }
+        .search-match circle {
+            stroke: #e74c3c !important;
+            stroke-width: 5px !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls-panel">
+        <input type="text" id="search-input" placeholder="Search nodes...">
+        <button onclick="searchNodes()">Search</button>
+        <button class="secondary" onclick="collapseAllNodes()">Minimize All</button>
+        <button class="secondary" onclick="saveAndExit()">Save & Exit</button>
+    </div>
+
+    <div id="graph-container"></div>
+    
+    <div id="details-panel">
+        <div id="detail-back" style="display:none; margin-bottom: 10px;"></div>
+        <h2 id="detail-name"></h2>
+        <div id="detail-type"></div>
+        <p id="detail-path" style="font-size: 0.8em; color: #666; word-break: break-all;"></p>
+        <div id="detail-actions"></div>
+        <div id="detail-content"></div>
+    </div>
+
+    <script>
+        let root, update, svg, g;
+        let i = 0;
+        const duration = 750;
+        let tree;
+        let nodeByName = new Map();
+        let navigationHistory = [];
+        let currentNode = null;
+        let wrapWidth = 150;
+        
+        // Load data
+        d3.json('data.json').then(data => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            
+            svg = d3.select("#graph-container").append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .call(d3.zoom().on("zoom", (event) => {
+                    g.attr("transform", event.transform);
+                }))
+                .append("g")
+                .attr("transform", "translate(100,0)");
+
+            g = svg.append("g");
+
+            root = d3.hierarchy(data, d => d.children);
+            root.x0 = height / 2;
+            root.y0 = 0;
+
+            // Calculate average label length to determine wrapping width
+            let totalLen = 0;
+            let count = 0;
+            // Ensure root has descendants before iterating
+            const allNodes = root.descendants();
+            if (allNodes && allNodes.length > 0) {
+                allNodes.forEach(d => {
+                    if (d.data.name) {
+                        totalLen += d.data.name.length;
+                        count++;
+                    }
+                });
+            }
+            
+            const avgLen = count > 0 ? totalLen / count : 10;
+            // Set wrap width to roughly 1.5x average, but clamped
+            const charWidth = 7; // approx px per char
+            wrapWidth = Math.max(100, Math.min(200, avgLen * 1.5 * charWidth));
+
+            tree = d3.tree().nodeSize([35, 120]);
+
+            // Build node map for linking
+            root.descendants().forEach(d => {
+                if (d.data.name) {
+                    if (!nodeByName.has(d.data.name)) {
+                        nodeByName.set(d.data.name, d);
+                    }
+                }
+            });
+
+            // Check for saved state
+            const savedState = localStorage.getItem('bmad-graph-state');
+            if (savedState) {
+                const expandedIds = new Set(JSON.parse(savedState));
+                // Collapse all first
+                root.descendants().forEach(d => {
+                    if (d.children) {
+                        d._children = d.children;
+                        d.children = null;
+                    }
+                });
+                // Expand saved
+                root.descendants().forEach(d => {
+                    if (expandedIds.has(d.data.id)) {
+                        if (d._children) {
+                            d.children = d._children;
+                            d._children = null;
+                        }
+                    }
+                });
+            } else {
+                // Default: Collapse all except root
+                if (root.children) {
+                    root.children.forEach(collapse);
+                }
+            }
+
+            update(root);
+        });
+
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            d3.select("#graph-container svg")
+                .attr("width", width)
+                .attr("height", height);
+        });
+
+        function collapse(d) {
+            if(d.children) {
+                d._children = d.children;
+                d._children.forEach(collapse);
+                d.children = null;
+            }
+        }
+
+        function collapseAllNodes() {
+            if (root.children) {
+                root.children.forEach(collapse);
+            }
+            update(root);
+        }
+
+        function expand(d) {
+            if (d._children) {
+                d.children = d._children;
+                d._children = null;
+            }
+            if (d.children) {
+                d.children.forEach(expand);
+            }
+        }
+
+        function searchNodes() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            if (!query) return;
+
+            // Reset highlights
+            d3.selectAll('.node').classed('search-match', false);
+
+            // Collapse all first to clear view
+            collapseAllNodes();
+
+            let found = false;
+            root.descendants().forEach(d => {
+                if (d.data.name.toLowerCase().includes(query)) {
+                    found = true;
+                    // Expand parents
+                    let current = d;
+                    while (current.parent) {
+                        if (current.parent._children) {
+                            current.parent.children = current.parent._children;
+                            current.parent._children = null;
+                        }
+                        current = current.parent;
+                    }
+                    // Mark as match (will be styled in update)
+                    d.data.isMatch = true;
+                } else {
+                    d.data.isMatch = false;
+                }
+            });
+
+            if (found) {
+                update(root);
+                // Center on first match? (Optional enhancement)
+            } else {
+                alert('No nodes found matching: ' + query);
+            }
+        }
+
+        function saveAndExit() {
+            const expandedIds = [];
+            root.descendants().forEach(d => {
+                if (d.children) {
+                    expandedIds.push(d.data.id);
+                }
+            });
+            localStorage.setItem('bmad-graph-state', JSON.stringify(expandedIds));
+            alert('State saved! You can close this tab.');
+            // window.close() only works if script opened the window, which isn't always true.
+        }
+
+        update = function(source) {
+            const treeData = tree(root);
+            const nodes = treeData.descendants();
+            const links = treeData.links();
+
+            nodes.forEach(d => { d.y = d.depth * 120 });
+
+            const node = g.selectAll('g.node')
+                .data(nodes, d => d.id || (d.id = ++i));
+
+            const nodeEnter = node.enter().append('g')
+                .attr('class', d => 'node' + (d.data.isMatch ? ' search-match' : ''))
+                .attr("transform", d => `translate(${source.y0},${source.x0})`)
+                .on('click', click)
+                .on('mouseover', showDetails);
+
+            // Replace circle with path for icons
+            nodeEnter.append('path')
+                .attr('class', 'node-icon')
+                .attr('d', d => getIconPath(d.data.type))
+                .attr('transform', 'scale(0.8) translate(-10, -10)') // Center the 20x20 icon
+                .style("fill", d => getStatusColor(d.data.details ? d.data.details.status : 'stable'))
+                .style("stroke", "#555")
+                .style("stroke-width", "1px")
+                .attr('cursor', 'pointer');
+
+            nodeEnter.append('text')
+                .attr("dy", ".35em")
+                .attr("x", d => d.children || d._children ? -13 : 13)
+                .attr("text-anchor", d => d.children || d._children ? "end" : "start")
+                .text(d => d.data.name)
+                .call(wrap, wrapWidth);
+
+            const nodeUpdate = node.merge(nodeEnter);
+
+            nodeUpdate.attr('class', d => 'node' + (d.data.isMatch ? ' search-match' : ''));
+
+            nodeUpdate.transition()
+                .duration(duration)
+                .attr("transform", d => `translate(${d.y},${d.x})`);
+
+            nodeUpdate.select('path.node-icon')
+                .attr('d', d => getIconPath(d.data.type))
+                .style("fill", d => getStatusColor(d.data.details ? d.data.details.status : 'stable'))
+                .attr('cursor', 'pointer');
+
+            const nodeExit = node.exit().transition()
+                .duration(duration)
+                .attr("transform", d => `translate(${source.y},${source.x})`)
+                .remove();
+
+            nodeExit.select('path').style('opacity', 0);
+            nodeExit.select('text').style('fill-opacity', 1e-6);
+
+            const link = g.selectAll('path.link')
+                .data(links, d => d.target.id);
+
+            const linkEnter = link.enter().insert('path', "g")
+                .attr("class", "link")
+                .attr('d', d => {
+                    const o = {x: source.x0, y: source.y0};
+                    return diagonal(o, o);
+                });
+
+            const linkUpdate = link.merge(linkEnter);
+
+            linkUpdate.transition()
+                .duration(duration)
+                .attr('d', d => diagonal(d.source, d.target));
+
+            link.exit().transition()
+                .duration(duration)
+                .attr('d', d => {
+                    const o = {x: source.x, y: source.y};
+                    return diagonal(o, o);
+                })
+                .remove();
+
+            nodes.forEach(d => {
+                d.x0 = d.x;
+                d.y0 = d.y;
+            });
+
+            function diagonal(s, d) {
+                return `M ${s.y} ${s.x}
+                        C ${(s.y + d.y) / 2} ${s.x},
+                          ${(s.y + d.y) / 2} ${d.x},
+                          ${d.y} ${d.x}`;
+            }
+
+            function click(event, d) {
+                if (d.children) {
+                    d._children = d.children;
+                    d.children = null;
+                } else {
+                    d.children = d._children;
+                    d._children = null;
+                }
+                update(d);
+                showDetails(event, d);
+            }
+        };
+
+        function wrap(text, width) {
+            text.each(function(d) {
+                if (!d) return;
+                try {
+                    var text = d3.select(this);
+                    // Safer split without lookbehind for broader compatibility
+                    var words = text.text().split(/[\s\.-]+/).reverse();
+                    
+                    var word,
+                        line = [],
+                        lineNumber = 0,
+                        lineHeight = 1.1, // ems
+                        y = text.attr("y") || 0,
+                        dy = parseFloat(text.attr("dy") || "0"),
+                        // Re-bind data to tspan to ensure x-position logic works
+                        tspan = text.text(null).append("tspan")
+                            .attr("x", d.children || d._children ? -13 : 13)
+                            .attr("y", y)
+                            .attr("dy", dy + "em");
+                    
+                    let lineCount = 1;
+                    
+                    while (word = words.pop()) {
+                        line.push(word);
+                        tspan.text(line.join(" ")); // Join with space for readability
+                        if (tspan.node().getComputedTextLength() > width) {
+                            line.pop();
+                            tspan.text(line.join(" "));
+                            line = [word];
+                            
+                            if (lineCount >= 2) {
+                                let currentText = tspan.text();
+                                if (currentText.length > 3) {
+                                    tspan.text(currentText.slice(0, -3) + "...");
+                                }
+                                break; 
+                            }
+                            
+                            tspan = text.append("tspan")
+                                .attr("x", d.children || d._children ? -13 : 13)
+                                .attr("y", y)
+                                .attr("dy", ++lineNumber * lineHeight + dy + "em")
+                                .text(word);
+                            lineCount++;
+                        }
+                    }
+                } catch (e) {
+                    console.error("Wrap error for node:", d, e);
+                }
+            });
+        }
+
+        function linkifyType(typeStr) {
+            if (!typeStr) return '';
+            // Replace identifiers with links if they exist in the graph
+            return typeStr.replace(/[a-zA-Z_][a-zA-Z0-9_]*/g, (match) => {
+                if (nodeByName.has(match)) {
+                    return `<a href="#" onclick="navigateToNode('${match}'); return false;" style="color: #2980b9; text-decoration: underline; cursor: pointer;">${match}</a>`;
+                }
+                return match;
+            });
+        }
+
+        function navigateBack() {
+            if (navigationHistory.length === 0) return;
+            const prevNode = navigationHistory.pop();
+            navigateToNode(prevNode.data.name, false);
+        }
+
+        function navigateToNode(name, recordHistory = true) {
+            const node = nodeByName.get(name);
+            if (!node) return;
+            
+            if (recordHistory && currentNode && currentNode !== node) {
+                navigationHistory.push(currentNode);
+            }
+            
+            // Expand path to node
+            let current = node;
+            while (current.parent) {
+                if (current.parent._children) {
+                    current.parent.children = current.parent._children;
+                    current.parent._children = null;
+                }
+                current = current.parent;
+            }
+            
+            update(root);
+            
+            // Highlight
+            d3.selectAll('.node').classed('search-match', false);
+            
+            // Find the node element and highlight it
+            // Since we don't have direct ref to DOM element, we rely on update() to re-render
+            // We can set a flag on the data
+            root.descendants().forEach(d => d.data.isMatch = false);
+            node.data.isMatch = true;
+            update(root);
+
+            showDetails(null, node);
+        }
+
+        function getStatusColor(status) {
+            switch (status) {
+                case 'stable': return '#27ae60'; // Green
+                case 'warning': return '#f1c40f'; // Yellow
+                case 'danger': return '#e74c3c'; // Red
+                default: return '#27ae60';
+            }
+        }
+
+        function getIconPath(type) {
+            // Simple 20x20 SVG paths
+            switch (type) {
+                case 'folder':
+                    return "M2 4 L8 4 L10 6 L18 6 L18 16 L2 16 Z"; // Folder
+                case 'file':
+                    return "M4 2 L12 2 L16 6 L16 18 L4 18 Z M12 2 L12 6 L16 6"; // File with fold
+                case 'class':
+                    return "M2 2 L18 2 L18 18 L2 18 Z M5 5 L15 5 L15 15 L5 15 Z"; // Box in box
+                case 'method':
+                case 'function':
+                    return "M10 2 L12 6 L16 6 L13 9 L14 13 L10 11 L6 13 L7 9 L4 6 L8 6 Z"; // Star/Gear-ish
+                case 'variable':
+                case 'property':
+                    return "M10 2 L18 10 L10 18 L2 10 Z"; // Diamond
+                case 'interface':
+                    return "M10 2 A8 8 0 1 0 10 18 A8 8 0 1 0 10 2 M10 5 L10 15"; // Circle with line
+                default:
+                    return "M10 2 A8 8 0 1 0 10 18 A8 8 0 1 0 10 2"; // Circle
+            }
+        }
+
+        function getTypeColor(type) {
+            switch (type) {
+                case 'class': return '#4EC9B0'; // Teal
+                case 'interface': return '#B8D7A3'; // Light Green
+                case 'method': return '#DCDCAA'; // Yellow
+                case 'function': return '#DCDCAA'; // Yellow
+                case 'property': return '#9CDCFE'; // Light Blue
+                case 'variable': return '#9CDCFE'; // Light Blue
+                case 'file': return '#569CD6'; // Blue
+                case 'folder': return '#D4B600'; // Gold
+                case 'category': return '#808080'; // Grey
+                case 'root': return '#333333'; // Dark Grey
+                default: return 'steelblue';
+            }
+        }
+
+        function showDetails(event, d) {
+            currentNode = d;
+            const backBtn = document.getElementById('detail-back');
+            if (navigationHistory.length > 0) {
+                const prev = navigationHistory[navigationHistory.length - 1];
+                backBtn.innerHTML = `<button onclick="navigateBack()" class="secondary" style="padding: 4px 8px; font-size: 12px; width: 100%;">← Back to ${prev.data.name}</button>`;
+                backBtn.style.display = 'block';
+            } else {
+                backBtn.style.display = 'none';
+            }
+
+            const panel = document.getElementById('details-panel');
+            const name = document.getElementById('detail-name');
+            const type = document.getElementById('detail-type');
+            const pathEl = document.getElementById('detail-path');
+            const actions = document.getElementById('detail-actions');
+            const content = document.getElementById('detail-content');
+
+            panel.style.display = 'block';
+            name.textContent = d.data.name;
+            
+            let typeHtml = `<span class="type-badge type-${d.data.type}">${d.data.type}</span>`;
+            
+            const status = d.data.details && d.data.details.status ? d.data.details.status : 'stable';
+            let statusColor = getStatusColor(status);
+            let statusLabel = status.toUpperCase();
+            
+            typeHtml += `<span class="status-badge" style="background-color: ${statusColor}; margin-left: 5px;">${statusLabel}</span>`;
+            
+            type.innerHTML = typeHtml;
+            
+            if (d.data.details && d.data.details.path) {
+                pathEl.textContent = d.data.details.path;
+            } else {
+                pathEl.textContent = '';
+            }
+
+            let actionHtml = '';
+            if (d.data.details && d.data.details.absolutePath) {
+                // VS Code URI scheme
+                let vscodeUrl = `vscode://file/${d.data.details.absolutePath}`;
+                if (d.data.details.line) {
+                    vscodeUrl += `:${d.data.details.line}`;
+                }
+                actionHtml = `<a href="${vscodeUrl}" class="vscode-link">Open in VS Code</a>`;
+            }
+            actions.innerHTML = actionHtml;
+
+            let html = '';
+            if (d.data.details) {
+                if (d.data.details.signature) {
+                    html += `<div style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px; font-family: monospace; font-size: 12px;">`;
+                    
+                    // Function signature
+                    html += `<strong>Signature:</strong><br>`;
+                    html += `<span style="color: #2980b9">${d.data.name}</span>(`;
+                    
+                    if (d.data.details.signature.parameters && d.data.details.signature.parameters.length > 0) {
+                        html += d.data.details.signature.parameters.map(p => 
+                            `<span style="color: #e67e22">${p.name}</span>: <span style="color: #27ae60">${linkifyType(p.type)}</span>`
+                        ).join(', ');
+                    }
+                    
+                    html += `): <span style="color: #8e44ad">${linkifyType(d.data.details.signature.returnType)}</span>`;
+                    html += `</div>`;
+
+                    // Parameters list
+                    if (d.data.details.signature.parameters && d.data.details.signature.parameters.length > 0) {
+                        html += `<div style="margin-top: 10px;"><strong>Inputs:</strong><ul>`;
+                        d.data.details.signature.parameters.forEach(p => {
+                            html += `<li><code>${p.name}</code> (${linkifyType(p.type)})</li>`;
+                        });
+                        html += `</ul></div>`;
+                    }
+
+                    // Return type
+                    html += `<div style="margin-top: 5px;"><strong>Output:</strong> <code>${linkifyType(d.data.details.signature.returnType)}</code></div>`;
+                }
+
+                if (d.data.details.type) {
+                    html += `<div style="margin-top: 10px;"><strong>Type:</strong> <code>${linkifyType(d.data.details.type)}</code></div>`;
+                }
+
+                // Class Details
+                if (d.data.type === 'class') {
+                    if (d.data.details.typeParameters) {
+                         html += `<div style="margin-top: 5px;"><strong>Generics:</strong> <code>&lt;${linkifyType(d.data.details.typeParameters)}&gt;</code></div>`;
+                    }
+                    if (d.data.details.extends) {
+                         html += `<div style="margin-top: 5px;"><strong>Extends:</strong> <code>${linkifyType(d.data.details.extends)}</code></div>`;
+                    }
+                    if (d.data.details.implements) {
+                         html += `<div style="margin-top: 5px;"><strong>Implements:</strong> <code>${linkifyType(d.data.details.implements)}</code></div>`;
+                    }
+                    if (d.data.details.classMembers && d.data.details.classMembers.length > 0) {
+                        html += `<div style="margin-top: 10px;"><strong>Members:</strong><ul style="padding-left: 20px; margin-top: 5px;">`;
+                        d.data.details.classMembers.forEach(m => {
+                            html += `<li style="margin-bottom: 4px;">`;
+                            if (m.modifiers) html += `<span style="color: #95a5a6; font-size: 0.9em;">${m.modifiers} </span>`;
+                            html += `<span style="color: ${m.kind === 'method' ? '#8e44ad' : '#e67e22'}">${m.name}</span>`;
+                            if (m.kind !== 'constructor') html += `: `;
+                            html += `<span style="color: #27ae60">${linkifyType(m.type)}</span>`;
+                            if (m.doc) {
+                                html += `<br><span style="color: #7f8c8d; font-size: 0.9em;">// ${m.doc}</span>`;
+                            }
+                            html += `</li>`;
+                        });
+                        html += `</ul></div>`;
+                    }
+                }
+
+                // Type Alias Details
+                if (d.data.type === 'type-alias') {
+                     if (d.data.details.typeParameters) {
+                         html += `<div style="margin-top: 5px;"><strong>Generics:</strong> <code>&lt;${linkifyType(d.data.details.typeParameters)}&gt;</code></div>`;
+                    }
+                    if (d.data.details.typeDefinition) {
+                        html += `<div style="margin-top: 10px;"><strong>Definition:</strong><br><code style="white-space: pre-wrap; color: #27ae60;">${linkifyType(d.data.details.typeDefinition)}</code></div>`;
+                    }
+                    // If we parsed properties from a type literal
+                    if (d.data.details.typeProperties && d.data.details.typeProperties.length > 0) {
+                        html += `<div style="margin-top: 10px;"><strong>Properties:</strong><ul style="padding-left: 20px; margin-top: 5px;">`;
+                        d.data.details.typeProperties.forEach(p => {
+                            html += `<li style="margin-bottom: 4px;">`;
+                            html += `<span style="color: #e67e22">${p.name}</span>${p.optional ? '?' : ''}: <span style="color: #27ae60">${linkifyType(p.type)}</span>`;
+                            if (p.doc) {
+                                html += `<br><span style="color: #7f8c8d; font-size: 0.9em;">// ${p.doc}</span>`;
+                            }
+                            html += `</li>`;
+                        });
+                        html += `</ul></div>`;
+                    }
+                }
+
+                // Interface Details
+                if (d.data.type === 'interface') {
+                    if (d.data.details.typeParameters) {
+                         html += `<div style="margin-top: 5px;"><strong>Generics:</strong> <code>&lt;${linkifyType(d.data.details.typeParameters)}&gt;</code></div>`;
+                    }
+                    if (d.data.details.extends) {
+                         html += `<div style="margin-top: 5px;"><strong>Extends:</strong> <code>${linkifyType(d.data.details.extends)}</code></div>`;
+                    }
+                    if (d.data.details.interfaceProperties && d.data.details.interfaceProperties.length > 0) {
+                        html += `<div style="margin-top: 10px;"><strong>Properties:</strong><ul style="padding-left: 20px; margin-top: 5px;">`;
+                        d.data.details.interfaceProperties.forEach(p => {
+                            html += `<li style="margin-bottom: 4px;">`;
+                            html += `<span style="color: #e67e22">${p.name}</span>${p.optional ? '?' : ''}: <span style="color: #27ae60">${linkifyType(p.type)}</span>`;
+                            if (p.doc) {
+                                html += `<br><span style="color: #7f8c8d; font-size: 0.9em;">// ${p.doc}</span>`;
+                            }
+                            html += `</li>`;
+                        });
+                        html += `</ul></div>`;
+                    }
+                }
+
+                if (d.data.details.documentation) {
+                    html += `<div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px;">`;
+                    html += `<strong>Documentation:</strong><br>`;
+                    html += `<span style="color: #555;">${d.data.details.documentation}</span>`;
+                    html += `</div>`;
+                }
+            }
+            content.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

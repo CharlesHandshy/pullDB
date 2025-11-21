@@ -19,7 +19,7 @@ realign the implementation. Add any notes under the corresponding section.
 
 ## 3. Default Host / Secret Definition
 - [X ] Accept drift: update constitution to document `localhost` default and
-      `/pulldb/mysql/db-local-dev` secret.
+      `/pulldb/mysql/localhost-test` secret.
 - [ ] Reject drift: revert seeds/config/docs to legacy SUPPORT default described
       in current constitution.
 - Notes:
