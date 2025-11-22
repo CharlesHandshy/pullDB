@@ -149,7 +149,7 @@ EXIT;
 
 **For RDS/Remote Database Servers**:
 
-If connecting to RDS or remote MySQL servers (like db3-dev, db4-dev, db5-dev), create users with appropriate host patterns:
+If connecting to RDS or remote MySQL servers, create users with appropriate host patterns:
 
 ```sql
 -- For specific host
@@ -165,7 +165,7 @@ FLUSH PRIVILEGES;
 
 **Permissions Explained**:
 - `ALL PRIVILEGES ON pulldb.*` - Full access to coordination database
-- `ALL PRIVILEGES ON *.*` - Full access for target database restores (db3-dev, db4-dev, db5-dev)
+- `ALL PRIVILEGES ON *.*` - Full access for target database restores
 - `SELECT ON mysql.user` - Optional, for authentication verification queries
 
 **Security Note**: The password used here should match the password stored in AWS Secrets Manager (see `aws-secrets-manager-setup.md`).
@@ -179,7 +179,7 @@ Test the pulldb_app user can connect:
 mysql -u pulldb_app -p pulldb
 
 # Test remote connection (if applicable)
-mysql -h db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com \
+mysql -h remote-db-host.example.com \
       -u pulldb_app -p
 
 # Inside MySQL, verify access
@@ -236,16 +236,7 @@ All database structure changes must follow this workflow:
 - Always use `sudo` for database admin operations in development.
 - Keep setup scripts and documentation in sync at all times.
 
-localhost            | TRUE    (local development default)
-db-mysql-db3-dev     | FALSE
-db-mysql-db4-dev     | FALSE
-db-mysql-db5-dev     | FALSE
-default_dbhost               | localhost
-s3_bucket_path               | pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod
-work_dir                     | /mnt/data/pulldb/work
-customers_after_sql_dir      | /opt/pulldb/customers_after_sql
-qa_template_after_sql_dir    | /opt/pulldb/qa_template_after_sql
-## Database Schema
+
 
 ### Core Tables
 
@@ -290,9 +281,7 @@ All database structure changes must follow this workflow:
 id                                 | hostname             | enabled
 ------------------------------------|---------------------|--------
 550e8400-e29b-41d4-a716-446655440003 | localhost            | TRUE    (local development default)
-550e8400-e29b-41d4-a716-446655440000 | db-mysql-db3-dev     | FALSE
-550e8400-e29b-41d4-a716-446655440001 | db-mysql-db4-dev     | FALSE
-550e8400-e29b-41d4-a716-446655440002 | db-mysql-db5-dev     | FALSE
+f869577c-752a-4fbd-b257-4e6f8930d77d | dev-db-01            | TRUE
 ```
 
 **settings**:

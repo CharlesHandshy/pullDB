@@ -4,14 +4,12 @@
 > Canonical Authentication Reference: See `aws-authentication-setup.md` for the authoritative end-to-end AWS architecture (accounts, roles, instance profile, cross-account access). This file focuses narrowly on MySQL credential storage and retrieval mechanics. If guidance here conflicts with `aws-authentication-setup.md`, the canonical document wins.
 > Scope Reduction (2025-11-01): Architecture diagrams, cross-account role creation, and instance profile steps were consolidated into `aws-authentication-setup.md` to eliminate duplication. Future updates should only extend credential patterns (rotation, schema integration, testing mandate).
 
-> **Purpose**: Configure AWS Secrets Manager access for pullDB to retrieve MySQL credentials for the local sandbox (`db-local-dev`), target database servers (db3-dev, db4-dev, db5-dev), and the coordination database secret `/pulldb/mysql/coordination-db` used by all tests.
+> **Purpose**: Configure AWS Secrets Manager access for pullDB to retrieve MySQL credentials for the local sandbox (`db-local-dev`) and the coordination database secret `/pulldb/mysql/coordination-db` used by all tests.
 
 ## Overview
 
 pullDB stores MySQL credentials for target database servers in the `db_hosts` table with references to AWS Secrets Manager or SSM Parameter Store. The `credential_ref` field contains paths like:
 - `aws-secretsmanager:/pulldb/mysql/localhost-test`
-- `aws-secretsmanager:/pulldb/mysql/db3-dev`
-- `aws-ssm:/pulldb/mysql/db3-dev-credentials`
 
 When connecting to a target database server, pullDB:
 1. Reads the `credential_ref` from the `db_hosts` table
@@ -62,9 +60,6 @@ When connecting to a target database server, pullDB:
 │         ┌──────────────▼──────────────────┐                │
 │         │ AWS Secrets Manager             │                │
 │         │ /pulldb/mysql/localhost-test    │                │
-│         │ /pulldb/mysql/db3-dev           │                │
-│         │ /pulldb/mysql/db4-dev           │                │
-│         │ /pulldb/mysql/db5-dev           │                │
 │         └─────────────────────────────────┘                │
 │                                                              │
 │         ┌─────────────────────────────────┐                │
@@ -78,9 +73,6 @@ When connecting to a target database server, pullDB:
 │         ┌─────────────────────────────────┐                │
 │         │ Target MySQL Servers            │                │
 │         │ - localhost (local sandbox)     │                │
-│         │ - db3-dev (DEV team)            │                │
-│         │ - db4-dev (SUPPORT team)        │                │
-│         │ - db5-dev (IMPLEMENTATION team) │                │
 │         └─────────────────────────────────┘                │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -108,66 +100,7 @@ aws secretsmanager create-secret \
 aws secretsmanager describe-secret --secret-id /pulldb/mysql/localhost-test
 ```
 
-### 1.2 Create Secret for db3-dev (DEV Team)
 
-```bash
-# Development account context ONLY (account: 345321506926). Do NOT use cross-account staging/production profiles to create dev secrets.
-# If running on the EC2 instance with the instance profile attached, omit AWS_PROFILE entirely.
-# If running locally with a named dev admin profile, set that profile (example: dev-admin).
-export AWS_PROFILE=dev-admin  # Example; replace with your actual dev account admin profile name or omit when on EC2
-
-# Create secret with MySQL credentials
-aws secretsmanager create-secret \
-    --name /pulldb/mysql/db3-dev \
-    --description "MySQL credentials for db3-dev target database server (DEV team)" \
-    --secret-string '{
-        "username": "pulldb_app",
-        "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-        "host": "db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com",
-        "port": 3306,
-        "dbClusterIdentifier": "db-mysql-db3-dev-vpc-us-east-1-aurora"
-    }' \
-    --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Team,Value=DEV
-
-# Verify secret was created
-aws secretsmanager describe-secret --secret-id /pulldb/mysql/db3-dev
-```
-
-### 1.3 Create Secret for db4-dev (SUPPORT Team)
-
-```bash
-aws secretsmanager create-secret \
-    --name /pulldb/mysql/db4-dev \
-    --description "MySQL credentials for db4-dev target database server (SUPPORT team)" \
-    --secret-string '{
-        "username": "pulldb_app",
-        "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-        "host": "db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com",
-        "port": 3306,
-        "dbClusterIdentifier": "db-mysql-db4-dev-vpc-us-east-1-aurora"
-    }' \
-    --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Team,Value=SUPPORT
-
-aws secretsmanager describe-secret --secret-id /pulldb/mysql/db4-dev
-```
-
-### 1.4 Create Secret for db5-dev (IMPLEMENTATION Team)
-
-```bash
-aws secretsmanager create-secret \
-    --name /pulldb/mysql/db5-dev \
-    --description "MySQL credentials for db5-dev target database server (IMPLEMENTATION team)" \
-    --secret-string '{
-        "username": "pulldb_app",
-        "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-        "host": "db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com",
-        "port": 3306,
-        "dbClusterIdentifier": "db-mysql-db5-dev-vpc-us-east-1-aurora"
-    }' \
-    --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Team,Value=IMPLEMENTATION
-
-aws secretsmanager describe-secret --secret-id /pulldb/mysql/db5-dev
-```
 
 ### 1.5 Create Secret for Coordination Database (MANDATORY FOR TESTS)
 
@@ -283,41 +216,23 @@ aws iam create-policy-version \
 
 ## Step 3: Configure Automatic Secret Rotation (Optional but Recommended)
 
-### 3.1 Enable RDS Automatic Rotation for db3-dev
+### 3.1 Enable RDS Automatic Rotation for localhost-test
 
 ```bash
 # Create rotation Lambda function (AWS managed)
 aws secretsmanager rotate-secret \
-    --secret-id /pulldb/mysql/db3-dev \
+    --secret-id /pulldb/mysql/localhost-test \
     --rotation-lambda-arn arn:aws:serverlessrepo:us-east-1:297356227924:applications/SecretsManagerRDSMySQLRotationSingleUser \
     --rotation-rules AutomaticallyAfterDays=90
 
 # Verify rotation is enabled
-aws secretsmanager describe-secret --secret-id /pulldb/mysql/db3-dev \
+aws secretsmanager describe-secret --secret-id /pulldb/mysql/localhost-test \
     --query 'RotationEnabled'
 ```
 
 ### 3.2 Enable Rotation for Other Secrets
 
 ```bash
-# db-local-dev (local sandbox)
-aws secretsmanager rotate-secret \
-    --secret-id /pulldb/mysql/localhost-test \
-    --rotation-lambda-arn arn:aws:serverlessrepo:us-east-1:297356227924:applications/SecretsManagerRDSMySQLRotationSingleUser \
-    --rotation-rules AutomaticallyAfterDays=90
-
-# db4-dev (SUPPORT)
-aws secretsmanager rotate-secret \
-    --secret-id /pulldb/mysql/db4-dev \
-    --rotation-lambda-arn arn:aws:serverlessrepo:us-east-1:297356227924:applications/SecretsManagerRDSMySQLRotationSingleUser \
-    --rotation-rules AutomaticallyAfterDays=90
-
-# db5-dev (IMPLEMENTATION)
-aws secretsmanager rotate-secret \
-    --secret-id /pulldb/mysql/db5-dev \
-    --rotation-lambda-arn arn:aws:serverlessrepo:us-east-1:297356227924:applications/SecretsManagerRDSMySQLRotationSingleUser \
-    --rotation-rules AutomaticallyAfterDays=90
-
 # coordination-db
 aws secretsmanager rotate-secret \
     --secret-id /pulldb/mysql/coordination-db \
@@ -347,8 +262,8 @@ CREATE TABLE db_hosts (
 **Column Descriptions**:
 - `hostname`: Fully qualified domain name of the target MySQL server
 - `credential_ref`: Reference to AWS Secrets Manager or SSM Parameter Store
-  - Secrets Manager format: `aws-secretsmanager:/pulldb/mysql/db3-dev` (recommended)
-  - SSM Parameter Store format: `aws-ssm:/pulldb/mysql/db3-dev-credentials` (alternative)
+  - Secrets Manager format: `aws-secretsmanager:/pulldb/mysql/localhost-test` (recommended)
+  - SSM Parameter Store format: `aws-ssm:/pulldb/mysql/localhost-test-credentials` (alternative)
 - `max_concurrent_restores`: Maximum simultaneous restore operations on this host
 - `enabled`: Boolean flag to enable/disable host without deleting record
 
@@ -362,16 +277,8 @@ mysql -u pulldb_app -p pulldb
 
 -- Insert db_hosts with Secrets Manager credential references
 INSERT INTO db_hosts (hostname, credential_ref, max_concurrent_restores, enabled) VALUES
-    ('db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
-     'aws-secretsmanager:/pulldb/mysql/db3-dev',
-     1,
-     TRUE),
-    ('db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
-     'aws-secretsmanager:/pulldb/mysql/db4-dev',
-     1,
-     TRUE),
-    ('db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
-     'aws-secretsmanager:/pulldb/mysql/db5-dev',
+    ('localhost',
+     'aws-secretsmanager:/pulldb/mysql/localhost-test',
      1,
      TRUE);
 
@@ -382,9 +289,7 @@ SELECT id, hostname, credential_ref, enabled FROM db_hosts;
 -- +----+------------------------------------------------------------------------------+----------------------------------------+--------+
 -- | id | hostname                                                                     | credential_ref                         | enabled|
 -- +----+------------------------------------------------------------------------------+----------------------------------------+--------+
--- |  1 | db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds... | aws-secretsmanager:/pulldb/mysql/db3-dev |      1 |
--- |  2 | db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds... | aws-secretsmanager:/pulldb/mysql/db4-dev |      1 |
--- |  3 | db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds... | aws-secretsmanager:/pulldb/mysql/db5-dev |      1 |
+-- |  1 | localhost                                                                    | aws-secretsmanager:/pulldb/mysql/localhost-test |      1 |
 -- +----+------------------------------------------------------------------------------+----------------------------------------+--------+
 ```
 
@@ -423,8 +328,8 @@ class CredentialResolver:
 
         Args:
             credential_ref: Reference string in format:
-                - "aws-secretsmanager:/pulldb/mysql/db3-dev"
-                - "aws-ssm:/pulldb/mysql/db3-dev-credentials"
+                - "aws-secretsmanager:/pulldb/mysql/localhost-test"
+                - "aws-ssm:/pulldb/mysql/localhost-test-credentials"
 
         Returns:
             Dictionary with credential fields:
@@ -454,7 +359,7 @@ class CredentialResolver:
         """Retrieve secret from AWS Secrets Manager.
 
         Args:
-            secret_name: Name of the secret (e.g., /pulldb/mysql/db3-dev)
+            secret_name: Name of the secret (e.g., /pulldb/mysql/localhost-test)
 
         Returns:
             Parsed secret as dictionary
@@ -479,7 +384,7 @@ class CredentialResolver:
         """Retrieve parameter from AWS SSM Parameter Store.
 
         Args:
-            parameter_name: Name of the parameter (e.g., /pulldb/mysql/db3-dev-credentials)
+            parameter_name: Name of the parameter (e.g., /pulldb/mysql/localhost-test-credentials)
 
         Returns:
             Parsed parameter value as dictionary
@@ -556,20 +461,16 @@ ssh ec2-user@pulldb-dev-01
 sudo -u pulldb bash
 
 # Test retrieving secret
-aws secretsmanager get-secret-value --secret-id /pulldb/mysql/db3-dev
+aws secretsmanager get-secret-value --secret-id /pulldb/mysql/localhost-test
 
 # Should return JSON with SecretString containing credentials
 # {
-#   "ARN": "arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/db3-dev-xxxxx",
-#   "Name": "/pulldb/mysql/db3-dev",
+#   "ARN": "arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/localhost-test-xxxxx",
+#   "Name": "/pulldb/mysql/localhost-test",
 #   "VersionId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
 #   "SecretString": "{\"username\":\"pulldb_app\",\"password\":\"...\",\"host\":\"...\",\"port\":3306}",
 #   "CreatedDate": "2025-10-31T12:00:00.000Z"
 # }
-
-# Test all three target database secrets
-aws secretsmanager get-secret-value --secret-id /pulldb/mysql/db4-dev
-aws secretsmanager get-secret-value --secret-id /pulldb/mysql/db5-dev
 
 # Test coordination database secret
 aws secretsmanager get-secret-value --secret-id /pulldb/mysql/coordination-db
@@ -592,24 +493,12 @@ from pulldb.infra.secrets import CredentialResolver
 # Test resolving Secrets Manager reference
 resolver = CredentialResolver()
 
-# Test db3-dev credentials
-creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/db3-dev')
-print(f"✅ db3-dev credentials resolved:")
+# Test localhost-test credentials
+creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/localhost-test')
+print(f"✅ localhost-test credentials resolved:")
 print(f"   Username: {creds['username']}")
 print(f"   Host: {creds['host']}")
 print(f"   Port: {creds.get('port', 3306)}")
-
-# Test db4-dev credentials
-creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/db4-dev')
-print(f"✅ db4-dev credentials resolved:")
-print(f"   Username: {creds['username']}")
-print(f"   Host: {creds['host']}")
-
-# Test db5-dev credentials
-creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/db5-dev')
-print(f"✅ db5-dev credentials resolved:")
-print(f"   Username: {creds['username']}")
-print(f"   Host: {creds['host']}")
 
 print("\n✅ All Secrets Manager credential resolutions successful!")
 EOF
@@ -640,9 +529,9 @@ source venv/bin/activate
 python3 << 'EOF'
 from pulldb.infra.mysql import MySQLConnectionPool
 
-# Test connection to db3-dev using Secrets Manager credentials
+# Test connection to localhost-test using Secrets Manager credentials
 pool = MySQLConnectionPool(
-    credential_ref='aws-secretsmanager:/pulldb/mysql/db3-dev',
+    credential_ref='aws-secretsmanager:/pulldb/mysql/localhost-test',
     pool_size=2
 )
 
@@ -651,7 +540,7 @@ conn = pool.get_connection()
 cursor = conn.cursor()
 cursor.execute("SELECT VERSION(), DATABASE(), USER()")
 result = cursor.fetchone()
-print(f"✅ Connected to db3-dev:")
+print(f"✅ Connected to localhost-test:")
 print(f"   MySQL Version: {result[0]}")
 print(f"   Database: {result[1]}")
 print(f"   User: {result[2]}")
@@ -713,11 +602,11 @@ EOF
 aws iam list-attached-role-policies --role-name pulldb-ec2-service-role
 
 # Verify secret ARN matches policy
-aws secretsmanager describe-secret --secret-id /pulldb/mysql/db3-dev \
+aws secretsmanager describe-secret --secret-id /pulldb/mysql/localhost-test \
     --query 'ARN'
 
 # Check KMS key permissions (if using customer-managed key)
-KEY_ID=$(aws secretsmanager describe-secret --secret-id /pulldb/mysql/db3-dev \
+KEY_ID=$(aws secretsmanager describe-secret --secret-id /pulldb/mysql/localhost-test \
     --query 'KmsKeyId' --output text)
 aws kms get-key-policy --key-id $KEY_ID --policy-name default
 ```
@@ -735,7 +624,7 @@ aws secretsmanager list-secrets \
     --filters Key=name,Values=/pulldb/
 
 # Verify exact secret name
-aws secretsmanager describe-secret --secret-id /pulldb/mysql/db3-dev
+aws secretsmanager describe-secret --secret-id /pulldb/mysql/localhost-test
 ```
 
 ### Error: Invalid JSON in secret value
@@ -747,16 +636,16 @@ aws secretsmanager describe-secret --secret-id /pulldb/mysql/db3-dev
 **Fix**:
 ```bash
 # View secret value
-aws secretsmanager get-secret-value --secret-id /pulldb/mysql/db3-dev \
+aws secretsmanager get-secret-value --secret-id /pulldb/mysql/localhost-test \
     --query 'SecretString' --output text
 
 # Update secret with valid JSON
 aws secretsmanager put-secret-value \
-    --secret-id /pulldb/mysql/db3-dev \
+    --secret-id /pulldb/mysql/localhost-test \
     --secret-string '{
         "username": "pulldb_app",
         "password": "password_here",
-        "host": "db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com",
+        "host": "localhost",
         "port": 3306
     }'
 ```
@@ -765,10 +654,10 @@ aws secretsmanager put-secret-value \
 
 ### Secrets Manager Costs
 
-**Current Setup** (5 secrets):
-- 5 secrets × $0.40/month = $2.00/month
+**Current Setup** (2 secrets):
+- 2 secrets × $0.40/month = $0.80/month
 - API calls: ~10,000/month × $0.05/10k = $0.05/month
-- **Total**: ~$1.65/month
+- **Total**: ~$0.85/month
 
 **Cost Reduction Options**:
 1. **Use SSM Parameter Store for non-rotating secrets**: $0/month (free tier)
@@ -811,7 +700,7 @@ aws cloudtrail lookup-events \
 
 # Filter by secret name
 aws cloudtrail lookup-events \
-    --lookup-attributes AttributeKey=ResourceName,AttributeValue=/pulldb/mysql/db3-dev \
+    --lookup-attributes AttributeKey=ResourceName,AttributeValue=/pulldb/mysql/localhost-test \
     --max-results 50
 ```
 
@@ -845,5 +734,5 @@ This Secrets Manager setup provides:
 7. Verify connectivity (Step 6)
 
 Both API and Worker services retrieve credentials from Secrets Manager when connecting to:
-- Target MySQL servers (db3-dev, db4-dev, db5-dev) for restore operations
+- Target MySQL servers (localhost-test) for restore operations
 - Coordination database for job queue management

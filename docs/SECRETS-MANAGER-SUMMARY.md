@@ -9,7 +9,7 @@
 
 Complete guide covering:
 - ✅ Secrets Manager vs SSM Parameter Store comparison
-- ✅ Step-by-step secret creation for all sandbox + database servers (db-local-dev, db3-dev, db4-dev, db5-dev, coordination-db)
+- ✅ Step-by-step secret creation for all sandbox + database servers (db-local-dev, coordination-db)
 - ✅ IAM policy for Secrets Manager access (scoped to `/pulldb/mysql/*`)
 - ✅ Automatic credential rotation setup (90-day rotation with RDS Lambda)
 - ✅ Database host table updates (`db_hosts.credential_ref` configuration)
@@ -92,14 +92,11 @@ The new policy grants pullDB services:
 
 ## Secrets to Create
 
-pullDB requires 5 secrets in AWS Secrets Manager:
+pullDB requires 2 secrets in AWS Secrets Manager:
 
 | Secret Name | Purpose | Team | Rotation |
 |-------------|---------|------|----------|
 | `/pulldb/mysql/localhost-test` | Local sandbox restore target | Development | 90 days |
-| `/pulldb/mysql/db3-dev` | Target database server credentials | DEV | 90 days |
-| `/pulldb/mysql/db4-dev` | Target database server credentials | SUPPORT | 90 days |
-| `/pulldb/mysql/db5-dev` | Target database server credentials | IMPLEMENTATION | 90 days |
 | `/pulldb/mysql/coordination-db` | pullDB coordination database | N/A | 90 days |
 
 **Secret Format** (JSON):
@@ -107,9 +104,9 @@ pullDB requires 5 secrets in AWS Secrets Manager:
 {
   "username": "pulldb_app",
   "password": "ACTUAL_PASSWORD_HERE",
-  "host": "db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com",
+  "host": "localhost",
   "port": 3306,
-  "dbClusterIdentifier": "db-mysql-db3-dev-vpc-us-east-1-aurora"
+  "database": "pulldb_sandbox"
 }
 ```
 
@@ -120,7 +117,7 @@ pullDB requires 5 secrets in AWS Secrets Manager:
 ### Immediate (AWS Setup)
 - [ ] Create IAM policy `pulldb-secrets-manager-access` in development account (345321506926)
 - [ ] Attach policy to `pulldb-ec2-service-role`
-- [ ] Create 5 secrets in Secrets Manager with actual credentials
+- [ ] Create 2 secrets in Secrets Manager with actual credentials
 - [ ] Enable automatic rotation (90 days) for all secrets
 - [ ] Tag all secrets with `Service=pulldb`
 
@@ -128,10 +125,10 @@ pullDB requires 5 secrets in AWS Secrets Manager:
 - [ ] Update `db_hosts` table with Secrets Manager credential references:
   ```sql
   UPDATE db_hosts
-  SET credential_ref = 'aws-secretsmanager:/pulldb/mysql/db3-dev'
-  WHERE hostname = 'db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com';
+  SET credential_ref = 'aws-secretsmanager:/pulldb/mysql/localhost-test'
+  WHERE hostname = 'localhost';
   ```
-- [ ] Repeat for localhost (db-local-dev), db4-dev, and db5-dev
+- [ ] Repeat for coordination-db
 
 ### Code Implementation (Milestone 1.3 - Configuration Module)
 - [ ] Implement `pulldb/infra/secrets.py` with `CredentialResolver` class
@@ -145,7 +142,7 @@ pullDB requires 5 secrets in AWS Secrets Manager:
 ### 1. Test IAM Permissions (from EC2 instance)
 ```bash
 sudo -u pulldb bash
-aws secretsmanager get-secret-value --secret-id /pulldb/mysql/db3-dev
+aws secretsmanager get-secret-value --secret-id /pulldb/mysql/localhost-test
 # Should return secret value (not "Access Denied")
 ```
 
@@ -154,7 +151,7 @@ aws secretsmanager get-secret-value --secret-id /pulldb/mysql/db3-dev
 from pulldb.infra.secrets import CredentialResolver
 
 resolver = CredentialResolver()
-creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/db3-dev')
+creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/localhost-test')
 print(f"Username: {creds['username']}, Host: {creds['host']}")
 ```
 
@@ -163,7 +160,7 @@ print(f"Username: {creds['username']}, Host: {creds['host']}")
 from pulldb.infra.mysql import MySQLConnectionPool
 
 pool = MySQLConnectionPool(
-    credential_ref='aws-secretsmanager:/pulldb/mysql/db3-dev',
+    credential_ref='aws-secretsmanager:/pulldb/mysql/localhost-test',
     pool_size=2
 )
 conn = pool.get_connection()
@@ -180,7 +177,7 @@ print(cursor.fetchone())
 | **RDS Integration** | ✅ Direct integration | ❌ No integration |
 | **Versioning** | ✅ AWSCURRENT/AWSPREVIOUS | ❌ Limited versions |
 | **Audit Trail** | ✅ CloudTrail + history | ✅ CloudTrail |
-| **Cost** | $2.00/month (5 secrets) | $0 (free tier) |
+| **Cost** | $0.80/month (2 secrets) | $0 (free tier) | |
 | **Best For** | Database credentials | Configuration values |
 
 **Decision**: Use Secrets Manager for all MySQL credentials due to automatic rotation and RDS integration. The $1.65/month cost is negligible compared to security benefits.
@@ -198,15 +195,15 @@ print(cursor.fetchone())
 ## Cost Analysis
 
 **Monthly Costs**:
-- 5 secrets × $0.40/secret = $2.00/month
+- 2 secrets × $0.40/secret = $0.80/month
 - ~10,000 API calls × $0.05/10k = $0.05/month
-- **Total: $1.65/month**
+- **Total: $0.85/month**
 
 **Alternative (SSM Parameter Store)**:
 - 4 parameters × $0 (free tier) = $0/month
 - But: No automatic rotation, manual password updates required
 
-**Recommendation**: Accept $1.65/month cost for automatic rotation and RDS integration.
+**Recommendation**: Accept $0.85/month cost for automatic rotation and RDS integration.
 
 ## Related Documentation
 

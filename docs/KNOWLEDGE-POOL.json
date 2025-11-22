@@ -18,6 +18,25 @@
   },
   "secrets": {
     "coordination_db": "/pulldb/mysql/coordination-db",
-    "targets": ["/pulldb/mysql/db3-dev","/pulldb/mysql/db4-dev","/pulldb/mysql/db5-dev"]
-  }
+    "targets": ["/pulldb/mysql/localhost-test"]
+  },
+  "paths": {
+    "install_root": "/opt/pulldb",
+    "venv": "/opt/pulldb/venv",
+    "logs": "/opt/pulldb/logs",
+    "work_dir": "/opt/pulldb/work",
+    "systemd_api": "/etc/systemd/system/pulldb-api.service",
+    "systemd_worker": "/etc/systemd/system/pulldb-worker.service"
+  },
+  "binaries": {
+    "myloader_path": "/opt/pulldb/bin/",
+    "myloader_source": "pulldb/binaries/"
+  },
+  "lessons_learned": [
+    {
+      "topic": "AWS Profile Scoping",
+      "issue": "PULLDB_AWS_PROFILE=pr-prod breaks Secrets Manager access",
+      "fix": "Use PULLDB_S3_AWS_PROFILE=pr-prod for S3, leave PULLDB_AWS_PROFILE unset or pr-dev"
+    }
+  ]
 }

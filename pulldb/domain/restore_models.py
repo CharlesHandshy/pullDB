@@ -11,11 +11,31 @@ Design Goals:
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
 from pulldb.domain.config import Config
+
+
+MYLOADER_LEGACY_DEFAULTS = (
+    "--overwrite-tables",
+    "--verbose=3",
+)
+
+MYLOADER_NEW_DEFAULTS = (
+    "--max-threads-for-post-actions=1",
+    "--rows=100000",
+    "--queries-per-transaction=5000",
+    "--optimize-keys=AFTER_IMPORT_PER_TABLE",
+    "--checksum=warn",
+    "--retry-count=20",
+    "--local-infile=TRUE",
+    "--ignore-errors=1146",
+    "--overwrite-tables",
+    "--verbose=3",
+)
 
 
 @dataclass(slots=True)
@@ -86,6 +106,7 @@ def build_configured_myloader_spec(
     mysql_password: str,
     extra_args: Sequence[str] | None = None,
     env: Mapping[str, str] | None = None,
+    format_tag: str | None = None,
 ) -> MyLoaderSpec:
     """Build :class:`MyLoaderSpec` using configurable defaults.
 
@@ -100,11 +121,36 @@ def build_configured_myloader_spec(
         mysql_password: Destination MySQL password.
         extra_args: Optional additional CLI args provided by caller.
         env: Optional env overrides passed to subprocess.
+        format_tag: Backup format tag ("legacy" or "new") to select binary.
 
     Returns:
         Configured MyLoaderSpec honoring environment/settings overrides.
     """
-    merged_args: list[str] = list(config.myloader_extra_args)
+    # Select binary based on format_tag
+    # Default to config.myloader_binary if not specified or unknown
+    binary_path = config.myloader_binary
+    defaults: Sequence[str] = ()
+
+    # Resolve binaries relative to this file (in package)
+    # pulldb/domain/restore_models.py -> pulldb/binaries/
+    pkg_root = os.path.dirname(os.path.dirname(__file__))
+    bin_dir = os.path.join(pkg_root, "binaries")
+
+    if format_tag == "legacy":
+        # myloader 0.9.5 for legacy backups
+        candidate = os.path.join(bin_dir, "myloader-0.9.5")
+        if os.path.exists(candidate):
+            binary_path = candidate
+        defaults = MYLOADER_LEGACY_DEFAULTS
+    elif format_tag == "new":
+        # myloader 0.19.3-3 for new backups
+        candidate = os.path.join(bin_dir, "myloader-0.19.3-3")
+        if os.path.exists(candidate):
+            binary_path = candidate
+        defaults = MYLOADER_NEW_DEFAULTS
+
+    merged_args: list[str] = list(defaults)
+    merged_args.extend(config.myloader_extra_args)
     if extra_args:
         merged_args.extend(extra_args)
 
@@ -121,7 +167,7 @@ def build_configured_myloader_spec(
         mysql_password=mysql_password,
         extra_args=tuple(merged_args),
         env=env,
-        binary_path=config.myloader_binary,
+        binary_path=binary_path,
     )
 
 

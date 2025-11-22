@@ -21,7 +21,7 @@ Diagnostic script to verify that the `pulldb-ec2-service-role` has correct Secre
 ./scripts/verify-secrets-perms.sh --profile dev-admin
 
 # Verify specific secret
-./scripts/verify-secrets-perms.sh --profile dev-admin --secret /pulldb/mysql/db3-dev
+./scripts/verify-secrets-perms.sh --profile dev-admin --secret /pulldb/mysql/localhost-test
 
 # View help
 ./scripts/verify-secrets-perms.sh --help

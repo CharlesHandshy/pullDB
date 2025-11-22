@@ -292,6 +292,43 @@ class JobRepository:
             rows = self._fetch_active_job_rows(cursor)
             return [self._row_to_active_job(row) for row in rows]
 
+    def get_recent_jobs(self, limit: int = 100) -> list[Job]:
+        """Get recent jobs (active + completed) with operation status.
+
+        Returns jobs ordered by submission time (newest first).
+        Includes current_operation derived from latest job event.
+
+        Args:
+            limit: Maximum number of jobs to return.
+
+        Returns:
+            List of jobs with populated current_operation.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                WITH LatestEvents AS (
+                    SELECT job_id, event_type, detail,
+                           ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY logged_at DESC) as rn
+                    FROM job_events
+                )
+                SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
+                       j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
+                       j.started_at, j.completed_at, j.options_json, j.retry_count,
+                       j.error_detail,
+                       le.event_type as last_event_type,
+                       le.detail as last_event_detail
+                FROM jobs j
+                LEFT JOIN LatestEvents le ON j.id = le.job_id AND le.rn = 1
+                ORDER BY j.submitted_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
+
     def _fetch_active_job_rows(self, cursor: t.Any) -> list[dict[str, t.Any]]:
         """Fetch active jobs using view when available.
 
@@ -458,7 +495,42 @@ class JobRepository:
             options_json=options_json,
             retry_count=row.get("retry_count", 0),
             error_detail=row.get("error_detail"),
+            current_operation=self._derive_operation(row),
         )
+
+    def _derive_operation(self, row: dict[str, t.Any]) -> str | None:
+        """Derive user-friendly operation string from job status and last event."""
+        status = row.get("status")
+        if status == "complete":
+            return "Success"
+        if status == "failed":
+            return "Failed"
+
+        event_type = row.get("last_event_type")
+
+        if not event_type:
+            if status == "queued":
+                return "Queued"
+            if status == "running":
+                return "Initializing"
+            return None
+
+        if event_type == "backup_selected":
+            return "Downloading"
+        if event_type == "download_started":
+            return "Downloading"
+        if event_type == "download_complete":
+            return "Extracting"
+        if event_type == "extraction_complete":
+            return "Restoring"
+        if event_type == "restore_started":
+            return "Restoring"
+        if event_type == "restore_complete":
+            return "Success"
+        if event_type == "restore_failed":
+            return "Failed"
+
+        return event_type.replace("_", " ").capitalize()
 
     def _row_to_active_job(self, row: dict[str, t.Any]) -> Job:
         """Convert active_jobs view row to Job dataclass.
@@ -764,8 +836,8 @@ class HostRepository:
     Example:
         >>> resolver = CredentialResolver()
         >>> repo = HostRepository(pool, resolver)
-        >>> host = repo.get_host_by_hostname("db-mysql-db4-dev")
-        >>> creds = repo.get_host_credentials("db-mysql-db4-dev")
+        >>> host = repo.get_host_by_hostname("localhost")
+        >>> creds = repo.get_host_credentials("localhost")
         >>> print(creds.username)  # "root" (from Secrets Manager)
     """
 
@@ -785,7 +857,7 @@ class HostRepository:
         """Get host configuration by hostname.
 
         Args:
-            hostname: Hostname to look up (e.g., "db-mysql-db4-dev").
+            hostname: Hostname to look up (e.g., "localhost").
 
         Returns:
             DBHost instance if found, None otherwise.
@@ -914,7 +986,7 @@ class SettingsRepository:
     Example:
         >>> repo = SettingsRepository(pool)
         >>> default_host = repo.get_setting("default_dbhost")
-        >>> print(default_host)  # "db-mysql-db4-dev"
+        >>> print(default_host)  # "localhost"
         >>> all_settings = repo.get_all_settings()
         >>> print(all_settings["s3_bucket_path"])
     """

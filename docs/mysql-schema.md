@@ -109,10 +109,10 @@ CREATE TABLE db_hosts (
 );
 ```
 
-- `hostname`: Fully qualified domain name of the target MySQL server
+- `hostname`: Logical hostname or alias (e.g., `dev-db-01`). Must match the `dbhost` value used in CLI/API. The actual connection FQDN is stored in the referenced secret.
 - `credential_ref`: Reference to credentials in AWS Secrets Manager or SSM Parameter Store
-  - Format: `aws-secretsmanager:/pulldb/mysql/db3-dev` (recommended)
-  - Format: `aws-ssm:/pulldb/mysql/db3-dev-credentials` (alternative)
+  - Format: `aws-secretsmanager:/pulldb/mysql/dev-db-01` (recommended)
+  - Format: `aws-ssm:/pulldb/mysql/dev-db-01-credentials` (alternative)
 - `max_concurrent_restores`: Maximum number of simultaneous restore operations on this host
 - `enabled`: Boolean flag to temporarily disable a host without deleting the record
 
@@ -182,32 +182,16 @@ INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, ena
      1,
      TRUE);
 
--- DEV team database server (legacy --type=DEV)
+-- Development database server
 INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
-    ('550e8400-e29b-41d4-a716-446655440000',
-     'db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
-     'aws-secretsmanager:/pulldb/mysql/db3-dev',
+    ('f869577c-752a-4fbd-b257-4e6f8930d77d',
+     'dev-db-01',
+     'aws-secretsmanager:/pulldb/mysql/dev-db-01',
      1,
-     FALSE);
-
--- SUPPORT team database server (legacy --type=SUPPORT)
-INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
-    ('550e8400-e29b-41d4-a716-446655440001',
-     'db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
-     'aws-secretsmanager:/pulldb/mysql/db4-dev',
-     1,
-     FALSE);
-
--- IMPLEMENTATION team database server (legacy --type=IMPLEMENTATION)
-INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
-    ('550e8400-e29b-41d4-a716-446655440002',
-     'db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
-     'aws-secretsmanager:/pulldb/mysql/db5-dev',
-     1,
-     FALSE);
+     TRUE);
 ```
 
-**Note**: Credentials for these hosts must be created in AWS Secrets Manager before the Worker service can connect. See `aws-secrets-manager-setup.md` for setup instructions. The local sandbox secret (`/pulldb/mysql/localhost-test`) is required for development setups; the legacy team secrets remain for historical restores.
+**Note**: Credentials for these hosts must be created in AWS Secrets Manager before the Worker service can connect. See `aws-secrets-manager-setup.md` for setup instructions. The local sandbox secret (`/pulldb/mysql/localhost-test`) is required for development setups.
 
 ### Configuration Settings
 
@@ -232,7 +216,7 @@ INSERT INTO settings (setting_key, setting_value) VALUES
     ('work_dir', '/var/lib/pulldb/work/');
 ```
 
-**Migration Note**: Users of legacy `pullDB-auth --type=SUPPORT` should use `pullDB user=<user> customer=<customer>` (default, now targeting the local sandbox) or explicitly specify `dbhost=db-mysql-db4-dev` to reach the legacy SUPPORT host.
+**Migration Note**: Users of legacy `pullDB-auth --type=SUPPORT` should use `pullDB user=<user> customer=<customer>` (default, now targeting the local sandbox).
 
 ## Daemon-Oriented Triggers
 

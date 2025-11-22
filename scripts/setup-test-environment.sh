@@ -157,6 +157,17 @@ teardown_test_env() {
     local reason="$1"
     info "Cleaning existing test environment (${reason})..."
 
+    # Kill any running processes from the test environment
+    if pgrep -f "${TEST_ENV_DIR}/venv/bin/pulldb" >/dev/null; then
+        if [[ "$DRY_RUN" == true ]]; then
+            info "[DRY-RUN] Would kill running pullDB processes"
+        else
+            info "Killing running pullDB processes..."
+            pkill -f "${TEST_ENV_DIR}/venv/bin/pulldb" || true
+            sleep 1
+        fi
+    fi
+
     if [[ -d "$TEST_ENV_DIR" ]]; then
         if [[ "$DRY_RUN" == true ]]; then
             info "[DRY-RUN] Would remove: $TEST_ENV_DIR"
@@ -286,7 +297,7 @@ verify_aws_credentials() {
 
     info "Verifying AWS credentials..."
 
-    local aws_profile="${AWS_PROFILE:-default}"
+    local aws_profile="${AWS_PROFILE:-pr-dev}"
 
     if [[ "$DRY_RUN" == true ]]; then
         info "[DRY-RUN] Would verify AWS profile: $aws_profile"
@@ -330,7 +341,7 @@ create_test_config() {
     info "Creating test configuration..."
 
     local env_file="${TEST_ENV_DIR}/.env"
-    local aws_profile="${AWS_PROFILE:-default}"
+    local aws_profile="${AWS_PROFILE:-pr-dev}"
 
     if [[ "$DRY_RUN" == true ]]; then
         info "[DRY-RUN] Would create: $env_file"
@@ -343,6 +354,7 @@ create_test_config() {
 
 # AWS Configuration
 PULLDB_AWS_PROFILE=${aws_profile}
+PULLDB_S3_AWS_PROFILE=pr-staging
 
 # MySQL Coordination Database
 PULLDB_MYSQL_CREDENTIAL_REF=test-local-mysql
@@ -455,61 +467,20 @@ EOF
 
     chmod +x "${TEST_ENV_DIR}/activate-test-env.sh"
 
-    # Quick test script
-    cat > "${TEST_ENV_DIR}/run-quick-test.sh" <<'EOF'
-#!/usr/bin/env bash
-# Quick smoke test for pullDB installation
+    # Copy scripts from source
+    if [[ -f "${PROJECT_ROOT}/scripts/run-quick-test.sh" ]]; then
+        cp "${PROJECT_ROOT}/scripts/run-quick-test.sh" "${TEST_ENV_DIR}/run-quick-test.sh"
+        chmod +x "${TEST_ENV_DIR}/run-quick-test.sh"
+    else
+        warn "scripts/run-quick-test.sh not found; skipping copy"
+    fi
 
-set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/activate-test-env.sh"
-
-echo "Running quick smoke tests..."
-echo ""
-
-# Test 1: CLI help
-echo "✓ Testing CLI help..."
-pulldb --help >/dev/null || { echo "✗ CLI help failed"; exit 1; }
-
-# Test 2: Database connectivity
-echo "✓ Testing database connectivity..."
-python3 -c "
-import mysql.connector
-import os
-conn = mysql.connector.connect(
-    host=os.environ['PULLDB_MYSQL_HOST'],
-    user=os.environ['PULLDB_MYSQL_USER'],
-    password=os.environ['PULLDB_MYSQL_PASSWORD'],
-    database=os.environ['PULLDB_MYSQL_DATABASE']
-)
-cursor = conn.cursor()
-cursor.execute('SELECT VERSION()')
-print(f'  MySQL version: {cursor.fetchone()[0]}')
-conn.close()
-" || { echo "✗ Database connectivity failed"; exit 1; }
-
-# Test 3: AWS credentials
-echo "✓ Testing AWS credentials..."
-aws sts get-caller-identity --profile "${PULLDB_AWS_PROFILE}" >/dev/null || {
-    echo "✗ AWS credentials not configured"
-    echo "  Run: aws configure --profile ${PULLDB_AWS_PROFILE}"
-}
-
-# Test 4: Import test
-echo "✓ Testing Python imports..."
-python3 -c "
-from pulldb.cli import main
-from pulldb.infra import mysql, s3, secrets
-from pulldb.domain import config, models
-print('  All imports successful')
-" || { echo "✗ Import test failed"; exit 1; }
-
-echo ""
-echo "All smoke tests passed! ✓"
-EOF
-
-    chmod +x "${TEST_ENV_DIR}/run-quick-test.sh"
+    if [[ -f "${PROJECT_ROOT}/scripts/start-test-services.sh" ]]; then
+        cp "${PROJECT_ROOT}/scripts/start-test-services.sh" "${TEST_ENV_DIR}/start-test-services.sh"
+        chmod +x "${TEST_ENV_DIR}/start-test-services.sh"
+    else
+        warn "scripts/start-test-services.sh not found; skipping copy"
+    fi
 
     success "Convenience scripts created"
 }
@@ -595,13 +566,16 @@ ${YELLOW}Next Steps:${NC}
 2. Run quick smoke test:
    ${BLUE}bash ${TEST_ENV_DIR}/run-quick-test.sh${NC}
 
-3. View MySQL credentials:
+3. Start services:
+   ${BLUE}bash ${TEST_ENV_DIR}/start-test-services.sh${NC}
+
+4. View MySQL credentials:
    ${BLUE}cat ${TEST_ENV_DIR}/config/mysql-credentials.txt${NC}
 
-4. Review configuration:
+5. Review configuration:
    ${BLUE}cat ${TEST_ENV_DIR}/.env${NC}
 
-5. Start usability testing:
+6. Start usability testing:
    ${BLUE}pulldb --help${NC}
    ${BLUE}pulldb status${NC}
 

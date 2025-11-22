@@ -118,24 +118,24 @@ class TestSecretsManagerResolution:
             {
                 "username": "pulldb_app",
                 "password": "secret123",
-                "host": "db-mysql-db3-dev.us-east-1.rds.amazonaws.com",
+                "host": "localhost",
                 "port": 3306,
-                "dbClusterIdentifier": "db-mysql-db3-dev",
+                "dbClusterIdentifier": "localhost-test",
             }
         )
         secrets_client.create_secret(
-            Name="/pulldb/mysql/db3-dev", SecretString=secret_value
+            Name="/pulldb/mysql/localhost-test", SecretString=secret_value
         )
 
         # Resolve credentials
         resolver = CredentialResolver()
-        creds = resolver.resolve("aws-secretsmanager:/pulldb/mysql/db3-dev")
+        creds = resolver.resolve("aws-secretsmanager:/pulldb/mysql/localhost-test")
 
         assert creds.username == "pulldb_app"
         assert creds.password == "secret123"
-        assert creds.host == "db-mysql-db3-dev.us-east-1.rds.amazonaws.com"
+        assert creds.host == "localhost"
         assert creds.port == DEFAULT_MYSQL_PORT
-        assert creds.db_cluster_identifier == "db-mysql-db3-dev"
+        assert creds.db_cluster_identifier == "localhost-test"
 
     def test_resolve_missing_username(self) -> None:
         """Test that missing username field raises error."""
@@ -175,23 +175,23 @@ class TestSSMResolution:
             {
                 "username": "pulldb_app",
                 "password": "secret456",
-                "host": "db-mysql-db4-dev.us-east-1.rds.amazonaws.com",
+                "host": "localhost",
                 "port": 3306,
             }
         )
         ssm_client.put_parameter(
-            Name="/pulldb/mysql/db4-dev-credentials",
+            Name="/pulldb/mysql/localhost-test-credentials",
             Value=parameter_value,
             Type="SecureString",
         )
 
         # Resolve credentials
         resolver = CredentialResolver()
-        creds = resolver.resolve("aws-ssm:/pulldb/mysql/db4-dev-credentials")
+        creds = resolver.resolve("aws-ssm:/pulldb/mysql/localhost-test-credentials")
 
         assert creds.username == "pulldb_app"
         assert creds.password == "secret456"
-        assert creds.host == "db-mysql-db4-dev.us-east-1.rds.amazonaws.com"
+        assert creds.host == "localhost"
         assert creds.port == DEFAULT_MYSQL_PORT
 
     def test_resolve_parameter_not_found(self) -> None:

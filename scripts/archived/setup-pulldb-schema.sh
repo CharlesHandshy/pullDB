@@ -283,20 +283,8 @@ DELIMITER ;
 -- -----------------------------------------------------------------------------
 INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
     ('550e8400-e29b-41d4-a716-446655440000',
-        'db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com',
-        'aws-secretsmanager:/pulldb/mysql/db3-dev',
-        1,
-        TRUE
-    ),
-    ('550e8400-e29b-41d4-a716-446655440001',
-        'db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com',
-        'aws-secretsmanager:/pulldb/mysql/db4-dev',
-        1,
-        TRUE
-    ),
-    ('550e8400-e29b-41d4-a716-446655440002',
-        'db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com',
-        'aws-secretsmanager:/pulldb/mysql/db5-dev',
+        'localhost',
+        'aws-secretsmanager:/pulldb/mysql/localhost-test',
         1,
         TRUE
     );
@@ -306,7 +294,7 @@ INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, ena
 -- NOTE: Update default_dbhost with actual default RDS endpoint
 -- -----------------------------------------------------------------------------
 INSERT INTO settings (setting_key, setting_value) VALUES
-    ('default_dbhost', 'db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com'),
+    ('default_dbhost', 'localhost'),
     ('s3_bucket_prod', 'pestroutes-rds-backup-prod-vpc-us-east-1-s3'),
     ('s3_prefix_prod', 'daily/prod'),
     ('s3_bucket_stg', 'pestroutesrdsdbs'),
@@ -385,9 +373,7 @@ print_warn "2. Update default_dbhost setting:"
 print_warn "   UPDATE pulldb.settings SET setting_value = 'actual-hostname.rds.amazonaws.com' WHERE setting_key = 'default_dbhost';"
 print_warn ""
 print_warn "3. Verify AWS Secrets Manager secrets exist:"
-print_warn "   aws secretsmanager describe-secret --secret-id /pulldb/mysql/db3-dev"
-print_warn "   aws secretsmanager describe-secret --secret-id /pulldb/mysql/db4-dev"
-print_warn "   aws secretsmanager describe-secret --secret-id /pulldb/mysql/db5-dev"
+print_warn "   aws secretsmanager describe-secret --secret-id /pulldb/mysql/localhost-test"
 print_warn "   (See docs/aws-secrets-manager-setup.md for creation steps)"
 print_warn ""
 print_info "=========================================="

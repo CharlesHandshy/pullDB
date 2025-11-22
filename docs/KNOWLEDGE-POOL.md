@@ -2,7 +2,7 @@
 
 Purpose: a single-source, trimmed knowledge base used by agents and maintainers. This file contains only the facts required for current operations (Nov 2025). It is intentionally concise and indexed for fast lookup.
 
-Last updated: 2025-11-04
+Last updated: 2025-11-22
 
 ---
 
@@ -13,6 +13,8 @@ Last updated: 2025-11-04
 - Secrets Manager (secrets + policies)
 - EC2 / instance profile
 - Restore workflow facts
+- System Paths & Service Locations
+- Lessons Learned & Troubleshooting
 - Quick commands & verification
 - Purge candidates (files/docs to archive)
 - Machine-readable index (JSON)
@@ -45,9 +47,7 @@ Last updated: 2025-11-04
 ## Secrets Manager (canonical secrets)
 - Coordination DB secret (MANDATORY): `/pulldb/mysql/coordination-db` (development account only)
 - Target DB secrets:
-  - `/pulldb/mysql/db3-dev`
-  - `/pulldb/mysql/db4-dev`
-  - `/pulldb/mysql/db5-dev`
+  - `/pulldb/mysql/dev-db-01`
 - Secrets live in development account (345321506926) only as of 2025-11-01
 - Runtime policy (`pulldb-secrets-manager-access`) should grant:
   - `secretsmanager:GetSecretValue` and `secretsmanager:DescribeSecret` on `arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*`
@@ -77,7 +77,11 @@ The following JSON block is a compact, program-friendly index of the core artifa
   },
   "secrets": {
     "coordination_db": "/pulldb/mysql/coordination-db",
-    "targets": ["/pulldb/mysql/db3-dev","/pulldb/mysql/db4-dev","/pulldb/mysql/db5-dev"]
+    "targets": ["/pulldb/mysql/dev-db-01"]
+  },
+  "schema": {
+    "canonical_doc": "docs/mysql-schema.md",
+    "hosts_table": "db_hosts"
   }
 }
 ```
@@ -147,6 +151,40 @@ This file should be created and applied in the production account only. Keep sec
 - S3 preflight: require `*-schema-create.sql.{gz,zst}` exists and `free_space >= tar_size * 1.8` before extraction
 - Post-restore SQL: executed from `customers_after_sql/` or `qa_template_after_sql/` in lexicographic order
 - Atomic rename via stored procedure: `pulldb_atomic_rename` / `pulldb_atomic_rename_preview` exists and is versioned
+
+## Database Schema (Quick Reference)
+- **Canonical Source**: `docs/mysql-schema.md` (Read this for full column definitions)
+- **Hosts Table**: `db_hosts` (NOT `hosts`) - contains registered database servers
+- **Jobs Table**: `jobs` - tracks restore requests and status
+- **Users Table**: `auth_users` - tracks authorized users
+- **Settings Table**: `settings` - dynamic configuration (key/value)
+
+## Local Environment & Binaries
+- myloader binaries location: `/opt/pulldb/bin/` (installed)
+  - Source location: `pulldb/binaries/`
+  - Available versions: `myloader-0.9.5`, `myloader-0.19.3-3`
+
+## System Paths & Service Locations
+- **Installation Root**: `/opt/pulldb`
+- **Virtual Environment**: `/opt/pulldb/venv`
+- **Logs**: `/opt/pulldb/logs`
+- **Work Directory**: `/opt/pulldb/work`
+- **Systemd Units**:
+  - API Service: `/etc/systemd/system/pulldb-api.service`
+  - Worker Service: `/etc/systemd/system/pulldb-worker.service`
+- **Binaries**:
+  - `pulldb` CLI: `/opt/pulldb/venv/bin/pulldb`
+  - `myloader`: `/opt/pulldb/bin/myloader` (symlinked or direct)
+
+## Lessons Learned & Troubleshooting
+- **Service User Identity**: Services (`pulldb-api`, `pulldb-worker`) MUST run as the `pulldb` system user. Running as `root` or a developer user causes permission issues with logs and work directories.
+- **S3 Backup Structure**: Some S3 tarballs contain a top-level directory (e.g., `customer/metadata`) while others are flat. `myloader` fails if pointed at the root of a nested backup. The worker now automatically resolves the correct path by searching for the `metadata` file within the extracted archive.
+- **Progress Reporting**: `myloader` does not natively report percentage progress. We estimate progress by tracking S3 download bytes vs total size.
+- **AWS Profile Scoping**: `PULLDB_AWS_PROFILE` controls the default boto3 session (Secrets Manager, SSM). `PULLDB_S3_AWS_PROFILE` controls the S3 client.
+  - **Issue**: Setting `PULLDB_AWS_PROFILE=pr-prod` breaks Secrets Manager access because the production role cannot read dev secrets.
+  - **Fix**: Use `PULLDB_S3_AWS_PROFILE=pr-prod` for S3 access, and leave `PULLDB_AWS_PROFILE` unset (to use instance profile) or set to `pr-dev`.
+- **Logical Hostnames**: The `hostname` column in `db_hosts` is a logical alias (e.g., `dev-db-01`), NOT the FQDN. The actual connection FQDN is stored in the AWS Secret referenced by `credential_ref`. This allows CLI users to use short names while the system connects securely.
+- **Testing Restriction**: Use `dev-db-01` or `localhost` for testing purposes.
 
 ## Quick commands & verification
 - Verify caller identity (from EC2 with instance profile):

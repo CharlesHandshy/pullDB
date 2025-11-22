@@ -3,8 +3,8 @@
 This module provides the CredentialResolver class for retrieving MySQL credentials
 from AWS Secrets Manager or SSM Parameter Store. Supports credential references
 in the format:
-    - aws-secretsmanager:/pulldb/mysql/db3-dev
-    - aws-ssm:/pulldb/mysql/db3-dev-credentials
+    - aws-secretsmanager:/pulldb/mysql/localhost-test
+    - aws-ssm:/pulldb/mysql/localhost-test-credentials
 
 See docs/aws-secrets-manager-setup.md for complete setup instructions.
 """
@@ -39,11 +39,11 @@ class MySQLCredentials:
         >>> creds = MySQLCredentials(
         ...     username="pulldb_app",
         ...     password="secret123",
-        ...     host="db-mysql-db3-dev.us-east-1.rds.amazonaws.com",
+        ...     host="localhost",
         ...     port=3306,
         ... )
         >>> creds.host
-        'db-mysql-db3-dev.us-east-1.rds.amazonaws.com'
+        'localhost'
     """
 
     username: str
@@ -79,13 +79,13 @@ class CredentialResolver:
 
     Examples:
         >>> resolver = CredentialResolver()
-        >>> creds = resolver.resolve("aws-secretsmanager:/pulldb/mysql/db3-dev")
+        >>> creds = resolver.resolve("aws-secretsmanager:/pulldb/mysql/localhost-test")
         >>> print(creds.username)
         pulldb_app
 
         >>> # With explicit profile
         >>> resolver = CredentialResolver(aws_profile="production")
-        >>> creds = resolver.resolve("aws-ssm:/pulldb/mysql/db4-dev-credentials")
+        >>> creds = resolver.resolve("aws-ssm:/pulldb/mysql/localhost-test-credentials")
 
     Raises:
         ValueError: If credential_ref format is invalid or unsupported.
@@ -157,7 +157,7 @@ class CredentialResolver:
 
         Examples:
             >>> resolver = CredentialResolver()
-            >>> creds = resolver.resolve("aws-secretsmanager:/pulldb/mysql/db3-dev")
+            >>> creds = resolver.resolve("aws-secretsmanager:/pulldb/mysql/localhost-test")
             >>> creds.username
             'pulldb_app'
         """
@@ -183,7 +183,7 @@ class CredentialResolver:
         """Resolve credentials from AWS Secrets Manager.
 
         Args:
-            secret_id: Secrets Manager secret ID (e.g., /pulldb/mysql/db3-dev).
+            secret_id: Secrets Manager secret ID (e.g., /pulldb/mysql/localhost-test).
 
         Returns:
             MySQLCredentials with resolved values.
@@ -201,6 +201,8 @@ class CredentialResolver:
             # Parse JSON secret
             secret_data = json.loads(secret_string)
 
+            logger.info(f"DEBUG: secret_data={secret_data}")  # Add debug logging
+
             # Extract required fields
             username = secret_data.get("username")
             password = secret_data.get("password")
@@ -213,7 +215,7 @@ class CredentialResolver:
                 raise CredentialResolutionError(
                     f"Secret {secret_id} missing required field 'username'"
                 )
-            if not password:
+            if password is None:
                 raise CredentialResolutionError(
                     f"Secret {secret_id} missing required field 'password'"
                 )
@@ -266,7 +268,7 @@ class CredentialResolver:
 
         Args:
             parameter_name: SSM parameter name
-                (e.g., /pulldb/mysql/db3-dev-credentials).
+                (e.g., /pulldb/mysql/localhost-test-credentials).
 
         Returns:
             MySQLCredentials with resolved values.
@@ -295,7 +297,7 @@ class CredentialResolver:
                 raise CredentialResolutionError(
                     f"Parameter {parameter_name} missing required field 'username'"
                 )
-            if not password:
+            if password is None:
                 raise CredentialResolutionError(
                     f"Parameter {parameter_name} missing required field 'password'"
                 )
@@ -373,10 +375,10 @@ if __name__ == "__main__":
         print()
         print("Examples:")
         print(
-            "  python -m pulldb.infra.secrets aws-secretsmanager:/pulldb/mysql/db3-dev"
+            "  python -m pulldb.infra.secrets aws-secretsmanager:/pulldb/mysql/localhost-test"
         )
         print(
-            "  python -m pulldb.infra.secrets aws-ssm:/pulldb/mysql/db3-dev-credentials"
+            "  python -m pulldb.infra.secrets aws-ssm:/pulldb/mysql/localhost-test-credentials"
         )
         sys.exit(1)
 

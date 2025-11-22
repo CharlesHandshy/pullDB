@@ -36,8 +36,8 @@ class TestSettingsRepository:
     def test_set_setting_update(self, mysql_pool: Any) -> None:
         repo = SettingsRepository(mysql_pool)
         key = "default_dbhost"
-        initial = "db-mysql-db4-dev"
-        updated = "db-mysql-db5-dev"
+        initial = "dev-db-01"
+        updated = "dev-db-02"
         self._cleanup(mysql_pool, "DELETE FROM settings WHERE setting_key = %s", (key,))
         repo.set_setting(key, initial, description="Initial host")
         repo.set_setting(key, updated, description="Updated host")

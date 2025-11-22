@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typing as t
 import uuid
+import os
 from datetime import UTC, datetime
 
 import fastapi
@@ -22,6 +23,7 @@ from pulldb.infra.mysql import (
     UserRepository,
     build_default_pool,
 )
+from pulldb.infra.secrets import CredentialResolver
 from pulldb.worker.staging import generate_staging_name
 
 
@@ -60,7 +62,7 @@ class JobResponse(pydantic.BaseModel):
 
 
 class JobSummary(pydantic.BaseModel):
-    """Summary view of an active job for status listing."""
+    """Summary view of a job for status listing."""
 
     id: str
     target: str
@@ -69,6 +71,7 @@ class JobSummary(pydantic.BaseModel):
     submitted_at: datetime | None = None
     started_at: datetime | None = None
     staging_name: str | None = None
+    current_operation: str | None = None
 
 
 class APIState(t.NamedTuple):
@@ -84,6 +87,21 @@ def _initialize_state() -> APIState:
     """Build API state by loading configuration and repositories."""
     try:
         config = Config.minimal_from_env()
+        
+        # Resolve coordination credentials if provided via secret
+        coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
+        if coordination_secret and config.mysql_user == "root" and not config.mysql_password:
+            try:
+                resolver = CredentialResolver(config.aws_profile)
+                creds = resolver.resolve(coordination_secret)
+                config.mysql_host = creds.host
+                config.mysql_user = creds.username
+                config.mysql_password = creds.password
+                # Note: Config doesn't currently support port override for coordination DB
+            except Exception as e:
+                # Log warning but proceed with defaults (will likely fail connection)
+                print(f"WARNING: Failed to resolve coordination secret: {e}")
+                
     except Exception as exc:  # FAIL HARD: configuration path invalid
         raise RuntimeError(
             "Failed loading pullDB configuration from environment for API service: "
@@ -238,13 +256,9 @@ def _enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
 
 
 def _active_jobs(state: APIState, limit: int) -> list[JobSummary]:
-    jobs = state.job_repo.get_active_jobs()
+    jobs = state.job_repo.get_recent_jobs(limit)
     result: list[JobSummary] = []
-    for job in jobs[:limit]:
-        staging_name = job.staging_name or None
-        if not staging_name:
-            detailed = state.job_repo.get_job_by_id(job.id)
-            staging_name = detailed.staging_name if detailed else None
+    for job in jobs:
         result.append(
             JobSummary(
                 id=job.id,
@@ -253,7 +267,8 @@ def _active_jobs(state: APIState, limit: int) -> list[JobSummary]:
                 user_code=job.owner_user_code,
                 submitted_at=job.submitted_at,
                 started_at=job.started_at,
-                staging_name=staging_name,
+                staging_name=job.staging_name,
+                current_operation=job.current_operation,
             )
         )
     return result

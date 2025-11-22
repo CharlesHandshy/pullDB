@@ -102,6 +102,7 @@ class Job:
     options_json: dict[str, str] | None = None
     retry_count: int = 0
     error_detail: str | None = None
+    current_operation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -149,8 +150,8 @@ class DBHost:
         id: Auto-increment primary key.
         hostname: Fully qualified domain name of MySQL server.
         credential_ref: Reference to credentials in AWS service.
-            Format: aws-secretsmanager:/pulldb/mysql/db3-dev (recommended)
-            Format: aws-ssm:/pulldb/mysql/db3-dev-credentials (alternative)
+            Format: aws-secretsmanager:/pulldb/mysql/localhost-test (recommended)
+            Format: aws-ssm:/pulldb/mysql/localhost-test-credentials (alternative)
         max_concurrent_restores: Maximum simultaneous restores on this host.
         enabled: Whether host is available for new jobs.
         created_at: Timestamp when host was registered.

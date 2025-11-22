@@ -12,19 +12,19 @@ In the legacy `pullDB-auth` PHP implementation, `appType` is a CLI parameter (`-
 public static function getHostByAppType($appType="dev"){
     switch($appType){
         case "DEV":
-            $host = "db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com";
+            $host = "legacy-dev-host.example.com";
             break;
             
         case "SUPPORT":
-            $host = "db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com";
+            $host = "legacy-support-host.example.com";
             break;
             
         case "IMPLEMENTATION":
-            $host = "db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com";
+            $host = "legacy-impl-host.example.com";
             break;
             
         default:
-            $host = "db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com"; // SUPPORT
+            $host = "legacy-support-host.example.com"; // SUPPORT
     }
     return $host;
 }
@@ -65,10 +65,10 @@ The new pullDB design **fully supports** this functionality through the **`dbhos
 pullDB user=jsmith customer=customerdb
 
 # Development team (explicit override)
-pullDB user=jsmith customer=customerdb dbhost=db-mysql-db3-dev
+pullDB user=jsmith customer=customerdb dbhost=legacy-dev-host
 
 # Implementation team (explicit override)
-pullDB user=jsmith customer=customerdb dbhost=db-mysql-db5-dev
+pullDB user=jsmith customer=customerdb dbhost=legacy-impl-host
 ```
 
 ### Architecture Implementation
@@ -90,12 +90,12 @@ CREATE TABLE db_hosts (
 INSERT INTO db_hosts (dbhost, credential_ref, max_db_count) VALUES
     ('localhost', 
      'ssm:///pulldb/db-local-dev/creds', 1000),
-    ('db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com', 
-     'ssm:///pulldb/db3-dev/creds', 1000),
-    ('db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com', 
-     'ssm:///pulldb/db4-dev/creds', 1000),
-    ('db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com', 
-     'ssm:///pulldb/db5-dev/creds', 1000);
+    ('legacy-dev-host.example.com', 
+     'ssm:///pulldb/legacy-dev-host/creds', 1000),
+    ('legacy-support-host.example.com', 
+     'ssm:///pulldb/legacy-support-host/creds', 1000),
+    ('legacy-impl-host.example.com', 
+     'ssm:///pulldb/legacy-impl-host/creds', 1000);
 ```
 
 #### 2. Default Host Configuration
@@ -154,9 +154,9 @@ For users accustomed to `--type=`, you could optionally add CLI aliases:
 ```python
 # Optional convenience mapping (not in prototype)
 APP_TYPE_ALIASES = {
-    'DEV': 'db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
-    'SUPPORT': 'db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
-    'IMPLEMENTATION': 'db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com',
+    'DEV': 'legacy-dev-host.example.com',
+    'SUPPORT': 'legacy-support-host.example.com',
+    'IMPLEMENTATION': 'legacy-impl-host.example.com',
 }
 
 # In CLI parsing
@@ -183,8 +183,8 @@ However, **the prototype should use `dbhost=` directly** for clarity and to avoi
 
 1. **Pre-populate `db_hosts`** table during deployment with all three existing hosts
 2. **Set `default_dbhost`** to db4 (SUPPORT) to match legacy default behavior
-3. **Document migration** in deployment notes: "Legacy `--type=SUPPORT` becomes `dbhost=db-mysql-db4-dev`"
-4. **Consider short aliases** in future (Phase 2+): `dbhost=db3-dev` instead of full hostname
+3. **Document migration** in deployment notes: "Legacy `--type=SUPPORT` becomes `dbhost=legacy-support-host`"
+4. **Consider short aliases** in future (Phase 2+): `dbhost=dev-db-01` instead of full hostname
 5. **Monitor capacity** via `last_known_db_count` to prevent resource exhaustion
 
 ## Conclusion

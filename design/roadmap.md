@@ -218,7 +218,7 @@ Multi-format support is complete when:
 - Document configuration additions and failure scenarios.
 - Extend security model and runbooks for throttling alerts.
 - **Short Hostname Aliases**
-  - Support `dbhost=db3-dev`, `dbhost=db4-dev`, `dbhost=db5-dev` as aliases for full FQDNs.
+  - Support `dbhost=dev-db-01` as alias for full FQDNs.
   - Document alias-to-FQDN resolution logic in CLI.
   - Add `host_alias` column to `db_hosts` table or maintain alias mapping in `settings` table.
   - Update README with shortened syntax examples.

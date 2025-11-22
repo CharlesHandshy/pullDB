@@ -294,7 +294,7 @@ Non‑Negotiables:
 
 Example:
 ```
-Goal: Restore customer 'acme' to dev host db-mysql-db4-dev
+Goal: Restore customer 'acme' to dev host dev-db-01
 Problem: S3 GetObject AccessDenied for key daily_mydumper_acme_2025-11-01T03-15-00Z_Saturday_dbimp.tar
 Root Cause: IAM role pulldb-ec2-service-role missing s3:GetObject on prefix pestroutesrdsdbs/daily/stg/acme/
 Solutions:
@@ -401,11 +401,9 @@ The CLI fails validation when `customer` and `qatemplate` are supplied together 
 
 - All target `dbhost` entries must be registered in the MySQL configuration (`db_hosts` table captures credentials, max active limits, and maximum database counts). The daemon verifies membership before accepting a restore request and fails fast if the host is unknown.
 - Credentials are stored securely and surfaced to the daemon through environment configuration on the corresponding EC2 host.
-- **Pre-populated Hosts**: Local development plus the three legacy team endpoints are registered during deployment:
+- **Pre-populated Hosts**: Local development is registered during deployment:
   - `localhost` - Local development sandbox (**default**)
-  - `db-mysql-db3-dev` - Development team (legacy `--type=DEV`)
-  - `db-mysql-db4-dev` - Support team (legacy `--type=SUPPORT`)
-  - `db-mysql-db5-dev` - Implementation team (legacy `--type=IMPLEMENTATION`)
+  - `dev-db-01` - Development database host
 
 ### Migration from Legacy pullDB-auth
 
@@ -415,13 +413,10 @@ Users of the legacy `pullDB-auth` tool should note these mappings:
 |----------------|-------------------|
 | `pullDB --db=customer --user=jdoe` | `pullDB user=jdoe customer=customer` |
 | `pullDB --db=customer --user=jdoe --type=SUPPORT` | `pullDB user=jdoe customer=customer` (default) |
-| `pullDB --db=customer --user=jdoe --type=DEV` | `pullDB user=jdoe customer=customer dbhost=db-mysql-db3-dev` |
-| `pullDB --db=customer --user=jdoe --type=IMPLEMENTATION` | `pullDB user=jdoe customer=customer dbhost=db-mysql-db5-dev` |
 
 **Key Differences**:
 - The `--type=` parameter is replaced by explicit `dbhost=` for clarity
-- Default behavior now targets the local sandbox (`localhost`); legacy SUPPORT host remains available via `dbhost=db-mysql-db4-dev`
-- Short hostnames (`db3-dev`, `db4-dev`, `db5-dev`) are supported alongside full FQDNs
+- Default behavior now targets the local sandbox (`localhost`)
 - Database host registration is now dynamic via `db_hosts` table instead of hardcoded switch statements
 
 ### Default Naming Rules

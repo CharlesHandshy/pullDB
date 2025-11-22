@@ -53,9 +53,6 @@ pullDB uses a three-account architecture with cross-account S3 access:
 │  │ AWS Secrets Manager                                          │
 │  │ • /pulldb/mysql/coordination-db (test + runtime)            │
 │  │ • /pulldb/mysql/localhost-test                              │
-│  │ • /pulldb/mysql/db3-dev                                     │
-│  │ • /pulldb/mysql/db4-dev                                     │
-│  │ • /pulldb/mysql/db5-dev                                     │
 │  └─────────────────────────────────────────────────────────────┘│
 │                         ↓ Direct OR AssumeRole                   │
 └─────────────────────────┼───────────────────────────────────────┘
@@ -695,54 +692,11 @@ aws secretsmanager create-secret \
 aws secretsmanager describe-secret --secret-id /pulldb/mysql/localhost-test
 ```
 
-**db3-dev (DEV team):**
 
-```bash
-aws secretsmanager create-secret \
-    --name /pulldb/mysql/db3-dev \
-    --description "MySQL credentials for db3-dev target database server" \
-    --secret-string '{
-        "username": "pulldb_app",
-        "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-        "host": "db-mysql-db3-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com",
-        "port": 3306
-    }' \
-    --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Team,Value=DEV
-```
-
-**db4-dev (SUPPORT team):**
-
-```bash
-aws secretsmanager create-secret \
-    --name /pulldb/mysql/db4-dev \
-  --description "MySQL credentials for db4-dev target database server (support team)" \
-    --secret-string '{
-        "username": "pulldb_app",
-        "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-        "host": "db-mysql-db4-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com",
-        "port": 3306
-    }' \
-    --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Team,Value=SUPPORT
-```
-
-**db5-dev (IMPLEMENTATION team):**
-
-```bash
-aws secretsmanager create-secret \
-    --name /pulldb/mysql/db5-dev \
-    --description "MySQL credentials for db5-dev target database server" \
-    --secret-string '{
-        "username": "pulldb_app",
-        "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-        "host": "db-mysql-db5-dev-vpc-us-east-1-aurora.cluster-xxxxx.us-east-1.rds.amazonaws.com",
-        "port": 3306
-    }' \
-    --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Team,Value=IMPLEMENTATION
-```
 
 **Summary - Secrets Manager:**
 - ✅ Coordination database secret created
-- ✅ Target database secrets created (db-local-dev, db3-dev, db4-dev, db5-dev)
+- ✅ Target database secrets created (db-local-dev)
 
 ---
 
@@ -802,9 +756,7 @@ aws secretsmanager get-secret-value --secret-id /pulldb/mysql/localhost-test \
 
 # Should show JSON with localhost host, optional database
 
-# Test target database secrets
-aws secretsmanager get-secret-value --secret-id /pulldb/mysql/db3-dev \
-    --query SecretString --output text | jq .
+
 ```
 
 ### Step 5.5: Test Python Integration

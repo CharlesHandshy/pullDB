@@ -153,6 +153,7 @@ class _JobRow(t.NamedTuple):
     submitted_at: datetime | None
     started_at: datetime | None
     staging_name: str | None
+    current_operation: str | None
 
 
 def _job_row_from_payload(payload: dict[str, t.Any]) -> _JobRow:
@@ -168,6 +169,9 @@ def _job_row_from_payload(payload: dict[str, t.Any]) -> _JobRow:
     started_at = _parse_iso(payload.get("started_at"))
     staging_name_value = payload.get("staging_name")
     staging_name = str(staging_name_value) if staging_name_value else None
+    current_operation = payload.get("current_operation")
+    if current_operation:
+        current_operation = str(current_operation)
 
     return _JobRow(
         id=job_id,
@@ -177,6 +181,7 @@ def _job_row_from_payload(payload: dict[str, t.Any]) -> _JobRow:
         submitted_at=submitted_at,
         started_at=started_at,
         staging_name=staging_name,
+        current_operation=current_operation,
     )
 
 
@@ -299,7 +304,7 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
 
     if not summaries:
         click.echo(
-            "No active jobs. Submit a restore with:\n"
+            "No recent jobs. Submit a restore with:\n"
             "  pullDB user=<username> customer=<id>"
         )
         return
@@ -326,6 +331,7 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
         primary_rows.append(
             [
                 summary.status,
+                summary.current_operation or "—",
                 summary.id[:8],
                 summary.target,
                 summary.user_code,
@@ -335,12 +341,12 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
         )
         staging_values.append(summary.staging_name or "")
 
-    headers = ["STATUS", "JOB_ID", "TARGET", "USER", "SUBMITTED", "STARTED"]
+    headers = ["STATUS", "OPERATION", "JOB_ID", "TARGET", "USER", "SUBMITTED", "STARTED"]
     if wide:
         headers.append("STAGING")
     # Compute widths
     col_widths: list[int] = []
-    for idx, header in enumerate(headers[:6]):
+    for idx, header in enumerate(headers[:7]):
         col_widths.append(max(len(header), *(len(row[idx]) for row in primary_rows)))
     if wide:
         col_widths.append(max(len("STAGING"), *(len(v) for v in staging_values)))
@@ -352,13 +358,13 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
 
     # Print rows
     for idx, entry in enumerate(primary_rows):
-        line = "  ".join(entry[i].ljust(col_widths[i]) for i in range(6))
+        line = "  ".join(entry[i].ljust(col_widths[i]) for i in range(7))
         if wide:
             staging_val = staging_values[idx]
             line = f"{line}  {staging_val.ljust(col_widths[-1])}"
         click.echo(line)
 
-    click.echo(f"\n{len(primary_rows)} active job(s) displayed (limit={limit}).")
+    click.echo(f"\n{len(primary_rows)} recent job(s) displayed (limit={limit}).")
 
 
 def main(argv: t.Sequence[str] | None = None) -> int:

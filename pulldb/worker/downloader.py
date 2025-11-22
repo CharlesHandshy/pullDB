@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import typing as t
 from typing import Any
 
 from pulldb.domain.errors import DiskCapacityError, DownloadError
@@ -71,6 +72,7 @@ def download_backup(
     spec: BackupSpec,
     job_id: str,
     dest_dir: str,
+    progress_callback: t.Callable[[int, int], None] | None = None,
 ) -> str:
     """Download backup tar archive with disk capacity preflight.
 
@@ -79,6 +81,7 @@ def download_backup(
         spec: Discovered backup specification.
         job_id: Job identifier for logging.
         dest_dir: Directory to place downloaded file (created if absent).
+        progress_callback: Optional callback(downloaded_bytes, total_bytes).
 
     Returns:
         Absolute path to downloaded tar archive.
@@ -118,7 +121,7 @@ def download_backup(
         ) from e
 
     body = response["Body"]  # Streaming body object
-    _stream_download(body, dest_path, job_id, spec.size_bytes)
+    _stream_download(body, dest_path, job_id, spec.size_bytes, progress_callback)
 
     logger.info(
         "Download complete",
@@ -133,7 +136,13 @@ def download_backup(
     return dest_path
 
 
-def _stream_download(body: Any, dest_path: str, job_id: str, total_bytes: int) -> None:
+def _stream_download(
+    body: Any,
+    dest_path: str,
+    job_id: str,
+    total_bytes: int,
+    progress_callback: t.Callable[[int, int], None] | None = None,
+) -> None:
     """Stream data from body to file with progress logging.
 
     Extracted atom for testing.
@@ -158,4 +167,10 @@ def _stream_download(body: Any, dest_path: str, job_id: str, total_bytes: int) -
                         "total_bytes": total_bytes,
                     },
                 )
+                if progress_callback:
+                    try:
+                        progress_callback(downloaded, total_bytes)
+                    except Exception:
+                        # Don't let callback failure break download
+                        pass
                 next_progress += PROGRESS_INTERVAL_MB * 1024 * 1024

@@ -116,7 +116,7 @@ class TestFromEnvAndMySQL:
         settings_rows = [
             {
                 "setting_key": "default_dbhost",
-                "setting_value": "db-mysql-db4-dev.example.com",
+                "setting_value": "dev-db-01.example.com",
             },
             {"setting_key": "s3_bucket_stg", "setting_value": "pestroutesrdsdbs"},
             {"setting_key": "s3_prefix_stg", "setting_value": "daily/stg"},
@@ -151,7 +151,7 @@ class TestFromEnvAndMySQL:
         assert config.mysql_password == "testpass"
         assert config.mysql_database == "pulldb"
         assert config.s3_bucket_path == "pestroutesrdsdbs"
-        assert config.default_dbhost == "db-mysql-db4-dev.example.com"
+        assert config.default_dbhost == "dev-db-01.example.com"
         assert config.work_dir == Path("/var/lib/pulldb")
         assert config.customers_after_sql_dir == Path("/opt/pulldb/customers_after_sql")
         assert config.myloader_binary == "/usr/local/bin/myloader"

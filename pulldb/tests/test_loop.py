@@ -37,7 +37,7 @@ def sample_job() -> Job:
         owner_user_code="testus",
         target="testuscustomer",
         staging_name="testuscustomer_abc123456789",
-        dbhost="db-mysql-db4-dev",
+        dbhost="dev-db-01",
         status=JobStatus.QUEUED,
         submitted_at=datetime.now(),
     )
@@ -183,7 +183,7 @@ def test_poll_loop_multiple_jobs(
         owner_user_code="testus",
         target="testuscustomer2",
         staging_name="testuscustomer2_def456789012",
-        dbhost="db-mysql-db4-dev",
+        dbhost="dev-db-01",
         status=JobStatus.QUEUED,
         submitted_at=sample_job.submitted_at,
     )

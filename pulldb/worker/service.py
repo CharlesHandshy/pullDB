@@ -12,11 +12,14 @@ subsequent modules; the service only manages lifecycle and infrastructure.
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import sys
 import threading
 import typing as t
 from types import FrameType
+
+from dotenv import load_dotenv
 
 from pulldb.domain.config import Config
 from pulldb.infra.logging import get_logger
@@ -71,7 +74,22 @@ def _parse_args(argv: t.Sequence[str] | None) -> argparse.Namespace:
 
 
 def _load_config() -> Config:
-    return Config.minimal_from_env()
+    config = Config.minimal_from_env()
+    
+    # Resolve coordination credentials if provided via secret
+    coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
+    if coordination_secret and config.mysql_user == "root" and not config.mysql_password:
+        try:
+            resolver = CredentialResolver(config.aws_profile)
+            creds = resolver.resolve(coordination_secret)
+            config.mysql_host = creds.host
+            config.mysql_user = creds.username
+            config.mysql_password = creds.password
+            # Note: Config doesn't currently support port override for coordination DB
+        except Exception as e:
+            logger.warning(f"Failed to resolve coordination secret: {e}")
+            
+    return config
 
 
 def _build_job_repository(config: Config) -> JobRepository:
@@ -174,12 +192,20 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     Returns:
         Process exit code (0 normal termination, non-zero on fatal error).
     """
+    load_dotenv()
     args = _parse_args(argv)
     stop_event = threading.Event()
     _register_signal_handlers(stop_event)
 
     try:
         config = _load_config()
+        logger.info(
+            "DEBUG: Loaded config",
+            extra={
+                "s3_bucket_path": config.s3_bucket_path,
+                "s3_backup_locations": str(config.s3_backup_locations),
+            },
+        )
     except Exception as exc:
         _emit_fatal(exc)
         _set_worker_active(0, "fatal")

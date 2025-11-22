@@ -168,7 +168,9 @@ class WorkerExecutorHooks:
     discover_backup: t.Callable[[S3Client, str, str, str], BackupSpec] = (
         discover_latest_backup
     )
-    download_backup: t.Callable[[S3Client, BackupSpec, str, str], str] = download_backup
+    download_backup: t.Callable[
+        [S3Client, BackupSpec, str, str, t.Callable[[int, int], None] | None], str
+    ] = download_backup
     extract_archive: t.Callable[[str, Path, str], str] = _default_extract_archive
 
 
@@ -246,11 +248,20 @@ class WorkerJobExecutor:
                 "download_started",
                 {"bucket": backup_spec.bucket, "key": backup_spec.key},
             )
+
+            def _progress_callback(downloaded: int, total: int) -> None:
+                self._append_event(
+                    job.id,
+                    "download_progress",
+                    {"downloaded_bytes": downloaded, "total_bytes": total},
+                )
+
             archive_path = self._download_backup(
                 self.s3_client,
                 backup_spec,
                 job.id,
                 str(download_dir),
+                _progress_callback,
             )
             self._append_event(
                 job.id,
@@ -265,6 +276,9 @@ class WorkerJobExecutor:
                 {"path": extracted_dir},
             )
 
+            # Resolve actual backup root (handle top-level directory in tarball)
+            backup_dir = self._resolve_backup_dir(Path(extracted_dir))
+
             script_dir = self._resolve_post_sql_dir(job)
             staging_conn, post_sql_conn = self._build_connection_specs(
                 job,
@@ -276,9 +290,10 @@ class WorkerJobExecutor:
                 config=self.config,
                 job=job,
                 backup_filename=backup_spec.filename,
-                backup_dir=extracted_dir,
+                backup_dir=str(backup_dir),
                 staging_conn=staging_conn,
                 post_sql_conn=post_sql_conn,
+                format_tag=backup_spec.format_tag,
             )
             self._append_event(
                 job.id,
@@ -313,6 +328,27 @@ class WorkerJobExecutor:
             raise
         finally:
             self._cleanup_job_dir(job_dir)
+
+    def _resolve_backup_dir(self, extracted_root: Path) -> Path:
+        """Resolve the actual backup directory containing metadata.
+
+        Handles cases where the tarball contains a top-level directory.
+        """
+        # Check for metadata in root
+        if (extracted_root / "metadata").exists() or (
+            extracted_root / "metadata.partial"
+        ).exists():
+            return extracted_root
+
+        # Check subdirectories
+        subdirs = [p for p in extracted_root.iterdir() if p.is_dir()]
+        if len(subdirs) == 1:
+            subdir = subdirs[0]
+            if (subdir / "metadata").exists() or (subdir / "metadata.partial").exists():
+                return subdir
+
+        # If we can't find it, return root and let myloader fail (or raise here)
+        return extracted_root
 
     def discover_backup_for_job(
         self,

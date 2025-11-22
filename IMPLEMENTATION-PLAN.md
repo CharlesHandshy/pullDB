@@ -79,7 +79,7 @@
 - [x] EC2 instance for daemon (operating on the instance)
 - [x] AWS credentials and IAM roles (pulldb-ec2-service-role created in development account)
 - [x] AWS Secrets Manager secret created: `/pulldb/mysql/coordination-db`
-- [x] Database host registrations (db3-dev, db4-dev, db5-dev credentials in Secrets Manager) ✅
+- [x] Database host registrations (db-local-dev credentials in Secrets Manager) ✅
   - **Note**: AWS region (`AWS_DEFAULT_REGION=us-east-1`) must be set for credential resolution
 
 ## Phase 0 Goals (Prototype)
@@ -509,7 +509,7 @@ sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
 **CLI Interface**:
 ```bash
 # Main restore command
-pulldb user=jdoe customer=acme dbhost=db-mysql-db4-dev overwrite
+pulldb user=jdoe customer=acme dbhost=dev-db-01 overwrite
 
 # Status command
 pulldb status [--json] [--wide] [--limit N]
@@ -958,7 +958,7 @@ WantedBy=multi-user.target
 
 **Tasks**:
 - [ ] Deploy MySQL coordination database
-- [ ] Populate db_hosts table with db3, db4, db5
+- [ ] Populate db_hosts table with dev-db-01
 - [ ] Populate settings table with defaults
 - [ ] Deploy worker service to EC2 instance
 - [ ] Configure AWS credentials and IAM

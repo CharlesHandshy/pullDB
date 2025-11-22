@@ -29,14 +29,17 @@ import re
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import boto3
 from botocore.exceptions import ProfileNotFound
-from mypy_boto3_s3.type_defs import (
-    GetObjectOutputTypeDef,
-    HeadObjectOutputTypeDef,
-    ListObjectsV2OutputTypeDef,
-)
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3.type_defs import (
+        GetObjectOutputTypeDef,
+        HeadObjectOutputTypeDef,
+        ListObjectsV2OutputTypeDef,
+    )
 
 from pulldb.domain.errors import BackupValidationError
 from pulldb.infra.logging import get_logger
@@ -45,7 +48,22 @@ from pulldb.infra.logging import get_logger
 logger = get_logger("pulldb.infra.s3")
 
 BACKUP_FILENAME_REGEX = re.compile(
-    r"^daily_mydumper_(?P<target>[a-z0-9]+)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_[A-Za-z]{3}_dbimp\.tar$"
+    r"^daily_mydumper_(?P<target>.+?)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_[A-Za-z]+_(?:dbimp|db\d+)\.tar$"
+)
+
+# Regex for Production backups (legacy mydumper v0.9)
+# Bucket: pestroutes-rds-backup-prod-vpc-us-east-1-s3
+# Pattern: daily_mydumper_{target}_{ts}_{Day}_dbimp.tar
+PROD_BACKUP_REGEX = re.compile(
+    r"^daily_mydumper_(?P<target>.+?)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_[A-Za-z]+_(?:dbimp|db\d+)\.tar$"
+)
+
+# Regex for Staging backups (mydumper v0.19+)
+# Bucket: pestroutesrdsdbs
+# Pattern: daily_mydumper_{target}_{ts}_{Day}_db1.tar (or dbN.tar)
+# Note: Also supports legacy dbimp format if present
+STAGING_BACKUP_REGEX = re.compile(
+    r"^daily_mydumper_(?P<target>.+?)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_[A-Za-z]+_(?:dbimp|db\d+)\.tar$"
 )
 
 
@@ -152,7 +170,11 @@ class S3Client:
         """Return keys under prefix (non recursive)."""
         keys: list[str] = []
         continuation: str | None = None
+        page_count = 0
         while True:
+            page_count += 1
+            if page_count % 10 == 0:
+                logger.info(f"Listing keys page {page_count} for {bucket}/{prefix}")
             params: dict[str, t.Any] = {
                 "Bucket": bucket,
                 "Prefix": prefix,
@@ -221,23 +243,45 @@ def discover_latest_backup(
         },
     )
 
-    keys = s3.list_keys(bucket, prefix)
+    # Select regex based on bucket
+    if bucket == "pestroutes-rds-backup-prod-vpc-us-east-1-s3":
+        regex = PROD_BACKUP_REGEX
+        format_tag = "legacy"
+    else:
+        # Default to staging regex for pestroutesrdsdbs and others
+        regex = STAGING_BACKUP_REGEX
+        format_tag = "new"
+
+    # Optimization: Filter S3 listing by target to avoid scanning entire bucket.
+    # This reduces the search space from all customers (thousands of objects)
+    # to just the specific target's backups.
+    # Note: Both production and staging buckets use a subdirectory per target:
+    # {prefix}{target}/daily_mydumper_{target}_...
+    search_prefix = f"{prefix}{target}/daily_mydumper_{target}_"
+
+    logger.info(f"Starting list_keys for bucket={bucket} prefix={search_prefix}")
+    keys = s3.list_keys(bucket, search_prefix)
+    logger.info(
+        f"Found {len(keys)} keys for target '{target}' in {bucket}/{search_prefix}"
+    )
+
     if not keys:
         raise BackupValidationError(
             job_id="discovery",
-            backup_key=f"s3://{bucket}/{prefix}",
+            backup_key=f"s3://{bucket}/{search_prefix}",
             missing_files=["tar archive"],
         )
 
     candidates: list[tuple[datetime, str]] = []
     for key in keys:
         filename = key.rsplit("/", 1)[-1]
-        match = BACKUP_FILENAME_REGEX.match(filename)
+        match = regex.match(filename)
         if not match:
+            logger.warning(f"Regex mismatch: {filename}")
             # Detect structurally similar filename with bad timestamp to
             # provide clearer diagnostic (test expectation).
-            if filename.startswith(f"daily_mydumper_{target}_") and filename.endswith(
-                "_dbimp.tar"
+            if filename.startswith(f"daily_mydumper_{target}_") and (
+                filename.endswith("_dbimp.tar") or re.search(r"_db\d+\.tar$", filename)
             ):
                 raise BackupValidationError(
                     job_id="discovery",
@@ -272,6 +316,7 @@ def discover_latest_backup(
     newest_ts, newest_key = candidates[0]
 
     # Retrieve size for disk planning
+    logger.info(f"Head object for {newest_key}")
     head = s3.head_object(bucket, newest_key)
     size_bytes = int(head.get("ContentLength", 0))
 
@@ -281,6 +326,7 @@ def discover_latest_backup(
         target=target,
         timestamp=newest_ts,
         size_bytes=size_bytes,
+        format_tag=format_tag,
     )
 
     logger.info(
@@ -293,3 +339,5 @@ def discover_latest_backup(
         },
     )
     return spec
+
+print("LOADING S3 MODULE FROM", __file__)

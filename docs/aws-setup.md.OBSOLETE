@@ -198,7 +198,7 @@ PULLDB_MYSQL_DATABASE=pulldb
 PULLDB_S3_BUCKET_PATH=pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod
 
 # Default database host
-PULLDB_DEFAULT_DBHOST=db-mysql-db4-dev
+PULLDB_DEFAULT_DBHOST=localhost
 ```
 
 **Important:** The `.env` file is gitignored and will NOT be committed to version control.

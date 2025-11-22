@@ -94,6 +94,7 @@ def build_restore_workflow_spec(
     extra_myloader_args: Sequence[str] | None = None,
     myloader_env: Mapping[str, str] | None = None,
     timeout_override: float | None = None,
+    format_tag: str | None = None,
 ) -> RestoreWorkflowSpec:
     """Construct :class:`RestoreWorkflowSpec` using global configuration.
 
@@ -115,6 +116,7 @@ def build_restore_workflow_spec(
         mysql_password=staging_conn.mysql_password,
         extra_args=extra_myloader_args,
         env=myloader_env,
+        format_tag=format_tag,
     )
 
     timeout = timeout_override

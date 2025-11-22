@@ -98,7 +98,7 @@ class Config:
     work_dir: Path = Path("/tmp/pulldb-work")
     customers_after_sql_dir: Path = Path("customers_after_sql")
     qa_template_after_sql_dir: Path = Path("qa_template_after_sql")
-    myloader_binary: str = "myloader"
+    myloader_binary: str = "/opt/pulldb/bin/myloader-0.19.3-3"
     myloader_extra_args: tuple[str, ...] = ()
     myloader_timeout_seconds: float = 7200.0
     myloader_threads: int = 8
@@ -193,7 +193,7 @@ class Config:
             aws_profile=aws_profile,
             s3_aws_profile=s3_aws_profile,
             default_dbhost=os.getenv("PULLDB_DEFAULT_DBHOST"),
-            myloader_binary=myloader_binary or "myloader",
+            myloader_binary=myloader_binary or "/opt/pulldb/bin/myloader-0.19.3-3",
             myloader_extra_args=_parse_extra_args(
                 extra_args_env,
                 source="PULLDB_MYLOADER_EXTRA_ARGS",

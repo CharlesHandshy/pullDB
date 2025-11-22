@@ -9,6 +9,8 @@ This document is the **primary reference for AI coding agents** working on pullD
 - **`constitution.md`** - Coding standards, tooling philosophy, and development workflow
 - **`docs/coding-standards.md`** - Comprehensive style guidelines for all file types (Python, Markdown, SQL, Shell, YAML, Mermaid)
 
+**Knowledge Base Protocol**: Before answering any question or solving any problem, **ALWAYS check `docs/KNOWLEDGE-POOL.md` first**, and update it with new findings immediately after resolution.
+
 These documents form the foundation—all other documentation flows from these principles. **AI agents MUST follow the standards in `engineering-dna/standards/ai-agent-code-generation.md` when generating any code.**
 
 ## Project Overview

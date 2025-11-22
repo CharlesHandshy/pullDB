@@ -42,7 +42,7 @@ class TestJobRepository:
             owner_user_code=TEST_USER_CODE,
             target="testtarget",
             staging_name="testtarget_" + job_id[:12],
-            dbhost="db-mysql-db4-dev",
+            dbhost="dev-db-01",
             status=JobStatus.QUEUED,
             submitted_at=datetime.now(UTC),
         )
@@ -62,7 +62,7 @@ class TestJobRepository:
             owner_user_code=TEST_USER_CODE,
             target="target1_" + job_id1[:8],
             staging_name="target1_" + job_id1[:12],
-            dbhost="db-mysql-db4-dev",
+            dbhost="dev-db-01",
             status=JobStatus.QUEUED,
             submitted_at=datetime.now(UTC),
         )
@@ -73,7 +73,7 @@ class TestJobRepository:
             owner_user_code=TEST_USER_CODE,
             target="target2_" + job_id2[:8],
             staging_name="target2_" + job_id2[:12],
-            dbhost="db-mysql-db4-dev",
+            dbhost="dev-db-01",
             status=JobStatus.QUEUED,
             submitted_at=datetime.now(UTC),
         )
@@ -96,7 +96,7 @@ class TestJobRepository:
             owner_user_code=TEST_USER_CODE,
             target=target,
             staging_name=target + "_" + job_id[:12],
-            dbhost="db-mysql-db4-dev",
+            dbhost="dev-db-01",
             status=JobStatus.QUEUED,
             submitted_at=datetime.now(UTC),
         )
@@ -128,7 +128,7 @@ class TestJobRepository:
             owner_user_code=TEST_USER_CODE,
             target=target,
             staging_name=target + "_" + job_id[:12],
-            dbhost="db-mysql-db4-dev",
+            dbhost="dev-db-01",
             status=JobStatus.QUEUED,
             submitted_at=datetime.now(UTC),
         )
@@ -156,7 +156,7 @@ class TestJobRepository:
             owner_user_code=TEST_USER_CODE,
             target=target,
             staging_name=target + "_" + job_id1[:12],
-            dbhost="db-mysql-db4-dev",
+            dbhost="dev-db-01",
             status=JobStatus.QUEUED,
             submitted_at=datetime.now(UTC),
         )
@@ -169,7 +169,7 @@ class TestJobRepository:
             owner_user_code=TEST_USER_CODE,
             target=target,
             staging_name=target + "_" + job_id2[:12],
-            dbhost="db-mysql-db4-dev",
+            dbhost="dev-db-01",
             status=JobStatus.QUEUED,
             submitted_at=datetime.now(UTC),
         )
@@ -194,7 +194,7 @@ class TestJobRepository:
             owner_user_code=TEST_USER_CODE,
             target=target,
             staging_name=target + "_" + job_id[:12],
-            dbhost="db-mysql-db4-dev",
+            dbhost="dev-db-01",
             status=JobStatus.QUEUED,
             submitted_at=datetime.now(UTC),
         )
