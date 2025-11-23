@@ -20,22 +20,54 @@ from pulldb.worker.post_sql import (
 
 
 @dataclass
+class _FakeResult:
+    """Fake result for multi-statement execution."""
+
+    with_rows: bool = False
+    rowcount: int = 0
+
+    def fetchall(self) -> list:
+        """Consume any result sets."""
+        return []
+
+
+@dataclass
 class _FakeCursor:
     scripts: list[str]
     fail_on: str | None = None
     rowcount: int | None = 0
 
-    def execute(self, sql: str) -> None:
-        self.scripts.append(sql)
-        if self.fail_on and self.fail_on in sql:
-            raise ValueError("boom failure")
-        # simulate rowcount for UPDATE/DELETE statements
-        if sql.lower().startswith("update"):
-            self.rowcount = 3
-        elif sql.lower().startswith("delete"):
-            self.rowcount = 2
+    def execute(self, sql: str, multi: bool = False):  # noqa: FBT001, FBT002
+        """Execute SQL with optional multi-statement support."""
+        if multi:
+            # Return an iterator of fake results for multi-statement execution
+            statements = [s.strip() for s in sql.split(";") if s.strip()]
+            results = []
+            for stmt in statements:
+                self.scripts.append(stmt)
+                if self.fail_on and self.fail_on in stmt:
+                    raise ValueError("boom failure")
+                # Determine rowcount based on statement type
+                if stmt.lower().startswith("update"):
+                    results.append(_FakeResult(with_rows=False, rowcount=3))
+                elif stmt.lower().startswith("delete"):
+                    results.append(_FakeResult(with_rows=False, rowcount=2))
+                else:
+                    results.append(_FakeResult(with_rows=False, rowcount=0))
+            return iter(results)
         else:
-            self.rowcount = 0
+            # Single statement execution (legacy)
+            self.scripts.append(sql)
+            if self.fail_on and self.fail_on in sql:
+                raise ValueError("boom failure")
+            # simulate rowcount for UPDATE/DELETE statements
+            if sql.lower().startswith("update"):
+                self.rowcount = 3
+            elif sql.lower().startswith("delete"):
+                self.rowcount = 2
+            else:
+                self.rowcount = 0
+            return None
 
 
 @dataclass

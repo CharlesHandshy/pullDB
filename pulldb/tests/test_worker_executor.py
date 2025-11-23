@@ -137,6 +137,7 @@ def test_discover_backup_iterates_locations(tmp_path: Path) -> None:
         bucket: str,
         prefix: str,
         target: str,
+        profile: str | None = None,
     ) -> BackupSpec:
         calls.append((bucket, prefix, target))
         if bucket == "staging-bucket":
@@ -147,6 +148,8 @@ def test_discover_backup_iterates_locations(tmp_path: Path) -> None:
             target=target,
             timestamp=datetime(2024, 1, 1),
             size_bytes=123,
+            profile=profile,
+            format_tag="prod" if bucket == "prod-bucket" else "legacy",
         )
 
     hooks = WorkerExecutorHooks(discover_backup=fake_discover)
@@ -174,6 +177,7 @@ def test_discover_backup_raises_when_all_locations_fail(tmp_path: Path) -> None:
         _bucket: str,
         _prefix: str,
         _target: str,
+        profile: str | None = None,
     ) -> BackupSpec:
         raise BackupValidationError(job.id, "s3://prod-bucket/daily/prod/", ["tar"])
 

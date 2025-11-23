@@ -26,6 +26,7 @@ from pulldb.domain.config import Config, S3BackupLocationConfig
 from pulldb.domain.errors import (
     BackupDiscoveryError,
     BackupValidationError,
+    DownloadError,
     ExtractionError,
 )
 from pulldb.domain.models import Job
@@ -363,6 +364,7 @@ class WorkerJobExecutor:
                         location.bucket,
                         location.prefix,
                         lookup_target,
+                        profile=location.profile,
                     )
                 except BackupValidationError as exc:
                     attempts.append(
@@ -375,7 +377,8 @@ class WorkerJobExecutor:
                         }
                     )
                     continue
-                spec.format_tag = location.format_tag
+                # spec.format_tag is already set by discover_latest_backup based on bucket
+                # Do not overwrite it with location.format_tag which defaults to legacy
                 return spec, location, lookup_target
         raise BackupDiscoveryError(job.id, attempts)
 
@@ -450,9 +453,15 @@ class WorkerJobExecutor:
             )
 
     def _handle_failure(self, job: Job, exc: Exception) -> None:
+        event_type = "restore_failed"
+        if isinstance(exc, (DownloadError, BackupDiscoveryError)):
+            event_type = "download_failed"
+        elif isinstance(exc, ExtractionError):
+            event_type = "extraction_failed"
+
         self._append_event(
             job.id,
-            "restore_failed",
+            event_type,
             {"error": str(exc.__class__.__name__), "detail": str(exc)},
         )
         try:

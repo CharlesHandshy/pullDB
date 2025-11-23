@@ -503,8 +503,6 @@ class JobRepository:
         status = row.get("status")
         if status == "complete":
             return "Success"
-        if status == "failed":
-            return "Failed"
 
         event_type = row.get("last_event_type")
 
@@ -513,13 +511,33 @@ class JobRepository:
                 return "Queued"
             if status == "running":
                 return "Initializing"
+            if status == "failed":
+                return "Failed"
             return None
+
+        if event_type == "download_progress":
+            detail_json = row.get("last_event_detail")
+            if detail_json:
+                try:
+                    detail = json.loads(detail_json)
+                    downloaded = detail.get("downloaded_bytes", 0)
+                    total = detail.get("total_bytes", 1)
+                    if total > 0:
+                        percent = int((downloaded / total) * 100)
+                        return f"Downloading({percent}%)"
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    pass
+            return "Downloading"
 
         if event_type == "backup_selected":
             return "Downloading"
         if event_type == "download_started":
             return "Downloading"
+        if event_type == "download_failed":
+            return "Downloading"
         if event_type == "download_complete":
+            return "Extracting"
+        if event_type == "extraction_failed":
             return "Extracting"
         if event_type == "extraction_complete":
             return "Restoring"
@@ -528,7 +546,7 @@ class JobRepository:
         if event_type == "restore_complete":
             return "Success"
         if event_type == "restore_failed":
-            return "Failed"
+            return "Restoring"
 
         return event_type.replace("_", " ").capitalize()
 

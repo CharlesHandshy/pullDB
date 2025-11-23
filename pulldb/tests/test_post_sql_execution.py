@@ -19,18 +19,45 @@ from pulldb.worker.post_sql import (
 )
 
 
+class FakeResult:
+    """Fake result for multi-statement execution."""
+
+    def __init__(self, rowcount: int = 1) -> None:
+        self.with_rows = False
+        self.rowcount = rowcount
+
+    def fetchall(self) -> list:
+        """Consume any result sets."""
+        return []
+
+
 class FakeCursor:
     def __init__(self, fail_script: str | None = None) -> None:
         self.fail_script = fail_script
         self.executed: list[str] = []
         self.rowcount = 1
 
-    def execute(self, sql: str) -> None:
-        # Use a marker inserted by test harness to decide failure
-        marker = sql.strip().split("\n", 1)[0]
-        if self.fail_script and self.fail_script in marker:
-            raise Exception("Script failure simulated")
-        self.executed.append(marker)
+    def execute(self, sql: str, multi: bool = False):  # noqa: FBT001, FBT002
+        """Execute SQL with optional multi-statement support."""
+        if multi:
+            # Return an iterator of fake results for multi-statement execution
+            statements = [s.strip() for s in sql.split(";") if s.strip()]
+            results = []
+            for stmt in statements:
+                # Use a marker from the first line to decide failure
+                marker = stmt.split("\n", 1)[0]
+                if self.fail_script and self.fail_script in marker:
+                    raise Exception("Script failure simulated")
+                self.executed.append(marker)
+                results.append(FakeResult(rowcount=1))
+            return iter(results)
+        else:
+            # Single statement execution (legacy)
+            marker = sql.strip().split("\n", 1)[0]
+            if self.fail_script and self.fail_script in marker:
+                raise Exception("Script failure simulated")
+            self.executed.append(marker)
+            return None
 
     def close(self) -> None:  # pragma: no cover - trivial
         pass

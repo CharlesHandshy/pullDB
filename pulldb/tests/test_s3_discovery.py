@@ -50,7 +50,7 @@ def _put_object(
     hermetic behavior without altering global test environment.
     """
     # Directly use wrapped client to avoid fresh profile/session resolution.
-    raw = s3_client._s3  # protected member access acceptable in test
+    raw = s3_client.get_client()
     with suppress(Exception):
         raw.create_bucket(Bucket=bucket)
     raw.put_object(Bucket=bucket, Key=key, Body=body)
@@ -65,13 +65,13 @@ def test_discovery_selects_newest_backup(moto_s3: None, s3_client: S3Client) -> 
     _put_object(
         s3_client,
         bucket,
-        f"{prefix}daily_mydumper_{target}_2024-01-01T00-00-00Z_Mon_dbimp.tar",
+        f"{prefix}{target}/daily_mydumper_{target}_2024-01-01T00-00-00Z_Mon_dbimp.tar",
     )
     # New backup
     _put_object(
         s3_client,
         bucket,
-        f"{prefix}daily_mydumper_{target}_2024-01-02T12-30-45Z_Tue_dbimp.tar",
+        f"{prefix}{target}/daily_mydumper_{target}_2024-01-02T12-30-45Z_Tue_dbimp.tar",
     )
 
     spec = discover_latest_backup(s3_client, bucket, prefix, target)
@@ -83,7 +83,7 @@ def test_discovery_no_objects_raises(moto_s3: None, s3_client: S3Client) -> None
     prefix = "daily/stg/"
     target = "cust123"
     # Use wrapped client
-    raw = s3_client._s3
+    raw = s3_client.get_client()
     raw.create_bucket(Bucket=bucket)
 
     with pytest.raises(BackupValidationError) as exc:
@@ -98,7 +98,7 @@ def test_discovery_malformed_timestamp(moto_s3: None, s3_client: S3Client) -> No
     _put_object(
         s3_client,
         bucket,
-        f"{prefix}daily_mydumper_{target}_BADTIMESTAMP_Mon_dbimp.tar",
+        f"{prefix}{target}/daily_mydumper_{target}_BADTIMESTAMP_Mon_dbimp.tar",
     )
 
     with pytest.raises(BackupValidationError) as exc:
@@ -114,12 +114,12 @@ def test_discovery_no_matching_target(moto_s3: None, s3_client: S3Client) -> Non
     _put_object(
         s3_client,
         bucket,
-        f"{prefix}daily_mydumper_other_2024-01-01T00-00-00Z_Mon_dbimp.tar",
+        f"{prefix}other/daily_mydumper_other_2024-01-01T00-00-00Z_Mon_dbimp.tar",
     )
 
     with pytest.raises(BackupValidationError) as exc:
         discover_latest_backup(s3_client, bucket, prefix, target)
-    assert "daily_mydumper_cust123_*.tar" in str(exc.value)
+    assert f"s3://{bucket}/{prefix}{target}/daily_mydumper_{target}_" in str(exc.value)
 
 
 def test_filename_regex_valid() -> None:

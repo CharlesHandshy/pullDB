@@ -1,0 +1,31 @@
+[Unit]
+Description=pullDB API Service
+After=network.target mysql.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/pulldb
+Environment="PULLDB_INSTALL_PREFIX=/opt/pulldb"
+Environment="PULLDB_COORDINATION_SECRET=aws-secretsmanager:/pulldb/mysql/coordination-db"
+Environment="PULLDB_LOG_DIR=/opt/pulldb/logs"
+Environment="PULLDB_WORK_DIR=/opt/pulldb/work"
+Environment="PULLDB_LOG_LEVEL=INFO"
+Environment="PULLDB_AWS_PROFILE=pr-prod"
+Environment="AWS_DEFAULT_REGION=us-east-1"
+ExecStart=/opt/pulldb/venv/bin/pulldb-api
+Restart=on-failure
+RestartSec=5
+User=pulldb
+Group=pulldb
+KillSignal=SIGTERM
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+# ProtectHome=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

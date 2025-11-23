@@ -31,7 +31,7 @@ def test_status_no_active_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["status"])
     assert result.exit_code == 0
-    assert "No active jobs" in result.output
+    assert "No recent jobs" in result.output
 
 
 @responses.activate

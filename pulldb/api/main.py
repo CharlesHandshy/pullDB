@@ -72,6 +72,8 @@ class JobSummary(pydantic.BaseModel):
     started_at: datetime | None = None
     staging_name: str | None = None
     current_operation: str | None = None
+    dbhost: str | None = None
+    source: str | None = None
 
 
 class APIState(t.NamedTuple):
@@ -259,6 +261,13 @@ def _active_jobs(state: APIState, limit: int) -> list[JobSummary]:
     jobs = state.job_repo.get_recent_jobs(limit)
     result: list[JobSummary] = []
     for job in jobs:
+        source = None
+        if job.options_json:
+            if job.options_json.get("is_qatemplate") == "true":
+                source = "qatemplate"
+            else:
+                source = job.options_json.get("customer_id")
+
         result.append(
             JobSummary(
                 id=job.id,
@@ -269,6 +278,8 @@ def _active_jobs(state: APIState, limit: int) -> list[JobSummary]:
                 started_at=job.started_at,
                 staging_name=job.staging_name,
                 current_operation=job.current_operation,
+                dbhost=job.dbhost,
+                source=source,
             )
         )
     return result

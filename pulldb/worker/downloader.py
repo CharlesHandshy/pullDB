@@ -110,7 +110,7 @@ def download_backup(
     )
 
     try:
-        response = s3.get_object(spec.bucket, spec.key)
+        response = s3.get_object(spec.bucket, spec.key, profile=spec.profile)
     except Exception as e:  # pragma: no cover - network errors hard to unit test
         error_code = getattr(e, "response", {}).get("Error", {}).get("Code", "Unknown")
         raise DownloadError(

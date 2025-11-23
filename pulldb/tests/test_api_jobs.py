@@ -65,6 +65,10 @@ class FakeJobRepository:
     def get_active_jobs(self) -> list[Job]:
         return list(self.active)
 
+    def get_recent_jobs(self, limit: int = 100) -> list[Job]:
+        """Return recent jobs (active + recently completed), limited."""
+        return list(self.active[:limit])
+
 
 class FakeRepos(NamedTuple):
     user_repo: FakeUserRepository

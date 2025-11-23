@@ -85,6 +85,7 @@ class BackupSpec:
     timestamp: datetime
     size_bytes: int
     format_tag: str | None = None
+    profile: str | None = None
 
     @property
     def filename(self) -> str:
@@ -132,6 +133,13 @@ class S3Client:
             region: Optional AWS region; if omitted boto3 resolves via
                 environment / profile configuration.
         """
+        self._default_profile = profile
+        self._default_region = region
+        self._clients: dict[str | None, boto3.client] = {}
+        # Initialize default client
+        self._clients[profile] = self._create_client(profile, region)
+
+    def _create_client(self, profile: str | None, region: str | None) -> boto3.client:
         # Construct a Session without relying on **kwargs expansion to keep
         # mypy strict mode happy and avoid arg-type confusion. Only pass
         # explicitly provided values.
@@ -144,14 +152,14 @@ class S3Client:
                 session = boto3.Session(region_name=region)
             else:
                 session = boto3.Session()
-            self._s3 = session.client("s3")
+            return session.client("s3")
         except ProfileNotFound:
             # Temporarily remove AWS_PROFILE to avoid recursive failures when
             # constructing a client in hermetic/moto environments where that
             # profile is not configured locally.
             env_profile = os.environ.pop("AWS_PROFILE", None)
             try:
-                self._s3 = boto3.client(
+                return boto3.client(
                     "s3",
                     region_name=(region or "us-east-1"),
                 )
@@ -159,15 +167,25 @@ class S3Client:
                 if env_profile is not None:
                     os.environ["AWS_PROFILE"] = env_profile
         except Exception:  # pragma: no cover - defensive catch for strange local env
-            self._s3 = boto3.client(
+            return boto3.client(
                 "s3",
                 region_name=(region or "us-east-1"),
             )
 
+    def get_client(self, profile: str | None = None) -> boto3.client:
+        """Get or create a boto3 client for the specified profile."""
+        target_profile = profile if profile is not None else self._default_profile
+        if target_profile not in self._clients:
+            self._clients[target_profile] = self._create_client(
+                target_profile, self._default_region
+            )
+        return self._clients[target_profile]
+
     def list_keys(
-        self, bucket: str, prefix: str
+        self, bucket: str, prefix: str, profile: str | None = None
     ) -> list[str]:  # pragma: no cover - simple wrapper
         """Return keys under prefix (non recursive)."""
+        client = self.get_client(profile)
         keys: list[str] = []
         continuation: str | None = None
         page_count = 0
@@ -182,7 +200,7 @@ class S3Client:
             }
             if continuation:
                 params["ContinuationToken"] = continuation
-            resp: ListObjectsV2OutputTypeDef = self._s3.list_objects_v2(**params)
+            resp: ListObjectsV2OutputTypeDef = client.list_objects_v2(**params)
             for item in resp.get("Contents") or []:
                 k = item.get("Key")
                 if isinstance(k, str):
@@ -194,17 +212,19 @@ class S3Client:
         return keys
 
     def head_object(
-        self, bucket: str, key: str
+        self, bucket: str, key: str, profile: str | None = None
     ) -> HeadObjectOutputTypeDef:  # pragma: no cover - thin
         """Return object metadata (HEAD)."""
-        resp: HeadObjectOutputTypeDef = self._s3.head_object(Bucket=bucket, Key=key)
+        client = self.get_client(profile)
+        resp: HeadObjectOutputTypeDef = client.head_object(Bucket=bucket, Key=key)
         return resp
 
     def get_object(
-        self, bucket: str, key: str
+        self, bucket: str, key: str, profile: str | None = None
     ) -> GetObjectOutputTypeDef:  # pragma: no cover - thin
         """Return object (streaming body)."""
-        resp: GetObjectOutputTypeDef = self._s3.get_object(Bucket=bucket, Key=key)
+        client = self.get_client(profile)
+        resp: GetObjectOutputTypeDef = client.get_object(Bucket=bucket, Key=key)
         return resp
 
 
@@ -213,6 +233,7 @@ def discover_latest_backup(
     bucket: str,
     prefix: str,
     target: str,
+    profile: str | None = None,
 ) -> BackupSpec:
     """Discover the latest valid backup for a target.
 
@@ -226,6 +247,7 @@ def discover_latest_backup(
         bucket: S3 bucket name.
         prefix: Path prefix containing backups (e.g. 'daily/stg/').
         target: Sanitized target database identifier.
+        profile: Optional AWS profile to use for S3 operations.
 
     Returns:
         BackupSpec for newest tar archive.
@@ -240,6 +262,7 @@ def discover_latest_backup(
             "bucket": bucket,
             "prefix": prefix,
             "target": target,
+            "profile": profile,
         },
     )
 
@@ -260,7 +283,7 @@ def discover_latest_backup(
     search_prefix = f"{prefix}{target}/daily_mydumper_{target}_"
 
     logger.info(f"Starting list_keys for bucket={bucket} prefix={search_prefix}")
-    keys = s3.list_keys(bucket, search_prefix)
+    keys = s3.list_keys(bucket, search_prefix, profile=profile)
     logger.info(
         f"Found {len(keys)} keys for target '{target}' in {bucket}/{search_prefix}"
     )
@@ -317,7 +340,7 @@ def discover_latest_backup(
 
     # Retrieve size for disk planning
     logger.info(f"Head object for {newest_key}")
-    head = s3.head_object(bucket, newest_key)
+    head = s3.head_object(bucket, newest_key, profile=profile)
     size_bytes = int(head.get("ContentLength", 0))
 
     spec = BackupSpec(
@@ -327,6 +350,7 @@ def discover_latest_backup(
         timestamp=newest_ts,
         size_bytes=size_bytes,
         format_tag=format_tag,
+        profile=profile,
     )
 
     logger.info(

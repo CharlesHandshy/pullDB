@@ -154,6 +154,8 @@ class _JobRow(t.NamedTuple):
     started_at: datetime | None
     staging_name: str | None
     current_operation: str | None
+    dbhost: str | None
+    source: str | None
 
 
 def _job_row_from_payload(payload: dict[str, t.Any]) -> _JobRow:
@@ -172,6 +174,14 @@ def _job_row_from_payload(payload: dict[str, t.Any]) -> _JobRow:
     current_operation = payload.get("current_operation")
     if current_operation:
         current_operation = str(current_operation)
+    
+    dbhost = payload.get("dbhost")
+    if dbhost:
+        dbhost = str(dbhost)
+    
+    source = payload.get("source")
+    if source:
+        source = str(source)
 
     return _JobRow(
         id=job_id,
@@ -182,6 +192,8 @@ def _job_row_from_payload(payload: dict[str, t.Any]) -> _JobRow:
         started_at=started_at,
         staging_name=staging_name,
         current_operation=current_operation,
+        dbhost=dbhost,
+        source=source,
     )
 
 
@@ -333,7 +345,9 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
                 summary.status,
                 summary.current_operation or "—",
                 summary.id[:8],
+                summary.source or "—",
                 summary.target,
+                summary.dbhost or "—",
                 summary.user_code,
                 _fmt_dt(summary.submitted_at),
                 _fmt_dt(summary.started_at),
@@ -341,12 +355,12 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
         )
         staging_values.append(summary.staging_name or "")
 
-    headers = ["STATUS", "OPERATION", "JOB_ID", "TARGET", "USER", "SUBMITTED", "STARTED"]
+    headers = ["STATUS", "OPERATION", "JOB_ID", "SOURCE", "TARGET", "DB", "USER", "SUBMITTED", "STARTED"]
     if wide:
         headers.append("STAGING")
     # Compute widths
     col_widths: list[int] = []
-    for idx, header in enumerate(headers[:7]):
+    for idx, header in enumerate(headers[:9]):
         col_widths.append(max(len(header), *(len(row[idx]) for row in primary_rows)))
     if wide:
         col_widths.append(max(len("STAGING"), *(len(v) for v in staging_values)))
@@ -358,7 +372,7 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
 
     # Print rows
     for idx, entry in enumerate(primary_rows):
-        line = "  ".join(entry[i].ljust(col_widths[i]) for i in range(7))
+        line = "  ".join(entry[i].ljust(col_widths[i]) for i in range(9))
         if wide:
             staging_val = staging_values[idx]
             line = f"{line}  {staging_val.ljust(col_widths[-1])}"

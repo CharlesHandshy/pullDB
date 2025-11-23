@@ -70,6 +70,8 @@ def test_worker_service_main_invokes_poll_loop(monkeypatch: pytest.MonkeyPatch) 
         mysql_user="worker",
         mysql_password="secret",
         mysql_database="pulldb",
+        s3_bucket_path=None,
+        s3_backup_locations=(),
     )
     repo = t.cast(JobRepository, object())
     job_executor = object()
@@ -116,6 +118,8 @@ def test_worker_service_oneshot_overrides_iterations(
         mysql_user="worker",
         mysql_password="secret",
         mysql_database="pulldb",
+        s3_bucket_path=None,
+        s3_backup_locations=(),
     )
     monkeypatch.setattr(worker_service, "_load_config", lambda: config)
     repo = t.cast(JobRepository, object())

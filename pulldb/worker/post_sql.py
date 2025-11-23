@@ -142,12 +142,13 @@ def execute_post_sql(spec: PostSQLConnectionSpec) -> PostSQLExecutionResult:
             script_sql = _read_script(path)
             started = datetime.now(UTC)
             try:
-                # Scripts are expected to contain a single statement.
-                cursor.execute(script_sql)
-                if cursor.rowcount is not None and cursor.rowcount >= 0:
-                    affected = cursor.rowcount
-                else:
-                    affected = None
+                # Support multiple statements per script
+                affected = 0
+                for result in cursor.execute(script_sql, multi=True):
+                    if result.with_rows:
+                        result.fetchall()  # Consume any result sets
+                    if result.rowcount > 0:
+                        affected += result.rowcount
             except Exception as e:  # pragma: no cover - converted to PostSQLError
                 raise PostSQLError(
                     job_id="unknown",

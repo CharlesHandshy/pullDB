@@ -36,6 +36,7 @@ class S3BackupLocationConfig:
     prefix: str
     format_tag: str
     target_aliases: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    profile: str | None = None
 
     def aliases_for_target(self, target: str) -> tuple[str, ...]:
         """Return configured alias tuple for target (empty tuple when missing)."""
@@ -441,6 +442,7 @@ def _parse_s3_backup_locations(
         bucket, prefix = parse_s3_bucket_path(bucket_path)
         name = _strip_or_none(entry.get("name")) or f"location_{idx}"
         format_tag = _strip_or_none(entry.get("format")) or "legacy"
+        profile = _strip_or_none(entry.get("profile"))
         raw_aliases = entry.get("target_aliases") or {}
         target_aliases: dict[str, tuple[str, ...]] = {}
         if not isinstance(raw_aliases, dict):
@@ -469,6 +471,7 @@ def _parse_s3_backup_locations(
                 prefix=prefix,
                 format_tag=format_tag,
                 target_aliases=target_aliases,
+                profile=profile,
             )
         )
     return tuple(locations)
