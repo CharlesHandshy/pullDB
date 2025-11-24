@@ -82,7 +82,10 @@ test_data/
 *.deb
 
 # Vendor binaries (re-download from upstream release archives; never tracked)
-binaries/
+pulldb/binaries/*
+!pulldb/binaries/myloader-0*
+!pulldb/binaries/zstd-local
+!pulldb/binaries/zstd-local/**
 
 # OS
 .DS_Store

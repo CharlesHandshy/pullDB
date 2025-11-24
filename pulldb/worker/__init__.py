@@ -1,5 +1,6 @@
 """Worker service package for pullDB.
 
-Contains the queue polling implementation (future) and restore orchestration
-logic. Prototype phase includes only a heartbeat stub in `service.py`.
+Contains the queue polling implementation, restore orchestration logic,
+and component modules for the full restore workflow (download, staging,
+restore, post-SQL, atomic rename).
 """

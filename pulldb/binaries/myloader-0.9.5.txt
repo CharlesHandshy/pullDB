@@ -1,0 +1,25 @@
+Usage:
+  myloader-0.9.5 [OPTION?] multi-threaded MySQL loader
+
+Help Options:
+  -?, --help                        Show help options
+
+Application Options:
+  -d, --directory                   Directory of the dump to import
+  -q, --queries-per-transaction     Number of queries per transaction, default 1000
+  -o, --overwrite-tables            Drop tables if they already exist
+  -B, --database                    An alternative database to restore into
+  -s, --source-db                   Database to restore
+  -e, --enable-binlog               Enable binary logging of the restore data
+  -h, --host                        The host to connect to
+  -u, --user                        Username with the necessary privileges
+  -p, --password                    User password
+  -a, --ask-password                Prompt For User password
+  -P, --port                        TCP/IP port to connect to
+  -S, --socket                      UNIX domain socket file to use for connection
+  -t, --threads                     Number of threads to use, default 4
+  -C, --compress-protocol           Use compression on the MySQL connection
+  -V, --version                     Show the program version and exit
+  -v, --verbose                     Verbosity of output, 0 = silent, 1 = errors, 2 = warnings, 3 = info, default 2
+  --defaults-file                   Use a specific defaults file
+

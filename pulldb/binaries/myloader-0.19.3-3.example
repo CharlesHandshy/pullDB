@@ -1,0 +1,26 @@
+export PATH="$HOME/mydumper-local/bin:$HOME/zstd-local/bin:$PATH"
+export LD_LIBRARY_PATH="$HOME/zstd-local/lib:$LD_LIBRARY_PATH"
+export PATH="$HOME/mydumper-local:$PATH"
+myloader \
+  --host=<target database host> \
+  --port=3306 \
+  --user=<backup client service account> \
+  --password=<backup client service password> \
+  --database=<target database name> \
+  --directory=<restore backup from directory> \
+  --defaults-file=<myloader configuration defaults file> \
+  --threads=<max threads to use> \
+  --max-threads-per-table=<max threads per table to use -1 for no limit> \
+  --max-threads-for-index-creation=<max threads to use for index creation> \
+  --max-threads-for-schema-creation=<max threads to use for schema creation> \
+  --max-threads-for-post-actions=1 \
+  --rows=100000 \
+  --queries-per-transaction=5000 \
+  --optimize-keys=AFTER_IMPORT_PER_TABLE \
+  --checksum=warn \
+  --retry-count=20 \
+  --local-infile=TRUE \
+  --ignore-errors=1146 \
+  --overwrite-tables \
+  --verbose=3 \
+2>&1 | tee test-ld.log

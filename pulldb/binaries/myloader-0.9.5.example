@@ -1,0 +1,8 @@
+myloader --directory=<Backup directory to restore from>  \
+          --host=<target database host to restore to> \
+          --database=<backup schema name to restore to> \
+          --threads=<max threads> \
+          --overwrite-tables \
+          --verbose=3 \
+          --user=<backup client service user> \
+          --password='<backup client service password>'

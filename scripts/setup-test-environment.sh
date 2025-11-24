@@ -12,11 +12,15 @@
 set -euo pipefail
 
 # Colors for output
-readonly RED='\033[0;31m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[1;33m'
-readonly BLUE='\033[0;34m'
-readonly NC='\033[0m' # No Color
+readonly RED=$'\033[0;31m'
+readonly GREEN=$'\033[0;32m'
+readonly YELLOW=$'\033[1;33m'
+readonly BLUE=$'\033[0;34m'
+readonly NC=$'\033[0m' # No Color
+
+# Global state
+DETECTED_AWS_ACCOUNT=""
+DETECTED_AWS_PROFILE=""
 
 info() {
     echo -e "${BLUE}[INFO]${NC} $*"
@@ -45,6 +49,7 @@ readonly PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly TEST_ENV_DIR="${PROJECT_ROOT}/test-env"
 readonly DEB_PACKAGE="${PROJECT_ROOT}/pulldb_0.0.1_amd64.deb"
 readonly INSTALL_PREFIX="${TEST_ENV_DIR}/opt/pulldb"
+readonly LOG_FILE="$(pwd)/setup-test-env.log"
 
 # MySQL test database configuration
 readonly TEST_DB_NAME="pulldb_test_coordination"
@@ -125,32 +130,91 @@ parse_args() {
     done
 }
 
-check_prerequisites() {
-    info "Checking prerequisites..."
+install_system_dependencies() {
+    info "Checking and installing system dependencies..."
 
-    # Check if running as root
     if [[ $EUID -ne 0 ]] && [[ "$DRY_RUN" == false ]]; then
         fail "This script must be run as root (use sudo)"
     fi
 
-    # Check for required commands
-    local missing_cmds=()
-    for cmd in dpkg mysql aws python3 openssl; do
-        if ! command -v "$cmd" &>/dev/null; then
-            missing_cmds+=("$cmd")
+    if [[ "$DRY_RUN" == true ]]; then
+        info "[DRY-RUN] Would update apt and install: python3 python3-venv python3-pip mysql-server mysql-client jq curl unzip openssl"
+        return
+    fi
+
+    # Update apt
+    apt-get update || warn "Failed to update apt cache"
+
+    # Install packages
+    # Note: python3-full includes venv and pip on some distros, but listing explicitly is safer
+    local packages=(python3 python3-venv python3-pip mysql-server mysql-client jq curl unzip openssl)
+    local to_install=()
+
+    for pkg in "${packages[@]}"; do
+        if ! dpkg -l | grep -q "^ii  $pkg "; then
+            to_install+=("$pkg")
         fi
     done
 
-    if [[ ${#missing_cmds[@]} -gt 0 ]]; then
-        fail "Missing required commands: ${missing_cmds[*]}"
+    if [[ ${#to_install[@]} -gt 0 ]]; then
+        info "Installing missing packages: ${to_install[*]}"
+        apt-get install -y "${to_install[@]}"
+    else
+        success "System packages already installed"
+    fi
+    
+    # Ensure MySQL service is running
+    if ! systemctl is-active --quiet mysql; then
+        info "Starting MySQL service..."
+        systemctl start mysql
+    fi
+}
+
+install_aws_cli() {
+    if command -v aws &>/dev/null; then
+        success "AWS CLI already installed"
+        return
     fi
 
-    # Check for .deb package
+    if [[ "$DRY_RUN" == true ]]; then
+        info "[DRY-RUN] Would install AWS CLI v2"
+        return
+    fi
+
+    info "Installing AWS CLI v2..."
+    rm -rf aws awscliv2.zip
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip -q awscliv2.zip
+    ./aws/install
+    rm -rf aws awscliv2.zip
+    success "AWS CLI installed"
+}
+
+ensure_deb_package() {
+    if [[ -f "$DEB_PACKAGE" ]]; then
+        success "Debian package found: $DEB_PACKAGE"
+        return
+    fi
+
+    info "Debian package not found. Building..."
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        info "[DRY-RUN] Would run scripts/build_deb.sh"
+        return
+    fi
+
+    # Build as non-root if possible to avoid root ownership of build artifacts
+    local build_script="${PROJECT_ROOT}/scripts/build_deb.sh"
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        sudo -u "$SUDO_USER" "$build_script"
+    else
+        "$build_script"
+    fi
+
     if [[ ! -f "$DEB_PACKAGE" ]]; then
-        fail "Debian package not found: $DEB_PACKAGE"
+        fail "Failed to build Debian package at $DEB_PACKAGE"
     fi
-
-    success "All prerequisites satisfied"
+    success "Debian package built"
 }
 
 teardown_test_env() {
@@ -298,23 +362,56 @@ verify_aws_credentials() {
     info "Verifying AWS credentials..."
 
     local aws_profile="${AWS_PROFILE:-pr-dev}"
+    DETECTED_AWS_PROFILE="$aws_profile"
 
     if [[ "$DRY_RUN" == true ]]; then
         info "[DRY-RUN] Would verify AWS profile: $aws_profile"
         return
     fi
 
-    # Test AWS credentials using explicit profile first, then fall back to default resolution chain (instance metadata).
+    # Helper to run aws command, potentially dropping privileges to SUDO_USER to find credentials
+    run_aws() {
+        local profile_arg="$1"
+        shift
+        
+        local cmd="aws"
+        if [[ -n "${SUDO_USER:-}" ]]; then
+            cmd="sudo -u $SUDO_USER $cmd"
+        fi
+        
+        if [[ -n "$profile_arg" ]]; then
+            $cmd --profile "$profile_arg" "$@"
+        else
+            $cmd "$@"
+        fi
+    }
+
+    # 1. Try explicit profile (default: pr-dev)
     local account_id=""
-    account_id=$(AWS_PROFILE="$aws_profile" aws sts get-caller-identity --query 'Account' --output text 2>/dev/null || true)
+    if [[ "$DRY_RUN" == false ]]; then
+        echo "DEBUG: Attempting AWS auth with profile '$aws_profile' (User: ${SUDO_USER:-root})" >> "$LOG_FILE"
+    fi
+    
+    account_id=$(run_aws "$aws_profile" sts get-caller-identity --query 'Account' --output text 2>>"$LOG_FILE" || true)
+    
     if [[ -n "$account_id" ]]; then
+        DETECTED_AWS_ACCOUNT="$account_id"
         success "AWS credentials valid (Account: $account_id, Profile: $aws_profile)"
         return
     fi
 
-    account_id=$(aws sts get-caller-identity --query 'Account' --output text 2>/dev/null || true)
+    # 2. Fallback: Try default provider chain (no profile specified)
+    # This catches instance metadata (IMDS) or default profile
+    if [[ "$DRY_RUN" == false ]]; then
+        echo "DEBUG: Attempting AWS auth with default provider chain" >> "$LOG_FILE"
+    fi
+
+    account_id=$(run_aws "" sts get-caller-identity --query 'Account' --output text 2>>"$LOG_FILE" || true)
+    
     if [[ -n "$account_id" ]]; then
-        success "AWS credentials valid via default provider chain (Account: $account_id, metadata assumed)"
+        DETECTED_AWS_ACCOUNT="$account_id"
+        DETECTED_AWS_PROFILE="default/IMDS"
+        success "AWS credentials valid via default chain (Account: $account_id)"
         return
     fi
 
@@ -590,8 +687,8 @@ ${YELLOW}Directory Structure:${NC}
   └── run-quick-test.sh     # Smoke test script
 
 ${YELLOW}AWS Configuration:${NC}
-  Profile: ${AWS_PROFILE:-default}
-  Account: $(aws sts get-caller-identity --profile "${AWS_PROFILE:-default}" --query 'Account' --output text 2>/dev/null || echo "Not configured")
+  Profile: ${DETECTED_AWS_PROFILE:-Not configured}
+  Account: ${DETECTED_AWS_ACCOUNT:-Not configured}
 
 ${YELLOW}MySQL Configuration:${NC}
   Database: ${TEST_DB_NAME}
@@ -606,25 +703,89 @@ ${YELLOW}Documentation:${NC}
 EOF
 }
 
+run_step() {
+    local msg="$1"
+    shift
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        info "[DRY-RUN] $msg"
+        "$@"
+        return
+    fi
+
+    printf "${BLUE}[INFO]${NC} %-50s" "$msg..."
+    
+    # Run command in background, redirecting output to log
+    {
+        echo ">>> START: $msg"
+        "$@"
+        local ret=$?
+        echo ">>> END: $msg (Exit Code: $ret)"
+        return $ret
+    } >> "$LOG_FILE" 2>&1 &
+    local pid=$!
+    
+    local delay=0.1
+    local spinstr='|/-\'
+    
+    # Hide cursor
+    tput civis 2>/dev/null || true
+    
+    while kill -0 $pid 2>/dev/null; do
+        local temp=${spinstr#?}
+        printf "[%c]" "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b"
+    done
+    
+    wait $pid
+    local exit_code=$?
+    
+    # Restore cursor
+    tput cnorm 2>/dev/null || true
+    
+    # Clear spinner
+    printf "   \b\b\b"
+    
+    if [ $exit_code -eq 0 ]; then
+        printf "${GREEN}[DONE]${NC}\n"
+    else
+        printf "${RED}[FAIL]${NC}\n"
+        echo -e "${RED}Error details in ${LOG_FILE}${NC}"
+        exit $exit_code
+    fi
+}
+
 main() {
     parse_args "$@"
 
-    info "Setting up pullDB v0.0.1 test environment..."
+    # Initialize log
+    if [[ "$DRY_RUN" == false ]]; then
+        echo "pullDB Setup Log - $(date)" > "$LOG_FILE"
+        echo "========================================" >> "$LOG_FILE"
+        info "Setting up pullDB v0.0.1 test environment..."
+        echo "Logs will be written to $LOG_FILE"
+    else
+        info "Setting up pullDB v0.0.1 test environment (DRY RUN)..."
+    fi
     echo ""
 
-    check_prerequisites
-    clean_test_env
-    auto_cleanup_previous_env
-    create_test_directories
-    setup_mysql_database
-    verify_aws_credentials
-    install_package
-    create_test_config
-    create_test_venv
-    create_convenience_scripts
-    normalize_permissions
-    post_setup_self_test
-    restore_test_env_ownership
+    run_step "Installing system dependencies" install_system_dependencies
+    run_step "Installing AWS CLI" install_aws_cli
+    run_step "Building/Checking Debian package" ensure_deb_package
+    run_step "Cleaning previous environment" clean_test_env
+    run_step "Checking for existing environment" auto_cleanup_previous_env
+    run_step "Creating directory structure" create_test_directories
+    run_step "Setting up MySQL database" setup_mysql_database
+    run_step "Verifying AWS credentials" verify_aws_credentials
+    run_step "Installing pullDB package" install_package
+    run_step "Creating configuration" create_test_config
+    run_step "Creating virtual environment" create_test_venv
+    run_step "Creating convenience scripts" create_convenience_scripts
+    run_step "Normalizing permissions" normalize_permissions
+    run_step "Running post-setup smoke tests" post_setup_self_test
+    run_step "Restoring ownership" restore_test_env_ownership
 
     if [[ "$DRY_RUN" == false ]]; then
         print_summary

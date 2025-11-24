@@ -104,11 +104,34 @@ For automated verification in CI pipelines:
 3. Parse exit code (0 = success, non-zero = failure)
 4. Include script output in build logs for audit trail
 
-## Archived Scripts
+### monitor_jobs.py
 
-| Script | Replacement |
-| --- | --- |
-| `setup-pulldb-schema.sh` | Apply numbered files in `schema/pulldb/` directly (e.g. `cat schema/pulldb/*.sql | mysql`) |
-| `setup-python-project.sh` | Activate a virtualenv and run `python -m pip install -e .[dev]` |
+Diagnostic script to reconcile active jobs with system processes. It checks for running `pulldb-worker` and `myloader` processes and active MySQL connections. If a job is marked 'running' but no corresponding activity is detected, it flags the job as a zombie.
 
-See `scripts/archived/README.md` for the original copies retained for reference.
+### Usage
+
+```bash
+# Check status (dry run)
+python3 scripts/monitor_jobs.py
+
+# Mark dead jobs as failed
+python3 scripts/monitor_jobs.py --fix
+```
+
+### Requirements
+
+- Must be run on the worker server (or where the worker process is expected to run).
+- Requires `PULLDB_COORDINATION_SECRET` environment variable if not using default credentials.
+- Requires `AWS_DEFAULT_REGION` if using Secrets Manager.
+
+### Example Output
+
+```
+Found 1 running job(s) in queue.
+System Activity:
+  Worker Process Running: False
+  MyLoader Running: False
+  Active DB Connections: 0
+Checking Job 0ee4acd3...
+WARNING - Job 0ee4acd3 appears DEAD. Reason: No worker process running
+```
