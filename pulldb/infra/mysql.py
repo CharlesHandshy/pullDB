@@ -292,7 +292,9 @@ class JobRepository:
             rows = self._fetch_active_job_rows(cursor)
             return [self._row_to_active_job(row) for row in rows]
 
-    def get_recent_jobs(self, limit: int = 100) -> list[Job]:
+    def get_recent_jobs(
+        self, limit: int = 100, statuses: list[str] | None = None
+    ) -> list[Job]:
         """Get recent jobs (active + completed) with operation status.
 
         Returns jobs ordered by submission time (newest first).
@@ -300,14 +302,15 @@ class JobRepository:
 
         Args:
             limit: Maximum number of jobs to return.
+            statuses: Optional list of status strings to filter by.
 
         Returns:
             List of jobs with populated current_operation.
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
-            cursor.execute(
-                """
+            
+            query = """
                 WITH LatestEvents AS (
                     SELECT job_id, event_type, detail,
                            ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY logged_at DESC) as rn
@@ -321,11 +324,18 @@ class JobRepository:
                        le.detail as last_event_detail
                 FROM jobs j
                 LEFT JOIN LatestEvents le ON j.id = le.job_id AND le.rn = 1
-                ORDER BY j.submitted_at DESC
-                LIMIT %s
-                """,
-                (limit,),
-            )
+            """
+            
+            params: list[t.Any] = []
+            if statuses:
+                placeholders = ", ".join(["%s"] * len(statuses))
+                query += f" WHERE j.status IN ({placeholders})"
+                params.extend(statuses)
+                
+            query += " ORDER BY j.submitted_at DESC LIMIT %s"
+            params.append(limit)
+
+            cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
             return [self._row_to_job(row) for row in rows]
 
@@ -441,28 +451,35 @@ class JobRepository:
             )
             conn.commit()
 
-    def get_job_events(self, job_id: str) -> list[JobEvent]:
-        """Get all events for a job.
+    def get_job_events(self, job_id: str, since_id: int | None = None) -> list[JobEvent]:
+        """Get all events for a job, optionally since a specific event ID.
 
         Returns events in chronological order for job history display.
 
         Args:
             job_id: UUID of job.
+            since_id: Optional event ID to fetch events after (exclusive).
 
         Returns:
             List of events ordered by logged_at.
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
-            cursor.execute(
-                """
+            
+            query = """
                 SELECT id, job_id, event_type, detail, logged_at
                 FROM job_events
                 WHERE job_id = %s
-                ORDER BY logged_at ASC
-                """,
-                (job_id,),
-            )
+            """
+            params: list[t.Any] = [job_id]
+            
+            if since_id is not None:
+                query += " AND id > %s"
+                params.append(since_id)
+                
+            query += " ORDER BY id ASC"  # Use ID for stable ordering
+            
+            cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
             return [self._row_to_job_event(row) for row in rows]
 

@@ -144,11 +144,14 @@ def execute_post_sql(spec: PostSQLConnectionSpec) -> PostSQLExecutionResult:
             try:
                 # Support multiple statements per script
                 affected = 0
-                for result in cursor.execute(script_sql, multi=True):
-                    if result.with_rows:
-                        result.fetchall()  # Consume any result sets
-                    if result.rowcount > 0:
-                        affected += result.rowcount
+                cursor.execute(script_sql)
+                while True:
+                    if cursor.with_rows:
+                        cursor.fetchall()  # Consume any result sets
+                    if cursor.rowcount > 0:
+                        affected += cursor.rowcount
+                    if not cursor.nextset():
+                        break
             except Exception as e:  # pragma: no cover - converted to PostSQLError
                 raise PostSQLError(
                     job_id="unknown",

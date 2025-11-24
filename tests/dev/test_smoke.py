@@ -63,6 +63,18 @@ class _FakeJobRepository:
     def get_active_jobs(self) -> list[Job]:
         return list(self.active)
 
+    def get_recent_jobs(
+        self, limit: int, statuses: list[str] | None = None
+    ) -> list[Job]:
+        # Filter by status if provided
+        candidates = self.enqueued
+        if statuses:
+            candidates = [j for j in candidates if j.status.value in statuses]
+        # Sort by submitted_at desc (mock implementation assumes append order
+        # is time order)
+        # For simplicity, just reverse the list
+        return list(reversed(candidates))[:limit]
+
 
 class _ResponseProtocol(Protocol):
     """Subset of methods returned by the patched requests module."""

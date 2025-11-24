@@ -36,8 +36,9 @@ class FakeCursor:
         self.fail_script = fail_script
         self.executed: list[str] = []
         self.rowcount = 1
+        self.with_rows = False
 
-    def execute(self, sql: str, multi: bool = False):  # noqa: FBT001, FBT002
+    def execute(self, sql: str, multi: bool = False) -> object:  # noqa: FBT001, FBT002
         """Execute SQL with optional multi-statement support."""
         if multi:
             # Return an iterator of fake results for multi-statement execution
@@ -58,6 +59,14 @@ class FakeCursor:
                 raise Exception("Script failure simulated")
             self.executed.append(marker)
             return None
+
+    def nextset(self) -> bool:
+        """Simulate nextset for multi-statement support."""
+        return False
+
+    def fetchall(self) -> list:
+        """Consume any result sets."""
+        return []
 
     def close(self) -> None:  # pragma: no cover - trivial
         pass

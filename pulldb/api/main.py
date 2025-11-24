@@ -5,6 +5,7 @@ from __future__ import annotations
 import typing as t
 import uuid
 import os
+import json
 from datetime import UTC, datetime
 
 import fastapi
@@ -74,6 +75,16 @@ class JobSummary(pydantic.BaseModel):
     current_operation: str | None = None
     dbhost: str | None = None
     source: str | None = None
+
+
+class JobEventResponse(pydantic.BaseModel):
+    """Job event payload."""
+
+    id: int
+    job_id: str
+    event_type: str
+    detail: str | None
+    logged_at: datetime
 
 
 class APIState(t.NamedTuple):
@@ -285,6 +296,96 @@ def _active_jobs(state: APIState, limit: int) -> list[JobSummary]:
     return result
 
 
+def _list_jobs(
+    state: APIState,
+    limit: int,
+    active: bool,
+    history: bool,
+    filter_json: str | None,
+) -> list[JobSummary]:
+    statuses: list[str] = []
+    if active:
+        statuses.extend([JobStatus.QUEUED.value, JobStatus.RUNNING.value])
+    if history:
+        statuses.extend(
+            [
+                JobStatus.COMPLETE.value,
+                JobStatus.FAILED.value,
+                JobStatus.CANCELED.value,
+            ]
+        )
+
+    # Default to active if neither specified
+    if not statuses:
+        statuses.extend([JobStatus.QUEUED.value, JobStatus.RUNNING.value])
+
+    jobs = state.job_repo.get_recent_jobs(limit, statuses=statuses)
+
+    # Parse filter
+    filters = {}
+    if filter_json:
+        try:
+            filters = json.loads(filter_json)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid JSON filter: {exc}",
+            ) from exc
+
+    result: list[JobSummary] = []
+    for job in jobs:
+        source = None
+        if job.options_json:
+            if job.options_json.get("is_qatemplate") == "true":
+                source = "qatemplate"
+            else:
+                source = job.options_json.get("customer_id")
+
+        summary = JobSummary(
+            id=job.id,
+            target=job.target,
+            status=job.status.value,
+            user_code=job.owner_user_code,
+            submitted_at=job.submitted_at,
+            started_at=job.started_at,
+            staging_name=job.staging_name,
+            current_operation=job.current_operation,
+            dbhost=job.dbhost,
+            source=source,
+        )
+
+        # Apply filters
+        if filters:
+            match = True
+            summary_dict = summary.model_dump()
+            for key, val in filters.items():
+                # Simple string match
+                if str(summary_dict.get(key, "")) != str(val):
+                    match = False
+                    break
+            if not match:
+                continue
+
+        result.append(summary)
+    return result
+
+
+def _get_job_events(
+    state: APIState, job_id: str, since_id: int | None
+) -> list[JobEventResponse]:
+    events = state.job_repo.get_job_events(job_id, since_id)
+    return [
+        JobEventResponse(
+            id=event.id,
+            job_id=event.job_id,
+            event_type=event.event_type,
+            detail=event.detail,
+            logged_at=event.logged_at,
+        )
+        for event in events
+    ]
+
+
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -313,6 +414,22 @@ async def submit_job(
 
 
 @app.get(
+    "/api/jobs",
+    response_model=list[JobSummary],
+)
+async def list_jobs(
+    limit: int = fastapi.Query(DEFAULT_STATUS_LIMIT, ge=1, le=MAX_STATUS_LIMIT),
+    active: bool = False,
+    history: bool = False,
+    filter: str | None = None,
+    state: APIState = Depends(get_api_state),
+) -> list[JobSummary]:
+    return await run_in_threadpool(
+        _list_jobs, state, limit, active, history, filter
+    )
+
+
+@app.get(
     "/api/jobs/active",
     response_model=list[JobSummary],
 )
@@ -321,6 +438,18 @@ async def list_active_jobs(
     state: APIState = Depends(get_api_state),
 ) -> list[JobSummary]:
     return await run_in_threadpool(_active_jobs, state, limit)
+
+
+@app.get(
+    "/api/jobs/{job_id}/events",
+    response_model=list[JobEventResponse],
+)
+async def list_job_events(
+    job_id: str,
+    since_id: int | None = None,
+    state: APIState = Depends(get_api_state),
+) -> list[JobEventResponse]:
+    return await run_in_threadpool(_get_job_events, state, job_id, since_id)
 
 
 def create_app() -> fastapi.FastAPI:

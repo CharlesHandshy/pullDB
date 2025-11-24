@@ -201,8 +201,6 @@ class CredentialResolver:
             # Parse JSON secret
             secret_data = json.loads(secret_string)
 
-            logger.info(f"DEBUG: secret_data={secret_data}")  # Add debug logging
-
             # Extract required fields
             username = secret_data.get("username")
             password = secret_data.get("password")

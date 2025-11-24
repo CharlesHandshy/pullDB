@@ -8,8 +8,10 @@ This document is the **primary reference for AI coding agents** working on pullD
 - **`engineering-dna/standards/ai-agent-code-generation.md`** - **MANDATORY for AI agents**: Modern Python patterns, file generation protocols, FAIL HARD standards, anti-patterns to avoid (created Nov 2025)
 - **`constitution.md`** - Coding standards, tooling philosophy, and development workflow
 - **`docs/coding-standards.md`** - Comprehensive style guidelines for all file types (Python, Markdown, SQL, Shell, YAML, Mermaid)
+- **`docs/security-controls.md`** - Security controls for S3 and Secrets Manager (Implementation Verification)
 
-**Knowledge Base Protocol**: Before answering any question or solving any problem, **ALWAYS check `docs/KNOWLEDGE-POOL.md` first**, and update it with new findings immediately after resolution.
+**Knowledge Base Protocol**: Before answering any question or solving any problem, **ALWAYS check `docs/KNOWLEDGE-POOL.md` first**.
+**CONTINUOUS LEARNING DIRECTIVE**: You must **continuously add anything you learn** to `docs/KNOWLEDGE-POOL.md` as you find it. Do not wait for final resolution. If you discover a quirk, a fix, a path, or a dependency issue, document it immediately in the Knowledge Pool. This directive is **ALWAYS ACTIVE**.
 
 These documents form the foundation—all other documentation flows from these principles. **AI agents MUST follow the standards in `engineering-dna/standards/ai-agent-code-generation.md` when generating any code.**
 
@@ -404,7 +406,7 @@ Maintain a living drift ledger until restore workflow is complete:
 - Logging abstraction & domain error classes: ✅ Implemented (item 1 complete)
 - Worker poll loop & event emission: ✅ Implemented (item 2 complete)
 - S3 discovery & downloader (disk capacity guard + streaming): ✅ Implemented (item 3 complete)
-- CLI validation & enqueue & status: ✅ Implemented (argument parsing, validation, enqueue, status command with --json/--wide/--limit)
+- CLI validation & enqueue & status: ✅ Implemented (argument parsing, validation, enqueue, status command with --json/--wide/--limit/--history/--filter/--rt)
 - myloader execution subprocess wrapper: ✅ Implemented (command building, timeout + non‑zero translation)
 - Post‑SQL executor: ✅ Implemented (sequential script execution, FAIL HARD on first error, timing + rowcount capture)
 - Engineering-dna freshness CI gate: ✅ Implemented (workflow enforces submodule up-to-date)

@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import os
 import signal
+import subprocess
 import sys
 import threading
 import typing as t
@@ -22,6 +23,7 @@ from types import FrameType
 from dotenv import load_dotenv
 
 from pulldb.domain.config import Config
+from pulldb.domain.models import JobStatus
 from pulldb.infra.logging import get_logger
 from pulldb.infra.metrics import MetricLabels, emit_event, emit_gauge
 from pulldb.infra.mysql import HostRepository, JobRepository, build_default_pool
@@ -75,10 +77,14 @@ def _parse_args(argv: t.Sequence[str] | None) -> argparse.Namespace:
 
 def _load_config() -> Config:
     config = Config.minimal_from_env()
-    
+
     # Resolve coordination credentials if provided via secret
     coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
-    if coordination_secret and config.mysql_user == "root" and not config.mysql_password:
+    if (
+        coordination_secret
+        and config.mysql_user == "root"
+        and not config.mysql_password
+    ):
         try:
             resolver = CredentialResolver(config.aws_profile)
             creds = resolver.resolve(coordination_secret)
@@ -88,7 +94,7 @@ def _load_config() -> Config:
             # Note: Config doesn't currently support port override for coordination DB
         except Exception as e:
             logger.warning(f"Failed to resolve coordination secret: {e}")
-            
+
     return config
 
 
@@ -176,6 +182,70 @@ def _emit_fatal(error: Exception) -> None:
     )
 
 
+def _cleanup_zombies(job_repo: JobRepository) -> None:
+    """Detect and cleanup zombie jobs at startup.
+
+    If this is the only worker process running, any jobs marked 'running'
+    are zombies from a previous crash and should be marked failed.
+    """
+    try:
+        # Check if we are the only worker process
+        # We need to check for both module execution and entrypoint script
+        pids: set[str] = set()
+        for pattern in ["pulldb.worker.service", "pulldb-worker"]:
+            cmd = ["pgrep", "-f", pattern]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            if result.returncode == 0:
+                for pid in result.stdout.strip().splitlines():
+                    pids.add(pid)
+
+        count = len(pids)
+
+        # If count > 1, we are not alone.
+        if count > 1:
+            logger.info(
+                "Multiple worker processes detected, skipping zombie cleanup",
+                extra={"worker_count": count, "phase": "startup"},
+            )
+            return
+
+        # We are the only worker. Check for running jobs.
+        active_jobs = job_repo.get_active_jobs()
+        running_jobs = [j for j in active_jobs if j.status == JobStatus.RUNNING]
+
+        if not running_jobs:
+            return
+
+        logger.warning(
+            f"Found {len(running_jobs)} zombie jobs at startup",
+            extra={"phase": "startup", "zombie_count": len(running_jobs)},
+        )
+
+        for job in running_jobs:
+            msg = "Zombie job detected at worker startup (single worker mode)"
+            logger.warning(
+                f"Marking zombie job {job.id} as failed",
+                extra={"job_id": job.id, "target": job.target, "phase": "startup"},
+            )
+            job_repo.mark_job_failed(job.id, msg)
+            emit_event(
+                "worker_zombie_cleanup",
+                f"job_id={job.id}",
+                MetricLabels(phase="startup", status="cleanup"),
+            )
+
+    except FileNotFoundError:
+        logger.warning(
+            "pgrep not found, skipping zombie cleanup", extra={"phase": "startup"}
+        )
+    except Exception as e:
+        logger.error(
+            "Failed to cleanup zombie jobs",
+            extra={"error": str(e), "phase": "startup"},
+            exc_info=True,
+        )
+
+
 def main(argv: t.Sequence[str] | None = None) -> int:
     """Worker daemon main entry point.
 
@@ -218,6 +288,9 @@ def main(argv: t.Sequence[str] | None = None) -> int:
         _emit_fatal(exc)
         _set_worker_active(0, "fatal")
         return 1
+
+    # Cleanup zombie jobs before starting the main loop
+    _cleanup_zombies(job_repo)
 
     poll_interval = MIN_POLL_INTERVAL_SECONDS if args.oneshot else args.poll_interval
 

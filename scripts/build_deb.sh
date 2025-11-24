@@ -26,7 +26,9 @@ chmod 0755 "$DEBIAN_DIR/postinst" "$DEBIAN_DIR/prerm" "$DEBIAN_DIR/postrm"
 APP_ROOT="$WORKDIR/opt/pulldb"
 mkdir -p "$APP_ROOT/scripts"
 cp scripts/install_pulldb.sh "$APP_ROOT/scripts/"
+cp scripts/monitor_jobs.py "$APP_ROOT/scripts/"
 cp packaging/systemd/pulldb-worker.service "$APP_ROOT/scripts/"
+chmod +x "$APP_ROOT/scripts/"*.sh "$APP_ROOT/scripts/"*.py
 
 dpkg-deb --build "$WORKDIR" "$PKGNAME"
 echo "Built $PKGNAME (Version=${VERSION})"

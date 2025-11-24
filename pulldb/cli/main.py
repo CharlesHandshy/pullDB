@@ -6,6 +6,7 @@ import importlib
 import json as json_module
 import os
 import sys
+import time
 import typing as t
 from datetime import datetime
 from types import ModuleType
@@ -283,11 +284,44 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     show_default=True,
     help="Limit number of rows",
 )
-def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
-    """Show active jobs (queued or running) ordered by submission time.
+@click.option(
+    "--active",
+    is_flag=True,
+    help="Show active jobs (queued/running). Default if no other filter specified.",
+)
+@click.option(
+    "--history",
+    is_flag=True,
+    help="Show historical jobs (completed/failed/canceled).",
+)
+@click.option(
+    "--filter",
+    "filter_json",
+    help="JSON string to filter results by column values (e.g. '{\"status\": \"failed\"}').",
+)
+@click.option(
+    "--rt",
+    is_flag=True,
+    help="Realtime mode: stream events for a specific job (requires --job-id).",
+)
+@click.option(
+    "--job-id",
+    help="Job ID to filter by or stream events for.",
+)
+def status_cmd(
+    json_out: bool,
+    wide: bool,
+    limit: int,
+    active: bool,
+    history: bool,
+    filter_json: str | None,
+    rt: bool,
+    job_id: str | None,
+) -> None:
+    """Show jobs ordered by submission time.
 
-    Provides a quick view of work in progress. By default outputs a table; use
-    --json for machine-readable output.
+    Provides a view of work in progress and history. By default outputs a table;
+    use --json for machine-readable output.
 
     FAIL HARD behaviors:
       * Configuration load failures surface with actionable guidance.
@@ -297,13 +331,45 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
     Args:
         json_out: Emit JSON list of jobs.
         wide: Include staging_name column.
-        limit: Max number of rows to display (guard against runaway output).
+        limit: Max number of rows to display.
+        active: Show active jobs.
+        history: Show historical jobs.
+        filter_json: JSON filter string.
+        rt: Realtime event streaming mode.
+        job_id: Specific job ID to target.
     """
+    if rt:
+        if not job_id:
+            raise click.UsageError("--rt requires --job-id")
+        _stream_job_events(job_id)
+        return
+
     if limit <= 0 or limit > MAX_STATUS_LIMIT:
         raise click.UsageError(f"--limit must be between 1 and {MAX_STATUS_LIMIT}")
 
+    params: dict[str, t.Any] = {"limit": limit}
+    if active:
+        params["active"] = "true"
+    if history:
+        params["history"] = "true"
+    if filter_json:
+        params["filter"] = filter_json
+    
+    # If job_id provided without --rt, filter by it (client-side for now as API doesn't support it directly yet,
+    # or we could add it to filter_json)
+    if job_id:
+        # We can use the filter param logic
+        current_filter = {}
+        if filter_json:
+            try:
+                current_filter = json_module.loads(filter_json)
+            except ValueError:
+                pass
+        current_filter["id"] = job_id
+        params["filter"] = json_module.dumps(current_filter)
+
     try:
-        payloads = _api_get("/api/jobs/active", {"limit": limit})
+        payloads = _api_get("/api/jobs", params)
     except _APIError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -316,7 +382,7 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
 
     if not summaries:
         click.echo(
-            "No recent jobs. Submit a restore with:\n"
+            "No matching jobs found. Submit a restore with:\n"
             "  pullDB user=<username> customer=<id>"
         )
         return
@@ -379,6 +445,32 @@ def status_cmd(json_out: bool, wide: bool, limit: int) -> None:
         click.echo(line)
 
     click.echo(f"\n{len(primary_rows)} recent job(s) displayed (limit={limit}).")
+
+
+def _stream_job_events(job_id: str) -> None:
+    last_id: int | None = None
+    click.echo(f"Streaming events for job {job_id} (Ctrl+C to stop)...")
+    while True:
+        params: dict[str, t.Any] = {}
+        if last_id is not None:
+            params["since_id"] = last_id
+        
+        try:
+            events = _api_get(f"/api/jobs/{job_id}/events", params)
+        except _APIError as exc:
+             click.echo(f"Error fetching events: {exc}")
+             time.sleep(5)
+             continue
+
+        for event in events:
+            ts = _parse_iso(event.get("logged_at"))
+            ts_str = ts.strftime("%H:%M:%S") if ts else "??:??:??"
+            event_type = event.get("event_type", "unknown")
+            detail = event.get("detail") or ""
+            click.echo(f"[{ts_str}] {event_type}: {detail}")
+            last_id = int(event["id"])
+        
+        time.sleep(2)
 
 
 def main(argv: t.Sequence[str] | None = None) -> int:

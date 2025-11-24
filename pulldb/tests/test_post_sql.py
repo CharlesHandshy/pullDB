@@ -36,8 +36,9 @@ class _FakeCursor:
     scripts: list[str]
     fail_on: str | None = None
     rowcount: int | None = 0
+    with_rows: bool = False
 
-    def execute(self, sql: str, multi: bool = False):  # noqa: FBT001, FBT002
+    def execute(self, sql: str, multi: bool = False) -> object:  # noqa: FBT001, FBT002
         """Execute SQL with optional multi-statement support."""
         if multi:
             # Return an iterator of fake results for multi-statement execution
@@ -68,6 +69,14 @@ class _FakeCursor:
             else:
                 self.rowcount = 0
             return None
+
+    def nextset(self) -> bool:
+        """Simulate nextset for multi-statement support."""
+        return False
+
+    def fetchall(self) -> list:
+        """Consume any result sets."""
+        return []
 
 
 @dataclass

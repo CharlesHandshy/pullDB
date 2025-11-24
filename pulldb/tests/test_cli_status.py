@@ -23,7 +23,7 @@ def test_status_no_active_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
     base = _base_url(monkeypatch)
     responses.add(
         responses.GET,
-        f"{base}/api/jobs/active",
+        f"{base}/api/jobs",
         match=[responses.matchers.query_param_matcher({"limit": "100"})],
         json=[],
         status=200,
@@ -31,7 +31,7 @@ def test_status_no_active_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["status"])
     assert result.exit_code == 0
-    assert "No recent jobs" in result.output
+    assert "No matching jobs found" in result.output
 
 
 @responses.activate
@@ -59,7 +59,7 @@ def test_status_active_jobs_table(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
     responses.add(
         responses.GET,
-        f"{base}/api/jobs/active",
+        f"{base}/api/jobs",
         match=[responses.matchers.query_param_matcher({"limit": "10"})],
         json=payload,
         status=200,
@@ -91,7 +91,7 @@ def test_status_wide(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
     responses.add(
         responses.GET,
-        f"{base}/api/jobs/active",
+        f"{base}/api/jobs",
         match=[responses.matchers.query_param_matcher({"limit": "100"})],
         json=payload,
         status=200,
@@ -119,7 +119,7 @@ def test_status_json(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
     responses.add(
         responses.GET,
-        f"{base}/api/jobs/active",
+        f"{base}/api/jobs",
         match=[responses.matchers.query_param_matcher({"limit": "100"})],
         json=payload,
         status=200,
@@ -150,7 +150,7 @@ def test_status_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
     responses.add(
         responses.GET,
-        f"{base}/api/jobs/active",
+        f"{base}/api/jobs",
         match=[responses.matchers.query_param_matcher({"limit": "3"})],
         json=payload,
         status=200,
