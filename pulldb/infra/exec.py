@@ -16,6 +16,8 @@ structured logging so job context (job_id, phase) remains consistent.
 from __future__ import annotations
 
 import subprocess
+import time
+import typing as t
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -84,6 +86,12 @@ def _truncate(data: bytes, limit: int) -> str:
     return "<truncated>..." + tail.decode(errors="replace")
 
 
+def _truncate_str(data: str, limit: int) -> str:
+    if len(data) <= limit:
+        return data
+    return "<truncated>..." + data[-limit:]
+
+
 def run_command(
     command: Sequence[str],
     *,
@@ -149,4 +157,99 @@ def run_command(
         duration_seconds=duration,
         stdout=stdout,
         stderr=stderr,
+    )
+
+
+def run_command_streaming(
+    command: Sequence[str],
+    line_callback: t.Callable[[str], None],
+    *,
+    env: Mapping[str, str] | None = None,
+    timeout: float | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Execute command, streaming merged stdout/stderr to callback.
+
+    Args:
+        command: Sequence of program + arguments.
+        line_callback: Function called with each line of output (decoded).
+        env: Optional environment variable overrides.
+        timeout: Optional timeout in seconds.
+        cwd: Optional working directory.
+
+    Returns:
+        CommandResult with captured stdout (stderr will be empty as it is merged).
+        Output is truncated to STDOUT_LIMIT (keeping tail).
+    """
+    start = datetime.now(UTC)
+    # We keep a buffer of the last N chars to return in CommandResult
+    # We don't store everything to avoid memory issues with huge logs
+    captured_buffer: list[str] = []
+    current_buffer_size = 0
+
+    try:
+        proc = subprocess.Popen(
+            list(command),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # Merge stderr into stdout
+            env=None if env is None else {**env},
+            cwd=cwd,
+            text=True,
+            bufsize=1,  # Line buffered
+            encoding="utf-8",
+            errors="replace",
+        )
+    except Exception as e:
+        raise CommandExecutionError(
+            f"Failed to start command: {' '.join(command)} ({e})"
+        ) from e
+
+    deadline = start.timestamp() + timeout if timeout else None
+
+    try:
+        if proc.stdout:
+            for line in proc.stdout:
+                line_callback(line)
+
+                # Buffer management for result
+                captured_buffer.append(line)
+                current_buffer_size += len(line)
+
+                # Simple pruning if buffer gets too large (2x limit)
+                if current_buffer_size > STDOUT_LIMIT * 2:
+                    # Keep only enough lines to satisfy limit
+                    # This is approximate but efficient
+                    while current_buffer_size > STDOUT_LIMIT * 1.5:
+                        removed = captured_buffer.pop(0)
+                        current_buffer_size -= len(removed)
+
+                if deadline and time.time() > deadline:
+                    proc.kill()
+                    raise subprocess.TimeoutExpired(command, timeout or -1)
+
+        proc.wait(timeout=(deadline - time.time()) if deadline else None)
+
+    except subprocess.TimeoutExpired as te:
+        proc.kill()
+        stdout_str = "".join(captured_buffer)
+        raise CommandTimeoutError(
+            command,
+            timeout if timeout is not None else -1,
+            _truncate_str(stdout_str, STDOUT_LIMIT),
+            "",
+        ) from te
+
+    completed = datetime.now(UTC)
+    duration = (completed - start).total_seconds()
+
+    stdout_str = "".join(captured_buffer)
+
+    return CommandResult(
+        command=list(command),
+        exit_code=proc.returncode or 0,
+        started_at=start,
+        completed_at=completed,
+        duration_seconds=duration,
+        stdout=_truncate_str(stdout_str, STDOUT_LIMIT),
+        stderr="",  # Merged into stdout
     )

@@ -12,9 +12,12 @@ creation, post-SQL, rename) will reside elsewhere.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, Callable
 
 from pulldb.domain.config import Config
 from pulldb.domain.errors import MyLoaderError
@@ -29,7 +32,9 @@ from pulldb.infra.exec import (
     CommandResult,
     CommandTimeoutError,
     run_command,
+    run_command_streaming,
 )
+from pulldb.infra.logging import get_logger
 from pulldb.infra.metrics import (
     MetricLabels,
     emit_counter,
@@ -58,6 +63,8 @@ from pulldb.worker.staging import (
 STDOUT_TAIL_LIMIT = 5000
 STDERR_TAIL_LIMIT = 5000
 
+logger = get_logger("pulldb.worker.restore")
+
 
 @dataclass(slots=True, frozen=True)
 class RestoreWorkflowSpec:
@@ -81,6 +88,7 @@ class RestoreWorkflowSpec:
     post_sql_conn: PostSQLConnectionSpec
     myloader_spec: MyLoaderSpec
     timeout: float | None = None
+    progress_callback: Callable[[float, dict[str, Any]], None] | None = None
 
 
 def build_restore_workflow_spec(
@@ -95,6 +103,7 @@ def build_restore_workflow_spec(
     myloader_env: Mapping[str, str] | None = None,
     timeout_override: float | None = None,
     format_tag: str | None = None,
+    progress_callback: Callable[[float, dict[str, Any]], None] | None = None,
 ) -> RestoreWorkflowSpec:
     """Construct :class:`RestoreWorkflowSpec` using global configuration.
 
@@ -130,6 +139,7 @@ def build_restore_workflow_spec(
         post_sql_conn=post_sql_conn,
         myloader_spec=myloader_spec,
         timeout=timeout,
+        progress_callback=progress_callback,
     )
 
 
@@ -164,21 +174,129 @@ def build_myloader_command(spec: MyLoaderSpec) -> list[str]:
     return _build_command(spec)
 
 
+def _count_restore_tasks(backup_dir: str) -> int:
+    path = Path(backup_dir)
+    count = 0
+    # Count .sql, .sql.gz, .sql.zst files
+    for p in path.glob("**/*.sql*"):
+        if p.is_file():
+            count += 1
+    return count
+
+
+def _detect_backup_version(backup_dir: str) -> str:
+    """Detect backup version based on file extensions.
+
+    Per strict user requirement:
+    - .zst files imply mydumper 0.19
+    - .gz files imply mydumper 0.9
+    """
+    path = Path(backup_dir)
+
+    if any(path.glob("**/*.zst")):
+        return "0.19 (zst)"
+    if any(path.glob("**/*.gz")):
+        return "0.9 (gz)"
+
+    return "unknown"
+
+
 def run_myloader(
     spec: MyLoaderSpec,
     *,
     timeout: float | None = None,
+    progress_callback: Callable[[float, dict[str, Any]], None] | None = None,
 ) -> MyLoaderResult:
     """Execute myloader and return structured result.
 
     Raises:
         MyLoaderError: On non-zero exit, startup failure, or timeout.
     """
+    logger = logging.getLogger("pulldb.restore.myloader")
     command = _build_command(spec)
 
+    # Detect version
+    version_info = _detect_backup_version(spec.backup_dir)
+    logger.info(f"Detected backup version info: {version_info}")
+
+    # Count tasks for progress
+    total_tasks = _count_restore_tasks(spec.backup_dir)
+    completed_tasks = 0
+    logger.info(f"Total restore tasks (files): {total_tasks}")
+
+    # Regex for parsing myloader output
+    # Matches: "Thread 1 restoring ..." or "** Message: Thread 1 restoring ..."
+    re_restoring = re.compile(r"(?:Thread \d+|Message: Thread \d+) restoring (.+)")
+    re_finished = re.compile(r"(?:Thread \d+|Message: Thread \d+) finished restoring (.+)")
+    
+    # Matches verbose output: "** Message: <time>: Thread <id>: restoring <content> from <filename> ..."
+    # We capture the filename after "from" until " |" (progress bar) or ". Tables" (status) or end of line.
+    re_verbose_restore = re.compile(r"Thread \d+: restoring .+ from (.+?)(?: \||\. Tables|$)")
+
+    def _progress_callback(line: str) -> None:
+        nonlocal completed_tasks
+        
+        filename = None
+        is_finished = False
+        
+        # Check for verbose output (matches both start/finish in one line effectively)
+        # This format is common in newer myloader versions or specific verbosity levels
+        match_verbose = re_verbose_restore.search(line)
+        if match_verbose:
+            raw_filename = match_verbose.group(1).strip()
+            # Clean up path if present (e.g. /tmp/.../file.sql) and remove trailing period if caught
+            filename = Path(raw_filename).name.rstrip(".")
+            is_finished = True
+
+        # Check for file completion (standard output)
+        elif match_finish := re_finished.search(line):
+            filename = match_finish.group(1).strip()
+            is_finished = True
+
+        # Check for file start
+        elif match_start := re_restoring.search(line):
+            filename = match_start.group(1).strip()
+            if progress_callback:
+                percent = min(100.0, (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0)
+                progress_callback(
+                    percent,
+                    {"status": "started", "file": filename},
+                )
+            return
+
+        # Fallback for older myloader versions or different output
+        elif ("Finished restoring" in line or "Completed" in line) and not is_finished:
+            # This might double count if regex matched, but "Finished restoring" usually refers to a table/file
+            # In myloader 0.9/0.19, "Thread X finished restoring Y" is the standard line.
+            is_finished = True
+            parts = line.strip().split()
+            filename = parts[-1] if parts else "unknown"
+
+        if is_finished and filename:
+            # Only increment if it looks like a file we counted (contains .sql)
+            # This filters out "index", "trigger", etc. which cause >100% progress
+            if ".sql" in filename:
+                completed_tasks += 1
+            
+            percent = min(100.0, (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0)
+            
+            if progress_callback:
+                progress_callback(
+                    percent,
+                    {"status": "finished", "file": filename},
+                )
+
+            # Log every 10%
+            if completed_tasks % max(1, total_tasks // 10) == 0:
+                logger.info(
+                    f"Restore progress: {percent:.1f}% "
+                    f"({completed_tasks}/{total_tasks})"
+                )
+
     try:
-        result: CommandResult = run_command(
+        result: CommandResult = run_command_streaming(
             command,
+            line_callback=_progress_callback,
             env=spec.env,
             timeout=timeout,
         )
@@ -281,7 +399,11 @@ def orchestrate_restore_workflow(
             "myloader_duration_seconds",
             MetricLabels(job_id=job.id, target=job.target, phase="myloader"),
         ):
-            myloader_result = run_myloader(spec.myloader_spec, timeout=spec.timeout)
+            myloader_result = run_myloader(
+                spec.myloader_spec,
+                timeout=spec.timeout,
+                progress_callback=spec.progress_callback,
+            )
         result["myloader"] = myloader_result
 
         # 3. Post-SQL execution (if scripts exist in script_dir)

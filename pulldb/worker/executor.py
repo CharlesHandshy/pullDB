@@ -287,6 +287,33 @@ class WorkerJobExecutor:
                 script_dir,
             )
 
+            # Progress callback for restore phase
+            last_percent_logged = -1.0
+
+            def _restore_progress_callback(percent: float, detail: dict[str, t.Any]) -> None:
+                nonlocal last_percent_logged
+                
+                # Log file statistics as requested
+                if detail.get("status") == "finished":
+                    logger.info(
+                        f"Restored file: {detail.get('file')}",
+                        extra={
+                            "job_id": job.id,
+                            "phase": "restore_file",
+                            "file": detail.get("file"),
+                            "percent": f"{percent:.1f}",
+                        }
+                    )
+                
+                # Emit progress event (throttled to every 5% or completion)
+                if percent >= 100.0 or (percent - last_percent_logged) >= 5.0:
+                    self._append_event(
+                        job.id,
+                        "restore_progress",
+                        {"percent": percent, "detail": detail},
+                    )
+                    last_percent_logged = percent
+
             workflow_spec = build_restore_workflow_spec(
                 config=self.config,
                 job=job,
@@ -295,6 +322,7 @@ class WorkerJobExecutor:
                 staging_conn=staging_conn,
                 post_sql_conn=post_sql_conn,
                 format_tag=backup_spec.format_tag,
+                progress_callback=_restore_progress_callback,
             )
             self._append_event(
                 job.id,
