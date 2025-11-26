@@ -41,7 +41,7 @@ LOCAL TESTING: If AWS secret resolves to unreachable host, override via:
 DATABASE AUTO-SETUP:
     Tests will automatically:
     1. Create the 'pulldb' database if it doesn't exist
-    2. Deploy the schema from schema/pulldb/*.sql
+    2. Deploy the schema from schema/pulldb_service/*.sql
     3. Seed required settings
     4. Clean up (drop database) ONLY if it was created by tests
 
@@ -138,9 +138,9 @@ def _deploy_schema(socket_path: Path) -> None:
     cursor.execute("CREATE DATABASE IF NOT EXISTS pulldb")
     conn.close()
 
-    # Deploy schema files
+    # Deploy schema files (schema dir is pulldb_service/)
     project_root = Path(__file__).parent.parent.parent
-    schema_dir = project_root / "schema" / "pulldb"
+    schema_dir = project_root / "schema" / "pulldb_service"
 
     mysql_client = shutil.which("mysql")
     if mysql_client and schema_dir.exists():
@@ -262,7 +262,8 @@ def _create_database_and_schema(
     _DATABASE_CREATED_BY_TESTS = True
 
     # Deploy schema files
-    schema_dir = _PROJECT_ROOT / "schema" / "pulldb"
+    # Schema lives in pulldb_service/ but we create test db named "pulldb"
+    schema_dir = _PROJECT_ROOT / "schema" / "pulldb_service"
     mysql_client = shutil.which("mysql")
 
     if mysql_client and schema_dir.exists():
@@ -563,7 +564,7 @@ def ensure_database(
 
     This fixture:
     1. Checks if 'pulldb' database exists
-    2. If not, creates it and deploys schema from schema/pulldb/*.sql
+    2. If not, creates it and deploys schema from schema/pulldb_service/*.sql
     3. Tracks whether it was created for cleanup
     4. On teardown, drops the database ONLY if it was created by tests
 
@@ -595,7 +596,7 @@ def ensure_database(
             f"Failed to ensure pulldb database exists: {e}\n\n"
             f"Manual setup:\n"
             f"  mysql -u {creds.username} -p -e 'CREATE DATABASE pulldb'\n"
-            f"  cat schema/pulldb/*.sql | mysql -u {creds.username} -p pulldb"
+            f"  cat schema/pulldb_service/*.sql | mysql -u {creds.username} -p pulldb"
         )
 
     yield created
