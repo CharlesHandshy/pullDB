@@ -33,6 +33,8 @@ STAGING_BUCKET = os.environ.get(
     "PULLDB_STAGING_BUCKET", "pestroutesrdsdbs"
 )  # default from docs
 STAGING_PREFIX = os.environ.get("PULLDB_STAGING_PREFIX", "daily/stg/")
+# S3 bucket access requires pr-staging profile (staging account 333204494849)
+S3_AWS_PROFILE = os.environ.get("PULLDB_S3_AWS_PROFILE", "pr-staging")
 
 
 @pytest.mark.timeout(30)
@@ -40,9 +42,12 @@ def test_real_staging_backup_listing_optional() -> None:  # pragma: no cover
     """List real staging backup objects and validate at least one tar present.
 
     Skips gracefully when AWS not configured or access errors occur.
+    Uses PULLDB_S3_AWS_PROFILE (default: pr-staging) for S3 access.
     """
     try:
-        s3 = boto3.client("s3")
+        # Use the S3-specific AWS profile for bucket access
+        session = boto3.Session(profile_name=S3_AWS_PROFILE)
+        s3 = session.client("s3")
         paginator = s3.get_paginator("list_objects_v2")
         pages = paginator.paginate(Bucket=STAGING_BUCKET, Prefix=STAGING_PREFIX)
     except ProfileNotFound as e:  # AWS profile doesn't exist in config
