@@ -1,11 +1,22 @@
 #!/bin/sh
 set -e
 
+# =============================================================================
+# pullDB Server Package - Post-Removal Script
+# =============================================================================
+#
+# dpkg -r pulldb (remove): Removes everything EXCEPT .env and .aws/config
+# dpkg -P pulldb (purge):  Removes EVERYTHING including config files
+#
+# =============================================================================
+
 INSTALL_PREFIX="/opt/pulldb.service"
+SYSTEM_USER="pulldb_service"
 WORKER_UNIT_DEST="/etc/systemd/system/pulldb-worker.service"
 API_UNIT_DEST="/etc/systemd/system/pulldb-api.service"
 
 cleanup_systemd() {
+    echo "Removing systemd units..."
     if command -v systemctl >/dev/null 2>&1; then
         systemctl stop pulldb-worker.service >/dev/null 2>&1 || true
         systemctl disable pulldb-worker.service >/dev/null 2>&1 || true
@@ -18,65 +29,81 @@ cleanup_systemd() {
     fi
 }
 
-# Remove application files but preserve user configuration
-cleanup_install_dir() {
+# Remove application files but preserve .env and .aws/config
+remove_keeping_config() {
+    echo "Removing pullDB (preserving configuration)..."
+    
     if [ ! -d "${INSTALL_PREFIX}" ]; then
         return 0
     fi
     
-    cd "${INSTALL_PREFIX}" || return 0
+    # Remove all known directories
+    rm -rf "${INSTALL_PREFIX}/venv" 2>/dev/null || true
+    rm -rf "${INSTALL_PREFIX}/dist" 2>/dev/null || true
+    rm -rf "${INSTALL_PREFIX}/scripts" 2>/dev/null || true
+    rm -rf "${INSTALL_PREFIX}/systemd" 2>/dev/null || true
+    rm -rf "${INSTALL_PREFIX}/logs" 2>/dev/null || true
+    rm -rf "${INSTALL_PREFIX}/work" 2>/dev/null || true
+    rm -rf "${INSTALL_PREFIX}/after_sql" 2>/dev/null || true
+    rm -rf "${INSTALL_PREFIX}/template_after_sql" 2>/dev/null || true
     
-    # Check for files to preserve
-    PRESERVE_ENV=0
-    PRESERVE_AWS_CONFIG=0
+    # Remove known files (but NOT .env)
+    rm -f "${INSTALL_PREFIX}/AWS-SETUP.md" 2>/dev/null || true
+    rm -f "${INSTALL_PREFIX}/SERVICE-README.md" 2>/dev/null || true
+    rm -f "${INSTALL_PREFIX}/env.example" 2>/dev/null || true
+    rm -f "${INSTALL_PREFIX}/aws.config.example" 2>/dev/null || true
     
-    if [ -f ".env" ]; then
-        PRESERVE_ENV=1
-        echo "Preserving ${INSTALL_PREFIX}/.env"
+    # Clean .aws directory but preserve config
+    if [ -d "${INSTALL_PREFIX}/.aws" ]; then
+        # Remove everything except config
+        find "${INSTALL_PREFIX}/.aws" -type f ! -name 'config' -delete 2>/dev/null || true
+        find "${INSTALL_PREFIX}/.aws" -mindepth 1 -type d -empty -delete 2>/dev/null || true
     fi
     
-    if [ -f ".aws/config" ]; then
-        PRESERVE_AWS_CONFIG=1
-        echo "Preserving ${INSTALL_PREFIX}/.aws/config"
+    # Remove .env backups but keep .env
+    find "${INSTALL_PREFIX}" -maxdepth 1 -name '.env.backup.*' -delete 2>/dev/null || true
+    find "${INSTALL_PREFIX}" -maxdepth 1 -name '.env.merged' -delete 2>/dev/null || true
+    
+    # Check what's left
+    if [ -f "${INSTALL_PREFIX}/.env" ]; then
+        echo "  Preserved: ${INSTALL_PREFIX}/.env"
+    fi
+    if [ -f "${INSTALL_PREFIX}/.aws/config" ]; then
+        echo "  Preserved: ${INSTALL_PREFIX}/.aws/config"
     fi
     
-    # Remove known directories
-    rm -rf venv dist scripts systemd logs work 2>/dev/null || true
+    echo "  To remove completely: sudo dpkg -P pulldb"
+}
+
+# Remove everything including config
+purge_all() {
+    echo "Purging pullDB (removing all files including configuration)..."
     
-    # Remove known files (but not .env)
-    rm -f AWS-SETUP.md SERVICE-README.md env.example aws.config.example 2>/dev/null || true
-    
-    # Clean up .aws directory (preserve config if it exists)
-    if [ -d ".aws" ]; then
-        # Remove everything in .aws except config
-        find .aws -type f ! -name 'config' -delete 2>/dev/null || true
-        # Remove .aws directory if config doesn't exist
-        if [ "$PRESERVE_AWS_CONFIG" -eq 0 ]; then
-            rm -rf .aws 2>/dev/null || true
-        fi
+    # Remove the entire install directory
+    if [ -d "${INSTALL_PREFIX}" ]; then
+        rm -rf "${INSTALL_PREFIX}"
+        echo "  Removed: ${INSTALL_PREFIX}"
     fi
     
-    cd /
+    # Optionally remove system user (commented out - may be in use)
+    # if id -u "${SYSTEM_USER}" >/dev/null 2>&1; then
+    #     deluser --system "${SYSTEM_USER}" 2>/dev/null || true
+    #     echo "  Removed user: ${SYSTEM_USER}"
+    # fi
     
-    # Remove install prefix only if nothing is preserved
-    if [ "$PRESERVE_ENV" -eq 0 ] && [ "$PRESERVE_AWS_CONFIG" -eq 0 ]; then
-        rm -rf "${INSTALL_PREFIX}" 2>/dev/null || true
-    else
-        echo "Configuration files preserved in ${INSTALL_PREFIX}"
-        echo "To remove completely: sudo rm -rf ${INSTALL_PREFIX}"
-    fi
+    echo "  Purge complete"
 }
 
 case "$1" in
+    remove)
+        cleanup_systemd
+        remove_keeping_config
+        ;;
     purge)
         cleanup_systemd
-        cleanup_install_dir
+        purge_all
         ;;
-    remove)
-        ;;
-    abort-install|abort-upgrade|fail-upgrade)
-        ;;
-    upgrade)
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
         ;;
     *)
         ;;
