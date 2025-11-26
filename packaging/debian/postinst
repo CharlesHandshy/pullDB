@@ -9,6 +9,8 @@ WORKER_UNIT_DEST="/etc/systemd/system/pulldb-worker.service"
 API_UNIT_SOURCE="${INSTALL_PREFIX}/systemd/pulldb-api.service"
 API_UNIT_DEST="/etc/systemd/system/pulldb-api.service"
 ENV_FILE="${INSTALL_PREFIX}/.env"
+MERGE_SCRIPT="${INSTALL_PREFIX}/scripts/merge-config.sh"
+BACKUP_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
 # Default data directories (can be overridden in .env)
 DEFAULT_LOG_DIR="/mnt/data/logs/pulldb.service"
@@ -77,9 +79,21 @@ configure_aws_setup() {
         chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${AWS_DIR}/config.example"
     fi
 
-    # Only create config if it doesn't exist
-    if [ -f "${AWS_DIR}/config" ]; then
-        echo "Existing ${AWS_DIR}/config preserved. See config.example for defaults."
+    # Merge or create .aws/config
+    if [ -f "${AWS_DIR}/config" ] && [ -f "${AWS_DIR}/config.example" ]; then
+        # Backup existing config
+        cp "${AWS_DIR}/config" "${AWS_DIR}/config.backup.${BACKUP_TIMESTAMP}"
+        echo "Backed up ${AWS_DIR}/config to config.backup.${BACKUP_TIMESTAMP}"
+        
+        # Merge existing with new template
+        if [ -x "${MERGE_SCRIPT}" ]; then
+            "${MERGE_SCRIPT}" ini "${AWS_DIR}/config" "${AWS_DIR}/config.example" "${AWS_DIR}/config.merged"
+            mv "${AWS_DIR}/config.merged" "${AWS_DIR}/config"
+            chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${AWS_DIR}/config"
+            chmod 600 "${AWS_DIR}/config"
+        else
+            echo "Warning: Merge script not found, preserving existing config"
+        fi
     elif [ -f "${AWS_DIR}/config.example" ]; then
         cp "${AWS_DIR}/config.example" "${AWS_DIR}/config"
         chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${AWS_DIR}/config"
@@ -98,11 +112,25 @@ configure_aws_setup() {
 }
 
 configure_env_file() {
-    # Only create .env if it doesn't exist
-    if [ -f "${ENV_FILE}" ]; then
-        echo "Existing ${ENV_FILE} preserved. See env.example for defaults."
-    elif [ -f "${INSTALL_PREFIX}/env.example" ]; then
-        cp "${INSTALL_PREFIX}/env.example" "${ENV_FILE}"
+    local ENV_EXAMPLE="${INSTALL_PREFIX}/env.example"
+    
+    if [ -f "${ENV_FILE}" ] && [ -f "${ENV_EXAMPLE}" ]; then
+        # Backup existing .env
+        cp "${ENV_FILE}" "${ENV_FILE}.backup.${BACKUP_TIMESTAMP}"
+        echo "Backed up ${ENV_FILE} to .env.backup.${BACKUP_TIMESTAMP}"
+        
+        # Merge existing with new template
+        if [ -x "${MERGE_SCRIPT}" ]; then
+            "${MERGE_SCRIPT}" env "${ENV_FILE}" "${ENV_EXAMPLE}" "${ENV_FILE}.merged"
+            mv "${ENV_FILE}.merged" "${ENV_FILE}"
+            chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${ENV_FILE}"
+            chmod 600 "${ENV_FILE}"
+        else
+            echo "Warning: Merge script not found, preserving existing .env"
+        fi
+    elif [ -f "${ENV_EXAMPLE}" ]; then
+        # Fresh install - copy template
+        cp "${ENV_EXAMPLE}" "${ENV_FILE}"
         chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${ENV_FILE}"
         chmod 600 "${ENV_FILE}"
         echo "Created ${ENV_FILE} from example."

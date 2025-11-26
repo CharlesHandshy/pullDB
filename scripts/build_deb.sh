@@ -62,6 +62,7 @@ cp scripts/upgrade_pulldb.sh "$APP_ROOT/scripts/"
 cp scripts/configure_server.sh "$APP_ROOT/scripts/"
 cp scripts/monitor_jobs.py "$APP_ROOT/scripts/"
 cp scripts/service-validate.sh "$APP_ROOT/scripts/"
+cp scripts/merge-config.sh "$APP_ROOT/scripts/"
 chmod +x "$APP_ROOT/scripts/"*.sh "$APP_ROOT/scripts/"*.py
 
 # Copy systemd unit files to dedicated directory
