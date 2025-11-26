@@ -86,6 +86,7 @@ def test_poll_loop_empty_queue_backs_off(
     mock_job_executor.assert_not_called()
 
 
+@pytest.mark.timeout(60)  # Takes ~32s due to backoff sleeps across 5 iterations
 def test_poll_loop_respects_max_iterations(
     mock_job_repo: MagicMock, mock_job_executor: MagicMock
 ) -> None:

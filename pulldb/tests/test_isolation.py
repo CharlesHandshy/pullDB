@@ -23,9 +23,9 @@ def test_isolation_environment(isolated_mysql: str) -> None:
 
 
 @pytest.mark.integration
-def test_database_connection(isolated_mysql: str, mysql_pool: MySQLPool) -> None:
+def test_database_connection(isolated_mysql: str, isolated_mysql_pool: MySQLPool) -> None:
     """Verify we can connect to the isolated database."""
-    with mysql_pool.connection() as conn:
+    with isolated_mysql_pool.connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         result = cursor.fetchone()
@@ -33,9 +33,9 @@ def test_database_connection(isolated_mysql: str, mysql_pool: MySQLPool) -> None
 
 
 @pytest.mark.integration
-def test_schema_deployed(isolated_mysql: str, mysql_pool: MySQLPool) -> None:
+def test_schema_deployed(isolated_mysql: str, isolated_mysql_pool: MySQLPool) -> None:
     """Verify schema was deployed to the isolated database."""
-    with mysql_pool.connection() as conn:
+    with isolated_mysql_pool.connection() as conn:
         cursor = conn.cursor()
         # Check for jobs table
         cursor.execute("SHOW TABLES LIKE 'jobs'")
@@ -47,9 +47,9 @@ def test_schema_deployed(isolated_mysql: str, mysql_pool: MySQLPool) -> None:
 
 
 @pytest.mark.integration
-def test_data_persistence(isolated_mysql: str, mysql_pool: MySQLPool) -> None:
+def test_data_persistence(isolated_mysql: str, isolated_mysql_pool: MySQLPool) -> None:
     """Verify we can write and read data."""
-    with mysql_pool.connection() as conn:
+    with isolated_mysql_pool.connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             "REPLACE INTO settings (setting_key, setting_value) VALUES (%s, %s)",

@@ -139,12 +139,19 @@ def _deploy_schema(socket_path: Path) -> None:
     conn.close()
 
     # Deploy schema files (schema dir is pulldb_service/)
+    # Skip 300_mysql_users.sql - it contains GRANT statements for pulldb_service.*
+    # which don't apply to isolated test instances using 'pulldb' database
     project_root = Path(__file__).parent.parent.parent
     schema_dir = project_root / "schema" / "pulldb_service"
+
+    # Files to skip in isolated testing (production-only setup)
+    skip_files = {"300_mysql_users.sql"}
 
     mysql_client = shutil.which("mysql")
     if mysql_client and schema_dir.exists():
         for sql_file in sorted(schema_dir.glob("*.sql")):
+            if sql_file.name in skip_files:
+                continue
             with open(sql_file) as f:
                 subprocess.run(
                     [
@@ -620,10 +627,17 @@ def mysql_pool(
     """Create MySQLPool for tests using AWS Secrets Manager credentials.
 
     Depends on ensure_database to guarantee the pulldb database exists.
+    Also seeds test data (settings + test user) required by FK constraints.
 
     Returns:
         MySQLPool: Shared connection pool for tests.
     """
+    from pulldb.tests.test_constants import (
+        TEST_USER_CODE,
+        TEST_USER_ID,
+        TEST_USERNAME,
+    )
+
     creds = mysql_credentials
     kwargs: dict[str, Any] = {
         "host": creds.host,
@@ -637,30 +651,10 @@ def mysql_pool(
     if socket_path:
         kwargs["unix_socket"] = socket_path
 
-    return MySQLPool(**kwargs)
+    pool = MySQLPool(**kwargs)
 
-
-@pytest.fixture(scope="session", autouse=True)
-def seed_settings(mysql_pool: MySQLPool) -> None:
-    """Seed required settings and test user for integration tests.
-
-        Ensures settings table contains values for:
-            - default_dbhost
-            - s3_bucket_stg (mapped to config.s3_bucket_path)
-            - s3_bucket_path (legacy compat)
-
-        Also seeds auth_users with test user (required by FK constraint on jobs).
-
-    Uses INSERT ... ON DUPLICATE KEY to avoid test flakiness if rows exist.
-    """
-    # Import test constants for seeding
-    from pulldb.tests.test_constants import (
-        TEST_USER_CODE,
-        TEST_USER_ID,
-        TEST_USERNAME,
-    )
-
-    with mysql_pool.connection() as conn:
+    # Seed test data (test user + settings) - required by FK constraints
+    with pool.connection() as conn:
         cursor = conn.cursor()
         # Seed test user first (jobs table has FK to auth_users)
         cursor.execute(
@@ -671,6 +665,7 @@ def seed_settings(mysql_pool: MySQLPool) -> None:
             """,
             (TEST_USER_ID, TEST_USERNAME, TEST_USER_CODE),
         )
+        # Seed required settings
         cursor.execute(
             """
             INSERT INTO settings (setting_key, setting_value)
@@ -693,6 +688,9 @@ def seed_settings(mysql_pool: MySQLPool) -> None:
             """
         )
         conn.commit()
+        cursor.close()
+
+    return pool
 
 
 @pytest.fixture(scope="session")
@@ -820,6 +818,30 @@ def isolated_mysql(
         proc.kill()
 
 
+@pytest.fixture(scope="session")
+def isolated_mysql_pool(
+    isolated_mysql: str,
+) -> MySQLPool:
+    """Create MySQLPool for isolated MySQL testing.
+
+    Unlike mysql_pool, this does NOT depend on ensure_database or mysql_credentials.
+    The isolated_mysql fixture sets up the database and schema directly.
+
+    Args:
+        isolated_mysql: Socket path from isolated_mysql fixture.
+
+    Returns:
+        MySQLPool: Connection pool for isolated MySQL instance.
+    """
+    return MySQLPool(
+        host="localhost",
+        user="root",
+        password="",
+        database="pulldb",
+        unix_socket=isolated_mysql,
+    )
+
+
 @pytest.fixture
 def isolated_worker(
     isolated_mysql: str,
@@ -839,6 +861,11 @@ def isolated_worker(
     # We set it to empty string instead of popping to prevent load_dotenv from
     # restoring it from a local .env file.
     env["PULLDB_COORDINATION_SECRET"] = ""
+
+    # Worker service requires per-service MySQL user env var
+    # In isolated mode, we use root with no password
+    env["PULLDB_WORKER_MYSQL_USER"] = "root"
+    env["PULLDB_WORKER_MYSQL_PASSWORD"] = ""
 
     project_root = str(Path(__file__).parent.parent.parent)
     if "PYTHONPATH" in env:

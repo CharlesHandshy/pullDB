@@ -8,6 +8,7 @@ Uses AWS Secrets Manager to resolve MySQL credentials for network login.
 
 import os
 from collections.abc import Generator
+from typing import Any
 
 import pytest
 
@@ -32,7 +33,9 @@ class TestConfigIntegration:
     """Integration tests with real MySQL database."""
 
     def test_load_from_real_database(
-        self, mysql_network_credentials: tuple[str, str, str]
+        self,
+        mysql_network_credentials: tuple[str, str, str],
+        mysql_pool: Any,  # Ensure database exists with test data
     ) -> None:
         """Test loading config from actual pulldb database.
 
@@ -74,7 +77,9 @@ class TestConfigIntegration:
         assert config.default_dbhost == "localhost"
 
     def test_environment_override_with_real_database(
-        self, mysql_network_credentials: tuple[str, str, str]
+        self,
+        mysql_network_credentials: tuple[str, str, str],
+        mysql_pool: Any,  # Ensure database exists with test data
     ) -> None:
         """Test that environment variables override MySQL settings."""
         host, username, password = mysql_network_credentials
@@ -101,7 +106,9 @@ class TestConfigIntegration:
         assert config.default_dbhost == "override-dbhost"
 
     def test_two_phase_loading_pattern(
-        self, mysql_network_credentials: tuple[str, str, str]
+        self,
+        mysql_network_credentials: tuple[str, str, str],
+        mysql_pool: Any,  # Ensure database exists with test data
     ) -> None:
         """Test the recommended two-phase loading pattern.
 
