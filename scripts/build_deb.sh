@@ -31,17 +31,26 @@ chmod 0755 "$DEBIAN_DIR/postinst" "$DEBIAN_DIR/prerm" "$DEBIAN_DIR/postrm"
 # Lay down application skeleton under /opt/pulldb.service (installed path)
 APP_ROOT="$WORKDIR/opt/pulldb.service"
 mkdir -p "$APP_ROOT/scripts"
+mkdir -p "$APP_ROOT/systemd"
 mkdir -p "$APP_ROOT/dist"
 
-# Copy install scripts and systemd unit
+# Copy install scripts
 cp scripts/install_pulldb.sh "$APP_ROOT/scripts/"
 cp scripts/uninstall_pulldb.sh "$APP_ROOT/scripts/"
 cp scripts/upgrade_pulldb.sh "$APP_ROOT/scripts/"
 cp scripts/configure_server.sh "$APP_ROOT/scripts/"
 cp scripts/monitor_jobs.py "$APP_ROOT/scripts/"
-cp packaging/systemd/pulldb-worker.service "$APP_ROOT/scripts/"
-cp docs/AWS-SETUP.md "$APP_ROOT/"
 chmod +x "$APP_ROOT/scripts/"*.sh "$APP_ROOT/scripts/"*.py
+
+# Copy systemd unit files to dedicated directory
+cp packaging/systemd/pulldb-worker.service "$APP_ROOT/systemd/"
+cp packaging/systemd/pulldb-api.service "$APP_ROOT/systemd/"
+
+# Copy documentation and example config files to package root
+cp docs/AWS-SETUP.md "$APP_ROOT/"
+cp packaging/SERVICE-README.md "$APP_ROOT/"
+cp packaging/env.example "$APP_ROOT/"
+cp packaging/aws.config.example "$APP_ROOT/"
 
 # Copy the wheel file (fail if not found)
 if compgen -G "dist/pulldb-*.whl" > /dev/null; then
@@ -54,8 +63,8 @@ fi
 # Install documentation to /usr/share/doc/pulldb
 DOC_DIR="$WORKDIR/usr/share/doc/pulldb"
 mkdir -p "$DOC_DIR"
-cp README.md "$DOC_DIR/"
 cp docs/AWS-SETUP.md "$DOC_DIR/"
+cp packaging/SERVICE-README.md "$DOC_DIR/"
 # Create a basic copyright file if none exists (Debian policy)
 if [ -f LICENSE ]; then
     cp LICENSE "$DOC_DIR/copyright"

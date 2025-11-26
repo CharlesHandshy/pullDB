@@ -11,11 +11,25 @@
 pullDB stores MySQL credentials for target database servers in the `db_hosts` table with references to AWS Secrets Manager or SSM Parameter Store. The `credential_ref` field contains paths like:
 - `aws-secretsmanager:/pulldb/mysql/localhost-test`
 
+### Secret Structure (IMPORTANT)
+
+**Secrets Manager secrets for `/pulldb/mysql/*` contain only:**
+- `host`: MySQL server hostname or endpoint
+- `password`: MySQL password
+
+**Other connection parameters come from environment variables (`.env` file):**
+- `PULLDB_MYSQL_USER`: MySQL username (required)
+- `PULLDB_MYSQL_PORT`: MySQL port (optional, defaults to 3306)
+- `PULLDB_MYSQL_DATABASE`: Database name (optional)
+
+This separation ensures sensitive credentials (host + password) are stored securely in AWS, while non-sensitive configuration (username, port) remains in the deployment environment.
+
 When connecting to a target database server, pullDB:
 1. Reads the `credential_ref` from the `db_hosts` table
 2. Determines the credential type (Secrets Manager or SSM Parameter Store)
-3. Retrieves the credential using the appropriate AWS service
-4. Connects to the target MySQL server using the retrieved credentials
+3. Retrieves `host` and `password` from AWS
+4. Reads `username`, `port` from environment variables
+5. Connects to the target MySQL server using the combined credentials
 
 ## Secrets Manager vs SSM Parameter Store
 
@@ -85,15 +99,14 @@ When connecting to a target database server, pullDB:
 
 ```bash
 # Local sandbox secret used by default in development environments
+# NOTE: Only host and password are stored in Secrets Manager
+# username, port, and database come from environment variables
 aws secretsmanager create-secret \
     --name /pulldb/mysql/localhost-test \
-    --description "MySQL credentials for local sandbox restore target" \
+    --description "MySQL credentials for local sandbox restore target (host + password only)" \
     --secret-string '{
-        "username": "pulldb_app",
         "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-        "host": "localhost",
-        "port": 3306,
-        "database": "pulldb_sandbox"
+        "host": "localhost"
     }' \
     --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=local-sandbox
 
@@ -106,19 +119,26 @@ aws secretsmanager describe-secret --secret-id /pulldb/mysql/localhost-test
 
 ```bash
 # Create secret for pullDB's own coordination MySQL database
+# NOTE: Only host and password are stored in Secrets Manager
+# username, port, and database come from environment variables
 aws secretsmanager create-secret \
     --name /pulldb/mysql/coordination-db \
-    --description "MySQL credentials for pullDB coordination database" \
+    --description "MySQL credentials for pullDB coordination database (host + password only)" \
     --secret-string '{
-        "username": "pulldb_app",
         "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-        "host": "pulldb-coordination-db.cluster-xxxxx.us-east-1.rds.amazonaws.com",
-        "port": 3306,
-        "database": "pulldb"
+        "host": "pulldb-coordination-db.cluster-xxxxx.us-east-1.rds.amazonaws.com"
     }' \
     --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=coordination
 
 aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db
+```
+
+**Required environment variables for coordination database access:**
+```bash
+# Add to .env file or systemd environment
+PULLDB_MYSQL_USER=pulldb_app
+PULLDB_MYSQL_PORT=3306
+PULLDB_MYSQL_DATABASE=pulldb
 ```
 
 ## Step 2: Update IAM Policy for Secrets Manager Access
@@ -463,14 +483,15 @@ sudo -u pulldb bash
 # Test retrieving secret
 aws secretsmanager get-secret-value --secret-id /pulldb/mysql/localhost-test
 
-# Should return JSON with SecretString containing credentials
+# Should return JSON with SecretString containing credentials (host + password only)
 # {
 #   "ARN": "arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/localhost-test-xxxxx",
 #   "Name": "/pulldb/mysql/localhost-test",
 #   "VersionId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-#   "SecretString": "{\"username\":\"pulldb_app\",\"password\":\"...\",\"host\":\"...\",\"port\":3306}",
+#   "SecretString": "{\"password\":\"...\",\"host\":\"...\"}",
 #   "CreatedDate": "2025-10-31T12:00:00.000Z"
 # }
+# NOTE: username, port, and database come from PULLDB_MYSQL_* env vars
 
 # Test coordination database secret
 aws secretsmanager get-secret-value --secret-id /pulldb/mysql/coordination-db
@@ -487,6 +508,10 @@ sudo -u pulldb bash
 cd /opt/pulldb
 source venv/bin/activate
 
+# Ensure environment variables are set
+export PULLDB_MYSQL_USER=pulldb_app
+export PULLDB_MYSQL_PORT=3306
+
 python3 << 'EOF'
 from pulldb.infra.secrets import CredentialResolver
 
@@ -496,8 +521,8 @@ resolver = CredentialResolver()
 # Test localhost-test credentials
 creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/localhost-test')
 print(f"✅ localhost-test credentials resolved:")
-print(f"   Username: {creds['username']}")
-print(f"   Host: {creds['host']}")
+print(f"   Username: {creds.username}")  # From PULLDB_MYSQL_USER env var
+print(f"   Host: {creds.host}")
 print(f"   Port: {creds.get('port', 3306)}")
 
 print("\n✅ All Secrets Manager credential resolutions successful!")
@@ -639,15 +664,14 @@ aws secretsmanager describe-secret --secret-id /pulldb/mysql/localhost-test
 aws secretsmanager get-secret-value --secret-id /pulldb/mysql/localhost-test \
     --query 'SecretString' --output text
 
-# Update secret with valid JSON
+# Update secret with valid JSON (host + password only)
 aws secretsmanager put-secret-value \
     --secret-id /pulldb/mysql/localhost-test \
     --secret-string '{
-        "username": "pulldb_app",
         "password": "password_here",
-        "host": "localhost",
-        "port": 3306
+        "host": "localhost"
     }'
+# NOTE: username and port come from PULLDB_MYSQL_USER and PULLDB_MYSQL_PORT env vars
 ```
 
 ## Cost Optimization

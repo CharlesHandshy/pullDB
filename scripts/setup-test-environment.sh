@@ -52,8 +52,10 @@ readonly INSTALL_PREFIX="${TEST_ENV_DIR}/opt/pulldb"
 readonly LOG_FILE="$(pwd)/setup-test-env.log"
 
 # MySQL test database configuration
-readonly TEST_DB_NAME="pulldb_test_coordination"
-readonly TEST_DB_USER="pulldb_usability_test"
+# Database name follows pattern: pulldb_<username>
+readonly TEST_DB_USER_BASE="${SUDO_USER:-$USER}"
+readonly TEST_DB_NAME="pulldb_${TEST_DB_USER_BASE}"
+readonly TEST_DB_USER="pullDbService"
 readonly TEST_DB_PASS="pulldb_test_$(openssl rand -hex 8)"
 
 # Flags
@@ -327,7 +329,10 @@ setup_mysql_database() {
     eval "$mysql_cmd" <<EOF
 CREATE DATABASE IF NOT EXISTS ${TEST_DB_NAME};
 CREATE USER IF NOT EXISTS '${TEST_DB_USER}'@'localhost' IDENTIFIED BY '${TEST_DB_PASS}';
+-- Grant on specific database
 GRANT ALL PRIVILEGES ON ${TEST_DB_NAME}.* TO '${TEST_DB_USER}'@'localhost';
+-- Grant on all pulldb_ prefixed databases (for multi-user support)
+GRANT ALL PRIVILEGES ON \`pulldb_%\`.* TO '${TEST_DB_USER}'@'localhost';
 FLUSH PRIVILEGES;
 EOF
 

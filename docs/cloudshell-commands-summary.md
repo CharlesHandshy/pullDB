@@ -195,28 +195,25 @@ aws ec2 describe-instances --instance-ids $INSTANCE_ID \
 
 ```bash
 # Create coordination database secret (MANDATORY)
+# NOTE: Secrets only store host + password. Username/port/database come from env vars:
+#   PULLDB_MYSQL_USER (required), PULLDB_MYSQL_PORT (default 3306), PULLDB_MYSQL_DATABASE (optional)
 aws secretsmanager create-secret \
     --name /pulldb/mysql/coordination-db \
     --description "MySQL credentials for pullDB coordination database" \
     --secret-string '{
-        "username": "pulldb_app",
         "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-        "host": "localhost",
-        "port": 3306,
-        "database": "pulldb"
+        "host": "localhost"
     }' \
     --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=coordination
 
 # Create db-local-dev secret (local sandbox default)
+# NOTE: Secrets only store host + password. Username/port/database come from env vars.
 aws secretsmanager create-secret \
   --name /pulldb/mysql/localhost-test \
   --description "MySQL credentials for local sandbox restore target" \
   --secret-string '{
-    "username": "pulldb_app",
     "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-    "host": "localhost",
-    "port": 3306,
-    "database": "pulldb_sandbox"
+    "host": "localhost"
   }' \
   --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=local-sandbox
 
@@ -454,7 +451,7 @@ aws s3 ls s3://pestroutesrdsdbs/daily/stg/ | head
 # 4. Test secrets access
 aws secretsmanager get-secret-value --secret-id /pulldb/mysql/coordination-db \
     --query SecretString --output text | jq .
-# Expected: JSON with username, password, host, port
+# Expected: JSON with password, host (username/port come from env vars)
 
 # 5. Test Python integration
 python3 << 'PYTHON'

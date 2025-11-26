@@ -48,7 +48,7 @@ fi
 # Install documentation to /usr/share/doc/pulldb-client
 DOC_DIR="$WORKDIR/usr/share/doc/pulldb-client"
 mkdir -p "$DOC_DIR"
-cp README.md "$DOC_DIR/"
+cp packaging/CLIENT-README.md "$DOC_DIR/"
 if [ -f LICENSE ]; then
     cp LICENSE "$DOC_DIR/copyright"
 else

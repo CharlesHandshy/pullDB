@@ -246,7 +246,8 @@ sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
 - [x] Create comprehensive test suite with moto mocking
 
 **Implementation Highlights**:
-- MySQLCredentials: username, password, host, port, db_cluster_identifier
+- MySQLCredentials: username (from env), password (from secret), host (from secret), port (from env), db_cluster_identifier (optional, from secret)
+- Secrets only store `host` and `password`; username/port come from `PULLDB_MYSQL_USER`/`PULLDB_MYSQL_PORT` env vars
 - CredentialResolver with `resolve(credential_ref)` method
 - Lazy boto3 client initialization (creates clients only when needed)
 - Support for AWS_PROFILE and PULLDB_AWS_PROFILE environment variables

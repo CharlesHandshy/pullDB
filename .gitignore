@@ -126,3 +126,4 @@ test-env/
 .session-context.md
 
 # NOTE: Do NOT ignore business SQL scripts in customers_after_sql/ or qa_template_after_sql/
+.backup-config/

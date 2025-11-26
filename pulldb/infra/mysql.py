@@ -898,7 +898,8 @@ class HostRepository:
         >>> repo = HostRepository(pool, resolver)
         >>> host = repo.get_host_by_hostname("localhost")
         >>> creds = repo.get_host_credentials("localhost")
-        >>> print(creds.username)  # "root" (from Secrets Manager)
+        >>> print(creds.username)  # From PULLDB_MYSQL_USER env var
+        >>> print(creds.host)      # From Secrets Manager
     """
 
     def __init__(

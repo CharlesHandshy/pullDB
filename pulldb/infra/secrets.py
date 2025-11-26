@@ -6,6 +6,15 @@ in the format:
     - aws-secretsmanager:/pulldb/mysql/localhost-test
     - aws-ssm:/pulldb/mysql/localhost-test-credentials
 
+IMPORTANT: For /pulldb/mysql/* secrets, Secrets Manager only stores:
+    - host: MySQL server hostname
+    - password: MySQL password
+
+Other connection parameters come from environment variables:
+    - PULLDB_MYSQL_USER: MySQL username (required)
+    - PULLDB_MYSQL_PORT: MySQL port (optional, defaults to 3306)
+    - PULLDB_MYSQL_DATABASE: Database name (optional)
+
 See docs/aws-secrets-manager-setup.md for complete setup instructions.
 """
 
@@ -182,14 +191,24 @@ class CredentialResolver:
     def _resolve_from_secrets_manager(self, secret_id: str) -> MySQLCredentials:
         """Resolve credentials from AWS Secrets Manager.
 
+        Secrets Manager secrets for /pulldb/mysql/* paths contain only:
+        - host: MySQL server hostname
+        - password: MySQL password
+
+        Other fields (username, port, database) come from environment variables:
+        - PULLDB_MYSQL_USER (required)
+        - PULLDB_MYSQL_PORT (optional, defaults to 3306)
+        - PULLDB_MYSQL_DATABASE (optional)
+
         Args:
             secret_id: Secrets Manager secret ID (e.g., /pulldb/mysql/localhost-test).
 
         Returns:
-            MySQLCredentials with resolved values.
+            MySQLCredentials with resolved values (secret + environment).
 
         Raises:
-            CredentialResolutionError: If secret retrieval or parsing fails.
+            CredentialResolutionError: If secret retrieval or parsing fails,
+                or if required environment variables are missing.
         """
         try:
             logger.debug(f"Fetching secret from Secrets Manager: {secret_id}")
@@ -201,18 +220,11 @@ class CredentialResolver:
             # Parse JSON secret
             secret_data = json.loads(secret_string)
 
-            # Extract required fields
-            username = secret_data.get("username")
+            # Extract fields from Secrets Manager (host and password only)
             password = secret_data.get("password")
             host = secret_data.get("host")
-            port = secret_data.get("port", 3306)
-            cluster_id = secret_data.get("dbClusterIdentifier")
 
-            # Validate required fields
-            if not username:
-                raise CredentialResolutionError(
-                    f"Secret {secret_id} missing required field 'username'"
-                )
+            # Validate required secret fields
             if password is None:
                 raise CredentialResolutionError(
                     f"Secret {secret_id} missing required field 'password'"
@@ -221,6 +233,26 @@ class CredentialResolver:
                 raise CredentialResolutionError(
                     f"Secret {secret_id} missing required field 'host'"
                 )
+
+            # Get remaining fields from environment variables
+            username = os.getenv("PULLDB_MYSQL_USER")
+            if not username:
+                raise CredentialResolutionError(
+                    "Environment variable PULLDB_MYSQL_USER is required but not set. "
+                    "Secrets Manager only provides host and password; "
+                    "username must come from the environment."
+                )
+
+            port_str = os.getenv("PULLDB_MYSQL_PORT", "3306")
+            try:
+                port = int(port_str)
+            except ValueError as e:
+                raise CredentialResolutionError(
+                    f"PULLDB_MYSQL_PORT must be a valid integer; got '{port_str}'"
+                ) from e
+
+            # dbClusterIdentifier is optional and still comes from secret if present
+            cluster_id = secret_data.get("dbClusterIdentifier")
 
             logger.info(
                 f"Successfully resolved credentials from Secrets Manager: "
@@ -231,7 +263,7 @@ class CredentialResolver:
                 username=username,
                 password=password,
                 host=host,
-                port=int(port),
+                port=port,
                 db_cluster_identifier=cluster_id,
             )
 
@@ -264,15 +296,25 @@ class CredentialResolver:
     def _resolve_from_ssm(self, parameter_name: str) -> MySQLCredentials:
         """Resolve credentials from AWS SSM Parameter Store.
 
+        SSM parameters for /pulldb/mysql/* paths contain only:
+        - host: MySQL server hostname
+        - password: MySQL password
+
+        Other fields (username, port, database) come from environment variables:
+        - PULLDB_MYSQL_USER (required)
+        - PULLDB_MYSQL_PORT (optional, defaults to 3306)
+        - PULLDB_MYSQL_DATABASE (optional)
+
         Args:
             parameter_name: SSM parameter name
                 (e.g., /pulldb/mysql/localhost-test-credentials).
 
         Returns:
-            MySQLCredentials with resolved values.
+            MySQLCredentials with resolved values (SSM + environment).
 
         Raises:
-            CredentialResolutionError: If parameter retrieval or parsing fails.
+            CredentialResolutionError: If parameter retrieval or parsing fails,
+                or if required environment variables are missing.
         """
         try:
             logger.debug(f"Fetching parameter from SSM: {parameter_name}")
@@ -284,17 +326,11 @@ class CredentialResolver:
             # Parse JSON parameter value
             param_data = json.loads(parameter_value)
 
-            # Extract required fields
-            username = param_data.get("username")
+            # Extract fields from SSM (host and password only)
             password = param_data.get("password")
             host = param_data.get("host")
-            port = param_data.get("port", 3306)
 
-            # Validate required fields
-            if not username:
-                raise CredentialResolutionError(
-                    f"Parameter {parameter_name} missing required field 'username'"
-                )
+            # Validate required SSM fields
             if password is None:
                 raise CredentialResolutionError(
                     f"Parameter {parameter_name} missing required field 'password'"
@@ -304,13 +340,30 @@ class CredentialResolver:
                     f"Parameter {parameter_name} missing required field 'host'"
                 )
 
+            # Get remaining fields from environment variables
+            username = os.getenv("PULLDB_MYSQL_USER")
+            if not username:
+                raise CredentialResolutionError(
+                    "Environment variable PULLDB_MYSQL_USER is required but not set. "
+                    "SSM Parameter Store only provides host and password; "
+                    "username must come from the environment."
+                )
+
+            port_str = os.getenv("PULLDB_MYSQL_PORT", "3306")
+            try:
+                port = int(port_str)
+            except ValueError as e:
+                raise CredentialResolutionError(
+                    f"PULLDB_MYSQL_PORT must be a valid integer; got '{port_str}'"
+                ) from e
+
             logger.info(
                 f"Successfully resolved credentials from SSM: "
                 f"{parameter_name} (user={username}, host={host})"
             )
 
             return MySQLCredentials(
-                username=username, password=password, host=host, port=int(port)
+                username=username, password=password, host=host, port=port
             )
 
         except ClientError as e:

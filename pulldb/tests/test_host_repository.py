@@ -69,14 +69,18 @@ class TestHostRepository:
     def test_get_host_credentials_secretsmanager(
         self, mysql_pool: Any, monkeypatch: Any
     ) -> None:
+        # Set required env var: Secrets Manager only stores host + password,
+        # username comes from PULLDB_MYSQL_USER
+        monkeypatch.setenv("PULLDB_MYSQL_USER", "pulldb_app")
+
         class FakeSecretsClient:
             def get_secret_value(self, SecretId: str) -> dict[str, str]:  # noqa: N803
                 assert SecretId == "/pulldb/mysql/test-host"
+                # Secrets Manager only stores host + password
+                # Username comes from PULLDB_MYSQL_USER env var
                 secret_json = (
-                    '{"username": "pulldb_app", '
-                    '"password": "secretpass", '
-                    '"host": "db-mysql-cred.example.com", '
-                    '"port": 3306}'
+                    '{"password": "secretpass", '
+                    '"host": "db-mysql-cred.example.com"}'
                 )
                 return {"SecretString": secret_json}
 

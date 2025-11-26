@@ -6,19 +6,13 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/pulldb
-Environment="PULLDB_INSTALL_PREFIX=/opt/pulldb"
-Environment="PULLDB_COORDINATION_SECRET=aws-secretsmanager:/pulldb/mysql/coordination-db"
-Environment="PULLDB_LOG_DIR=/opt/pulldb/logs"
-Environment="PULLDB_WORK_DIR=/opt/pulldb/work"
-Environment="PULLDB_LOG_LEVEL=INFO"
-Environment="PULLDB_AWS_PROFILE=pr-prod"
-Environment="AWS_DEFAULT_REGION=us-east-1"
-ExecStart=/opt/pulldb/venv/bin/pulldb-api
+WorkingDirectory=/opt/pulldb.service
+EnvironmentFile=/opt/pulldb.service/.env
+ExecStart=/opt/pulldb.service/venv/bin/pulldb-api
 Restart=on-failure
 RestartSec=5
-User=pulldb
-Group=pulldb
+User=pulldb_service
+Group=pulldb_service
 KillSignal=SIGTERM
 TimeoutStopSec=30
 NoNewPrivileges=true

@@ -2,95 +2,82 @@
 
 > **Complete Step-by-Step AWS Configuration**
 >
-> This is the **single authoritative guide** for configuring all AWS resources needed for pullDB. Follow these steps in order to set up cross-account S3 access, Secrets Manager credential storage, and EC2 instance authentication.
+> This guide is split into two sections:
+> - **Section A: Service Installation** - For deploying pullDB to production/staging EC2 instances
+> - **Section B: Developer Test Environment** - For local development and running tests
 >
-> **Last Updated**: November 4, 2025
+> **Last Updated**: November 26, 2025
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Prerequisites](#prerequisites)
-- [Quick Start Summary](#quick-start-summary)
-- [Part 1: Development Account Setup](#part-1-development-account-setup)
-- [Part 2: Staging Account Setup](#part-2-staging-account-setup)
-- [Part 3: Production Account Setup (Optional)](#part-3-production-account-setup-optional)
-- [Part 4: Secrets Manager Configuration](#part-4-secrets-manager-configuration)
-- [Part 5: Verification](#part-5-verification)
+### Section A: Service Installation
+- [A.1 Overview](#a1-overview)
+- [A.2 Prerequisites](#a2-prerequisites)
+- [A.3 EC2 Instance Profile Setup](#a3-ec2-instance-profile-setup)
+- [A.4 Cross-Account S3 Access](#a4-cross-account-s3-access)
+- [A.5 Secrets Manager Configuration](#a5-secrets-manager-configuration)
+- [A.6 Service Verification](#a6-service-verification)
+
+### Section B: Developer Test Environment
+- [B.1 Overview](#b1-overview)
+- [B.2 Prerequisites](#b2-prerequisites)
+- [B.3 AWS CLI Profile Setup](#b3-aws-cli-profile-setup)
+- [B.4 Test Environment Variables](#b4-test-environment-variables)
+- [B.5 Running Tests](#b5-running-tests)
+- [B.6 Developer Verification](#b6-developer-verification)
+
+### Reference
 - [Troubleshooting](#troubleshooting)
 - [Security Best Practices](#security-best-practices)
-- [Cost Optimization](#cost-optimization)
+- [Quick Reference Commands](#quick-reference-commands)
 
 ---
 
-## Overview
+# Section A: Service Installation
+
+> **Audience**: System administrators, DevOps engineers deploying pullDB to EC2 instances.
+>
+> **Goal**: Configure AWS resources for the pullDB service running as `pulldb_service` user on an EC2 instance with an attached instance profile.
+
+---
+
+## A.1 Overview
 
 ### Architecture
 
-pullDB uses a three-account architecture with cross-account S3 access:
+The pullDB service uses EC2 instance profiles for AWS authentication (no stored credentials):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Development Account (345321506926)                               │
+│ EC2 Instance: pulldb-dev-01                                      │
 │                                                                   │
 │ ┌─────────────────────────────────────────────────────────────┐ │
-│ │ EC2 Instance: pulldb-dev-01                                  │ │
+│ │ pullDB Service (/opt/pulldb.service)                         │ │
+│ │   User: pulldb_service                                       │ │
 │ │                                                               │ │
 │ │ ┌─────────────────┐  ┌─────────────────┐                    │ │
 │ │ │  API Service    │  │ Worker Service  │                    │ │
 │ │ │ • List S3       │  │ • Download S3   │                    │ │
 │ │ │ • HeadObject    │  │ • GetObject     │                    │ │
 │ │ └─────────────────┘  └─────────────────┘                    │ │
-│ │         ↓                    ↓                                │ │
-│ │    ┌────────────────────────────────┐                        │ │
-│ │    │ EC2 Instance Profile           │                        │ │
-│ │    │ pulldb-instance-profile        │                        │ │
-│ │    │   Attached Role:               │                        │ │
-│ │    │   pulldb-ec2-service-role      │                        │ │
-│ │    └────────────────────────────────┘                        │ │
 │ └─────────────────────────────────────────────────────────────┘ │
 │                         ↓                                         │
-│  ┌──────────────────────────────────────────────────────────── │
-│  │ AWS Secrets Manager                                          │
-│  │ • /pulldb/mysql/coordination-db (test + runtime)            │
-│  │ • /pulldb/mysql/localhost-test                              │
-│  └─────────────────────────────────────────────────────────────┘│
-│                         ↓ Direct OR AssumeRole                   │
+│    ┌────────────────────────────────────┐                        │
+│    │ EC2 Instance Profile               │                        │
+│    │ pulldb-instance-profile            │                        │
+│    │   Attached Role:                   │                        │
+│    │   pulldb-ec2-service-role          │                        │
+│    └────────────────────────────────────┘                        │
+│                         ↓                                         │
 └─────────────────────────┼───────────────────────────────────────┘
                           ↓
-┌─────────────────────────┼───────────────────────────────────────┐
-│ Staging Account (333204494849)                                   │
-│                         ↓                                         │
-│ ┌──────────────────────────────────────────────────────────────┐│
-│ │ S3 Bucket: pestroutesrdsdbs                                  ││
-│ │ Path: s3://pestroutesrdsdbs/daily/stg/                       ││
-│ │ Contains: Both mydumper formats (newer + older)              ││
-│ │ Bucket Policy: Allows dev account role                       ││
-│ │ KMS Encryption: Key policy allows dev account                ││
-│ └──────────────────────────────────────────────────────────────┘│
-└───────────────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────┼───────────────────────────────────────┐
-│ Production Account (448509429610)                                │
-│                         ↓                                         │
-│ ┌──────────────────────────────────────────────────────────────┐│
-│ │ S3 Bucket: pestroutes-rds-backup-prod-vpc-us-east-1-s3      ││
-│ │ Path: s3://.../daily/prod/                                   ││
-│ │ Contains: Older mydumper format (migrating to newer)         ││
-│ │ Bucket Policy: Allows cross-account readonly role            ││
-│ │ KMS Encryption: Key policy allows dev account                ││
-│ └──────────────────────────────────────────────────────────────┘│
-└───────────────────────────────────────────────────────────────────┘
+         ┌────────────────┴────────────────┐
+         ↓                                  ↓
+┌─────────────────────┐          ┌─────────────────────┐
+│ Secrets Manager     │          │ S3 Buckets          │
+│ /pulldb/mysql/*     │          │ (Cross-Account)     │
+└─────────────────────┘          └─────────────────────┘
 ```
-
-### Access Patterns
-
-**Staging Bucket Access** (Recommended: Direct):
-1. Dev account role → Staging S3 bucket policy → Bucket access
-2. No AssumeRole overhead, simpler configuration
-
-**Production Bucket Access** (Recommended: Cross-Account Role):
-1. Dev account role → AssumeRole → Production account role → S3 access
-2. Stronger security boundary, external ID validation
 
 ### Components
 
@@ -102,67 +89,31 @@ pullDB uses a three-account architecture with cross-account S3 access:
 
 ---
 
-## Prerequisites
+## A.2 Prerequisites
 
-### AWS Accounts Access
+### Required Access
 
-You'll need appropriate permissions in:
-- ✅ **Development account** (345321506926) - Admin or IAM role creation permissions
-- ✅ **Staging account** (333204494849) - S3 bucket policy modification permissions
-- ⚠️ **Production account** (448509429610) - Optional, only if configuring production access
+- **Development account** (345321506926) - IAM role creation permissions
+- **Staging account** (333204494849) - S3 bucket policy modification permissions
+- **Production account** (448509429610) - Optional, only for production access
 
-### AWS CLI Setup
-
-```bash
-# Install AWS CLI v2
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip
-sudo ./aws/install
-
-# Verify installation
-aws --version
-# Output: aws-cli/2.x.x Python/3.x.x Linux/x.x.x
-```
-
-### EC2 Instance
+### EC2 Instance Requirements
 
 - Ubuntu 24.04 LTS or later
 - Instance ID known (for attaching instance profile)
 - SSH access to instance
+- pullDB package installed (`sudo dpkg -i pulldb_*.deb`)
 
 ---
 
-## Quick Start Summary
+## A.3 EC2 Instance Profile Setup
 
-**Minimum viable setup for staging access** (30 minutes):
+All commands run in the **development account (345321506926)**.
 
-1. Development Account:
-   - Create EC2 service role with S3 read policy for staging bucket
-   - Create instance profile and attach to EC2 instance
-   - Create Secrets Manager secrets for MySQL credentials
-   - Attach Secrets Manager policy to role
-
-2. Staging Account:
-   - Add bucket policy statement allowing dev account role
-
-3. Verify:
-   - Test S3 listing from EC2 instance
-   - Test secret retrieval
-   - Run pullDB integration tests
-
----
-
-## Part 1: Development Account Setup
-
-All commands in this section run in the **development account (345321506926)**.
-
-### Step 1.1: Create EC2 Service Role
-
-Create the IAM role that will be attached to the EC2 instance.
-
-**Create trust policy file:**
+### Step A.3.1: Create EC2 Service Role
 
 ```bash
+# Create trust policy
 cat > /tmp/pulldb-ec2-trust-policy.json <<'EOF'
 {
   "Version": "2012-10-17",
@@ -170,35 +121,23 @@ cat > /tmp/pulldb-ec2-trust-policy.json <<'EOF'
     {
       "Effect": "Allow",
       "Principal": {
-        "Service": [
-          "ec2.amazonaws.com"
-        ]
+        "Service": ["ec2.amazonaws.com"]
       },
       "Action": "sts:AssumeRole"
     }
   ]
 }
 EOF
-```
 
-**Create the role:**
-
-```bash
+# Create the role
 aws iam create-role \
     --role-name pulldb-ec2-service-role \
     --assume-role-policy-document file:///tmp/pulldb-ec2-trust-policy.json \
     --description "EC2 service role for pullDB API and Worker services" \
     --tags Key=Service,Value=pulldb Key=Environment,Value=development
-
-# Verify
-aws iam get-role --role-name pulldb-ec2-service-role
 ```
 
-### Step 1.2: Add Secrets Manager Access Policy
-
-Create policy allowing retrieval of MySQL credentials from Secrets Manager.
-
-**Create policy document:**
+### Step A.3.2: Attach Secrets Manager Policy
 
 ```bash
 cat > /tmp/pulldb-secrets-manager-policy.json <<'EOF'
@@ -208,120 +147,34 @@ cat > /tmp/pulldb-secrets-manager-policy.json <<'EOF'
     {
       "Sid": "GetPullDBSecrets",
       "Effect": "Allow",
-      "Action": [
-        "secretsmanager:GetSecretValue",
-        "secretsmanager:DescribeSecret"
-      ],
-      "Resource": [
-        "arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*"
-      ]
-    },
-    {
-      "Sid": "ListSecretsForDiscovery",
-      "Effect": "Allow",
-      "Action": [
-        "secretsmanager:ListSecrets"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "secretsmanager:ResourceTag/Service": "pulldb"
-        }
-      }
+      "Action": ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
+      "Resource": ["arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*"]
     },
     {
       "Sid": "DecryptSecretsWithKMS",
       "Effect": "Allow",
-      "Action": [
-        "kms:Decrypt",
-        "kms:DescribeKey"
-      ],
+      "Action": ["kms:Decrypt", "kms:DescribeKey"],
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "kms:ViaService": [
-            "secretsmanager.us-east-1.amazonaws.com"
-          ]
+          "kms:ViaService": ["secretsmanager.us-east-1.amazonaws.com"]
         }
       }
     }
   ]
 }
 EOF
-```
 
-**Create and attach policy:**
-
-```bash
 aws iam create-policy \
     --policy-name pulldb-secrets-manager-access \
-    --policy-document file:///tmp/pulldb-secrets-manager-policy.json \
-    --description "Allows pullDB to retrieve MySQL credentials from Secrets Manager"
+    --policy-document file:///tmp/pulldb-secrets-manager-policy.json
 
 aws iam attach-role-policy \
     --role-name pulldb-ec2-service-role \
     --policy-arn arn:aws:iam::345321506926:policy/pulldb-secrets-manager-access
-
-# Verify
-aws iam list-attached-role-policies --role-name pulldb-ec2-service-role
 ```
 
-### Step 1.3: Add Cross-Account Assumption Policy (Optional)
-
-Only needed if using cross-account role assumption pattern (production access).
-
-**Create policy document:**
-
-```bash
-cat > /tmp/pulldb-assume-role-policy.json <<'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "AssumeRoleInStagingAccount",
-      "Effect": "Allow",
-      "Action": "sts:AssumeRole",
-      "Resource": "arn:aws:iam::333204494849:role/pulldb-cross-account-readonly",
-      "Condition": {
-        "StringEquals": {
-          "sts:ExternalId": "pulldb-dev-access-2025"
-        }
-      }
-    },
-    {
-      "Sid": "AssumeRoleInProductionAccount",
-      "Effect": "Allow",
-      "Action": "sts:AssumeRole",
-      "Resource": "arn:aws:iam::448509429610:role/pulldb-cross-account-readonly",
-      "Condition": {
-        "StringEquals": {
-          "sts:ExternalId": "pulldb-dev-access-2025"
-        }
-      }
-    }
-  ]
-}
-EOF
-```
-
-**Create and attach policy:**
-
-```bash
-aws iam create-policy \
-    --policy-name pulldb-cross-account-assume-role \
-    --policy-document file:///tmp/pulldb-assume-role-policy.json \
-    --description "Allows pullDB to assume cross-account roles for S3 access"
-
-aws iam attach-role-policy \
-    --role-name pulldb-ec2-service-role \
-    --policy-arn arn:aws:iam::345321506926:policy/pulldb-cross-account-assume-role
-```
-
-### Step 1.4: Add Staging S3 Read Policy (Direct Access)
-
-This policy grants direct S3 access to the staging bucket without AssumeRole.
-
-**Create policy document:**
+### Step A.3.3: Attach S3 Read Policy (Staging)
 
 ```bash
 cat > /tmp/pulldb-staging-s3-read.json <<'EOF'
@@ -352,30 +205,23 @@ cat > /tmp/pulldb-staging-s3-read.json <<'EOF'
       "Action": ["kms:Decrypt", "kms:DescribeKey"],
       "Resource": "*",
       "Condition": {
-        "StringEquals": {
-          "kms:ViaService": "s3.us-east-1.amazonaws.com"
-        }
+        "StringEquals": {"kms:ViaService": "s3.us-east-1.amazonaws.com"}
       }
     }
   ]
 }
 EOF
-```
 
-**Create and attach policy:**
-
-```bash
 aws iam create-policy \
     --policy-name pulldb-staging-s3-read \
-    --policy-document file:///tmp/pulldb-staging-s3-read.json \
-    --description "Read-only access to staging S3 backups"
+    --policy-document file:///tmp/pulldb-staging-s3-read.json
 
 aws iam attach-role-policy \
     --role-name pulldb-ec2-service-role \
     --policy-arn arn:aws:iam::345321506926:policy/pulldb-staging-s3-read
 ```
 
-### Step 1.5: Create Instance Profile
+### Step A.3.4: Create and Attach Instance Profile
 
 ```bash
 # Create instance profile
@@ -387,67 +233,23 @@ aws iam add-role-to-instance-profile \
     --instance-profile-name pulldb-instance-profile \
     --role-name pulldb-ec2-service-role
 
-# Verify
-aws iam get-instance-profile --instance-profile-name pulldb-instance-profile
-```
-
-### Step 1.6: Attach Instance Profile to EC2
-
-```bash
-# Get your instance ID
-INSTANCE_ID="i-0dcd59209b7e932c3"  # Replace with your instance ID
-
-# Check if instance already has a profile
-aws ec2 describe-iam-instance-profile-associations \
-    --filters "Name=instance-id,Values=$INSTANCE_ID"
-
-# If no profile attached, associate it
+# Attach to EC2 instance (replace with your instance ID)
+INSTANCE_ID="i-0dcd59209b7e932c3"
 aws ec2 associate-iam-instance-profile \
     --instance-id $INSTANCE_ID \
     --iam-instance-profile Name=pulldb-instance-profile
-
-# If replacing existing profile, first disassociate
-ASSOCIATION_ID=$(aws ec2 describe-iam-instance-profile-associations \
-    --filters "Name=instance-id,Values=$INSTANCE_ID" \
-    --query 'IamInstanceProfileAssociations[0].AssociationId' \
-    --output text)
-
-aws ec2 disassociate-iam-instance-profile --association-id $ASSOCIATION_ID
-aws ec2 associate-iam-instance-profile \
-    --instance-id $INSTANCE_ID \
-    --iam-instance-profile Name=pulldb-instance-profile
-
-# Verify
-aws ec2 describe-instances --instance-ids $INSTANCE_ID \
-    --query 'Reservations[0].Instances[0].IamInstanceProfile'
 ```
-
-**Summary - Development Account:**
-- ✅ EC2 service role created
-- ✅ Secrets Manager access policy attached
-- ✅ Staging S3 read policy attached
-- ✅ Instance profile created and attached to EC2
 
 ---
 
-## Part 2: Staging Account Setup
+## A.4 Cross-Account S3 Access
 
-All commands in this section run in the **staging account (333204494849)**.
+### Staging Account (333204494849)
 
-### Step 2.1: Update S3 Bucket Policy
-
-Add a statement to the staging bucket policy allowing the dev account role.
-
-**Check existing bucket policy:**
+Add bucket policy statement allowing dev account role:
 
 ```bash
-aws s3api get-bucket-policy --bucket pestroutesrdsdbs \
-    --query Policy --output text | jq .
-```
-
-**Option A: No existing policy - create new:**
-
-```bash
+# Run in staging account
 aws s3api put-bucket-policy --bucket pestroutesrdsdbs --policy '{
   "Version": "2012-10-17",
   "Statement": [
@@ -457,12 +259,7 @@ aws s3api put-bucket-policy --bucket pestroutesrdsdbs --policy '{
       "Principal": {
         "AWS": "arn:aws:iam::345321506926:role/pulldb-ec2-service-role"
       },
-      "Action": [
-        "s3:GetObject",
-        "s3:GetObjectMetadata",
-        "s3:ListBucket",
-        "s3:HeadObject"
-      ],
+      "Action": ["s3:GetObject", "s3:ListBucket", "s3:HeadObject"],
       "Resource": [
         "arn:aws:s3:::pestroutesrdsdbs",
         "arn:aws:s3:::pestroutesrdsdbs/daily/stg/*"
@@ -472,87 +269,12 @@ aws s3api put-bucket-policy --bucket pestroutesrdsdbs --policy '{
 }'
 ```
 
-**Option B: Existing policy - add statement manually:**
+### Production Account (448509429610) - Optional
+
+For production access, create a cross-account role with external ID:
 
 ```bash
-# Download current policy
-aws s3api get-bucket-policy --bucket pestroutesrdsdbs \
-    --query Policy --output text > /tmp/current-bucket-policy.json
-
-# Edit /tmp/current-bucket-policy.json and add this statement to the Statement array:
-{
-  "Sid": "AllowPullDBDevAccountDirectRead",
-  "Effect": "Allow",
-  "Principal": {
-    "AWS": "arn:aws:iam::345321506926:role/pulldb-ec2-service-role"
-  },
-  "Action": [
-    "s3:GetObject",
-    "s3:GetObjectMetadata",
-    "s3:ListBucket",
-    "s3:HeadObject"
-  ],
-  "Resource": [
-    "arn:aws:s3:::pestroutesrdsdbs",
-    "arn:aws:s3:::pestroutesrdsdbs/daily/stg/*"
-  ]
-}
-
-# Apply updated policy
-aws s3api put-bucket-policy --bucket pestroutesrdsdbs \
-    --policy file:///tmp/updated-bucket-policy.json
-```
-
-### Step 2.2: Update KMS Key Policy (If Encrypted)
-
-If the bucket uses KMS encryption, update the key policy.
-
-```bash
-# Get KMS key ID
-KEY_ID=$(aws s3api get-bucket-encryption --bucket pestroutesrdsdbs \
-    --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.KMSMasterKeyID' \
-    --output text)
-
-# View current key policy
-aws kms get-key-policy --key-id $KEY_ID --policy-name default
-
-# Add this statement to key policy (via console or CLI)
-{
-  "Sid": "AllowPullDBDecryption",
-  "Effect": "Allow",
-  "Principal": {
-    "AWS": "arn:aws:iam::345321506926:role/pulldb-ec2-service-role"
-  },
-  "Action": [
-    "kms:Decrypt",
-    "kms:DescribeKey"
-  ],
-  "Resource": "*",
-  "Condition": {
-    "StringEquals": {
-      "kms:ViaService": "s3.us-east-1.amazonaws.com"
-    }
-  }
-}
-```
-
-**Summary - Staging Account:**
-- ✅ Bucket policy updated to allow dev account role
-- ✅ KMS key policy updated (if applicable)
-
----
-
-## Part 3: Production Account Setup (Optional)
-
-Only follow this section if configuring production bucket access. Uses cross-account role assumption pattern for stronger security.
-
-All commands in this section run in the **production account (448509429610)**.
-
-### Step 3.1: Create Cross-Account Role
-
-**Create trust policy:**
-
-```bash
+# Run in production account
 cat > /tmp/pulldb-prod-trust-policy.json <<'EOF'
 {
   "Version": "2012-10-17",
@@ -564,147 +286,67 @@ cat > /tmp/pulldb-prod-trust-policy.json <<'EOF'
       },
       "Action": "sts:AssumeRole",
       "Condition": {
-        "StringEquals": {
-          "sts:ExternalId": "pulldb-dev-access-2025"
-        }
+        "StringEquals": {"sts:ExternalId": "pulldb-dev-access-2025"}
       }
     }
   ]
 }
 EOF
-```
 
-**Create the role:**
-
-```bash
 aws iam create-role \
     --role-name pulldb-cross-account-readonly \
-    --assume-role-policy-document file:///tmp/pulldb-prod-trust-policy.json \
-    --description "Cross-account read-only access for pullDB from dev account"
+    --assume-role-policy-document file:///tmp/pulldb-prod-trust-policy.json
 ```
-
-### Step 3.2: Add S3 Read Policy to Role
-
-**Create permissions policy:**
-
-```bash
-cat > /tmp/pulldb-prod-s3-policy.json <<'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "ListProductionBucket",
-      "Effect": "Allow",
-      "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
-      "Resource": "arn:aws:s3:::pestroutes-rds-backup-prod-vpc-us-east-1-s3"
-    },
-    {
-      "Sid": "GetProductionBackupObjects",
-      "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:GetObjectMetadata", "s3:GetObjectVersion"],
-      "Resource": "arn:aws:s3:::pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/*"
-    },
-    {
-      "Sid": "DenyWriteOperations",
-      "Effect": "Deny",
-      "Action": ["s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"],
-      "Resource": "arn:aws:s3:::pestroutes-rds-backup-prod-vpc-us-east-1-s3/*"
-    },
-    {
-      "Sid": "KMSDecryptForS3",
-      "Effect": "Allow",
-      "Action": ["kms:Decrypt", "kms:DescribeKey"],
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "kms:ViaService": "s3.us-east-1.amazonaws.com"
-        }
-      }
-    }
-  ]
-}
-EOF
-```
-
-**Attach policy:**
-
-```bash
-aws iam create-policy \
-    --policy-name pulldb-prod-s3-readonly \
-    --policy-document file:///tmp/pulldb-prod-s3-policy.json
-
-aws iam attach-role-policy \
-    --role-name pulldb-cross-account-readonly \
-    --policy-arn arn:aws:iam::448509429610:policy/pulldb-prod-s3-readonly
-```
-
-**Summary - Production Account:**
-- ✅ Cross-account role created with external ID
-- ✅ S3 read-only policy attached
 
 ---
 
-## Part 4: Secrets Manager Configuration
+## A.5 Secrets Manager Configuration
 
 Create MySQL credential secrets in the development account.
 
-### Step 4.1: Create Coordination Database Secret
+**IMPORTANT**: Secrets contain only `host` and `password`. Other parameters (`username`, `port`, `database`) 
+are provided via environment variables (`PULLDB_MYSQL_USER`, `PULLDB_MYSQL_PORT`, `PULLDB_MYSQL_DATABASE`).
 
-**MANDATORY for tests and runtime:**
+### Coordination Database (Required)
 
 ```bash
 aws secretsmanager create-secret \
     --name /pulldb/mysql/coordination-db \
-    --description "MySQL credentials for pullDB coordination database" \
+    --description "MySQL credentials for pullDB coordination database (host + password only)" \
     --secret-string '{
-        "username": "pulldb_app",
         "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-        "host": "localhost",
-        "port": 3306,
-        "database": "pulldb"
+        "host": "localhost"
     }' \
-    --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=coordination
-
-# Verify
-aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db
+    --tags Key=Service,Value=pulldb Key=Environment,Value=development
 ```
 
-### Step 4.2: Create Target Database Secrets
+**Required environment variables** (add to `.env` or systemd environment):
+```bash
+PULLDB_MYSQL_USER=pulldb_app
+PULLDB_MYSQL_PORT=3306
+PULLDB_MYSQL_DATABASE=pulldb
+```
 
-Create secrets for each target MySQL server where databases will be restored.
-
-**Local sandbox (default):**
+### Local Sandbox Target (Optional)
 
 ```bash
 aws secretsmanager create-secret \
-  --name /pulldb/mysql/localhost-test \
-  --description "MySQL credentials for local sandbox restore target" \
-  --secret-string '{
-    "username": "pulldb_app",
-    "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-    "host": "localhost",
-    "port": 3306,
-    "database": "pulldb_sandbox"
-  }' \
-  --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=local-sandbox
-
-# Verify
-aws secretsmanager describe-secret --secret-id /pulldb/mysql/localhost-test
+    --name /pulldb/mysql/localhost-test \
+    --description "MySQL credentials for local sandbox restore target (host + password only)" \
+    --secret-string '{
+        "password": "REPLACE_WITH_ACTUAL_PASSWORD",
+        "host": "localhost"
+    }' \
+    --tags Key=Service,Value=pulldb Key=Environment,Value=development
 ```
-
-
-
-**Summary - Secrets Manager:**
-- ✅ Coordination database secret created
-- ✅ Target database secrets created (db-local-dev)
 
 ---
 
-## Part 5: Verification
+## A.6 Service Verification
 
-### Step 5.1: Verify Instance Profile
+Run these commands **on the EC2 instance** after installing the pullDB package.
 
-From your EC2 instance:
+### Verify Instance Profile
 
 ```bash
 # Get instance metadata (IMDSv2)
@@ -713,76 +355,340 @@ TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
 
 curl -H "X-aws-ec2-metadata-token: $TOKEN" \
     http://169.254.169.254/latest/meta-data/iam/security-credentials/ -s
-
 # Should output: pulldb-ec2-service-role
 ```
 
-### Step 5.2: Test Caller Identity
+### Test AWS Identity
 
 ```bash
 aws sts get-caller-identity
-
-# Should show:
-# {
-#   "UserId": "AROAXXXXX:i-xxxxxxxxx",
-#   "Account": "345321506926",
-#   "Arn": "arn:aws:sts::345321506926:assumed-role/pulldb-ec2-service-role/i-xxxxxxxxx"
-# }
+# Should show assumed-role/pulldb-ec2-service-role/i-xxxxxxxxx
 ```
 
-### Step 5.3: Test S3 Access (Staging)
+### Test S3 Access
 
 ```bash
-# List staging backups (should succeed)
 aws s3 ls s3://pestroutesrdsdbs/daily/stg/ | head
-
-# Should show backup files like:
-# PRE customer/
-# PRE qatemplate/
+# Should show backup directories
 ```
 
-### Step 5.4: Test Secrets Manager Access
+### Test Secrets Manager Access
 
 ```bash
-# Test coordination DB secret
-aws secretsmanager get-secret-value --secret-id /pulldb/mysql/coordination-db \
+aws secretsmanager get-secret-value \
+    --secret-id /pulldb/mysql/coordination-db \
     --query SecretString --output text | jq .
-
-# Should show JSON with username, password, host, port
-
-# Test local sandbox secret
-aws secretsmanager get-secret-value --secret-id /pulldb/mysql/localhost-test \
-  --query SecretString --output text | jq .
-
-# Should show JSON with localhost host, optional database
-
-
+# Should show JSON with credentials
 ```
 
-### Step 5.5: Test Python Integration
+### Test Python Integration
 
-```python
+```bash
+/opt/pulldb.service/venv/bin/python3 << 'EOF'
+from pulldb.infra.secrets import CredentialResolver
+
+resolver = CredentialResolver()
+creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/coordination-db')
+print(f"✅ Coordination DB credentials resolved:")
+print(f"   Host: {creds.host}")
+print(f"   User: {creds.username}")
+print(f"   Port: {creds.port}")
+print("\n✅ Service verification passed!")
+EOF
+```
+
+### Verify Service Status
+
+```bash
+sudo systemctl status pulldb-worker
+# Should show: Active: active (running)
+```
+
+---
+
+# Section B: Developer Test Environment
+
+> **Audience**: Developers working on pullDB, running tests locally or on the EC2 dev instance.
+>
+> **Goal**: Configure AWS CLI profiles and environment variables to run the test suite.
+
+---
+
+## B.1 Overview
+
+### Developer Authentication Flow
+
+Developers authenticate using **named AWS CLI profiles** rather than instance profiles:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Developer Workstation / EC2 Dev Instance                         │
+│                                                                   │
+│ ┌─────────────────────────────────────────────────────────────┐ │
+│ │ ~/.aws/credentials                                           │ │
+│ │   [pr-dev]       → Secrets Manager (Dev Account)            │ │
+│ │   [pr-staging]   → S3 Staging Bucket                        │ │
+│ │   [pr-prod]      → S3 Production Bucket (optional)          │ │
+│ └─────────────────────────────────────────────────────────────┘ │
+│                         ↓                                         │
+│ ┌─────────────────────────────────────────────────────────────┐ │
+│ │ Environment Variables                                        │ │
+│ │   PULLDB_AWS_PROFILE=pr-dev                                 │ │
+│ │   AWS_DEFAULT_REGION=us-east-1                              │ │
+│ └─────────────────────────────────────────────────────────────┘ │
+│                         ↓                                         │
+│ ┌─────────────────────────────────────────────────────────────┐ │
+│ │ pytest / Test Suite                                          │ │
+│ │   Uses CredentialResolver with pr-dev profile               │ │
+│ └─────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Profile Usage Matrix
+
+| Profile | Account | Purpose | Accesses |
+|---------|---------|---------|----------|
+| `pr-dev` | 345321506926 | Default for tests | Secrets Manager, SSM |
+| `pr-staging` | 333204494849 | S3 discovery tests | Staging S3 bucket |
+| `pr-prod` | 448509429610 | Production S3 tests | Production S3 bucket |
+
+---
+
+## B.2 Prerequisites
+
+### Required Software
+
+```bash
+# Python 3.11+ with venv
+python3 --version  # Should be 3.11+
+
+# AWS CLI v2
+aws --version  # Should be 2.x.x
+
+# Project dependencies
+cd ~/Projects/pullDB
+pip install -e ".[dev]"
+```
+
+### Required Access
+
+You need IAM user credentials or SSO access for:
+- **Development account** (345321506926) - For Secrets Manager
+- **Staging account** (333204494849) - For S3 backup discovery tests
+
+---
+
+## B.3 AWS CLI Profile Setup
+
+### Option A: IAM User Credentials
+
+Create `~/.aws/credentials`:
+
+```ini
+[pr-dev]
+aws_access_key_id = AKIAXXXXXXXXXXXXXXXXXX
+aws_secret_access_key = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+[pr-staging]
+aws_access_key_id = AKIAYYYYYYYYYYYYYYYY
+aws_secret_access_key = yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+
+[pr-prod]
+aws_access_key_id = AKIAZZZZZZZZZZZZZZZZ
+aws_secret_access_key = zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+```
+
+Create `~/.aws/config`:
+
+```ini
+[profile pr-dev]
+region = us-east-1
+output = json
+
+[profile pr-staging]
+region = us-east-1
+output = json
+
+[profile pr-prod]
+region = us-east-1
+output = json
+```
+
+### Option B: AWS SSO (Recommended for Teams)
+
+```bash
+# Configure SSO for each profile
+aws configure sso --profile pr-dev
+aws configure sso --profile pr-staging
+
+# Login before running tests
+aws sso login --profile pr-dev
+```
+
+### Option C: Assume Role from Instance Profile
+
+If developing on the EC2 instance with the instance profile attached:
+
+```ini
+# ~/.aws/config
+[profile pr-dev]
+region = us-east-1
+# Uses instance profile automatically
+
+[profile pr-staging]
+role_arn = arn:aws:iam::333204494849:role/pulldb-cross-account-readonly
+source_profile = pr-dev
+external_id = pulldb-dev-access-2025
+region = us-east-1
+```
+
+---
+
+## B.4 Test Environment Variables
+
+### Create test-env/.env file
+
+```bash
+cd ~/Projects/pullDB
+mkdir -p test-env
+cat > test-env/.env << 'EOF'
+# AWS Configuration for Tests
+PULLDB_AWS_PROFILE=pr-dev
+AWS_DEFAULT_REGION=us-east-1
+
+# Credential References (Secrets Manager)
+PULLDB_COORDINATION_SECRET=aws-secretsmanager:/pulldb/mysql/coordination-db
+PULLDB_TARGET_SECRET=aws-secretsmanager:/pulldb/mysql/localhost-test
+
+# S3 Bucket Configuration
+PULLDB_S3_BUCKET_STAGING=pestroutesrdsdbs
+PULLDB_S3_PREFIX_STAGING=daily/stg/
+PULLDB_S3_PROFILE_STAGING=pr-staging
+
+# Logging
+PULLDB_LOG_LEVEL=DEBUG
+EOF
+```
+
+### Load Environment for Testing
+
+```bash
+# Option 1: Source before running tests
+source test-env/.env && pytest
+
+# Option 2: Use direnv (recommended)
+echo "dotenv test-env/.env" > .envrc
+direnv allow
+
+# Option 3: Export in shell profile
+echo "export PULLDB_AWS_PROFILE=pr-dev" >> ~/.bashrc
+```
+
+---
+
+## B.5 Running Tests
+
+### Quick Test Run
+
+```bash
+cd ~/Projects/pullDB
+
+# Ensure profile is set
+export PULLDB_AWS_PROFILE=pr-dev
+
+# Run all tests
+pytest
+
+# Run specific test categories
+pytest tests/unit/              # Unit tests (no AWS calls)
+pytest tests/integration/       # Integration tests (requires AWS)
+pytest -k "secrets"             # Only secrets-related tests
+pytest -k "s3 or discovery"     # S3 discovery tests
+```
+
+### Test with Verbose Output
+
+```bash
+pytest -v --tb=short tests/integration/test_secrets.py
+```
+
+### Test with Coverage
+
+```bash
+pytest --cov=pulldb --cov-report=html tests/
+open htmlcov/index.html
+```
+
+---
+
+## B.6 Developer Verification
+
+Run these commands to verify your developer environment is correctly configured.
+
+### Verify AWS Profile
+
+```bash
+# Test pr-dev profile
+aws sts get-caller-identity --profile pr-dev
+# Should show your IAM user/role ARN in account 345321506926
+
+# Test pr-staging profile (if configured)
+aws sts get-caller-identity --profile pr-staging
+# Should show account 333204494849
+```
+
+### Verify Secrets Manager Access
+
+```bash
+# Using AWS CLI
+aws secretsmanager get-secret-value \
+    --secret-id /pulldb/mysql/coordination-db \
+    --profile pr-dev \
+    --query SecretString --output text | jq .
+```
+
+### Verify S3 Access
+
+```bash
+# List staging backups
+aws s3 ls s3://pestroutesrdsdbs/daily/stg/ --profile pr-staging | head
+```
+
+### Verify Python Integration
+
+```bash
+cd ~/Projects/pullDB
+
+# Activate virtual environment if using one
+source .venv/bin/activate
+
 # Test credential resolution
 python3 << 'EOF'
-import sys
-sys.path.insert(0, '/home/charleshandshy/Projects/infra.devops/Tools/pullDB')
+import os
+os.environ.setdefault('PULLDB_AWS_PROFILE', 'pr-dev')
 
 from pulldb.infra.secrets import CredentialResolver
 
 resolver = CredentialResolver()
-
-# Test coordination DB
 creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/coordination-db')
 print(f"✅ Coordination DB credentials resolved:")
-print(f"   Host: {creds['host']}")
-print(f"   User: {creds['username']}")
-print(f"   Database: {creds.get('database', 'N/A')}")
-
-print("\n✅ All verifications passed!")
+print(f"   Host: {creds.host}")
+print(f"   User: {creds.username}")
+print(f"   Port: {creds.port}")
+print("\n✅ Developer environment verification passed!")
 EOF
 ```
 
+### Run Smoke Tests
+
+```bash
+# Quick sanity check that AWS integration works
+pytest tests/integration/test_secrets.py -v -k "test_resolve_coordination"
+```
+
 ---
+
+# Reference
 
 ## Troubleshooting
 
@@ -790,127 +696,75 @@ EOF
 
 **Symptom**: `AccessDenied when calling the ListObjectsV2 operation`
 
-**Diagnosis**:
-```bash
-# Check role policies
-aws iam list-attached-role-policies --role-name pulldb-ec2-service-role
+**For Service Installation**:
+1. Verify instance profile is attached: `curl http://169.254.169.254/latest/meta-data/iam/security-credentials/`
+2. Check role policies: `aws iam list-attached-role-policies --role-name pulldb-ec2-service-role`
+3. Verify staging bucket policy includes dev account role
 
-# Check instance profile
-curl -H "X-aws-ec2-metadata-token: $TOKEN" \
-    http://169.254.169.254/latest/meta-data/iam/info -s
-```
-
-**Solutions**:
-1. Verify `pulldb-staging-s3-read` policy is attached to role
-2. Verify instance profile is attached to EC2 instance
-3. Check staging account bucket policy includes dev account role principal
+**For Developer Environment**:
+1. Verify correct profile: `aws sts get-caller-identity --profile pr-staging`
+2. Check profile has S3 permissions
+3. Ensure `PULLDB_AWS_PROFILE` is set correctly
 
 ### Error: Access Denied (Secrets Manager)
 
 **Symptom**: `AccessDeniedException when calling the GetSecretValue operation`
 
-**Diagnosis**:
-```bash
-# Check Secrets Manager policy attachment
-aws iam list-attached-role-policies --role-name pulldb-ec2-service-role | \
-    grep pulldb-secrets-manager-access
-```
-
-**Solutions**:
-1. Attach `pulldb-secrets-manager-access` policy to role (Step 1.2)
+**For Service Installation**:
+1. Check Secrets Manager policy is attached to role
 2. Verify secret exists: `aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db`
-3. Check secret is in development account (345321506926)
+
+**For Developer Environment**:
+1. Verify `pr-dev` profile has Secrets Manager access
+2. Check `PULLDB_AWS_PROFILE=pr-dev` is set
+3. Ensure secret is in development account (345321506926)
 
 ### Error: Unable to Locate Credentials
 
 **Symptom**: `Unable to locate credentials`
 
-**Diagnosis**:
-```bash
-# Check instance metadata service
-curl http://169.254.169.254/latest/meta-data/iam/security-credentials/ -s
-```
+**For Service Installation**:
+1. Instance profile not attached - run Step A.3.4
+2. IMDSv2 required - use TOKEN-based metadata requests
 
-**Solutions**:
-1. Instance profile not attached - run Step 1.6
-2. IMDSv2 required - use TOKEN-based requests (see Step 5.1)
-3. Instance profile misconfigured - verify role is added to profile
+**For Developer Environment**:
+1. Check `~/.aws/credentials` exists and has correct profile
+2. For SSO: run `aws sso login --profile pr-dev`
+3. Verify profile name matches `PULLDB_AWS_PROFILE`
 
-### Error: ExternalId Mismatch (Production)
+### Error: Profile Not Found
 
-**Symptom**: `An error occurred (AccessDenied) when calling the AssumeRole operation`
+**Symptom**: `ProfileNotFound: The config profile (pr-dev) could not be found`
 
-**Diagnosis**:
-```bash
-# Check production role trust policy
-aws iam get-role --role-name pulldb-cross-account-readonly \
-    --query 'Role.AssumeRolePolicyDocument' | jq .
-```
-
-**Solutions**:
-1. Verify external ID in trust policy matches: `pulldb-dev-access-2025`
-2. Check dev account has `pulldb-cross-account-assume-role` policy attached
+**Solution**:
+1. Create the profile in `~/.aws/credentials` and `~/.aws/config`
+2. Or use SSO: `aws configure sso --profile pr-dev`
 
 ---
 
 ## Security Best Practices
 
-### 1. Least Privilege Access
+### For Service Installations
 
+- ✅ Use EC2 instance profiles (no stored credentials)
 - ✅ IAM policies scoped to specific resources (`/pulldb/mysql/*`)
-- ✅ Read-only S3 access (explicit Deny for write operations)
-- ✅ KMS decrypt limited to specific AWS services
+- ✅ Read-only S3 access with explicit Deny for writes
 - ✅ External ID required for cross-account access
+- ✅ KMS decrypt limited to specific AWS services
 
-### 2. Credential Management
+### For Developer Environments
 
-- ✅ No long-lived credentials on disk
-- ✅ Automatic rotation via EC2 instance metadata (every 60 minutes)
-- ✅ Secrets Manager for MySQL credentials (enables rotation)
-- ✅ KMS encryption at rest for all secrets
-
-### 3. Audit Trail
-
-- ✅ CloudTrail logs all API calls
-- ✅ S3 access logs for backup downloads
-- ✅ Secrets Manager access logged with caller identity
-- ✅ MySQL audit log for database operations
-
-### 4. Network Security
-
-- ✅ EC2 security groups restrict inbound access
-- ✅ Private subnets for RDS instances
-- ✅ VPC endpoints for AWS services (optional optimization)
-
----
-
-## Cost Optimization
-
-### AWS Secrets Manager
-
-**Current Setup** (5 secrets):
-- 5 secrets × $0.40/month = **$2.00/month**
-- API calls: ~10,000/month × $0.05/10k = **$0.05/month**
-- **Total**: ~$1.65/month
-
-**Optimization Options**:
-1. Cache credentials in application memory (reduce API calls)
-2. Use SSM Parameter Store for non-secret config (free tier)
-3. Enable automatic rotation only for production credentials
-
-### S3 Transfer Costs
-
-- **Staging account** → Dev account: **$0.00** (same region, cross-account free)
-- **Production account** → Dev account: **$0.00** (same region, cross-account free)
-- **Data egress**: Only charged if downloading outside AWS
-
-### EC2 Instance Profile
-
-- **Cost**: $0.00 (no additional charge for IAM roles)
+- ✅ Use IAM users with minimal permissions or SSO
+- ✅ Never commit AWS credentials to source control
+- ✅ Use named profiles instead of default credentials
+- ✅ Rotate access keys regularly
+- ✅ Use `aws-vault` or similar for credential encryption
 
 ---
 
 ## Quick Reference Commands
+
+### Service Installation
 
 ```bash
 # Verify instance profile
@@ -922,34 +776,35 @@ aws s3 ls s3://pestroutesrdsdbs/daily/stg/ | head
 # Get coordination DB secret
 aws secretsmanager get-secret-value --secret-id /pulldb/mysql/coordination-db
 
-# Check role policies
-aws iam list-attached-role-policies --role-name pulldb-ec2-service-role
+# Check service status
+sudo systemctl status pulldb-worker
 
-# View instance metadata
-TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s)
-curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/info -s
+# View service logs
+sudo journalctl -u pulldb-worker -f
+```
+
+### Developer Environment
+
+```bash
+# Verify profile
+aws sts get-caller-identity --profile pr-dev
+
+# List staging backups (with profile)
+aws s3 ls s3://pestroutesrdsdbs/daily/stg/ --profile pr-staging | head
+
+# Get secret (with profile)
+aws secretsmanager get-secret-value \
+    --secret-id /pulldb/mysql/coordination-db \
+    --profile pr-dev
+
+# Run tests
+PULLDB_AWS_PROFILE=pr-dev pytest
+
+# Run specific integration test
+pytest tests/integration/test_secrets.py -v
 ```
 
 ---
 
-## Summary
-
-This setup provides:
-- ✅ Secure cross-account S3 access from dev to staging/production
-- ✅ No long-lived credentials - uses EC2 instance profile
-- ✅ Automatic credential rotation via AWS SDK
-- ✅ Secrets Manager for MySQL credentials with rotation support
-- ✅ External ID prevents confused deputy attacks
-- ✅ Explicit denies prevent accidental writes
-- ✅ Complete audit trail via CloudTrail
-- ✅ KMS decrypt scoped to specific AWS services
-
-**Total Setup Time**: ~1 hour
-**Monthly Cost**: ~$2 (Secrets Manager only)
-**Security**: Production-grade with defense in depth
-
----
-
-**Last Updated**: November 4, 2025
+**Last Updated**: November 26, 2025
 **Maintained By**: PestRoutes Infrastructure Team
-**Related Docs**: See `/docs` directory for detailed component guides

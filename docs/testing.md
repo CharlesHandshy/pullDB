@@ -272,7 +272,7 @@ This violates the dev-only secret residency requirement.
 
 Solutions:
   1. Delete secret from staging account: aws secretsmanager delete-secret --secret-id /pulldb/mysql/coordination-db --region us-east-1 --profile pr-staging
-  2. Recreate secret in dev account: aws secretsmanager create-secret --name /pulldb/mysql/coordination-db --secret-string '{"username":"..."}' --profile default
+  2. Recreate secret in dev account: aws secretsmanager create-secret --name /pulldb/mysql/coordination-db --secret-string '{"password":"...","host":"localhost"}' --profile default
   3. Update secret replication settings if replication was unintentional
 
 Staging=333204494849, Prod=448509429610, Dev=345321506926
@@ -326,11 +326,12 @@ pulldb/tests/
    ```bash
    aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db
    ```
-   If not found, create it:
+   If not found, create it (host + password only):
    ```bash
    aws secretsmanager create-secret \
      --name /pulldb/mysql/coordination-db \
-     --secret-string '{"username":"pulldb_app","password":"...","host":"localhost","port":3306,"database":"pulldb"}'
+     --secret-string '{"password":"...","host":"localhost"}'
+   # NOTE: Set PULLDB_MYSQL_USER, PULLDB_MYSQL_PORT, PULLDB_MYSQL_DATABASE in .env
    ```
 
 2. **Check AWS credentials**:
@@ -451,12 +452,13 @@ pulldb/tests/
      --profile pr-staging  # or pr-prod
    ```
 
-3. **Recreate secret in dev account**:
+3. **Recreate secret in dev account** (host + password only):
    ```bash
    aws secretsmanager create-secret \
      --name /pulldb/mysql/coordination-db \
-     --secret-string '{"username":"pulldb_app","password":"...","host":"localhost","port":3306,"database":"pulldb"}' \
+     --secret-string '{"password":"...","host":"localhost"}' \
      --profile default  # or dev-admin
+   # NOTE: Set PULLDB_MYSQL_USER, PULLDB_MYSQL_PORT, PULLDB_MYSQL_DATABASE in .env
    ```
 
 4. **Check for replication misconfiguration**:

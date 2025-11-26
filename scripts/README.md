@@ -54,7 +54,7 @@ Diagnostic script to verify that the `pulldb-ec2-service-role` has correct Secre
 [verify] Simulate required action kms:Decrypt => allowed
 [verify] Required actions simulation: OK
 [verify] DescribeSecret: OK (Account 345321506926)
-[verify] GetSecretValue: OK (truncated: {"username":"pulldb_app","password":"...
+[verify] GetSecretValue: OK (truncated: {"password":"...","host":"..."
 [verify] Simulate admin action secretsmanager:CreateSecret => implicitDeny
 [verify] Simulate admin action secretsmanager:PutSecretValue => implicitDeny
 [verify] Simulate admin action secretsmanager:DeleteSecret => implicitDeny
@@ -62,6 +62,9 @@ Diagnostic script to verify that the `pulldb-ec2-service-role` has correct Secre
 [verify] Secret not using a customer CMK or key ID not exposed
 [verify] All verification steps completed successfully
 ```
+
+**NOTE**: Secrets contain only `host` and `password`. The `username`, `port`, and `database` 
+are provided via environment variables (`PULLDB_MYSQL_USER`, `PULLDB_MYSQL_PORT`, `PULLDB_MYSQL_DATABASE`).
 
 ### Troubleshooting
 

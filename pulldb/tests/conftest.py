@@ -370,7 +370,8 @@ def mysql_network_credentials(
     """Return (host, user, password) tuple for network login.
 
     For local development tests we force host=localhost while retaining
-    username/password from resolved secret so tests exercise credential path.
+    username (from PULLDB_MYSQL_USER env var) and password (from secret)
+    so tests exercise credential path.
     """
     return ("localhost", mysql_credentials.username, mysql_credentials.password)
 

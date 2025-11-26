@@ -27,6 +27,9 @@ DO_VALIDATE=0
 INSTALL_PREFIX=""
 AWS_PROFILE=""
 COORD_SECRET=""
+LOG_DIR=""
+WORK_DIR=""
+TMP_DIR=""
 
 info() { echo "[INFO] $*"; }
 warn() { echo "[WARN] $*" >&2; }
@@ -87,10 +90,13 @@ Usage: sudo scripts/install_pulldb.sh [options]
 
 Options:
   --prefix DIR            Install directory (default /opt/pulldb)
-  --aws-profile NAME      AWS profile for PULLDB_AWS_PROFILE (default dev)
-                          (see docs/aws-quickstart.md for examples and required IAM permissions)
-  --secret NAME           Coordination secret name (default /pulldb/mysql/coordination-db)
+  --aws-profile NAME      AWS profile for PULLDB_AWS_PROFILE (default pr-prod)
+                          (see docs/AWS-SETUP.md for examples and required IAM permissions)
+  --secret NAME           Coordination secret name (default aws-secretsmanager:/pulldb/mysql/coordination-db)
                           Supported formats: aws-secretsmanager:/path, aws-ssm:/path
+  --log-dir DIR           Log directory (default /mnt/data/logs/pulldb.service)
+  --work-dir DIR          Work directory for restores (default /mnt/data/work/pulldb.service)
+  --tmp-dir DIR           Temp directory for downloads (default /mnt/data/tmp)
   --yes                   Assume yes for all confirmations
   --no-systemd            Do not install or enable systemd unit
   --validate              Validate AWS profile and secret existence
@@ -98,11 +104,15 @@ Options:
   --help                  Show this help
 
 Examples:
-  sudo scripts/install_pulldb.sh --prefix /opt/pulldb --aws-profile dev \
+  sudo scripts/install_pulldb.sh --prefix /opt/pulldb.service --aws-profile pr-prod \\
     --secret aws-secretsmanager:/pulldb/mysql/coordination-db --yes
 
+  # Custom directories on separate mount
+  sudo scripts/install_pulldb.sh --prefix /opt/pulldb.service \\
+    --log-dir /mnt/data/logs/pulldb --work-dir /mnt/data/work/pulldb --yes
+
   # Run lightweight validation (will warn only when --validate used)
-  sudo scripts/install_pulldb.sh --validate --aws-profile dev --secret /pulldb/mysql/coordination-db
+  sudo scripts/install_pulldb.sh --validate --aws-profile pr-prod
 
   # If you rely on instance role or CI-provided creds, omit --aws-profile and validate later.
 EOF
@@ -117,6 +127,12 @@ parse_args() {
         AWS_PROFILE="$2"; shift 2 ;;
       --secret)
         COORD_SECRET="$2"; shift 2 ;;
+      --log-dir)
+        LOG_DIR="$2"; shift 2 ;;
+      --work-dir)
+        WORK_DIR="$2"; shift 2 ;;
+      --tmp-dir)
+        TMP_DIR="$2"; shift 2 ;;
       --yes)
         ASSUME_YES=1; shift ;;
       --no-systemd)
@@ -135,16 +151,63 @@ parse_args() {
 
 generate_env_file() {
   local env_path="$1"; shift
-  cat > "$env_path" <<EOF
-# pullDB environment configuration
+  local example_path="${env_path}.example"
+  
+  # Always generate the example file with current settings
+  cat > "$example_path" <<EOF
+# pullDB environment configuration (example)
+# Copy to .env and customize for your environment
 # Generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+# Required settings
 PULLDB_INSTALL_PREFIX=${INSTALL_PREFIX}
 PULLDB_AWS_PROFILE=${AWS_PROFILE}
 PULLDB_COORDINATION_SECRET=${COORD_SECRET}
-# Additional optional overrides (uncomment as needed)
-# PULLDB_LOG_DIR=
-# PULLDB_WORK_DIR=
+
+# Directory settings
+PULLDB_LOG_DIR=${LOG_DIR}
+PULLDB_WORK_DIR=${WORK_DIR}
+PULLDB_TMP_DIR=${TMP_DIR}
+
+# Optional overrides
+# PULLDB_LOG_LEVEL=INFO
+# AWS_DEFAULT_REGION=us-east-1
 EOF
+  
+  # Only create .env if it doesn't exist
+  if [[ -f "$env_path" ]]; then
+    info "Existing .env preserved (not overwritten). See ${example_path} for new defaults."
+  else
+    cp "$example_path" "$env_path"
+    info "Created ${env_path} from example."
+  fi
+}
+
+ensure_data_directories() {
+  # Create parent /mnt/data if needed
+  if [[ ! -d "/mnt/data" ]]; then
+    mkdir -p /mnt/data
+    chmod 755 /mnt/data
+  fi
+  
+  # Log directory
+  if [[ -n "$LOG_DIR" && ! -d "$LOG_DIR" ]]; then
+    mkdir -p "$LOG_DIR"
+    info "Created log directory: $LOG_DIR"
+  fi
+  
+  # Work directory
+  if [[ -n "$WORK_DIR" && ! -d "$WORK_DIR" ]]; then
+    mkdir -p "$WORK_DIR"
+    info "Created work directory: $WORK_DIR"
+  fi
+  
+  # Temp directory (shared, sticky bit)
+  if [[ -n "$TMP_DIR" && ! -d "$TMP_DIR" ]]; then
+    mkdir -p "$TMP_DIR"
+    chmod 1777 "$TMP_DIR"
+    info "Created temp directory: $TMP_DIR"
+  fi
 }
 
 install_systemd_unit() {
@@ -221,22 +284,26 @@ Environment: ${INSTALL_PREFIX}/.env
 Virtualenv: ${INSTALL_PREFIX}/venv
 AWS Profile: ${AWS_PROFILE}
 Coordination Secret: ${COORD_SECRET}
+Log Directory: ${LOG_DIR}
+Work Directory: ${WORK_DIR}
+Temp Directory: ${TMP_DIR}
 
 Next Steps:
-1. Verify AWS credential access: aws sts get-caller-identity --profile ${AWS_PROFILE}
-2. Confirm secret exists: aws --profile ${AWS_PROFILE} secretsmanager describe-secret --secret-id ${COORD_SECRET}
-3. Validate daemon status: systemctl status pulldb-worker.service (if enabled)
-4. Run CLI help: ${INSTALL_PREFIX}/venv/bin/pulldb --help
-5. Tail logs (example): journalctl -u pulldb-worker -f -o cat
+1. Review/edit ${INSTALL_PREFIX}/.env
+2. Verify AWS credential access: aws sts get-caller-identity --profile ${AWS_PROFILE}
+3. Confirm secret exists: aws --profile ${AWS_PROFILE} secretsmanager describe-secret --secret-id ${COORD_SECRET}
+4. Validate daemon status: systemctl status pulldb-worker.service (if enabled)
+5. Run CLI help: ${INSTALL_PREFIX}/venv/bin/pulldb --help
+6. Tail logs (example): journalctl -u pulldb-worker -f -o cat
 
 Additional AWS guidance:
-  See ${REPO_ROOT}/docs/aws-quickstart.md for example AWS CLI validation commands and
+  See ${INSTALL_PREFIX}/AWS-SETUP.md for example AWS CLI validation commands and
   minimum IAM policy snippets required for Secrets Manager / SSM and S3 access.
 
 Uninstall (manual):
-  systemctl stop pulldb-worker.service || true
-  systemctl disable pulldb-worker.service || true
-  rm -f /etc/systemd/system/pulldb-worker.service
+  systemctl stop pulldb-worker.service pulldb-api.service || true
+  systemctl disable pulldb-worker.service pulldb-api.service || true
+  rm -f /etc/systemd/system/pulldb-worker.service /etc/systemd/system/pulldb-api.service
   systemctl daemon-reload
   rm -rf ${INSTALL_PREFIX}
 
@@ -253,22 +320,27 @@ main() {
     prompt INSTALL_PREFIX "Install directory" "$INSTALL_PREFIX_DEFAULT"
   fi
   if [[ -z "$AWS_PROFILE" ]]; then
-    prompt AWS_PROFILE "AWS profile for pullDB" "dev"
+    prompt AWS_PROFILE "AWS profile for pullDB" "pr-dev"
   fi
   if [[ -z "$COORD_SECRET" ]]; then
-    prompt COORD_SECRET "Coordination DB secret name" "/pulldb/mysql/coordination-db"
+    prompt COORD_SECRET "Coordination DB secret name" "aws-secretsmanager:/pulldb/mysql/coordination-db"
+  fi
+  # Set defaults for directories based on install prefix
+  if [[ -z "$LOG_DIR" ]]; then
+    LOG_DIR="/mnt/data/logs/pulldb.service"
+  fi
+  if [[ -z "$WORK_DIR" ]]; then
+    WORK_DIR="/mnt/data/work/pulldb.service"
+  fi
+  if [[ -z "$TMP_DIR" ]]; then
+    TMP_DIR="/mnt/data/tmp"
   fi
 
   mkdir -p "$INSTALL_PREFIX"
   cd "$INSTALL_PREFIX"
 
-  # Ensure secure work directory base exists
-  mkdir -p /mnt/data/tmp
-  if [[ "${PULLDB_INSTALLER_ALLOW_NON_ROOT:-}" == "1" ]]; then
-    chmod 1777 /mnt/data/tmp || warn "Could not chmod /mnt/data/tmp (non-root mode)"
-  else
-    chmod 1777 /mnt/data/tmp
-  fi
+  # Create data directories
+  ensure_data_directories
 
   generate_env_file ".env"
   create_virtualenv "$INSTALL_PREFIX/venv"
@@ -278,7 +350,7 @@ main() {
     warn "--no-systemd specified; skipping unit install."
   else
     if confirm "Install systemd worker daemon?"; then
-      install_systemd_unit "$INSTALL_PREFIX/scripts/pulldb-worker.service" || true
+      install_systemd_unit "$INSTALL_PREFIX/systemd/pulldb-worker.service" || true
     else
       warn "Skipping systemd installation."
     fi

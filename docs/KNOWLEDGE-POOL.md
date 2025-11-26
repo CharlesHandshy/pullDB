@@ -49,6 +49,12 @@ Last updated: 2025-11-22
 - Target DB secrets:
   - `/pulldb/mysql/dev-db-01`
 - Secrets live in development account (345321506926) only as of 2025-11-01
+- **Secret Structure** (IMPORTANT - as of Nov 2025):
+  - Secrets only store `host` and `password`
+  - `username`, `port`, `database` come from environment variables:
+    - `PULLDB_MYSQL_USER` (required)
+    - `PULLDB_MYSQL_PORT` (optional, default 3306)
+    - `PULLDB_MYSQL_DATABASE` (optional)
 - Runtime policy (`pulldb-secrets-manager-access`) should grant:
   - `secretsmanager:GetSecretValue` and `secretsmanager:DescribeSecret` on `arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*`
   - `kms:Decrypt` (conditioned to Secrets Manager usage)

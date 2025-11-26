@@ -4,8 +4,10 @@ set -euo pipefail
 # Configuration matching setup-test-environment.sh
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_ENV_DIR="${PROJECT_ROOT}/test-env"
-TEST_DB_NAME="pulldb_test_coordination"
-TEST_DB_USER="pulldb_usability_test"
+# Database name follows pattern: pulldb_<username>
+TEST_DB_USER_BASE="${SUDO_USER:-$USER}"
+TEST_DB_NAME="pulldb_${TEST_DB_USER_BASE}"
+TEST_DB_USER="pullDbService"
 
 # Colors
 RED='\033[0;31m'

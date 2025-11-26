@@ -102,15 +102,17 @@ pullDB requires 2 secrets in AWS Secrets Manager:
 **Secret Format** (JSON):
 ```json
 {
-  "username": "pulldb_app",
   "password": "ACTUAL_PASSWORD_HERE",
-  "host": "localhost",
-  "port": 3306,
-  "database": "pulldb_sandbox"
+  "host": "localhost"
 }
 ```
 
-  The local sandbox secret (`/pulldb/mysql/localhost-test`) uses the same structure but sets `host` to `localhost` and may omit the cluster identifier in favor of a `database` field when pointing at a standalone instance.
+**Environment Variables** (set in `.env` or systemd unit):
+- `PULLDB_MYSQL_USER` (required): MySQL username (e.g., `pulldb_app`)
+- `PULLDB_MYSQL_PORT` (optional): MySQL port (default: `3306`)
+- `PULLDB_MYSQL_DATABASE` (optional): Database name (e.g., `pulldb`)
+
+This separation keeps sensitive credentials (host endpoint, password) in Secrets Manager while non-sensitive configuration (username, port) stays in environment variables.
 
 ## Implementation Tasks
 

@@ -1,0 +1,32 @@
+# AWS CLI Configuration (example)
+# Copy to ~/.aws/config and customize for your environment
+#
+# For the pulldb_service user, this file goes in:
+#   /opt/pulldb.service/.aws/config
+#
+# For EC2 instances with Instance Profile, the credential_source
+# directive allows assuming cross-account roles.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PRODUCTION PROFILE (EC2 with Instance Profile)
+# ─────────────────────────────────────────────────────────────────────────────
+[profile pr-dev]
+# Cross-account role for accessing production S3 backups
+role_arn = arn:aws:iam::448509429610:role/pulldb-cross-account-readonly
+credential_source = Ec2InstanceMetadata
+region = us-east-1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DEVELOPMENT PROFILE (optional, for local development)
+# ─────────────────────────────────────────────────────────────────────────────
+# [profile dev]
+# For local development with SSO:
+# sso_start_url = https://your-org.awsapps.com/start
+# sso_region = us-east-1
+# sso_account_id = 123456789012
+# sso_role_name = DeveloperAccess
+# region = us-east-1
+
+# For local development with static credentials:
+# (credentials go in ~/.aws/credentials, not here)
+# region = us-east-1
