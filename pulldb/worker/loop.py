@@ -18,7 +18,7 @@ import time
 import typing as t
 
 from pulldb.domain.models import Job
-from pulldb.infra.logging import get_logger
+from pulldb.infra.logging import current_task_name, get_logger
 from pulldb.infra.metrics import (
     MetricLabels,
     emit_event,
@@ -99,46 +99,51 @@ def run_poll_loop(
                 job = job_repo.get_next_queued_job()
 
             if job:
-                # Reset backoff on successful job fetch
-                current_interval = poll_interval
-                emit_gauge("queue_backoff_interval_seconds", current_interval)
-
-                logger.info(
-                    "Job acquired from queue",
-                    extra={
-                        "job_id": job.id,
-                        "target": job.target,
-                        "owner": job.owner_username,
-                        "phase": "queue_poll",
-                    },
-                )
-
-                # Transition job to running status
-                _transition_to_running(job_repo, job)
-
+                # Set task name context for logging
+                token = current_task_name.set(job.id)
                 try:
-                    _execute_job(job_executor, job)
-                    emit_event(
-                        "worker_job_success",
-                        f"job_id={job.id}",
-                        MetricLabels(phase="job_execute", status="success"),
-                    )
-                except Exception as exc:
-                    logger.error(
-                        "Job executor raised error",
+                    # Reset backoff on successful job fetch
+                    current_interval = poll_interval
+                    emit_gauge("queue_backoff_interval_seconds", current_interval)
+
+                    logger.info(
+                        "Job acquired from queue",
                         extra={
                             "job_id": job.id,
                             "target": job.target,
-                            "phase": "job_execute",
-                            "error": str(exc),
+                            "owner": job.owner_username,
+                            "phase": "queue_poll",
                         },
-                        exc_info=True,
                     )
-                    emit_event(
-                        "worker_job_error",
-                        str(exc),
-                        MetricLabels(phase="job_execute", status="error"),
-                    )
+
+                    # Transition job to running status
+                    _transition_to_running(job_repo, job)
+
+                    try:
+                        _execute_job(job_executor, job)
+                        emit_event(
+                            "worker_job_success",
+                            f"job_id={job.id}",
+                            MetricLabels(phase="job_execute", status="success"),
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "Job executor raised error",
+                            extra={
+                                "job_id": job.id,
+                                "target": job.target,
+                                "phase": "job_execute",
+                                "error": str(exc),
+                            },
+                            exc_info=True,
+                        )
+                        emit_event(
+                            "worker_job_error",
+                            str(exc),
+                            MetricLabels(phase="job_execute", status="error"),
+                        )
+                finally:
+                    current_task_name.reset(token)
 
             else:
                 # No job found - apply exponential backoff

@@ -26,7 +26,12 @@ from pulldb.domain.config import Config
 from pulldb.domain.models import JobStatus
 from pulldb.infra.logging import get_logger
 from pulldb.infra.metrics import MetricLabels, emit_event, emit_gauge
-from pulldb.infra.mysql import HostRepository, JobRepository, build_default_pool
+from pulldb.infra.mysql import (
+    HostRepository,
+    JobRepository,
+    MySQLPool,
+    build_default_pool,
+)
 from pulldb.infra.s3 import S3Client
 from pulldb.infra.secrets import CredentialResolver
 from pulldb.worker.executor import WorkerExecutorDependencies, WorkerJobExecutor
@@ -72,11 +77,15 @@ def _parse_args(argv: t.Sequence[str] | None) -> argparse.Namespace:
         action="store_true",
         help="Run a single poll-loop pass (overrides --max-iterations)",
     )
-    return parser.parse_args(list(argv) if argv is not None else [])
+    return parser.parse_args(argv)
 
 
 def _load_config() -> Config:
     config = Config.minimal_from_env()
+
+    # Default to pr-dev profile if not specified (required for Secrets Manager access)
+    if not config.aws_profile:
+        config.aws_profile = "pr-dev"
 
     # Resolve coordination credentials if provided via secret
     coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
@@ -99,12 +108,16 @@ def _load_config() -> Config:
 
 
 def _build_job_repository(config: Config) -> JobRepository:
-    pool = build_default_pool(
-        host=config.mysql_host,
-        user=config.mysql_user,
-        password=config.mysql_password,
-        database=config.mysql_database,
-    )
+    kwargs = {
+        "host": config.mysql_host,
+        "user": config.mysql_user,
+        "password": config.mysql_password,
+        "database": config.mysql_database,
+    }
+    if config.mysql_socket:
+        kwargs["unix_socket"] = config.mysql_socket
+
+    pool = MySQLPool(**kwargs)
     return JobRepository(pool)
 
 
@@ -268,7 +281,15 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     _register_signal_handlers(stop_event)
 
     try:
-        config = _load_config()
+        # 1. Bootstrap config from env
+        bootstrap_config = _load_config()
+
+        # 2. Build repo (connects to DB)
+        job_repo = _build_job_repository(bootstrap_config)
+
+        # 3. Load full config from env + MySQL
+        config = Config.from_env_and_mysql(job_repo.pool)
+
         logger.info(
             "DEBUG: Loaded config",
             extra={
@@ -276,13 +297,8 @@ def main(argv: t.Sequence[str] | None = None) -> int:
                 "s3_backup_locations": str(config.s3_backup_locations),
             },
         )
-    except Exception as exc:
-        _emit_fatal(exc)
-        _set_worker_active(0, "fatal")
-        return 1
 
-    try:
-        job_repo = _build_job_repository(config)
+        # 4. Build executor with full config
         job_executor = _build_job_executor(config, job_repo)
     except Exception as exc:
         _emit_fatal(exc)

@@ -49,7 +49,11 @@ def fake_myloader(monkeypatch: pytest.MonkeyPatch) -> None:
     """Monkeypatch run_myloader inside restore module to simulate success."""
     from pulldb.worker import restore as restore_module
 
-    def _fake_run(spec: MyLoaderSpec, timeout: float | None = None) -> MyLoaderResult:
+    def _fake_run(
+        spec: MyLoaderSpec,
+        timeout: float | None = None,
+        progress_callback: object = None,
+    ) -> MyLoaderResult:
         now = datetime.now(UTC)
         return MyLoaderResult(
             command=["myloader", f"--database={spec.staging_db}"],

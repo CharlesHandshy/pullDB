@@ -364,4 +364,3 @@ def discover_latest_backup(
     )
     return spec
 
-print("LOADING S3 MODULE FROM", __file__)

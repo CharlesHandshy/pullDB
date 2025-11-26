@@ -186,6 +186,18 @@ This file should be created and applied in the production account only. Keep sec
 - **Logical Hostnames**: The `hostname` column in `db_hosts` is a logical alias (e.g., `dev-db-01`), NOT the FQDN. The actual connection FQDN is stored in the AWS Secret referenced by `credential_ref`. This allows CLI users to use short names while the system connects securely.
 - **Testing Restriction**: Use `dev-db-01` or `localhost` for testing purposes.
 
+## myloader 0.19 Metadata Compatibility
+- **Source**: `src/myloader/myloader_process.c` (GitHub)
+- **[config] Section**: Keys here are treated as command-line arguments (prepended with `--`).
+  - Useful for: `rows`, `threads`, `database`, `compress-protocol`, `local-infile`.
+- **[myloader_session_variables] Section**: Sets MySQL session variables.
+  - Critical for restores: `sql_log_bin=0`, `foreign_key_checks=0`, `time_zone='+00:00'`.
+- **Table Sections**: `[database.table]` (quoted).
+  - `real_table_name`: Allows renaming.
+  - `rows`: Critical for progress bar accuracy.
+  - `is_view`, `is_sequence`: Object type flags.
+- **Replication**: `[source]`, `[master]`, `[replication...]` sections for GTID/binlog setup.
+
 ## Quick commands & verification
 - Verify caller identity (from EC2 with instance profile):
   - `aws sts get-caller-identity`

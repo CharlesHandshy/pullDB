@@ -31,9 +31,12 @@ from collections.abc import Sequence
 import mysql.connector
 
 from pulldb.domain.errors import PostSQLError
+from pulldb.infra.logging import get_logger
 
 SCRIPT_EXTENSION = ".sql"
 MAX_SCRIPT_SIZE_BYTES = 2_000_000  # 2 MB safety cap to prevent runaway memory
+
+logger = get_logger("pulldb.worker.post_sql")
 
 
 @dataclass(slots=True)
@@ -75,6 +78,10 @@ class PostSQLConnectionSpec:
 
 def _discover_scripts(directory: Path) -> list[Path]:
     if not directory.exists():
+        logger.warning(
+            f"Post-SQL directory not found: {directory}. "
+            "Skipping post-restore SQL execution."
+        )
         return []
     scripts = [
         p for p in directory.iterdir() if p.is_file() and p.suffix == SCRIPT_EXTENSION
@@ -111,6 +118,15 @@ def execute_post_sql(spec: PostSQLConnectionSpec) -> PostSQLExecutionResult:
     start_total = datetime.now(UTC)
     results: list[PostSQLScriptResult] = []
 
+    logger.info(
+        f"Found {len(scripts)} post-SQL scripts to execute",
+        extra={
+            "staging_db": spec.staging_db,
+            "script_dir": str(directory),
+            "script_count": len(scripts),
+        },
+    )
+
     if not scripts:
         return PostSQLExecutionResult(
             staging_db=spec.staging_db,
@@ -141,18 +157,23 @@ def execute_post_sql(spec: PostSQLConnectionSpec) -> PostSQLExecutionResult:
         for path in scripts:
             script_sql = _read_script(path)
             started = datetime.now(UTC)
+            logger.info(f"Executing script: {path.name}")
             try:
                 # Support multiple statements per script
                 affected = 0
                 cursor.execute(script_sql)
                 while True:
-                    if cursor.with_rows:
+                    if cursor.with_rows:  # type: ignore
                         cursor.fetchall()  # Consume any result sets
                     if cursor.rowcount > 0:
                         affected += cursor.rowcount
                     if not cursor.nextset():
                         break
             except Exception as e:  # pragma: no cover - converted to PostSQLError
+                logger.error(
+                    f"Script failed: {path.name}",
+                    extra={"error": str(e)},
+                )
                 raise PostSQLError(
                     job_id="unknown",
                     script_name=path.name,
@@ -160,12 +181,17 @@ def execute_post_sql(spec: PostSQLConnectionSpec) -> PostSQLExecutionResult:
                     completed_scripts=[r.script_name for r in results],
                 ) from e
             completed = datetime.now(UTC)
+            duration = (completed - started).total_seconds()
+            logger.info(
+                f"Script completed: {path.name}",
+                extra={"duration_seconds": duration, "rows_affected": affected},
+            )
             results.append(
                 PostSQLScriptResult(
                     script_name=path.name,
                     started_at=started,
                     completed_at=completed,
-                    duration_seconds=(completed - started).total_seconds(),
+                    duration_seconds=duration,
                     rows_affected=affected,
                 )
             )

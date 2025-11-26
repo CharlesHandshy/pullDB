@@ -31,7 +31,6 @@ from pulldb.infra.exec import (
     CommandExecutionError,
     CommandResult,
     CommandTimeoutError,
-    run_command,
     run_command_streaming,
 )
 from pulldb.infra.logging import get_logger
@@ -52,6 +51,7 @@ from pulldb.worker.metadata import (
     MetadataSpec,
     inject_metadata_table,
 )
+from pulldb.worker.metadata_synthesis import ensure_compatible_metadata
 from pulldb.worker.post_sql import PostSQLConnectionSpec, execute_post_sql
 from pulldb.worker.staging import (
     StagingConnectionSpec,
@@ -185,18 +185,35 @@ def _count_restore_tasks(backup_dir: str) -> int:
 
 
 def _detect_backup_version(backup_dir: str) -> str:
-    """Detect backup version based on file extensions.
+    """Detect backup version based on metadata content and extensions.
 
-    Per strict user requirement:
-    - .zst files imply mydumper 0.19
-    - .gz files imply mydumper 0.9
+    Priority:
+    1. Metadata file content (INI = 0.19+, Text = 0.9)
+    2. File extensions (.zst = 0.19+, .gz = 0.9)
     """
     path = Path(backup_dir)
+    metadata_path = path / "metadata"
 
+    # 1. Primary Check: Metadata File Content
+    if metadata_path.exists():
+        try:
+            with open(metadata_path, "r", encoding="utf-8", errors="ignore") as f:
+                # Read first non-empty line
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line.startswith("["):
+                        return "0.19+ (INI metadata)"
+                    return "0.9 (Legacy metadata)"
+        except Exception:
+            pass  # Fallback if unreadable
+
+    # 2. Fallback: File Extensions
     if any(path.glob("**/*.zst")):
-        return "0.19 (zst)"
+        return "0.19+ (zst extension)"
     if any(path.glob("**/*.gz")):
-        return "0.9 (gz)"
+        return "0.9 (gz extension)"
 
     return "unknown"
 
@@ -218,6 +235,9 @@ def run_myloader(
     # Detect version
     version_info = _detect_backup_version(spec.backup_dir)
     logger.info(f"Detected backup version info: {version_info}")
+
+    # Ensure metadata compatibility (synthesize if needed)
+    ensure_compatible_metadata(spec.backup_dir)
 
     # Count tasks for progress
     total_tasks = _count_restore_tasks(spec.backup_dir)

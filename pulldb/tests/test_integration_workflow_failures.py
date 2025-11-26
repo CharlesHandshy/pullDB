@@ -87,7 +87,9 @@ def test_workflow_myloader_failure(
 
     # Monkeypatch run_myloader to raise MyLoaderError
     def _raise_loader(
-        spec: MyLoaderSpec, timeout: float | None = None
+        spec: MyLoaderSpec,
+        timeout: float | None = None,
+        progress_callback: object = None,
     ) -> MyLoaderResult:
         raise MyLoaderError(
             job_id=spec.job_id,
@@ -144,7 +146,9 @@ def test_workflow_post_sql_failure(
 
     # Fake successful myloader
     def _fake_loader(
-        spec: MyLoaderSpec, timeout: float | None = None
+        spec: MyLoaderSpec,
+        timeout: float | None = None,
+        progress_callback: object = None,
     ) -> MyLoaderResult:
         now = datetime.now(UTC)
         return MyLoaderResult(

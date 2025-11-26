@@ -32,16 +32,18 @@ class FakeCursor:
     def execute(self, sql: str) -> None:  # pragma: no cover - trivial branch
         # Minimal implementation: detect procedure existence query
         if "FROM information_schema.ROUTINES" in sql:
-            # Simulate COUNT(*) result
-            self._count = 1 if RENAME_PROCEDURE_NAME in self.procedures else 0
+            # Simulate schema result
+            self._result = ("pulldb",) if RENAME_PROCEDURE_NAME in self.procedures else None
         else:
-            self._count = 0
+            self._result = None
 
-    def fetchone(self) -> tuple[int]:
-        return (getattr(self, "_count", 0),)
+    def fetchone(self) -> tuple[str] | None:
+        return self._result
 
     def callproc(self, name: str, args: tuple[str, str]) -> None:
-        if name not in self.procedures:
+        # Handle schema-qualified name
+        simple_name = name.split(".")[-1]
+        if simple_name not in self.procedures:
             raise ValueError(f"Procedure {name} missing")
         self.callproc_args = (name, args)
 
@@ -115,6 +117,6 @@ def test_atomic_rename_success(monkeypatch: pytest.MonkeyPatch) -> None:
     atomic_rename_staging_to_target(_conn_spec(), spec)
 
     assert fake_conn.cursor_obj.callproc_args == (
-        RENAME_PROCEDURE_NAME,
+        f"pulldb.{RENAME_PROCEDURE_NAME}",
         (spec.staging_db, spec.target_db),
     )

@@ -209,9 +209,13 @@ class TestFromEnvAndMySQL:
         mock_pool = self._build_pool_with_settings([])
         config = Config.from_env_and_mysql(mock_pool)
 
-        assert config.work_dir == Path("/tmp/pulldb-work")
-        assert config.customers_after_sql_dir == Path("customers_after_sql")
-        assert config.qa_template_after_sql_dir == Path("qa_template_after_sql")
+        import getpass
+        expected_work_dir = Path(f"/mnt/data/tmp/{getpass.getuser()}/pulldb-work")
+        assert config.work_dir == expected_work_dir
+        expected_customer_dir = Path(__file__).parent.parent / "template_after_sql" / "customer"
+        expected_qa_dir = Path(__file__).parent.parent / "template_after_sql" / "quality"
+        assert config.customers_after_sql_dir == expected_customer_dir
+        assert config.qa_template_after_sql_dir == expected_qa_dir
 
     def test_prefers_staging_bucket_over_prod(self) -> None:
         """Staging bucket preferred when both staging and prod provided."""

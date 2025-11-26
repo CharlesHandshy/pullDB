@@ -494,8 +494,33 @@ class JobRepository:
         """
         # Deserialize options_json if present (MySQL connector returns JSON as string)
         options_json = row.get("options_json")
-        if options_json and isinstance(options_json, str):
-            options_json = json.loads(options_json)
+        if options_json:
+            if isinstance(options_json, str):
+                try:
+                    parsed = json.loads(options_json)
+                    if isinstance(parsed, dict):
+                        options_json = parsed
+                    else:
+                        logger.warning(
+                            "Job %s has invalid options_json type: %s",
+                            row["id"],
+                            type(parsed),
+                        )
+                        options_json = None
+                except json.JSONDecodeError:
+                    logger.warning(
+                        "Job %s has malformed options_json: %s",
+                        row["id"],
+                        options_json,
+                    )
+                    options_json = None
+            elif not isinstance(options_json, dict):
+                logger.warning(
+                    "Job %s has unexpected options_json type: %s",
+                    row["id"],
+                    type(options_json),
+                )
+                options_json = None
 
         return Job(
             id=row["id"],

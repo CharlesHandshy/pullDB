@@ -19,6 +19,10 @@ from typing import Any, cast
 import mysql.connector
 
 from pulldb.domain.errors import StagingError
+from pulldb.infra.logging import get_logger
+
+
+logger = get_logger("pulldb.worker.staging")
 
 
 # MySQL database name length limit (63 chars but we use 64 for legacy compatibility)
@@ -191,6 +195,14 @@ def cleanup_orphaned_staging(
         staging name collision after cleanup.
     """
     staging_db = generate_staging_name(target_db, job_id)
+    logger.info(
+        "Starting staging cleanup",
+        extra={
+            "job_id": job_id,
+            "target": target_db,
+            "staging_db": staging_db,
+        },
+    )
 
     try:
         connection = mysql.connector.connect(
@@ -224,8 +236,15 @@ def cleanup_orphaned_staging(
         staging_candidates = _find_orphaned_staging_databases(target_db, all_databases)
         orphans_dropped: list[str] = []
 
+        if staging_candidates:
+            logger.info(
+                f"Found {len(staging_candidates)} orphaned staging databases",
+                extra={"orphans": staging_candidates},
+            )
+
         for orphan_db in staging_candidates:
             try:
+                logger.info(f"Dropping orphaned database: {orphan_db}")
                 cursor.execute(f"DROP DATABASE IF EXISTS `{orphan_db}`")
                 orphans_dropped.append(orphan_db)
             except mysql.connector.Error as e:
@@ -251,6 +270,14 @@ def cleanup_orphaned_staging(
                 "cleanup; concurrency issue or UUID collision detected. Retry "
                 "with a new job id."
             )
+
+        logger.info(
+            "Staging cleanup complete",
+            extra={
+                "orphans_dropped_count": len(orphans_dropped),
+                "orphans_dropped": orphans_dropped,
+            },
+        )
 
         cursor.close()
     finally:

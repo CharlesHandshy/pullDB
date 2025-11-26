@@ -1,0 +1,12 @@
+#!/bin/bash
+set -e
+
+INSTALL_PREFIX="/opt/pulldb.client"
+BIN_DIR="/usr/local/bin"
+
+if [ "$1" = "remove" ]; then
+    rm -f "${BIN_DIR}/pulldb"
+    rm -rf "${INSTALL_PREFIX}"
+fi
+
+exit 0

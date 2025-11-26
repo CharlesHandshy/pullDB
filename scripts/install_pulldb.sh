@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# If executed with sh, try to re-exec with bash
+if [ -z "$BASH_VERSION" ]; then
+    exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 # pullDB installer (interactive + non-interactive)
@@ -8,7 +13,7 @@ set -euo pipefail
 #  - Accept AWS profile (--aws-profile) & coordination secret (--secret)
 #  - Optional validation (--validate) of AWS profile and secret existence
 #  - Create directory structure and Python virtual environment
-#  - Install Python package
+#  - Install Python package (from source or bundled wheel)
 #  - Generate .env file with required variables
 #  - Install systemd unit unless --no-systemd provided
 #  - Non-interactive mode with --yes (assume yes to confirmations)
@@ -182,8 +187,28 @@ create_virtualenv() {
   if [[ "${PULLDB_INSTALLER_SKIP_PIP:-}" == "1" ]]; then
     warn "Skipping pip install (PULLDB_INSTALLER_SKIP_PIP=1)"
   else
-    info "Installing pulldb package from repository root: ${REPO_ROOT}"
-    pip install "${REPO_ROOT}" || fail "pip install failed for ${REPO_ROOT}"
+    # Check if we are in a source repo or need to find a wheel
+    if [[ -f "${REPO_ROOT}/pyproject.toml" ]]; then
+        info "Installing pulldb package from repository root: ${REPO_ROOT}"
+        pip install "${REPO_ROOT}" || fail "pip install failed for ${REPO_ROOT}"
+    else
+        # Look for a wheel in likely locations
+        local wheel_file=""
+        # Check current dir, parent dir, and a 'dist' subdir
+        for loc in "${REPO_ROOT}" "${REPO_ROOT}/.." "${REPO_ROOT}/dist" "${REPO_ROOT}/../dist"; do
+            if compgen -G "${loc}/pulldb-*.whl" > /dev/null; then
+                wheel_file=$(ls "${loc}"/pulldb-*.whl | head -n 1)
+                break
+            fi
+        done
+        
+        if [[ -n "$wheel_file" ]]; then
+            info "Installing pulldb package from wheel: $wheel_file"
+            pip install "$wheel_file" || fail "pip install failed for $wheel_file"
+        else
+            fail "Could not find pyproject.toml or pulldb-*.whl to install."
+        fi
+    fi
   fi
 }
 
@@ -236,6 +261,14 @@ main() {
 
   mkdir -p "$INSTALL_PREFIX"
   cd "$INSTALL_PREFIX"
+
+  # Ensure secure work directory base exists
+  mkdir -p /mnt/data/tmp
+  if [[ "${PULLDB_INSTALLER_ALLOW_NON_ROOT:-}" == "1" ]]; then
+    chmod 1777 /mnt/data/tmp || warn "Could not chmod /mnt/data/tmp (non-root mode)"
+  else
+    chmod 1777 /mnt/data/tmp
+  fi
 
   generate_env_file ".env"
   create_virtualenv "$INSTALL_PREFIX/venv"

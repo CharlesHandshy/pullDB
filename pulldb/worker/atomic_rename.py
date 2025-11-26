@@ -26,6 +26,10 @@ from typing import Any
 import mysql.connector
 
 from pulldb.domain.errors import AtomicRenameError
+from pulldb.infra.logging import get_logger
+
+
+logger = get_logger("pulldb.worker.atomic_rename")
 
 
 @dataclass(slots=True, frozen=True)
@@ -71,23 +75,24 @@ class AtomicRenameSpec:
 RENAME_PROCEDURE_NAME = "pulldb_atomic_rename"
 
 
-def _verify_procedure_exists(cursor: Any) -> bool:
-    """Verify pulldb_atomic_rename stored procedure exists.
+def _get_procedure_schema(cursor: Any) -> str | None:
+    """Find schema containing pulldb_atomic_rename stored procedure.
 
     Args:
         cursor: Active MySQL cursor.
 
     Returns:
-        True if procedure exists, False otherwise.
+        Schema name if procedure exists, None otherwise.
     """
     cursor.execute(
-        "SELECT COUNT(*) FROM information_schema.ROUTINES "
+        "SELECT ROUTINE_SCHEMA FROM information_schema.ROUTINES "
         f"WHERE ROUTINE_NAME = '{RENAME_PROCEDURE_NAME}' "
-        "AND ROUTINE_TYPE = 'PROCEDURE'"
+        "AND ROUTINE_TYPE = 'PROCEDURE' "
+        "ORDER BY ROUTINE_SCHEMA = 'pulldb' DESC, ROUTINE_SCHEMA = 'sys' DESC "
+        "LIMIT 1"
     )
     row = cursor.fetchone()
-    count = int(row[0]) if row is not None else 0
-    return count > 0
+    return str(row[0]) if row else None
 
 
 def atomic_rename_staging_to_target(
@@ -114,6 +119,14 @@ def atomic_rename_staging_to_target(
             or procedure execution failure. Preserves original MySQL error.
     """
     # Connect to MySQL server (not to any specific database)
+    logger.info(
+        "Initiating atomic rename",
+        extra={
+            "job_id": rename_spec.job_id,
+            "staging_db": rename_spec.staging_db,
+            "target_db": rename_spec.target_db,
+        },
+    )
     try:
         connection = mysql.connector.connect(
             host=conn_spec.mysql_host,
@@ -138,8 +151,9 @@ def atomic_rename_staging_to_target(
     try:
         cursor = connection.cursor()
 
-        # Verify stored procedure exists
-        if not _verify_procedure_exists(cursor):
+        # Verify stored procedure exists and get schema
+        proc_schema = _get_procedure_schema(cursor)
+        if not proc_schema:
             raise AtomicRenameError(
                 job_id=rename_spec.job_id,
                 staging_name=rename_spec.staging_db,
@@ -153,10 +167,14 @@ def atomic_rename_staging_to_target(
                 ),
             )
 
+        # Increase group_concat_max_len to handle many tables (default 1024 is too small)
+        # This is required for GROUP_CONCAT in the stored procedure to build the full RENAME statement
+        cursor.execute("SET SESSION group_concat_max_len = 1000000")
+
         # Execute stored procedure
         try:
             cursor.callproc(
-                RENAME_PROCEDURE_NAME,
+                f"{proc_schema}.{RENAME_PROCEDURE_NAME}",
                 (rename_spec.staging_db, rename_spec.target_db),
             )
             # Consume any result sets to avoid "Unread result found" error
@@ -176,6 +194,7 @@ def atomic_rename_staging_to_target(
                 ),
             ) from e
 
+        logger.info("Atomic rename successful")
         cursor.close()
 
     finally:

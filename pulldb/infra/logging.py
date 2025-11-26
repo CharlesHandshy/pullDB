@@ -11,10 +11,16 @@ Example:
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import sys
-from typing import Any
+from typing import Any, cast
+
+# Context variable to track the active task name (e.g., job ID)
+current_task_name: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "task_name", default=None
+)
 
 
 class JSONFormatter(logging.Formatter):
@@ -111,3 +117,25 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
         logger.propagate = False
 
     return logger
+
+
+def _task_name_log_record_factory(
+    original_factory: Any,
+) -> Any:
+    """Create a log record factory that injects the current task name."""
+
+    def factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+        record = cast(logging.LogRecord, original_factory(*args, **kwargs))
+        task_name = current_task_name.get()
+        # Only override if we have a value, otherwise leave as is (None or asyncio task)
+        if task_name is not None:
+            record.taskName = task_name
+        return record
+
+    return factory
+
+
+# Install the log record factory to inject task names
+logging.setLogRecordFactory(
+    _task_name_log_record_factory(logging.getLogRecordFactory())
+)

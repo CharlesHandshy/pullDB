@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-INSTALL_PREFIX="/opt/pulldb"
+INSTALL_PREFIX="/opt/pulldb.service"
 UNIT_DEST="/etc/systemd/system/pulldb-worker.service"
 
 cleanup_systemd() {

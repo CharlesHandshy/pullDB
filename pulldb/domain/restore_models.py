@@ -35,6 +35,7 @@ MYLOADER_NEW_DEFAULTS = (
     "--ignore-errors=1146",
     "--overwrite-tables",
     "--verbose=3",
+    "--max-threads-per-table=1",
 )
 
 

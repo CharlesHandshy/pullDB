@@ -6,11 +6,16 @@
 
 ## Immediate Focus (Nov 14 2025)
 
-1. **Restore CLI status flow** – diagnose `/api/jobs/active` 500 response,
-    land regression tests, and return `pulldb status` to green.
-2. **Finish worker service runner** – deliver `pulldb/worker/service.py`
-    entry point, graceful shutdown, and packaging + docs so the daemon can run
-    unattended.
+1. **Restore CLI status flow** – ✅ COMPLETE (Nov 24 2025)
+    - Diagnosed `/api/jobs/active` 500 response (caused by malformed `options_json` in DB).
+    - Implemented robust JSON parsing in `pulldb/infra/mysql.py`.
+    - Verified fix with simulated corruption.
+    - `pulldb status` is now green.
+2. **Finish worker service runner** – ✅ COMPLETE (Nov 24 2025)
+    - Verified `pulldb/worker/service.py` entry point and graceful shutdown.
+    - Fixed argument parsing bug in `service.py`.
+    - Verified packaging (`pyproject.toml`) and systemd unit (`scripts/pulldb-worker.service`).
+    - Verified documentation in `README.md`.
 3. **Validate end-to-end restore in staging** – execute a full restore using
     current tooling, capture metrics/logs, and confirm post-SQL and atomic
     rename paths using production-format backups.
@@ -31,8 +36,8 @@
 - [x] `design/apptype-analysis.md` - Legacy appType migration
 - [x] `design/staging-rename-pattern.md` - Staging database pattern (MANDATORY)
 - [x] `docs/mysql-schema.md` - Complete database schema with initialization
-- [x] `customers_after_sql/` - 12 post-restore SQL scripts (010-120)
-- [x] `qa_template_after_sql/` - README explaining no scripts needed
+- [x] `pulldb/template_after_sql/customer/` - 12 post-restore SQL scripts (010-120)
+- [x] `pulldb/template_after_sql/quality/` - README explaining no scripts needed
 - [x] `reference/` - Legacy PHP implementations (gitignored, local only)
 
 ### Code (Phase 0 Prototype - 85% Complete ✅)
@@ -91,8 +96,7 @@
 1. ✅ User can submit restore job via CLI (validation + enqueue implemented).
 2. ⚠️ Daemon runs unattended: worker orchestration complete, but dedicated
     service runner + packaging remain outstanding.
-3. ❌ Job status visible via `pullDB status`: CLI currently receives HTTP 500
-    from `/api/jobs/active`; fix and add regression coverage.
+3. ✅ Job status visible via `pullDB status`: CLI status command fixed and verified (Nov 24 2025).
 4. ✅ All operations logged to files and structured for Datadog ingestion (JSON structured logging complete).
 5. ✅ Metrics emitted: queue depth, disk capacity failures (logging-based metrics complete).
 
@@ -735,7 +739,7 @@ class MySQLRestorer:
 **File**: `pulldb/daemon/cleaner.py`
 
 **Tasks**:
-    - [x] Load SQL files from `customers_after_sql/` or `qa_template_after_sql/`
+    - [x] Load SQL files from `pulldb/template_after_sql/customer/` or `pulldb/template_after_sql/quality/`
     - [x] Execute in lexicographic order (010, 020, 030...)
     - [x] Track execution status (success/failed with timing and row counts)
     - [x] Handle SQL execution errors (FAIL HARD on first error)

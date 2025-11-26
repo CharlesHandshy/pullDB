@@ -1,5 +1,5 @@
 -- Atomic rename stored procedure for pullDB
--- Version: 1.0.0
+-- Version: 1.1.0
 --
 -- IMPORTANT: Procedure version MUST match expected version in deployment
 -- tooling and worker compatibility checks. Bump this version ONLY when
@@ -27,7 +27,9 @@
 --   2. If target exists, DROP it (zero-downtime expectation: clients connect only after restore completes).
 --   3. Rename all tables from staging schema to target schema using RENAME TABLE ... syntax.
 --   4. Verify target schema now contains at least one table.
---   5. Leave staging schema intact if ANY error occurs (caller will FAIL HARD; manual inspection allowed).
+--   5. Verify staging schema is empty.
+--   6. Drop staging database.
+--   7. Leave staging schema intact if ANY error occurs (caller will FAIL HARD; manual inspection allowed).
 --
 -- Transactional Notes:
 --   MySQL does not support transactional CREATE/DROP DATABASE operations.
@@ -63,8 +65,12 @@ DROP PROCEDURE IF EXISTS pulldb_atomic_rename $$
 CREATE PROCEDURE pulldb_atomic_rename(IN p_staging_db VARCHAR(64), IN p_target_db VARCHAR(64))
 BEGIN
     DECLARE v_table_count INT DEFAULT 0;
-    DECLARE v_rename_sql TEXT;
+    DECLARE v_rename_sql LONGTEXT;
     DECLARE v_first_table VARCHAR(255);
+    DECLARE v_msg VARCHAR(255);
+
+    -- Increase group_concat_max_len to handle many tables (default 1024 is too small)
+    SET SESSION group_concat_max_len = 1000000;
 
     -- Validate staging exists
     SELECT COUNT(*) INTO v_table_count
@@ -72,8 +78,8 @@ BEGIN
     WHERE TABLE_SCHEMA = p_staging_db;
 
     IF v_table_count = 0 THEN
-        SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = CONCAT('Staging database ', p_staging_db, ' has no tables (empty or missing)');
+        SET v_msg = CONCAT('Staging database ', p_staging_db, ' has no tables (empty or missing)');
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_msg;
     END IF;
 
     -- Drop target if exists (ensures clean cutover)
@@ -121,9 +127,25 @@ BEGIN
     WHERE TABLE_SCHEMA = p_target_db;
 
     IF v_table_count = 0 THEN
-        SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = CONCAT('Atomic rename produced empty target ', p_target_db);
+        SET v_msg = CONCAT('Atomic rename produced empty target ', p_target_db);
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_msg;
     END IF;
+
+    -- Verify staging is now empty
+    SELECT COUNT(*) INTO v_table_count
+    FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = p_staging_db;
+
+    IF v_table_count > 0 THEN
+        SET v_msg = CONCAT('Staging database ', p_staging_db, ' still has tables after rename');
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_msg;
+    END IF;
+
+    -- Drop empty staging database
+    SET @drop_staging_sql = CONCAT('DROP DATABASE `', p_staging_db, '`');
+    PREPARE stmt_drop_staging FROM @drop_staging_sql;
+    EXECUTE stmt_drop_staging;
+    DEALLOCATE PREPARE stmt_drop_staging;
 END $$
 DELIMITER ;
 
@@ -147,14 +169,18 @@ CREATE PROCEDURE pulldb_atomic_rename_preview(IN p_staging_db VARCHAR(64), IN p_
 BEGIN
     DECLARE v_table_count INT DEFAULT 0;
     DECLARE v_rename_sql TEXT;
+    DECLARE v_msg VARCHAR(255);
+
+    -- Increase group_concat_max_len to handle many tables
+    SET SESSION group_concat_max_len = 1000000;
 
     SELECT COUNT(*) INTO v_table_count
     FROM information_schema.TABLES
     WHERE TABLE_SCHEMA = p_staging_db;
 
     IF v_table_count = 0 THEN
-        SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = CONCAT('Staging database ', p_staging_db, ' has no tables (empty or missing)');
+        SET v_msg = CONCAT('Staging database ', p_staging_db, ' has no tables (empty or missing)');
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_msg;
     END IF;
 
     SELECT GROUP_CONCAT(

@@ -274,12 +274,22 @@ auto_cleanup_previous_env() {
 create_test_directories() {
     info "Creating test directory structure..."
 
+    # Ensure secure work directory base exists
+    if [[ "$DRY_RUN" == true ]]; then
+        info "[DRY-RUN] Would create directory: /mnt/data/tmp"
+    else
+        mkdir -p /mnt/data/tmp
+        chmod 1777 /mnt/data/tmp
+    fi
+
+    local work_dir="/mnt/data/tmp/${SUDO_USER:-$USER}/pulldb-work"
+
     local dirs=(
         "$TEST_ENV_DIR"
         "$TEST_ENV_DIR/logs"
         "$TEST_ENV_DIR/config"
         "$TEST_ENV_DIR/backups"
-        "$TEST_ENV_DIR/work"
+        "$work_dir"
     )
 
     for dir in "${dirs[@]}"; do
@@ -470,7 +480,7 @@ PULLDB_S3_PREFIX=daily/stg/
 PULLDB_LOG_LEVEL=DEBUG
 
 # Work Directory
-PULLDB_WORK_DIR=${TEST_ENV_DIR}/work
+PULLDB_WORK_DIR=/mnt/data/tmp/${SUDO_USER:-$USER}/pulldb-work
 EOF
 
     chmod 644 "$env_file"
@@ -552,7 +562,7 @@ echo "pullDB Test Environment Ready!"
 echo "================================"
 echo "Config: ${SCRIPT_DIR}/.env"
 echo "Logs: ${SCRIPT_DIR}/logs/"
-echo "Work: ${SCRIPT_DIR}/work/"
+echo "Work: /mnt/data/tmp/${SUDO_USER:-$USER}/pulldb-work/"
 echo ""
 echo "Quick commands:"
 echo "  pulldb --help"
@@ -682,9 +692,11 @@ ${YELLOW}Directory Structure:${NC}
   ├── venv/                 # Python virtual environment
   ├── config/               # Credentials and settings
   ├── logs/                 # Application logs
-  ├── work/                 # Working directory for restores
   ├── activate-test-env.sh  # Activation script
   └── run-quick-test.sh     # Smoke test script
+
+${YELLOW}Work Directory:${NC}
+  /mnt/data/tmp/${SUDO_USER:-$USER}/pulldb-work/
 
 ${YELLOW}AWS Configuration:${NC}
   Profile: ${DETECTED_AWS_PROFILE:-Not configured}

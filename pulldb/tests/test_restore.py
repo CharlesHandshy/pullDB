@@ -71,10 +71,10 @@ def test_run_myloader_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) ->
             self.stdout = "restore ok"
             self.stderr = ""
 
-    def fake_run_command(*_a: Any, **_k: Any) -> FakeResult:
+    def fake_run_command_streaming(*_a: Any, **_k: Any) -> FakeResult:
         return FakeResult()
 
-    monkeypatch.setattr(restore_module, "run_command", fake_run_command)
+    monkeypatch.setattr(restore_module, "run_command_streaming", fake_run_command_streaming)
 
     result = run_myloader(spec)
     assert result.exit_code == 0
@@ -84,7 +84,7 @@ def test_run_myloader_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) ->
 def test_run_myloader_nonzero(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     """Ensure non-zero exit from underlying command raises MyLoaderError.
 
-    We monkeypatch worker.restore.run_command to simulate a finished process
+    We monkeypatch worker.restore.run_command_streaming to simulate a finished process
     with exit_code 7 so we exercise error translation logic without invoking
     a real myloader binary.
     """
@@ -103,12 +103,12 @@ def test_run_myloader_nonzero(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) ->
             self.stdout = "ok"
             self.stderr = "boom"
 
-    def fake_run_command(
+    def fake_run_command_streaming(
         *_a: Any, **_k: Any
     ) -> FakeResult:  # pragma: no cover - trivial
         return FakeResult()
 
-    monkeypatch.setattr(restore_mod, "run_command", fake_run_command)
+    monkeypatch.setattr(restore_mod, "run_command_streaming", fake_run_command_streaming)
 
     with pytest.raises(MyLoaderError) as exc:
         run_myloader(spec)
@@ -124,12 +124,12 @@ def test_run_myloader_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) ->
     from pulldb.infra import exec as exec_mod
     from pulldb.worker import restore as restore_mod
 
-    def fake_run_command(*_a: Any, **_k: Any) -> None:  # raise timeout every call
+    def fake_run_command_streaming(*_a: Any, **_k: Any) -> None:  # raise timeout every call
         raise exec_mod.CommandTimeoutError(
             ["myloader"], 0.1, "partial out", "partial err"
         )
 
-    monkeypatch.setattr(restore_mod, "run_command", fake_run_command)
+    monkeypatch.setattr(restore_mod, "run_command_streaming", fake_run_command_streaming)
 
     with pytest.raises(MyLoaderError) as exc:
         run_myloader(spec, timeout=0.05)

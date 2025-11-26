@@ -1,0 +1,27 @@
+#!/bin/bash
+set -e
+
+INSTALL_PREFIX="/opt/pulldb.client"
+BIN_DIR="/usr/local/bin"
+
+# Create venv and install
+if [ "$1" = "configure" ]; then
+    echo "Setting up pullDB client in ${INSTALL_PREFIX}..."
+    
+    # Create venv if not exists
+    if [ ! -d "${INSTALL_PREFIX}/venv" ]; then
+        python3 -m venv "${INSTALL_PREFIX}/venv"
+    fi
+
+    # Install wheel
+    WHEEL_FILE=$(ls ${INSTALL_PREFIX}/dist/*.whl | head -n 1)
+    if [ -n "$WHEEL_FILE" ]; then
+        "${INSTALL_PREFIX}/venv/bin/pip" install --quiet --upgrade "$WHEEL_FILE"
+    fi
+
+    # Symlink binary
+    ln -sf "${INSTALL_PREFIX}/venv/bin/pulldb" "${BIN_DIR}/pulldb"
+    echo "pullDB client installed. Run 'pulldb --help' to verify."
+fi
+
+exit 0

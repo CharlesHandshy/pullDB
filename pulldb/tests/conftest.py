@@ -12,12 +12,104 @@ LOCAL TESTING: If AWS secret resolves to unreachable host, override via:
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
+import sys
+import time
+import typing as t
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
-from pulldb.infra.mysql import MySQLPool, build_default_pool
+from pulldb.infra.mysql import MySQLPool
 from pulldb.infra.secrets import CredentialResolver, MySQLCredentials
+
+
+def _wait_for_mysql(
+    proc: subprocess.Popen[bytes], socket_path: Path, timeout: float = 10.0
+) -> None:
+    """Wait for MySQL socket to appear."""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if socket_path.exists():
+            return
+        if proc.poll() is not None:
+            raise RuntimeError("Isolated mysqld process exited prematurely.")
+        time.sleep(0.1)
+    raise RuntimeError(f"Isolated mysqld failed to start within {timeout}s")
+
+
+def _deploy_schema(socket_path: Path) -> None:
+    """Deploy schema to isolated MySQL instance."""
+    # Create database first
+    import mysql.connector
+
+    conn = mysql.connector.connect(
+        user="root",
+        password="",
+        unix_socket=str(socket_path),
+    )
+    cursor = conn.cursor()
+    cursor.execute("CREATE DATABASE IF NOT EXISTS pulldb")
+    conn.close()
+
+    # Deploy schema files
+    project_root = Path(__file__).parent.parent.parent
+    schema_dir = project_root / "schema" / "pulldb"
+
+    mysql_client = shutil.which("mysql")
+    if mysql_client and schema_dir.exists():
+        for sql_file in sorted(schema_dir.glob("*.sql")):
+            with open(sql_file) as f:
+                subprocess.run(
+                    [
+                        mysql_client,
+                        "-u",
+                        "root",
+                        "--socket",
+                        str(socket_path),
+                        "pulldb",
+                    ],
+                    stdin=f,
+                    check=True,
+                )
+
+
+def _seed_isolated_settings(socket_path: Path) -> None:
+    """Seed settings in isolated MySQL instance."""
+    import mysql.connector
+
+    conn = mysql.connector.connect(
+        user="root",
+        password="",
+        unix_socket=str(socket_path),
+        database="pulldb",
+    )
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO settings (setting_key, setting_value)
+        VALUES ('s3_bucket_stg','pestroutesrdsdbs')
+        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+        """
+    )
+    cursor.execute(
+        """
+        INSERT INTO settings (setting_key, setting_value)
+        VALUES ('s3_bucket_path','pestroutesrdsdbs/daily/stg/')
+        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+        """
+    )
+    cursor.execute(
+        """
+        INSERT INTO settings (setting_key, setting_value)
+        VALUES ('default_dbhost','localhost')
+        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+        """
+    )
+    conn.commit()
+    conn.close()
 
 
 @pytest.fixture(scope="session")
@@ -73,11 +165,16 @@ def verify_secret_residency(
         AssertionError: If secret exists in wrong account or cannot be described.
     """
     # Skip if using local override (offline development)
-    if all(
+    if any(
         [
-            os.getenv("PULLDB_TEST_MYSQL_HOST"),
-            os.getenv("PULLDB_TEST_MYSQL_USER"),
-            os.getenv("PULLDB_TEST_MYSQL_PASSWORD"),
+            all(
+                [
+                    os.getenv("PULLDB_TEST_MYSQL_HOST"),
+                    os.getenv("PULLDB_TEST_MYSQL_USER"),
+                    os.getenv("PULLDB_TEST_MYSQL_PASSWORD"),
+                ]
+            ),
+            os.getenv("PULLDB_TEST_MYSQL_SOCKET"),
         ]
     ):
         pytest.skip("Skipping secret residency check - using local overrides")
@@ -114,6 +211,7 @@ def verify_secret_residency(
         secret_arn = str(response.get("ARN", ""))
     except Exception as e:  # pragma: no cover - allow graceful skip for local dev
         pytest.skip(f"Cannot verify secret residency: {e}")
+        return  # Satisfy type checker
 
     # Extract account ID from ARN: arn:aws:secretsmanager:region:ACCOUNT:secret:name
     # ARN format has 6+ parts, account is at index 4
@@ -153,6 +251,17 @@ def mysql_credentials(
     local_host = os.getenv("PULLDB_TEST_MYSQL_HOST")
     local_user = os.getenv("PULLDB_TEST_MYSQL_USER")
     local_password = os.getenv("PULLDB_TEST_MYSQL_PASSWORD")
+    local_socket = os.getenv("PULLDB_TEST_MYSQL_SOCKET")
+
+    # If socket override is set (Ephemeral Isolation)
+    if local_socket and local_user is not None:
+        return MySQLCredentials(
+            username=local_user,
+            password=local_password or "",
+            host="localhost",
+            port=0,
+            db_cluster_identifier=None,
+        )
 
     # If ALL local overrides set, use them (explicit dev-only bypass)
     if local_host and local_user and local_password:
@@ -191,6 +300,7 @@ def mysql_credentials(
             f"     export PULLDB_TEST_MYSQL_PASSWORD=your-password\n\n"
             f"See docs/testing.md for complete setup guide."
         )
+        raise e  # Should be unreachable due to skip, but satisfies type checker
 
 
 @pytest.fixture(scope="session")
@@ -201,13 +311,19 @@ def mysql_pool(mysql_credentials: MySQLCredentials) -> MySQLPool:
         MySQLPool: Shared connection pool for tests.
     """
     creds = mysql_credentials
-    pool = build_default_pool(
-        host=creds.host,
-        user=creds.username,
-        password=creds.password,
-        database="pulldb",  # Always use pulldb database for tests
-    )
-    return pool
+    kwargs = {
+        "host": creds.host,
+        "user": creds.username,
+        "password": creds.password,
+        "database": "pulldb",
+    }
+
+    # Check for socket override
+    socket_path = os.getenv("PULLDB_TEST_MYSQL_SOCKET")
+    if socket_path:
+        kwargs["unix_socket"] = socket_path
+
+    return MySQLPool(**kwargs)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -257,3 +373,157 @@ def mysql_network_credentials(
     username/password from resolved secret so tests exercise credential path.
     """
     return ("localhost", mysql_credentials.username, mysql_credentials.password)
+
+
+@pytest.fixture(scope="session")
+def isolated_mysql(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> t.Generator[str, None, None]:
+    """Create an ephemeral, isolated MySQL instance for testing.
+
+    This fixture:
+    1. Creates a temporary data directory.
+    2. Initializes a fresh MySQL database.
+    3. Starts mysqld bound ONLY to a Unix socket (no TCP ports).
+    4. Sets PULLDB_TEST_MYSQL_* environment variables to point to it.
+    5. Cleans up the process on teardown.
+
+    This enables parallel test execution on the same machine without port conflicts
+    or root privileges.
+    """
+    # 1. Setup directories
+    base_dir = tmp_path_factory.mktemp("mysql_data")
+    data_dir = base_dir / "data"
+    socket_path = base_dir / "mysql.sock"
+    pid_file = base_dir / "mysql.pid"
+
+    # Check for mysqld
+    mysqld_bin = shutil.which("mysqld")
+    if not mysqld_bin:
+        pytest.skip(
+            "mysqld not found in PATH. Install mysql-server to use isolated testing."
+        )
+    mysqld_bin = cast(str, mysqld_bin)
+
+    # 2. Initialize Database
+    try:
+        subprocess.run(
+            [
+                mysqld_bin,
+                "--no-defaults",
+                "--initialize-insecure",
+                f"--datadir={data_dir}",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        pytest.skip(f"Failed to initialize isolated MySQL: {e.stderr}")
+
+    # 3. Start mysqld
+    server_cmd = [
+        mysqld_bin,
+        "--no-defaults",
+        f"--datadir={data_dir}",
+        f"--socket={socket_path}",
+        f"--pid-file={pid_file}",
+        "--skip-networking",
+        "--mysqlx=0",
+    ]
+
+    proc = subprocess.Popen(
+        server_cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    # 4. Wait for readiness
+    try:
+        _wait_for_mysql(proc, socket_path)
+    except RuntimeError as e:
+        proc.terminate()
+        pytest.fail(str(e))
+
+    # 5. Configure Environment
+    os.environ["PULLDB_TEST_MYSQL_HOST"] = "localhost"
+    os.environ["PULLDB_TEST_MYSQL_USER"] = "root"
+    os.environ["PULLDB_TEST_MYSQL_PASSWORD"] = ""
+    os.environ["PULLDB_TEST_MYSQL_SOCKET"] = str(socket_path)
+    os.environ["PULLDB_TEST_MYSQL_DATABASE"] = "pulldb"
+
+    # Set env vars for application code (Config)
+    os.environ["PULLDB_MYSQL_HOST"] = "localhost"
+    os.environ["PULLDB_MYSQL_USER"] = "root"
+    os.environ["PULLDB_MYSQL_PASSWORD"] = ""
+    os.environ["PULLDB_MYSQL_SOCKET"] = str(socket_path)
+    os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb"
+
+    # 6. Deploy Schema
+    try:
+        _deploy_schema(socket_path)
+        _seed_isolated_settings(socket_path)
+    except Exception as e:
+        proc.terminate()
+        pytest.fail(f"Failed to configure isolated MySQL: {e}")
+
+    yield str(socket_path)
+
+    # Cleanup
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+@pytest.fixture
+def isolated_worker(
+    isolated_mysql: str,
+) -> t.Generator[subprocess.Popen[bytes], None, None]:
+    """Start a worker process connected to the isolated database.
+
+    This fixture starts the worker service as a subprocess, ensuring it
+    connects to the ephemeral MySQL instance via the environment variables
+    set by isolated_mysql.
+    """
+    cmd = [sys.executable, "-m", "pulldb.worker.service"]
+
+    # Ensure PYTHONPATH includes project root
+    env = os.environ.copy()
+    
+    # Prevent secret resolution from overriding isolated credentials
+    # We set it to empty string instead of popping to prevent load_dotenv from
+    # restoring it from a local .env file.
+    env["PULLDB_COORDINATION_SECRET"] = ""
+
+    project_root = str(Path(__file__).parent.parent.parent)
+    if "PYTHONPATH" in env:
+        env["PYTHONPATH"] = f"{project_root}:{env['PYTHONPATH']}"
+    else:
+        env["PYTHONPATH"] = project_root
+
+    proc = subprocess.Popen(
+        cmd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    # Give it a moment to start
+    time.sleep(1)
+    if proc.poll() is not None:
+        stdout, stderr = proc.communicate()
+        pytest.fail(
+            f"Worker failed to start:\n"
+            f"STDOUT: {stdout.decode()}\n"
+            f"STDERR: {stderr.decode()}"
+        )
+
+    yield proc
+
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()

@@ -21,7 +21,11 @@ from datetime import datetime
 import mysql.connector
 
 from pulldb.domain.errors import MetadataInjectionError
+from pulldb.infra.logging import get_logger
 from pulldb.worker.post_sql import PostSQLExecutionResult
+
+
+logger = get_logger("pulldb.worker.metadata")
 
 
 @dataclass(slots=True, frozen=True)
@@ -107,6 +111,14 @@ def inject_metadata_table(
             or insert failure. Preserves original MySQL error for diagnostics.
     """
     # Connect to staging database
+    logger.info(
+        "Injecting metadata table",
+        extra={
+            "job_id": metadata_spec.job_id,
+            "staging_db": conn_spec.staging_db,
+            "target_db": metadata_spec.target_db,
+        },
+    )
     try:
         connection = mysql.connector.connect(
             host=conn_spec.mysql_host,
@@ -207,6 +219,7 @@ def inject_metadata_table(
                 ),
             ) from e
 
+        logger.info("Metadata injection successful")
         cursor.close()
 
     finally:

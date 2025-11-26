@@ -46,6 +46,9 @@ class _FakeCursor:
             raise deploy.mysql.connector.Error("simulated create failure")
         self.statements.append(statement)
 
+    def nextset(self) -> bool | None:  # pragma: no cover - trivial
+        return None
+
     def close(self) -> None:  # pragma: no cover - trivial
         self.closed = True
 
@@ -104,7 +107,7 @@ def sql_file(tmp_path: Path) -> Path:
     # Minimal viable SQL with version header + delimiters matching deploy script
     path.write_text(
         (
-            "-- Version: 1.0.0\n"
+            "-- Version: 1.1.0\n"
             "DELIMITER $$\nDROP PROCEDURE IF EXISTS pulldb_atomic_rename $$\n"
             "CREATE PROCEDURE pulldb_atomic_rename() BEGIN SELECT 1; END $$\n"
             "DELIMITER ;\n"
@@ -237,7 +240,7 @@ def test_create_failure(sql_file: Path, monkeypatch: Any) -> None:
         ]
     )
     assert code == 1
-    assert "Procedure creation failed" in err
+    assert "Statement execution failed" in err
     assert "Deploying pulldb_atomic_rename to db1.example.com:3306" in out
 
 
@@ -342,7 +345,7 @@ def test_deploy_without_preview_strips_preview(
     sql_path = tmp_path / "procedure.sql"
     sql_path.write_text(
         (
-            "-- Version: 1.0.0\n"
+            "-- Version: 1.1.0\n"
             "DELIMITER $$\nDROP PROCEDURE IF EXISTS pulldb_atomic_rename $$\n"
             "CREATE PROCEDURE pulldb_atomic_rename() BEGIN SELECT 1; END $$\n"
             "DELIMITER ;\n"
@@ -388,7 +391,7 @@ def test_deploy_with_preview_keeps_preview(monkeypatch: Any, tmp_path: Path) -> 
     sql_path = tmp_path / "procedure.sql"
     sql_path.write_text(
         (
-            "-- Version: 1.0.0\n"
+            "-- Version: 1.1.0\n"
             "DELIMITER $$\nDROP PROCEDURE IF EXISTS pulldb_atomic_rename $$\n"
             "CREATE PROCEDURE pulldb_atomic_rename() BEGIN SELECT 1; END $$\n"
             "DELIMITER ;\n"

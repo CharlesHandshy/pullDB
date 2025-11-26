@@ -10,6 +10,7 @@ Milestone 2.7 update: Uses SettingsRepository for MySQL settings access.
 
 from __future__ import annotations
 
+import getpass
 import json
 import os
 import shlex
@@ -89,6 +90,7 @@ class Config:
     mysql_user: str
     mysql_password: str
     mysql_database: str = "pulldb"
+    mysql_socket: str | None = None
 
     s3_bucket_path: str | None = None
     aws_profile: str | None = None
@@ -96,9 +98,11 @@ class Config:
 
     default_dbhost: str | None = None
 
-    work_dir: Path = Path("/tmp/pulldb-work")
-    customers_after_sql_dir: Path = Path("customers_after_sql")
-    qa_template_after_sql_dir: Path = Path("qa_template_after_sql")
+    work_dir: Path = field(
+        default_factory=lambda: Path(f"/mnt/data/tmp/{getpass.getuser()}/pulldb-work")
+    )
+    customers_after_sql_dir: Path = Path(__file__).parent.parent / "template_after_sql" / "customer"
+    qa_template_after_sql_dir: Path = Path(__file__).parent.parent / "template_after_sql" / "quality"
     myloader_binary: str = "/opt/pulldb/bin/myloader-0.19.3-3"
     myloader_extra_args: tuple[str, ...] = ()
     myloader_timeout_seconds: float = 7200.0
@@ -161,6 +165,7 @@ class Config:
         mysql_user_raw = os.getenv("PULLDB_MYSQL_USER", "root")
         mysql_password_raw = os.getenv("PULLDB_MYSQL_PASSWORD", "")
         mysql_database_raw = os.getenv("PULLDB_MYSQL_DATABASE", "pulldb")
+        mysql_socket_raw = os.getenv("PULLDB_MYSQL_SOCKET")
 
         myloader_binary = _strip_or_none(os.getenv("PULLDB_MYLOADER_BINARY"))
         extra_args_env = _strip_or_none(os.getenv("PULLDB_MYLOADER_EXTRA_ARGS"))
@@ -190,6 +195,7 @@ class Config:
             mysql_user=cls._resolve_parameter(mysql_user_raw, aws_profile),
             mysql_password=cls._resolve_parameter(mysql_password_raw, aws_profile),
             mysql_database=cls._resolve_parameter(mysql_database_raw, aws_profile),
+            mysql_socket=mysql_socket_raw,
             s3_bucket_path=os.getenv("PULLDB_S3_BUCKET_PATH"),
             aws_profile=aws_profile,
             s3_aws_profile=s3_aws_profile,
@@ -266,19 +272,19 @@ class Config:
         work_dir_str: str = (
             os.getenv("PULLDB_WORK_DIR")
             or settings.get("work_directory")
-            or "/tmp/pulldb-work"
+            or f"/mnt/data/tmp/{getpass.getuser()}/pulldb-work"
         )
 
         customers_after_sql_dir_str: str = (
             os.getenv("PULLDB_CUSTOMERS_AFTER_SQL_DIR")
             or settings.get("customers_after_sql_dir")
-            or "customers_after_sql"
+            or str(Path(__file__).parent.parent / "template_after_sql" / "customer")
         )
 
         qa_template_after_sql_dir_str: str = (
             os.getenv("PULLDB_QA_TEMPLATE_AFTER_SQL_DIR")
             or settings.get("qa_template_after_sql_dir")
-            or "qa_template_after_sql"
+            or str(Path(__file__).parent.parent / "template_after_sql" / "quality")
         )
 
         myloader_binary = base_config.myloader_binary
@@ -329,6 +335,7 @@ class Config:
             mysql_user=base_config.mysql_user,
             mysql_password=base_config.mysql_password,
             mysql_database=base_config.mysql_database,
+            mysql_socket=base_config.mysql_socket,
             # AWS profile from environment
             aws_profile=base_config.aws_profile,
             s3_aws_profile=base_config.s3_aws_profile,
@@ -434,7 +441,8 @@ def _parse_s3_backup_locations(
     for idx, entry in enumerate(payload):
         if not isinstance(entry, dict):
             raise ValueError(
-                "Each S3 backup location must be an object with bucket_path and optional metadata"
+                "Each S3 backup location must be an object with bucket_path and "
+                "optional metadata"
             )
         bucket_path = _strip_or_none(entry.get("bucket_path"))
         if not bucket_path:

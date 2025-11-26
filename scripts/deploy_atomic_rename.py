@@ -38,7 +38,7 @@ import mysql.connector
 
 PROCEDURE_NAME = "pulldb_atomic_rename"
 PREVIEW_PROCEDURE_NAME = "pulldb_atomic_rename_preview"
-EXPECTED_VERSION = "1.0.0"
+EXPECTED_VERSION = "1.1.0"
 
 
 @runtime_checkable
@@ -107,6 +107,9 @@ def parse_args() -> argparse.Namespace:
         "--password", required=True, help="MySQL user password (avoid shells history)"
     )
     parser.add_argument(
+        "--database", default="pulldb", help="Database to deploy procedure into"
+    )
+    parser.add_argument(
         "--dry-run", action="store_true", help="Validate only; no deployment"
     )
     parser.add_argument(
@@ -142,7 +145,9 @@ def load_sql(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def deploy_to_host(host: str, port: int, user: str, password: str, sql: str) -> None:
+def deploy_to_host(
+    host: str, port: int, user: str, password: str, database: str, sql: str
+) -> None:
     """Deploy the atomic rename stored procedure to a single MySQL host.
 
     Args:
@@ -150,6 +155,7 @@ def deploy_to_host(host: str, port: int, user: str, password: str, sql: str) -> 
         port: MySQL port (default 3306 typically).
         user: MySQL user with CREATE ROUTINE/DROP/ALTER privileges.
         password: Password for the MySQL user.
+        database: Database to deploy procedure into.
         sql: Raw SQL contents of the procedure definition file.
 
     Raises:
@@ -164,18 +170,20 @@ def deploy_to_host(host: str, port: int, user: str, password: str, sql: str) -> 
                 port=port,
                 user=user,
                 password=password,
+                database=database,
                 connect_timeout=5,
                 autocommit=True,
             )
         except mysql.connector.Error as e:
             _fail(
-                goal=f"Connect to MySQL host {host}:{port}",
+                goal=f"Connect to MySQL host {host}:{port} db={database}",
                 problem="Connection failed",
                 root_cause=str(e),
                 solutions=[
                     "Verify host/port accessible (firewall/security group)",
                     "Check credentials (user/password correct)",
-                    "Test with: mysql -h host -u user -p",
+                    f"Verify database '{database}' exists",
+                    "Test with: mysql -h host -u user -p -D database",
                 ],
             )
         assert conn is not None
@@ -196,13 +204,54 @@ def deploy_to_host(host: str, port: int, user: str, password: str, sql: str) -> 
         with contextlib.suppress(mysql.connector.Error):
             cursor.execute(f"DROP PROCEDURE IF EXISTS {PREVIEW_PROCEDURE_NAME}")
         try:  # create procedure
-            for statement in sql.split("DELIMITER ;"):
-                stmt = statement.strip()
+            # Parse and execute statements separated by $$
+            # We assume the file uses DELIMITER $$ for the procedures
+            
+            # First, remove the DELIMITER lines to avoid confusion
+            # We keep the content, just remove the delimiter commands
+            clean_sql = sql.replace("DELIMITER $$", "").replace("DELIMITER ;", "")
+            
+            # Now split by $$
+            statements = clean_sql.split("$$")
+            
+            for stmt in statements:
+                stmt = stmt.strip()
                 if not stmt:
                     continue
-                if stmt.startswith("DELIMITER"):
+                
+                # Skip comments-only blocks or empty blocks
+                # (Simple heuristic: if it doesn't start with DROP or CREATE, skip it)
+                # But comments might precede DROP/CREATE.
+                # Let's just try to execute it if it has content.
+                # But we should probably strip leading comments to check.
+                
+                # Actually, mysql-connector might handle comments fine.
+                # But let's be safe and skip if it's just comments.
+                lines = stmt.splitlines()
+                effective_lines = [l for l in lines if not l.strip().startswith("--")]
+                if not effective_lines:
                     continue
-                cursor.execute(stmt)
+                
+                # Reconstruct statement without leading/trailing whitespace
+                # We keep internal comments
+                
+                try:
+                    cursor.execute(stmt)
+                    # Consume results to avoid "Commands out of sync"
+                    # Some statements (like DROP) might return results or warnings
+                    while cursor.nextset():
+                        pass
+                except mysql.connector.Error as e:
+                    _fail(
+                        goal="Execute SQL statement",
+                        problem="Statement execution failed",
+                        root_cause=str(e) + f"\nStatement start: {stmt[:100]}...",
+                        solutions=[
+                            "Inspect SQL file for syntax errors",
+                            "Check MySQL version compatibility",
+                            "Verify CREATE ROUTINE privilege",
+                        ],
+                    )
         except mysql.connector.Error as e:
             _fail(
                 goal="Create atomic rename procedure",
@@ -326,7 +375,7 @@ def main() -> int:
             f"(version {EXPECTED_VERSION}) ...",
             end="",
         )
-        deploy_to_host(host, args.port, args.user, args.password, sql)
+        deploy_to_host(host, args.port, args.user, args.password, args.database, sql)
         print(" OK")
 
     print("Deployment complete for all hosts.")

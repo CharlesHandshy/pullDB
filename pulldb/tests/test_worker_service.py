@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 import typing as t
 from types import SimpleNamespace
+from unittest import mock
 
 import pytest
 
@@ -73,7 +74,9 @@ def test_worker_service_main_invokes_poll_loop(monkeypatch: pytest.MonkeyPatch) 
         s3_bucket_path=None,
         s3_backup_locations=(),
     )
-    repo = t.cast(JobRepository, object())
+    mock_pool = mock.MagicMock()
+    mock_pool.connection.return_value.__enter__.return_value.cursor.return_value.fetchall.return_value = []
+    repo = t.cast(JobRepository, SimpleNamespace(pool=mock_pool))
     job_executor = object()
     captured: dict[str, t.Any] = {}
 
@@ -122,7 +125,9 @@ def test_worker_service_oneshot_overrides_iterations(
         s3_backup_locations=(),
     )
     monkeypatch.setattr(worker_service, "_load_config", lambda: config)
-    repo = t.cast(JobRepository, object())
+    mock_pool = mock.MagicMock()
+    mock_pool.connection.return_value.__enter__.return_value.cursor.return_value.fetchall.return_value = []
+    repo = t.cast(JobRepository, SimpleNamespace(pool=mock_pool))
     job_executor = object()
     monkeypatch.setattr(worker_service, "_build_job_repository", lambda _: repo)
     monkeypatch.setattr(worker_service, "_build_job_executor", lambda *_: job_executor)

@@ -61,3 +61,20 @@ def test_build_spec_respects_existing_threads_override() -> None:
     )
 
     assert spec.extra_args == ("--threads=4",)
+
+
+def test_build_spec_includes_max_threads_per_table_for_new_format() -> None:
+    config = _base_config()
+    spec = build_configured_myloader_spec(
+        config=config,
+        job_id="job-3",
+        staging_db="staging_db",
+        backup_dir="/tmp/backup",
+        mysql_host="dbhost",
+        mysql_port=3306,
+        mysql_user="root",
+        mysql_password="secret",
+        format_tag="new",
+    )
+
+    assert "--max-threads-per-table=1" in spec.extra_args
