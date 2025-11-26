@@ -4,7 +4,11 @@
 
 The pullDB client provides command-line access to the pullDB restore service. It communicates with the pullDB API server to submit restore jobs and check their status.
 
-## Installation Location
+## Installation
+
+The client is installed as the `pulldb_service` system user (shared with the server package if installed).
+
+### Installation Location
 
 ```
 /opt/pulldb.client/
@@ -13,7 +17,17 @@ The pullDB client provides command-line access to the pullDB restore service. It
 └── venv/                    # Python virtual environment
     └── bin/
         └── pulldb           # CLI executable
+
+/usr/local/bin/pulldb        # Symlink (accessible to all users)
 ```
+
+### System User
+
+- **User**: `pulldb_service`
+- **Group**: `pulldb_service`  
+- **Home**: `/opt/pulldb.service` (if server installed) or `/opt/pulldb.client`
+
+The user/group is shared with the `pulldb` server package. If both packages are installed, they share the same system user.
 
 ## CLI Command Reference
 

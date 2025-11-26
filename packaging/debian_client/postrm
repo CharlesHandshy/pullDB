@@ -3,10 +3,31 @@ set -e
 
 INSTALL_PREFIX="/opt/pulldb.client"
 BIN_DIR="/usr/local/bin"
+SYSTEM_USER="pulldb_service"
+SYSTEM_GROUP="pulldb_service"
 
 if [ "$1" = "remove" ]; then
     rm -f "${BIN_DIR}/pulldb"
     rm -rf "${INSTALL_PREFIX}"
+    echo "pullDB client removed."
+fi
+
+if [ "$1" = "purge" ]; then
+    rm -f "${BIN_DIR}/pulldb"
+    rm -rf "${INSTALL_PREFIX}"
+    
+    # Only remove user/group if server package is NOT installed
+    if [ ! -d "/opt/pulldb.service" ]; then
+        if id -u "${SYSTEM_USER}" >/dev/null 2>&1; then
+            deluser --system "${SYSTEM_USER}" 2>/dev/null || true
+        fi
+        if getent group "${SYSTEM_GROUP}" >/dev/null 2>&1; then
+            delgroup --system "${SYSTEM_GROUP}" 2>/dev/null || true
+        fi
+        echo "pullDB client purged (including user/group)."
+    else
+        echo "pullDB client purged. User/group retained for server package."
+    fi
 fi
 
 exit 0

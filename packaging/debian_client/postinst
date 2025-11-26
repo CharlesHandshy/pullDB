@@ -3,10 +3,32 @@ set -e
 
 INSTALL_PREFIX="/opt/pulldb.client"
 BIN_DIR="/usr/local/bin"
+SYSTEM_USER="pulldb_service"
+SYSTEM_GROUP="pulldb_service"
+
+create_group_and_user() {
+    if ! getent group "${SYSTEM_GROUP}" >/dev/null 2>&1; then
+        addgroup --system "${SYSTEM_GROUP}"
+    fi
+    if ! id -u "${SYSTEM_USER}" >/dev/null 2>&1; then
+        # Use /opt/pulldb.service as home if server is installed, otherwise /opt/pulldb.client
+        if [ -d "/opt/pulldb.service" ]; then
+            adduser --system --ingroup "${SYSTEM_GROUP}" --home "/opt/pulldb.service" --shell /usr/sbin/nologin "${SYSTEM_USER}"
+        else
+            adduser --system --ingroup "${SYSTEM_GROUP}" --home "${INSTALL_PREFIX}" --shell /usr/sbin/nologin "${SYSTEM_USER}"
+        fi
+    fi
+}
 
 # Create venv and install
 if [ "$1" = "configure" ]; then
     echo "Setting up pullDB client in ${INSTALL_PREFIX}..."
+    
+    # Ensure user exists
+    create_group_and_user
+    
+    # Ensure directory ownership
+    chown -R "${SYSTEM_USER}:${SYSTEM_GROUP}" "${INSTALL_PREFIX}"
     
     # Create venv if not exists
     if [ ! -d "${INSTALL_PREFIX}/venv" ]; then
@@ -14,14 +36,24 @@ if [ "$1" = "configure" ]; then
     fi
 
     # Install wheel
-    WHEEL_FILE=$(ls ${INSTALL_PREFIX}/dist/*.whl | head -n 1)
+    WHEEL_FILE=$(ls ${INSTALL_PREFIX}/dist/*.whl 2>/dev/null | head -n 1)
     if [ -n "$WHEEL_FILE" ]; then
+        "${INSTALL_PREFIX}/venv/bin/pip" install --quiet --upgrade pip wheel
         "${INSTALL_PREFIX}/venv/bin/pip" install --quiet --upgrade "$WHEEL_FILE"
+    else
+        echo "Warning: No wheel found in ${INSTALL_PREFIX}/dist/"
     fi
+    
+    # Fix ownership after install
+    chown -R "${SYSTEM_USER}:${SYSTEM_GROUP}" "${INSTALL_PREFIX}"
 
-    # Symlink binary
+    # Symlink binary (readable/executable by all)
     ln -sf "${INSTALL_PREFIX}/venv/bin/pulldb" "${BIN_DIR}/pulldb"
-    echo "pullDB client installed. Run 'pulldb --help' to verify."
+    
+    echo ""
+    echo "pullDB client installed successfully."
+    echo "  Binary: ${BIN_DIR}/pulldb"
+    echo "  Run 'pulldb --help' to verify."
 fi
 
 exit 0
