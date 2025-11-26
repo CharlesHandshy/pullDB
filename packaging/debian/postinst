@@ -1,70 +1,98 @@
 #!/bin/sh
 set -e
 
+# =============================================================================
+# pullDB Server Package - Post-Installation Script
+# =============================================================================
+#
+# Installation Order:
+#   1. Create system user/group
+#   2. Merge/create .env and .aws/config (preserving existing values)
+#   3. Load variables from .env
+#   4. Offer interactive configuration (if terminal available)
+#   5. Ensure all paths exist with correct ownership/permissions
+#   6. Install Python package and systemd units
+#   7. Validate installation
+#
+# =============================================================================
+
 INSTALL_PREFIX="/opt/pulldb.service"
 SYSTEM_USER="pulldb_service"
 SYSTEM_GROUP="pulldb_service"
+ENV_FILE="${INSTALL_PREFIX}/.env"
+MERGE_SCRIPT="${INSTALL_PREFIX}/scripts/merge-config.sh"
+CONFIGURE_SCRIPT="${INSTALL_PREFIX}/scripts/configure-pulldb.sh"
+BACKUP_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+# Systemd paths
 WORKER_UNIT_SOURCE="${INSTALL_PREFIX}/systemd/pulldb-worker.service"
 WORKER_UNIT_DEST="/etc/systemd/system/pulldb-worker.service"
 API_UNIT_SOURCE="${INSTALL_PREFIX}/systemd/pulldb-api.service"
 API_UNIT_DEST="/etc/systemd/system/pulldb-api.service"
-ENV_FILE="${INSTALL_PREFIX}/.env"
-MERGE_SCRIPT="${INSTALL_PREFIX}/scripts/merge-config.sh"
-BACKUP_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
-# Default data directories (can be overridden in .env)
-DEFAULT_LOG_DIR="/mnt/data/logs/pulldb.service"
-DEFAULT_WORK_DIR="/mnt/data/work/pulldb.service"
-DEFAULT_TMP_DIR="/mnt/data/tmp"
+# =============================================================================
+# Step 1: Create System User and Group
+# =============================================================================
 
-create_group_and_user() {
+create_user_and_group() {
+    echo "Step 1: Creating system user and group..."
+    
     if ! getent group "${SYSTEM_GROUP}" >/dev/null 2>&1; then
         addgroup --system "${SYSTEM_GROUP}"
+        echo "  Created group: ${SYSTEM_GROUP}"
     fi
+    
     if ! id -u "${SYSTEM_USER}" >/dev/null 2>&1; then
         adduser --system --ingroup "${SYSTEM_GROUP}" --home "${INSTALL_PREFIX}" --shell /usr/sbin/nologin "${SYSTEM_USER}"
+        echo "  Created user: ${SYSTEM_USER}"
     fi
-}
-
-ensure_directories() {
-    # Core install directories
+    
+    # Ensure base install directory exists
     install -d -o "${SYSTEM_USER}" -g "${SYSTEM_GROUP}" -m 0750 "${INSTALL_PREFIX}"
-    for dir in logs work scripts systemd dist; do
+    for dir in scripts systemd dist logs work after_sql; do
         install -d -o "${SYSTEM_USER}" -g "${SYSTEM_GROUP}" -m 0750 "${INSTALL_PREFIX}/${dir}"
     done
-    
-    # Data directories (outside install prefix for larger storage)
-    # Create parent /mnt/data if needed
-    if [ ! -d "/mnt/data" ]; then
-        mkdir -p /mnt/data
-        chmod 755 /mnt/data
-    fi
-    
-    # Log directory
-    if [ ! -d "${DEFAULT_LOG_DIR}" ]; then
-        install -d -o "${SYSTEM_USER}" -g "${SYSTEM_GROUP}" -m 0750 "${DEFAULT_LOG_DIR}"
-        echo "Created log directory: ${DEFAULT_LOG_DIR}"
-    fi
-    
-    # Work directory
-    if [ ! -d "${DEFAULT_WORK_DIR}" ]; then
-        install -d -o "${SYSTEM_USER}" -g "${SYSTEM_GROUP}" -m 0750 "${DEFAULT_WORK_DIR}"
-        echo "Created work directory: ${DEFAULT_WORK_DIR}"
-    fi
-    
-    # Temp directory (shared, sticky bit)
-    if [ ! -d "${DEFAULT_TMP_DIR}" ]; then
-        install -d -m 1777 "${DEFAULT_TMP_DIR}"
-        echo "Created temp directory: ${DEFAULT_TMP_DIR}"
-    fi
 }
 
-configure_aws_setup() {
-    echo "Configuring AWS setup for ${SYSTEM_USER}..."
-    USER_HOME=$(getent passwd "${SYSTEM_USER}" | cut -d: -f6)
+# =============================================================================
+# Step 2: Merge/Create Configuration Files
+# =============================================================================
+
+configure_env_file() {
+    echo "Step 2a: Configuring .env file..."
     
+    local ENV_EXAMPLE="${INSTALL_PREFIX}/env.example"
+    
+    if [ -f "${ENV_FILE}" ] && [ -f "${ENV_EXAMPLE}" ]; then
+        # Backup existing .env
+        cp "${ENV_FILE}" "${ENV_FILE}.backup.${BACKUP_TIMESTAMP}"
+        echo "  Backed up existing .env to .env.backup.${BACKUP_TIMESTAMP}"
+        
+        # Merge existing with new template
+        if [ -x "${MERGE_SCRIPT}" ]; then
+            "${MERGE_SCRIPT}" env "${ENV_FILE}" "${ENV_EXAMPLE}" "${ENV_FILE}.merged"
+            mv "${ENV_FILE}.merged" "${ENV_FILE}"
+            echo "  Merged configuration with new template"
+        else
+            echo "  Warning: Merge script not found, preserving existing .env"
+        fi
+    elif [ -f "${ENV_EXAMPLE}" ]; then
+        # Fresh install - copy template
+        cp "${ENV_EXAMPLE}" "${ENV_FILE}"
+        echo "  Created .env from template"
+    fi
+    
+    # Secure permissions
+    chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${ENV_FILE}"
+    chmod 600 "${ENV_FILE}"
+}
+
+configure_aws() {
+    echo "Step 2b: Configuring AWS..."
+    
+    USER_HOME=$(getent passwd "${SYSTEM_USER}" | cut -d: -f6)
     if [ -z "$USER_HOME" ]; then
-        echo "Warning: Could not find home directory for ${SYSTEM_USER}"
+        echo "  Warning: Could not find home directory for ${SYSTEM_USER}"
         return
     fi
 
@@ -73,7 +101,7 @@ configure_aws_setup() {
     chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${AWS_DIR}"
     chmod 700 "${AWS_DIR}"
 
-    # Copy example to .aws directory (always update example)
+    # Copy example to .aws directory (always update)
     if [ -f "${INSTALL_PREFIX}/aws.config.example" ]; then
         cp "${INSTALL_PREFIX}/aws.config.example" "${AWS_DIR}/config.example"
         chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${AWS_DIR}/config.example"
@@ -81,75 +109,179 @@ configure_aws_setup() {
 
     # Merge or create .aws/config
     if [ -f "${AWS_DIR}/config" ] && [ -f "${AWS_DIR}/config.example" ]; then
-        # Backup existing config
         cp "${AWS_DIR}/config" "${AWS_DIR}/config.backup.${BACKUP_TIMESTAMP}"
-        echo "Backed up ${AWS_DIR}/config to config.backup.${BACKUP_TIMESTAMP}"
+        echo "  Backed up existing AWS config"
         
-        # Merge existing with new template
         if [ -x "${MERGE_SCRIPT}" ]; then
             "${MERGE_SCRIPT}" ini "${AWS_DIR}/config" "${AWS_DIR}/config.example" "${AWS_DIR}/config.merged"
             mv "${AWS_DIR}/config.merged" "${AWS_DIR}/config"
             chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${AWS_DIR}/config"
             chmod 600 "${AWS_DIR}/config"
-        else
-            echo "Warning: Merge script not found, preserving existing config"
+            echo "  Merged AWS configuration"
         fi
     elif [ -f "${AWS_DIR}/config.example" ]; then
         cp "${AWS_DIR}/config.example" "${AWS_DIR}/config"
         chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${AWS_DIR}/config"
         chmod 600 "${AWS_DIR}/config"
-        echo "Created ${AWS_DIR}/config from example."
+        echo "  Created AWS config from template"
     fi
 
-    # Copy AWS-SETUP.md (documentation, safe to update)
+    # Copy documentation
     if [ -f "${INSTALL_PREFIX}/AWS-SETUP.md" ]; then
-        if [ "${INSTALL_PREFIX}/AWS-SETUP.md" != "${USER_HOME}/AWS-SETUP.md" ]; then
-            cp "${INSTALL_PREFIX}/AWS-SETUP.md" "${USER_HOME}/AWS-SETUP.md"
-            chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${USER_HOME}/AWS-SETUP.md"
-            echo "AWS setup docs copied to ${USER_HOME}/AWS-SETUP.md"
-        fi
+        cp "${INSTALL_PREFIX}/AWS-SETUP.md" "${USER_HOME}/AWS-SETUP.md"
+        chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${USER_HOME}/AWS-SETUP.md"
     fi
 }
 
-configure_env_file() {
-    local ENV_EXAMPLE="${INSTALL_PREFIX}/env.example"
+# =============================================================================
+# Step 3: Load Variables from .env
+# =============================================================================
+
+load_env_variables() {
+    echo "Step 3: Loading configuration..."
     
-    if [ -f "${ENV_FILE}" ] && [ -f "${ENV_EXAMPLE}" ]; then
-        # Backup existing .env
-        cp "${ENV_FILE}" "${ENV_FILE}.backup.${BACKUP_TIMESTAMP}"
-        echo "Backed up ${ENV_FILE} to .env.backup.${BACKUP_TIMESTAMP}"
-        
-        # Merge existing with new template
-        if [ -x "${MERGE_SCRIPT}" ]; then
-            "${MERGE_SCRIPT}" env "${ENV_FILE}" "${ENV_EXAMPLE}" "${ENV_FILE}.merged"
-            mv "${ENV_FILE}.merged" "${ENV_FILE}"
-            chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${ENV_FILE}"
-            chmod 600 "${ENV_FILE}"
-        else
-            echo "Warning: Merge script not found, preserving existing .env"
-        fi
-    elif [ -f "${ENV_EXAMPLE}" ]; then
-        # Fresh install - copy template
-        cp "${ENV_EXAMPLE}" "${ENV_FILE}"
-        chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${ENV_FILE}"
-        chmod 600 "${ENV_FILE}"
-        echo "Created ${ENV_FILE} from example."
+    if [ -f "${ENV_FILE}" ]; then
+        # Source the env file to get paths
+        set -a
+        # shellcheck disable=SC1090
+        . "${ENV_FILE}" 2>/dev/null || true
+        set +a
+        echo "  Loaded ${ENV_FILE}"
+    fi
+    
+    # Set defaults for paths if not defined
+    PULLDB_WORK_DIR="${PULLDB_WORK_DIR:-/mnt/data/work/pulldb.service}"
+    PULLDB_LOG_DIR="${PULLDB_LOG_DIR:-/mnt/data/logs/pulldb.service}"
+    PULLDB_TMP_DIR="${PULLDB_TMP_DIR:-/mnt/data/tmp}"
+    PULLDB_CUSTOMERS_AFTER_SQL_DIR="${PULLDB_CUSTOMERS_AFTER_SQL_DIR:-${INSTALL_PREFIX}/after_sql/customer}"
+    PULLDB_QA_TEMPLATE_AFTER_SQL_DIR="${PULLDB_QA_TEMPLATE_AFTER_SQL_DIR:-${INSTALL_PREFIX}/after_sql/quality}"
+}
+
+# =============================================================================
+# Step 4: Interactive Configuration (Optional)
+# =============================================================================
+
+offer_interactive_config() {
+    # Only offer interactive config if:
+    # 1. We have a terminal
+    # 2. DEBIAN_FRONTEND is not noninteractive
+    # 3. The configure script exists
+    
+    if [ -t 0 ] && [ "${DEBIAN_FRONTEND:-}" != "noninteractive" ] && [ -x "${CONFIGURE_SCRIPT}" ]; then
+        echo ""
+        echo "Step 4: Configuration"
+        echo ""
+        read -p "  Would you like to configure pullDB now? [y/N] " response
+        case "$response" in
+            [yY][eE][sS]|[yY])
+                "${CONFIGURE_SCRIPT}"
+                # Reload variables after interactive config
+                load_env_variables
+                ;;
+            *)
+                echo "  Skipping interactive configuration."
+                echo "  Run 'sudo ${CONFIGURE_SCRIPT}' later to configure."
+                ;;
+        esac
+    else
+        echo "Step 4: Skipping interactive configuration (non-interactive mode)"
     fi
 }
 
-validate_install() {
-    echo "Validating installation..."
-    if [ -x "${INSTALL_PREFIX}/venv/bin/python" ]; then
-        if su -s /bin/bash "${SYSTEM_USER}" -c "${INSTALL_PREFIX}/venv/bin/python -c \"import pulldb; print('pullDB module loaded successfully')\""; then
-             echo "Validation successful."
-        else
-             echo "Warning: pullDB module import failed. Check logs and configuration."
+# =============================================================================
+# Step 5: Ensure Paths Exist with Correct Permissions
+# =============================================================================
+
+ensure_paths() {
+    echo "Step 5: Ensuring paths and permissions..."
+    
+    # Create parent /mnt/data if needed
+    if [ ! -d "/mnt/data" ]; then
+        mkdir -p /mnt/data
+        chmod 755 /mnt/data
+    fi
+    
+    # Work directory
+    if [ ! -d "${PULLDB_WORK_DIR}" ]; then
+        install -d -o "${SYSTEM_USER}" -g "${SYSTEM_GROUP}" -m 0750 "${PULLDB_WORK_DIR}"
+        echo "  Created: ${PULLDB_WORK_DIR}"
+    else
+        chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${PULLDB_WORK_DIR}" 2>/dev/null || true
+    fi
+    
+    # Log directory
+    if [ ! -d "${PULLDB_LOG_DIR}" ]; then
+        install -d -o "${SYSTEM_USER}" -g "${SYSTEM_GROUP}" -m 0750 "${PULLDB_LOG_DIR}"
+        echo "  Created: ${PULLDB_LOG_DIR}"
+    else
+        chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${PULLDB_LOG_DIR}" 2>/dev/null || true
+    fi
+    
+    # Temp directory (shared, sticky bit)
+    if [ ! -d "${PULLDB_TMP_DIR}" ]; then
+        install -d -m 1777 "${PULLDB_TMP_DIR}"
+        echo "  Created: ${PULLDB_TMP_DIR}"
+    fi
+    
+    # After-SQL directories
+    install -d -o "${SYSTEM_USER}" -g "${SYSTEM_GROUP}" -m 0750 "${PULLDB_CUSTOMERS_AFTER_SQL_DIR}"
+    install -d -o "${SYSTEM_USER}" -g "${SYSTEM_GROUP}" -m 0750 "${PULLDB_QA_TEMPLATE_AFTER_SQL_DIR}"
+    
+    # Copy template SQL files if target directories are empty
+    TEMPLATE_CUSTOMER="${INSTALL_PREFIX}/template_after_sql/customer"
+    TEMPLATE_QA="${INSTALL_PREFIX}/template_after_sql/quality"
+    
+    if [ -d "${TEMPLATE_CUSTOMER}" ]; then
+        if [ -z "$(ls -A "${PULLDB_CUSTOMERS_AFTER_SQL_DIR}" 2>/dev/null)" ]; then
+            cp -r "${TEMPLATE_CUSTOMER}"/* "${PULLDB_CUSTOMERS_AFTER_SQL_DIR}/" 2>/dev/null || true
+            chown -R "${SYSTEM_USER}:${SYSTEM_GROUP}" "${PULLDB_CUSTOMERS_AFTER_SQL_DIR}"
+            echo "  Installed customer after-SQL scripts"
+        fi
+    fi
+    
+    if [ -d "${TEMPLATE_QA}" ]; then
+        if [ -z "$(ls -A "${PULLDB_QA_TEMPLATE_AFTER_SQL_DIR}" 2>/dev/null)" ]; then
+            cp -r "${TEMPLATE_QA}"/* "${PULLDB_QA_TEMPLATE_AFTER_SQL_DIR}/" 2>/dev/null || true
+            chown -R "${SYSTEM_USER}:${SYSTEM_GROUP}" "${PULLDB_QA_TEMPLATE_AFTER_SQL_DIR}"
+            echo "  Installed QA after-SQL scripts"
         fi
     fi
 }
 
-install_systemd_unit() {
+# =============================================================================
+# Step 6: Install Python Package and Systemd Units
+# =============================================================================
+
+install_python_package() {
+    echo "Step 6a: Installing Python package..."
+    
+    VENV_DIR="${INSTALL_PREFIX}/venv"
+    
+    if [ -d "${VENV_DIR}" ]; then
+        echo "  Existing venv found, upgrading..."
+    else
+        echo "  Creating new virtual environment..."
+        python3 -m venv "${VENV_DIR}"
+    fi
+    
+    # Install/upgrade the wheel
+    if ls "${INSTALL_PREFIX}/dist"/pulldb-*.whl 1>/dev/null 2>&1; then
+        "${VENV_DIR}/bin/pip" install --upgrade pip wheel >/dev/null
+        "${VENV_DIR}/bin/pip" install --upgrade --force-reinstall "${INSTALL_PREFIX}/dist"/pulldb-*.whl
+        echo "  pulldb package installed successfully"
+    else
+        echo "  Warning: No wheel found in ${INSTALL_PREFIX}/dist/"
+    fi
+    
+    # Ensure ownership
+    chown -R "${SYSTEM_USER}:${SYSTEM_GROUP}" "${INSTALL_PREFIX}" || true
+}
+
+install_systemd_units() {
+    echo "Step 6b: Installing systemd units..."
+    
     if ! command -v systemctl >/dev/null 2>&1; then
+        echo "  systemd not available, skipping"
         return
     fi
     
@@ -157,65 +289,75 @@ install_systemd_unit() {
     [ -f "${WORKER_UNIT_DEST}" ] && [ ! -L "${WORKER_UNIT_DEST}" ] && rm -f "${WORKER_UNIT_DEST}"
     [ -f "${API_UNIT_DEST}" ] && [ ! -L "${API_UNIT_DEST}" ] && rm -f "${API_UNIT_DEST}"
     
-    # Create symlinks to unit files in install directory
+    # Create symlinks
     if [ -f "${WORKER_UNIT_SOURCE}" ]; then
         ln -sf "${WORKER_UNIT_SOURCE}" "${WORKER_UNIT_DEST}"
-        echo "Linked ${WORKER_UNIT_DEST} -> ${WORKER_UNIT_SOURCE}"
-        systemctl enable pulldb-worker.service || true
+        systemctl enable pulldb-worker.service >/dev/null 2>&1 || true
+        echo "  Enabled pulldb-worker.service"
     fi
     
     if [ -f "${API_UNIT_SOURCE}" ]; then
         ln -sf "${API_UNIT_SOURCE}" "${API_UNIT_DEST}"
-        echo "Linked ${API_UNIT_DEST} -> ${API_UNIT_SOURCE}"
-        systemctl enable pulldb-api.service || true
+        systemctl enable pulldb-api.service >/dev/null 2>&1 || true
+        echo "  Enabled pulldb-api.service"
     fi
     
     systemctl daemon-reload || true
 }
 
+# =============================================================================
+# Step 7: Validate Installation
+# =============================================================================
+
+validate_installation() {
+    echo "Step 7: Validating installation..."
+    
+    if [ -x "${INSTALL_PREFIX}/venv/bin/python" ]; then
+        if su -s /bin/bash "${SYSTEM_USER}" -c "${INSTALL_PREFIX}/venv/bin/python -c \"import pulldb; print('  pullDB module loaded successfully')\"" 2>/dev/null; then
+            echo "  Validation successful"
+        else
+            echo "  Warning: pullDB module import failed"
+        fi
+    fi
+}
+
+# =============================================================================
+# Completion Message
+# =============================================================================
+
+print_completion() {
+    echo ""
+    echo "════════════════════════════════════════════════════════════════"
+    echo "  Installation Complete!"
+    echo "════════════════════════════════════════════════════════════════"
+    echo ""
+    echo "  Configuration: ${ENV_FILE}"
+    echo "  Configure:     sudo ${CONFIGURE_SCRIPT}"
+    echo ""
+    echo "  Start services:"
+    echo "    sudo systemctl start pulldb-api pulldb-worker"
+    echo ""
+    echo "  Check status:"
+    echo "    sudo systemctl status pulldb-api pulldb-worker"
+    echo ""
+}
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
 case "$1" in
     configure)
-        create_group_and_user
-        ensure_directories
-        
-        # Setup Python venv and install package
-        echo "Setting up Python virtual environment..."
-        cd "${INSTALL_PREFIX}"
-        
-        VENV_DIR="${INSTALL_PREFIX}/venv"
-        if [ -d "${VENV_DIR}" ]; then
-            echo "Existing venv found, upgrading package..."
-        else
-            echo "Creating new virtual environment..."
-            python3 -m venv "${VENV_DIR}"
-        fi
-        
-        # Install/upgrade the wheel
-        if ls "${INSTALL_PREFIX}/dist"/pulldb-*.whl 1>/dev/null 2>&1; then
-            "${VENV_DIR}/bin/pip" install --upgrade pip wheel >/dev/null
-            "${VENV_DIR}/bin/pip" install --upgrade --force-reinstall "${INSTALL_PREFIX}/dist"/pulldb-*.whl
-            echo "pulldb package installed successfully."
-        else
-            echo "Warning: No wheel found in ${INSTALL_PREFIX}/dist/"
-        fi
-
-        # Ensure ownership is correct
-        chown -R "${SYSTEM_USER}:${SYSTEM_GROUP}" "${INSTALL_PREFIX}" || true
-        
-        # Configure environment and AWS (preserves existing files)
+        create_user_and_group
         configure_env_file
-        configure_aws_setup
-        
-        # Install systemd units (symlinks)
-        install_systemd_unit
-        
-        validate_install
-        
-        echo ""
-        echo "Installation complete. Next steps:"
-        echo "  1. Review/edit ${ENV_FILE}"
-        echo "  2. Start services: sudo systemctl start pulldb-api pulldb-worker"
-        echo "  3. Check status: sudo systemctl status pulldb-api pulldb-worker"
+        configure_aws
+        load_env_variables
+        offer_interactive_config
+        ensure_paths
+        install_python_package
+        install_systemd_units
+        validate_installation
+        print_completion
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)
         ;;

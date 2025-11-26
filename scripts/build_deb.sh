@@ -60,10 +60,18 @@ cp scripts/install_pulldb.sh "$APP_ROOT/scripts/"
 cp scripts/uninstall_pulldb.sh "$APP_ROOT/scripts/"
 cp scripts/upgrade_pulldb.sh "$APP_ROOT/scripts/"
 cp scripts/configure_server.sh "$APP_ROOT/scripts/"
+cp scripts/configure-pulldb.sh "$APP_ROOT/scripts/"
 cp scripts/monitor_jobs.py "$APP_ROOT/scripts/"
 cp scripts/service-validate.sh "$APP_ROOT/scripts/"
 cp scripts/merge-config.sh "$APP_ROOT/scripts/"
 chmod +x "$APP_ROOT/scripts/"*.sh "$APP_ROOT/scripts/"*.py
+
+# Copy after-SQL templates
+if [ -d "pulldb/template_after_sql" ]; then
+    mkdir -p "$APP_ROOT/template_after_sql"
+    cp -r pulldb/template_after_sql/* "$APP_ROOT/template_after_sql/"
+    echo "Included after-SQL templates"
+fi
 
 # Copy systemd unit files to dedicated directory
 cp packaging/systemd/pulldb-worker.service "$APP_ROOT/systemd/"
