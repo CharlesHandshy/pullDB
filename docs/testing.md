@@ -354,9 +354,9 @@ pulldb/tests/
    If not found, create it (host + password only):
    ```bash
    aws secretsmanager create-secret \
-     --name /pulldb/mysql/coordination-db \
+     --name /pulldb/mysql/api \
      --secret-string '{"password":"...","host":"localhost"}'
-   # NOTE: Set PULLDB_MYSQL_USER, PULLDB_MYSQL_PORT, PULLDB_MYSQL_DATABASE in .env
+   # NOTE: Set PULLDB_API_MYSQL_USER, PULLDB_MYSQL_PORT, PULLDB_MYSQL_DATABASE in .env
    ```
 
 2. **Check AWS credentials**:
@@ -401,7 +401,7 @@ pulldb/tests/
      --role-name pulldb-ec2-service-role \
      --policy-arn arn:aws:iam::345321506926:policy/pulldb-secrets-manager-access
    ```
-   See `docs/aws-authentication-setup.md` for complete setup
+   See `docs/AWS-SETUP.md` for complete setup
 
 2. **Use admin profile temporarily**:
    ```bash
@@ -480,16 +480,16 @@ pulldb/tests/
 3. **Recreate secret in dev account** (host + password only):
    ```bash
    aws secretsmanager create-secret \
-     --name /pulldb/mysql/coordination-db \
+     --name /pulldb/mysql/api \
      --secret-string '{"password":"...","host":"localhost"}' \
      --profile default  # or dev-admin
-   # NOTE: Set PULLDB_MYSQL_USER, PULLDB_MYSQL_PORT, PULLDB_MYSQL_DATABASE in .env
+   # NOTE: Set PULLDB_API_MYSQL_USER, PULLDB_MYSQL_PORT, PULLDB_MYSQL_DATABASE in .env
    ```
 
 4. **Check for replication misconfiguration**:
    ```bash
    aws secretsmanager describe-secret \
-     --secret-id /pulldb/mysql/coordination-db \
+     --secret-id /pulldb/mysql/api \
      --query 'ReplicationStatus' \
      --profile default
    ```
@@ -504,7 +504,7 @@ pulldb/tests/
 5. **Update documentation** if architecture changed:
    - If cross-account secret access is now required, update `.github/copilot-instructions.md`
    - Modify `verify_secret_residency` fixture to accept multiple valid accounts
-   - Document new architecture in `docs/aws-authentication-setup.md`
+   - Document new architecture in `docs/AWS-SETUP.md`
 
 ## Test Development Guidelines
 
@@ -679,8 +679,7 @@ venv/bin/python -m pytest pulldb/tests/ -x --pdb
 
 ## Related Documentation
 
-- `docs/aws-authentication-setup.md`: AWS credential setup and verification
-- `docs/aws-secrets-manager-setup.md`: Secrets Manager configuration
+- `docs/AWS-SETUP.md`: AWS credential setup, Secrets Manager, and verification
 - `docs/mysql-schema.md`: Database schema required by tests
 - `.github/copilot-instructions.md`: Testing mandate and rationale
 - `constitution.md`: Development workflow and quality standards

@@ -101,6 +101,15 @@ def _initialize_state() -> APIState:
     try:
         config = Config.minimal_from_env()
         
+        # REQUIRED: API service must have its own MySQL user
+        api_mysql_user = os.getenv("PULLDB_API_MYSQL_USER")
+        if not api_mysql_user:
+            raise RuntimeError(
+                "PULLDB_API_MYSQL_USER is required. "
+                "Set it to the API service MySQL user (e.g., pulldb_api)."
+            )
+        config.mysql_user = api_mysql_user.strip()
+        
         # Resolve coordination credentials if provided via secret
         # Only fetch from Secrets Manager if password is not already set
         coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
@@ -108,10 +117,9 @@ def _initialize_state() -> APIState:
             try:
                 resolver = CredentialResolver(config.aws_profile)
                 creds = resolver.resolve(coordination_secret)
-                # Secret provides host and password; username comes from PULLDB_MYSQL_USER
+                # Secret provides host and password; username comes from PULLDB_API_MYSQL_USER
                 config.mysql_host = creds.host
                 config.mysql_password = creds.password
-                # Don't override username - it's set via PULLDB_MYSQL_USER
                 logger.info(
                     f"Resolved coordination credentials from {coordination_secret} "
                     f"(host={creds.host}, user={config.mysql_user})"

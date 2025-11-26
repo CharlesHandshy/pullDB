@@ -45,16 +45,29 @@ Last updated: 2025-11-22
 - Production cross-account role (recommended for prod): `arn:aws:iam::448509429610:role/pulldb-cross-account-readonly`
 
 ## Secrets Manager (canonical secrets)
-- Coordination DB secret (MANDATORY): `/pulldb/mysql/coordination-db` (development account only)
-- Target DB secrets:
-  - `/pulldb/mysql/dev-db-01`
-- Secrets live in development account (345321506926) only as of 2025-11-01
-- **Secret Structure** (IMPORTANT - as of Nov 2025):
-  - Secrets only store `host` and `password`
-  - `username`, `port`, `database` come from environment variables:
-    - `PULLDB_MYSQL_USER` (required)
-    - `PULLDB_MYSQL_PORT` (optional, default 3306)
-    - `PULLDB_MYSQL_DATABASE` (optional)
+
+**MySQL User Separation (December 2025)**:
+- pullDB now uses service-specific MySQL users with least-privilege access:
+  - `pulldb_api` - API service (job queue read/write)
+  - `pulldb_worker` - Worker service (job processing)
+  - `pulldb_loader` - myloader restore operations (target database access)
+
+- **Secrets** (one per user):
+  - `/pulldb/mysql/api` - API service credentials
+  - `/pulldb/mysql/worker` - Worker service credentials
+  - `/pulldb/mysql/loader` - Loader credentials for target hosts
+
+- Secrets live in development account (345321506926) only
+- **Secret Structure** (host + password only):
+  - `username` comes from service-specific environment variables:
+    - `PULLDB_API_MYSQL_USER` (required for API service)
+    - `PULLDB_WORKER_MYSQL_USER` (required for Worker service)
+  - `PULLDB_MYSQL_PORT` (optional, default 3306)
+  - `PULLDB_MYSQL_DATABASE` (default: `pulldb_service`)
+
+- **Database**: `pulldb_service` (renamed from `pulldb`)
+- **Schema path**: `schema/pulldb_service/`
+
 - Runtime policy (`pulldb-secrets-manager-access`) should grant:
   - `secretsmanager:GetSecretValue` and `secretsmanager:DescribeSecret` on `arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*`
   - `kms:Decrypt` (conditioned to Secrets Manager usage)
@@ -82,12 +95,20 @@ The following JSON block is a compact, program-friendly index of the core artifa
     "instance_profile": "pulldb-instance-profile"
   },
   "secrets": {
-    "coordination_db": "/pulldb/mysql/coordination-db",
-    "targets": ["/pulldb/mysql/dev-db-01"]
+    "api": "/pulldb/mysql/api",
+    "worker": "/pulldb/mysql/worker",
+    "loader": "/pulldb/mysql/loader"
   },
   "schema": {
     "canonical_doc": "docs/mysql-schema.md",
+    "database": "pulldb_service",
+    "schema_dir": "schema/pulldb_service/",
     "hosts_table": "db_hosts"
+  },
+  "mysql_users": {
+    "api": "pulldb_api",
+    "worker": "pulldb_worker",
+    "loader": "pulldb_loader"
   }
 }
 ```

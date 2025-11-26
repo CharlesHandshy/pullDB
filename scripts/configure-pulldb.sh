@@ -202,10 +202,11 @@ show_current_config() {
     
     echo ""
     echo "  Database:"
-    echo "    Host:     $(get_var PULLDB_MYSQL_HOST 'not set')"
-    echo "    Port:     $(get_var PULLDB_MYSQL_PORT '3306')"
-    echo "    User:     $(get_var PULLDB_MYSQL_USER 'not set')"
-    echo "    Database: $(get_var PULLDB_MYSQL_DATABASE 'pulldb')"
+    echo "    Host:        $(get_var PULLDB_MYSQL_HOST 'localhost')"
+    echo "    Port:        $(get_var PULLDB_MYSQL_PORT '3306')"
+    echo "    Database:    $(get_var PULLDB_MYSQL_DATABASE 'pulldb_service')"
+    echo "    API User:    $(get_var PULLDB_API_MYSQL_USER 'NOT SET - REQUIRED')"
+    echo "    Worker User: $(get_var PULLDB_WORKER_MYSQL_USER 'NOT SET - REQUIRED')"
     
     echo ""
     echo "  AWS:"
@@ -234,9 +235,17 @@ configure_database() {
     
     local current_host=$(get_var PULLDB_MYSQL_HOST 'localhost')
     local current_port=$(get_var PULLDB_MYSQL_PORT '3306')
-    local current_user=$(get_var PULLDB_MYSQL_USER 'pulldb')
-    local current_db=$(get_var PULLDB_MYSQL_DATABASE 'pulldb')
+    local current_db=$(get_var PULLDB_MYSQL_DATABASE 'pulldb_service')
+    local current_api_user=$(get_var PULLDB_API_MYSQL_USER 'pulldb_api')
+    local current_worker_user=$(get_var PULLDB_WORKER_MYSQL_USER 'pulldb_worker')
     
+    echo ""
+    echo "  pullDB uses separate MySQL users for each service:"
+    echo "    - pulldb_api:    API service (read-heavy, limited writes)"
+    echo "    - pulldb_worker: Worker service (job management)"
+    echo "    - pulldb_loader: Restore operations on target hosts"
+    echo ""
+    echo "  See schema/pulldb_service/300_mysql_users.sql for grant statements."
     echo ""
     
     # MySQL Host
@@ -257,15 +266,6 @@ configure_database() {
         fi
     done
     
-    # MySQL User
-    while true; do
-        read -p "  MySQL User [$current_user]: " new_user
-        if validate_mysql_identifier "$new_user" "MySQL User"; then
-            [ -n "$new_user" ] && set_var PULLDB_MYSQL_USER "$new_user"
-            break
-        fi
-    done
-    
     # MySQL Database
     while true; do
         read -p "  MySQL Database [$current_db]: " new_db
@@ -275,9 +275,29 @@ configure_database() {
         fi
     done
     
+    # API MySQL User
+    while true; do
+        read -p "  API MySQL User [$current_api_user]: " new_api_user
+        if validate_mysql_identifier "$new_api_user" "API MySQL User"; then
+            [ -n "$new_api_user" ] && set_var PULLDB_API_MYSQL_USER "$new_api_user"
+            break
+        fi
+    done
+    
+    # Worker MySQL User
+    while true; do
+        read -p "  Worker MySQL User [$current_worker_user]: " new_worker_user
+        if validate_mysql_identifier "$new_worker_user" "Worker MySQL User"; then
+            [ -n "$new_worker_user" ] && set_var PULLDB_WORKER_MYSQL_USER "$new_worker_user"
+            break
+        fi
+    done
+    
     echo ""
     echo "  Note: For password, use AWS Secrets Manager reference:"
     echo "        PULLDB_COORDINATION_SECRET=aws-secretsmanager:/pulldb/mysql/..."
+    echo ""
+    echo "  Loader credentials are per-host in the db_hosts table."
     echo ""
     
     print_ok "Database settings updated"

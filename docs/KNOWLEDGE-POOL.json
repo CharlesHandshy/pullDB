@@ -17,8 +17,25 @@
     "instance_profile": "pulldb-instance-profile"
   },
   "secrets": {
-    "coordination_db": "/pulldb/mysql/coordination-db",
-    "targets": ["/pulldb/mysql/localhost-test"]
+    "api": "/pulldb/mysql/api",
+    "worker": "/pulldb/mysql/worker",
+    "loader": "/pulldb/mysql/loader"
+  },
+  "schema": {
+    "canonical_doc": "docs/mysql-schema.md",
+    "database": "pulldb_service",
+    "schema_dir": "schema/pulldb_service/",
+    "hosts_table": "db_hosts"
+  },
+  "mysql_users": {
+    "api": "pulldb_api",
+    "worker": "pulldb_worker",
+    "loader": "pulldb_loader"
+  },
+  "env_vars": {
+    "api_user": "PULLDB_API_MYSQL_USER",
+    "worker_user": "PULLDB_WORKER_MYSQL_USER",
+    "database": "PULLDB_MYSQL_DATABASE"
   },
   "paths": {
     "install_root": "/opt/pulldb.service",
@@ -37,6 +54,11 @@
       "topic": "AWS Profile Scoping",
       "issue": "PULLDB_AWS_PROFILE=pr-prod breaks Secrets Manager access",
       "fix": "Use PULLDB_S3_AWS_PROFILE=pr-prod for S3, leave PULLDB_AWS_PROFILE unset or pr-dev"
+    },
+    {
+      "topic": "MySQL User Separation",
+      "issue": "Single shared MySQL user violated least-privilege principle",
+      "fix": "Use pulldb_api, pulldb_worker, pulldb_loader with minimal grants per role"
     }
   ]
 }

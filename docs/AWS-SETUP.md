@@ -6,7 +6,7 @@
 > - **Section A: Service Installation** - For deploying pullDB to production/staging EC2 instances
 > - **Section B: Developer Test Environment** - For local development and running tests
 >
-> **Last Updated**: November 26, 2025
+> **Last Updated**: December 2025 (MySQL user separation)
 
 ## Table of Contents
 
@@ -304,17 +304,50 @@ aws iam create-role \
 
 Create MySQL credential secrets in the development account.
 
-**IMPORTANT**: Secrets contain only `host` and `password`. Other parameters (`username`, `port`, `database`) 
-are provided via environment variables (`PULLDB_MYSQL_USER`, `PULLDB_MYSQL_PORT`, `PULLDB_MYSQL_DATABASE`).
+**IMPORTANT**: pullDB uses **service-specific MySQL users** with least-privilege access. Each service has its own secret containing `host` and `password`. The username is set via service-specific environment variables.
 
-### Coordination Database (Required)
+### Secrets Structure (Three Service Users)
+
+| Secret | User | Purpose |
+|--------|------|---------|
+| `/pulldb/mysql/api` | `pulldb_api` | API service - job queue read/write |
+| `/pulldb/mysql/worker` | `pulldb_worker` | Worker service - job processing |
+| `/pulldb/mysql/loader` | `pulldb_loader` | Target hosts - myloader restore operations |
+
+### Create API Service Secret (Required)
 
 ```bash
 aws secretsmanager create-secret \
-    --name /pulldb/mysql/coordination-db \
-    --description "MySQL credentials for pullDB coordination database (host + password only)" \
+    --name /pulldb/mysql/api \
+    --description "MySQL credentials for pullDB API service" \
     --secret-string '{
-        "password": "REPLACE_WITH_ACTUAL_PASSWORD",
+        "password": "REPLACE_WITH_API_PASSWORD",
+        "host": "localhost"
+    }' \
+    --tags Key=Service,Value=pulldb Key=Environment,Value=development
+```
+
+### Create Worker Service Secret (Required)
+
+```bash
+aws secretsmanager create-secret \
+    --name /pulldb/mysql/worker \
+    --description "MySQL credentials for pullDB Worker service" \
+    --secret-string '{
+        "password": "REPLACE_WITH_WORKER_PASSWORD",
+        "host": "localhost"
+    }' \
+    --tags Key=Service,Value=pulldb Key=Environment,Value=development
+```
+
+### Create Loader Secret (Required)
+
+```bash
+aws secretsmanager create-secret \
+    --name /pulldb/mysql/loader \
+    --description "MySQL credentials for myloader restore operations on target hosts" \
+    --secret-string '{
+        "password": "REPLACE_WITH_LOADER_PASSWORD",
         "host": "localhost"
     }' \
     --tags Key=Service,Value=pulldb Key=Environment,Value=development
@@ -322,22 +355,13 @@ aws secretsmanager create-secret \
 
 **Required environment variables** (add to `.env` or systemd environment):
 ```bash
-PULLDB_MYSQL_USER=pulldb_app
+# Service-specific users (REQUIRED - services fail without these)
+PULLDB_API_MYSQL_USER=pulldb_api
+PULLDB_WORKER_MYSQL_USER=pulldb_worker
+
+# Common settings
 PULLDB_MYSQL_PORT=3306
-PULLDB_MYSQL_DATABASE=pulldb
-```
-
-### Local Sandbox Target (Optional)
-
-```bash
-aws secretsmanager create-secret \
-    --name /pulldb/mysql/localhost-test \
-    --description "MySQL credentials for local sandbox restore target (host + password only)" \
-    --secret-string '{
-        "password": "REPLACE_WITH_ACTUAL_PASSWORD",
-        "host": "localhost"
-    }' \
-    --tags Key=Service,Value=pulldb Key=Environment,Value=development
+PULLDB_MYSQL_DATABASE=pulldb_service
 ```
 
 ---
@@ -376,9 +400,9 @@ aws s3 ls s3://pestroutesrdsdbs/daily/stg/ | head
 
 ```bash
 aws secretsmanager get-secret-value \
-    --secret-id /pulldb/mysql/coordination-db \
+    --secret-id /pulldb/mysql/api \
     --query SecretString --output text | jq .
-# Should show JSON with credentials
+# Should show JSON with host and password
 ```
 
 ### Test Python Integration
@@ -388,11 +412,10 @@ aws secretsmanager get-secret-value \
 from pulldb.infra.secrets import CredentialResolver
 
 resolver = CredentialResolver()
-creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/coordination-db')
-print(f"✅ Coordination DB credentials resolved:")
+creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/api')
+print(f"✅ API credentials resolved:")
 print(f"   Host: {creds.host}")
-print(f"   User: {creds.username}")
-print(f"   Port: {creds.port}")
+print(f"   Password: {'*' * len(creds.password)}")
 print("\n✅ Service verification passed!")
 EOF
 ```
@@ -556,9 +579,13 @@ cat > test-env/.env << 'EOF'
 PULLDB_AWS_PROFILE=pr-dev
 AWS_DEFAULT_REGION=us-east-1
 
+# Service-specific MySQL users (REQUIRED)
+PULLDB_API_MYSQL_USER=pulldb_api
+PULLDB_WORKER_MYSQL_USER=pulldb_worker
+PULLDB_MYSQL_DATABASE=pulldb_service
+
 # Credential References (Secrets Manager)
-PULLDB_COORDINATION_SECRET=aws-secretsmanager:/pulldb/mysql/coordination-db
-PULLDB_TARGET_SECRET=aws-secretsmanager:/pulldb/mysql/localhost-test
+PULLDB_COORDINATION_SECRET=aws-secretsmanager:/pulldb/mysql/api
 
 # S3 Bucket Configuration
 PULLDB_S3_BUCKET_STAGING=pestroutesrdsdbs
@@ -642,7 +669,7 @@ aws sts get-caller-identity --profile pr-staging
 ```bash
 # Using AWS CLI
 aws secretsmanager get-secret-value \
-    --secret-id /pulldb/mysql/coordination-db \
+    --secret-id /pulldb/mysql/api \
     --profile pr-dev \
     --query SecretString --output text | jq .
 ```
@@ -666,15 +693,15 @@ source .venv/bin/activate
 python3 << 'EOF'
 import os
 os.environ.setdefault('PULLDB_AWS_PROFILE', 'pr-dev')
+os.environ.setdefault('PULLDB_API_MYSQL_USER', 'pulldb_api')
 
 from pulldb.infra.secrets import CredentialResolver
 
 resolver = CredentialResolver()
-creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/coordination-db')
-print(f"✅ Coordination DB credentials resolved:")
+creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/api')
+print(f"✅ API credentials resolved:")
 print(f"   Host: {creds.host}")
-print(f"   User: {creds.username}")
-print(f"   Port: {creds.port}")
+print(f"   Password: {'*' * len(creds.password)}")
 print("\n✅ Developer environment verification passed!")
 EOF
 ```
@@ -683,7 +710,7 @@ EOF
 
 ```bash
 # Quick sanity check that AWS integration works
-pytest tests/integration/test_secrets.py -v -k "test_resolve_coordination"
+pytest tests/integration/test_secrets.py -v -k "test_resolve"
 ```
 
 ---
@@ -712,7 +739,7 @@ pytest tests/integration/test_secrets.py -v -k "test_resolve_coordination"
 
 **For Service Installation**:
 1. Check Secrets Manager policy is attached to role
-2. Verify secret exists: `aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db`
+2. Verify secret exists: `aws secretsmanager describe-secret --secret-id /pulldb/mysql/api`
 
 **For Developer Environment**:
 1. Verify `pr-dev` profile has Secrets Manager access
@@ -774,7 +801,7 @@ aws sts get-caller-identity
 aws s3 ls s3://pestroutesrdsdbs/daily/stg/ | head
 
 # Get coordination DB secret
-aws secretsmanager get-secret-value --secret-id /pulldb/mysql/coordination-db
+aws secretsmanager get-secret-value --secret-id /pulldb/mysql/api
 
 # Check service status
 sudo systemctl status pulldb-worker
@@ -794,7 +821,7 @@ aws s3 ls s3://pestroutesrdsdbs/daily/stg/ --profile pr-staging | head
 
 # Get secret (with profile)
 aws secretsmanager get-secret-value \
-    --secret-id /pulldb/mysql/coordination-db \
+    --secret-id /pulldb/mysql/api \
     --profile pr-dev
 
 # Run tests
@@ -806,5 +833,8 @@ pytest tests/integration/test_secrets.py -v
 
 ---
 
-**Last Updated**: November 26, 2025
+**Last Updated**: December 2025
 **Maintained By**: PestRoutes Infrastructure Team
+
+**Architecture Change**: pullDB now uses service-specific MySQL users (`pulldb_api`, `pulldb_worker`, `pulldb_loader`) 
+instead of a single shared user. See `docs/mysql-schema.md` for grant details.

@@ -178,10 +178,12 @@ class Config:
         s3_aws_profile = os.getenv("PULLDB_S3_AWS_PROFILE") or aws_profile
 
         # Load values (may be direct or parameter references)
+        # Note: mysql_user is set per-service via PULLDB_API_MYSQL_USER or PULLDB_WORKER_MYSQL_USER
+        # The config default is a placeholder; services MUST override it
         mysql_host_raw = os.getenv("PULLDB_MYSQL_HOST", "localhost")
-        mysql_user_raw = os.getenv("PULLDB_MYSQL_USER", "root")
+        mysql_user_raw = ""  # Must be set by service-specific env var
         mysql_password_raw = os.getenv("PULLDB_MYSQL_PASSWORD", "")
-        mysql_database_raw = os.getenv("PULLDB_MYSQL_DATABASE", "pulldb")
+        mysql_database_raw = os.getenv("PULLDB_MYSQL_DATABASE", "pulldb_service")
         mysql_socket_raw = os.getenv("PULLDB_MYSQL_SOCKET")
 
         myloader_binary = _strip_or_none(os.getenv("PULLDB_MYLOADER_BINARY"))

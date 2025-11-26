@@ -194,28 +194,44 @@ aws ec2 describe-instances --instance-ids $INSTANCE_ID \
 ### Step 5: Create Secrets Manager Secrets
 
 ```bash
-# Create coordination database secret (MANDATORY)
-# NOTE: Secrets only store host + password. Username/port/database come from env vars:
-#   PULLDB_MYSQL_USER (required), PULLDB_MYSQL_PORT (default 3306), PULLDB_MYSQL_DATABASE (optional)
+# pullDB uses service-specific MySQL users with separate secrets:
+# - /pulldb/mysql/api - API service (pulldb_api user)
+# - /pulldb/mysql/worker - Worker service (pulldb_worker user)
+# - /pulldb/mysql/loader - myloader operations (pulldb_loader user)
+#
+# Secrets only store host + password. Username comes from:
+#   PULLDB_API_MYSQL_USER or PULLDB_WORKER_MYSQL_USER (required)
+#   PULLDB_MYSQL_PORT (default 3306), PULLDB_MYSQL_DATABASE (default pulldb_service)
+
+# Create API service secret
 aws secretsmanager create-secret \
-    --name /pulldb/mysql/coordination-db \
-    --description "MySQL credentials for pullDB coordination database" \
+    --name /pulldb/mysql/api \
+    --description "MySQL credentials for pullDB API service" \
     --secret-string '{
-        "password": "REPLACE_WITH_ACTUAL_PASSWORD",
+        "password": "REPLACE_WITH_API_PASSWORD",
         "host": "localhost"
     }' \
-    --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=coordination
+    --tags Key=Service,Value=pulldb Key=Environment,Value=development
 
-# Create db-local-dev secret (local sandbox default)
-# NOTE: Secrets only store host + password. Username/port/database come from env vars.
+# Create Worker service secret
 aws secretsmanager create-secret \
-  --name /pulldb/mysql/localhost-test \
-  --description "MySQL credentials for local sandbox restore target" \
+    --name /pulldb/mysql/worker \
+    --description "MySQL credentials for pullDB Worker service" \
+    --secret-string '{
+        "password": "REPLACE_WITH_WORKER_PASSWORD",
+        "host": "localhost"
+    }' \
+    --tags Key=Service,Value=pulldb Key=Environment,Value=development
+
+# Create Loader secret (for myloader restore operations on target hosts)
+aws secretsmanager create-secret \
+  --name /pulldb/mysql/loader \
+  --description "MySQL credentials for myloader restore operations" \
   --secret-string '{
-    "password": "REPLACE_WITH_ACTUAL_PASSWORD",
+    "password": "REPLACE_WITH_LOADER_PASSWORD",
     "host": "localhost"
   }' \
-  --tags Key=Service,Value=pulldb Key=Environment,Value=development Key=Purpose,Value=local-sandbox
+  --tags Key=Service,Value=pulldb Key=Environment,Value=development
 
 
 

@@ -2,7 +2,7 @@
 
 > **Foundation Documents**: This schema implements the architectural principles defined in `../.github/copilot-instructions.md` and coding standards from `../constitution.md`.
 
-> **Schema Update Mandate**: All schema changes must be reflected in the numbered files under `schema/pulldb/` and mirrored in `scripts/setup-tests-dbdata.sh`. See `.github/copilot-instructions.md` and `docs/mysql-setup.md` for the complete workflow. The legacy `scripts/setup-pulldb-schema.sh` helper now lives in `scripts/archived/` for historical reference.
+> **Schema Update Mandate**: All schema changes must be reflected in the numbered files under `schema/pulldb_service/` and mirrored in `scripts/setup-tests-dbdata.sh`. See `.github/copilot-instructions.md` and `docs/mysql-setup.md` for the complete workflow. The legacy `scripts/setup-pulldb-schema.sh` helper now lives in `scripts/archived/` for historical reference.
 >
 > The former monolithic dump is preserved at `schema/archived/pulldb.sql` for audit history only.
 
@@ -12,6 +12,70 @@
 - **Lean first release**: only tables required for the minimal restore loop ship in the prototype; everything else waits until the feature lands.
 - **Predictable invariants**: constraints enforce unique usernames, per-target job exclusivity, and traceable status transitions.
 - **Future-friendly**: deferred structures are documented so we can grow without rewriting foundations.
+
+## MySQL User Model
+
+pullDB uses **three separate MySQL users** following least-privilege principles:
+
+| User | Service | Database | Permissions |
+|------|---------|----------|-------------|
+| `pulldb_api` | API service | `pulldb_service` | Limited: create users, submit jobs, read config |
+| `pulldb_worker` | Worker service | `pulldb_service` | Job management: update status, manage events/locks/settings |
+| `pulldb_loader` | myloader | Target databases | Full restore: CREATE, DROP, INSERT, etc. on `*.*` |
+
+### Environment Variables
+
+```bash
+# Coordination database
+PULLDB_MYSQL_DATABASE=pulldb_service
+
+# Service-specific users (REQUIRED)
+PULLDB_API_MYSQL_USER=pulldb_api
+PULLDB_WORKER_MYSQL_USER=pulldb_worker
+
+# Password via AWS Secrets Manager (service-specific secrets)
+# API service: aws-secretsmanager:/pulldb/mysql/api
+# Worker service: aws-secretsmanager:/pulldb/mysql/worker
+```
+
+### Grant Statements
+
+See `schema/pulldb_service/300_mysql_users.sql` for complete grant statements.
+
+**API User (`pulldb_api`):**
+```sql
+GRANT SELECT, INSERT ON pulldb_service.auth_users TO 'pulldb_api'@'localhost';
+GRANT SELECT, INSERT ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
+GRANT SELECT ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
+GRANT SELECT ON pulldb_service.db_hosts TO 'pulldb_api'@'localhost';
+GRANT SELECT ON pulldb_service.settings TO 'pulldb_api'@'localhost';
+GRANT SELECT ON pulldb_service.active_jobs TO 'pulldb_api'@'localhost';
+```
+
+**Worker User (`pulldb_worker`):**
+```sql
+GRANT SELECT ON pulldb_service.auth_users TO 'pulldb_worker'@'localhost';
+GRANT SELECT, UPDATE ON pulldb_service.jobs TO 'pulldb_worker'@'localhost';
+GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_worker'@'localhost';
+GRANT SELECT ON pulldb_service.db_hosts TO 'pulldb_worker'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.settings TO 'pulldb_worker'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.locks TO 'pulldb_worker'@'localhost';
+GRANT SELECT ON pulldb_service.active_jobs TO 'pulldb_worker'@'localhost';
+```
+
+**Loader User (`pulldb_loader`):**
+
+This user exists on **target database hosts** (dev-db-01, etc.), not the coordination database. It's used by myloader for restore operations and needs broad permissions:
+
+```sql
+-- Run on each TARGET database host
+GRANT CREATE, DROP, ALTER, INDEX, INSERT, UPDATE, DELETE, SELECT,
+      LOCK TABLES, TRIGGER, CREATE VIEW, CREATE ROUTINE, ALTER ROUTINE,
+      REFERENCES, EVENT
+ON *.* TO 'pulldb_loader'@'%';
+```
+
+Loader credentials are stored per-host in the `db_hosts` table via `credential_ref`.
 
 ## Core Tables
 

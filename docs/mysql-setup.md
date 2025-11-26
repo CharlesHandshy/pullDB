@@ -8,8 +8,8 @@ This document describes the MySQL 8.x installation and configuration for pullDB.
 # 1. Install and configure MySQL 8.x
 sudo scripts/setup-mysql.sh
 
-# 2. Create pulldb coordination database
-cat schema/pulldb/*.sql | mysql -u root -p
+# 2. Create pulldb_service coordination database
+cat schema/pulldb_service/*.sql | mysql -u root -p
 
 # 3. Install Python MySQL libraries (in venv)
 source venv/bin/activate
@@ -93,24 +93,24 @@ sudo scripts/setup-mysql.sh
 - Temp directory: `/mnt/data/mysql/tmpdir`
 - Configuration backup: `/etc/mysql/mysql.conf.d/mysqld.cnf.backup`
 
-### Apply schema/pulldb/*.sql
+### Apply schema/pulldb_service/*.sql
 
-The numbered files under `schema/pulldb/` are the canonical definition of the coordination database. Apply them in lexicographic order to create all tables, views, and seed data.
+The numbered files under `schema/pulldb_service/` are the canonical definition of the coordination database. Apply them in lexicographic order to create all tables, views, and seed data.
 
 **Usage**:
 
 ```bash
-cat schema/pulldb/*.sql | mysql -u root -p
+cat schema/pulldb_service/*.sql | mysql -u root -p
 ```
 
 **What it provides**:
-1. Creates the `pulldb` database (if not present) with UTF-8 encoding
+1. Creates the `pulldb_service` database (if not present) with UTF-8 encoding
 2. Defines all tables (auth_users, jobs, job_events, db_hosts, settings, locks)
 3. Establishes indexes, foreign keys, and generated columns (including `active_target_key`)
 4. Creates the `active_jobs` view and status-change trigger
 5. Seeds default `db_hosts` entries and baseline settings rows
 
-> **Why numbering matters**: Files are prefixed with zero-padded sequence numbers (`000_`, `010_`, ...). MySQL processes them in lexical order when using the `cat schema/pulldb/*.sql` pattern, ensuring dependencies (tables → views → seed data) load correctly.
+> **Why numbering matters**: Files are prefixed with zero-padded sequence numbers (`000_`, `010_`, ...). MySQL processes them in lexical order when using the `cat schema/pulldb_service/*.sql` pattern, ensuring dependencies (tables → views → seed data) load correctly.
 
 > **Historical context**: The previous monolithic definition lives at `schema/archived/pulldb.sql` for audit purposes. Do not use it for new environments.
 
@@ -118,30 +118,47 @@ cat schema/pulldb/*.sql | mysql -u root -p
 
 ## MySQL User Creation
 
-### Create pulldb_app User
+### Create Service-Specific Users (Least Privilege)
 
+pullDB uses three MySQL users with least-privilege access:
 
-After installing MySQL and creating the database, create the `pulldb_app` user for application access and the `pulldb_test` user for integration tests:
+| User | Purpose | Grants |
+|------|---------|--------|
+| `pulldb_api` | API service | SELECT, INSERT, UPDATE on jobs/job_events; SELECT on db_hosts/settings |
+| `pulldb_worker` | Worker service | SELECT, INSERT, UPDATE on jobs/job_events; SELECT on db_hosts/settings; UPDATE locks |
+| `pulldb_loader` | myloader restore | ALL PRIVILEGES on target databases (wildcard) |
+
+After installing MySQL and creating the database, create the users:
 
 ```bash
 # Connect to MySQL as root
 sudo mysql
 
-# Create pulldb_app user with strong password
-CREATE USER 'pulldb_app'@'localhost' IDENTIFIED BY 'REPLACE_WITH_STRONG_PASSWORD';
-GRANT ALL PRIVILEGES ON pulldb.* TO 'pulldb_app'@'localhost';
-GRANT SELECT ON mysql.user TO 'pulldb_app'@'localhost';
+# Create pulldb_api user (API service)
+CREATE USER 'pulldb_api'@'localhost' IDENTIFIED BY 'REPLACE_WITH_API_PASSWORD';
+GRANT SELECT, INSERT, UPDATE ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
+GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
+GRANT SELECT ON pulldb_service.db_hosts TO 'pulldb_api'@'localhost';
+GRANT SELECT ON pulldb_service.settings TO 'pulldb_api'@'localhost';
+GRANT SELECT ON pulldb_service.auth_users TO 'pulldb_api'@'localhost';
 
-# Create pulldb_test user for integration tests
-CREATE USER 'pulldb_test'@'localhost' IDENTIFIED BY 'testpass';
-GRANT ALL PRIVILEGES ON pulldb.* TO 'pulldb_test'@'localhost';
-GRANT SELECT ON mysql.user TO 'pulldb_test'@'localhost';
+# Create pulldb_worker user (Worker service)
+CREATE USER 'pulldb_worker'@'localhost' IDENTIFIED BY 'REPLACE_WITH_WORKER_PASSWORD';
+GRANT SELECT, INSERT, UPDATE ON pulldb_service.jobs TO 'pulldb_worker'@'localhost';
+GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_worker'@'localhost';
+GRANT SELECT ON pulldb_service.db_hosts TO 'pulldb_worker'@'localhost';
+GRANT SELECT ON pulldb_service.settings TO 'pulldb_worker'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.locks TO 'pulldb_worker'@'localhost';
+
+# Create pulldb_loader user (myloader restore operations)
+CREATE USER 'pulldb_loader'@'localhost' IDENTIFIED BY 'REPLACE_WITH_LOADER_PASSWORD';
+GRANT ALL PRIVILEGES ON `%`.* TO 'pulldb_loader'@'localhost';
 
 # Apply privilege changes
 FLUSH PRIVILEGES;
 
 # Verify users were created
-SELECT user, host FROM mysql.user WHERE user IN ('pulldb_app', 'pulldb_test');
+SELECT user, host FROM mysql.user WHERE user LIKE 'pulldb_%';
 
 # Exit MySQL
 EXIT;
@@ -153,38 +170,40 @@ If connecting to RDS or remote MySQL servers, create users with appropriate host
 
 ```sql
 -- For specific host
-CREATE USER 'pulldb_app'@'10.0.1.%' IDENTIFIED BY 'STRONG_PASSWORD';
-GRANT ALL PRIVILEGES ON *.* TO 'pulldb_app'@'10.0.1.%';
+CREATE USER 'pulldb_api'@'10.0.1.%' IDENTIFIED BY 'STRONG_PASSWORD';
+-- ... apply same grants as above ...
 
--- Or for any host (less secure, use with caution)
-CREATE USER 'pulldb_app'@'%' IDENTIFIED BY 'STRONG_PASSWORD';
-GRANT ALL PRIVILEGES ON *.* TO 'pulldb_app'@'%';
+-- For any host (less secure, use with caution)
+CREATE USER 'pulldb_api'@'%' IDENTIFIED BY 'STRONG_PASSWORD';
 
 FLUSH PRIVILEGES;
 ```
 
 **Permissions Explained**:
-- `ALL PRIVILEGES ON pulldb.*` - Full access to coordination database
-- `ALL PRIVILEGES ON *.*` - Full access for target database restores
-- `SELECT ON mysql.user` - Optional, for authentication verification queries
+- `pulldb_api`: Read-only on db_hosts/settings, read-write on jobs for job submission
+- `pulldb_worker`: Same as API plus lock management for job coordination
+- `pulldb_loader`: Full privileges for restore operations (creates databases, loads data)
 
-**Security Note**: The password used here should match the password stored in AWS Secrets Manager (see `aws-secrets-manager-setup.md`).
+**Security Note**: Store passwords in AWS Secrets Manager (see `docs/AWS-SETUP.md`):
+- `/pulldb/mysql/api` - pulldb_api password
+- `/pulldb/mysql/worker` - pulldb_worker password  
+- `/pulldb/mysql/loader` - pulldb_loader password
 
 ### Verify User Connectivity
 
-Test the pulldb_app user can connect:
+Test the pulldb_api user can connect:
 
 ```bash
 # Test local connection
-mysql -u pulldb_app -p pulldb
+mysql -u pulldb_api -p pulldb_service
 
 # Test remote connection (if applicable)
 mysql -h remote-db-host.example.com \
-      -u pulldb_app -p
+      -u pulldb_api -p
 
 # Inside MySQL, verify access
 SHOW DATABASES;
-USE pulldb;
+USE pulldb_service;
 SHOW TABLES;
 SELECT * FROM settings;
 ```
@@ -195,19 +214,19 @@ SELECT * FROM settings;
 | Database                |
 +-------------------------+
 | information_schema      |
-| pulldb                  |
+| pulldb_service          |
 +-------------------------+
 
-+----------------+
-| Tables_in_pulldb |
-+----------------+
-| auth_users      |
-| db_hosts        |
-| job_events      |
-| jobs            |
-| locks           |
-| settings        |
-+----------------+
++------------------------+
+| Tables_in_pulldb_service |
++------------------------+
+| auth_users              |
+| db_hosts                |
+| job_events              |
+| jobs                    |
+| locks                   |
+| settings                |
++------------------------+
 ```
 
 ## Database Schema
@@ -216,18 +235,18 @@ SELECT * FROM settings;
 All database structure changes must follow this workflow:
 
 1. Update `docs/mysql-schema.md` to reflect the desired schema changes.
-2. Update the numbered files under `schema/pulldb/` and `scripts/setup-tests-dbdata.sh` to match the new schema.
+2. Update the numbered files under `schema/pulldb_service/` and `scripts/setup-tests-dbdata.sh` to match the new schema.
 3. Use `sudo` for all database admin tasks (schema changes, migrations, resets) on development databases.
 4. Apply changes by running:
    ```bash
-   cat schema/pulldb/*.sql | mysql -u root -p
+   cat schema/pulldb_service/*.sql | mysql -u root -p
    sudo scripts/setup-tests-dbdata.sh
    ```
 5. Verify schema and initial data with:
    ```bash
-   sudo mysql -e "USE pulldb; SHOW TABLES;"
-   sudo mysql -e "USE pulldb; SELECT * FROM settings;"
-   sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
+   sudo mysql -e "USE pulldb_service; SHOW TABLES;"
+   sudo mysql -e "USE pulldb_service; SELECT * FROM settings;"
+   sudo mysql -e "USE pulldb_service; SELECT * FROM db_hosts;"
    ```
 6. Update all documentation and tests to match the new schema and credential patterns.
 
@@ -252,19 +271,19 @@ All database structure changes must follow this workflow:
 All database structure changes must follow this workflow:
 
 1. **Update documentation first**: Edit `docs/mysql-schema.md` to reflect the desired schema changes.
-2. **Update schema assets**: Modify the numbered files under `schema/pulldb/` and create/update `scripts/setup-tests-dbdata.sh` to match the new schema.
+2. **Update schema assets**: Modify the numbered files under `schema/pulldb_service/` and create/update `scripts/setup-tests-dbdata.sh` to match the new schema.
 3. **Use sudo for all admin tasks**: All database schema changes, migrations, and resets on development databases must use `sudo`.
 4. **Apply changes by running**:
    ```bash
-   cat schema/pulldb/*.sql | mysql -u root -p
+   cat schema/pulldb_service/*.sql | mysql -u root -p
    # If test data setup script exists:
    sudo scripts/setup-tests-dbdata.sh
    ```
 5. **Verify schema and initial data**:
    ```bash
-   sudo mysql -e "USE pulldb; SHOW TABLES;"
-   sudo mysql -e "USE pulldb; SELECT * FROM settings;"
-   sudo mysql -e "USE pulldb; SELECT * FROM db_hosts;"
+   sudo mysql -e "USE pulldb_service; SHOW TABLES;"
+   sudo mysql -e "USE pulldb_service; SELECT * FROM settings;"
+   sudo mysql -e "USE pulldb_service; SELECT * FROM db_hosts;"
    ```
 6. **Update tests and documentation**: Ensure all tests and documentation match the new schema and credential patterns.
 
@@ -453,9 +472,9 @@ After MySQL setup is complete:
 1. ✅ MySQL 8.x installed and running
 2. ✅ Data directories configured on `/mnt/data/mysql`
 3. ✅ Python MySQL libraries installed
-4. ⏭️ **Run schema setup**: `cat schema/pulldb/*.sql | mysql -u root -p`
-5. ⏭️ **Create pulldb_app and pulldb_test users**: See "MySQL User Creation" section above
-6. ⏭️ **Store credentials in Secrets Manager**: See `aws-secrets-manager-setup.md`
+4. ⏭️ **Run schema setup**: `cat schema/pulldb_service/*.sql | mysql -u root -p`
+5. ⏭️ **Create service users**: See "MySQL User Creation" section above (pulldb_api, pulldb_worker, pulldb_loader)
+6. ⏭️ **Store credentials in Secrets Manager**: See `docs/AWS-SETUP.md`
 7. ⏭️ **Begin Python implementation** (Milestone 1.3 - Configuration Module)
 
 See [IMPLEMENTATION-PLAN.md](../IMPLEMENTATION-PLAN.md) for the complete development roadmap.

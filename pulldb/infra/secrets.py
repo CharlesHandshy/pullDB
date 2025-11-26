@@ -10,8 +10,11 @@ IMPORTANT: For /pulldb/mysql/* secrets, Secrets Manager only stores:
     - host: MySQL server hostname
     - password: MySQL password
 
-Other connection parameters come from environment variables:
-    - PULLDB_MYSQL_USER: MySQL username (required)
+Username is set per-service via environment variables:
+    - PULLDB_API_MYSQL_USER: API service MySQL user
+    - PULLDB_WORKER_MYSQL_USER: Worker service MySQL user
+
+Other connection parameters from environment:
     - PULLDB_MYSQL_PORT: MySQL port (optional, defaults to 3306)
     - PULLDB_MYSQL_DATABASE: Database name (optional)
 
@@ -195,20 +198,18 @@ class CredentialResolver:
         - host: MySQL server hostname
         - password: MySQL password
 
-        Other fields (username, port, database) come from environment variables:
-        - PULLDB_MYSQL_USER (required)
-        - PULLDB_MYSQL_PORT (optional, defaults to 3306)
-        - PULLDB_MYSQL_DATABASE (optional)
+        Username is set per-service by the caller (API or Worker).
+        Port comes from PULLDB_MYSQL_PORT (optional, defaults to 3306).
 
         Args:
             secret_id: Secrets Manager secret ID (e.g., /pulldb/mysql/localhost-test).
 
         Returns:
             MySQLCredentials with resolved values (secret + environment).
+            Note: username field is a placeholder; caller sets actual username.
 
         Raises:
-            CredentialResolutionError: If secret retrieval or parsing fails,
-                or if required environment variables are missing.
+            CredentialResolutionError: If secret retrieval or parsing fails.
         """
         try:
             logger.debug(f"Fetching secret from Secrets Manager: {secret_id}")
@@ -235,13 +236,9 @@ class CredentialResolver:
                 )
 
             # Get remaining fields from environment variables
-            username = os.getenv("PULLDB_MYSQL_USER")
-            if not username:
-                raise CredentialResolutionError(
-                    "Environment variable PULLDB_MYSQL_USER is required but not set. "
-                    "Secrets Manager only provides host and password; "
-                    "username must come from the environment."
-                )
+            # Note: username is set per-service via PULLDB_API_MYSQL_USER or PULLDB_WORKER_MYSQL_USER
+            # The caller sets config.mysql_user before calling resolve()
+            username = ""  # Placeholder - caller provides actual username
 
             port_str = os.getenv("PULLDB_MYSQL_PORT", "3306")
             try:
@@ -256,7 +253,7 @@ class CredentialResolver:
 
             logger.info(
                 f"Successfully resolved credentials from Secrets Manager: "
-                f"{secret_id} (user={username}, host={host})"
+                f"{secret_id} (host={host})"
             )
 
             return MySQLCredentials(
@@ -300,10 +297,8 @@ class CredentialResolver:
         - host: MySQL server hostname
         - password: MySQL password
 
-        Other fields (username, port, database) come from environment variables:
-        - PULLDB_MYSQL_USER (required)
-        - PULLDB_MYSQL_PORT (optional, defaults to 3306)
-        - PULLDB_MYSQL_DATABASE (optional)
+        Username is set per-service by the caller (API or Worker).
+        Port comes from PULLDB_MYSQL_PORT (optional, defaults to 3306).
 
         Args:
             parameter_name: SSM parameter name
@@ -311,9 +306,10 @@ class CredentialResolver:
 
         Returns:
             MySQLCredentials with resolved values (SSM + environment).
+            Note: username field is a placeholder; caller sets actual username.
 
         Raises:
-            CredentialResolutionError: If parameter retrieval or parsing fails,
+            CredentialResolutionError: If parameter retrieval or parsing fails.
                 or if required environment variables are missing.
         """
         try:
@@ -341,13 +337,9 @@ class CredentialResolver:
                 )
 
             # Get remaining fields from environment variables
-            username = os.getenv("PULLDB_MYSQL_USER")
-            if not username:
-                raise CredentialResolutionError(
-                    "Environment variable PULLDB_MYSQL_USER is required but not set. "
-                    "SSM Parameter Store only provides host and password; "
-                    "username must come from the environment."
-                )
+            # Note: username is set per-service via PULLDB_API_MYSQL_USER or PULLDB_WORKER_MYSQL_USER
+            # The caller sets config.mysql_user before calling resolve()
+            username = ""  # Placeholder - caller provides actual username
 
             port_str = os.getenv("PULLDB_MYSQL_PORT", "3306")
             try:
@@ -359,7 +351,7 @@ class CredentialResolver:
 
             logger.info(
                 f"Successfully resolved credentials from SSM: "
-                f"{parameter_name} (user={username}, host={host})"
+                f"{parameter_name} (host={host})"
             )
 
             return MySQLCredentials(

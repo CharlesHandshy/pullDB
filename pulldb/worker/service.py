@@ -87,6 +87,15 @@ def _load_config() -> Config:
     if not config.aws_profile:
         config.aws_profile = "pr-dev"
 
+    # REQUIRED: Worker service must have its own MySQL user
+    worker_mysql_user = os.getenv("PULLDB_WORKER_MYSQL_USER")
+    if not worker_mysql_user:
+        raise RuntimeError(
+            "PULLDB_WORKER_MYSQL_USER is required. "
+            "Set it to the worker service MySQL user (e.g., pulldb_worker)."
+        )
+    config.mysql_user = worker_mysql_user.strip()
+
     # Resolve coordination credentials if provided via secret
     # Only fetch from Secrets Manager if password is not already set
     coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
@@ -94,11 +103,9 @@ def _load_config() -> Config:
         try:
             resolver = CredentialResolver(config.aws_profile)
             creds = resolver.resolve(coordination_secret)
-            # Secret provides host and password; username comes from PULLDB_MYSQL_USER
+            # Secret provides host and password; username comes from PULLDB_WORKER_MYSQL_USER
             config.mysql_host = creds.host
             config.mysql_password = creds.password
-            # Don't override username - it's set via PULLDB_MYSQL_USER and the
-            # CredentialResolver validates it's present
             logger.info(
                 f"Resolved coordination credentials from {coordination_secret} "
                 f"(host={creds.host}, user={config.mysql_user})"
