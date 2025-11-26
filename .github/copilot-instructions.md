@@ -4,9 +4,10 @@
 
 ## Critical Directives
 
-1. **KNOWLEDGE-POOL FIRST**: Check `docs/KNOWLEDGE-POOL.md` before any task
-2. **CONTINUOUS LEARNING**: Add discoveries to KNOWLEDGE-POOL.md immediately
-3. **FAIL HARD**: Never silently degrade. Fail with: (1) what attempted, (2) why failed, (3) solutions
+1. **WORKSPACE-INDEX FIRST**: Check `docs/WORKSPACE-INDEX.md` for atomic-level code navigation
+2. **KNOWLEDGE-POOL SECOND**: Check `docs/KNOWLEDGE-POOL.md` for AWS/infra facts
+3. **CONTINUOUS LEARNING**: Add discoveries to KNOWLEDGE-POOL.md immediately
+4. **FAIL HARD**: Never silently degrade. Fail with: (1) what attempted, (2) why failed, (3) solutions
 
 ## Architecture (Mental Model)
 
@@ -35,6 +36,9 @@ Read the relevant file **before** performing that type of task:
 
 | Doc | Purpose |
 |-----|---------|
+| `docs/WORKSPACE-INDEX.md` | **Atomic-level code index** (AI searching) |
+| `docs/WORKSPACE-INDEX.json` | **Machine-readable index** (programmatic) |
+| `docs/KNOWLEDGE-POOL.md` | AWS/infra quick facts |
 | `constitution.md` | Coding standards, workflow |
 | `engineering-dna/standards/ai-agent-code-generation.md` | **MANDATORY** Python patterns |
 | `docs/mysql-schema.md` | Database schema + invariants |

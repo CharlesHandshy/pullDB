@@ -1,0 +1,251 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "updated": "2025-11-26",
+    "file_count": 297,
+    "purpose": "Atomic-level workspace index for AI model searching"
+  },
+  "architecture": {
+    "pattern": "CLI → API → MySQL Queue ← Worker → S3/myloader",
+    "services": ["api", "worker"],
+    "database": "pulldb_service",
+    "coordinator": "mysql_only"
+  },
+  "packages": {
+    "pulldb": {
+      "api": {
+        "main.py": {
+          "classes": ["JobRequest", "JobResponse", "JobSummary", "JobEventResponse", "APIState"],
+          "functions": ["create_app", "submit_job", "list_jobs", "health", "status_endpoint"],
+          "endpoints": ["/jobs", "/jobs/active", "/jobs/{id}/events", "/health", "/status"]
+        }
+      },
+      "cli": {
+        "main.py": {
+          "classes": ["_APIError", "_JobRow"],
+          "functions": ["cli", "restore_cmd", "status_cmd", "_api_post", "_api_get"],
+          "commands": ["restore", "status", "settings"]
+        },
+        "parse.py": {
+          "classes": ["CLIParseError", "RestoreCLIOptions"],
+          "functions": ["parse_restore_args"]
+        },
+        "settings.py": {
+          "functions": ["settings_group", "list_settings", "get_setting", "set_setting", "reset_setting", "export_settings"]
+        }
+      },
+      "domain": {
+        "models.py": {
+          "classes": ["JobStatus", "User", "Job", "JobEvent", "DBHost", "Setting"],
+          "enums": {"JobStatus": ["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"]}
+        },
+        "config.py": {
+          "classes": ["Config", "S3BackupLocationConfig"],
+          "functions": ["_parse_extra_args", "_parse_myloader_default_args", "_load_s3_backup_locations"]
+        },
+        "errors.py": {
+          "classes": ["JobExecutionError", "DownloadError", "ExtractionError", "DiskCapacityError", "MyLoaderError", "PostSQLError", "AtomicRenameError", "BackupValidationError", "BackupDiscoveryError", "MetadataInjectionError", "StagingError"]
+        },
+        "restore_models.py": {
+          "classes": ["MyLoaderSpec", "MyLoaderResult"],
+          "functions": ["build_configured_myloader_spec"]
+        }
+      },
+      "infra": {
+        "mysql.py": {
+          "classes": ["MySQLPool", "JobRepository", "UserRepository", "HostRepository", "SettingsRepository"],
+          "functions": ["build_default_pool"]
+        },
+        "s3.py": {
+          "classes": ["S3Client", "BackupSpec"],
+          "functions": ["discover_latest_backup", "parse_s3_bucket_path"]
+        },
+        "secrets.py": {
+          "classes": ["MySQLCredentials", "CredentialResolver", "CredentialResolutionError"]
+        },
+        "logging.py": {
+          "classes": ["JSONFormatter"],
+          "functions": ["get_logger"]
+        },
+        "metrics.py": {
+          "classes": ["MetricLabels"],
+          "functions": ["emit_counter", "emit_gauge", "emit_timer", "time_operation", "emit_event"]
+        },
+        "exec.py": {
+          "classes": ["CommandResult", "CommandExecutionError", "CommandTimeoutError"],
+          "functions": ["run_command", "run_command_streaming"]
+        }
+      },
+      "worker": {
+        "service.py": {
+          "functions": ["main", "_build_job_repository", "_build_job_executor", "_register_signal_handlers", "_cleanup_zombies"]
+        },
+        "loop.py": {
+          "functions": ["run_poll_loop", "_transition_to_running", "_execute_job"]
+        },
+        "executor.py": {
+          "classes": ["WorkerJobExecutor", "WorkerExecutorDependencies", "WorkerExecutorTimeouts", "WorkerExecutorHooks"],
+          "functions": ["derive_backup_lookup_target", "extract_tar_archive", "build_lookup_targets_for_location"]
+        },
+        "downloader.py": {
+          "functions": ["download_backup", "ensure_disk_capacity", "_stream_download"]
+        },
+        "restore.py": {
+          "classes": ["RestoreWorkflowSpec"],
+          "functions": ["build_restore_workflow_spec", "run_myloader", "orchestrate_restore_workflow", "build_myloader_command"]
+        },
+        "staging.py": {
+          "classes": ["StagingConnectionSpec", "StagingResult"],
+          "functions": ["generate_staging_name", "find_orphaned_staging_databases", "cleanup_orphaned_staging"]
+        },
+        "atomic_rename.py": {
+          "classes": ["AtomicRenameConnectionSpec", "AtomicRenameSpec"],
+          "functions": ["atomic_rename_staging_to_target"]
+        },
+        "post_sql.py": {
+          "classes": ["PostSQLConnectionSpec", "PostSQLScriptResult", "PostSQLExecutionResult"],
+          "functions": ["execute_post_sql", "_discover_scripts"]
+        },
+        "metadata.py": {
+          "classes": ["MetadataConnectionSpec", "MetadataSpec"],
+          "functions": ["inject_metadata_table"]
+        },
+        "metadata_synthesis.py": {
+          "functions": ["synthesize_metadata", "ensure_compatible_metadata", "parse_filename", "count_rows_in_file"]
+        },
+        "log_normalizer.py": {
+          "classes": ["NormalizedLogEvent"],
+          "functions": ["normalize_myloader_line"]
+        }
+      },
+      "binaries": {
+        "files": ["myloader-0.9.5", "myloader-0.19.3-3"]
+      }
+    }
+  },
+  "schema": {
+    "database": "pulldb_service",
+    "path": "schema/pulldb_service/",
+    "files": [
+      {"name": "000_auth_users.sql", "table": "auth_users"},
+      {"name": "010_jobs.sql", "table": "jobs"},
+      {"name": "020_job_events.sql", "table": "job_events"},
+      {"name": "030_db_hosts.sql", "table": "db_hosts"},
+      {"name": "040_locks.sql", "table": "job_locks"},
+      {"name": "050_settings.sql", "table": "settings"},
+      {"name": "060_active_jobs_view.sql", "view": "active_jobs"},
+      {"name": "200_seed_db_hosts.sql", "type": "seed"},
+      {"name": "210_seed_settings.sql", "type": "seed"},
+      {"name": "300_mysql_users.sql", "type": "grants"}
+    ],
+    "users": {
+      "pulldb_api": "API service (jobs, job_events, settings)",
+      "pulldb_worker": "Worker service (full job access)",
+      "pulldb_loader": "myloader restore (target databases)"
+    }
+  },
+  "scripts": {
+    "packaging": ["install_pulldb.sh", "uninstall_pulldb.sh", "upgrade_pulldb.sh", "configure-pulldb.sh", "configure_server.sh", "merge-config.sh", "monitor_jobs.py", "service-validate.sh"],
+    "build": ["build_deb.sh", "build_client_deb.sh"],
+    "setup": ["setup-aws.sh", "setup-aws-credentials.sh", "setup-mysql.sh", "setup-test-environment.sh", "setup_test_env.sh", "teardown-test-environment.sh", "start-test-services.sh"],
+    "validation": ["pulldb-validate.sh", "verify-secrets-perms.sh", "verify-aws-access.py"],
+    "operations": ["cleanup_dev_env.py", "cleanup_system.sh", "deploy-iam-templates.sh"],
+    "development": ["precommit-verify.py", "validate-knowledge-pool.py", "validate-metrics-emission.py", "ensure_fail_hard.py", "benchmark_atomic_rename.py", "deploy_atomic_rename.py", "generate_cloudshell.py", "update-engineering-dna.sh", "audit-permissions.sh", "ci-permissions-check.sh"]
+  },
+  "docs": {
+    "canonical": ["AWS-SETUP.md", "mysql-setup.md", "mysql-schema.md", "testing.md", "KNOWLEDGE-POOL.md", "KNOWLEDGE-POOL.json", "WORKSPACE-INDEX.md"],
+    "reference": ["backup-formats.md", "coding-standards.md", "restore-execution.md", "security-controls.md", "test-environment.md"],
+    "design": ["TRUTH-MATRIX.md", "WORKER-ATOM-EVALUATION.md", "appalachian_workflow_plan.md", "atomic_rename_procedure.sql"],
+    "subdirs": ["archived/", "generated/", "policies/", "terraform/"]
+  },
+  "design": {
+    "architecture": ["two-service-architecture.md", "system-overview.md", "security-model.md"],
+    "planning": ["roadmap.md", "milestone-2-plan.md", "PHASE1-PLANNING.md", "worker_build_plan.md"],
+    "patterns": ["configuration-map.md", "staging-rename-pattern.md"],
+    "operations": ["runbook-failure.md", "runbook-restore.md"]
+  },
+  "copilot": {
+    "main": "copilot-instructions.md",
+    "loadable": ["copilot-instructions-behavior.md", "copilot-instructions-business-logic.md", "copilot-instructions-python.md", "copilot-instructions-status.md", "copilot-instructions-testing.md"]
+  },
+  "environment": {
+    "required": {
+      "PULLDB_API_MYSQL_USER": "API MySQL username",
+      "PULLDB_WORKER_MYSQL_USER": "Worker MySQL username",
+      "PULLDB_MYSQL_HOST": "MySQL host",
+      "PULLDB_MYSQL_DATABASE": "Database name",
+      "PULLDB_WORK_DIR": "Working directory",
+      "PULLDB_S3_BUCKET": "Backup bucket",
+      "PULLDB_S3_PREFIX": "Backup prefix"
+    },
+    "optional": {
+      "PULLDB_MYSQL_PORT": {"default": "3306"},
+      "PULLDB_API_HOST": {"default": "0.0.0.0"},
+      "PULLDB_API_PORT": {"default": "8080"},
+      "PULLDB_AWS_PROFILE": {"default": null},
+      "PULLDB_S3_AWS_PROFILE": {"default": null},
+      "PULLDB_MYLOADER_BINARY": {"default": "myloader"},
+      "PULLDB_MYLOADER_THREADS": {"default": "4"},
+      "PULLDB_LOG_LEVEL": {"default": "INFO"}
+    },
+    "test": {
+      "PULLDB_TEST_MYSQL_HOST": "Test MySQL host",
+      "PULLDB_TEST_MYSQL_USER": "Test MySQL user",
+      "PULLDB_TEST_MYSQL_PASSWORD": "Test MySQL password"
+    }
+  },
+  "aws": {
+    "accounts": {
+      "development": "345321506926",
+      "staging": "333204494849",
+      "production": "448509429610"
+    },
+    "s3": {
+      "staging": {"bucket": "pestroutesrdsdbs", "prefix": "daily/stg/"},
+      "production": {"bucket": "pestroutes-rds-backup-prod-vpc-us-east-1-s3", "prefix": "daily/prod/"}
+    },
+    "secrets": {
+      "api": "/pulldb/mysql/api",
+      "worker": "/pulldb/mysql/worker",
+      "loader": "/pulldb/mysql/loader"
+    },
+    "roles": {
+      "ec2": "pulldb-ec2-service-role",
+      "cross_account": "pulldb-cross-account-readonly"
+    }
+  },
+  "tests": {
+    "location": "pulldb/tests/",
+    "count": 50,
+    "fixtures": ["mysql_pool", "isolated_mysql", "isolated_worker", "mysql_credentials", "aws_profile", "s3_aws_profile"],
+    "categories": ["unit", "integration", "api", "repository", "workflow"]
+  },
+  "invariants": [
+    "MySQL is the only coordinator",
+    "Per-target exclusivity",
+    "Download per job (no reuse)",
+    "Staging prefix: stg_",
+    "Service-specific MySQL users",
+    "Fail hard - never silent degradation",
+    "Post-SQL lexicographic ordering",
+    "Atomic rename via stored procedure"
+  ],
+  "versions": {
+    "python": "3.12+",
+    "mydumper": ["0.9.5", "0.19.3-3"],
+    "mysql": "8.0+",
+    "fastapi": "0.100+",
+    "pydantic": "2.0+"
+  },
+  "search_patterns": {
+    "job_creation": ["JobRepository.create", "submit_job", "_enqueue_job"],
+    "job_processing": ["run_poll_loop", "_execute_job", "WorkerJobExecutor"],
+    "s3_download": ["download_backup", "S3Client", "discover_latest_backup"],
+    "myloader": ["run_myloader", "build_myloader_command", "MyLoaderSpec"],
+    "post_sql": ["execute_post_sql", "PostSQLConnectionSpec"],
+    "atomic_rename": ["atomic_rename_staging_to_target", "AtomicRenameSpec"],
+    "configuration": ["Config", "from_env", "S3BackupLocationConfig"],
+    "error_handling": ["JobExecutionError", "DownloadError", "MyLoaderError"],
+    "credentials": ["CredentialResolver", "MySQLCredentials"]
+  }
+}
