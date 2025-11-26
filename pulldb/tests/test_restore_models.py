@@ -19,8 +19,10 @@ def _base_config(**overrides: Any) -> Config:
 
 
 def test_build_spec_applies_configured_defaults() -> None:
+    # Disable default args to isolate the configured values being tested
     config = _base_config(
         myloader_binary="/opt/myloader",
+        myloader_default_args=(),
         myloader_extra_args=("--skip-triggers",),
         myloader_threads=6,
     )
@@ -46,7 +48,12 @@ def test_build_spec_applies_configured_defaults() -> None:
 
 
 def test_build_spec_respects_existing_threads_override() -> None:
-    config = _base_config(myloader_threads=10)
+    # Disable default args to isolate threads behavior
+    config = _base_config(
+        myloader_threads=10,
+        myloader_default_args=(),
+        myloader_extra_args=(),
+    )
 
     spec = build_configured_myloader_spec(
         config=config,
@@ -60,6 +67,7 @@ def test_build_spec_respects_existing_threads_override() -> None:
         extra_args=["--threads=4"],
     )
 
+    # When --threads is in extra_args, config.myloader_threads is not appended
     assert spec.extra_args == ("--threads=4",)
 
 

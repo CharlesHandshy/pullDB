@@ -101,9 +101,26 @@ class Config:
     work_dir: Path = field(
         default_factory=lambda: Path(f"/mnt/data/tmp/{getpass.getuser()}/pulldb-work")
     )
-    customers_after_sql_dir: Path = Path(__file__).parent.parent / "template_after_sql" / "customer"
-    qa_template_after_sql_dir: Path = Path(__file__).parent.parent / "template_after_sql" / "quality"
-    myloader_binary: str = "/opt/pulldb/bin/myloader-0.19.3-3"
+    customers_after_sql_dir: Path = (
+        Path(__file__).parent.parent / "template_after_sql" / "customer"
+    )
+    qa_template_after_sql_dir: Path = (
+        Path(__file__).parent.parent / "template_after_sql" / "quality"
+    )
+    myloader_binary: str = "/opt/pulldb.service/bin/myloader-0.19.3-3"
+    myloader_default_args: tuple[str, ...] = (
+        "--max-threads-for-post-actions=1",
+        "--rows=100000",
+        "--queries-per-transaction=5000",
+        "--optimize-keys=AFTER_IMPORT_PER_TABLE",
+        "--checksum=warn",
+        "--retry-count=20",
+        "--local-infile=TRUE",
+        "--ignore-errors=1146",
+        "--overwrite-tables",
+        "--verbose=3",
+        "--max-threads-per-table=1",
+    )
     myloader_extra_args: tuple[str, ...] = ()
     myloader_timeout_seconds: float = 7200.0
     myloader_threads: int = 8
@@ -168,6 +185,7 @@ class Config:
         mysql_socket_raw = os.getenv("PULLDB_MYSQL_SOCKET")
 
         myloader_binary = _strip_or_none(os.getenv("PULLDB_MYLOADER_BINARY"))
+        default_args_env = _strip_or_none(os.getenv("PULLDB_MYLOADER_DEFAULT_ARGS"))
         extra_args_env = _strip_or_none(os.getenv("PULLDB_MYLOADER_EXTRA_ARGS"))
         timeout_env = _strip_or_none(os.getenv("PULLDB_MYLOADER_TIMEOUT_SECONDS"))
         threads_env = _strip_or_none(os.getenv("PULLDB_MYLOADER_THREADS"))
@@ -200,7 +218,9 @@ class Config:
             aws_profile=aws_profile,
             s3_aws_profile=s3_aws_profile,
             default_dbhost=os.getenv("PULLDB_DEFAULT_DBHOST"),
-            myloader_binary=myloader_binary or "/opt/pulldb/bin/myloader-0.19.3-3",
+            myloader_binary=myloader_binary
+            or "/opt/pulldb.service/bin/myloader-0.19.3-3",
+            myloader_default_args=_parse_myloader_default_args(default_args_env),
             myloader_extra_args=_parse_extra_args(
                 extra_args_env,
                 source="PULLDB_MYLOADER_EXTRA_ARGS",
@@ -293,6 +313,12 @@ class Config:
             if mysql_binary:
                 myloader_binary = mysql_binary
 
+        myloader_default_args = base_config.myloader_default_args
+        if "PULLDB_MYLOADER_DEFAULT_ARGS" not in os.environ:
+            mysql_default_args = _strip_or_none(settings.get("myloader_default_args"))
+            if mysql_default_args:
+                myloader_default_args = _parse_myloader_default_args(mysql_default_args)
+
         myloader_extra_args = base_config.myloader_extra_args
         if "PULLDB_MYLOADER_EXTRA_ARGS" not in os.environ:
             mysql_extra = _strip_or_none(settings.get("myloader_extra_args"))
@@ -346,6 +372,7 @@ class Config:
             customers_after_sql_dir=Path(customers_after_sql_dir_str),
             qa_template_after_sql_dir=Path(qa_template_after_sql_dir_str),
             myloader_binary=myloader_binary,
+            myloader_default_args=myloader_default_args,
             myloader_extra_args=myloader_extra_args,
             myloader_timeout_seconds=myloader_timeout_seconds,
             myloader_threads=myloader_threads,
@@ -373,6 +400,46 @@ def _parse_extra_args(value: str | None, *, source: str) -> tuple[str, ...]:
             "Use shell-style quoting for arguments with spaces."
         ) from exc
     return tuple(tokens)
+
+
+# Default myloader arguments (used when PULLDB_MYLOADER_DEFAULT_ARGS not set)
+_MYLOADER_DEFAULT_ARGS_BUILTIN: tuple[str, ...] = (
+    "--max-threads-for-post-actions=1",
+    "--rows=100000",
+    "--queries-per-transaction=5000",
+    "--optimize-keys=AFTER_IMPORT_PER_TABLE",
+    "--checksum=warn",
+    "--retry-count=20",
+    "--local-infile=TRUE",
+    "--ignore-errors=1146",
+    "--overwrite-tables",
+    "--verbose=3",
+    "--max-threads-per-table=1",
+)
+
+
+def _parse_myloader_default_args(value: str | None) -> tuple[str, ...]:
+    """Parse myloader default arguments from comma or space-separated string.
+
+    Accepts:
+      - Comma-separated: "--verbose=3,--max-threads-per-table=1"
+      - Space-separated: "--verbose=3 --max-threads-per-table=1"
+      - Mixed: "--verbose=3, --max-threads-per-table=1"
+
+    Returns built-in defaults if value is None or empty.
+    """
+    if not value:
+        return _MYLOADER_DEFAULT_ARGS_BUILTIN
+
+    # Normalize: replace commas with spaces, then split
+    normalized = value.replace(",", " ")
+    try:
+        tokens = shlex.split(normalized)
+    except ValueError:
+        # Fall back to simple split if quoting is problematic
+        tokens = [t.strip() for t in normalized.split() if t.strip()]
+
+    return tuple(arg.strip() for arg in tokens if arg.strip())
 
 
 def _parse_positive_float(value: str, *, source: str) -> float:

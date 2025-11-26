@@ -3,7 +3,7 @@ import mysql.connector
 from dotenv import load_dotenv
 from pulldb.infra.secrets import CredentialResolver
 
-load_dotenv("/opt/pulldb/.env")
+load_dotenv("/opt/pulldb.service/.env")
 secret_id = os.getenv("PULLDB_COORDINATION_SECRET")
 aws_profile = os.getenv("PULLDB_AWS_PROFILE")
 

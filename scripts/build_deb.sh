@@ -1,12 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Derive version from control file to avoid manual drift.
-VERSION="$(grep -E '^Version:' packaging/debian/control | awk '{print $2}')"
-if [[ -z "${VERSION}" ]]; then
-	echo "[ERROR] Failed to extract Version from packaging/debian/control" >&2
-	exit 1
+# =============================================================================
+# pullDB Server Package Builder
+# =============================================================================
+# Builds the full server .deb package including CLI, worker, and API.
+#
+# Version is derived from pyproject.toml (single source of truth).
+# GitHub Actions can override via PULLDB_VERSION environment variable.
+# =============================================================================
+
+# Get version from environment (CI) or pyproject.toml (local build)
+if [[ -n "${PULLDB_VERSION:-}" ]]; then
+    VERSION="${PULLDB_VERSION}"
+    echo "Using version from environment: ${VERSION}"
+elif [[ -f "pyproject.toml" ]]; then
+    VERSION="$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/.*=\s*"\([^"]*\)".*/\1/')"
+    if [[ -z "${VERSION}" ]]; then
+        echo "[ERROR] Failed to extract version from pyproject.toml" >&2
+        exit 1
+    fi
+    echo "Using version from pyproject.toml: ${VERSION}"
+else
+    echo "[ERROR] No version source found (set PULLDB_VERSION or ensure pyproject.toml exists)" >&2
+    exit 1
 fi
+
 ARCH="amd64"
 PKGNAME="pulldb_${VERSION}_${ARCH}.deb"
 
@@ -16,7 +35,9 @@ DEBIAN_DIR="$WORKDIR/DEBIAN"
 rm -rf build
 mkdir -p "$DEBIAN_DIR"
 
+# Copy control file and inject version
 cp packaging/debian/control "$DEBIAN_DIR/control"
+sed -i "s/^Version:.*/Version: ${VERSION}/" "$DEBIAN_DIR/control"
 cp packaging/debian/postinst "$DEBIAN_DIR/postinst"
 cp packaging/debian/prerm "$DEBIAN_DIR/prerm"
 cp packaging/debian/postrm "$DEBIAN_DIR/postrm"
@@ -40,6 +61,7 @@ cp scripts/uninstall_pulldb.sh "$APP_ROOT/scripts/"
 cp scripts/upgrade_pulldb.sh "$APP_ROOT/scripts/"
 cp scripts/configure_server.sh "$APP_ROOT/scripts/"
 cp scripts/monitor_jobs.py "$APP_ROOT/scripts/"
+cp scripts/service-validate.sh "$APP_ROOT/scripts/"
 chmod +x "$APP_ROOT/scripts/"*.sh "$APP_ROOT/scripts/"*.py
 
 # Copy systemd unit files to dedicated directory

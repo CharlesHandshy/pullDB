@@ -1,12 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Derive version from control file
-VERSION="$(grep -E '^Version:' packaging/debian_client/control | awk '{print $2}')"
-if [[ -z "${VERSION}" ]]; then
-	echo "[ERROR] Failed to extract Version from packaging/debian_client/control" >&2
-	exit 1
+# =============================================================================
+# pullDB Client Package Builder
+# =============================================================================
+# Builds the lightweight client-only .deb package (CLI only, no services).
+#
+# Uses the SAME wheel as the server package (from dist/).
+# Version is derived from pyproject.toml (single source of truth).
+# GitHub Actions can override via PULLDB_VERSION environment variable.
+# =============================================================================
+
+# Get version from environment (CI) or pyproject.toml (local build)
+if [[ -n "${PULLDB_VERSION:-}" ]]; then
+    VERSION="${PULLDB_VERSION}"
+    echo "Using version from environment: ${VERSION}"
+elif [[ -f "pyproject.toml" ]]; then
+    VERSION="$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/.*=\s*"\([^"]*\)".*/\1/')"
+    if [[ -z "${VERSION}" ]]; then
+        echo "[ERROR] Failed to extract version from pyproject.toml" >&2
+        exit 1
+    fi
+    echo "Using version from pyproject.toml: ${VERSION}"
+else
+    echo "[ERROR] No version source found (set PULLDB_VERSION or ensure pyproject.toml exists)" >&2
+    exit 1
 fi
+
 ARCH="amd64"
 PKGNAME="pulldb-client_${VERSION}_${ARCH}.deb"
 
@@ -16,7 +36,10 @@ DEBIAN_DIR="$WORKDIR/DEBIAN"
 rm -rf "$WORKDIR"
 mkdir -p "$DEBIAN_DIR"
 
+# Copy control file and inject version
 cp packaging/debian_client/control "$DEBIAN_DIR/control"
+sed -i "s/^Version:.*/Version: ${VERSION}/" "$DEBIAN_DIR/control"
+
 cp packaging/debian_client/postinst "$DEBIAN_DIR/postinst"
 cp packaging/debian_client/postrm "$DEBIAN_DIR/postrm"
 chmod 0755 "$DEBIAN_DIR/postinst" "$DEBIAN_DIR/postrm"
@@ -25,23 +48,13 @@ chmod 0755 "$DEBIAN_DIR/postinst" "$DEBIAN_DIR/postrm"
 APP_ROOT="$WORKDIR/opt/pulldb.client"
 mkdir -p "$APP_ROOT/dist"
 
-# Build the wheel first (ensure we have the latest)
-# We reuse the build_client_package logic but just grab the wheel
-# Or we can just assume 'make client' ran. 
-# Let's assume the wheel is in dist_client_package/ from a previous step or we build it here.
-# To be safe, let's build the wheel here using the existing script but we need to extract it.
-# Actually, let's just look for it in dist_client_package/ or build it.
-
-if [ ! -d "dist_client_package" ]; then
-    echo "Building client wheel..."
-    ./scripts/build_client_package.sh
-fi
-
-# Copy the wheel file
-if compgen -G "dist_client_package/*.whl" > /dev/null; then
-    cp dist_client_package/*.whl "$APP_ROOT/dist/"
+# Use the wheel from dist/ (built by main build process)
+# This is the SAME wheel used by the server package
+if compgen -G "dist/pulldb-*.whl" > /dev/null; then
+    cp dist/pulldb-*.whl "$APP_ROOT/dist/"
 else
-    echo "[ERROR] No wheel file found in dist_client_package/. Run './scripts/build_client_package.sh' first." >&2
+    echo "[ERROR] No wheel file found in dist/." >&2
+    echo "Run 'python3 -m build' or 'make server' first to build the wheel." >&2
     exit 1
 fi
 

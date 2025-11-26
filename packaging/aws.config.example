@@ -1,32 +1,77 @@
-# AWS CLI Configuration (example)
-# Copy to ~/.aws/config and customize for your environment
+# ==============================================================================
+# AWS CLI Configuration for pullDB Service
+# ==============================================================================
+# Deploy to: /opt/pulldb.service/.aws/config
 #
-# For the pulldb_service user, this file goes in:
-#   /opt/pulldb.service/.aws/config
+# This configuration supports EC2 instances with Instance Profiles.
+# The instance must have pulldb-instance-profile attached.
 #
-# For EC2 instances with Instance Profile, the credential_source
-# directive allows assuming cross-account roles.
+# Profile Usage:
+#   pr-dev     - Secrets Manager access (dev account 345321506926)
+#   pr-staging - S3 staging backups (staging account 333204494849)
+#   pr-prod    - S3 production backups (prod account 448509429610)
+#
+# Generated: 2025-11-26
+# ==============================================================================
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PRODUCTION PROFILE (EC2 with Instance Profile)
-# ─────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
+# Development Account Profile (Secrets Manager)
+# Account: 345321506926
+# Purpose: Access to Secrets Manager (/pulldb/mysql/*)
+# ------------------------------------------------------------------------------
 [profile pr-dev]
-# Cross-account role for accessing production S3 backups
-role_arn = arn:aws:iam::448509429610:role/pulldb-cross-account-readonly
+region = us-east-1
+output = json
+# Uses EC2 instance metadata credentials directly
+# Instance profile must have secretsmanager:GetSecretValue permission
+
+# ------------------------------------------------------------------------------
+# Staging Account Profile (S3 Staging Backups)
+# Account: 333204494849
+# Purpose: Access to staging S3 backups (s3://pestroutesrdsdbs/daily/stg/)
+# ------------------------------------------------------------------------------
+[profile pr-staging]
+role_arn = arn:aws:iam::333204494849:role/pulldb-staging-cross-account-readonly
 credential_source = Ec2InstanceMetadata
 region = us-east-1
+output = json
+# Cross-account role assumed from instance profile
+# Bucket policy must allow the dev account role
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DEVELOPMENT PROFILE (optional, for local development)
-# ─────────────────────────────────────────────────────────────────────────────
-# [profile dev]
-# For local development with SSO:
-# sso_start_url = https://your-org.awsapps.com/start
-# sso_region = us-east-1
-# sso_account_id = 123456789012
-# sso_role_name = DeveloperAccess
-# region = us-east-1
+# ------------------------------------------------------------------------------
+# Production Account Profile (S3 Production Backups)
+# Account: 448509429610
+# Purpose: Access to production S3 backups
+# ------------------------------------------------------------------------------
+[profile pr-prod]
+role_arn = arn:aws:iam::448509429610:role/pulldb-cross-account-readonly
+credential_source = Ec2InstanceMetadata
+external_id = pulldb-dev-access-2025
+region = us-east-1
+output = json
+# Cross-account role with external ID for production access
+# Requires trust policy with external ID condition
 
-# For local development with static credentials:
-# (credentials go in ~/.aws/credentials, not here)
-# region = us-east-1
+# ==============================================================================
+# VERIFICATION COMMANDS
+# ==============================================================================
+# Run these to verify profile configuration:
+#
+# # Test pr-dev (should show dev account 345321506926)
+# aws sts get-caller-identity --profile pr-dev
+#
+# # Test pr-staging (should show staging account 333204494849)
+# aws sts get-caller-identity --profile pr-staging
+#
+# # Test pr-prod (should show prod account 448509429610)
+# aws sts get-caller-identity --profile pr-prod
+#
+# # Test Secrets Manager access
+# aws secretsmanager describe-secret --secret-id /pulldb/mysql/coordination-db --profile pr-dev
+#
+# # Test S3 staging access
+# aws s3 ls s3://pestroutesrdsdbs/daily/stg/ --profile pr-staging | head
+#
+# # Test S3 production access (if configured)
+# aws s3 ls s3://pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/ --profile pr-prod | head
+# ==============================================================================

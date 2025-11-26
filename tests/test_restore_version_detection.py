@@ -23,15 +23,21 @@ def test_detect_backup_version_zst_extension(tmp_path):
     
     assert _detect_backup_version(str(tmp_path)) == "0.19+ (zst extension)"
 
-def test_detect_backup_version_gz_extension(tmp_path):
-    """Test detection of 0.9 backup via .gz extension (fallback)."""
+def test_detect_backup_version_gz_extension_is_inconclusive(tmp_path):
+    """Test that .gz extension alone is NOT used for detection.
+    
+    Both 0.9 and 0.19+ formats can use .gz compression, so file extension
+    alone is unreliable. Without metadata or .zst files, we assume legacy
+    to be conservative (metadata synthesis will handle it).
+    """
     (tmp_path / "db.table.sql.gz").touch()
     
-    assert _detect_backup_version(str(tmp_path)) == "0.9 (gz extension)"
+    # .gz alone should return "unknown (assuming legacy)" - not "0.9 (gz extension)"
+    assert _detect_backup_version(str(tmp_path)) == "unknown (assuming legacy)"
 
 def test_detect_backup_version_unknown(tmp_path):
-    """Test detection of unknown backup version."""
-    assert _detect_backup_version(str(tmp_path)) == "unknown"
+    """Test detection of unknown backup version (empty directory)."""
+    assert _detect_backup_version(str(tmp_path)) == "unknown (assuming legacy)"
 
 def test_detect_backup_version_priority(tmp_path):
     """Test that metadata content takes priority over extensions."""

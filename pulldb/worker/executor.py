@@ -280,6 +280,20 @@ class WorkerJobExecutor:
             # Resolve actual backup root (handle top-level directory in tarball)
             backup_dir = self._resolve_backup_dir(Path(extracted_dir))
 
+            # Detect backup format from extracted contents (not S3 bucket)
+            # This determines whether metadata synthesis is needed
+            from pulldb.worker.restore import _detect_backup_version
+            detected_version = _detect_backup_version(str(backup_dir))
+            # format_tag is informational only - all backups use myloader 0.19.3-3
+            # with metadata synthesis for legacy formats
+            format_tag = "new" if "0.19" in detected_version else "legacy"
+            
+            self._append_event(
+                job.id,
+                "format_detected",
+                {"detected_version": detected_version, "format_tag": format_tag},
+            )
+
             script_dir = self._resolve_post_sql_dir(job)
             staging_conn, post_sql_conn = self._build_connection_specs(
                 job,
@@ -321,7 +335,7 @@ class WorkerJobExecutor:
                 backup_dir=str(backup_dir),
                 staging_conn=staging_conn,
                 post_sql_conn=post_sql_conn,
-                format_tag=backup_spec.format_tag,
+                format_tag=format_tag,  # Detected from backup contents
                 progress_callback=_restore_progress_callback,
             )
             self._append_event(

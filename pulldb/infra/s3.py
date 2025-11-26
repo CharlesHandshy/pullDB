@@ -266,14 +266,18 @@ def discover_latest_backup(
         },
     )
 
-    # Select regex based on bucket
+    # Select regex based on bucket (for filename pattern matching only)
+    # NOTE: format_tag is determined AFTER extraction by analyzing backup contents
+    # (metadata file format), not by S3 bucket. Both buckets can have mixed formats.
     if bucket == "pestroutes-rds-backup-prod-vpc-us-east-1-s3":
         regex = PROD_BACKUP_REGEX
-        format_tag = "legacy"
     else:
         # Default to staging regex for pestroutesrdsdbs and others
         regex = STAGING_BACKUP_REGEX
-        format_tag = "new"
+    
+    # format_tag will be determined post-extraction by _detect_backup_version()
+    # Setting to None here - executor.py will detect after extraction
+    format_tag = None
 
     # Optimization: Filter S3 listing by target to avoid scanning entire bucket.
     # This reduces the search space from all customers (thousands of objects)

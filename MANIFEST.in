@@ -1,2 +1,3 @@
-include pulldb/binaries/myloader-0.9.5
+# Myloader binary - unified to 0.19.3-3 for all backup formats
+# Legacy backups are supported via metadata synthesis
 include pulldb/binaries/myloader-0.19.3-3

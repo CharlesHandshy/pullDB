@@ -7,7 +7,7 @@ fi
 set -euo pipefail
 
 # pullDB installer (interactive + non-interactive)
-# Default install prefix: /opt/pulldb
+# Default install prefix: /opt/pulldb.service
 # Responsibilities:
 #  - Prompt or accept flags for install directory (--prefix)
 #  - Accept AWS profile (--aws-profile) & coordination secret (--secret)
@@ -19,7 +19,7 @@ set -euo pipefail
 #  - Non-interactive mode with --yes (assume yes to confirmations)
 #  - Display post-install verification steps
 
-INSTALL_PREFIX_DEFAULT="/opt/pulldb"
+INSTALL_PREFIX_DEFAULT="/opt/pulldb.service"
 PYTHON_BIN="python3"
 ASSUME_YES=0
 NO_SYSTEMD=0
@@ -89,7 +89,7 @@ usage() {
 Usage: sudo scripts/install_pulldb.sh [options]
 
 Options:
-  --prefix DIR            Install directory (default /opt/pulldb)
+  --prefix DIR            Install directory (default /opt/pulldb.service)
   --aws-profile NAME      AWS profile for PULLDB_AWS_PROFILE (default pr-prod)
                           (see docs/AWS-SETUP.md for examples and required IAM permissions)
   --secret NAME           Coordination secret name (default aws-secretsmanager:/pulldb/mysql/coordination-db)

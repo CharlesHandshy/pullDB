@@ -8,7 +8,7 @@ pullDB restore worker on Debian-based systems. The maintainer scripts
 perform the following actions during installation:
 
 - Create the dedicated `pulldb` system user and group
-- Lay down the runtime directory structure under `/opt/pulldb`
+- Lay down the runtime directory structure under `/opt/pulldb.service`
 - Write a baseline `.env` file (safe defaults that you can edit later)
 - Install and enable the `pulldb-worker.service` systemd unit template
 
@@ -16,7 +16,7 @@ After installing the package, run the interactive installer to finish
 configuration:
 
 ```
-sudo /opt/pulldb/scripts/install_pulldb.sh --yes \
+sudo /opt/pulldb.service.service/scripts/install_pulldb.sh --yes \
   --aws-profile dev \
   --secret /pulldb/mysql/coordination-db
 ```
@@ -28,7 +28,7 @@ worker service.
 Removal
 -------
 `sudo dpkg --purge pulldb` stops the worker service, removes the unit
-file, and deletes `/opt/pulldb`. Any custom data under `/opt/pulldb`
+file, and deletes `/opt/pulldb.service`. Any custom data under `/opt/pulldb.service`
 should be backed up before purging.
 
 Troubleshooting
@@ -36,6 +36,6 @@ Troubleshooting
 - Inspect `/var/log/syslog` or `journalctl -u pulldb-worker` for service
   errors.
 - Ensure AWS credentials are configured for the profile referenced in
-  `/opt/pulldb/.env` before starting the worker.
+  `/opt/pulldb.service.service/.env` before starting the worker.
 - For manual cleanup (without dpkg), remove the service file, reload
-  systemd, and delete `/opt/pulldb`.
+  systemd, and delete `/opt/pulldb.service`.

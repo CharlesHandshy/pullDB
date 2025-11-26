@@ -209,13 +209,14 @@ def _detect_backup_version(backup_dir: str) -> str:
         except Exception:
             pass  # Fallback if unreadable
 
-    # 2. Fallback: File Extensions
+    # 2. Fallback: .zst extension is definitive for 0.19+
+    #    (.gz is NOT reliable - both formats can use gzip compression)
     if any(path.glob("**/*.zst")):
         return "0.19+ (zst extension)"
-    if any(path.glob("**/*.gz")):
-        return "0.9 (gz extension)"
 
-    return "unknown"
+    # 3. No metadata and no .zst - assume legacy (conservative)
+    #    Metadata synthesis will handle conversion if needed
+    return "unknown (assuming legacy)"
 
 
 def run_myloader(

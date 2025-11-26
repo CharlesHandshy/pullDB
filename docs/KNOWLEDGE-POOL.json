@@ -21,15 +21,15 @@
     "targets": ["/pulldb/mysql/localhost-test"]
   },
   "paths": {
-    "install_root": "/opt/pulldb",
-    "venv": "/opt/pulldb/venv",
-    "logs": "/opt/pulldb/logs",
-    "work_dir": "/opt/pulldb/work",
+    "install_root": "/opt/pulldb.service",
+    "venv": "/opt/pulldb.service/venv",
+    "logs": "/opt/pulldb.service/logs",
+    "work_dir": "/opt/pulldb.service/work",
     "systemd_api": "/etc/systemd/system/pulldb-api.service",
     "systemd_worker": "/etc/systemd/system/pulldb-worker.service"
   },
   "binaries": {
-    "myloader_path": "/opt/pulldb/bin/",
+    "myloader_path": "/opt/pulldb.service/bin/",
     "myloader_source": "pulldb/binaries/"
   },
   "lessons_learned": [

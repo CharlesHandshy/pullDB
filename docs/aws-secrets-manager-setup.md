@@ -505,7 +505,7 @@ exit
 ```python
 # Test from Python on EC2 instance
 sudo -u pulldb bash
-cd /opt/pulldb
+cd /opt/pulldb.service
 source venv/bin/activate
 
 # Ensure environment variables are set
@@ -548,7 +548,7 @@ Temporary overrides for tests (`PULLDB_TEST_MYSQL_HOST` etc.) should only be use
 
 ```python
 sudo -u pulldb bash
-cd /opt/pulldb
+cd /opt/pulldb.service
 source venv/bin/activate
 
 python3 << 'EOF'

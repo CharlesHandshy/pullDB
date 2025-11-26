@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("deploy_proc")
 
 def main() -> None:
-    load_dotenv("/opt/pulldb/.env")
+    load_dotenv("/opt/pulldb.service/.env")
 
     try:
         config = Config.minimal_from_env()

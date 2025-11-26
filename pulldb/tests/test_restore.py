@@ -164,6 +164,7 @@ def test_build_restore_workflow_spec_uses_config(tmp_path: Any) -> None:
         mysql_user="cfg-user",
         mysql_password="cfg-pass",
         myloader_binary="/opt/myloader",
+        myloader_default_args=(),
         myloader_extra_args=("--skip-triggers",),
         myloader_timeout_seconds=1337.0,
         myloader_threads=6,

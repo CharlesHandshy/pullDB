@@ -54,19 +54,19 @@ Two supported installation paths:
 ```bash
 sudo scripts/install_pulldb.sh                    # fully interactive prompts
 sudo scripts/install_pulldb.sh --yes \            # auto-confirm
-  --prefix /opt/pulldb \                          # custom install prefix
+  --prefix /opt/pulldb.service.service \                  # custom install prefix
   --aws-profile dev \                             # set AWS profile
   --secret /pulldb/mysql/coordination-db \        # coordination DB secret
   --validate                                      # attempt AWS + secret checks
 ```
 Prompts for:
-- Install directory (defaults /opt/pulldb)
+- Install directory (defaults /opt/pulldb.service.service)
 - AWS profile (PULLDB_AWS_PROFILE)
 
 Script flags:
 | Flag | Purpose |
 |------|---------|
-| `--prefix DIR` | Install path (default `/opt/pulldb`) |
+| `--prefix DIR` | Install path (default `/opt/pulldb.service.service`) |
 | `--aws-profile NAME` | Sets `PULLDB_AWS_PROFILE` in `.env` |
 | `--secret NAME` | Sets `PULLDB_COORDINATION_SECRET` in `.env` |
 | `--yes` | Assume yes for confirmations (non-interactive) |
@@ -83,9 +83,9 @@ Validation notes:
 ```bash
 ./scripts/build_deb.sh
 sudo dpkg -i pulldb_0.0.1.dev0_amd64.deb
-sudo /opt/pulldb/scripts/install_pulldb.sh --yes --validate  # finalize & customize
+sudo /opt/pulldb.service/scripts/install_pulldb.sh --yes --validate  # finalize & customize
 ```
-The .deb lays down `/opt/pulldb` with installer, unit template, and creates a system user `pulldb` plus initial directory layout (`logs`, `work`, `scripts`). Maintainer `postinst` writes a baseline `.env` and installs the unit file under `/etc/systemd/system/pulldb-worker.service` (disabled by default). Use the installer script for customization after package installation.
+The .deb lays down `/opt/pulldb.service.service` with installer, unit template, and creates a system user `pulldb` plus initial directory layout (`logs`, `work`, `scripts`). Maintainer `postinst` writes a baseline `.env` and installs the unit file under `/etc/systemd/system/pulldb-worker.service` (disabled by default). Use the installer script for customization after package installation.
 
 Package lifecycle behaviors:
 | Script | Behavior |
@@ -112,13 +112,34 @@ sudo systemctl stop pulldb-worker.service || true
 sudo systemctl disable pulldb-worker.service || true
 sudo rm -f /etc/systemd/system/pulldb-worker.service
 sudo systemctl daemon-reload
-sudo rm -rf /opt/pulldb
+sudo rm -rf /opt/pulldb.service
 ```
 Or using dpkg purge (invokes `postrm` cleanup):
 ```bash
 sudo dpkg --purge pulldb
 ```
 ```
+
+### Custom Installation Path
+
+While `/opt/pulldb.service` is the default installation directory, you can customize
+the installation path using the `--prefix` flag:
+
+```bash
+# Install to a custom location
+sudo scripts/install_pulldb.sh --prefix /custom/path/pulldb --yes
+
+# All configurations, systemd units, and documentation will reference the custom path
+```
+
+When using a custom path:
+1. The `.env` file will be created at `<prefix>/.env`
+2. The virtualenv will be at `<prefix>/venv`
+3. Systemd units will be configured with `EnvironmentFile=<prefix>/.env`
+4. Logs and work directories can also be customized via `--log-dir` and `--work-dir`
+
+**Note**: If you change the installation path, update any scripts or documentation that
+reference the default `/opt/pulldb.service` path to match your custom location.
 
 Documentation:
 - MySQL Database Schema: [docs/mysql-schema.md](docs/mysql-schema.md)

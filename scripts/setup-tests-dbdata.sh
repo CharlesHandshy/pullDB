@@ -88,8 +88,8 @@ VALUES
     ('default_dbhost', 'localhost', 'Default target host (local development)'),
     ('s3_bucket_stg', 'pestroutesrdsdbs', 'Staging S3 bucket name for restores'),
     ('s3_bucket_path', 'pestroutesrdsdbs/daily/stg/', 'Legacy staging bucket path'),
-    ('customers_after_sql_dir', '/opt/pulldb/customers_after_sql/', 'Customer post-restore SQL directory'),
-    ('qa_template_after_sql_dir', '/opt/pulldb/qa_template_after_sql/', 'QA template post-restore SQL directory'),
+    ('customers_after_sql_dir', '/opt/pulldb.service/customers_after_sql/', 'Customer post-restore SQL directory'),
+    ('qa_template_after_sql_dir', '/opt/pulldb.service/qa_template_after_sql/', 'QA template post-restore SQL directory'),
     ('work_dir', '/var/lib/pulldb/work/', 'Working directory for downloads and extraction')
 ON DUPLICATE KEY UPDATE
     setting_value = VALUES(setting_value),

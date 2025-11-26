@@ -283,12 +283,12 @@ Both services run on same EC2 instance with shared MySQL:
 
 ```bash
 # Terminal 1: Start API service
-cd /opt/pulldb
+cd /opt/pulldb.service
 source venv/bin/activate
 python -m pulldb.api.server
 
 # Terminal 2: Start worker service
-cd /opt/pulldb
+cd /opt/pulldb.service
 source venv/bin/activate
 python -m pulldb.worker.service
 ```

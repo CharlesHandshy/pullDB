@@ -19,24 +19,13 @@ from datetime import datetime
 from pulldb.domain.config import Config
 
 
-MYLOADER_LEGACY_DEFAULTS = (
-    "--overwrite-tables",
-    "--verbose=3",
-)
-
-MYLOADER_NEW_DEFAULTS = (
-    "--max-threads-for-post-actions=1",
-    "--rows=100000",
-    "--queries-per-transaction=5000",
-    "--optimize-keys=AFTER_IMPORT_PER_TABLE",
-    "--checksum=warn",
-    "--retry-count=20",
-    "--local-infile=TRUE",
-    "--ignore-errors=1146",
-    "--overwrite-tables",
-    "--verbose=3",
-    "--max-threads-per-table=1",
-)
+# NOTE: Default myloader arguments are now configured via:
+#   1. Database `settings` table (key: myloader_default_args)
+#   2. Environment variable PULLDB_MYLOADER_DEFAULT_ARGS
+#   3. Built-in defaults in config.py (_MYLOADER_DEFAULT_ARGS_BUILTIN)
+#
+# The format_tag parameter is now only used for informational purposes.
+# All backups use myloader 0.19.3-3 with metadata synthesis for legacy formats.
 
 
 @dataclass(slots=True)
@@ -122,35 +111,28 @@ def build_configured_myloader_spec(
         mysql_password: Destination MySQL password.
         extra_args: Optional additional CLI args provided by caller.
         env: Optional env overrides passed to subprocess.
-        format_tag: Backup format tag ("legacy" or "new") to select binary.
+        format_tag: Backup format tag (informational only - all backups now
+            use myloader 0.19.3-3 with metadata synthesis for legacy formats).
 
     Returns:
         Configured MyLoaderSpec honoring environment/settings overrides.
     """
-    # Select binary based on format_tag
-    # Default to config.myloader_binary if not specified or unknown
+    # Unified binary: always use myloader 0.19.3-3
+    # Legacy backups are supported via metadata synthesis (see metadata_synthesis.py)
     binary_path = config.myloader_binary
-    defaults: Sequence[str] = ()
 
-    # Resolve binaries relative to this file (in package)
+    # Resolve binaries relative to this file (in package) as fallback
+    # Only apply fallback when using default "myloader" (not explicitly configured)
     # pulldb/domain/restore_models.py -> pulldb/binaries/
-    pkg_root = os.path.dirname(os.path.dirname(__file__))
-    bin_dir = os.path.join(pkg_root, "binaries")
-
-    if format_tag == "legacy":
-        # myloader 0.9.5 for legacy backups
-        candidate = os.path.join(bin_dir, "myloader-0.9.5")
-        if os.path.exists(candidate):
-            binary_path = candidate
-        defaults = MYLOADER_LEGACY_DEFAULTS
-    elif format_tag == "new":
-        # myloader 0.19.3-3 for new backups
+    if binary_path == "myloader":
+        pkg_root = os.path.dirname(os.path.dirname(__file__))
+        bin_dir = os.path.join(pkg_root, "binaries")
         candidate = os.path.join(bin_dir, "myloader-0.19.3-3")
         if os.path.exists(candidate):
             binary_path = candidate
-        defaults = MYLOADER_NEW_DEFAULTS
 
-    merged_args: list[str] = list(defaults)
+    # Use defaults from config (loaded from env/settings/builtin)
+    merged_args: list[str] = list(config.myloader_default_args)
     merged_args.extend(config.myloader_extra_args)
     if extra_args:
         merged_args.extend(extra_args)

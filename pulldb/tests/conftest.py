@@ -3,10 +3,49 @@
 MANDATE: All tests must use AWS Secrets Manager for database login.
 See .github/copilot-instructions.md for rationale and migration details.
 
+AWS PROFILE CONFIGURATION:
+    pullDB uses multiple AWS profiles for different resources:
+
+    - pr-dev: AWS Secrets Manager access (development account 345321506926)
+              Used for: MySQL coordination DB credentials, target host secrets
+
+    - pr-staging: S3 bucket access (staging account 333204494849)
+                  Used for: pestroutesrdsdbs bucket with daily/stg/ backups
+
+    - pr-prod: S3 bucket access (production account 448509429610)
+               Used for: pestroutes-rds-backup-prod-vpc-us-east-1-s3 bucket
+
+    Set via environment or .env file:
+        PULLDB_AWS_PROFILE=pr-dev         # For Secrets Manager (default)
+        PULLDB_S3_AWS_PROFILE=pr-staging  # For S3 bucket access
+
+    On EC2 with instance profile, leave PULLDB_AWS_PROFILE unset or empty.
+
 LOCAL TESTING: If AWS secret resolves to unreachable host, override via:
     PULLDB_TEST_MYSQL_HOST=localhost
     PULLDB_TEST_MYSQL_USER=pulldb_app
     PULLDB_TEST_MYSQL_PASSWORD=<password>
+
+.ENV FILE LOADING:
+    Tests automatically load .env from:
+    1. Repository root (.env)
+    2. /opt/pulldb.service/.env (if exists, for installed environments)
+
+    AWS configuration is loaded from:
+    1. ~/.aws/config (standard AWS config location)
+    2. AWS_CONFIG_FILE environment variable if set
+
+    Use pytest.ini or pyproject.toml to set PYTHONDONTWRITEBYTECODE=1 to
+    avoid .pyc pollution during testing.
+
+DATABASE AUTO-SETUP:
+    Tests will automatically:
+    1. Create the 'pulldb' database if it doesn't exist
+    2. Deploy the schema from schema/pulldb/*.sql
+    3. Seed required settings
+    4. Clean up (drop database) ONLY if it was created by tests
+
+    Pre-existing databases are left untouched.
 """
 
 from __future__ import annotations
@@ -22,8 +61,45 @@ from typing import Any, cast
 
 import pytest
 
-from pulldb.infra.mysql import MySQLPool
-from pulldb.infra.secrets import CredentialResolver, MySQLCredentials
+
+# Track whether we created the database (for cleanup)
+_DATABASE_CREATED_BY_TESTS = False
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+# Load .env files early before any other imports that might use environment vars
+try:
+    from dotenv import load_dotenv
+
+    # Load from repository root first (development environment)
+    _repo_env = _PROJECT_ROOT / ".env"
+    if _repo_env.exists():
+        load_dotenv(_repo_env)
+
+    # Load from installed location (production/staging)
+    _installed_env = Path("/opt/pulldb.service/.env")
+    if _installed_env.exists():
+        load_dotenv(_installed_env, override=False)  # Don't override repo settings
+
+except ImportError:
+    pass  # dotenv not installed, use environment as-is
+
+# Ensure AWS config file is discoverable
+# Check standard locations and set AWS_CONFIG_FILE if not already set
+if not os.getenv("AWS_CONFIG_FILE"):
+    _aws_config_paths = [
+        Path.home() / ".aws" / "config",
+        Path("/opt/pulldb.service/.aws/config"),
+    ]
+    for _aws_config in _aws_config_paths:
+        if _aws_config.exists():
+            os.environ["AWS_CONFIG_FILE"] = str(_aws_config)
+            break
+
+from pulldb.infra.mysql import MySQLPool  # noqa: E402 - must load after .env
+from pulldb.infra.secrets import (  # noqa: E402 - must load after .env
+    CredentialResolver,
+    MySQLCredentials,
+)
 
 
 def _wait_for_mysql(
@@ -112,6 +188,135 @@ def _seed_isolated_settings(socket_path: Path) -> None:
     conn.close()
 
 
+def _check_database_exists(
+    host: str = "localhost",
+    user: str = "root",
+    password: str = "",
+    socket: str | None = None,
+) -> bool:
+    """Check if the pulldb database exists in the MySQL server."""
+    import mysql.connector
+
+    try:
+        connect_kwargs: dict[str, Any] = {
+            "user": user,
+            "password": password,
+        }
+        if socket:
+            connect_kwargs["unix_socket"] = socket
+        else:
+            connect_kwargs["host"] = host
+
+        conn = mysql.connector.connect(**connect_kwargs)
+        cursor = conn.cursor()
+        cursor.execute("SHOW DATABASES LIKE 'pulldb'")
+        result = cursor.fetchone()
+        conn.close()
+        return result is not None
+    except Exception:
+        return False
+
+
+def _create_database_and_schema(
+    host: str = "localhost",
+    user: str = "root",
+    password: str = "",
+    socket: str | None = None,
+) -> bool:
+    """Create the pulldb database and deploy schema.
+
+    Returns:
+        True if database was created, False if it already existed.
+    """
+    global _DATABASE_CREATED_BY_TESTS  # noqa: PLW0603 - required for cleanup tracking
+    import mysql.connector
+
+    connect_kwargs: dict[str, Any] = {
+        "user": user,
+        "password": password,
+    }
+    if socket:
+        connect_kwargs["unix_socket"] = socket
+    else:
+        connect_kwargs["host"] = host
+
+    # Check if database already exists
+    if _check_database_exists(host, user, password, socket):
+        return False
+
+    # Create database
+    conn = mysql.connector.connect(**connect_kwargs)
+    cursor = conn.cursor()
+    cursor.execute(
+        "CREATE DATABASE pulldb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+    )
+    conn.close()
+    _DATABASE_CREATED_BY_TESTS = True
+
+    # Deploy schema files
+    schema_dir = _PROJECT_ROOT / "schema" / "pulldb"
+    mysql_client = shutil.which("mysql")
+
+    if mysql_client and schema_dir.exists():
+        for sql_file in sorted(schema_dir.glob("*.sql")):
+            cmd = [mysql_client, "-u", user, "pulldb"]
+            if password:
+                cmd.extend([f"-p{password}"])
+            if socket:
+                cmd.extend(["--socket", socket])
+            else:
+                cmd.extend(["-h", host])
+
+            with open(sql_file) as f:
+                result = subprocess.run(
+                    cmd,
+                    check=False,
+                    stdin=f,
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        f"Failed to deploy {sql_file.name}: {result.stderr}"
+                    )
+
+    return True
+
+
+def _drop_database_if_created(
+    host: str = "localhost",
+    user: str = "root",
+    password: str = "",
+    socket: str | None = None,
+) -> None:
+    """Drop the pulldb database if it was created by tests."""
+    global _DATABASE_CREATED_BY_TESTS  # noqa: PLW0603 - required for cleanup tracking
+
+    if not _DATABASE_CREATED_BY_TESTS:
+        return
+
+    import mysql.connector
+
+    try:
+        connect_kwargs: dict[str, Any] = {
+            "user": user,
+            "password": password,
+        }
+        if socket:
+            connect_kwargs["unix_socket"] = socket
+        else:
+            connect_kwargs["host"] = host
+
+        conn = mysql.connector.connect(**connect_kwargs)
+        cursor = conn.cursor()
+        cursor.execute("DROP DATABASE IF EXISTS pulldb")
+        conn.close()
+        _DATABASE_CREATED_BY_TESTS = False
+    except Exception as e:
+        # Log but don't fail - cleanup is best-effort
+        print(f"Warning: Failed to drop test database: {e}")
+
+
 @pytest.fixture(scope="session")
 def aws_region() -> str:
     """Ensure AWS region is set for boto3 operations.
@@ -126,7 +331,19 @@ def aws_region() -> str:
 
 @pytest.fixture(scope="session")
 def aws_profile(aws_region: str) -> str:
-    """Get AWS profile for credential resolution."""
+    """Get AWS profile for credential resolution (Secrets Manager).
+
+    This profile is used for AWS Secrets Manager access to resolve
+    MySQL credentials. The secrets reside in the development account
+    (345321506926) under the pr-dev profile.
+
+    Environment Variables:
+        PULLDB_AWS_PROFILE: Primary profile for Secrets Manager
+        AWS_PROFILE: Fallback if PULLDB_AWS_PROFILE not set
+
+    Returns:
+        AWS profile name, or empty string to use default credential chain.
+    """
     profile = os.getenv("PULLDB_AWS_PROFILE", os.getenv("AWS_PROFILE", "default"))
 
     # If an explicitly specified profile looks like a production profile and may
@@ -137,6 +354,31 @@ def aws_profile(aws_region: str) -> str:
     # Treat literal 'default' as None so boto3 uses standard credential chain
     # without attempting to validate a profile section that might not exist.
     return "" if profile == "default" else profile
+
+
+@pytest.fixture(scope="session")
+def s3_aws_profile(aws_profile: str) -> str:
+    """Get AWS profile for S3 bucket access.
+
+    S3 backups are stored in different accounts than secrets:
+    - pr-staging: pestroutesrdsdbs bucket (account 333204494849)
+    - pr-prod: pestroutes-rds-backup-prod-vpc-us-east-1-s3 (account 448509429610)
+
+    The S3 profile is separate from the Secrets Manager profile because
+    backups are in staging/production accounts while secrets are in dev.
+
+    Environment Variables:
+        PULLDB_S3_AWS_PROFILE: Dedicated S3 profile (recommended)
+        Falls back to PULLDB_AWS_PROFILE if not set
+
+    Returns:
+        AWS profile name for S3 operations.
+    """
+    s3_profile = os.getenv("PULLDB_S3_AWS_PROFILE")
+    if s3_profile:
+        return s3_profile
+    # Fall back to main AWS profile
+    return aws_profile
 
 
 @pytest.fixture(scope="session")
@@ -158,26 +400,27 @@ def verify_secret_residency(
     Secrets must NOT exist in staging (333204494849) or production (448509429610).
 
     This fixture runs once per test session and asserts the secret ARN
-    contains the correct account ID. Skips verification if local overrides
-    are set (offline development).
+    contains the correct account ID. Returns without verification if local
+    overrides are set (offline development).
 
     Raises:
         AssertionError: If secret exists in wrong account or cannot be described.
     """
-    # Skip if using local override (offline development)
+    # Return early if using local override (offline development)
+    # No need to verify AWS residency when not using AWS credentials
     if any(
         [
             all(
                 [
                     os.getenv("PULLDB_TEST_MYSQL_HOST"),
                     os.getenv("PULLDB_TEST_MYSQL_USER"),
-                    os.getenv("PULLDB_TEST_MYSQL_PASSWORD"),
+                    os.getenv("PULLDB_TEST_MYSQL_PASSWORD") is not None,
                 ]
             ),
             os.getenv("PULLDB_TEST_MYSQL_SOCKET"),
         ]
     ):
-        pytest.skip("Skipping secret residency check - using local overrides")
+        return  # Local overrides in use, no AWS verification needed
 
     # Import boto3 only when needed to avoid dependency in local-only mode
     try:
@@ -264,7 +507,8 @@ def mysql_credentials(
         )
 
     # If ALL local overrides set, use them (explicit dev-only bypass)
-    if local_host and local_user and local_password:
+    # Note: password can be empty string (e.g., local MySQL root with no password)
+    if local_host and local_user and local_password is not None:
         return MySQLCredentials(
             username=local_user,
             password=local_password,
@@ -304,14 +548,75 @@ def mysql_credentials(
 
 
 @pytest.fixture(scope="session")
-def mysql_pool(mysql_credentials: MySQLCredentials) -> MySQLPool:
+def ensure_database(
+    mysql_credentials: MySQLCredentials,
+) -> t.Generator[bool, None, None]:
+    """Ensure the pulldb database exists, creating it if necessary.
+
+    This fixture:
+    1. Checks if 'pulldb' database exists
+    2. If not, creates it and deploys schema from schema/pulldb/*.sql
+    3. Tracks whether it was created for cleanup
+    4. On teardown, drops the database ONLY if it was created by tests
+
+    Pre-existing databases are preserved - this fixture will not modify
+    or drop them.
+
+    Yields:
+        bool: True if database was created by this fixture, False if pre-existing.
+    """
+    creds = mysql_credentials
+    socket_path = os.getenv("PULLDB_TEST_MYSQL_SOCKET")
+
+    # Attempt to create database if it doesn't exist
+    try:
+        created = _create_database_and_schema(
+            host=creds.host,
+            user=creds.username,
+            password=creds.password,
+            socket=socket_path,
+        )
+        if created:
+            print(
+                "\n[TEST SETUP] Created pulldb database (will be removed after tests)"
+            )
+        else:
+            print("\n[TEST SETUP] Using existing pulldb database (will NOT be removed)")
+    except Exception as e:
+        pytest.fail(
+            f"Failed to ensure pulldb database exists: {e}\n\n"
+            f"Manual setup:\n"
+            f"  mysql -u {creds.username} -p -e 'CREATE DATABASE pulldb'\n"
+            f"  cat schema/pulldb/*.sql | mysql -u {creds.username} -p pulldb"
+        )
+
+    yield created
+
+    # Cleanup: only drop if we created it
+    if created:
+        _drop_database_if_created(
+            host=creds.host,
+            user=creds.username,
+            password=creds.password,
+            socket=socket_path,
+        )
+        print("\n[TEST CLEANUP] Dropped pulldb database (created by tests)")
+
+
+@pytest.fixture(scope="session")
+def mysql_pool(
+    mysql_credentials: MySQLCredentials,
+    ensure_database: bool,
+) -> MySQLPool:
     """Create MySQLPool for tests using AWS Secrets Manager credentials.
+
+    Depends on ensure_database to guarantee the pulldb database exists.
 
     Returns:
         MySQLPool: Shared connection pool for tests.
     """
     creds = mysql_credentials
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "host": creds.host,
         "user": creds.username,
         "password": creds.password,
@@ -328,17 +633,35 @@ def mysql_pool(mysql_credentials: MySQLCredentials) -> MySQLPool:
 
 @pytest.fixture(scope="session", autouse=True)
 def seed_settings(mysql_pool: MySQLPool) -> None:
-    """Seed required settings rows for integration tests.
+    """Seed required settings and test user for integration tests.
 
         Ensures settings table contains values for:
             - default_dbhost
             - s3_bucket_stg (mapped to config.s3_bucket_path)
             - s3_bucket_path (legacy compat)
 
+        Also seeds auth_users with test user (required by FK constraint on jobs).
+
     Uses INSERT ... ON DUPLICATE KEY to avoid test flakiness if rows exist.
     """
+    # Import test constants for seeding
+    from pulldb.tests.test_constants import (
+        TEST_USER_CODE,
+        TEST_USER_ID,
+        TEST_USERNAME,
+    )
+
     with mysql_pool.connection() as conn:
         cursor = conn.cursor()
+        # Seed test user first (jobs table has FK to auth_users)
+        cursor.execute(
+            """
+            INSERT INTO auth_users (user_id, username, user_code, created_at)
+            VALUES (%s, %s, %s, UTC_TIMESTAMP(6))
+            ON DUPLICATE KEY UPDATE username = VALUES(username)
+            """,
+            (TEST_USER_ID, TEST_USERNAME, TEST_USER_CODE),
+        )
         cursor.execute(
             """
             INSERT INTO settings (setting_key, setting_value)
@@ -492,7 +815,7 @@ def isolated_worker(
 
     # Ensure PYTHONPATH includes project root
     env = os.environ.copy()
-    
+
     # Prevent secret resolution from overriding isolated credentials
     # We set it to empty string instead of popping to prevent load_dotenv from
     # restoring it from a local .env file.

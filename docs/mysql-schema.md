@@ -208,8 +208,8 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 
 -- Post-restore SQL script directories
 INSERT INTO settings (setting_key, setting_value) VALUES
-    ('customers_after_sql_dir', '/opt/pulldb/customers_after_sql/'),
-    ('qa_template_after_sql_dir', '/opt/pulldb/qa_template_after_sql/');
+    ('customers_after_sql_dir', '/opt/pulldb.service/customers_after_sql/'),
+    ('qa_template_after_sql_dir', '/opt/pulldb.service/qa_template_after_sql/');
 
 -- Default working directory for downloads and extractions
 INSERT INTO settings (setting_key, setting_value) VALUES

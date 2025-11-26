@@ -210,6 +210,11 @@ def cli() -> None:
     pass
 
 
+# Register settings subcommand group
+from pulldb.cli.settings import settings_group
+cli.add_command(settings_group)
+
+
 @cli.command("restore", help="Validate and submit a restore job (enqueue pending)")
 @click.argument("options", nargs=-1)
 def restore_cmd(options: tuple[str, ...]) -> None:

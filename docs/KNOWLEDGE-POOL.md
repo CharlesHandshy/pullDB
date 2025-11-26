@@ -165,22 +165,31 @@ This file should be created and applied in the production account only. Keep sec
 - **Users Table**: `auth_users` - tracks authorized users
 - **Settings Table**: `settings` - dynamic configuration (key/value)
 
+## Test Configuration (Local Development)
+- **Test MySQL credentials**: Set environment variables to use local MySQL instead of AWS Secrets Manager:
+  - `PULLDB_TEST_MYSQL_HOST=localhost`
+  - `PULLDB_TEST_MYSQL_USER=pulldb_test`
+  - `PULLDB_TEST_MYSQL_PASSWORD=test123` (or empty string for auth_socket users)
+- **Auto-database setup**: The test suite automatically creates the `pulldb` database if it doesn't exist and drops it after tests if it was created by the test suite
+- **Schema location**: `schema/pulldb/*.sql` (files applied in lexicographic order)
+- **Empty password handling**: Empty passwords (`""`) are valid - the fixture checks `password is not None` not truthiness
+
 ## Local Environment & Binaries
-- myloader binaries location: `/opt/pulldb/bin/` (installed)
+- myloader binaries location: `/opt/pulldb.service.service/bin/` (installed)
   - Source location: `pulldb/binaries/`
   - Available versions: `myloader-0.9.5`, `myloader-0.19.3-3`
 
 ## System Paths & Service Locations
-- **Installation Root**: `/opt/pulldb`
-- **Virtual Environment**: `/opt/pulldb/venv`
-- **Logs**: `/opt/pulldb/logs`
-- **Work Directory**: `/opt/pulldb/work`
+- **Installation Root**: `/opt/pulldb.service`
+- **Virtual Environment**: `/opt/pulldb.service.service/venv`
+- **Logs**: `/opt/pulldb.service.service/logs`
+- **Work Directory**: `/opt/pulldb.service.service/work`
 - **Systemd Units**:
   - API Service: `/etc/systemd/system/pulldb-api.service`
   - Worker Service: `/etc/systemd/system/pulldb-worker.service`
 - **Binaries**:
-  - `pulldb` CLI: `/opt/pulldb/venv/bin/pulldb`
-  - `myloader`: `/opt/pulldb/bin/myloader` (symlinked or direct)
+  - `pulldb` CLI: `/opt/pulldb.service.service/venv/bin/pulldb`
+  - `myloader`: `/opt/pulldb.service.service/bin/myloader` (symlinked or direct)
 
 ## Lessons Learned & Troubleshooting
 - **Service User Identity**: Services (`pulldb-api`, `pulldb-worker`) MUST run as the `pulldb` system user. Running as `root` or a developer user causes permission issues with logs and work directories.

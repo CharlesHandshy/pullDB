@@ -70,13 +70,38 @@ This mirrors how we validated Secrets Manager and S3 access during the Phase 0
 ### Test Fixtures
 
 - `aws_region`: Ensures AWS region is set (default: us-east-1)
-- `aws_profile`: Determines AWS profile for credential resolution
+- `aws_profile`: Determines AWS profile for credential resolution (Secrets Manager)
+- `s3_aws_profile`: Determines AWS profile for S3 bucket access (separate from secrets)
 - `coordination_db_secret`: Secret ID for coordination database
 - `verify_secret_residency`: **Validates secret exists only in dev account (345321506926)**
 - `mysql_credentials`: Resolves credentials from AWS or local override
 - `mysql_pool`: Creates shared connection pool for tests
 - `seed_settings`: Ensures required settings rows exist
 - `mysql_network_credentials`: Returns (host, user, password) tuple for network login
+
+### Environment File Loading
+
+Tests automatically load `.env` files at startup via conftest.py:
+
+1. **Repository .env** (`./.env`): Loaded first for development settings
+2. **Installed .env** (`/opt/pulldb.service/.env`): Loaded second, does not override repo settings
+
+This ensures tests can use the same configuration as the installed service while allowing
+local development overrides.
+
+### Environment Variables for AWS Testing
+
+```bash
+# Required for Secrets Manager access (dev account)
+export PULLDB_AWS_PROFILE=pr-dev
+
+# Required for S3 bucket access (staging or production account)
+export PULLDB_S3_AWS_PROFILE=pr-staging  # or pr-prod
+
+# Alternative: Set in .env file
+echo "PULLDB_AWS_PROFILE=pr-dev" >> .env
+echo "PULLDB_S3_AWS_PROFILE=pr-staging" >> .env
+```
 
 ### Bundled Binaries Location
 

@@ -1133,20 +1133,20 @@ Configure AWS profiles on the EC2 instance for the `pulldb` service user.
 
 ```bash
 # Create dedicated service user (if not already exists)
-sudo useradd -r -s /bin/bash -d /opt/pulldb -m pulldb
+sudo useradd -r -s /bin/bash -d /opt/pulldb.service -m pulldb
 
 # Create AWS configuration directory with proper permissions
-sudo mkdir -p /opt/pulldb/.aws/cli/cache
-sudo chown -R pulldb:pulldb /opt/pulldb/.aws
-sudo chmod 700 /opt/pulldb/.aws
-sudo chmod 700 /opt/pulldb/.aws/cli
+sudo mkdir -p /opt/pulldb.service/.aws/cli/cache
+sudo chown -R pulldb:pulldb /opt/pulldb.service/.aws
+sudo chmod 700 /opt/pulldb.service/.aws
+sudo chmod 700 /opt/pulldb.service/.aws/cli
 ```
 
 ### 4.2 Create AWS Config
 
 ```bash
 # Create AWS config file as root, then fix ownership
-sudo tee /opt/pulldb/.aws/config > /dev/null <<'EOF'
+sudo tee /opt/pulldb.service/.aws/config > /dev/null <<'EOF'
 [profile pr-staging]
 role_arn = arn:aws:iam::333204494849:role/pulldb-cross-account-readonly
 credential_source = Ec2InstanceMetadata
@@ -1161,11 +1161,11 @@ region = us-east-1
 EOF
 
 # Set proper ownership and permissions
-sudo chown pulldb:pulldb /opt/pulldb/.aws/config
-sudo chmod 600 /opt/pulldb/.aws/config
+sudo chown pulldb:pulldb /opt/pulldb.service/.aws/config
+sudo chmod 600 /opt/pulldb.service/.aws/config
 
 # Verify setup
-sudo ls -la /opt/pulldb/.aws/
+sudo ls -la /opt/pulldb.service/.aws/
 ```
 
 **Key Settings**:
@@ -1190,7 +1190,7 @@ PULLDB_S3_BUCKET_STAGING=pestroutesrdsdbs
 PULLDB_S3_BUCKET_PROD=pestroutes-rds-backup-prod-vpc-us-east-1-s3
 PULLDB_S3_PREFIX_STAGING=daily/stg
 PULLDB_S3_PREFIX_PROD=daily/prod
-HOME=/opt/pulldb
+HOME=/opt/pulldb.service
 EOF
 
 # Create Worker service environment file
@@ -1202,7 +1202,7 @@ PULLDB_S3_BUCKET_PROD=pestroutes-rds-backup-prod-vpc-us-east-1-s3
 PULLDB_S3_PREFIX_STAGING=daily/stg
 PULLDB_S3_PREFIX_PROD=daily/prod
 PULLDB_WORK_DIR=/mnt/data/pulldb/work
-HOME=/opt/pulldb
+HOME=/opt/pulldb.service
 EOF
 
 # Set proper permissions
@@ -1215,7 +1215,7 @@ sudo chown -R pulldb:pulldb /mnt/data/pulldb
 sudo chmod 755 /mnt/data/pulldb
 ```
 
-**Important**: `HOME=/opt/pulldb` ensures AWS SDK finds config in `/opt/pulldb/.aws/config`
+**Important**: `HOME=/opt/pulldb.service` ensures AWS SDK finds config in `/opt/pulldb.service/.aws/config`
 
 ## Step 5: Verification
 
@@ -1272,15 +1272,15 @@ exit
 
 **Troubleshooting Permission Denied Errors**:
 ```bash
-# If you see "[Errno 13] Permission denied: '/opt/pulldb/.aws/cli'"
+# If you see "[Errno 13] Permission denied: '/opt/pulldb.service/.aws/cli'"
 # Fix AWS directory permissions:
-sudo mkdir -p /opt/pulldb/.aws/cli/cache
-sudo chown -R pulldb:pulldb /opt/pulldb/.aws
-sudo chmod 700 /opt/pulldb/.aws
-sudo chmod 700 /opt/pulldb/.aws/cli
+sudo mkdir -p /opt/pulldb.service/.aws/cli/cache
+sudo chown -R pulldb:pulldb /opt/pulldb.service/.aws
+sudo chmod 700 /opt/pulldb.service/.aws
+sudo chmod 700 /opt/pulldb.service/.aws/cli
 
 # Verify ownership
-sudo ls -la /opt/pulldb/.aws/
+sudo ls -la /opt/pulldb.service/.aws/
 # Should show: drwx------ pulldb pulldb
 ```
 
@@ -1442,7 +1442,7 @@ AWS_PROFILE=default aws iam list-attached-role-policies \
 
 **Causes**:
 1. Instance profile not attached to EC2 instance
-2. Wrong credential_source in `/opt/pulldb/.aws/config`
+2. Wrong credential_source in `/opt/pulldb.service/.aws/config`
 3. Metadata service unavailable
 4. IMDSv2 required but token not provided (401 Unauthorized)
 5. AWS directory permissions incorrect (owned by root instead of pulldb user)
@@ -1462,13 +1462,13 @@ curl -H "X-aws-ec2-metadata-token: $TOKEN" \
 # If you get "401 - Unauthorized" without token, IMDSv2 is enforced (expected for security)
 
 # Fix AWS directory permissions if owned by wrong user
-sudo chown -R pulldb:pulldb /opt/pulldb/.aws
-sudo chmod 700 /opt/pulldb/.aws
-sudo mkdir -p /opt/pulldb/.aws/cli/cache
-sudo chmod 700 /opt/pulldb/.aws/cli
+sudo chown -R pulldb:pulldb /opt/pulldb.service/.aws
+sudo chmod 700 /opt/pulldb.service/.aws
+sudo mkdir -p /opt/pulldb.service/.aws/cli/cache
+sudo chmod 700 /opt/pulldb.service/.aws/cli
 
 # Verify config file has credential_source = Ec2InstanceMetadata
-sudo cat /opt/pulldb/.aws/config
+sudo cat /opt/pulldb.service/.aws/config
 ```
 
 ### Error: KMS Decrypt Access Denied

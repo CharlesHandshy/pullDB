@@ -291,8 +291,8 @@ setting_key                  | setting_value                                   |
 default_dbhost               | localhost                                     | Default database host (local sandbox)
 s3_bucket_path               | pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod | S3 backup bucket path
 work_dir                     | /mnt/data/pulldb/work                          | Working directory for restores
-customers_after_sql_dir      | /opt/pulldb/customers_after_sql                | Post-restore SQL for customers
-qa_template_after_sql_dir    | /opt/pulldb/qa_template_after_sql              | Post-restore SQL for QA templates
+customers_after_sql_dir      | /opt/pulldb.service/customers_after_sql        | Post-restore SQL for customers
+qa_template_after_sql_dir    | /opt/pulldb.service/qa_template_after_sql      | Post-restore SQL for QA templates
 ```
 
 ## Python MySQL Libraries

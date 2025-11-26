@@ -40,7 +40,7 @@ Initial release baseline for the pullDB database restoration tool.
 sudo dpkg -i pulldb_0.0.1_amd64.deb
 
 # Configure (interactive or with flags)
-sudo /opt/pulldb/scripts/install_pulldb.sh --yes --validate \
+sudo /opt/pulldb.service/scripts/install_pulldb.sh --yes --validate \
   --aws-profile dev --secret /pulldb/mysql/coordination-db
 ```
 

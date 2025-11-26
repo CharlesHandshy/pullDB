@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load env
-load_dotenv("/opt/pulldb/.env")
+load_dotenv("/opt/pulldb.service/.env")
 
 def main():
     secret_id = os.getenv("PULLDB_COORDINATION_SECRET")

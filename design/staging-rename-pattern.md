@@ -634,7 +634,7 @@ INSERT INTO settings (`key`, `value`) VALUES
 
 ```bash
 # Add to cron (daily at 2 AM)
-0 2 * * * /opt/pulldb/bin/pulldb-cleanup-staging >> /var/log/pulldb/staging-cleanup.log 2>&1
+0 2 * * * /opt/pulldb.service/bin/pulldb-cleanup-staging >> /var/log/pulldb/staging-cleanup.log 2>&1
 ```
 
 ### Safety Guarantees

@@ -13,4 +13,4 @@ def test_installer_help_references_quickstart(tmp_path: Any) -> None:
     # exit code 0 expected for --help
     assert proc.returncode == 0
     out = proc.stdout + proc.stderr
-    assert "docs/aws-quickstart.md" in out
+    assert "docs/AWS-SETUP.md" in out

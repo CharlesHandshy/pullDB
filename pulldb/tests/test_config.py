@@ -42,7 +42,7 @@ class TestMinimalFromEnv:
         assert config.aws_profile is None
         assert config.s3_aws_profile is None
         assert config.default_dbhost is None
-        assert config.myloader_binary == "/opt/pulldb/bin/myloader-0.19.3-3"
+        assert config.myloader_binary == "/opt/pulldb.service/bin/myloader-0.19.3-3"
         assert config.myloader_extra_args == ()
         assert config.myloader_timeout_seconds == 7200.0
         assert config.myloader_threads == 8
@@ -123,7 +123,7 @@ class TestFromEnvAndMySQL:
             {"setting_key": "work_directory", "setting_value": "/var/lib/pulldb"},
             {
                 "setting_key": "customers_after_sql_dir",
-                "setting_value": "/opt/pulldb/customers_after_sql",
+                "setting_value": "/opt/pulldb.service/customers_after_sql",
             },
             {
                 "setting_key": "myloader_binary",
@@ -153,7 +153,7 @@ class TestFromEnvAndMySQL:
         assert config.s3_bucket_path == "pestroutesrdsdbs"
         assert config.default_dbhost == "dev-db-01.example.com"
         assert config.work_dir == Path("/var/lib/pulldb")
-        assert config.customers_after_sql_dir == Path("/opt/pulldb/customers_after_sql")
+        assert config.customers_after_sql_dir == Path("/opt/pulldb.service/customers_after_sql")
         assert config.myloader_binary == "/usr/local/bin/myloader"
         assert config.myloader_extra_args == (
             "--skip-triggers",

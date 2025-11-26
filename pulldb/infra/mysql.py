@@ -1157,3 +1157,41 @@ class SettingsRepository:
             )
             rows = cursor.fetchall()
             return {row["setting_key"]: row["setting_value"] for row in rows}
+
+    def delete_setting(self, key: str) -> bool:
+        """Delete a setting from the database.
+
+        Args:
+            key: Setting key to delete.
+
+        Returns:
+            True if setting was deleted, False if it didn't exist.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM settings
+                WHERE setting_key = %s
+                """,
+                (key,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_all_settings_with_metadata(self) -> list[dict[str, str | None]]:
+        """Get all settings with their metadata (description, updated_at).
+
+        Returns:
+            List of dicts with keys: setting_key, setting_value, description, updated_at
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT setting_key, setting_value, description, updated_at
+                FROM settings
+                ORDER BY setting_key ASC
+                """
+            )
+            return list(cursor.fetchall())

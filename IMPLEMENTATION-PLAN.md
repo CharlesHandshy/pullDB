@@ -950,8 +950,8 @@ After=network.target
 [Service]
 Type=simple
 User=pulldb
-WorkingDirectory=/opt/pulldb
-ExecStart=/opt/pulldb/venv/bin/pulldb-worker
+WorkingDirectory=/opt/pulldb.service
+ExecStart=/opt/pulldb.service/venv/bin/pulldb-worker
 Restart=on-failure
 RestartSec=10
 
