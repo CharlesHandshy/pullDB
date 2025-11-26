@@ -102,15 +102,20 @@ def _initialize_state() -> APIState:
         config = Config.minimal_from_env()
         
         # Resolve coordination credentials if provided via secret
+        # Only fetch from Secrets Manager if password is not already set
         coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
-        if coordination_secret and config.mysql_user == "root" and not config.mysql_password:
+        if coordination_secret and not config.mysql_password:
             try:
                 resolver = CredentialResolver(config.aws_profile)
                 creds = resolver.resolve(coordination_secret)
+                # Secret provides host and password; username comes from PULLDB_MYSQL_USER
                 config.mysql_host = creds.host
-                config.mysql_user = creds.username
                 config.mysql_password = creds.password
-                # Note: Config doesn't currently support port override for coordination DB
+                # Don't override username - it's set via PULLDB_MYSQL_USER
+                logger.info(
+                    f"Resolved coordination credentials from {coordination_secret} "
+                    f"(host={creds.host}, user={config.mysql_user})"
+                )
             except Exception as e:
                 # Log warning but proceed with defaults (will likely fail connection)
                 print(f"WARNING: Failed to resolve coordination secret: {e}")
