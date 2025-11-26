@@ -396,5 +396,5 @@ sudo groupdel pulldb_service
 
 ---
 
-**Version**: 0.0.1
+**Version**: 0.0.2
 **Last Updated**: November 26, 2025
