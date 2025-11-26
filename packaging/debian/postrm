@@ -75,9 +75,9 @@ remove_keeping_config() {
     echo "  To remove completely: sudo dpkg -P pulldb"
 }
 
-# Remove everything including config
+# Remove everything including config and user account
 purge_all() {
-    echo "Purging pullDB (removing all files including configuration)..."
+    echo "Purging pullDB (removing all files, configuration, and user account)..."
     
     # Remove the entire install directory
     if [ -d "${INSTALL_PREFIX}" ]; then
@@ -85,11 +85,16 @@ purge_all() {
         echo "  Removed: ${INSTALL_PREFIX}"
     fi
     
-    # Optionally remove system user (commented out - may be in use)
-    # if id -u "${SYSTEM_USER}" >/dev/null 2>&1; then
-    #     deluser --system "${SYSTEM_USER}" 2>/dev/null || true
-    #     echo "  Removed user: ${SYSTEM_USER}"
-    # fi
+    # Remove system user and group
+    if id -u "${SYSTEM_USER}" >/dev/null 2>&1; then
+        deluser --system "${SYSTEM_USER}" 2>/dev/null || true
+        echo "  Removed user: ${SYSTEM_USER}"
+    fi
+    
+    if getent group "${SYSTEM_USER}" >/dev/null 2>&1; then
+        delgroup --system "${SYSTEM_USER}" 2>/dev/null || true
+        echo "  Removed group: ${SYSTEM_USER}"
+    fi
     
     echo "  Purge complete"
 }
