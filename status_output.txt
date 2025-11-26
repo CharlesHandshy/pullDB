@@ -1,5 +1,0 @@
-STATUS   OPERATION  JOB_ID    SOURCE       TARGET             DB         USER    SUBMITTED            STARTED            
--------  ---------  --------  -----------  -----------------  ---------  ------  -------------------  -------------------
-running  Restoring  1b78948c  appalachian  charleappalachian  localhost  charle  2025-11-24T15:30:12  2025-11-24T15:31:16
-
-1 recent job(s) displayed (limit=100).
