@@ -67,17 +67,25 @@ _DATABASE_CREATED_BY_TESTS = False
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 # Load .env files early before any other imports that might use environment vars
+def _path_exists_safe(path: Path) -> bool:
+    """Check if path exists, returning False on permission errors."""
+    try:
+        return path.exists()
+    except PermissionError:
+        return False
+
+
 try:
     from dotenv import load_dotenv
 
     # Load from repository root first (development environment)
     _repo_env = _PROJECT_ROOT / ".env"
-    if _repo_env.exists():
+    if _path_exists_safe(_repo_env):
         load_dotenv(_repo_env)
 
     # Load from installed location (production/staging)
     _installed_env = Path("/opt/pulldb.service/.env")
-    if _installed_env.exists():
+    if _path_exists_safe(_installed_env):
         load_dotenv(_installed_env, override=False)  # Don't override repo settings
 
 except ImportError:
@@ -91,7 +99,7 @@ if not os.getenv("AWS_CONFIG_FILE"):
         Path("/opt/pulldb.service/.aws/config"),
     ]
     for _aws_config in _aws_config_paths:
-        if _aws_config.exists():
+        if _path_exists_safe(_aws_config):
             os.environ["AWS_CONFIG_FILE"] = str(_aws_config)
             break
 
