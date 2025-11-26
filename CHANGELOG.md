@@ -3,14 +3,20 @@ CHANGELOG
 
 Unreleased
 ---------
+- **BREAKING**: `PULLDB_MYSQL_USER` is deprecated and no longer supported
+  - Services must use per-service MySQL user environment variables:
+    - `PULLDB_API_MYSQL_USER` for API service
+    - `PULLDB_WORKER_MYSQL_USER` for Worker service
+  - This implements least-privilege MySQL access per service component
+  - See `design/mysql-user-separation.md` for full details
 
 v0.0.2 - 2025-11-26
 -------------------
 - **BREAKING**: Secrets Manager/SSM secrets now only store `host` and `password`
   - `username`, `port`, `database` come from environment variables:
-    - `PULLDB_MYSQL_USER` (required)
+    - `PULLDB_API_MYSQL_USER` or `PULLDB_WORKER_MYSQL_USER` (required, per-service)
     - `PULLDB_MYSQL_PORT` (optional, default 3306)
-    - `PULLDB_MYSQL_DATABASE` (optional)
+    - `PULLDB_MYSQL_DATABASE` (optional, default `pulldb_service`)
 - Dual-service architecture: separate `pulldb-api` and `pulldb-worker` services
 - Updated packaging:
   - Systemd units use `EnvironmentFile` from `.env`
