@@ -1,140 +1,134 @@
 # pullDB Scripts
 
-This directory collects operational tooling, installer helpers, and diagnostics used to manage pullDB during the release freeze. Some historical scripts have been archived under `scripts/archived/` to preserve provenance without encouraging their use in new environments.
+Operational tooling, installers, and diagnostics for pullDB.
 
-## Active Scripts
+## Directory Structure
+
+```
+scripts/
+├── archived/           # Historical scripts (reference only)
+├── lib/                # Shared shell libraries
+│   └── validate-common.sh
+├── validate/           # Validation pipeline (numbered phases)
+│   ├── 00-prerequisites.sh
+│   ├── 10-install.sh
+│   ├── 20-unit-tests.sh
+│   ├── 30-integration.sh
+│   ├── 40-e2e-restore.sh
+│   └── 99-teardown.sh
+└── [scripts]           # Active scripts (see below)
+```
+
+## Script Categories
+
+### Packaging (bundled into .deb)
+
+These scripts are copied into `/opt/pulldb.service/scripts/` during package install:
+
+| Script | Purpose |
+|--------|---------|
+| `install_pulldb.sh` | Main installer |
+| `uninstall_pulldb.sh` | Uninstaller |
+| `upgrade_pulldb.sh` | Upgrade handler |
+| `configure-pulldb.sh` | Interactive configuration |
+| `configure_server.sh` | Server AWS setup |
+| `merge-config.sh` | Config migration during upgrades |
+| `monitor_jobs.py` | Job/process monitoring |
+| `service-validate.sh` | Production validation |
+
+### Build
+
+| Script | Purpose |
+|--------|---------|
+| `build_deb.sh` | Build server .deb package |
+| `build_client_deb.sh` | Build client .deb package |
+
+### Infrastructure Setup
+
+| Script | Purpose |
+|--------|---------|
+| `setup-aws.sh` | Install/configure AWS CLI |
+| `setup-aws-credentials.sh` | Validate AWS credentials |
+| `setup-mysql.sh` | Install/configure MySQL |
+| `setup-test-environment.sh` | Full test environment setup |
+| `setup_test_env.sh` | Python venv setup only |
+| `teardown-test-environment.sh` | Cleanup test environment |
+| `start-test-services.sh` | Start services in test env |
+
+### Validation
+
+| Script | Purpose |
+|--------|---------|
+| `pulldb-validate.sh` | Main validation orchestrator |
+| `verify-secrets-perms.sh` | IAM/Secrets Manager permissions |
+| `verify-aws-access.py` | Cross-account S3 access |
+
+### Operations
+
+| Script | Purpose |
+|--------|---------|
+| `cleanup_dev_env.py` | Drop test databases |
+| `cleanup_system.sh` | System cleanup |
+| `deploy-iam-templates.sh` | Print IAM CLI commands |
+
+### Development
+
+| Script | Purpose |
+|--------|---------|
+| `precommit-verify.py` | Pre-commit hygiene gates |
+| `validate-knowledge-pool.py` | JSON/MD sync validation |
+| `validate-metrics-emission.py` | Metrics infrastructure test |
+| `ensure_fail_hard.py` | Doc compliance check |
+| `benchmark_atomic_rename.py` | Rename performance benchmark |
+| `deploy_atomic_rename.py` | Deploy stored procedure |
+| `generate_cloudshell.py` | Generate AWS CLI scripts |
+| `update-engineering-dna.sh` | Update submodule |
+| `audit-permissions.sh` | File permission audit |
+| `ci-permissions-check.sh` | CI permission check |
+
+---
+
+## Key Scripts
 
 ### verify-secrets-perms.sh
 
-Diagnostic script to verify that the `pulldb-ec2-service-role` has correct Secrets Manager permissions.
-
-### Requirements
-
-- AWS CLI configured with a profile having IAM read permissions
-- Profile must have: `iam:ListAttachedRolePolicies`, `iam:GetRole`, `iam:SimulatePrincipalPolicy`
-- **Cannot** be run using the EC2 instance profile (it cannot introspect its own IAM configuration)
-
-### Usage
+Verifies `pulldb-ec2-service-role` has correct Secrets Manager permissions.
 
 ```bash
-# Basic usage with admin profile
 ./scripts/verify-secrets-perms.sh --profile dev-admin
-
-# Verify specific secret
-./scripts/verify-secrets-perms.sh --profile dev-admin --secret /pulldb/mysql/localhost-test
-
-# View help
-./scripts/verify-secrets-perms.sh --help
+./scripts/verify-secrets-perms.sh --profile dev-admin --secret /pulldb/mysql/api
 ```
-
-### What It Checks
-
-1. **Policy Attachment**: Verifies `pulldb-secrets-manager-access` is attached to `pulldb-ec2-service-role`
-2. **IAM Simulation**: Simulates required actions (GetSecretValue, DescribeSecret, ListSecrets, kms:Decrypt)
-3. **Live Secret Access**: Attempts to describe and retrieve the secret
-4. **Negative Test**: Verifies admin actions (CreateSecret, PutSecretValue, DeleteSecret) are denied
-5. **KMS Key Policy**: If secret uses CMK, checks key policy references
-
-### Exit Codes
-
-- `0`: All permissions verified successfully
-- `1`: Missing policy attachment or simulation failure
-- `2`: Secret retrieval failed
-- `3`: KMS key issues detected
-
-### Example Output (Success)
-
-```
-[verify] Role: pulldb-ec2-service-role | Policy: pulldb-secrets-manager-access | Secret: /pulldb/mysql/coordination-db | Region: us-east-1
-[verify] Policy attachment: OK
-[verify] Resolved role ARN: arn:aws:iam::345321506926:role/pulldb-ec2-service-role
-[verify] Simulate required action secretsmanager:GetSecretValue => allowed
-[verify] Simulate required action secretsmanager:DescribeSecret => allowed
-[verify] Simulate required action secretsmanager:ListSecrets => allowed
-[verify] Simulate required action kms:Decrypt => allowed
-[verify] Required actions simulation: OK
-[verify] DescribeSecret: OK (Account 345321506926)
-[verify] GetSecretValue: OK (truncated: {"password":"...","host":"..."
-[verify] Simulate admin action secretsmanager:CreateSecret => implicitDeny
-[verify] Simulate admin action secretsmanager:PutSecretValue => implicitDeny
-[verify] Simulate admin action secretsmanager:DeleteSecret => implicitDeny
-[verify] Admin action denial simulation: OK
-[verify] Secret not using a customer CMK or key ID not exposed
-[verify] All verification steps completed successfully
-```
-
-**NOTE**: Secrets contain only `host` and `password`. The `username`, `port`, and `database` 
-are provided via environment variables (`PULLDB_MYSQL_USER`, `PULLDB_MYSQL_PORT`, `PULLDB_MYSQL_DATABASE`).
-
-### Troubleshooting
-
-**Error**: `AccessDenied for iam:ListAttachedRolePolicies`
-
-- **Cause**: Running without a profile that has IAM read permissions
-- **Fix**: Add `--profile dev-admin` (or another profile with IAMReadOnlyAccess)
-
-**Error**: `Policy pulldb-secrets-manager-access NOT attached`
-
-- **Cause**: Policy not attached to role
-- **Fix**: Run the attach command shown in the error message
-
-**Error**: `GetSecretValue failed`
-
-- **Cause**: Policy attached but secret doesn't exist or KMS key denies access
-- **Fix**: Verify secret exists: `aws secretsmanager list-secrets --query 'SecretList[?Name==`/pulldb/mysql/coordination-db`]'`
-
-### Why Admin Profile Required?
-
-The EC2 instance profile (`pulldb-ec2-service-role`) follows **least privilege principle** and does NOT have permissions to:
-- List its own attached policies
-- Get its own role details
-- Simulate IAM policy decisions
-
-These introspection actions are intentionally restricted to admin roles for security. However, the instance profile CAN read secrets directly once the policy is attached.
-
-### Running from EC2 Instance
-
-If you SSH into the EC2 instance:
-1. Configure AWS CLI with an admin profile: `aws configure --profile dev-admin`
-2. Run script with that profile: `./scripts/verify-secrets-perms.sh --profile dev-admin`
-3. Test actual secret access (no profile needed): `aws secretsmanager get-secret-value --secret-id /pulldb/mysql/coordination-db`
-
-### Integration with CI/CD
-
-For automated verification in CI pipelines:
-1. Use a service role or federated identity with IAMReadOnlyAccess
-2. Run script as pre-deployment health check
-3. Parse exit code (0 = success, non-zero = failure)
-4. Include script output in build logs for audit trail
 
 ### monitor_jobs.py
 
-Diagnostic script to reconcile active jobs with system processes. It checks for running `pulldb-worker` and `myloader` processes and active MySQL connections. If a job is marked 'running' but no corresponding activity is detected, it flags the job as a zombie.
-
-### Usage
+Reconciles active jobs with system processes.
 
 ```bash
-# Check status (dry run)
-python3 scripts/monitor_jobs.py
-
-# Mark dead jobs as failed
-python3 scripts/monitor_jobs.py --fix
+python3 scripts/monitor_jobs.py          # Check status
+python3 scripts/monitor_jobs.py --fix    # Mark dead jobs as failed
 ```
 
-### Requirements
+### pulldb-validate.sh
 
-- Must be run on the worker server (or where the worker process is expected to run).
-- Requires `PULLDB_COORDINATION_SECRET` environment variable if not using default credentials.
-- Requires `AWS_DEFAULT_REGION` if using Secrets Manager.
+Comprehensive validation framework.
 
-### Example Output
-
+```bash
+./scripts/pulldb-validate.sh --quick     # Prerequisites + unit tests
+./scripts/pulldb-validate.sh --full      # + integration tests
+./scripts/pulldb-validate.sh --e2e       # + end-to-end restore
 ```
-Found 1 running job(s) in queue.
-System Activity:
-  Worker Process Running: False
-  MyLoader Running: False
-  Active DB Connections: 0
-Checking Job 0ee4acd3...
-WARNING - Job 0ee4acd3 appears DEAD. Reason: No worker process running
+
+### merge-config.sh
+
+Smart config merge for upgrades (used by postinst).
+
+```bash
+./scripts/merge-config.sh env existing.env template.env output.env
+./scripts/merge-config.sh ini existing.config template.config output.config
 ```
+
+---
+
+## Archived Scripts
+
+See `archived/README.md` for historical scripts retained for reference.
