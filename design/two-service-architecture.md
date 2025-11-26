@@ -50,11 +50,11 @@ PULLDB_API_HOST=0.0.0.0
 PULLDB_API_PORT=8080
 PULLDB_MYSQL_HOST=localhost
 PULLDB_MYSQL_PORT=3306
-PULLDB_MYSQL_DATABASE=pulldb
-PULLDB_MYSQL_USER=/pulldb/prod/mysql/user      # Parameter Store path
-PULLDB_MYSQL_PASSWORD=/pulldb/prod/mysql/pass  # Parameter Store path
+PULLDB_MYSQL_DATABASE=pulldb_service
+PULLDB_API_MYSQL_USER=pulldb_api                # Per-service MySQL user
+PULLDB_MYSQL_PASSWORD=/pulldb/prod/mysql/pass   # Parameter Store path
 PULLDB_DEFAULT_DBHOST=dev-db-01.example.com
-PULLDB_AWS_PROFILE=pr-staging                  # Canonical staging profile (see docs/aws-authentication-setup.md)
+PULLDB_AWS_PROFILE=pr-staging                   # Canonical staging profile (see docs/aws-authentication-setup.md)
 PULLDB_S3_BUCKET_STAGING=pestroutesrdsdbs
 PULLDB_S3_BUCKET_PROD=pestroutes-rds-backup-prod-vpc-us-east-1-s3
 PULLDB_S3_PREFIX_STAGING=daily/stg
@@ -134,10 +134,10 @@ PULLDB_LOG_LEVEL=INFO
 # Worker Service Environment Variables
 PULLDB_MYSQL_HOST=localhost
 PULLDB_MYSQL_PORT=3306
-PULLDB_MYSQL_DATABASE=pulldb
-PULLDB_MYSQL_USER=/pulldb/prod/mysql/user      # Parameter Store path
-PULLDB_MYSQL_PASSWORD=/pulldb/prod/mysql/pass  # Parameter Store path
-PULLDB_AWS_PROFILE=pr-staging                  # Canonical staging profile (switch to pr-prod for production backups)
+PULLDB_MYSQL_DATABASE=pulldb_service
+PULLDB_WORKER_MYSQL_USER=pulldb_worker           # Per-service MySQL user
+PULLDB_MYSQL_PASSWORD=/pulldb/prod/mysql/pass    # Parameter Store path
+PULLDB_AWS_PROFILE=pr-staging                    # Canonical staging profile (switch to pr-prod for production backups)
 PULLDB_S3_BUCKET_STAGING=pestroutesrdsdbs
 PULLDB_S3_BUCKET_PROD=pestroutes-rds-backup-prod-vpc-us-east-1-s3
 PULLDB_S3_PREFIX_STAGING=daily/stg
@@ -396,8 +396,7 @@ pulldb/
 ```bash
 PULLDB_MYSQL_HOST=localhost
 PULLDB_MYSQL_PORT=3306
-PULLDB_MYSQL_DATABASE=pulldb
-PULLDB_MYSQL_USER=/pulldb/prod/mysql/user
+PULLDB_MYSQL_DATABASE=pulldb_service
 PULLDB_MYSQL_PASSWORD=/pulldb/prod/mysql/pass
 PULLDB_AWS_PROFILE=pr-staging                  # Both services need S3 access (staging-first)
 PULLDB_S3_BUCKET_STAGING=pestroutesrdsdbs
@@ -409,6 +408,7 @@ PULLDB_LOG_LEVEL=INFO
 
 ### API Service Only
 ```bash
+PULLDB_API_MYSQL_USER=pulldb_api               # Per-service MySQL user
 PULLDB_API_HOST=0.0.0.0
 PULLDB_API_PORT=8080
 PULLDB_DEFAULT_DBHOST=dev-db-01.example.com
@@ -416,6 +416,7 @@ PULLDB_DEFAULT_DBHOST=dev-db-01.example.com
 
 ### Worker Service Only
 ```bash
+PULLDB_WORKER_MYSQL_USER=pulldb_worker         # Per-service MySQL user
 PULLDB_WORK_DIR=/mnt/data/pulldb/work
 PULLDB_POLL_INTERVAL_SECONDS=5
 PULLDB_MAX_CONCURRENT_RESTORES=2

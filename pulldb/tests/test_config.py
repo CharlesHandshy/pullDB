@@ -31,13 +31,17 @@ class TestMinimalFromEnv:
     """Test Config.minimal_from_env() - environment variable loading only."""
 
     def test_minimal_with_defaults(self) -> None:
-        """Test minimal config with default values."""
+        """Test minimal config with default values.
+
+        Note: mysql_user defaults to empty string because services MUST set it
+        via their own environment variable (PULLDB_API_MYSQL_USER or similar).
+        """
         config = Config.minimal_from_env()
 
         assert config.mysql_host == "localhost"
-        assert config.mysql_user == "root"
+        assert config.mysql_user == ""  # Must be set by service
         assert config.mysql_password == ""
-        assert config.mysql_database == "pulldb"
+        assert config.mysql_database == "pulldb_service"  # Production database
         assert config.s3_bucket_path is None
         assert config.aws_profile is None
         assert config.s3_aws_profile is None
@@ -48,9 +52,14 @@ class TestMinimalFromEnv:
         assert config.myloader_threads == 8
 
     def test_minimal_with_explicit_values(self) -> None:
-        """Test minimal config with explicit environment variables."""
+        """Test minimal config with explicit environment variables.
+
+        Note: PULLDB_MYSQL_USER is NOT read by minimal_from_env - mysql_user
+        must be set per-service via PULLDB_API_MYSQL_USER or PULLDB_WORKER_MYSQL_USER.
+        This test verifies the env vars that ARE honored.
+        """
         os.environ["PULLDB_MYSQL_HOST"] = "db.example.com"
-        os.environ["PULLDB_MYSQL_USER"] = "pulldb_user"
+        # PULLDB_MYSQL_USER is ignored - services set their own user
         os.environ["PULLDB_MYSQL_PASSWORD"] = "secret123"
         os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb_prod"
         os.environ["PULLDB_S3_BUCKET_PATH"] = "s3://my-bucket/backups/"
@@ -67,7 +76,7 @@ class TestMinimalFromEnv:
         config = Config.minimal_from_env()
 
         assert config.mysql_host == "db.example.com"
-        assert config.mysql_user == "pulldb_user"
+        assert config.mysql_user == ""  # Not set by this env var
         assert config.mysql_password == "secret123"
         assert config.mysql_database == "pulldb_prod"
         assert config.s3_bucket_path == "s3://my-bucket/backups/"
@@ -108,9 +117,14 @@ class TestFromEnvAndMySQL:
         return mock_pool
 
     def test_load_with_mysql_overrides(self) -> None:
-        """MySQL settings populate missing operational configuration fields."""
+        """MySQL settings populate missing operational configuration fields.
+
+        Note: mysql_user is intentionally not loaded from PULLDB_MYSQL_USER env var
+        in production code - it's service-specific. This test uses mocked pool so
+        we verify the actual config behavior.
+        """
         os.environ["PULLDB_MYSQL_HOST"] = "localhost"
-        os.environ["PULLDB_MYSQL_USER"] = "root"
+        # PULLDB_MYSQL_USER is NOT read - mysql_user comes from service-specific config
         os.environ["PULLDB_MYSQL_PASSWORD"] = "testpass"
 
         settings_rows = [
@@ -147,9 +161,9 @@ class TestFromEnvAndMySQL:
         config = Config.from_env_and_mysql(mock_pool)
 
         assert config.mysql_host == "localhost"
-        assert config.mysql_user == "root"
+        assert config.mysql_user == ""  # Not set - service-specific
         assert config.mysql_password == "testpass"
-        assert config.mysql_database == "pulldb"
+        assert config.mysql_database == "pulldb_service"
         assert config.s3_bucket_path == "pestroutesrdsdbs"
         assert config.default_dbhost == "dev-db-01.example.com"
         assert config.work_dir == Path("/var/lib/pulldb")
@@ -163,9 +177,13 @@ class TestFromEnvAndMySQL:
         assert config.myloader_threads == 12
 
     def test_environment_takes_precedence_over_mysql(self) -> None:
-        """Environment variables override MySQL settings rows."""
+        """Environment variables override MySQL settings rows.
+
+        Note: PULLDB_MYSQL_USER is deprecated and not read by Config.
+        MySQL username is set per-service via PULLDB_API_MYSQL_USER or
+        PULLDB_WORKER_MYSQL_USER.
+        """
         os.environ["PULLDB_MYSQL_HOST"] = "localhost"
-        os.environ["PULLDB_MYSQL_USER"] = "root"
         os.environ["PULLDB_MYSQL_PASSWORD"] = "testpass"
         os.environ["PULLDB_S3_BUCKET_PATH"] = "s3://env-bucket/"
         os.environ["PULLDB_DEFAULT_DBHOST"] = "env-dbhost"
@@ -203,7 +221,6 @@ class TestFromEnvAndMySQL:
     def test_mysql_settings_fallback_to_defaults(self) -> None:
         """Defaults used when neither environment nor MySQL provide values."""
         os.environ["PULLDB_MYSQL_HOST"] = "localhost"
-        os.environ["PULLDB_MYSQL_USER"] = "root"
         os.environ["PULLDB_MYSQL_PASSWORD"] = "testpass"
 
         mock_pool = self._build_pool_with_settings([])
@@ -220,7 +237,6 @@ class TestFromEnvAndMySQL:
     def test_prefers_staging_bucket_over_prod(self) -> None:
         """Staging bucket preferred when both staging and prod provided."""
         os.environ["PULLDB_MYSQL_HOST"] = "localhost"
-        os.environ["PULLDB_MYSQL_USER"] = "root"
         os.environ["PULLDB_MYSQL_PASSWORD"] = "testpass"
 
         settings_rows = [
@@ -234,7 +250,6 @@ class TestFromEnvAndMySQL:
     def test_falls_back_to_prod_bucket_if_no_staging(self) -> None:
         """Production bucket used when staging bucket absent."""
         os.environ["PULLDB_MYSQL_HOST"] = "localhost"
-        os.environ["PULLDB_MYSQL_USER"] = "root"
         os.environ["PULLDB_MYSQL_PASSWORD"] = "testpass"
 
         settings_rows = [

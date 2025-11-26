@@ -702,8 +702,13 @@ def mysql_network_credentials(
     """Return (host, user, password) tuple for network login.
 
     For local development tests we force host=localhost while retaining
-    username (from PULLDB_MYSQL_USER env var) and password (from secret)
-    so tests exercise credential path.
+    username and password from test environment.
+
+    Note: In production, mysql_user is set per-service:
+    - PULLDB_API_MYSQL_USER for API service
+    - PULLDB_WORKER_MYSQL_USER for Worker service
+
+    For tests, we pass credentials directly rather than through env vars.
     """
     return ("localhost", mysql_credentials.username, mysql_credentials.password)
 
@@ -785,9 +790,14 @@ def isolated_mysql(
     os.environ["PULLDB_TEST_MYSQL_SOCKET"] = str(socket_path)
     os.environ["PULLDB_TEST_MYSQL_DATABASE"] = "pulldb"
 
-    # Set env vars for application code (Config)
+    # Set env vars for direct MySQL connections in tests.
+    # Note: PULLDB_MYSQL_USER is deprecated; in production, services use:
+    # - PULLDB_API_MYSQL_USER for API service
+    # - PULLDB_WORKER_MYSQL_USER for Worker service
+    # Config.minimal_from_env() does NOT read PULLDB_MYSQL_USER.
+    # We set it here for test fixtures that connect directly to MySQL.
     os.environ["PULLDB_MYSQL_HOST"] = "localhost"
-    os.environ["PULLDB_MYSQL_USER"] = "root"
+    os.environ["PULLDB_MYSQL_USER"] = "root"  # Only for test fixtures
     os.environ["PULLDB_MYSQL_PASSWORD"] = ""
     os.environ["PULLDB_MYSQL_SOCKET"] = str(socket_path)
     os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb"

@@ -9,9 +9,10 @@ This guide captures where configuration values live, how they flow into the CLI 
 1. **Environment Variables**
    - **Daemon Only**:
      - `PULLDB_MYSQL_HOST`: MySQL coordination database host (or AWS Parameter Store path starting with `/`).
-     - `PULLDB_MYSQL_USER`: MySQL coordination database username (or AWS Parameter Store path).
+     - `PULLDB_API_MYSQL_USER`: MySQL username for API service (required).
+     - `PULLDB_WORKER_MYSQL_USER`: MySQL username for Worker service (required).
      - `PULLDB_MYSQL_PASSWORD`: MySQL coordination database password (or AWS Parameter Store path).
-     - `PULLDB_MYSQL_DATABASE`: MySQL coordination database name.
+     - `PULLDB_MYSQL_DATABASE`: MySQL coordination database name (default: `pulldb_service`).
      - `PULLDB_AWS_PROFILE`: AWS profile name for S3 and Parameter Store access (required, no explicit credentials supported).
      - `PULLDB_S3_BUCKET_PATH`: S3 URI including prefix (e.g., `s3://pestroutesrdsdbs/daily/stg/` for staging, recommended for development).
      - `PULLDB_S3_STAGING_BUCKET_PATH`: S3 URI for staging backups (e.g., `s3://pestroutesrdsdbs/daily/stg/`). **Deferred feature** - will be used when multi-environment support is implemented.

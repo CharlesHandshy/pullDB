@@ -898,7 +898,8 @@ class HostRepository:
         >>> repo = HostRepository(pool, resolver)
         >>> host = repo.get_host_by_hostname("localhost")
         >>> creds = repo.get_host_credentials("localhost")
-        >>> print(creds.username)  # From PULLDB_MYSQL_USER env var
+        >>> # username is empty - caller sets it per-service
+        >>> # via PULLDB_API_MYSQL_USER or PULLDB_WORKER_MYSQL_USER
         >>> print(creds.host)      # From Secrets Manager
     """
 

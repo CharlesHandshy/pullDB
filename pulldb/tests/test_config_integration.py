@@ -38,31 +38,35 @@ class TestConfigIntegration:
 
         Uses localhost network login with credentials from AWS Secrets Manager.
         Verifies MySQL settings table is read correctly.
+
+        Note: PULLDB_MYSQL_USER is NOT read by Config.minimal_from_env() because
+        mysql_user is service-specific. We pass credentials directly to the pool.
         """
         host, username, password = mysql_network_credentials
 
-        # Set up minimal environment (credentials from AWS Secrets Manager)
+        # Set up minimal environment
         os.environ["PULLDB_MYSQL_HOST"] = host
-        os.environ["PULLDB_MYSQL_USER"] = username
         os.environ["PULLDB_MYSQL_PASSWORD"] = password
+        os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb"  # Match test fixture database
 
-        # Bootstrap: Load minimal config
+        # Bootstrap: Load minimal config (host/password only)
         bootstrap_config = Config.minimal_from_env()
 
-        # Connect to MySQL
+        # Connect to MySQL - pass username directly since Config doesn't load it
         pool = build_default_pool(
             host=bootstrap_config.mysql_host,
-            user=bootstrap_config.mysql_user,
+            user=username,  # Pass directly, not from config
             password=bootstrap_config.mysql_password,
             database=bootstrap_config.mysql_database,
         )
         # Load full config with MySQL settings (pool passed directly)
         config = Config.from_env_and_mysql(pool)
 
-        # Verify MySQL credentials came from environment
+        # Verify MySQL credentials
         assert config.mysql_host == host
-        assert config.mysql_user == username
+        assert config.mysql_user == ""  # Config doesn't load PULLDB_MYSQL_USER
         assert config.mysql_password == password
+        assert config.mysql_database == "pulldb"  # Test database
 
         # Verify operational settings came from MySQL settings table
         # (these are populated by applying schema/pulldb_service/*.sql)
@@ -77,15 +81,15 @@ class TestConfigIntegration:
 
         # Set environment variables that should override MySQL
         os.environ["PULLDB_MYSQL_HOST"] = host
-        os.environ["PULLDB_MYSQL_USER"] = username
         os.environ["PULLDB_MYSQL_PASSWORD"] = password
+        os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb"  # Match test fixture database
         os.environ["PULLDB_S3_BUCKET_PATH"] = "s3://override-bucket/"
         os.environ["PULLDB_DEFAULT_DBHOST"] = "override-dbhost"
 
         bootstrap_config = Config.minimal_from_env()
         pool = build_default_pool(
             host=bootstrap_config.mysql_host,
-            user=bootstrap_config.mysql_user,
+            user=username,  # Pass directly
             password=bootstrap_config.mysql_password,
             database=bootstrap_config.mysql_database,
         )
@@ -101,24 +105,28 @@ class TestConfigIntegration:
     ) -> None:
         """Test the recommended two-phase loading pattern.
 
-        Phase 1: minimal_from_env() for bootstrap credentials
+        Phase 1: minimal_from_env() for bootstrap credentials (host, password only)
         Phase 2: from_env_and_mysql() for full configuration
+
+        Note: mysql_user must be passed separately since Config.minimal_from_env()
+        does not read PULLDB_MYSQL_USER - it's service-specific.
         """
         host, username, password = mysql_network_credentials
 
         os.environ["PULLDB_MYSQL_HOST"] = host
-        os.environ["PULLDB_MYSQL_USER"] = username
         os.environ["PULLDB_MYSQL_PASSWORD"] = password
+        os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb"  # Match test fixture database
 
         # Phase 1: Bootstrap
         bootstrap = Config.minimal_from_env()
         assert bootstrap.s3_bucket_path is None  # Not loaded yet
         assert bootstrap.default_dbhost is None  # Not loaded yet
+        assert bootstrap.mysql_user == ""  # Not loaded from env
 
-        # Phase 2: Full config
+        # Phase 2: Full config - pass username directly
         pool = build_default_pool(
             host=bootstrap.mysql_host,
-            user=bootstrap.mysql_user,
+            user=username,  # Pass directly, not from config
             password=bootstrap.mysql_password,
             database=bootstrap.mysql_database,
         )

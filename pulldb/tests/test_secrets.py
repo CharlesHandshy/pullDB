@@ -26,24 +26,24 @@ DEFAULT_MYSQL_PORT = 3306
 
 @pytest.fixture(autouse=True)
 def clear_aws_profile() -> Generator[None, None, None]:
-    """Clear AWS profile environment variable for tests."""
+    """Clear AWS profile environment variable for tests.
+
+    Note: PULLDB_MYSQL_USER is deprecated. MySQL username is now set per-service:
+    - PULLDB_API_MYSQL_USER for API service
+    - PULLDB_WORKER_MYSQL_USER for Worker service
+
+    Secrets return empty username; the caller (API/Worker) sets it.
+    """
     old_profile = os.environ.pop("PULLDB_AWS_PROFILE", None)
     old_aws_profile = os.environ.pop("AWS_PROFILE", None)
-    old_mysql_user = os.environ.pop("PULLDB_MYSQL_USER", None)
     old_mysql_port = os.environ.pop("PULLDB_MYSQL_PORT", None)
     # Set default region for boto3
     os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
-    # Set required PULLDB_MYSQL_USER for tests (secrets only have host+password)
-    os.environ["PULLDB_MYSQL_USER"] = "pulldb_app"
     yield
     if old_profile:
         os.environ["PULLDB_AWS_PROFILE"] = old_profile
     if old_aws_profile:
         os.environ["AWS_PROFILE"] = old_aws_profile
-    if old_mysql_user:
-        os.environ["PULLDB_MYSQL_USER"] = old_mysql_user
-    else:
-        os.environ.pop("PULLDB_MYSQL_USER", None)
     if old_mysql_port:
         os.environ["PULLDB_MYSQL_PORT"] = old_mysql_port
     else:
@@ -123,8 +123,9 @@ class TestSecretsManagerResolution:
     def test_resolve_from_secrets_manager_success(self) -> None:
         """Test successful credential resolution from Secrets Manager.
 
-        Secrets Manager only contains host and password.
-        Username comes from PULLDB_MYSQL_USER environment variable.
+        Secrets Manager contains host and password.
+        Username is returned as empty string - caller sets it per-service
+        via PULLDB_API_MYSQL_USER or PULLDB_WORKER_MYSQL_USER.
         """
         import boto3
 
@@ -145,30 +146,11 @@ class TestSecretsManagerResolution:
         resolver = CredentialResolver()
         creds = resolver.resolve("aws-secretsmanager:/pulldb/mysql/localhost-test")
 
-        assert creds.username == "pulldb_app"  # From env var PULLDB_MYSQL_USER
+        assert creds.username == ""  # Caller sets per-service
         assert creds.password == "secret123"
         assert creds.host == "localhost"
-        assert creds.port == DEFAULT_MYSQL_PORT  # From env var default
+        assert creds.port == DEFAULT_MYSQL_PORT
         assert creds.db_cluster_identifier == "localhost-test"
-
-    def test_resolve_missing_username_env_var(self) -> None:
-        """Test that missing PULLDB_MYSQL_USER env var raises error."""
-        import boto3
-
-        secrets_client = boto3.client("secretsmanager", region_name="us-east-1")
-        secret_value = json.dumps({"password": "secret123", "host": "db.example.com"})
-        secrets_client.create_secret(
-            Name="/pulldb/mysql/test", SecretString=secret_value
-        )
-
-        # Remove the PULLDB_MYSQL_USER env var set by the autouse fixture
-        os.environ.pop("PULLDB_MYSQL_USER", None)
-
-        resolver = CredentialResolver()
-        with pytest.raises(
-            CredentialResolutionError, match="PULLDB_MYSQL_USER is required"
-        ):
-            resolver.resolve("aws-secretsmanager:/pulldb/mysql/test")
 
     def test_resolve_secret_not_found(self) -> None:
         """Test that non-existent secret raises appropriate error."""
@@ -222,8 +204,9 @@ class TestSSMResolution:
     def test_resolve_from_ssm_success(self) -> None:
         """Test successful credential resolution from SSM.
 
-        SSM only contains host and password.
-        Username comes from PULLDB_MYSQL_USER environment variable.
+        SSM contains host and password.
+        Username is returned as empty string - caller sets it per-service
+        via PULLDB_API_MYSQL_USER or PULLDB_WORKER_MYSQL_USER.
         """
         import boto3
 
@@ -245,10 +228,10 @@ class TestSSMResolution:
         resolver = CredentialResolver()
         creds = resolver.resolve("aws-ssm:/pulldb/mysql/localhost-test-credentials")
 
-        assert creds.username == "pulldb_app"  # From env var PULLDB_MYSQL_USER
+        assert creds.username == ""  # Caller sets per-service
         assert creds.password == "secret456"
         assert creds.host == "localhost"
-        assert creds.port == DEFAULT_MYSQL_PORT  # From env var default
+        assert creds.port == DEFAULT_MYSQL_PORT
 
     def test_resolve_parameter_not_found(self) -> None:
         """Test that non-existent parameter raises appropriate error."""

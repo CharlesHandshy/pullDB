@@ -133,9 +133,12 @@ Environment variables loaded by activation script:
 # MySQL Configuration
 PULLDB_MYSQL_HOST=localhost
 PULLDB_MYSQL_PORT=3306
-PULLDB_MYSQL_USER=pulldb_usability_test
 PULLDB_MYSQL_PASSWORD=<random_20_char_password>
 PULLDB_MYSQL_DATABASE=pulldb_test_coordination
+
+# MySQL Users (per-service, replaces deprecated PULLDB_MYSQL_USER)
+PULLDB_API_MYSQL_USER=pulldb_usability_test
+PULLDB_WORKER_MYSQL_USER=pulldb_usability_test
 
 # AWS Configuration
 PULLDB_AWS_PROFILE=default

@@ -69,15 +69,15 @@ class TestHostRepository:
     def test_get_host_credentials_secretsmanager(
         self, mysql_pool: Any, monkeypatch: Any
     ) -> None:
-        # Set required env var: Secrets Manager only stores host + password,
-        # username comes from PULLDB_MYSQL_USER
-        monkeypatch.setenv("PULLDB_MYSQL_USER", "pulldb_app")
+        # Secrets Manager stores host + password only.
+        # Username is returned as empty string - caller sets it per-service
+        # via PULLDB_API_MYSQL_USER or PULLDB_WORKER_MYSQL_USER.
 
         class FakeSecretsClient:
             def get_secret_value(self, SecretId: str) -> dict[str, str]:  # noqa: N803
                 assert SecretId == "/pulldb/mysql/test-host"
-                # Secrets Manager only stores host + password
-                # Username comes from PULLDB_MYSQL_USER env var
+                # Secrets Manager stores host + password only
+                # Username is set by caller (API/Worker service)
                 secret_json = (
                     '{"password": "secretpass", '
                     '"host": "db-mysql-cred.example.com"}'
@@ -112,9 +112,9 @@ class TestHostRepository:
         repo = HostRepository(mysql_pool, CredentialResolver(aws_profile="default"))
         creds = repo.get_host_credentials(hostname)
         assert isinstance(creds, MySQLCredentials)
-        assert (
-            creds.username == "pulldb_app" and creds.host == "db-mysql-cred.example.com"
-        )
+        # Username is empty - caller (API/Worker) sets it from service-specific env var
+        assert creds.username == ""
+        assert creds.host == "db-mysql-cred.example.com"
         self._cleanup_host(mysql_pool, host_id, hostname)
 
     def test_check_host_capacity(self, mysql_pool: Any) -> None:

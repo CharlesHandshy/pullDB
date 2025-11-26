@@ -469,12 +469,19 @@ PULLDB_AWS_PROFILE=${aws_profile}
 PULLDB_S3_AWS_PROFILE=pr-staging
 
 # MySQL Coordination Database
+# Note: PULLDB_MYSQL_USER is deprecated; production uses per-service users:
+#   - PULLDB_API_MYSQL_USER for API service
+#   - PULLDB_WORKER_MYSQL_USER for Worker service
+# For tests, we set all three to the same test user.
 PULLDB_MYSQL_CREDENTIAL_REF=test-local-mysql
 PULLDB_MYSQL_HOST=localhost
 PULLDB_MYSQL_PORT=3306
 PULLDB_MYSQL_DATABASE=${TEST_DB_NAME}
-PULLDB_MYSQL_USER=${TEST_DB_USER}
 PULLDB_MYSQL_PASSWORD=${TEST_DB_PASS}
+
+# Service-specific MySQL users (required for API and Worker)
+PULLDB_API_MYSQL_USER=${TEST_DB_USER}
+PULLDB_WORKER_MYSQL_USER=${TEST_DB_USER}
 
 # S3 Backup Configuration (for testing)
 # Development account staging backups (recommended for testing)
