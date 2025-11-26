@@ -77,36 +77,34 @@ scripts/
 
 ---
 
-### 3. SETUP SCRIPTS - DUPLICATIONS FOUND
+### 3. SETUP SCRIPTS - COMPLEMENTARY (NOT DUPLICATES)
 
-| Script | Purpose | Status | Action |
-|--------|---------|--------|--------|
-| `setup-aws.sh` | AWS CLI installation | ✅ Keep | Move to `scripts/install/` |
-| `setup-aws-credentials.sh` | AWS credential validation | ⚠️ Overlaps | **MERGE** into setup-aws.sh |
-| `setup-mysql.sh` | MySQL installation | ✅ Keep | Move to `scripts/install/` |
-| `configure_server.sh` | Server AWS config | ✅ **Packaged** | Keep (bundled in .deb) |
-| `configure-pulldb.sh` | Interactive config | ✅ **Packaged** | Keep (bundled in .deb) |
+| Script | Purpose | Status |
+|--------|---------|--------|
+| `setup-aws.sh` | **Install** AWS CLI v2 (system-level) | ✅ Keep |
+| `setup-aws-credentials.sh` | **Validate** AWS credentials post-install | ✅ Keep |
+| `setup-mysql.sh` | Install/configure MySQL | ✅ Keep |
+| `configure_server.sh` | Server AWS config | ✅ **Packaged** |
+| `configure-pulldb.sh` | Interactive config | ✅ **Packaged** |
 
-**Duplications**:
-- `setup-aws-credentials.sh` duplicates functionality in `setup-aws.sh` - consider merging
+**Analysis**: These scripts are complementary, not duplicates:
+- `setup-aws.sh` installs the CLI binary
+- `setup-aws-credentials.sh` validates credentials after installation
 
 ---
 
-### 4. TEST ENVIRONMENT SCRIPTS - MAJOR DUPLICATION
+### 4. TEST ENVIRONMENT SCRIPTS - COMPLEMENTARY (NOT DUPLICATES)
 
-| Script | Purpose | Status | Action |
-|--------|---------|--------|--------|
-| `setup-test-environment.sh` | Full test env setup | ✅ Keep | Primary |
-| `setup_test_env.sh` | Python venv setup | ⚠️ Overlaps | **MERGE** |
-| `teardown-test-environment.sh` | Cleanup test env | ✅ Keep | |
-| `start-test-services.sh` | Start services in test env | ✅ Keep | |
-| `setup-tests-dbdata.sh` | Seed test data | ⚠️ Obsolete | **ARCHIVE** |
+| Script | Purpose | Lines | Status |
+|--------|---------|-------|--------|
+| `setup-test-environment.sh` | **Full test env** (MySQL, AWS, dirs, venv) | 814 | ✅ Keep |
+| `setup_test_env.sh` | **Python venv only** for quick test runs | 140 | ✅ Keep |
+| `teardown-test-environment.sh` | Cleanup full test env | ~50 | ✅ Keep |
+| `start-test-services.sh` | Start services in test env | ~50 | ✅ Keep |
 
-**Duplication Analysis**:
-- `setup-test-environment.sh` (225 lines) - comprehensive, creates full test env
-- `setup_test_env.sh` (150 lines) - just Python venv, duplicates venv creation
-
-**Action**: Merge `setup_test_env.sh` into `setup-test-environment.sh` as `--venv-only` flag
+**Analysis**: These scripts serve different use cases:
+- `setup-test-environment.sh` - Full environment for comprehensive testing
+- `setup_test_env.sh` - Lightweight venv for quick `pytest` runs
 
 ---
 
@@ -313,18 +311,26 @@ Scripts required by `postinst`:
 
 | Metric | Before | After |
 |--------|--------|-------|
-| Root-level scripts | 40 | ~32 (packaging scripts stay at root) |
-| Organized subdirs | 3 | 7 |
-| Total active scripts | 43 | ~39 |
-| Duplicate functionality | 4 pairs | 0 |
+| Root-level scripts | 37 | 33 |
+| Archived scripts | 6 | 10 |
+| Duplicate pairs | 0 | 0 |
+| Well-organized | ✅ | ✅ |
 
 ---
 
-## Implementation Priority
+## Audit Conclusion
 
-1. **High**: Archive 4 obsolete scripts (reduce confusion)
-2. **Medium**: Create subdirectory structure for dev/ops scripts
-3. **Low**: Merge duplicate test environment scripts
-4. **Low**: Update scripts to meet coding standards
+After detailed analysis, the scripts directory is **well-organized**:
 
-**Constraint**: Packaging scripts must remain at `scripts/` root or `build_deb.sh` must be updated to find them.
+1. **No true duplicates** - Scripts that appeared similar serve different purposes
+2. **Clear separation** - Packaging scripts vs dev scripts vs validation pipeline
+3. **Good documentation** - README.md updated with categorized reference
+4. **Proper archival** - Obsolete scripts moved to `archived/` with replacements documented
+
+### Remaining Opportunities (Low Priority)
+
+1. **Subdirectory organization** - Could move dev scripts to `scripts/dev/` but not required
+2. **Naming consistency** - Mix of `script-name.sh` and `script_name.sh` (cosmetic)
+3. **FAIL HARD compliance** - Some scripts use `set -e` only without actionable diagnostics
+
+No further changes recommended at this time.
