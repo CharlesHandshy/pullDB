@@ -126,8 +126,8 @@ configure_aws() {
         echo "  Created AWS config from template"
     fi
 
-    # Copy documentation
-    if [ -f "${INSTALL_PREFIX}/AWS-SETUP.md" ]; then
+    # Copy documentation (only if destination is different from source)
+    if [ -f "${INSTALL_PREFIX}/AWS-SETUP.md" ] && [ "${INSTALL_PREFIX}" != "${USER_HOME}" ]; then
         cp "${INSTALL_PREFIX}/AWS-SETUP.md" "${USER_HOME}/AWS-SETUP.md"
         chown "${SYSTEM_USER}:${SYSTEM_GROUP}" "${USER_HOME}/AWS-SETUP.md"
     fi

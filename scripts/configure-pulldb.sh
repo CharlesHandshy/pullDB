@@ -86,6 +86,114 @@ set_var() {
 }
 
 #------------------------------------------------------------------------------
+# Input Validation Functions
+#------------------------------------------------------------------------------
+
+# Validate MySQL identifier (user, database name)
+# Rules: alphanumeric + underscore, max 64 chars, cannot start with number
+validate_mysql_identifier() {
+    local value="$1"
+    local field_name="$2"
+    
+    if [ -z "$value" ]; then
+        return 0  # Empty is OK (keeps current value)
+    fi
+    
+    # Check length (max 64 for MySQL)
+    if [ ${#value} -gt 64 ]; then
+        print_error "$field_name too long (max 64 characters)"
+        return 1
+    fi
+    
+    # Check valid characters: alphanumeric and underscore only
+    if ! echo "$value" | grep -qE '^[a-zA-Z_][a-zA-Z0-9_]*$'; then
+        print_error "$field_name must start with letter/underscore and contain only letters, numbers, underscores"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Validate hostname/IP address
+validate_hostname() {
+    local value="$1"
+    
+    if [ -z "$value" ]; then
+        return 0
+    fi
+    
+    # Allow: localhost, IP addresses, hostnames with dots/hyphens
+    if ! echo "$value" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$|^localhost$'; then
+        print_error "Invalid hostname format"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Validate port number
+validate_port() {
+    local value="$1"
+    
+    if [ -z "$value" ]; then
+        return 0
+    fi
+    
+    # Must be numeric and in valid range
+    if ! echo "$value" | grep -qE '^[0-9]+$'; then
+        print_error "Port must be a number"
+        return 1
+    fi
+    
+    if [ "$value" -lt 1 ] || [ "$value" -gt 65535 ]; then
+        print_error "Port must be between 1 and 65535"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Validate AWS profile name
+validate_aws_profile() {
+    local value="$1"
+    
+    if [ -z "$value" ]; then
+        return 0
+    fi
+    
+    # AWS profile names: alphanumeric, hyphen, underscore
+    if ! echo "$value" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+        print_error "AWS profile must contain only letters, numbers, hyphens, underscores"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Validate directory path
+validate_path() {
+    local value="$1"
+    
+    if [ -z "$value" ]; then
+        return 0
+    fi
+    
+    # Must be absolute path
+    if ! echo "$value" | grep -qE '^/'; then
+        print_error "Path must be absolute (start with /)"
+        return 1
+    fi
+    
+    # No dangerous characters
+    if echo "$value" | grep -qE '[;|&$`]'; then
+        print_error "Path contains invalid characters"
+        return 1
+    fi
+    
+    return 0
+}
+
+#------------------------------------------------------------------------------
 # Configuration Menu Functions
 #------------------------------------------------------------------------------
 
@@ -130,17 +238,42 @@ configure_database() {
     local current_db=$(get_var PULLDB_MYSQL_DATABASE 'pulldb')
     
     echo ""
-    read -p "  MySQL Host [$current_host]: " new_host
-    [ -n "$new_host" ] && set_var PULLDB_MYSQL_HOST "$new_host"
     
-    read -p "  MySQL Port [$current_port]: " new_port
-    [ -n "$new_port" ] && set_var PULLDB_MYSQL_PORT "$new_port"
+    # MySQL Host
+    while true; do
+        read -p "  MySQL Host [$current_host]: " new_host
+        if validate_hostname "$new_host"; then
+            [ -n "$new_host" ] && set_var PULLDB_MYSQL_HOST "$new_host"
+            break
+        fi
+    done
     
-    read -p "  MySQL User [$current_user]: " new_user
-    [ -n "$new_user" ] && set_var PULLDB_MYSQL_USER "$new_user"
+    # MySQL Port
+    while true; do
+        read -p "  MySQL Port [$current_port]: " new_port
+        if validate_port "$new_port"; then
+            [ -n "$new_port" ] && set_var PULLDB_MYSQL_PORT "$new_port"
+            break
+        fi
+    done
     
-    read -p "  MySQL Database [$current_db]: " new_db
-    [ -n "$new_db" ] && set_var PULLDB_MYSQL_DATABASE "$new_db"
+    # MySQL User
+    while true; do
+        read -p "  MySQL User [$current_user]: " new_user
+        if validate_mysql_identifier "$new_user" "MySQL User"; then
+            [ -n "$new_user" ] && set_var PULLDB_MYSQL_USER "$new_user"
+            break
+        fi
+    done
+    
+    # MySQL Database
+    while true; do
+        read -p "  MySQL Database [$current_db]: " new_db
+        if validate_mysql_identifier "$new_db" "MySQL Database"; then
+            [ -n "$new_db" ] && set_var PULLDB_MYSQL_DATABASE "$new_db"
+            break
+        fi
+    done
     
     echo ""
     echo "  Note: For password, use AWS Secrets Manager reference:"
@@ -161,11 +294,23 @@ configure_aws() {
     echo "  See ${INSTALL_PREFIX}/AWS-SETUP.md for setup instructions"
     echo ""
     
-    read -p "  AWS Profile (for Secrets Manager) [$current_profile]: " new_profile
-    [ -n "$new_profile" ] && set_var PULLDB_AWS_PROFILE "$new_profile"
+    # AWS Profile
+    while true; do
+        read -p "  AWS Profile (for Secrets Manager) [$current_profile]: " new_profile
+        if validate_aws_profile "$new_profile"; then
+            [ -n "$new_profile" ] && set_var PULLDB_AWS_PROFILE "$new_profile"
+            break
+        fi
+    done
     
-    read -p "  S3 AWS Profile (for backups) [$current_s3_profile]: " new_s3_profile
-    [ -n "$new_s3_profile" ] && set_var PULLDB_S3_AWS_PROFILE "$new_s3_profile"
+    # S3 AWS Profile
+    while true; do
+        read -p "  S3 AWS Profile (for backups) [$current_s3_profile]: " new_s3_profile
+        if validate_aws_profile "$new_s3_profile"; then
+            [ -n "$new_s3_profile" ] && set_var PULLDB_S3_AWS_PROFILE "$new_s3_profile"
+            break
+        fi
+    done
     
     print_ok "AWS settings updated"
 }
@@ -182,14 +327,32 @@ configure_paths() {
     echo "  for downloading and extracting database backups."
     echo ""
     
-    read -p "  Work Directory [$current_work]: " new_work
-    [ -n "$new_work" ] && set_var PULLDB_WORK_DIR "$new_work"
+    # Work Directory
+    while true; do
+        read -p "  Work Directory [$current_work]: " new_work
+        if validate_path "$new_work"; then
+            [ -n "$new_work" ] && set_var PULLDB_WORK_DIR "$new_work"
+            break
+        fi
+    done
     
-    read -p "  Log Directory [$current_log]: " new_log
-    [ -n "$new_log" ] && set_var PULLDB_LOG_DIR "$new_log"
+    # Log Directory
+    while true; do
+        read -p "  Log Directory [$current_log]: " new_log
+        if validate_path "$new_log"; then
+            [ -n "$new_log" ] && set_var PULLDB_LOG_DIR "$new_log"
+            break
+        fi
+    done
     
-    read -p "  Temp Directory [$current_tmp]: " new_tmp
-    [ -n "$new_tmp" ] && set_var PULLDB_TMP_DIR "$new_tmp"
+    # Temp Directory
+    while true; do
+        read -p "  Temp Directory [$current_tmp]: " new_tmp
+        if validate_path "$new_tmp"; then
+            [ -n "$new_tmp" ] && set_var PULLDB_TMP_DIR "$new_tmp"
+            break
+        fi
+    done
     
     print_ok "Path settings updated"
 }
