@@ -193,7 +193,7 @@ case "$1" in
         # Install/upgrade the wheel
         if ls "${INSTALL_PREFIX}/dist"/pulldb-*.whl 1>/dev/null 2>&1; then
             "${VENV_DIR}/bin/pip" install --upgrade pip wheel >/dev/null
-            "${VENV_DIR}/bin/pip" install --upgrade "${INSTALL_PREFIX}/dist"/pulldb-*.whl
+            "${VENV_DIR}/bin/pip" install --upgrade --force-reinstall "${INSTALL_PREFIX}/dist"/pulldb-*.whl
             echo "pulldb package installed successfully."
         else
             echo "Warning: No wheel found in ${INSTALL_PREFIX}/dist/"
