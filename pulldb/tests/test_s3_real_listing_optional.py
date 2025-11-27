@@ -91,8 +91,16 @@ def test_real_staging_backup_listing_optional() -> None:  # pragma: no cover
 
     # Basic invariant: newest timestamp sorts last when parsed & sorted
     def _extract_ts(key: str) -> datetime:
+        """Extract timestamp from backup filename.
+        
+        Pattern: daily_mydumper_{target}_{ts}_{Day}_{dbN}.tar
+        The target can contain underscores, so we use regex to extract ts.
+        """
         filename = key.rsplit("/", 1)[-1]
-        ts_part = filename.split("_", 3)[2]
+        match = BACKUP_FILENAME_REGEX.match(filename)
+        if not match:
+            raise ValueError(f"Filename doesn't match pattern: {filename}")
+        ts_part = match.group("ts")
         return datetime.strptime(ts_part, "%Y-%m-%dT%H-%M-%SZ")
 
     sorted_keys = sorted(matching_keys, key=_extract_ts)
