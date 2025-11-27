@@ -31,7 +31,8 @@ pullDB status
   - `aws-ssm:/pulldb/mysql/{param-name}` (alternative)
 - **Usage**: `resolver = CredentialResolver(); creds = resolver.resolve(credential_ref)`
 - **Testing**: Command-line interface available: `python3 -m pulldb.infra.secrets <credential_ref>`
-- **Documentation**: See `docs/aws-secrets-manager-setup.md` for complete setup guide
+- **Documentation**: See `docs/AWS-SETUP.md` for complete setup guide
+- **Required Tags**: All `/pulldb/*` secrets must be tagged with `Service=pulldb`
 - **Profile Split (Nov 14 2025)**: Use the EC2 instance profile (preferred) or `pr-dev` for Secrets Manager/MySQL access. `pr-staging` and `pr-prod` are reserved for staging/production S3 reads and deliberately lack secret permissions.
 
 ## Critical Business Logic

@@ -19,10 +19,7 @@ import typing as t
 import click
 
 # Private import is intentional - we need access to built-in defaults
-from pulldb.domain.config import (
-    _MYLOADER_DEFAULT_ARGS_BUILTIN,
-    Config,
-)
+from pulldb.domain.config import _MYLOADER_DEFAULT_ARGS_BUILTIN
 
 
 # Known settings with their environment variable names and defaults
@@ -82,15 +79,35 @@ KNOWN_SETTINGS: dict[str, tuple[str, str | None, str]] = {
 
 
 def _get_mysql_pool() -> t.Any:
-    """Get MySQL connection pool using bootstrap config."""
+    """Get MySQL connection pool using bootstrap config.
+    
+    Uses PULLDB_API_MYSQL_USER for admin CLI operations since we need
+    read/write access to the settings table.
+    """
     from pulldb.infra.mysql import MySQLPool
+    from pulldb.infra.secrets import CredentialResolver
 
-    config = Config.minimal_from_env()
+    # Get credentials from Secrets Manager (password only)
+    secret_ref = os.getenv(
+        "PULLDB_COORDINATION_SECRET",
+        "aws-secretsmanager:/pulldb/mysql/coordination-db"
+    )
+    
+    # Use the AWS profile for Secrets Manager
+    aws_profile = os.getenv("PULLDB_AWS_PROFILE")
+    resolver = CredentialResolver(aws_profile=aws_profile)
+    creds = resolver.resolve(secret_ref)
+    
+    # Use API user for admin operations
+    mysql_user = os.getenv("PULLDB_API_MYSQL_USER", "pulldb_api")
+    mysql_database = os.getenv("PULLDB_MYSQL_DATABASE", "pulldb_service")
+    
     return MySQLPool(
-        host=config.mysql_host,
-        user=config.mysql_user,
-        password=config.mysql_password,
-        database=config.mysql_database,
+        host=creds.host,
+        user=mysql_user,
+        password=creds.password,
+        database=mysql_database,
+        port=creds.port,
     )
 
 

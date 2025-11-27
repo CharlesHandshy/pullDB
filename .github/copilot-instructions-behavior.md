@@ -116,7 +116,8 @@ except ClientError as e:
             f"Secret '{secret_id}' does not exist in AWS Secrets Manager. "
             f"Create it with: aws secretsmanager create-secret "
             f"--name {secret_id} --secret-string '{{...}}' "
-            f"See docs/aws-secrets-manager-setup.md for complete setup."
+            f"--tags Key=Service,Value=pulldb "
+            f"See docs/AWS-SETUP.md for complete setup."
         ) from e
     elif e.response["Error"]["Code"] == "AccessDenied":
         raise PermissionError(

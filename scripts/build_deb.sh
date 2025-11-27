@@ -77,6 +77,17 @@ fi
 cp packaging/systemd/pulldb-worker.service "$APP_ROOT/systemd/"
 cp packaging/systemd/pulldb-api.service "$APP_ROOT/systemd/"
 
+# Copy myloader binaries
+if [ -d "pulldb/binaries" ]; then
+    mkdir -p "$APP_ROOT/bin"
+    # Copy myloader binaries (both versions for compatibility)
+    if [ -f "pulldb/binaries/myloader-0.19.3-3" ]; then
+        cp pulldb/binaries/myloader-0.19.3-3 "$APP_ROOT/bin/"
+        chmod +x "$APP_ROOT/bin/myloader-0.19.3-3"
+        echo "Included myloader-0.19.3-3 binary"
+    fi
+fi
+
 # Copy documentation and example config files to package root
 cp docs/AWS-SETUP.md "$APP_ROOT/"
 cp packaging/SERVICE-README.md "$APP_ROOT/"

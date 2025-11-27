@@ -29,7 +29,7 @@
 - Simplifies credential rotation and audit.
 - Validates secrets exist in correct AWS account (dev-only constraint).
 
-**Reference:** See `docs/testing.md` for complete testing guide and `docs/aws-secrets-manager-setup.md` for credential setup.
+**Reference:** See `docs/testing.md` for complete testing guide and `docs/AWS-SETUP.md` for credential setup.
 
 #### Development Override (Temporary)
 

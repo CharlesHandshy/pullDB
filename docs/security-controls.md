@@ -3,8 +3,7 @@
 > **Status**: ACTIVE (Implementation Verification)
 > **Related Documents**:
 > - `design/security-model.md` (High-level security philosophy)
-> - `docs/aws-secrets-manager-setup.md` (Secrets Manager setup guide)
-> - `docs/aws-authentication-setup.md` (Authentication & S3 setup guide)
+> - `docs/AWS-SETUP.md` (Consolidated AWS setup guide)
 
 ## Overview
 
@@ -31,7 +30,8 @@ This document details the specific security controls implemented for AWS S3 and 
 - **Control**: IAM policies are strictly scoped to specific resources.
 - **Policy**: `pulldb-secrets-manager-access`
 - **Scope**: `arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*`
-- **Actions**: `GetSecretValue`, `DescribeSecret` (Read-only).
+- **Actions**: `GetSecretValue`, `DescribeSecret` (Read-only), `ListSecrets` (metadata discovery).
+- **Note**: `ListSecrets` requires `Resource: "*"` because AWS does not support resource-level permissions for this action. Filtering is done client-side.
 - **Benefit**: Compromise of the application role limits exposure to only pullDB-specific database credentials.
 
 ### 3. Encryption at Rest

@@ -56,8 +56,17 @@ Last updated: 2025-11-22
   - `/pulldb/mysql/api` - API service credentials
   - `/pulldb/mysql/worker` - Worker service credentials
   - `/pulldb/mysql/loader` - Loader credentials for target hosts
+  - `/pulldb/mysql/coordination-db` - Coordination database credentials
+  - `/pulldb/mysql/localhost-test` - Local testing credentials
 
 - Secrets live in development account (345321506926) only
+
+- **Required Tags** (for IAM policy compliance):
+  - All `/pulldb/*` secrets MUST be tagged with `Service=pulldb`
+  - The IAM policy `pulldb-secrets-manager-access` uses `secretsmanager:ResourceTag/Service` condition
+  - When creating new secrets, always add: `--tags Key=Service,Value=pulldb`
+  - Example: `aws secretsmanager tag-resource --secret-id /pulldb/mysql/NEW_SECRET --tags Key=Service,Value=pulldb`
+
 - **Secret Structure** (host + password only):
   - `username` comes from service-specific environment variables:
     - `PULLDB_API_MYSQL_USER` (required for API service)
@@ -70,7 +79,9 @@ Last updated: 2025-11-22
 
 - Runtime policy (`pulldb-secrets-manager-access`) should grant:
   - `secretsmanager:GetSecretValue` and `secretsmanager:DescribeSecret` on `arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*`
+  - `secretsmanager:ListSecrets` with `Resource: "*"` (no condition - AWS does not support condition keys for ListSecrets per service authorization reference)
   - `kms:Decrypt` (conditioned to Secrets Manager usage)
+  - **Note**: ResourceTag conditions do NOT work for `ListSecrets` - AWS ignores them. Use `--filters` client-side instead.
 
 ## Machine-readable index (JSON)
 The following JSON block is a compact, program-friendly index of the core artifacts referenced in this file. Use it as a single-source map for automation or verification scripts.

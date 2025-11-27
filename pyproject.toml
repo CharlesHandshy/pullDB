@@ -44,6 +44,7 @@ dev = [
 
 [project.scripts]
 pulldb = "pulldb.cli.main:main"
+pulldb-admin = "pulldb.cli.admin:main"
 pulldb-api = "pulldb.api.main:main"
 pulldb-worker = "pulldb.worker.service:main"
 

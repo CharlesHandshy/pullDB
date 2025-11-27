@@ -31,9 +31,8 @@ scripts/setup-aws-credentials.sh
 #   - Edit .env and set PULLDB_AWS_PROFILE=pr-staging (switch to pr-prod only for production backup access)
 #   - Verify credentials work
 # NOTE: Authentication, cross-account S3 access, and instance profile setup are fully documented in:
-#   - docs/aws-authentication-setup.md (CANONICAL AWS guide)
-#   - docs/aws-ec2-deployment-setup.md (Developer SSH access + service deployment)
-# TESTS: All integration/repository tests resolve DB credentials from the development account Secrets Manager secret `/pulldb/mysql/coordination-db` (dev account only; not replicated to staging/prod). See docs/aws-secrets-manager-setup.md. No direct MySQL user credentials are allowed.
+#   - docs/AWS-SETUP.md (CANONICAL AWS guide - consolidated)
+# TESTS: All integration/repository tests resolve DB credentials from the development account Secrets Manager secret `/pulldb/mysql/coordination-db` (dev account only; not replicated to staging/prod). See docs/AWS-SETUP.md. No direct MySQL user credentials are allowed.
 
 # 3. Install MySQL and load the coordination schema
 sudo scripts/setup-mysql.sh

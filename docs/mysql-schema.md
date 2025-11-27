@@ -255,7 +255,7 @@ INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, ena
      TRUE);
 ```
 
-**Note**: Credentials for these hosts must be created in AWS Secrets Manager before the Worker service can connect. See `aws-secrets-manager-setup.md` for setup instructions. The local sandbox secret (`/pulldb/mysql/localhost-test`) is required for development setups.
+**Note**: Credentials for these hosts must be created in AWS Secrets Manager before the Worker service can connect. See `docs/AWS-SETUP.md` for setup instructions. The local sandbox secret (`/pulldb/mysql/localhost-test`) is required for development setups.
 
 ### Configuration Settings
 

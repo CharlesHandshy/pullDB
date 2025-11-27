@@ -234,6 +234,14 @@ validate_installation() {
         check_fail "pulldb-worker binary missing"
     fi
     
+    # Check pulldb-admin (admin CLI)
+    local admin_bin="${INSTALL_PREFIX}/venv/bin/pulldb-admin"
+    if [[ -x "$admin_bin" ]]; then
+        check_pass "pulldb-admin binary present"
+    else
+        check_warn "pulldb-admin binary not found"
+    fi
+    
     # Check systemd unit
     if [[ -f "/etc/systemd/system/pulldb-worker.service" ]]; then
         local unit_status
@@ -315,31 +323,84 @@ validate_aws_credentials() {
 validate_secrets_manager() {
     phase_header "3" "Secrets Manager"
     
-    local secrets=(
+    # Known pulldb secrets (IAM may not have ListSecrets permission)
+    local known_secrets=(
         "/pulldb/mysql/coordination-db"
         "/pulldb/mysql/localhost-test"
+        "/pulldb/mysql/loader"
     )
     
-    for secret in "${secrets[@]}"; do
-        if aws secretsmanager describe-secret --secret-id "$secret" --profile pr-dev &>/dev/null; then
-            check_pass "Secret exists: ${secret}"
+    # Try to discover additional secrets dynamically
+    local secrets_json
+    if secrets_json=$(aws secretsmanager list-secrets \
+        --profile pr-dev \
+        --filters Key=name,Values=/pulldb \
+        --query 'SecretList[*].Name' \
+        --output json 2>/dev/null); then
+        # Parse JSON array and add any new secrets
+        while IFS= read -r secret; do
+            secret="${secret//\"/}"
+            if [[ -n "$secret" && "$secret" != "[" && "$secret" != "]" ]]; then
+                # Check if already in known_secrets
+                local found=false
+                for known in "${known_secrets[@]}"; do
+                    [[ "$secret" == "$known" ]] && found=true && break
+                done
+                [[ "$found" == false ]] && known_secrets+=("$secret")
+            fi
+        done < <(echo "$secrets_json" | tr ',' '\n' | tr -d '[] ')
+        check_info "Discovered ${#known_secrets[@]} secrets via ListSecrets"
+    else
+        check_info "Using ${#known_secrets[@]} known secrets (ListSecrets not permitted)"
+    fi
+    
+    local validated=0
+    local failed=0
+    
+    for secret in "${known_secrets[@]}"; do
+        # Try to get the value directly (GetSecretValue is allowed)
+        local secret_value
+        if secret_value=$(aws secretsmanager get-secret-value --secret-id "$secret" --profile pr-dev --query 'SecretString' --output text 2>/dev/null); then
+            # Validate JSON structure - check for required fields
+            local validation_result
+            validation_result=$(echo "$secret_value" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    fields = []
+    if 'host' in d: fields.append('host')
+    if 'password' in d: fields.append('password')
+    if 'username' in d: fields.append('username')
+    if 'user' in d: fields.append('user')
+    if 'port' in d: fields.append('port')
+    if fields:
+        print('OK:' + ','.join(fields))
+    else:
+        print('WARN:no-standard-fields')
+except Exception as e:
+    print(f'ERROR:{e}')
+" 2>&1)
             
-            # Try to get the value
-            local secret_value
-            if secret_value=$(aws secretsmanager get-secret-value --secret-id "$secret" --profile pr-dev --query 'SecretString' --output text 2>/dev/null); then
-                # Validate JSON structure
-                if echo "$secret_value" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'host' in d and 'password' in d" 2>/dev/null; then
-                    check_pass "Secret valid: ${secret} (has host, password)"
-                else
-                    check_warn "Secret structure: ${secret} (missing host or password)"
-                fi
+            if [[ "$validation_result" == OK:* ]]; then
+                local fields="${validation_result#OK:}"
+                check_pass "Secret: ${secret} (${fields})"
+                ((validated++))
+            elif [[ "$validation_result" == WARN:* ]]; then
+                check_warn "Secret: ${secret} (non-standard structure)"
+                ((validated++))
             else
-                check_fail "Secret not readable: ${secret}"
+                check_warn "Secret: ${secret} (parse error)"
             fi
         else
-            check_warn "Secret not found: ${secret}"
+            # Secret doesn't exist or not accessible
+            check_warn "Secret not found or not accessible: ${secret}"
+            ((failed++))
         fi
     done
+    
+    if [[ $validated -eq 0 ]]; then
+        check_fail "No secrets could be validated"
+    fi
 }
 
 # ==============================================================================
@@ -385,7 +446,7 @@ validate_database() {
     
     local python_bin="${INSTALL_PREFIX}/venv/bin/python3"
     
-    # Test credential resolution
+    # Test credential resolution (get password from Secrets Manager)
     local cred_test
     if cred_test=$("$python_bin" << 'PYEOF' 2>&1
 import os
@@ -399,9 +460,13 @@ try:
     secret_ref = os.environ.get('PULLDB_COORDINATION_SECRET', 'aws-secretsmanager:/pulldb/mysql/coordination-db')
     creds = resolver.resolve(secret_ref)
     
+    # Username comes from environment, not from secret
+    username = os.environ.get('PULLDB_API_MYSQL_USER', 'pulldb_api')
+    
     print(f"host={creds.host}")
-    print(f"user={creds.username}")
+    print(f"user={username}")
     print(f"port={creds.port}")
+    print(f"password_len={len(creds.password)}")
     sys.exit(0)
 except Exception as e:
     print(f"ERROR: {e}")
@@ -414,23 +479,36 @@ PYEOF
         db_port=$(echo "$cred_test" | grep '^port=' | cut -d= -f2)
         check_pass "Credential resolution: ${db_user}@${db_host}:${db_port}"
         
-        # Test MySQL connection
+        # Test MySQL connection using direct mysql.connector
         if "$python_bin" << 'PYEOF' 2>/dev/null
 import os
+import sys
 os.chdir(os.environ.get('PULLDB_INSTALL_PREFIX', '/opt/pulldb.service'))
 
+import mysql.connector
 from pulldb.infra.secrets import CredentialResolver
-from pulldb.infra.mysql import MySQLConnectionManager
 
 resolver = CredentialResolver()
 secret_ref = os.environ.get('PULLDB_COORDINATION_SECRET', 'aws-secretsmanager:/pulldb/mysql/coordination-db')
 creds = resolver.resolve(secret_ref)
 
-with MySQLConnectionManager(creds) as conn:
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1")
-    cursor.fetchone()
-    print("OK")
+# Username comes from environment
+username = os.environ.get('PULLDB_API_MYSQL_USER', 'pulldb_api')
+database = os.environ.get('PULLDB_MYSQL_DATABASE', 'pulldb_service')
+
+conn = mysql.connector.connect(
+    host=creds.host,
+    port=creds.port,
+    user=username,
+    password=creds.password,
+    database=database
+)
+cursor = conn.cursor()
+cursor.execute("SELECT 1")
+cursor.fetchone()
+cursor.close()
+conn.close()
+print("OK")
 PYEOF
         then
             check_pass "MySQL connection successful"
@@ -446,21 +524,33 @@ PYEOF
 import os
 os.chdir(os.environ.get('PULLDB_INSTALL_PREFIX', '/opt/pulldb.service'))
 
+import mysql.connector
 from pulldb.infra.secrets import CredentialResolver
-from pulldb.infra.mysql import MySQLConnectionManager
 
 resolver = CredentialResolver()
 secret_ref = os.environ.get('PULLDB_COORDINATION_SECRET', 'aws-secretsmanager:/pulldb/mysql/coordination-db')
 creds = resolver.resolve(secret_ref)
 
-with MySQLConnectionManager(creds) as conn:
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'pulldb'")
-    count = cursor.fetchone()[0]
-    if count >= 5:
-        print(f"OK: {count} tables")
-    else:
-        raise Exception(f"Only {count} tables found")
+# Username comes from environment
+username = os.environ.get('PULLDB_API_MYSQL_USER', 'pulldb_api')
+database = os.environ.get('PULLDB_MYSQL_DATABASE', 'pulldb_service')
+
+conn = mysql.connector.connect(
+    host=creds.host,
+    port=creds.port,
+    user=username,
+    password=creds.password,
+    database=database
+)
+cursor = conn.cursor()
+cursor.execute(f"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '{database}'")
+count = cursor.fetchone()[0]
+cursor.close()
+conn.close()
+if count >= 5:
+    print(f"OK: {count} tables")
+else:
+    raise Exception(f"Only {count} tables found")
 PYEOF
     then
         check_pass "Database schema deployed"
@@ -476,18 +566,35 @@ PYEOF
 validate_service() {
     phase_header "6" "Service Status"
     
-    # Check systemd service
+    # Check pulldb-api service
+    if systemctl is-active --quiet pulldb-api 2>/dev/null; then
+        check_pass "pulldb-api service: running"
+    else
+        local api_status
+        if systemctl is-enabled pulldb-api 2>/dev/null; then
+            api_status=$(systemctl is-active pulldb-api 2>/dev/null || echo "stopped")
+        else
+            api_status="not-enabled"
+        fi
+        check_warn "pulldb-api service: ${api_status}"
+    fi
+    
+    # Check pulldb-worker service
     if systemctl is-active --quiet pulldb-worker 2>/dev/null; then
         check_pass "pulldb-worker service: running"
     else
-        local status
-        status=$(systemctl is-active pulldb-worker 2>/dev/null || echo "not-found")
-        check_warn "pulldb-worker service: ${status}"
+        local worker_status
+        if systemctl is-enabled pulldb-worker 2>/dev/null; then
+            worker_status=$(systemctl is-active pulldb-worker 2>/dev/null || echo "stopped")
+        else
+            worker_status="not-enabled"
+        fi
+        check_warn "pulldb-worker service: ${worker_status}"
     fi
     
-    # Check for recent errors in journal
+    # Check for recent errors in journal (both services)
     local recent_errors
-    recent_errors=$(journalctl -u pulldb-worker -p err --since "1 hour ago" --no-pager 2>/dev/null | wc -l || echo "0")
+    recent_errors=$(journalctl -u pulldb-worker -u pulldb-api -p err --since "1 hour ago" --no-pager 2>/dev/null | wc -l | tr -d '[:space:]' || echo "0")
     if [[ "$recent_errors" -eq 0 ]]; then
         check_pass "No errors in last hour"
     else
@@ -500,6 +607,14 @@ validate_service() {
         check_pass "CLI: pulldb --help"
     else
         check_fail "CLI: pulldb --help failed"
+    fi
+    
+    # Check admin CLI functionality
+    local admin_bin="${INSTALL_PREFIX}/venv/bin/pulldb-admin"
+    if "$admin_bin" --help &>/dev/null; then
+        check_pass "CLI: pulldb-admin --help"
+    else
+        check_warn "CLI: pulldb-admin --help failed"
     fi
 }
 

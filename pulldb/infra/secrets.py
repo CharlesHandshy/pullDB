@@ -18,7 +18,7 @@ Other connection parameters from environment:
     - PULLDB_MYSQL_PORT: MySQL port (optional, defaults to 3306)
     - PULLDB_MYSQL_DATABASE: Database name (optional)
 
-See docs/aws-secrets-manager-setup.md for complete setup instructions.
+See docs/AWS-SETUP.md for complete setup instructions.
 """
 
 from __future__ import annotations

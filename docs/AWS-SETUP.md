@@ -151,6 +151,12 @@ cat > /tmp/pulldb-secrets-manager-policy.json <<'EOF'
       "Resource": ["arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*"]
     },
     {
+      "Sid": "ListSecretsForDiscovery",
+      "Effect": "Allow",
+      "Action": ["secretsmanager:ListSecrets"],
+      "Resource": "*"
+    },
+    {
       "Sid": "DecryptSecretsWithKMS",
       "Effect": "Allow",
       "Action": ["kms:Decrypt", "kms:DescribeKey"],
@@ -173,6 +179,11 @@ aws iam attach-role-policy \
     --role-name pulldb-ec2-service-role \
     --policy-arn arn:aws:iam::345321506926:policy/pulldb-secrets-manager-access
 ```
+
+> **Note on ListSecrets**: The `ListSecrets` action requires `Resource: "*"` because AWS does not support
+> resource-level permissions or condition keys (like `secretsmanager:ResourceTag`) for this action.
+> See [AWS Service Authorization Reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_awssecretsmanager.html).
+> Filtering is done client-side using `--filters Key=name,Values=/pulldb`.
 
 ### Step A.3.3: Attach S3 Read Policy (Staging)
 
@@ -313,6 +324,21 @@ Create MySQL credential secrets in the development account.
 | `/pulldb/mysql/api` | `pulldb_api` | API service - job queue read/write |
 | `/pulldb/mysql/worker` | `pulldb_worker` | Worker service - job processing |
 | `/pulldb/mysql/loader` | `pulldb_loader` | Target hosts - myloader restore operations |
+| `/pulldb/mysql/coordination-db` | `pulldb_api` | Coordination database (alias) |
+| `/pulldb/mysql/localhost-test` | `pulldb_test` | Local testing |
+
+### Required Tags
+
+All `/pulldb/*` secrets **must** be tagged with `Service=pulldb` for organizational consistency and future ABAC policies:
+
+```bash
+# Tag existing secrets
+aws secretsmanager tag-resource \
+    --secret-id /pulldb/mysql/api \
+    --tags Key=Service,Value=pulldb
+
+# Always include tags when creating new secrets (see examples below)
+```
 
 ### Create API Service Secret (Required)
 
@@ -348,6 +374,32 @@ aws secretsmanager create-secret \
     --description "MySQL credentials for myloader restore operations on target hosts" \
     --secret-string '{
         "password": "REPLACE_WITH_LOADER_PASSWORD",
+        "host": "localhost"
+    }' \
+    --tags Key=Service,Value=pulldb Key=Environment,Value=development
+```
+
+### Create Coordination DB Secret (Required)
+
+```bash
+aws secretsmanager create-secret \
+    --name /pulldb/mysql/coordination-db \
+    --description "MySQL credentials for pullDB coordination database" \
+    --secret-string '{
+        "password": "REPLACE_WITH_COORDINATION_PASSWORD",
+        "host": "localhost"
+    }' \
+    --tags Key=Service,Value=pulldb Key=Environment,Value=development
+```
+
+### Create Localhost Test Secret (Optional - for local testing)
+
+```bash
+aws secretsmanager create-secret \
+    --name /pulldb/mysql/localhost-test \
+    --description "MySQL credentials for local testing" \
+    --secret-string '{
+        "password": "REPLACE_WITH_TEST_PASSWORD",
         "host": "localhost"
     }' \
     --tags Key=Service,Value=pulldb Key=Environment,Value=development

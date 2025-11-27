@@ -184,7 +184,14 @@ offer_interactive_config() {
                 ;;
         esac
     else
-        echo "Step 4: Skipping interactive configuration (non-interactive mode)"
+        # Non-interactive mode: use existing configuration as-is
+        echo "Step 4: Using existing configuration (non-interactive mode)"
+        if [ -f "${ENV_FILE}" ]; then
+            echo "  Preserved: ${ENV_FILE}"
+        fi
+        if [ -f "${INSTALL_PREFIX}/.aws/config" ]; then
+            echo "  Preserved: ${INSTALL_PREFIX}/.aws/config"
+        fi
     fi
 }
 
@@ -259,6 +266,8 @@ install_python_package() {
     
     if [ -d "${VENV_DIR}" ]; then
         echo "  Existing venv found, upgrading..."
+        # Clean up any corrupted distributions (pip temp files starting with ~)
+        find "${VENV_DIR}/lib" -type d -name '~*' -exec rm -rf {} + 2>/dev/null || true
     else
         echo "  Creating new virtual environment..."
         python3 -m venv "${VENV_DIR}"
@@ -305,6 +314,35 @@ install_systemd_units() {
     systemctl daemon-reload || true
 }
 
+start_services() {
+    echo "Step 6c: Starting services..."
+    
+    if ! command -v systemctl >/dev/null 2>&1; then
+        echo "  systemd not available, skipping"
+        return
+    fi
+    
+    # Start API service first (worker depends on it being available)
+    if systemctl is-enabled pulldb-api.service >/dev/null 2>&1; then
+        systemctl restart pulldb-api.service 2>/dev/null || true
+        if systemctl is-active --quiet pulldb-api.service 2>/dev/null; then
+            echo "  Started pulldb-api.service"
+        else
+            echo "  Warning: pulldb-api.service failed to start"
+        fi
+    fi
+    
+    # Start worker service
+    if systemctl is-enabled pulldb-worker.service >/dev/null 2>&1; then
+        systemctl restart pulldb-worker.service 2>/dev/null || true
+        if systemctl is-active --quiet pulldb-worker.service 2>/dev/null; then
+            echo "  Started pulldb-worker.service"
+        else
+            echo "  Warning: pulldb-worker.service failed to start"
+        fi
+    fi
+}
+
 # =============================================================================
 # Step 7: Validate Installation
 # =============================================================================
@@ -334,8 +372,8 @@ print_completion() {
     echo "  Configuration: ${ENV_FILE}"
     echo "  Configure:     sudo ${CONFIGURE_SCRIPT}"
     echo ""
-    echo "  Start services:"
-    echo "    sudo systemctl start pulldb-api pulldb-worker"
+    echo "  Manage services:"
+    echo "    sudo systemctl restart pulldb-api pulldb-worker"
     echo ""
     echo "  Check status:"
     echo "    sudo systemctl status pulldb-api pulldb-worker"
@@ -356,6 +394,7 @@ case "$1" in
         ensure_paths
         install_python_package
         install_systemd_units
+        start_services
         validate_installation
         print_completion
         ;;
