@@ -92,12 +92,12 @@ class TestHostRepository:
             and host.host_alias == host_alias
         )
         self._cleanup_host(mysql_pool, host_id, hostname)
-        
+
     def test_get_host_by_alias_not_found(self, mysql_pool: Any) -> None:
         """Test alias lookup returns None for unknown alias."""
         repo = HostRepository(mysql_pool, CredentialResolver())
         assert repo.get_host_by_alias("no-such-alias") is None
-        
+
     def test_resolve_hostname_by_hostname(self, mysql_pool: Any) -> None:
         """Test resolve_hostname finds host by hostname."""
         host_id = str(uuid.uuid4())
@@ -119,7 +119,7 @@ class TestHostRepository:
         resolved = repo.resolve_hostname(hostname)
         assert resolved == hostname
         self._cleanup_host(mysql_pool, host_id, hostname)
-        
+
     def test_resolve_hostname_by_alias(self, mysql_pool: Any) -> None:
         """Test resolve_hostname finds canonical hostname from alias."""
         host_id = str(uuid.uuid4())
@@ -142,7 +142,7 @@ class TestHostRepository:
         resolved = repo.resolve_hostname(host_alias)
         assert resolved == hostname
         self._cleanup_host(mysql_pool, host_id, hostname)
-        
+
     def test_resolve_hostname_not_found(self, mysql_pool: Any) -> None:
         """Test resolve_hostname returns None for unknown name."""
         repo = HostRepository(mysql_pool, CredentialResolver())

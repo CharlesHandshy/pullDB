@@ -19,6 +19,7 @@ from pulldb.domain.errors import StagingError
 from pulldb.domain.models import Job, JobStatus, User
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
 from pulldb.infra.mysql import (
+    HostRepository,
     JobRepository,
     MySQLPool,
     SettingsRepository,
@@ -115,6 +116,7 @@ class APIState(t.NamedTuple):
     user_repo: UserRepository
     job_repo: JobRepository
     settings_repo: SettingsRepository
+    host_repo: "HostRepository"
 
 
 def _initialize_state() -> APIState:
@@ -168,12 +170,16 @@ def _initialize_state() -> APIState:
             f"Attempted {config.mysql_host}/{config.mysql_database}: {exc}."
         ) from exc
 
+    # Create credential resolver for host lookups
+    credential_resolver = CredentialResolver(config.aws_profile)
+
     return APIState(
         config=config,
         pool=pool,
         user_repo=UserRepository(pool),
         job_repo=JobRepository(pool),
         settings_repo=SettingsRepository(pool),
+        host_repo=HostRepository(pool, credential_resolver),
     )
 
 
@@ -854,7 +860,7 @@ def _cancel_job(state: APIState, job_id: str) -> CancelResponse:
         )
         emit_counter(
             "job_canceled_total",
-            MetricLabels(phase="api", status="queued"),
+            labels=MetricLabels(phase="api", status="queued"),
         )
         return CancelResponse(
             job_id=job_id,

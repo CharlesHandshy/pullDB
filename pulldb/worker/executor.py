@@ -168,7 +168,7 @@ class WorkerExecutorTimeouts:
 class WorkerExecutorHooks:
     """Optional hook overrides for discovery, download, and extraction."""
 
-    discover_backup: t.Callable[[S3Client, str, str, str], BackupSpec] = (
+    discover_backup: t.Callable[[S3Client, str, str, str, str | None], BackupSpec] = (
         discover_latest_backup
     )
     download_backup: t.Callable[

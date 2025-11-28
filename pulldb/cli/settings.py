@@ -591,8 +591,10 @@ def diff_settings() -> None:
         click.echo("-" * 60)
         for key, db_val, env_val in differences:
             click.echo(f"  {key}:")
-            db_display = db_val[:50] + "..." if len(db_val or "") > 50 else db_val
-            env_display = env_val[:50] + "..." if len(env_val or "") > 50 else env_val
+            db_str = db_val or ""
+            env_str = env_val or ""
+            db_display = db_str[:50] + "..." if len(db_str) > 50 else db_str
+            env_display = env_str[:50] + "..." if len(env_str) > 50 else env_str
             click.echo(f"    db:  {db_display}")
             click.echo(f"    env: {env_display}")
         click.echo("")

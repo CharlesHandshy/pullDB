@@ -14,6 +14,9 @@ from pulldb.api.main import APIState, app, get_api_state
 from pulldb.domain.config import Config
 from pulldb.domain.models import Job, JobStatus, User
 from pulldb.infra.mysql import (
+    HostRepository as MySQLHostRepository,
+)
+from pulldb.infra.mysql import (
     JobRepository as MySQLJobRepository,
 )
 from pulldb.infra.mysql import (
@@ -148,6 +151,7 @@ def fake_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRepos]:
         user_repo=cast(MySQLUserRepository, user_repo),
         job_repo=cast(MySQLJobRepository, job_repo),
         settings_repo=cast(MySQLSettingsRepository, settings_repo),
+        host_repo=cast(MySQLHostRepository, SimpleNamespace()),
     )
 
     def _override() -> APIState:

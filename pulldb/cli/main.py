@@ -555,7 +555,7 @@ def search_cmd(
     has_wildcard = "*" in customer or "?" in customer
 
     # Import S3 utilities
-    from pulldb.infra.s3 import S3Client, BACKUP_FILENAME_REGEX
+    from pulldb.infra.s3 import S3Client
 
     # Get S3 configuration from environment
     s3_profile = os.getenv("PULLDB_S3_AWS_PROFILE") or os.getenv("PULLDB_AWS_PROFILE")
