@@ -237,7 +237,8 @@ class JobRepository:
         multi-worker deployments.
 
         Args:
-            worker_id: Optional identifier of claiming worker (for debugging).
+            worker_id: Optional identifier of claiming worker. Persisted to
+                       the jobs.worker_id column for debugging/monitoring.
                        Format: "hostname:pid" or similar unique identifier.
 
         Returns:
@@ -277,13 +278,16 @@ class JobRepository:
 
             # Update to running within same transaction
             # This is atomic with the SELECT FOR UPDATE
+            # worker_id is persisted for debugging/monitoring in multi-daemon deployments
             cursor.execute(
                 """
                 UPDATE jobs
-                SET status = 'running', started_at = UTC_TIMESTAMP(6)
+                SET status = 'running',
+                    started_at = UTC_TIMESTAMP(6),
+                    worker_id = %s
                 WHERE id = %s
                 """,
-                (job_id,),
+                (worker_id, job_id),
             )
 
             # Log worker claim if worker_id provided

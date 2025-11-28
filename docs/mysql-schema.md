@@ -117,6 +117,7 @@ CREATE TABLE jobs (
     options_json JSON,
     retry_count INT NOT NULL DEFAULT 0,
     error_detail TEXT,
+    worker_id VARCHAR(255) NULL,
     cancel_requested_at TIMESTAMP(6) NULL,
     staging_cleaned_at TIMESTAMP(6) NULL,
     active_target_key VARCHAR(520) GENERATED ALWAYS AS (
@@ -132,6 +133,7 @@ CREATE TABLE jobs (
 - `options_json`: frozen snapshot of CLI flags for replay and inspection.
 - `retry_count`: increments when operators resubmit after failure (manual only).
 - `error_detail`: optional payload describing failure context.
+- `worker_id`: identifier of the worker that claimed the job (format: "hostname:pid"). Set by `claim_next_job()` for debugging/monitoring in multi-daemon deployments. NULL for unclaimed jobs.
 - `cancel_requested_at`: timestamp when user requested cancellation (Phase 1). Worker checks this periodically and aborts gracefully if set.
 - `staging_cleaned_at`: timestamp when staging database was cleaned up after restore (Phase 1). Prevents re-processing in cleanup runs.
 - `status`: `queued`, `running`, `failed`, `complete`, `canceled`. The `canceled` status is set when a job is successfully canceled.
@@ -143,6 +145,9 @@ Enforce per-target exclusivity with unique index on generated column (MySQL 8.0 
 CREATE UNIQUE INDEX idx_jobs_active_target ON jobs(active_target_key);
 
 CREATE INDEX idx_jobs_queue ON jobs(status, submitted_at);
+
+-- Index for worker tracking (Phase 3)
+CREATE INDEX idx_jobs_worker_id ON jobs(worker_id);
 
 -- Index for staging cleanup queries (Phase 1)
 CREATE INDEX idx_jobs_staging_cleanup ON jobs(dbhost, status, staging_cleaned_at, completed_at);

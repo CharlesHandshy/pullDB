@@ -46,6 +46,50 @@ class TestClaimNextJob:
         assert db_job is not None
         assert db_job.status == JobStatus.RUNNING
 
+    def test_claim_persists_worker_id(
+        self, job_repo: JobRepository, sample_job: Job, mysql_pool: MySQLPool
+    ) -> None:
+        """Worker ID should be persisted to the database."""
+        job_repo.enqueue_job(sample_job)
+        worker_id = "test-worker-host:9999"
+
+        claimed = job_repo.claim_next_job(worker_id=worker_id)
+
+        # Verify the job we claimed is the one we enqueued
+        assert claimed is not None
+        assert claimed.id == sample_job.id
+
+        # Verify worker_id in database (query directly since get_job_by_id
+        # doesn't expose worker_id)
+        with mysql_pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT worker_id FROM jobs WHERE id = %s",
+                (sample_job.id,),
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            assert row["worker_id"] == worker_id
+
+    def test_claim_without_worker_id_sets_null(
+        self, job_repo: JobRepository, sample_job: Job, mysql_pool: MySQLPool
+    ) -> None:
+        """Claiming without worker_id should set NULL in database."""
+        job_repo.enqueue_job(sample_job)
+
+        job_repo.claim_next_job()  # No worker_id
+
+        # Verify worker_id is NULL
+        with mysql_pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT worker_id FROM jobs WHERE id = %s",
+                (sample_job.id,),
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            assert row["worker_id"] is None
+
     def test_claim_sets_started_at(
         self, job_repo: JobRepository, sample_job: Job
     ) -> None:
