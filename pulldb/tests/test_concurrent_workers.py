@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -95,7 +95,7 @@ class TestClaimNextJob:
     ) -> None:
         """Claiming should set started_at timestamp."""
         job_repo.enqueue_job(sample_job)
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
 
         job_repo.claim_next_job(worker_id="test-worker:1234")
 
@@ -129,7 +129,7 @@ class TestClaimNextJob:
             staging_name=f"{target_first}_staging",
             dbhost="localhost",
             status=JobStatus.QUEUED,
-            submitted_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            submitted_at=datetime.now(UTC).replace(tzinfo=None),
         )
         job2 = Job(
             id=str(uuid.uuid4()),
@@ -140,7 +140,7 @@ class TestClaimNextJob:
             staging_name=f"{target_second}_staging",
             dbhost="localhost",
             status=JobStatus.QUEUED,
-            submitted_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            submitted_at=datetime.now(UTC).replace(tzinfo=None),
         )
 
         # Enqueue (submitted_at is set by database on insert)
@@ -199,7 +199,7 @@ class TestConcurrentClaiming:
             staging_name=f"{target_one}_staging",
             dbhost="localhost",
             status=JobStatus.QUEUED,
-            submitted_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            submitted_at=datetime.now(UTC).replace(tzinfo=None),
         )
         job2 = Job(
             id=str(uuid.uuid4()),
@@ -210,7 +210,7 @@ class TestConcurrentClaiming:
             staging_name=f"{target_two}_staging",
             dbhost="localhost",
             status=JobStatus.QUEUED,
-            submitted_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            submitted_at=datetime.now(UTC).replace(tzinfo=None),
         )
 
         job_repo.enqueue_job(job1)
@@ -266,7 +266,7 @@ class TestConcurrentClaiming:
             staging_name=f"{target_name}_staging",
             dbhost="localhost",
             status=JobStatus.QUEUED,
-            submitted_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            submitted_at=datetime.now(UTC).replace(tzinfo=None),
         )
         job_repo.enqueue_job(job)
 
@@ -347,5 +347,5 @@ def sample_job() -> Job:
         staging_name=f"{target_name}_staging",
         dbhost="localhost",
         status=JobStatus.QUEUED,
-        submitted_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        submitted_at=datetime.now(UTC).replace(tzinfo=None),
     )

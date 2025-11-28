@@ -142,11 +142,10 @@ def jobs_list(
         LIMIT %s
     """
 
-    with pool.connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(query, tuple(params))
-            rows = cursor.fetchall()
-            columns = [desc[0] for desc in cursor.description]
+    with pool.connection() as conn, conn.cursor() as cursor:
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description]
 
     jobs = [dict(zip(columns, row)) for row in rows]
 
@@ -213,34 +212,33 @@ def jobs_cancel(job_id: str, force: bool) -> None:
 
     pool = _get_mysql_pool()
 
-    with pool.connection() as conn:
-        with conn.cursor() as cursor:
-            # Check job exists and is cancellable
-            cursor.execute(
-                "SELECT status FROM jobs WHERE id = %s OR id LIKE %s",
-                (job_id, f"{job_id}%"),
-            )
-            row = cursor.fetchone()
-            if not row:
-                raise click.ClickException(f"Job not found: {job_id}")
+    with pool.connection() as conn, conn.cursor() as cursor:
+        # Check job exists and is cancellable
+        cursor.execute(
+            "SELECT status FROM jobs WHERE id = %s OR id LIKE %s",
+            (job_id, f"{job_id}%"),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise click.ClickException(f"Job not found: {job_id}")
 
-            status = row[0]
-            if status in ("complete", "failed", "canceled"):
-                raise click.ClickException(f"Job is already {status}, cannot cancel.")
+        status = row[0]
+        if status in ("complete", "failed", "canceled"):
+            raise click.ClickException(f"Job is already {status}, cannot cancel.")
 
-            # Update job
-            cursor.execute(
-                """
+        # Update job
+        cursor.execute(
+            """
                 UPDATE jobs
                 SET cancel_requested_at = NOW()
                 WHERE (id = %s OR id LIKE %s) AND status IN ('queued', 'running')
                 """,
-                (job_id, f"{job_id}%"),
-            )
-            conn.commit()
+            (job_id, f"{job_id}%"),
+        )
+        conn.commit()
 
-            if cursor.rowcount == 0:
-                raise click.ClickException("Failed to cancel job.")
+        if cursor.rowcount == 0:
+            raise click.ClickException("Failed to cancel job.")
 
     click.echo(f"✓ Cancellation requested for job {job_id[:12]}...")
 
@@ -314,11 +312,10 @@ def cleanup_cmd(
         query += " AND j.dbhost = %s"
         params.append(dbhost)
 
-    with pool.connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(query, tuple(params))
-            rows = cursor.fetchall()
-            columns = [desc[0] for desc in cursor.description]
+    with pool.connection() as conn, conn.cursor() as cursor:
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description]
 
     orphans = [dict(zip(columns, row)) for row in rows]
 
@@ -366,13 +363,12 @@ def cleanup_cmd(
             try:
                 # In a real implementation, we would connect to the target host
                 # and drop the staging database. For now, we just mark it cleaned.
-                with pool.connection() as conn:
-                    with conn.cursor() as cursor:
-                        cursor.execute(
-                            "UPDATE jobs SET staging_cleaned_at = NOW() WHERE id = %s",
-                            (job_id,),
-                        )
-                        conn.commit()
+                with pool.connection() as conn, conn.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE jobs SET staging_cleaned_at = NOW() WHERE id = %s",
+                        (job_id,),
+                    )
+                    conn.commit()
                 click.echo(f"  ✓ Marked cleaned: {staging_name}")
                 cleaned += 1
             except Exception as e:
@@ -402,9 +398,8 @@ def hosts_list(json_out: bool) -> None:
     """List all registered database hosts."""
     pool = _get_mysql_pool()
 
-    with pool.connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("""
+    with pool.connection() as conn, conn.cursor() as cursor:
+        cursor.execute("""
                 SELECT
                     hostname,
                     max_concurrent_jobs,
@@ -414,8 +409,8 @@ def hosts_list(json_out: bool) -> None:
                 FROM db_hosts
                 ORDER BY hostname
             """)
-            rows = cursor.fetchall()
-            columns = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description]
 
     hosts = [dict(zip(columns, row)) for row in rows]
 
@@ -468,14 +463,13 @@ def hosts_enable(hostname: str) -> None:
     """Enable a database host (allow new jobs)."""
     pool = _get_mysql_pool()
 
-    with pool.connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "UPDATE db_hosts SET enabled = TRUE WHERE hostname = %s", (hostname,)
-            )
-            conn.commit()
-            if cursor.rowcount == 0:
-                raise click.ClickException(f"Host not found: {hostname}")
+    with pool.connection() as conn, conn.cursor() as cursor:
+        cursor.execute(
+            "UPDATE db_hosts SET enabled = TRUE WHERE hostname = %s", (hostname,)
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise click.ClickException(f"Host not found: {hostname}")
 
     click.echo(f"✓ Host {hostname} enabled")
 
@@ -486,14 +480,13 @@ def hosts_disable(hostname: str) -> None:
     """Disable a database host (prevent new jobs)."""
     pool = _get_mysql_pool()
 
-    with pool.connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "UPDATE db_hosts SET enabled = FALSE WHERE hostname = %s", (hostname,)
-            )
-            conn.commit()
-            if cursor.rowcount == 0:
-                raise click.ClickException(f"Host not found: {hostname}")
+    with pool.connection() as conn, conn.cursor() as cursor:
+        cursor.execute(
+            "UPDATE db_hosts SET enabled = FALSE WHERE hostname = %s", (hostname,)
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise click.ClickException(f"Host not found: {hostname}")
 
     click.echo(f"✓ Host {hostname} disabled")
 
@@ -621,15 +614,14 @@ def users_enable(username: str) -> None:
     """Enable a user (allow new jobs)."""
     pool = _get_mysql_pool()
 
-    with pool.connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "UPDATE auth_users SET disabled = FALSE WHERE username = %s",
-                (username,),
-            )
-            conn.commit()
-            if cursor.rowcount == 0:
-                raise click.ClickException(f"User not found: {username}")
+    with pool.connection() as conn, conn.cursor() as cursor:
+        cursor.execute(
+            "UPDATE auth_users SET disabled = FALSE WHERE username = %s",
+            (username,),
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise click.ClickException(f"User not found: {username}")
 
     click.echo(f"✓ User {username} enabled")
 
@@ -640,14 +632,13 @@ def users_disable(username: str) -> None:
     """Disable a user (prevent new jobs)."""
     pool = _get_mysql_pool()
 
-    with pool.connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "UPDATE auth_users SET disabled = TRUE WHERE username = %s", (username,)
-            )
-            conn.commit()
-            if cursor.rowcount == 0:
-                raise click.ClickException(f"User not found: {username}")
+    with pool.connection() as conn, conn.cursor() as cursor:
+        cursor.execute(
+            "UPDATE auth_users SET disabled = TRUE WHERE username = %s", (username,)
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise click.ClickException(f"User not found: {username}")
 
     click.echo(f"✓ User {username} disabled")
 

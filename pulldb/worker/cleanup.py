@@ -166,7 +166,7 @@ def _list_databases(credentials: MySQLCredentials) -> list[str]:
         cursor = conn.cursor()
         cursor.execute("SHOW DATABASES")
         rows = cursor.fetchall()
-        return [row[0] for row in rows]
+        return [str(row[0]) for row in rows]
     finally:
         conn.close()
 

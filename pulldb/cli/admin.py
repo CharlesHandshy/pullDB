@@ -20,6 +20,7 @@ import typing as t
 import click
 from dotenv import load_dotenv
 
+
 # Load .env file from standard locations
 # Priority: /opt/pulldb.service/.env (installed), then .env (dev)
 _installed_env = "/opt/pulldb.service/.env"
@@ -31,13 +32,13 @@ elif os.path.exists(_repo_env):
     load_dotenv(_repo_env)
 
 from pulldb import __version__
-from pulldb.cli.settings import settings_group
 from pulldb.cli.admin_commands import (
-    jobs_group,
     cleanup_cmd,
     hosts_group,
+    jobs_group,
     users_group,
 )
+from pulldb.cli.settings import settings_group
 
 
 @click.group(help="pullDB Admin - System administration tool")

@@ -13,11 +13,11 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from pulldb.domain.config import Config
 from pulldb.domain.errors import MyLoaderError
@@ -197,7 +197,7 @@ def _detect_backup_version(backup_dir: str) -> str:
     # 1. Primary Check: Metadata File Content
     if metadata_path.exists():
         try:
-            with open(metadata_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(metadata_path, encoding="utf-8", errors="ignore") as f:
                 # Read first non-empty line
                 for line in f:
                     line = line.strip()

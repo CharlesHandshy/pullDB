@@ -20,6 +20,7 @@ from pathlib import Path
 
 from pulldb.infra.logging import get_logger
 
+
 logger = get_logger("pulldb.worker.metadata_synthesis")
 
 
@@ -180,7 +181,7 @@ def ensure_compatible_metadata(backup_dir: str) -> None:
     else:
         # Check format
         try:
-            with open(metadata_path, "r") as f:
+            with open(metadata_path) as f:
                 first_line = f.readline()
                 # INI files usually start with [section] or comments
                 # Legacy starts with "Started dump at:"

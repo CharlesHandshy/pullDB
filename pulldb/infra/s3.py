@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING
 import boto3
 from botocore.exceptions import ProfileNotFound
 
+
 if TYPE_CHECKING:
     from mypy_boto3_s3.type_defs import (
         GetObjectOutputTypeDef,

@@ -489,7 +489,7 @@ class WorkerJobExecutor:
                         location.bucket,
                         location.prefix,
                         lookup_target,
-                        profile=location.profile,
+                        location.profile,
                     )
                 except BackupValidationError as exc:
                     attempts.append(

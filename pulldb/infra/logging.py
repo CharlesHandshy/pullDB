@@ -17,6 +17,7 @@ import logging
 import sys
 from typing import Any, cast
 
+
 # Context variable to track the active task name (e.g., job ID)
 current_task_name: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "task_name", default=None

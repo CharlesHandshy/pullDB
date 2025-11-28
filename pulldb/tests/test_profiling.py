@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -397,6 +397,7 @@ class TestProfileAPIEndpoint:
     def test_get_job_profile_not_found(self) -> None:
         """_get_job_profile should raise 404 for missing job."""
         from fastapi import HTTPException
+
         from pulldb.api.main import _get_job_profile
 
         mock_state = MagicMock()
@@ -411,6 +412,7 @@ class TestProfileAPIEndpoint:
     def test_get_job_profile_no_profile_event(self) -> None:
         """_get_job_profile should raise 404 if no profile event."""
         from fastapi import HTTPException
+
         from pulldb.api.main import _get_job_profile
 
         mock_state = MagicMock()
@@ -449,6 +451,7 @@ class TestProfileCLI:
     def test_profile_cmd_requires_8_char_job_id(self) -> None:
         """profile command should require at least 8 character job ID."""
         from click.testing import CliRunner
+
         from pulldb.cli.main import cli
 
         runner = CliRunner()

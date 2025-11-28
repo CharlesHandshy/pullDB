@@ -38,7 +38,7 @@ class _FakeCursor:
     rowcount: int | None = 0
     with_rows: bool = False
 
-    def execute(self, sql: str, multi: bool = False) -> object:  # noqa: FBT001, FBT002
+    def execute(self, sql: str, multi: bool = False) -> object:
         """Execute SQL with optional multi-statement support."""
         if multi:
             # Return an iterator of fake results for multi-statement execution

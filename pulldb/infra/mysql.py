@@ -13,7 +13,7 @@ import typing as t
 import uuid
 import warnings
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import mysql.connector
 from mysql.connector import errorcode
@@ -301,7 +301,7 @@ class JobRepository:
             # Return job with updated status and started_at
             # Use current time as approximation since DB sets it in UPDATE
             job = self._row_to_job(row)
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            now = datetime.now(UTC).replace(tzinfo=None)
             return Job(
                 id=job.id,
                 owner_user_id=job.owner_user_id,

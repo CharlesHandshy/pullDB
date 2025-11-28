@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
 import typing as t
 import uuid
-import os
-import json
 from datetime import UTC, datetime
 
 import fastapi
@@ -116,7 +116,7 @@ class APIState(t.NamedTuple):
     user_repo: UserRepository
     job_repo: JobRepository
     settings_repo: SettingsRepository
-    host_repo: "HostRepository"
+    host_repo: HostRepository
 
 
 def _initialize_state() -> APIState:

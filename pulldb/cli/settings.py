@@ -119,7 +119,7 @@ def _read_env_file(env_path: Path) -> dict[str, str]:
     if not env_path.exists():
         return settings
 
-    with open(env_path, "r") as f:
+    with open(env_path) as f:
         for line in f:
             line = line.strip()
             # Skip comments and empty lines
@@ -153,7 +153,7 @@ def _write_env_setting(env_path: Path, env_var: str, value: str) -> bool:
     found = False
     pattern = re.compile(rf"^{re.escape(env_var)}\s*=")
 
-    with open(env_path, "r") as f:
+    with open(env_path) as f:
         for line in f:
             if pattern.match(line.strip()):
                 # Replace existing line
@@ -675,12 +675,11 @@ def pull_settings(dry_run: bool) -> None:
 
         if dry_run:
             click.echo(f"  Would set {env_var}={display}")
+        elif _write_env_setting(env_path, env_var, value):
+            click.echo(f"  ✓ {env_var}={display}")
+            updated += 1
         else:
-            if _write_env_setting(env_path, env_var, value):
-                click.echo(f"  ✓ {env_var}={display}")
-                updated += 1
-            else:
-                click.echo(f"  ✗ Failed: {env_var}")
+            click.echo(f"  ✗ Failed: {env_var}")
 
     click.echo("")
     if dry_run:

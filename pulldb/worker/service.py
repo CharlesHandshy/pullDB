@@ -30,7 +30,6 @@ from pulldb.infra.mysql import (
     HostRepository,
     JobRepository,
     MySQLPool,
-    build_default_pool,
 )
 from pulldb.infra.s3 import S3Client
 from pulldb.infra.secrets import CredentialResolver
