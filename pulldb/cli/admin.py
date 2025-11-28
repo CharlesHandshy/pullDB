@@ -5,6 +5,10 @@ This CLI is intended for server operators, not end users.
 
 Commands:
 - settings: Manage configuration settings (list, get, set, reset, export)
+- jobs: View and manage jobs across all users
+- cleanup: Cleanup orphaned staging databases and work files
+- hosts: Manage registered database hosts
+- users: View and manage users
 """
 
 from __future__ import annotations
@@ -16,6 +20,12 @@ import click
 
 from pulldb import __version__
 from pulldb.cli.settings import settings_group
+from pulldb.cli.admin_commands import (
+    jobs_group,
+    cleanup_cmd,
+    hosts_group,
+    users_group,
+)
 
 
 @click.group(help="pullDB Admin - System administration tool")
@@ -29,8 +39,12 @@ def cli() -> None:
     pass
 
 
-# Register settings subcommand group
+# Register command groups
 cli.add_command(settings_group)
+cli.add_command(jobs_group)
+cli.add_command(cleanup_cmd)
+cli.add_command(hosts_group)
+cli.add_command(users_group)
 
 
 def main(argv: t.Sequence[str] | None = None) -> int:

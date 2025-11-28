@@ -173,7 +173,7 @@ sudo systemctl is-active pulldb-worker
 sudo journalctl -u pulldb-worker -p err --since "1 hour ago"
 
 # Check active jobs in database
-pulldb-admin jobs --active
+pulldb-admin jobs list --active
 
 # Check worker locks
 sudo mysql -e "SELECT * FROM pulldb_service.worker_locks"
@@ -394,10 +394,10 @@ sudo dpkg -i pulldb_0.0.4_amd64.deb
 sudo systemctl status pulldb-worker pulldb-api
 
 # Queue depth
-pulldb-admin jobs --pending | wc -l
+pulldb-admin jobs list --status=queued | wc -l
 
 # Recent failures
-pulldb-admin jobs --failed --limit 10
+pulldb-admin jobs list --status=failed --limit=10
 
 # Disk usage
 df -h /opt/pulldb.service/work
@@ -451,13 +451,13 @@ mysql -u pulldb_worker -p -e "SELECT 1"
 sudo systemctl status pulldb-worker
 
 # Check for pending jobs
-pulldb-admin jobs --pending
+pulldb-admin jobs list --status=queued
 
 # Check worker locks
 sudo mysql -e "SELECT * FROM pulldb_service.worker_locks"
 
 # Check concurrency limits
-pulldb-admin settings
+pulldb-admin settings list
 ```
 
 ### High Memory Usage

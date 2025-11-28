@@ -25,13 +25,13 @@ pulldb user=charles customer=acme
 # 2. Wait for the restore to complete
 pulldb status abc123de-f456-7890-abcd-ef1234567890
 
-# Or watch all your active jobs
-pulldb status --watch
+# Or stream events in realtime
+pulldb events abc123de --follow
 
 # 3. Once complete, connect to your database
-mysql -u charles chrles_acme
+mysql -u charles -p chrles_acme
 
-# That's it! The customer database is now available locally.
+# That's it! The customer database is now available.
 ```
 
 ### Common Workflows
@@ -42,6 +42,9 @@ pulldb user=charles customer=acme
 
 # Restore a specific date's backup
 pulldb user=charles customer=acme date=2025-11-27
+
+# Overwrite existing target database
+pulldb user=charles customer=acme overwrite
 
 # Check your active jobs
 pulldb status
@@ -54,6 +57,12 @@ pulldb cancel <job_id>
 
 # View detailed job events
 pulldb events <job_id>
+
+# Search for available backups
+pulldb search acme
+
+# View performance profile of completed job
+pulldb profile <job_id>
 ```
 
 ---
@@ -66,7 +75,12 @@ Submits a restore job to download a customer backup from S3 and restore it to yo
 
 **Syntax:**
 ```bash
-pulldb user=<username> customer=<customer_id> [dbhost=<host>] [date=<YYYY-MM-DD>]
+pulldb user=<username> customer=<customer_id> [dbhost=<host>] [date=<YYYY-MM-DD>] [overwrite]
+```
+
+**Alternative: QA Template Restore:**
+```bash
+pulldb user=<username> qatemplate [dbhost=<host>]
 ```
 
 **Parameters:**
@@ -74,9 +88,13 @@ pulldb user=<username> customer=<customer_id> [dbhost=<host>] [date=<YYYY-MM-DD>
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `user=` | **Yes** | - | Your username for job ownership and database naming |
-| `customer=` | **Yes** | - | Customer identifier matching S3 backup path |
+| `customer=` | **Yes**† | - | Customer identifier matching S3 backup path |
+| `qatemplate` | **Yes**† | - | Restore QA template instead of customer (mutually exclusive with `customer=`) |
 | `dbhost=` | No | `localhost` | Target database host (must be in `db_hosts` table) |
 | `date=` | No | Latest | Specific backup date in `YYYY-MM-DD` format |
+| `overwrite` | No | false | Overwrite existing target database without confirmation |
+
+†Either `customer=` or `qatemplate` must be specified, but not both.
 
 **Examples:**
 
@@ -90,8 +108,14 @@ pulldb user=charles customer=acme dbhost=dev-db-01
 # Restore specific date
 pulldb user=charles customer=acme date=2025-11-27
 
+# Overwrite existing database
+pulldb user=charles customer=acme overwrite
+
 # Full specification
-pulldb user=charles customer=acme dbhost=dev-db-01 date=2025-11-27
+pulldb user=charles customer=acme dbhost=dev-db-01 date=2025-11-27 overwrite
+
+# QA template restore
+pulldb user=charles qatemplate
 ```
 
 **Target Database Naming:**
@@ -180,36 +204,54 @@ Shows your completed job history.
 
 **Syntax:**
 ```bash
-pulldb history [--limit=N]
+pulldb history [options]
 ```
 
 **Parameters:**
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--limit=` | 10 | Number of jobs to show |
+| `--limit=` | 50 | Number of jobs to show |
+| `--days=` | 30 | Show jobs from last N days |
+| `--user=` | - | Filter by user code |
+| `--target=` | - | Filter by target database name |
+| `--dbhost=` | - | Filter by database host |
+| `--status=` | - | Filter by status (complete, failed, canceled) |
+| `--wide` | false | Show additional columns including error details |
+| `--json` | false | Output JSON instead of table |
 
 **Examples:**
 
 ```bash
-# Last 10 jobs
+# Last 30 days of jobs
 pulldb history
 
 # Last 50 jobs
 pulldb history --limit=50
+
+# Last 7 days
+pulldb history --days=7
+
+# Only failed jobs
+pulldb history --status=failed
+
+# With error details
+pulldb history --wide
+
+# JSON output
+pulldb history --json
 ```
 
 **Output:**
 ```
-Job History for charles:
+STATUS       JOB_ID        TARGET              USER    COMPLETED         DURATION
+-----------  ------------  ------------------  ------  ----------------  --------
+✓ complete   abc123de...   chrles_acme         CHRLES  2025-11-28 10:45  15.2m
+✗ failed     def456ab...   chrles_beta         CHRLES  2025-11-27 15:30  2.3m
+○ canceled   ghi789cd...   chrles_gamma        CHRLES  2025-11-26 09:15  0.5m
 
-  ID            Target           Host        Status     Completed
-  ────────────  ───────────────  ──────────  ─────────  ────────────────────
-  abc123de...   chrles_acme      localhost   complete   2025-11-28 10:45:00
-  def456ab...   chrles_beta      dev-db-01   failed     2025-11-27 15:30:00
-  ghi789cd...   chrles_gamma     localhost   canceled   2025-11-26 09:15:00
-
-Showing 3 of 3 jobs
+3 job(s): 1 complete, 1 failed, 1 canceled
+(showing last 30 days, limit 50)
 ```
 
 ---
@@ -251,28 +293,43 @@ Shows detailed event log for a job.
 
 **Syntax:**
 ```bash
-pulldb events <job_id>
+pulldb events <job_id> [options]
 ```
+
+**Parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--follow`, `-f` | false | Stream events in realtime (Ctrl+C to stop) |
+| `--limit=` | 100 | Maximum number of events to show |
+| `--json` | false | Output JSON instead of table |
 
 **Examples:**
 
 ```bash
+# Show all events for a job
 pulldb events abc123de-f456-7890-abcd-ef1234567890
+
+# Stream events in realtime
+pulldb events abc123de --follow
+
+# JSON output
+pulldb events abc123de --json
 ```
 
 **Output:**
 ```
-Events for job abc123de-f456-7890-abcd-ef1234567890:
+Events for job abc123de...
 
-  Timestamp              Event Type    Detail
-  ─────────────────────  ────────────  ─────────────────────────────────────
-  2025-11-28 10:30:00    queued        Job submitted by charles
-  2025-11-28 10:30:05    running       Worker picked up job
-  2025-11-28 10:35:00    note          Download complete: 2.3 GB
-  2025-11-28 10:40:00    note          myloader: 50% complete
-  2025-11-28 10:45:00    complete      Restore finished successfully
+TIMESTAMP            EVENT TYPE    DETAIL
+-------------------  ------------  -------------------------------------
+2025-11-28 10:30:00  queued        Job submitted by charles
+2025-11-28 10:30:05  running       Worker picked up job
+2025-11-28 10:35:00  note          Download complete: 2.3 GB
+2025-11-28 10:40:00  note          myloader: 50% complete
+2025-11-28 10:45:00  complete      Restore finished successfully
 
-Total: 5 events
+Total: 5 event(s)
 ```
 
 **Event Types:**
@@ -286,6 +343,103 @@ Total: 5 events
 | `failed` | Job failed |
 | `complete` | Job succeeded |
 | `canceled` | Job canceled |
+
+---
+
+### search
+
+Search for available backups by customer name. Supports wildcard patterns.
+
+**Syntax:**
+```bash
+pulldb search <customer> [options]
+```
+
+**Parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--date=` | - | Start date in YYYYMMDD format (show backups from this date onwards) |
+| `--limit=` | 5 | Maximum number of backups to show |
+| `--env=` | both | Environment to search: staging, prod, or both |
+| `--json` | false | Output JSON instead of table |
+
+**Examples:**
+
+```bash
+# Search for recent backups
+pulldb search actionpest
+
+# Search with wildcard
+pulldb search action*
+
+# Backups from specific date onwards
+pulldb search actionpest --date=20251101
+
+# More results
+pulldb search actionpest --limit=10
+
+# Search only production
+pulldb search actionpest --env=prod
+```
+
+**Output:**
+```
+Backups matching 'actionpest':
+
+CUSTOMER     DATE        TIME (UTC)  SIZE      ENV   FILENAME
+-----------  ----------  ----------  --------  ----  ----------------------------------
+actionpest   2025-11-28  03:00:15    1.2 GB    prod  daily_mydumper_actionpest_2025-...
+actionpest   2025-11-27  03:00:12    1.2 GB    prod  daily_mydumper_actionpest_2025-...
+actionpest   2025-11-26  03:00:18    1.1 GB    prod  daily_mydumper_actionpest_2025-...
+
+3 backup(s) found.
+```
+
+---
+
+### profile
+
+Show performance profile for a completed job. Displays timing breakdown by restore phase.
+
+**Syntax:**
+```bash
+pulldb profile <job_id> [--json]
+```
+
+**Examples:**
+
+```bash
+# Show performance profile
+pulldb profile abc123de-f456-7890-abcd-ef1234567890
+
+# JSON output
+pulldb profile abc123de --json
+```
+
+**Output:**
+```
+Performance Profile: abc123de1234...
+============================================================
+Status: Complete
+Total Duration: 15m 23s
+Total Data: 2.3 GB
+
+Phase Breakdown:
+------------------------------------------------------------
+PHASE            DURATION          %    THROUGHPUT
+---------------- ------------ -------- ------------
+discovery               1.2s     0.1%            -
+download             5m 12s    33.8%     7.5 MB/s
+extraction           2m 45s    17.9%    14.2 MB/s
+myloader             6m 30s    42.3%            -
+post_sql                45s     4.9%            -
+metadata                 2s     0.0%            -
+atomic_rename          150ms     0.0%            -
+------------------------------------------------------------
+
+💡 Tip: myloader took 42% of total time.
+```
 
 ---
 

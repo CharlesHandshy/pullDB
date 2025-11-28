@@ -76,7 +76,7 @@ sudo /opt/pulldb.service/scripts/install_pulldb.sh
 
 # Verify
 sudo systemctl status pulldb-worker
-pulldb-admin settings
+pulldb-admin settings list
 ```
 
 ---
@@ -208,7 +208,7 @@ sudo systemctl status pulldb-worker
 sudo pulldb-migrate verify
 
 # Check settings
-pulldb-admin settings
+pulldb-admin settings list
 
 # Test a restore (dry run)
 pulldb restore mydb --to staging_mydb --dry-run
@@ -285,7 +285,7 @@ sudo dpkg -i pulldb_0.0.4_amd64.deb
 
 # Verify
 pulldb --version
-pulldb-admin settings
+pulldb-admin settings list
 ```
 
 ### Manual Upgrade
@@ -308,7 +308,7 @@ sudo systemctl start pulldb-worker pulldb-api
 
 # Verify
 sudo pulldb-migrate verify
-pulldb-admin settings
+pulldb-admin settings list
 ```
 
 ### Using Upgrade Script

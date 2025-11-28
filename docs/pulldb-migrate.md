@@ -215,20 +215,16 @@ Waits for the database to become available. Useful in startup scripts.
 
 **Syntax:**
 ```bash
-sudo pulldb-migrate wait [--timeout=N]
+sudo pulldb-migrate wait
 ```
-
-**Parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `--timeout=` | 60 | Seconds to wait before failing |
 
 **Output:**
 ```
 [INFO] Waiting for database...
 [INFO] Database is ready
 ```
+
+The command uses dbmate's default timeout behavior.
 
 ---
 

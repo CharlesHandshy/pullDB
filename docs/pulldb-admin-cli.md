@@ -10,13 +10,13 @@ The `pulldb-admin` CLI provides administrative commands for system-wide settings
 
 ```bash
 # View all settings
-pulldb-admin settings
+pulldb-admin settings list
 
 # Update concurrency limits
-pulldb-admin settings max_active_jobs_per_user=3
+pulldb-admin settings set max_active_jobs_per_user 3
 
 # View all active jobs
-pulldb-admin jobs --active
+pulldb-admin jobs list --active
 
 # Cleanup orphaned resources
 pulldb-admin cleanup --dry-run
@@ -30,60 +30,74 @@ pulldb-admin cleanup --dry-run
 
 View or modify system configuration settings.
 
-**Syntax:**
+**Subcommands:**
 ```bash
-# View all settings
-pulldb-admin settings
-
-# View specific setting
-pulldb-admin settings <key>
-
-# Update a setting
-pulldb-admin settings <key>=<value>
+pulldb-admin settings list              # List all settings
+pulldb-admin settings get <key>         # Get a specific setting
+pulldb-admin settings set <key> <value> # Set a setting value
+pulldb-admin settings reset <key>       # Reset setting to default
+pulldb-admin settings export            # Export all settings
 ```
 
 **Examples:**
 
 ```bash
 # View all settings
-pulldb-admin settings
+pulldb-admin settings list
+
+# View all settings including unset ones
+pulldb-admin settings list --all
 
 # View specific setting
-pulldb-admin settings max_active_jobs_per_user
+pulldb-admin settings get max_active_jobs_per_user
 
 # Set per-user concurrent job limit
-pulldb-admin settings max_active_jobs_per_user=3
+pulldb-admin settings set max_active_jobs_per_user 3
 
 # Set global concurrent job limit
-pulldb-admin settings max_active_jobs_global=10
+pulldb-admin settings set max_active_jobs_global 10
 
-# Disable limits (0 = unlimited)
-pulldb-admin settings max_active_jobs_per_user=0
-pulldb-admin settings max_active_jobs_global=0
+# Set with description
+pulldb-admin settings set max_active_jobs_per_user 3 -d "Limit for Phase 2"
+
+# Reset to environment/default value
+pulldb-admin settings reset max_active_jobs_per_user
+
+# Export as environment variables
+pulldb-admin settings export
+
+# Export as JSON
+pulldb-admin settings export --format=json
 ```
 
-**Output (view all):**
+**Output (list):**
 ```
-System Settings:
+SETTING                    SOURCE       VALUE
+-------------------------  -----------  ----------------------------------------
+myloader_binary            default      /opt/pulldb.service/bin/myloader-0.19.3-3
+myloader_threads           database     8
+max_active_jobs_per_user   database     3
+max_active_jobs_global     environment  10
+work_dir                   default      /opt/pulldb.service/work
 
-  Key                        Value                                              Description
-  ─────────────────────────  ─────────────────────────────────────────────────  ────────────────────────────────────
-  default_dbhost             localhost                                          Default database host
-  s3_bucket_path             pestroutes-rds-backup-prod-vpc-us-east-1-s3/...    S3 backup bucket path
-  work_dir                   /var/lib/pulldb/work/                              Working directory for downloads
-  max_active_jobs_per_user   3                                                  Max concurrent jobs per user
-  max_active_jobs_global     10                                                 Max concurrent jobs system-wide
+5 setting(s) displayed.
+
+Use 'pulldb-admin settings get <key>' for full value.
+Use 'pulldb-admin settings set <key> <value>' to override in database.
 ```
 
 **Available Settings:**
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `default_dbhost` | string | `localhost` | Default target database host |
-| `s3_bucket_path` | string | - | S3 bucket and prefix for backups |
-| `work_dir` | string | `/var/lib/pulldb/work/` | Temporary download directory |
+| `myloader_binary` | string | `/opt/pulldb.service/bin/myloader-0.19.3-3` | Path to myloader binary |
+| `myloader_threads` | int | `8` | Number of parallel restore threads |
+| `myloader_timeout_seconds` | int | `7200` | Maximum execution time |
+| `work_dir` | string | `/opt/pulldb.service/work` | Working directory |
 | `max_active_jobs_per_user` | int | `0` | Per-user job limit (0=unlimited) |
 | `max_active_jobs_global` | int | `0` | System-wide job limit (0=unlimited) |
+
+**Setting Priority:** Database > Environment > Default
 
 ---
 
@@ -91,48 +105,49 @@ System Settings:
 
 View and manage jobs across all users.
 
-**Syntax:**
+**Subcommands:**
 ```bash
-# View all active jobs
-pulldb-admin jobs --active
-
-# View recent jobs
-pulldb-admin jobs --limit=N
-
-# Filter by user
-pulldb-admin jobs --user=<username>
-
-# Filter by host
-pulldb-admin jobs --dbhost=<host>
-
-# Filter by status
-pulldb-admin jobs --status=<status>
+pulldb-admin jobs list [OPTIONS]        # List jobs
+pulldb-admin jobs cancel <job_id> [-f]  # Cancel a job
 ```
 
-**Parameters:**
+**List Options:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--active` | - | Show only active jobs (queued/running) |
+| `--limit=N` | 20 | Number of jobs to show |
+| `--user=` | - | Filter by username or user_code |
+| `--dbhost=` | - | Filter by target host |
+| `--status=` | - | Filter by status (queued/running/complete/failed/canceled) |
+| `--json` | - | Output JSON instead of table |
+
+**Cancel Options:**
 
 | Parameter | Description |
 |-----------|-------------|
-| `--active` | Show only queued/running jobs |
-| `--limit=N` | Number of jobs to show (default: 20) |
-| `--user=` | Filter by username |
-| `--dbhost=` | Filter by target host |
-| `--status=` | Filter by status (queued/running/failed/complete/canceled) |
+| `-f, --force` | Skip confirmation prompt |
 
 **Examples:**
 
 ```bash
 # All active jobs across all users
-pulldb-admin jobs --active
+pulldb-admin jobs list --active
 
 # Recent jobs from specific user
-pulldb-admin jobs --user=charles --limit=50
+pulldb-admin jobs list --user=charles --limit=50
 
 # Failed jobs on specific host
-pulldb-admin jobs --dbhost=dev-db-01 --status=failed
+pulldb-admin jobs list --dbhost=dev-db-01 --status=failed
 
 # All running jobs
-pulldb-admin jobs --status=running
+pulldb-admin jobs list --status=running
+
+# Cancel a job (with confirmation)
+pulldb-admin jobs cancel abc123de
+
+# Cancel a job (skip confirmation)
+pulldb-admin jobs cancel abc123de --force
 ```
 
 **Output:**
@@ -252,30 +267,41 @@ Cleanup Complete:
 
 Manage registered database hosts.
 
-**Syntax:**
+**Subcommands:**
 ```bash
-# List all hosts
-pulldb-admin hosts
-
-# Show host details
-pulldb-admin hosts <hostname>
-
-# Enable/disable host
-pulldb-admin hosts <hostname> --enable
-pulldb-admin hosts <hostname> --disable
+pulldb-admin hosts list [OPTIONS]       # List all hosts
+pulldb-admin hosts add <hostname>       # Add a new host
+pulldb-admin hosts enable <hostname>    # Enable a host
+pulldb-admin hosts disable <hostname>   # Disable a host
 ```
+
+**List Options:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `--json` | Output JSON instead of table |
+
+**Add Options:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--max-concurrent=N` | 1 | Maximum concurrent jobs on this host |
+| `--credential-ref=` | - | AWS Secrets Manager reference for credentials |
 
 **Examples:**
 
 ```bash
 # List all registered hosts
-pulldb-admin hosts
+pulldb-admin hosts list
+
+# Add a new host
+pulldb-admin hosts add dev-db-02 --max-concurrent=2 --credential-ref=aws-secretsmanager:/pulldb/mysql/dev-db-02
 
 # Disable a host (prevents new jobs)
-pulldb-admin hosts dev-db-01 --disable
+pulldb-admin hosts disable dev-db-01
 
 # Re-enable a host
-pulldb-admin hosts dev-db-01 --enable
+pulldb-admin hosts enable dev-db-01
 ```
 
 **Output:**
@@ -296,29 +322,34 @@ Total: 2 hosts (2 enabled)
 
 View and manage users.
 
-**Syntax:**
+**Subcommands:**
 ```bash
-# List all users
-pulldb-admin users
-
-# Show user details
-pulldb-admin users <username>
-
-# Disable a user
-pulldb-admin users <username> --disable
-
-# Enable a user
-pulldb-admin users <username> --enable
+pulldb-admin users list [OPTIONS]       # List all users
+pulldb-admin users show <username>      # Show user details
+pulldb-admin users enable <username>    # Enable a user
+pulldb-admin users disable <username>   # Disable a user
 ```
+
+**List Options:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `--json` | Output JSON instead of table |
 
 **Examples:**
 
 ```bash
 # List all users
-pulldb-admin users
+pulldb-admin users list
+
+# Show detailed user info
+pulldb-admin users show charles
 
 # Disable a user (prevents new jobs)
-pulldb-admin users charles --disable
+pulldb-admin users disable charles
+
+# Re-enable a user
+pulldb-admin users enable charles
 ```
 
 **Output:**
@@ -360,14 +391,14 @@ Total: 4 users
 
 ```bash
 # Check current limits
-pulldb-admin settings max_active_jobs_per_user
-pulldb-admin settings max_active_jobs_global
+pulldb-admin settings get max_active_jobs_per_user
+pulldb-admin settings get max_active_jobs_global
 
 # See current active job count
-pulldb-admin jobs --active
+pulldb-admin jobs list --active
 
 # Check per-user breakdown
-pulldb-admin jobs --active | grep -E "Owner|Total"
+pulldb-admin jobs list --active | grep -E "Owner|Total"
 ```
 
 ---
@@ -388,26 +419,26 @@ pulldb-admin cleanup --execute
 
 ```bash
 # Check active jobs
-pulldb-admin jobs --active
+pulldb-admin jobs list --active
 
 # Check for stuck jobs (running too long)
-pulldb-admin jobs --status=running
+pulldb-admin jobs list --status=running
 
 # Verify settings
-pulldb-admin settings
+pulldb-admin settings list
 ```
 
 ### Emergency: Disable All Restores
 
 ```bash
-# Set global limit to 0 active jobs
-pulldb-admin settings max_active_jobs_global=1
+# Set global limit to 1 active job
+pulldb-admin settings set max_active_jobs_global 1
 
 # Wait for current jobs to complete
-pulldb-admin jobs --active
+pulldb-admin jobs list --active
 
 # Or disable specific host
-pulldb-admin hosts dev-db-01 --disable
+pulldb-admin hosts disable dev-db-01
 ```
 
 ---
@@ -418,13 +449,13 @@ pulldb-admin hosts dev-db-01 --disable
 
 ```bash
 # Check current counts
-pulldb-admin jobs --active
+pulldb-admin jobs list --active
 
 # Identify heavy users
-pulldb-admin jobs --active --user=charles
+pulldb-admin jobs list --active --user=charles
 
 # Adjust limits if needed
-pulldb-admin settings max_active_jobs_per_user=2
+pulldb-admin settings set max_active_jobs_per_user 2
 ```
 
 ### Orphaned Staging Databases
@@ -441,11 +472,11 @@ pulldb-admin cleanup --execute
 
 ```bash
 # Check jobs on specific host
-pulldb-admin jobs --dbhost=dev-db-01 --active
+pulldb-admin jobs list --dbhost=dev-db-01 --active
 
 # Temporarily disable host
-pulldb-admin hosts dev-db-01 --disable
+pulldb-admin hosts disable dev-db-01
 
 # Wait for jobs to complete, then re-enable
-pulldb-admin hosts dev-db-01 --enable
+pulldb-admin hosts enable dev-db-01
 ```

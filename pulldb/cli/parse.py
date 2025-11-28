@@ -6,6 +6,7 @@ Validation rules (strict FAIL HARD semantics):
    sanitization) used for user_code derivation
  - Exactly one of ``customer=<id>`` or literal ``qatemplate`` must appear
  - Optional ``dbhost=<hostname>`` token
+ - Optional ``date=<YYYY-MM-DD>`` token for specific backup date
  - Optional ``overwrite`` flag token
  - Unknown tokens produce a validation error (never ignored)
  - Target length constraint: ``<user_code><sanitized_customer>`` <= 51 chars
@@ -21,6 +22,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 
 USER_CODE_LEN = 6
@@ -46,6 +48,7 @@ class RestoreCLIOptions:
         customer_id: Raw customer identifier if provided (None for qatemplate).
         is_qatemplate: True when qatemplate restore requested.
         dbhost: Optional explicit database host override.
+        date: Optional specific backup date in YYYY-MM-DD format.
         overwrite: Whether overwrite flag was supplied.
         user_code_candidate: First 6 letters of sanitized username (lowercase).
         target_candidate: Candidate target database name (user_code + customer
@@ -57,6 +60,7 @@ class RestoreCLIOptions:
     customer_id: str | None
     is_qatemplate: bool
     dbhost: str | None
+    date: str | None
     overwrite: bool
     user_code_candidate: str
     target_candidate: str
@@ -65,6 +69,7 @@ class RestoreCLIOptions:
 _TOKEN_USER = re.compile(r"^user=([A-Za-z0-9_.-]+)$")
 _TOKEN_CUSTOMER = re.compile(r"^customer=([A-Za-z0-9_.-]+)$")
 _TOKEN_DBHOST = re.compile(r"^dbhost=([A-Za-z0-9_.-]+)$")
+_TOKEN_DATE = re.compile(r"^date=(\d{4}-\d{2}-\d{2})$")
 
 
 def _sanitize_letters(value: str) -> str:
@@ -101,10 +106,11 @@ def _initial_username(tokens: Sequence[str]) -> tuple[str, str]:
     return username, sanitized_username[:USER_CODE_LEN]
 
 
-def _tokenize(tokens: Sequence[str]) -> tuple[str | None, bool, str | None, bool]:
+def _tokenize(tokens: Sequence[str]) -> tuple[str | None, bool, str | None, str | None, bool]:
     customer_id: str | None = None
     is_qatemplate = False
     dbhost: str | None = None
+    date: str | None = None
     overwrite = False
 
     def handle_qatemplate() -> None:
@@ -142,8 +148,24 @@ def _tokenize(tokens: Sequence[str]) -> tuple[str | None, bool, str | None, bool
                 )
             dbhost = m_host.group(1)
             continue
+        m_date = _TOKEN_DATE.match(tok)
+        if m_date:
+            if date is not None:
+                raise CLIParseError(
+                    f"date specified more than once ('{date}', '{tok}')."
+                )
+            date_str = m_date.group(1)
+            # Validate date is a real date
+            try:
+                datetime.strptime(date_str, "%Y-%m-%d")
+            except ValueError:
+                raise CLIParseError(
+                    f"Invalid date '{date_str}'. Must be a valid date in YYYY-MM-DD format."
+                )
+            date = date_str
+            continue
         raise CLIParseError(f"Unrecognized token: '{tok}'")
-    return customer_id, is_qatemplate, dbhost, overwrite
+    return customer_id, is_qatemplate, dbhost, date, overwrite
 
 
 def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
@@ -164,7 +186,7 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
     username, user_code_candidate = _initial_username(tokens)
 
     # Remaining tokens processing
-    customer_id, is_qatemplate, dbhost, overwrite = _tokenize(tokens[1:])
+    customer_id, is_qatemplate, dbhost, date, overwrite = _tokenize(tokens[1:])
 
     # Enforce exactly one of customer or qatemplate specified
     if customer_id is None and not is_qatemplate:
@@ -201,6 +223,7 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
         customer_id=customer_id,
         is_qatemplate=is_qatemplate,
         dbhost=dbhost,
+        date=date,
         overwrite=overwrite,
         user_code_candidate=user_code_candidate,
         target_candidate=target_candidate,

@@ -261,6 +261,7 @@ def restore_cmd(options: tuple[str, ...]) -> None:
         "customer": parsed.customer_id,
         "qatemplate": parsed.is_qatemplate,
         "dbhost": parsed.dbhost,
+        "date": parsed.date,
         "overwrite": parsed.overwrite,
     }
 
@@ -293,6 +294,7 @@ def restore_cmd(options: tuple[str, ...]) -> None:
 
 
 @cli.command("status", help="Show active (queued/running) jobs")
+@click.argument("job_id", required=False)
 @click.option(
     "--json",
     "json_out",
@@ -329,13 +331,10 @@ def restore_cmd(options: tuple[str, ...]) -> None:
 @click.option(
     "--rt",
     is_flag=True,
-    help="Realtime mode: stream events for a specific job (requires --job-id).",
-)
-@click.option(
-    "--job-id",
-    help="Job ID to filter by or stream events for.",
+    help="Realtime mode: stream events for the specified job.",
 )
 def status_cmd(
+    job_id: str | None,
     json_out: bool,
     wide: bool,
     limit: int,
@@ -343,12 +342,11 @@ def status_cmd(
     history: bool,
     filter_json: str | None,
     rt: bool,
-    job_id: str | None,
 ) -> None:
     """Show jobs ordered by submission time.
 
     Provides a view of work in progress and history. By default outputs a table;
-    use --json for machine-readable output.
+    use --json for machine-readable output. Pass a JOB_ID to filter by that job.
 
     FAIL HARD behaviors:
       * Configuration load failures surface with actionable guidance.
@@ -356,6 +354,7 @@ def status_cmd(
       * Invalid limit (<=0 or >1000) aborts with usage error.
 
     Args:
+        job_id: Optional job ID to filter by or stream events for.
         json_out: Emit JSON list of jobs.
         wide: Include staging_name column.
         limit: Max number of rows to display.
@@ -363,11 +362,10 @@ def status_cmd(
         history: Show historical jobs.
         filter_json: JSON filter string.
         rt: Realtime event streaming mode.
-        job_id: Specific job ID to target.
     """
     if rt:
         if not job_id:
-            raise click.UsageError("--rt requires --job-id")
+            raise click.UsageError("--rt requires a job_id argument")
         _stream_job_events(job_id)
         return
 
@@ -382,10 +380,8 @@ def status_cmd(
     if filter_json:
         params["filter"] = filter_json
     
-    # If job_id provided without --rt, filter by it (client-side for now as API doesn't support it directly yet,
-    # or we could add it to filter_json)
+    # If job_id provided, filter by it
     if job_id:
-        # We can use the filter param logic
         current_filter = {}
         if filter_json:
             try:
@@ -829,6 +825,105 @@ def cancel_cmd(job_id: str, force: bool) -> None:
     else:
         click.echo(f"Unexpected status: {status}")
         click.echo(f"  {message}")
+
+
+@cli.command("events", help="Show event log for a job")
+@click.argument("job_id")
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of table",
+)
+@click.option(
+    "--follow",
+    "-f",
+    is_flag=True,
+    help="Follow mode: stream new events as they occur (Ctrl+C to stop)",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=100,
+    show_default=True,
+    help="Maximum number of events to show",
+)
+def events_cmd(job_id: str, json_out: bool, follow: bool, limit: int) -> None:
+    """Show detailed event log for a job.
+
+    Displays timestamped events including job state transitions, progress
+    updates, and any errors. Use --follow to stream events in realtime.
+
+    Args:
+        job_id: UUID of the job (can use short prefix, minimum 8 chars).
+        json_out: Output raw JSON instead of formatted table.
+        follow: Stream events as they occur (Ctrl+C to stop).
+        limit: Maximum number of events to retrieve.
+
+    Examples:
+        pulldb events abc12345-6789-...   # Show all events
+        pulldb events abc12345 --follow   # Stream events
+        pulldb events abc12345 --json     # JSON output
+    """
+    # Validate job_id format
+    if len(job_id) < 8:
+        raise click.UsageError(
+            "Job ID must be at least 8 characters. "
+            "Use 'pulldb status' to find job IDs."
+        )
+
+    if follow:
+        _stream_job_events(job_id)
+        return
+
+    # Fetch events
+    params: dict[str, t.Any] = {"limit": limit}
+    try:
+        events = _api_get(f"/api/jobs/{job_id}/events", params)
+    except _APIError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if not events:
+        click.echo(f"No events found for job {job_id[:8]}...")
+        return
+
+    if json_out:
+        click.echo(json_module.dumps(events, indent=2, default=str))
+        return
+
+    # Table output
+    click.echo(f"Events for job {job_id[:8]}...\n")
+
+    headers = ["TIMESTAMP", "EVENT TYPE", "DETAIL"]
+    rows: list[list[str]] = []
+
+    for event in events:
+        ts = _parse_iso(event.get("logged_at"))
+        ts_str = ts.strftime("%Y-%m-%d %H:%M:%S") if ts else "-"
+        event_type = event.get("event_type", "unknown")
+        detail = event.get("detail") or "-"
+        # Truncate long details
+        if len(detail) > 60:
+            detail = detail[:57] + "..."
+        rows.append([ts_str, event_type, detail])
+
+    # Calculate column widths
+    col_widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            col_widths[i] = max(col_widths[i], len(cell))
+
+    # Print header
+    header_line = "  ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers))
+    click.echo(header_line)
+    click.echo("  ".join("-" * w for w in col_widths))
+
+    # Print rows
+    for row in rows:
+        line = "  ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row))
+        click.echo(line)
+
+    click.echo(f"\nTotal: {len(events)} event(s)")
 
 
 @cli.command("history", help="Show job history (completed/failed/canceled jobs)")
