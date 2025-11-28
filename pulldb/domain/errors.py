@@ -452,3 +452,37 @@ class StagingError(Exception):
     """
 
     pass
+
+
+class CancellationError(JobExecutionError):
+    """Job was canceled by user request.
+
+    Raised when a running job detects a cancellation request at a checkpoint.
+    This is a controlled termination, not an error condition. Cleanup
+    happens automatically (staging database dropped, work dir removed).
+    """
+
+    def __init__(
+        self,
+        job_id: str,
+        phase: str,
+    ) -> None:
+        """Initialize cancellation error.
+
+        Args:
+            job_id: Job UUID.
+            phase: Phase where cancellation was detected (download, extraction, etc.).
+        """
+        super().__init__(
+            goal=f"Execute restore job {job_id}",
+            problem=f"Job canceled by user request at phase: {phase}",
+            root_cause="User requested cancellation via API or CLI",
+            solutions=[
+                "This is expected behavior - job terminated cleanly",
+                "Submit a new job if restore is still needed",
+            ],
+            detail={
+                "job_id": job_id,
+                "phase": phase,
+            },
+        )

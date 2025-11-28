@@ -278,6 +278,83 @@ class JobRepository:
             )
             conn.commit()
 
+    def request_cancellation(self, job_id: str) -> bool:
+        """Request cancellation of a job.
+
+        Sets cancel_requested_at timestamp to signal worker to stop processing.
+        Only jobs in 'queued' or 'running' status can be canceled.
+
+        Args:
+            job_id: UUID of job to cancel.
+
+        Returns:
+            True if cancellation was requested, False if job not in cancelable state.
+
+        Raises:
+            ValueError: If job not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET cancel_requested_at = UTC_TIMESTAMP(6)
+                WHERE id = %s AND status IN ('queued', 'running')
+                  AND cancel_requested_at IS NULL
+                """,
+                (job_id,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def mark_job_canceled(self, job_id: str, reason: str | None = None) -> None:
+        """Mark job as canceled and set completed_at timestamp.
+
+        Called by worker when it detects cancellation request and stops processing.
+        Updates status to 'canceled' and records completion time.
+
+        Args:
+            job_id: UUID of job.
+            reason: Optional reason for cancellation (stored in error_detail).
+        """
+        error_detail = reason or "Canceled by user request"
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET status = 'canceled', completed_at = UTC_TIMESTAMP(6),
+                    error_detail = %s
+                WHERE id = %s
+                """,
+                (error_detail, job_id),
+            )
+            conn.commit()
+
+    def is_cancellation_requested(self, job_id: str) -> bool:
+        """Check if cancellation has been requested for a job.
+
+        Called by worker during long operations to check if it should stop.
+
+        Args:
+            job_id: UUID of job.
+
+        Returns:
+            True if cancel_requested_at is set, False otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT cancel_requested_at IS NOT NULL as is_requested
+                FROM jobs
+                WHERE id = %s
+                """,
+                (job_id,),
+            )
+            row = cursor.fetchone()
+            return bool(row and row[0])
+
     def get_active_jobs(self) -> list[Job]:
         """Get all active jobs (queued or running).
 
@@ -333,6 +410,77 @@ class JobRepository:
                 params.extend(statuses)
                 
             query += " ORDER BY j.submitted_at DESC LIMIT %s"
+            params.append(limit)
+
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
+
+    def get_job_history(
+        self,
+        limit: int = 100,
+        retention_days: int | None = None,
+        user_code: str | None = None,
+        target: str | None = None,
+        dbhost: str | None = None,
+        status: str | None = None,
+    ) -> list[Job]:
+        """Get historical jobs (completed, failed, canceled) with optional filtering.
+
+        Returns jobs ordered by completion time (newest first). Only includes
+        jobs that have completed (not queued or running).
+
+        Args:
+            limit: Maximum number of jobs to return.
+            retention_days: Only return jobs completed within N days. None = no limit.
+            user_code: Filter by owner_user_code.
+            target: Filter by target database name.
+            dbhost: Filter by database host.
+            status: Filter by specific status (complete, failed, canceled).
+
+        Returns:
+            List of historical jobs with populated fields including error_detail.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+
+            query = """
+                SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
+                       j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
+                       j.started_at, j.completed_at, j.options_json, j.retry_count,
+                       j.error_detail
+                FROM jobs j
+                WHERE j.status IN ('complete', 'failed', 'canceled')
+            """
+
+            params: list[t.Any] = []
+
+            # Retention filter
+            if retention_days is not None:
+                query += " AND j.completed_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)"
+                params.append(retention_days)
+
+            # User filter
+            if user_code:
+                query += " AND j.owner_user_code = %s"
+                params.append(user_code)
+
+            # Target filter
+            if target:
+                query += " AND j.target = %s"
+                params.append(target)
+
+            # Dbhost filter
+            if dbhost:
+                query += " AND j.dbhost = %s"
+                params.append(dbhost)
+
+            # Status filter (within historical statuses)
+            if status and status in ("complete", "failed", "canceled"):
+                query += " AND j.status = %s"
+                params.append(status)
+
+            query += " ORDER BY j.completed_at DESC LIMIT %s"
             params.append(limit)
 
             cursor.execute(query, tuple(params))
@@ -482,6 +630,191 @@ class JobRepository:
             cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
             return [self._row_to_job_event(row) for row in rows]
+
+    def prune_job_events(self, retention_days: int = 90) -> int:
+        """Delete job events older than retention period.
+
+        Pruning strategy:
+        - Keep events for retention_days (default 90 days)
+        - Only delete events for jobs in terminal states (completed/failed/canceled)
+        - Events for running/queued jobs are never pruned
+
+        Expected volume per job:
+        - Typical job: 4-8 events (queued, running, download_*, restore_*, complete)
+        - Failed job: 3-5 events (queued, running, phase events, failed)
+        - With ~100 jobs/month, expect ~600-800 events/month
+        - At 90-day retention: ~2000-2500 events max
+
+        Args:
+            retention_days: Days to retain events. Must be >= 1.
+
+        Returns:
+            Number of events deleted.
+
+        Raises:
+            ValueError: If retention_days < 1.
+        """
+        if retention_days < 1:
+            raise ValueError("retention_days must be >= 1")
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            # Only prune events for terminal jobs (completed/failed/canceled)
+            cursor.execute(
+                """
+                DELETE je FROM job_events je
+                INNER JOIN jobs j ON je.job_id = j.id
+                WHERE je.logged_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
+                  AND j.status IN ('completed', 'failed', 'canceled')
+                """,
+                (retention_days,),
+            )
+            deleted_count = cursor.rowcount
+            conn.commit()
+            return deleted_count
+
+    def find_job_by_staging_prefix(
+        self, target: str, dbhost: str, job_id_prefix: str
+    ) -> Job | None:
+        """Find a job by its staging database prefix.
+
+        Used by scheduled cleanup to match staging databases to jobs.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+            job_id_prefix: First 12 characters of job UUID.
+
+        Returns:
+            Job if found, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            # Match job ID starting with the prefix
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code,
+                       target, staging_name, dbhost, status, submitted_at,
+                       started_at, completed_at, options_json, retry_count,
+                       error_detail, source
+                FROM jobs
+                WHERE target = %s AND dbhost = %s AND id LIKE %s
+                ORDER BY submitted_at DESC
+                LIMIT 1
+                """,
+                (target, dbhost, f"{job_id_prefix}%"),
+            )
+            row = cursor.fetchone()
+            return self._row_to_job(row) if row else None
+
+    def get_job_completion_time(self, job_id: str) -> datetime | None:
+        """Get the completion time of a job from events.
+
+        Looks for the last terminal event (complete, failed, canceled).
+
+        Args:
+            job_id: Job UUID.
+
+        Returns:
+            Datetime of completion, or None if not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT logged_at
+                FROM job_events
+                WHERE job_id = %s
+                  AND event_type IN ('complete', 'failed', 'canceled')
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (job_id,),
+            )
+            row = cursor.fetchone()
+            return row["logged_at"] if row else None
+
+    def has_active_jobs_for_target(self, target: str, dbhost: str) -> bool:
+        """Check if there are any active (queued/running) jobs for a target.
+
+        Used as a safety check before scheduled cleanup drops staging databases.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+
+        Returns:
+            True if active jobs exist, False otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM jobs
+                WHERE target = %s AND dbhost = %s
+                  AND status IN ('queued', 'running')
+                """,
+                (target, dbhost),
+            )
+            row = cursor.fetchone()
+            return row[0] > 0 if row else False
+
+    def get_old_terminal_jobs(
+        self, dbhost: str, cutoff_date: datetime
+    ) -> list[Job]:
+        """Get terminal jobs older than cutoff date for a specific host.
+
+        Used by scheduled cleanup to find jobs whose staging databases
+        may need cleanup.
+
+        Args:
+            dbhost: Database host to filter by.
+            cutoff_date: Only return jobs completed before this date.
+
+        Returns:
+            List of Job instances in terminal state older than cutoff.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
+                       j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
+                       j.started_at, j.completed_at, j.options_json, j.retry_count,
+                       j.error_detail, j.source
+                FROM jobs j
+                WHERE j.dbhost = %s
+                  AND j.status IN ('completed', 'failed', 'canceled')
+                  AND j.staging_name IS NOT NULL
+                  AND j.staging_cleaned_at IS NULL
+                  AND j.completed_at < %s
+                ORDER BY j.completed_at ASC
+                """,
+                (dbhost, cutoff_date),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
+
+    def mark_job_staging_cleaned(self, job_id: str) -> None:
+        """Mark a job's staging database as cleaned.
+
+        Sets staging_cleaned_at timestamp to track that cleanup was performed.
+        This prevents re-processing the same job in future cleanup runs.
+
+        Args:
+            job_id: UUID of job to mark as cleaned.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET staging_cleaned_at = UTC_TIMESTAMP(6)
+                WHERE id = %s
+                """,
+                (job_id,),
+            )
+            conn.commit()
 
     def _row_to_job(self, row: dict[str, t.Any]) -> Job:
         """Convert MySQL row to Job dataclass.

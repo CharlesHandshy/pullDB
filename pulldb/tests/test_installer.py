@@ -87,8 +87,12 @@ def test_installer_respects_no_systemd(tmp_path: Path) -> None:
     )
     unit_path = Path("/etc/systemd/system/pulldb-worker.service")
     # Unit path should not exist in test environment (soft assertion if present)
-    if unit_path.exists():
-        pytest.skip("Systemd unit already present on host; cannot assert absence.")
+    try:
+        if unit_path.exists():
+            pytest.skip("Systemd unit already present on host; cannot assert absence.")
+    except PermissionError:
+        # Cannot read /etc/systemd/system - skip check (common in unprivileged tests)
+        pass
 
 
 def test_installer_usage_help(tmp_path: Path) -> None:

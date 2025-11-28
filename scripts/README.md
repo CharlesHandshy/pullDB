@@ -31,7 +31,6 @@ These scripts are copied into `/opt/pulldb.service/scripts/` during package inst
 | `uninstall_pulldb.sh` | Uninstaller |
 | `upgrade_pulldb.sh` | Upgrade handler |
 | `configure-pulldb.sh` | Interactive configuration |
-| `configure_server.sh` | Server AWS setup |
 | `merge-config.sh` | Config migration during upgrades |
 | `monitor_jobs.py` | Job/process monitoring |
 | `service-validate.sh` | Production validation |

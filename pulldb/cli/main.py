@@ -748,6 +748,394 @@ def _stream_job_events(job_id: str) -> None:
         time.sleep(2)
 
 
+@cli.command("cancel", help="Cancel a queued or running job")
+@click.argument("job_id")
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help="Skip confirmation prompt",
+)
+def cancel_cmd(job_id: str, force: bool) -> None:
+    """Request cancellation of a job.
+
+    For queued jobs, cancellation is immediate.
+    For running jobs, the worker will stop at the next checkpoint
+    (between major operations like download, restore, post-SQL).
+
+    Args:
+        job_id: UUID of the job to cancel (can use short prefix).
+        force: Skip confirmation prompt.
+
+    Examples:
+        pulldb cancel abc12345-6789-...   # Full job ID
+        pulldb cancel abc12345            # Short prefix (will validate)
+        pulldb cancel abc12345 --force    # Skip confirmation
+    """
+    # Validate job_id format (at least 8 chars for short form)
+    if len(job_id) < 8:
+        raise click.UsageError(
+            "Job ID must be at least 8 characters. "
+            "Use 'pulldb status' to find job IDs."
+        )
+
+    # Confirm unless --force
+    if not force:
+        click.echo(f"Requesting cancellation for job: {job_id}")
+        if not click.confirm("Are you sure you want to cancel this job?"):
+            click.echo("Aborted.")
+            return
+
+    try:
+        response = _api_post(f"/api/jobs/{job_id}/cancel", {})
+    except click.ClickException:
+        # Re-raise click exceptions (404, 409, etc. formatted by _api_post)
+        raise
+
+    status = response.get("status", "unknown")
+    message = response.get("message", "")
+
+    if status == "canceled":
+        click.echo(f"✓ Job {job_id[:8]}... canceled successfully.")
+        click.echo(f"  {message}")
+    elif status == "pending":
+        click.echo(f"⏳ Cancellation requested for job {job_id[:8]}...")
+        click.echo(f"  {message}")
+        click.echo("\nUse 'pulldb status --job-id {job_id}' to monitor.")
+    else:
+        click.echo(f"Unexpected status: {status}")
+        click.echo(f"  {message}")
+
+
+@cli.command("history", help="Show job history (completed/failed/canceled jobs)")
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of table",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=50,
+    show_default=True,
+    help="Limit number of rows",
+)
+@click.option(
+    "--days",
+    type=int,
+    default=30,
+    show_default=True,
+    help="Show jobs from last N days",
+)
+@click.option(
+    "--user",
+    "user_code",
+    help="Filter by user code",
+)
+@click.option(
+    "--target",
+    help="Filter by target database name",
+)
+@click.option(
+    "--dbhost",
+    help="Filter by database host",
+)
+@click.option(
+    "--status",
+    "job_status",
+    type=click.Choice(["complete", "failed", "canceled"]),
+    help="Filter by job status",
+)
+@click.option(
+    "--wide",
+    is_flag=True,
+    help="Show additional columns including error details",
+)
+def history_cmd(
+    json_out: bool,
+    limit: int,
+    days: int,
+    user_code: str | None,
+    target: str | None,
+    dbhost: str | None,
+    job_status: str | None,
+    wide: bool,
+) -> None:
+    """Show job history with filtering options.
+
+    By default shows the last 30 days of completed, failed, and canceled jobs.
+    Use --status to filter by specific outcome. Use --wide for error details.
+
+    Examples:
+        pulldb history                    # Last 30 days
+        pulldb history --days 7           # Last week
+        pulldb history --status failed    # Only failed jobs
+        pulldb history --user jdoe        # Jobs by user code
+        pulldb history --wide             # Include error details
+    """
+    if limit <= 0 or limit > 1000:
+        raise click.UsageError("--limit must be between 1 and 1000")
+
+    if days <= 0 or days > 365:
+        raise click.UsageError("--days must be between 1 and 365")
+
+    # Build query params
+    params: dict[str, t.Any] = {
+        "limit": limit,
+        "days": days,
+    }
+    if user_code:
+        params["user_code"] = user_code
+    if target:
+        params["target"] = target
+    if dbhost:
+        params["dbhost"] = dbhost
+    if job_status:
+        params["status"] = job_status
+
+    try:
+        history = _api_get("/api/jobs/history", params)
+    except _APIError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if not history:
+        click.echo("No job history found matching filters.")
+        return
+
+    if json_out:
+        click.echo(json_module.dumps(history, indent=2, default=str))
+        return
+
+    # Table output
+    def _fmt_dt(dt_str: str | None) -> str:
+        if not dt_str:
+            return "-"
+        dt = _parse_iso(dt_str)
+        if dt:
+            return dt.strftime("%Y-%m-%d %H:%M")
+        return "-"
+
+    def _fmt_duration(seconds: float | None) -> str:
+        if seconds is None:
+            return "-"
+        if seconds < 60:
+            return f"{seconds:.0f}s"
+        if seconds < 3600:
+            return f"{seconds / 60:.1f}m"
+        return f"{seconds / 3600:.1f}h"
+
+    def _status_icon(status: str) -> str:
+        if status == "complete":
+            return "✓"
+        if status == "failed":
+            return "✗"
+        if status == "canceled":
+            return "○"
+        return "?"
+
+    # Determine columns
+    headers = ["STATUS", "JOB_ID", "TARGET", "USER", "COMPLETED", "DURATION"]
+    if wide:
+        headers.append("ERROR")
+
+    rows: list[list[str]] = []
+    for item in history:
+        status_val = item.get("status", "?")
+        row = [
+            f"{_status_icon(status_val)} {status_val}",
+            item.get("id", "")[:12],
+            item.get("target", "")[:20],
+            item.get("user_code", "")[:6],
+            _fmt_dt(item.get("completed_at")),
+            _fmt_duration(item.get("duration_seconds")),
+        ]
+        if wide:
+            error = item.get("error_detail") or "-"
+            if len(error) > 40:
+                error = error[:37] + "..."
+            row.append(error)
+        rows.append(row)
+
+    # Calculate column widths
+    col_widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            col_widths[i] = max(col_widths[i], len(cell))
+
+    # Print header
+    header_line = "  ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers))
+    click.echo(header_line)
+    click.echo("  ".join("-" * w for w in col_widths))
+
+    # Print rows
+    for row in rows:
+        line = "  ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row))
+        click.echo(line)
+
+    # Summary
+    complete_count = sum(1 for item in history if item.get("status") == "complete")
+    failed_count = sum(1 for item in history if item.get("status") == "failed")
+    canceled_count = sum(1 for item in history if item.get("status") == "canceled")
+
+    click.echo(f"\n{len(history)} job(s): {complete_count} complete, {failed_count} failed, {canceled_count} canceled")
+    click.echo(f"(showing last {days} days, limit {limit})")
+
+
+@cli.command("profile", help="Show performance profile for a completed job")
+@click.argument("job_id")
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of formatted display",
+)
+def profile_cmd(job_id: str, json_out: bool) -> None:
+    """Show performance profile for a completed job.
+
+    Displays timing breakdown by restore phase (discovery, download,
+    extraction, myloader, post_sql, metadata, atomic_rename) with
+    throughput metrics for data-intensive phases.
+
+    Profile data is available after a job completes (success or failure).
+
+    Args:
+        job_id: UUID of the job to get profile for (can use short prefix).
+        json_out: Output raw JSON instead of formatted display.
+
+    Examples:
+        pulldb profile abc12345-6789-...   # Full job ID
+        pulldb profile abc12345            # Short prefix
+        pulldb profile abc12345 --json     # Raw JSON output
+    """
+    # Validate job_id format (at least 8 chars for short form)
+    if len(job_id) < 8:
+        raise click.UsageError(
+            "Job ID must be at least 8 characters. "
+            "Use 'pulldb status' or 'pulldb history' to find job IDs."
+        )
+
+    base_url, timeout = _load_api_config()
+    url = f"{base_url}/api/jobs/{job_id}/profile"
+    try:
+        response = requests_module.get(url, timeout=timeout)
+    except RequestException as exc:
+        raise click.ClickException(
+            f"Failed to reach pullDB API: {exc}. "
+            "Ensure the API service is running and reachable."
+        ) from exc
+
+    if response.status_code == 404:
+        error_detail = response.json().get("detail", "Not found")
+        raise click.ClickException(error_detail)
+    if response.status_code >= 400:
+        raise click.ClickException(_format_api_error(response))
+
+    profile = _parse_json_response(response)
+    if not isinstance(profile, dict):
+        raise click.ClickException("Unexpected API response: expected object payload.")
+
+    if json_out:
+        click.echo(json_module.dumps(profile, indent=2, default=str))
+        return
+
+    # Formatted display
+    job_id_short = profile.get("job_id", "unknown")[:12]
+    total_duration = profile.get("total_duration_seconds")
+    total_bytes = profile.get("total_bytes", 0)
+    error = profile.get("error")
+
+    click.echo(f"Performance Profile: {job_id_short}...")
+    click.echo("=" * 60)
+
+    if error:
+        click.echo(f"Status: Failed - {error}")
+    else:
+        click.echo("Status: Complete")
+
+    if total_duration:
+        click.echo(f"Total Duration: {_format_profile_duration(total_duration)}")
+    if total_bytes:
+        click.echo(f"Total Data: {_format_bytes(total_bytes)}")
+
+    click.echo("\nPhase Breakdown:")
+    click.echo("-" * 60)
+
+    # Table headers
+    click.echo(f"{'PHASE':<16} {'DURATION':>12} {'%':>8} {'THROUGHPUT':>12}")
+    click.echo(f"{'-'*16} {'-'*12} {'-'*8} {'-'*12}")
+
+    phases = profile.get("phases", {})
+    breakdown = profile.get("phase_breakdown_percent", {})
+
+    # Order phases logically
+    phase_order = [
+        "discovery",
+        "download",
+        "extraction",
+        "myloader",
+        "post_sql",
+        "metadata",
+        "atomic_rename",
+    ]
+
+    for phase_name in phase_order:
+        if phase_name not in phases:
+            continue
+        phase = phases[phase_name]
+        duration = phase.get("duration_seconds")
+        pct = breakdown.get(phase_name, 0)
+        mbps = phase.get("mbps")
+
+        duration_str = _format_profile_duration(duration) if duration else "-"
+        pct_str = f"{pct:.1f}%" if pct else "-"
+        throughput_str = f"{mbps:.1f} MB/s" if mbps else "-"
+
+        click.echo(f"{phase_name:<16} {duration_str:>12} {pct_str:>8} {throughput_str:>12}")
+
+    click.echo("-" * 60)
+
+    # Tips based on profile
+    if breakdown:
+        slowest = max(breakdown.items(), key=lambda x: x[1])
+        if slowest[1] > 50:
+            click.echo(f"\n💡 Tip: {slowest[0]} took {slowest[1]:.0f}% of total time.")
+
+
+def _format_profile_duration(seconds: float | None) -> str:
+    """Format duration for profile display."""
+    if seconds is None:
+        return "-"
+    if seconds < 1:
+        return f"{seconds * 1000:.0f}ms"
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    if seconds < 3600:
+        mins = int(seconds // 60)
+        secs = seconds % 60
+        return f"{mins}m {secs:.0f}s"
+    hours = int(seconds // 3600)
+    mins = int((seconds % 3600) // 60)
+    return f"{hours}h {mins}m"
+
+
+def _format_bytes(num_bytes: int) -> str:
+    """Format bytes for human-readable display."""
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+    if num_bytes < 1024 * 1024:
+        return f"{num_bytes / 1024:.1f} KB"
+    if num_bytes < 1024 * 1024 * 1024:
+        return f"{num_bytes / (1024 * 1024):.1f} MB"
+    return f"{num_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+
+# NOTE: Admin-only commands (prune-logs, cleanup-staging, orphan-report, delete-orphans)
+# are NOT exposed in the user-facing pulldb CLI.
+# They will be available via the pulldb-admin CLI.
+# See docs/KNOWLEDGE-POOL.md "CLI Architecture & Scope" for rationale.
+
+
 def main(argv: t.Sequence[str] | None = None) -> int:
     """Main entry point for pullDB CLI.
 

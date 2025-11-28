@@ -56,6 +56,17 @@ def _positive_float(value: str) -> float:
 
 
 def _parse_args(argv: t.Sequence[str] | None) -> argparse.Namespace:
+    # Get default poll interval from environment or use minimum
+    default_poll_interval = MIN_POLL_INTERVAL_SECONDS
+    env_poll = os.getenv("PULLDB_WORKER_POLL_INTERVAL")
+    if env_poll:
+        try:
+            default_poll_interval = float(env_poll)
+            if default_poll_interval <= 0:
+                default_poll_interval = MIN_POLL_INTERVAL_SECONDS
+        except ValueError:
+            pass  # Use default
+
     parser = argparse.ArgumentParser(description="pullDB worker daemon")
     parser.add_argument(
         "--max-iterations",
@@ -66,10 +77,10 @@ def _parse_args(argv: t.Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--poll-interval",
         type=_positive_float,
-        default=MIN_POLL_INTERVAL_SECONDS,
+        default=default_poll_interval,
         help=(
-            "Initial poll interval in seconds (defaults to poller minimum). "
-            "Useful for diagnostics."
+            "Initial poll interval in seconds (defaults to PULLDB_WORKER_POLL_INTERVAL "
+            "or poller minimum). Useful for diagnostics."
         ),
     )
     parser.add_argument(

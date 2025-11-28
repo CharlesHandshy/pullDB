@@ -55,12 +55,23 @@ class TestJobRepository:
         repo = JobRepository(mysql_pool)
         job_id1 = str(uuid.uuid4())
         job_id2 = str(uuid.uuid4())
+        target1 = "target1_" + job_id1[:8]
+        target2 = "target2_" + job_id2[:8]
+
+        # Clean up any leftover queued jobs to ensure test isolation
+        with mysql_pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM job_events WHERE job_id IN (SELECT id FROM jobs WHERE status = 'queued')")
+            cursor.execute("DELETE FROM jobs WHERE status = 'queued'")
+            conn.commit()
+            cursor.close()
+
         job1 = Job(
             id=job_id1,
             owner_user_id=TEST_USER_ID,
             owner_username=TEST_USERNAME,
             owner_user_code=TEST_USER_CODE,
-            target="target1_" + job_id1[:8],
+            target=target1,
             staging_name="target1_" + job_id1[:12],
             dbhost="dev-db-01",
             status=JobStatus.QUEUED,
@@ -71,7 +82,7 @@ class TestJobRepository:
             owner_user_id=TEST_USER_ID,
             owner_username=TEST_USERNAME,
             owner_user_code=TEST_USER_CODE,
-            target="target2_" + job_id2[:8],
+            target=target2,
             staging_name="target2_" + job_id2[:12],
             dbhost="dev-db-01",
             status=JobStatus.QUEUED,
@@ -82,8 +93,8 @@ class TestJobRepository:
         next_job = repo.get_next_queued_job()
         assert next_job is not None
         assert next_job.id == job_id1
-        self._cleanup_job(mysql_pool, job_id1, job1.target)
-        self._cleanup_job(mysql_pool, job_id2, job2.target)
+        self._cleanup_job(mysql_pool, job_id1, target1)
+        self._cleanup_job(mysql_pool, job_id2, target2)
 
     def test_status_transitions(self, mysql_pool: Any) -> None:
         repo = JobRepository(mysql_pool)
@@ -210,3 +221,51 @@ class TestJobRepository:
             "restore_complete",
         ]
         self._cleanup_job(mysql_pool, job_id, target)
+
+    def test_prune_job_events(self, mysql_pool: Any) -> None:
+        """Test that prune_job_events only deletes events for terminal jobs."""
+        repo = JobRepository(mysql_pool)
+        job_id = str(uuid.uuid4())
+        target = f"test_prune_{job_id[:8]}"
+
+        # Create a completed job with events
+        job = Job(
+            id=job_id,
+            owner_user_id=TEST_USER_ID,
+            owner_username=TEST_USERNAME,
+            owner_user_code=TEST_USER_CODE,
+            target=target,
+            staging_name=target + "_" + job_id[:12],
+            dbhost="dev-db-01",
+            status=JobStatus.QUEUED,
+            submitted_at=datetime.now(UTC),
+        )
+        repo.enqueue_job(job)
+        repo.append_job_event(job_id, "queued", "Job submitted")
+        repo.append_job_event(job_id, "running", "Started")
+        repo.append_job_event(job_id, "complete", "Done")
+
+        # Mark as completed (running first, then complete)
+        repo.mark_job_running(job_id)
+        repo.mark_job_complete(job_id)
+
+        # Prune with very long retention - should delete nothing
+        deleted = repo.prune_job_events(retention_days=365)
+        events_after = repo.get_job_events(job_id)
+        # Events should still exist (they're not 365 days old)
+        assert len(events_after) == 3
+        assert deleted == 0
+
+        # Clean up
+        self._cleanup_job(mysql_pool, job_id, target)
+
+    def test_prune_job_events_validation(self, mysql_pool: Any) -> None:
+        """Test that prune_job_events validates retention_days."""
+        repo = JobRepository(mysql_pool)
+
+        with pytest.raises(ValueError, match="retention_days must be >= 1"):
+            repo.prune_job_events(retention_days=0)
+
+        with pytest.raises(ValueError, match="retention_days must be >= 1"):
+            repo.prune_job_events(retention_days=-1)
+

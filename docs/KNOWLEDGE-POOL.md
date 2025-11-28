@@ -2,11 +2,12 @@
 
 Purpose: a single-source, trimmed knowledge base used by agents and maintainers. This file contains only the facts required for current operations (Nov 2025). It is intentionally concise and indexed for fast lookup.
 
-Last updated: 2025-11-22
+Last updated: 2025-11-27
 
 ---
 
 ## Index (categories)
+- CLI Architecture & Scope
 - Accounts & ARNs
 - S3 buckets & paths
 - IAM roles & policies
@@ -20,6 +21,50 @@ Last updated: 2025-11-22
 - Machine-readable index (JSON)
 - IAM policy snippets (examples)
 - Terraform examples (optional, small snippets)
+
+---
+
+## CLI Architecture & Scope
+
+**Core Principle**: CLIs are thin interface clients to the server applications. All work is performed by the Worker service.
+
+### pulldb CLI (User-Facing)
+- **Scope**: Limited to operations from the user's own point of view
+- **Target users**: Developers restoring databases for their own work
+- **Allowed operations**:
+  - ✅ Submit restore jobs (`pulldb restore`)
+  - ✅ View status of own jobs (`pulldb status`)
+  - ✅ Cancel own jobs (`pulldb cancel`)
+  - ✅ View job history (`pulldb history`)
+  - ✅ View job events/logs (`pulldb events`)
+- **NOT allowed** (affects other users' work):
+  - ❌ Orphan database reports
+  - ❌ Deleting unaligned databases
+  - ❌ Global cleanup operations
+  - ❌ System-wide administration
+
+### pulldb-admin CLI (Admin-Facing)
+- **Scope**: Administrative operations affecting the system as a whole
+- **Target users**: System administrators and operators
+- **Operations**:
+  - Orphan database reports and cleanup
+  - Scheduled staging cleanup
+  - Log pruning
+  - Host management
+  - System-wide monitoring
+
+### Architectural Flow
+```
+User CLI (pulldb)     → API Service → Worker Service
+Admin CLI (pulldb-admin) → API Service → Worker Service
+```
+
+Both CLIs are thin clients that:
+1. Accept user input
+2. Send commands to the API
+3. Display results
+
+The Worker performs all actual operations (database drops, S3 downloads, restores, etc.).
 
 ---
 

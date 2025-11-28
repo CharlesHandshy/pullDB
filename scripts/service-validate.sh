@@ -283,12 +283,12 @@ validate_aws_credentials() {
     local dev_account
     if dev_account=$(aws sts get-caller-identity --profile pr-dev --query 'Account' --output text 2>/dev/null); then
         if [[ "$dev_account" == "345321506926" ]]; then
-            check_pass "pr-dev profile valid (Account: ${dev_account})"
+            check_pass "Secrets Profile: pr-dev (Account: ${dev_account})"
         else
-            check_warn "pr-dev profile: unexpected account ${dev_account} (expected 345321506926)"
+            check_warn "Secrets Profile: pr-dev unexpected account ${dev_account} (expected 345321506926)"
         fi
     else
-        check_fail "pr-dev profile: authentication failed"
+        check_fail "Secrets Profile: pr-dev authentication failed"
     fi
     
     # Test pr-staging profile (S3 staging)
@@ -519,7 +519,7 @@ PYEOF
         check_fail "Credential resolution failed: ${cred_test}"
     fi
     
-    # Check schema
+    # Check schema - verify required tables exist
     if "$python_bin" << 'PYEOF' 2>/dev/null
 import os
 os.chdir(os.environ.get('PULLDB_INSTALL_PREFIX', '/opt/pulldb.service'))
@@ -543,14 +543,18 @@ conn = mysql.connector.connect(
     database=database
 )
 cursor = conn.cursor()
-cursor.execute(f"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '{database}'")
-count = cursor.fetchone()[0]
+
+# Required tables for pulldb service
+required_tables = {'restore_jobs', 'job_events', 'users', 'settings'}
+cursor.execute(f"SELECT table_name FROM information_schema.tables WHERE table_schema = '{database}'")
+existing_tables = {row[0] for row in cursor.fetchall()}
 cursor.close()
 conn.close()
-if count >= 5:
-    print(f"OK: {count} tables")
-else:
-    raise Exception(f"Only {count} tables found")
+
+missing = required_tables - existing_tables
+if missing:
+    raise Exception(f"Missing tables: {', '.join(sorted(missing))}")
+print(f"OK: {len(existing_tables)} tables (required: {', '.join(sorted(required_tables))})")
 PYEOF
     then
         check_pass "Database schema deployed"
@@ -608,6 +612,16 @@ validate_service() {
     else
         check_fail "CLI: pulldb --help failed"
     fi
+    
+    # Validate core CLI subcommands exist
+    local subcommands=("restore" "status" "search" "cancel" "history" "profile")
+    for subcmd in "${subcommands[@]}"; do
+        if "$pulldb_bin" "$subcmd" --help &>/dev/null; then
+            check_pass "CLI: pulldb ${subcmd} --help"
+        else
+            check_fail "CLI: pulldb ${subcmd} --help failed"
+        fi
+    done
     
     # Check admin CLI functionality
     local admin_bin="${INSTALL_PREFIX}/venv/bin/pulldb-admin"

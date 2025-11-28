@@ -77,6 +77,25 @@ class JobSummary(pydantic.BaseModel):
     source: str | None = None
 
 
+class JobHistoryItem(pydantic.BaseModel):
+    """Detailed history item for completed/failed/canceled jobs."""
+
+    id: str
+    target: str
+    status: str
+    user_code: str
+    owner_username: str
+    submitted_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    duration_seconds: float | None = None
+    staging_name: str | None = None
+    dbhost: str | None = None
+    source: str | None = None
+    error_detail: str | None = None
+    retry_count: int = 0
+
+
 class JobEventResponse(pydantic.BaseModel):
     """Job event payload."""
 
@@ -453,6 +472,119 @@ async def list_active_jobs(
     return await run_in_threadpool(_active_jobs, state, limit)
 
 
+DEFAULT_HISTORY_RETENTION_DAYS = 30
+MAX_HISTORY_RETENTION_DAYS = 365
+
+
+def _get_job_history(
+    state: APIState,
+    limit: int,
+    retention_days: int | None,
+    user_code: str | None,
+    target: str | None,
+    dbhost: str | None,
+    job_status: str | None,
+) -> list[JobHistoryItem]:
+    """Get job history with optional filtering.
+
+    Args:
+        state: API state with repositories.
+        limit: Maximum number of jobs to return.
+        retention_days: Only return jobs completed within N days.
+        user_code: Filter by owner user code.
+        target: Filter by target database name.
+        dbhost: Filter by database host.
+        job_status: Filter by status (complete, failed, canceled).
+
+    Returns:
+        List of JobHistoryItem with computed duration.
+    """
+    jobs = state.job_repo.get_job_history(
+        limit=limit,
+        retention_days=retention_days,
+        user_code=user_code,
+        target=target,
+        dbhost=dbhost,
+        status=job_status,
+    )
+
+    result: list[JobHistoryItem] = []
+    for job in jobs:
+        # Compute duration if both started_at and completed_at exist
+        duration_seconds: float | None = None
+        if job.started_at and job.completed_at:
+            delta = job.completed_at - job.started_at
+            duration_seconds = delta.total_seconds()
+
+        # Derive source from options_json
+        source = None
+        if job.options_json:
+            if job.options_json.get("is_qatemplate") == "true":
+                source = "qatemplate"
+            else:
+                source = job.options_json.get("customer_id")
+
+        result.append(
+            JobHistoryItem(
+                id=job.id,
+                target=job.target,
+                status=job.status.value,
+                user_code=job.owner_user_code,
+                owner_username=job.owner_username,
+                submitted_at=job.submitted_at,
+                started_at=job.started_at,
+                completed_at=job.completed_at,
+                duration_seconds=duration_seconds,
+                staging_name=job.staging_name,
+                dbhost=job.dbhost,
+                source=source,
+                error_detail=job.error_detail,
+                retry_count=job.retry_count,
+            )
+        )
+    return result
+
+
+@app.get(
+    "/api/jobs/history",
+    response_model=list[JobHistoryItem],
+)
+async def list_job_history(
+    limit: int = fastapi.Query(DEFAULT_STATUS_LIMIT, ge=1, le=MAX_STATUS_LIMIT),
+    days: int = fastapi.Query(
+        DEFAULT_HISTORY_RETENTION_DAYS,
+        ge=1,
+        le=MAX_HISTORY_RETENTION_DAYS,
+        description="Only return jobs completed within N days",
+    ),
+    user_code: str | None = fastapi.Query(None, description="Filter by user code"),
+    target: str | None = fastapi.Query(None, description="Filter by target database"),
+    dbhost: str | None = fastapi.Query(None, description="Filter by database host"),
+    job_status: str | None = fastapi.Query(
+        None,
+        alias="status",
+        description="Filter by status: complete, failed, or canceled",
+    ),
+    state: APIState = Depends(get_api_state),
+) -> list[JobHistoryItem]:
+    """Get job history with filtering and retention policy.
+
+    Returns completed, failed, and canceled jobs ordered by completion time.
+    Supports filtering by user, target, host, and status.
+    Default retention is 30 days; maximum is 365 days.
+    """
+    # Validate status if provided
+    if job_status and job_status not in ("complete", "failed", "canceled"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status '{job_status}'. Must be one of: complete, failed, canceled",
+        )
+
+    return await run_in_threadpool(
+        _get_job_history, state, limit, days, user_code, target, dbhost, job_status
+    )
+
+
 @app.get(
     "/api/jobs/{job_id}/events",
     response_model=list[JobEventResponse],
@@ -465,12 +597,603 @@ async def list_job_events(
     return await run_in_threadpool(_get_job_events, state, job_id, since_id)
 
 
+# --- Profile Response Models ---
+
+
+class PhaseProfileResponse(pydantic.BaseModel):
+    """Profile data for a single restore phase."""
+
+    phase: str
+    started_at: str
+    completed_at: str | None = None
+    duration_seconds: float | None = None
+    bytes_processed: int | None = None
+    bytes_per_second: float | None = None
+    mbps: float | None = None
+    metadata: dict[str, t.Any] = pydantic.Field(default_factory=dict)
+
+
+class JobProfileResponse(pydantic.BaseModel):
+    """Complete profile for a restore job."""
+
+    job_id: str
+    started_at: str
+    completed_at: str | None = None
+    total_duration_seconds: float | None = None
+    total_bytes: int = 0
+    phases: dict[str, PhaseProfileResponse] = pydantic.Field(default_factory=dict)
+    phase_breakdown_percent: dict[str, float] = pydantic.Field(default_factory=dict)
+    error: str | None = None
+
+
+def _get_job_profile(state: APIState, job_id: str) -> JobProfileResponse:
+    """Retrieve profile data for a completed job.
+
+    Args:
+        state: API state with repositories.
+        job_id: UUID of job to get profile for.
+
+    Returns:
+        JobProfileResponse with phase timing data.
+
+    Raises:
+        HTTPException: If job not found or profile not available.
+    """
+    from pulldb.worker.profiling import parse_profile_from_event
+
+    # Verify job exists
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found",
+        )
+
+    # Find restore_profile event (emitted by executor on job complete)
+    events = state.job_repo.get_job_events(job_id)
+    profile_event = None
+    for event in events:
+        if event.event_type == "restore_profile":
+            profile_event = event
+            break
+
+    if not profile_event or not profile_event.detail:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Profile not available for job {job_id}",
+        )
+
+    # Parse profile from event
+    profile = parse_profile_from_event(profile_event.detail)
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to parse profile for job {job_id}",
+        )
+
+    # Convert to response model
+    phases = {}
+    for phase, phase_profile in profile.phases.items():
+        phase_dict = phase_profile.to_dict()
+        phases[phase.value] = PhaseProfileResponse(
+            phase=phase_dict["phase"],
+            started_at=phase_dict["started_at"],
+            completed_at=phase_dict.get("completed_at"),
+            duration_seconds=phase_dict.get("duration_seconds"),
+            bytes_processed=phase_dict.get("bytes_processed"),
+            bytes_per_second=phase_dict.get("bytes_per_second"),
+            mbps=phase_dict.get("mbps"),
+            metadata=phase_dict.get("metadata", {}),
+        )
+
+    return JobProfileResponse(
+        job_id=profile.job_id,
+        started_at=profile.started_at.isoformat(),
+        completed_at=profile.completed_at.isoformat() if profile.completed_at else None,
+        total_duration_seconds=profile.total_duration_seconds,
+        total_bytes=profile.total_bytes,
+        phases=phases,
+        phase_breakdown_percent=profile.phase_breakdown,
+        error=profile.error,
+    )
+
+
+@app.get(
+    "/api/jobs/{job_id}/profile",
+    response_model=JobProfileResponse,
+)
+async def get_job_profile(
+    job_id: str,
+    state: APIState = Depends(get_api_state),
+) -> JobProfileResponse:
+    """Get performance profile for a job.
+
+    Returns timing breakdown by phase (discovery, download, extraction,
+    myloader, post_sql, metadata, atomic_rename) with throughput metrics.
+
+    Available after job completes (success or failure).
+    """
+    return await run_in_threadpool(_get_job_profile, state, job_id)
+
+
+class CancelResponse(pydantic.BaseModel):
+    """Response payload for job cancellation request."""
+
+    job_id: str
+    status: str
+    message: str
+
+
+def _cancel_job(state: APIState, job_id: str) -> CancelResponse:
+    """Request cancellation of a job.
+
+    Args:
+        state: API state with repositories.
+        job_id: UUID of job to cancel.
+
+    Returns:
+        CancelResponse with result.
+
+    Raises:
+        HTTPException: If job not found or not cancelable.
+    """
+    # Verify job exists
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found",
+        )
+
+    # Check if job is in cancelable state
+    if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Job {job_id} cannot be canceled (status: {job.status.value})",
+        )
+
+    # Request cancellation
+    was_requested = state.job_repo.request_cancellation(job_id)
+    if not was_requested:
+        # Race condition: job may have completed or already been canceled
+        refreshed = state.job_repo.get_job_by_id(job_id)
+        if refreshed and refreshed.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Job {job_id} cannot be canceled (status: {refreshed.status.value})",
+            )
+        # Cancellation was already requested
+        return CancelResponse(
+            job_id=job_id,
+            status="pending",
+            message="Cancellation already requested",
+        )
+
+    # Log cancellation event
+    state.job_repo.append_job_event(
+        job_id=job_id,
+        event_type="cancel_requested",
+        detail="User requested job cancellation",
+    )
+
+    emit_event(
+        "job_cancel_requested",
+        f"job_id={job_id}",
+        MetricLabels(phase="api", status="cancel_requested"),
+    )
+
+    # For queued jobs, we can cancel immediately
+    if job.status == JobStatus.QUEUED:
+        state.job_repo.mark_job_canceled(job_id, "Canceled before execution started")
+        state.job_repo.append_job_event(
+            job_id=job_id,
+            event_type="canceled",
+            detail="Job canceled before worker started processing",
+        )
+        emit_counter(
+            "job_canceled_total",
+            MetricLabels(phase="api", status="queued"),
+        )
+        return CancelResponse(
+            job_id=job_id,
+            status="canceled",
+            message="Job canceled successfully (was queued)",
+        )
+
+    # For running jobs, worker will check cancel flag and stop
+    return CancelResponse(
+        job_id=job_id,
+        status="pending",
+        message="Cancellation requested; worker will stop at next checkpoint",
+    )
+
+
+@app.post(
+    "/api/jobs/{job_id}/cancel",
+    response_model=CancelResponse,
+)
+async def cancel_job(
+    job_id: str,
+    state: APIState = Depends(get_api_state),
+) -> CancelResponse:
+    """Request cancellation of a job.
+
+    For queued jobs, cancellation is immediate.
+    For running jobs, the worker will stop at the next checkpoint.
+    """
+    return await run_in_threadpool(_cancel_job, state, job_id)
+
+
+# --- Admin Endpoints ---
+
+
+class PruneLogsRequest(pydantic.BaseModel):
+    """Request to prune old job events."""
+
+    days: int = pydantic.Field(
+        default=90,
+        ge=1,
+        le=365,
+        description="Retention period in days",
+    )
+    dry_run: bool = pydantic.Field(
+        default=False,
+        description="If true, return count without deleting",
+    )
+
+
+class PruneLogsResponse(pydantic.BaseModel):
+    """Response from prune-logs operation."""
+
+    deleted: int = pydantic.Field(
+        default=0,
+        description="Number of events deleted (0 if dry_run)",
+    )
+    would_delete: int = pydantic.Field(
+        default=0,
+        description="Number of events that would be deleted (dry_run only)",
+    )
+    retention_days: int = pydantic.Field(description="Retention period used")
+    dry_run: bool = pydantic.Field(description="Whether this was a dry run")
+
+
+def _prune_logs(state: APIState, request: PruneLogsRequest) -> PruneLogsResponse:
+    """Prune old job events.
+
+    Only events for terminal jobs (completed/failed/canceled) are deleted.
+    Events for running or queued jobs are never pruned.
+    """
+    if request.dry_run:
+        # For dry run, we need to count without deleting
+        # This uses a similar query to the actual prune
+        with state.job_repo.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM job_events je
+                INNER JOIN jobs j ON je.job_id = j.id
+                WHERE je.logged_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
+                  AND j.status IN ('completed', 'failed', 'canceled')
+                """,
+                (request.days,),
+            )
+            row = cursor.fetchone()
+            count = row[0] if row else 0
+
+        return PruneLogsResponse(
+            deleted=0,
+            would_delete=count,
+            retention_days=request.days,
+            dry_run=True,
+        )
+
+    # Actually prune
+    deleted_count = state.job_repo.prune_job_events(retention_days=request.days)
+
+    return PruneLogsResponse(
+        deleted=deleted_count,
+        would_delete=0,
+        retention_days=request.days,
+        dry_run=False,
+    )
+
+
+@app.post(
+    "/api/admin/prune-logs",
+    response_model=PruneLogsResponse,
+)
+async def prune_logs(
+    request: PruneLogsRequest,
+    state: APIState = Depends(get_api_state),
+) -> PruneLogsResponse:
+    """Prune job events older than retention period.
+
+    Admin maintenance operation. Only deletes events for terminal jobs
+    (completed/failed/canceled). Events for active jobs are never pruned.
+
+    Use dry_run=true to preview what would be deleted.
+    """
+    return await run_in_threadpool(_prune_logs, state, request)
+
+
+# --- Scheduled Staging Cleanup ---
+
+
+class CleanupStagingRequest(pydantic.BaseModel):
+    """Request to clean up orphaned staging databases."""
+
+    days: int = pydantic.Field(
+        default=7,
+        ge=1,
+        le=365,
+        description="Age threshold in days",
+    )
+    dbhost: str | None = pydantic.Field(
+        default=None,
+        description="Specific host to clean. If omitted, all enabled hosts are scanned.",
+    )
+    dry_run: bool = pydantic.Field(
+        default=False,
+        description="If true, return count without deleting",
+    )
+
+
+class CleanupStagingResponse(pydantic.BaseModel):
+    """Response from cleanup-staging operation."""
+
+    hosts_scanned: int = pydantic.Field(description="Number of hosts scanned")
+    total_candidates: int = pydantic.Field(
+        description="Number of orphaned staging DBs found"
+    )
+    total_dropped: int = pydantic.Field(description="Number of DBs dropped")
+    total_skipped: int = pydantic.Field(description="Number of DBs skipped")
+    total_errors: int = pydantic.Field(description="Number of errors encountered")
+    retention_days: int = pydantic.Field(description="Age threshold used")
+    dry_run: bool = pydantic.Field(description="Whether this was a dry run")
+
+
+def _cleanup_staging(
+    state: APIState, request: CleanupStagingRequest
+) -> CleanupStagingResponse:
+    """Clean up orphaned staging databases."""
+    from pulldb.worker.cleanup import cleanup_host_staging, run_scheduled_cleanup
+
+    if request.dbhost:
+        # Single host cleanup
+        result = cleanup_host_staging(
+            dbhost=request.dbhost,
+            job_repo=state.job_repo,
+            host_repo=state.host_repo,
+            retention_days=request.days,
+            dry_run=request.dry_run,
+        )
+        return CleanupStagingResponse(
+            hosts_scanned=1,
+            total_candidates=result.candidates_found,
+            total_dropped=result.databases_dropped,
+            total_skipped=result.databases_skipped,
+            total_errors=len(result.errors),
+            retention_days=request.days,
+            dry_run=request.dry_run,
+        )
+
+    # All hosts cleanup
+    summary = run_scheduled_cleanup(
+        job_repo=state.job_repo,
+        host_repo=state.host_repo,
+        retention_days=request.days,
+        dry_run=request.dry_run,
+    )
+
+    return CleanupStagingResponse(
+        hosts_scanned=summary.hosts_scanned,
+        total_candidates=summary.total_candidates,
+        total_dropped=summary.total_dropped,
+        total_skipped=summary.total_skipped,
+        total_errors=summary.total_errors,
+        retention_days=request.days,
+        dry_run=request.dry_run,
+    )
+
+
+@app.post(
+    "/api/admin/cleanup-staging",
+    response_model=CleanupStagingResponse,
+)
+async def cleanup_staging(
+    request: CleanupStagingRequest,
+    state: APIState = Depends(get_api_state),
+) -> CleanupStagingResponse:
+    """Clean up orphaned staging databases.
+
+    Admin maintenance operation. Scans database hosts for staging databases
+    from jobs that completed/failed more than N days ago.
+
+    Safety checks:
+    - Only removes staging DBs for terminal jobs (completed/failed/canceled)
+    - Skips if any active job exists for the target
+    - Logs all deletions to job_events
+
+    Use dry_run=true to preview what would be deleted.
+    """
+    return await run_in_threadpool(_cleanup_staging, state, request)
+
+
+# --- Orphan Database Report (Admin) ---
+
+
+class OrphanDatabaseItem(pydantic.BaseModel):
+    """An orphan database detected on a host."""
+
+    database_name: str = pydantic.Field(description="Name of the database")
+    target_name: str = pydantic.Field(description="Parsed target name")
+    job_id_prefix: str = pydantic.Field(description="Parsed job ID prefix")
+    dbhost: str = pydantic.Field(description="Host where database exists")
+
+
+class OrphanReportResponse(pydantic.BaseModel):
+    """Response containing orphan databases for admin review."""
+
+    dbhost: str = pydantic.Field(description="Host that was scanned")
+    scanned_at: str = pydantic.Field(description="When scan was performed")
+    orphans: list[OrphanDatabaseItem] = pydantic.Field(
+        description="List of orphan databases"
+    )
+    count: int = pydantic.Field(description="Number of orphans found")
+
+
+class AllOrphansResponse(pydantic.BaseModel):
+    """Response containing orphan databases across all hosts."""
+
+    hosts_scanned: int = pydantic.Field(description="Number of hosts scanned")
+    total_orphans: int = pydantic.Field(description="Total orphans found")
+    reports: list[OrphanReportResponse] = pydantic.Field(
+        description="Per-host orphan reports"
+    )
+
+
+def _get_orphan_report(state: APIState, dbhost: str | None) -> AllOrphansResponse:
+    """Get orphan database report for admin review."""
+    from pulldb.worker.cleanup import detect_orphaned_databases
+
+    reports: list[OrphanReportResponse] = []
+    total_orphans = 0
+
+    if dbhost:
+        hosts = [type("H", (), {"hostname": dbhost})()]
+    else:
+        hosts = state.host_repo.get_enabled_hosts()
+
+    for host in hosts:
+        orphan_report = detect_orphaned_databases(
+            dbhost=host.hostname,
+            job_repo=state.job_repo,
+            host_repo=state.host_repo,
+        )
+
+        orphan_items = [
+            OrphanDatabaseItem(
+                database_name=o.database_name,
+                target_name=o.target_name,
+                job_id_prefix=o.job_id_prefix,
+                dbhost=o.dbhost,
+            )
+            for o in orphan_report.orphans
+        ]
+
+        reports.append(
+            OrphanReportResponse(
+                dbhost=host.hostname,
+                scanned_at=orphan_report.scanned_at.isoformat(),
+                orphans=orphan_items,
+                count=len(orphan_items),
+            )
+        )
+        total_orphans += len(orphan_items)
+
+    return AllOrphansResponse(
+        hosts_scanned=len(hosts),
+        total_orphans=total_orphans,
+        reports=reports,
+    )
+
+
+@app.get(
+    "/api/admin/orphan-databases",
+    response_model=AllOrphansResponse,
+)
+async def get_orphan_databases(
+    dbhost: str | None = None,
+    state: APIState = Depends(get_api_state),
+) -> AllOrphansResponse:
+    """Get report of orphan databases for admin review.
+
+    Orphan databases match the staging pattern but have NO corresponding
+    job record. These are NEVER auto-deleted and require manual admin
+    review before deletion.
+
+    Use the delete-orphans endpoint to remove selected orphans after review.
+    """
+    return await run_in_threadpool(_get_orphan_report, state, dbhost)
+
+
+class DeleteOrphansRequest(pydantic.BaseModel):
+    """Request to delete specific orphan databases."""
+
+    dbhost: str = pydantic.Field(description="Host where databases exist")
+    database_names: list[str] = pydantic.Field(
+        description="List of database names to delete"
+    )
+    admin_user: str = pydantic.Field(
+        description="Username of admin approving deletion"
+    )
+
+
+class DeleteOrphansResponse(pydantic.BaseModel):
+    """Response from delete-orphans operation."""
+
+    requested: int = pydantic.Field(description="Number of deletions requested")
+    succeeded: int = pydantic.Field(description="Number of successful deletions")
+    failed: int = pydantic.Field(description="Number of failed deletions")
+    results: dict[str, bool] = pydantic.Field(
+        description="Per-database success/failure"
+    )
+
+
+def _delete_orphans(
+    state: APIState, request: DeleteOrphansRequest
+) -> DeleteOrphansResponse:
+    """Delete admin-approved orphan databases."""
+    from pulldb.worker.cleanup import admin_delete_orphan_databases
+
+    results = admin_delete_orphan_databases(
+        dbhost=request.dbhost,
+        database_names=request.database_names,
+        host_repo=state.host_repo,
+        admin_user=request.admin_user,
+    )
+
+    succeeded = sum(1 for v in results.values() if v)
+    failed = sum(1 for v in results.values() if not v)
+
+    return DeleteOrphansResponse(
+        requested=len(request.database_names),
+        succeeded=succeeded,
+        failed=failed,
+        results=results,
+    )
+
+
+@app.post(
+    "/api/admin/delete-orphans",
+    response_model=DeleteOrphansResponse,
+)
+async def delete_orphan_databases(
+    request: DeleteOrphansRequest,
+    state: APIState = Depends(get_api_state),
+) -> DeleteOrphansResponse:
+    """Delete admin-approved orphan databases.
+
+    This endpoint is for databases that have been reviewed via the
+    orphan-databases report and confirmed safe to delete.
+
+    The admin_user field is logged for audit purposes.
+    """
+    return await run_in_threadpool(_delete_orphans, state, request)
+
+
 def create_app() -> fastapi.FastAPI:
     return app
 
 
 def main(argv: list[str] | None = None) -> int:
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    host = os.getenv("PULLDB_API_HOST", "0.0.0.0")
+    port_str = os.getenv("PULLDB_API_PORT", "8080")
+    try:
+        port = int(port_str)
+    except ValueError:
+        port = 8080
+    uvicorn.run(app, host=host, port=port)
     return 0
 
 

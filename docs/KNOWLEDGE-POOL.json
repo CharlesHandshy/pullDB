@@ -1,4 +1,17 @@
 {
+  "cli_architecture": {
+    "principle": "CLIs are thin interface clients to server applications",
+    "pulldb_cli": {
+      "scope": "user-facing, own work only",
+      "commands": ["restore", "status", "cancel", "history", "search"],
+      "excluded": ["prune-logs", "cleanup-staging", "orphan-report", "delete-orphans"]
+    },
+    "pulldb_admin_cli": {
+      "scope": "admin-facing, system-wide operations",
+      "commands": ["prune-logs", "cleanup-staging", "orphan-report", "delete-orphans"]
+    },
+    "flow": "CLI → API Service → Worker Service"
+  },
   "accounts": {
     "development": "345321506926",
     "staging": "333204494849",
@@ -59,6 +72,11 @@
       "topic": "MySQL User Separation",
       "issue": "Single shared MySQL user violated least-privilege principle",
       "fix": "Use pulldb_api, pulldb_worker, pulldb_loader with minimal grants per role"
+    },
+    {
+      "topic": "CLI Scope Separation",
+      "issue": "Admin commands in user CLI could affect other users' work",
+      "fix": "User CLI (pulldb) for own work only; admin CLI (pulldb-admin) for system operations"
     }
   ]
 }

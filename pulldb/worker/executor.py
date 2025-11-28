@@ -26,6 +26,7 @@ from pulldb.domain.config import Config, S3BackupLocationConfig
 from pulldb.domain.errors import (
     BackupDiscoveryError,
     BackupValidationError,
+    CancellationError,
     DownloadError,
     ExtractionError,
 )
@@ -41,6 +42,7 @@ from pulldb.infra.s3 import (
 from pulldb.infra.secrets import MySQLCredentials
 from pulldb.worker.downloader import download_backup
 from pulldb.worker.post_sql import PostSQLConnectionSpec
+from pulldb.worker.profiling import RestorePhase, RestoreProfiler
 from pulldb.worker.restore import (
     build_restore_workflow_spec,
     orchestrate_restore_workflow,
@@ -221,6 +223,31 @@ class WorkerJobExecutor:
         """Invoke ``execute`` so the instance can act as a callable."""
         self.execute(job)
 
+    def _check_cancellation(self, job_id: str, phase: str) -> None:
+        """Check if job cancellation was requested; raise if so.
+
+        Called at checkpoints between major phases to allow graceful
+        termination. The caller is responsible for cleanup.
+
+        Args:
+            job_id: Job UUID to check.
+            phase: Current phase name for logging (e.g., 'post_download').
+
+        Raises:
+            CancellationError: If cancellation was requested.
+        """
+        if self.job_repo.is_cancellation_requested(job_id):
+            logger.info(
+                "Cancellation detected at checkpoint",
+                extra={"job_id": job_id, "phase": phase},
+            )
+            self._append_event(
+                job_id,
+                "cancellation_detected",
+                {"phase": phase},
+            )
+            raise CancellationError(job_id, phase)
+
     def execute(self, job: Job) -> None:
         """Run the full restore workflow for a job."""
         logger.info(
@@ -228,9 +255,19 @@ class WorkerJobExecutor:
             extra={"job_id": job.id, "target": job.target, "phase": "executor_start"},
         )
         job_dir, download_dir, extract_dir = self._prepare_job_dirs(job.id)
+        profiler = RestoreProfiler(job.id)
+
         try:
             host_credentials = self.host_repo.get_host_credentials(job.dbhost)
-            backup_spec, location, lookup_target = self.discover_backup_for_job(job)
+
+            # Phase: Discovery
+            with profiler.phase(RestorePhase.DISCOVERY) as discovery_profile:
+                backup_spec, location, lookup_target = self.discover_backup_for_job(job)
+                discovery_profile.metadata["bucket"] = backup_spec.bucket
+                discovery_profile.metadata["key"] = backup_spec.key
+                discovery_profile.metadata["lookup_target"] = lookup_target
+                discovery_profile.metadata["location"] = location.name
+
             self._append_event(
                 job.id,
                 "backup_selected",
@@ -257,25 +294,44 @@ class WorkerJobExecutor:
                     {"downloaded_bytes": downloaded, "total_bytes": total},
                 )
 
-            archive_path = self._download_backup(
-                self.s3_client,
-                backup_spec,
-                job.id,
-                str(download_dir),
-                _progress_callback,
-            )
+            # Phase: Download
+            with profiler.phase(RestorePhase.DOWNLOAD) as download_profile:
+                download_profile.metadata["bucket"] = backup_spec.bucket
+                download_profile.metadata["key"] = backup_spec.key
+                archive_path = self._download_backup(
+                    self.s3_client,
+                    backup_spec,
+                    job.id,
+                    str(download_dir),
+                    _progress_callback,
+                )
+                download_profile.metadata["bytes_processed"] = backup_spec.size_bytes
+                download_profile.metadata["archive_path"] = archive_path
+
             self._append_event(
                 job.id,
                 "download_complete",
                 {"path": archive_path},
             )
 
-            extracted_dir = self._extract_archive(archive_path, extract_dir, job.id)
+            # Checkpoint: check for cancellation after download
+            self._check_cancellation(job.id, "post_download")
+
+            # Phase: Extraction
+            with profiler.phase(RestorePhase.EXTRACTION) as extraction_profile:
+                extracted_dir = self._extract_archive(archive_path, extract_dir, job.id)
+                extraction_profile.metadata["extracted_dir"] = extracted_dir
+                # Estimate extracted size from archive size (typically 1:1 for tar)
+                extraction_profile.metadata["bytes_processed"] = backup_spec.size_bytes
+
             self._append_event(
                 job.id,
                 "extraction_complete",
                 {"path": extracted_dir},
             )
+
+            # Checkpoint: check for cancellation after extraction
+            self._check_cancellation(job.id, "post_extraction")
 
             # Resolve actual backup root (handle top-level directory in tarball)
             backup_dir = self._resolve_backup_dir(Path(extracted_dir))
@@ -293,6 +349,9 @@ class WorkerJobExecutor:
                 "format_detected",
                 {"detected_version": detected_version, "format_tag": format_tag},
             )
+
+            # Checkpoint: check for cancellation before restore starts
+            self._check_cancellation(job.id, "pre_restore")
 
             script_dir = self._resolve_post_sql_dir(job)
             staging_conn, post_sql_conn = self._build_connection_specs(
@@ -347,6 +406,9 @@ class WorkerJobExecutor:
                 },
             )
 
+            # Note: orchestrate_restore_workflow internally profiles myloader, post_sql,
+            # metadata, and atomic_rename phases. We wrap the entire call here for
+            # the "restore" phase timing in the executor.
             orchestrate_restore_workflow(workflow_spec)
 
             self._append_event(
@@ -357,6 +419,15 @@ class WorkerJobExecutor:
                     "target": job.target,
                 },
             )
+
+            # Complete profiling and emit profile event
+            profiler.complete()
+            self._append_event(
+                job.id,
+                "restore_profile",
+                profiler.profile.to_dict(),
+            )
+
             self.job_repo.mark_job_complete(job.id)
             logger.info(
                 "Job completed",
@@ -364,9 +435,18 @@ class WorkerJobExecutor:
                     "job_id": job.id,
                     "target": job.target,
                     "phase": "executor_complete",
+                    "profile": profiler.profile.phase_breakdown,
                 },
             )
+        except CancellationError as exc:
+            # Cancellation is controlled termination, not an error
+            profiler.complete(error=f"Canceled at {exc.detail.get('phase', 'unknown')}")
+            self._append_event(job.id, "restore_profile", profiler.profile.to_dict())
+            self._handle_failure(job, exc)
+            # Don't re-raise - job terminated cleanly
         except Exception as exc:
+            profiler.complete(error=str(exc))
+            self._append_event(job.id, "restore_profile", profiler.profile.to_dict())
             self._handle_failure(job, exc)
             raise
         finally:
@@ -495,6 +575,24 @@ class WorkerJobExecutor:
             )
 
     def _handle_failure(self, job: Job, exc: Exception) -> None:
+        # Handle cancellation specially - mark as canceled, not failed
+        if isinstance(exc, CancellationError):
+            try:
+                self.job_repo.mark_job_canceled(
+                    job.id,
+                    f"Canceled by user at phase: {exc.detail.get('phase', 'unknown')}",
+                )
+                logger.info(
+                    "Job canceled successfully",
+                    extra={"job_id": job.id, "phase": exc.detail.get("phase")},
+                )
+            except Exception:  # pragma: no cover - logging only
+                logger.exception(
+                    "Failed to mark job as canceled",
+                    extra={"job_id": job.id, "target": job.target},
+                )
+            return
+
         event_type = "restore_failed"
         if isinstance(exc, (DownloadError, BackupDiscoveryError)):
             event_type = "download_failed"

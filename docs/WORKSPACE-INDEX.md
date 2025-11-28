@@ -269,7 +269,6 @@
 | `uninstall_pulldb.sh` | Uninstaller |
 | `upgrade_pulldb.sh` | Upgrade handler |
 | `configure-pulldb.sh` | Interactive configuration |
-| `configure_server.sh` | Server AWS setup |
 | `merge-config.sh` | Config migration |
 | `monitor_jobs.py` | Job/process monitoring |
 | `service-validate.sh` | Production validation |

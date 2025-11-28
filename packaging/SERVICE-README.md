@@ -116,9 +116,9 @@ sudo systemctl restart pulldb-worker
 │   ├── install_pulldb.sh
 │   ├── uninstall_pulldb.sh
 │   ├── upgrade_pulldb.sh
-│   ├── configure_server.sh
+│   ├── configure-pulldb.sh
 │   ├── monitor_jobs.py
-│   └── pulldb-worker.service
+│   └── service-validate.sh
 ├── venv/                   # Python virtual environment
 │   └── bin/
 │       ├── pulldb          # CLI tool

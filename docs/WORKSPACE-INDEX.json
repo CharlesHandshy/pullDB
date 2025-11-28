@@ -145,7 +145,7 @@
     }
   },
   "scripts": {
-    "packaging": ["install_pulldb.sh", "uninstall_pulldb.sh", "upgrade_pulldb.sh", "configure-pulldb.sh", "configure_server.sh", "merge-config.sh", "monitor_jobs.py", "service-validate.sh"],
+    "packaging": ["install_pulldb.sh", "uninstall_pulldb.sh", "upgrade_pulldb.sh", "configure-pulldb.sh", "merge-config.sh", "monitor_jobs.py", "service-validate.sh"],
     "build": ["build_deb.sh", "build_client_deb.sh"],
     "setup": ["setup-aws.sh", "setup-aws-credentials.sh", "setup-mysql.sh", "setup-test-environment.sh", "setup_test_env.sh", "teardown-test-environment.sh", "start-test-services.sh"],
     "validation": ["pulldb-validate.sh", "verify-secrets-perms.sh", "verify-aws-access.py"],

@@ -210,8 +210,8 @@ show_current_config() {
     
     echo ""
     echo "  AWS:"
-    echo "    Profile:    $(get_var PULLDB_AWS_PROFILE 'not set')"
-    echo "    S3 Profile: $(get_var PULLDB_S3_AWS_PROFILE 'not set')"
+    echo "    Secrets Profile: $(get_var PULLDB_AWS_PROFILE 'not set')"
+    echo "    S3 Profile:      $(get_var PULLDB_S3_AWS_PROFILE 'not set')"
     
     echo ""
     echo "  Paths:"
@@ -223,6 +223,22 @@ show_current_config() {
     echo "  After-SQL:"
     echo "    Customer:  $(get_var PULLDB_CUSTOMERS_AFTER_SQL_DIR "${INSTALL_PREFIX}/after_sql/customer")"
     echo "    QA:        $(get_var PULLDB_QA_TEMPLATE_AFTER_SQL_DIR "${INSTALL_PREFIX}/after_sql/quality")"
+    
+    echo ""
+    echo "  API Server:"
+    echo "    Host:      $(get_var PULLDB_API_HOST '0.0.0.0')"
+    echo "    Port:      $(get_var PULLDB_API_PORT '8080')"
+    
+    echo ""
+    echo "  Worker:"
+    echo "    Poll Interval:   $(get_var PULLDB_WORKER_POLL_INTERVAL '5') seconds"
+    echo "    Max Concurrent:  $(get_var PULLDB_WORKER_MAX_CONCURRENT '1')"
+    
+    echo ""
+    echo "  MyLoader:"
+    echo "    Binary:    $(get_var PULLDB_MYLOADER_BINARY '/opt/pulldb.service/bin/myloader-0.19.3-3')"
+    echo "    Threads:   $(get_var PULLDB_MYLOADER_THREADS '8')"
+    echo "    Timeout:   $(get_var PULLDB_MYLOADER_TIMEOUT_SECONDS '7200') seconds"
     
     echo ""
     echo "  Logging:"
@@ -401,6 +417,127 @@ configure_logging() {
     fi
 }
 
+configure_api_server() {
+    print_header "API Server Configuration"
+    
+    local current_host=$(get_var PULLDB_API_HOST '0.0.0.0')
+    local current_port=$(get_var PULLDB_API_PORT '8080')
+    
+    echo ""
+    echo "  Configure the API server network settings."
+    echo "  Default binds to all interfaces (0.0.0.0) on port 8080."
+    echo ""
+    
+    # API Host
+    while true; do
+        read -p "  API Host (bind address) [$current_host]: " new_host
+        if [ -z "$new_host" ] || validate_hostname "$new_host"; then
+            [ -n "$new_host" ] && set_var PULLDB_API_HOST "$new_host"
+            break
+        fi
+    done
+    
+    # API Port
+    while true; do
+        read -p "  API Port [$current_port]: " new_port
+        if validate_port "$new_port"; then
+            [ -n "$new_port" ] && set_var PULLDB_API_PORT "$new_port"
+            break
+        fi
+    done
+    
+    print_ok "API server settings updated"
+}
+
+configure_worker() {
+    print_header "Worker Configuration"
+    
+    local current_poll=$(get_var PULLDB_WORKER_POLL_INTERVAL '5')
+    local current_max_concurrent=$(get_var PULLDB_WORKER_MAX_CONCURRENT '1')
+    
+    echo ""
+    echo "  Configure worker behavior."
+    echo ""
+    
+    # Poll Interval
+    while true; do
+        read -p "  Poll Interval (seconds) [$current_poll]: " new_poll
+        if [ -z "$new_poll" ]; then
+            break
+        elif echo "$new_poll" | grep -qE '^[0-9]+$' && [ "$new_poll" -ge 1 ]; then
+            set_var PULLDB_WORKER_POLL_INTERVAL "$new_poll"
+            break
+        else
+            print_error "Poll interval must be a positive integer"
+        fi
+    done
+    
+    # Max Concurrent Jobs
+    while true; do
+        read -p "  Max Concurrent Jobs [$current_max_concurrent]: " new_max
+        if [ -z "$new_max" ]; then
+            break
+        elif echo "$new_max" | grep -qE '^[0-9]+$' && [ "$new_max" -ge 1 ]; then
+            set_var PULLDB_WORKER_MAX_CONCURRENT "$new_max"
+            break
+        else
+            print_error "Max concurrent must be a positive integer"
+        fi
+    done
+    
+    print_ok "Worker settings updated"
+}
+
+configure_myloader() {
+    print_header "MyLoader Configuration"
+    
+    local current_threads=$(get_var PULLDB_MYLOADER_THREADS '8')
+    local current_timeout=$(get_var PULLDB_MYLOADER_TIMEOUT_SECONDS '7200')
+    local current_binary=$(get_var PULLDB_MYLOADER_BINARY '/opt/pulldb.service/bin/myloader-0.19.3-3')
+    
+    echo ""
+    echo "  Configure myloader restore settings."
+    echo "  See 'myloader --help' for additional options."
+    echo ""
+    
+    # Threads
+    while true; do
+        read -p "  Restore Threads [$current_threads]: " new_threads
+        if [ -z "$new_threads" ]; then
+            break
+        elif echo "$new_threads" | grep -qE '^[0-9]+$' && [ "$new_threads" -ge 1 ]; then
+            set_var PULLDB_MYLOADER_THREADS "$new_threads"
+            break
+        else
+            print_error "Threads must be a positive integer"
+        fi
+    done
+    
+    # Timeout
+    while true; do
+        read -p "  Timeout (seconds) [$current_timeout]: " new_timeout
+        if [ -z "$new_timeout" ]; then
+            break
+        elif echo "$new_timeout" | grep -qE '^[0-9]+$' && [ "$new_timeout" -ge 60 ]; then
+            set_var PULLDB_MYLOADER_TIMEOUT_SECONDS "$new_timeout"
+            break
+        else
+            print_error "Timeout must be at least 60 seconds"
+        fi
+    done
+    
+    # Binary path
+    while true; do
+        read -p "  MyLoader Binary [$current_binary]: " new_binary
+        if validate_path "$new_binary"; then
+            [ -n "$new_binary" ] && set_var PULLDB_MYLOADER_BINARY "$new_binary"
+            break
+        fi
+    done
+    
+    print_ok "MyLoader settings updated"
+}
+
 #------------------------------------------------------------------------------
 # Path/Permission Validation
 #------------------------------------------------------------------------------
@@ -498,6 +635,9 @@ show_menu() {
     echo "  3) Configure AWS settings"
     echo "  4) Configure paths"
     echo "  5) Configure logging"
+    echo "  6) Configure API server"
+    echo "  7) Configure worker"
+    echo "  8) Configure myloader"
     echo ""
     echo "  v) Validate and create paths"
     echo "  s) Save and exit"
@@ -523,6 +663,9 @@ run_interactive() {
             3) configure_aws ;;
             4) configure_paths ;;
             5) configure_logging ;;
+            6) configure_api_server ;;
+            7) configure_worker ;;
+            8) configure_myloader ;;
             v|V) validate_and_create_paths ;;
             s|S)
                 validate_and_create_paths

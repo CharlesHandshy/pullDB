@@ -84,8 +84,7 @@ scripts/
 | `setup-aws.sh` | **Install** AWS CLI v2 (system-level) | ✅ Keep |
 | `setup-aws-credentials.sh` | **Validate** AWS credentials post-install | ✅ Keep |
 | `setup-mysql.sh` | Install/configure MySQL | ✅ Keep |
-| `configure_server.sh` | Server AWS config | ✅ **Packaged** |
-| `configure-pulldb.sh` | Interactive config | ✅ **Packaged** |
+| `configure-pulldb.sh` | Interactive config (includes AWS) | ✅ **Packaged** |
 
 **Analysis**: These scripts are complementary, not duplicates:
 - `setup-aws.sh` installs the CLI binary
@@ -182,7 +181,6 @@ Scripts bundled into the `.deb` package (see `scripts/build_deb.sh`):
 | `install_pulldb.sh` | Main installer | `/opt/pulldb.service/scripts/` |
 | `uninstall_pulldb.sh` | Uninstaller | `/opt/pulldb.service/scripts/` |
 | `upgrade_pulldb.sh` | Upgrade handler | `/opt/pulldb.service/scripts/` |
-| `configure_server.sh` | Server AWS config | `/opt/pulldb.service/scripts/` |
 | `configure-pulldb.sh` | Interactive config | `/opt/pulldb.service/scripts/` |
 | `monitor_jobs.py` | Job monitoring | `/opt/pulldb.service/scripts/` |
 | `service-validate.sh` | Production validation | `/opt/pulldb.service/scripts/` |
@@ -278,7 +276,6 @@ Scripts required by `build_deb.sh` (must remain accessible):
 - `install_pulldb.sh`
 - `uninstall_pulldb.sh`  
 - `upgrade_pulldb.sh`
-- `configure_server.sh`
 - `configure-pulldb.sh`
 - `monitor_jobs.py`
 - `service-validate.sh`
@@ -294,7 +291,6 @@ Scripts required by `postinst`:
 
 ### Missing/Incomplete Docstrings
 - `setup-aws.sh` - Good header ✅
-- `configure_server.sh` - Minimal documentation ⚠️
 - `run-e2e-restore.sh` - Hardcoded paths ⚠️
 
 ### FAIL HARD Philosophy Violations
@@ -303,7 +299,6 @@ Scripts required by `postinst`:
 
 ### Hardcoded Values (should use env vars)
 - `run-e2e-restore.sh`: Hardcoded MySQL credentials
-- `configure_server.sh`: Hardcoded `/opt/pulldb.service`
 
 ---
 
