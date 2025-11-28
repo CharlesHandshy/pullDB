@@ -8,9 +8,40 @@ The `pulldb` CLI is the primary user interface for submitting and managing datab
 
 ## Quick Start
 
+### Load a Customer Database
+
+The most common use case is restoring a customer's production database to your local development environment:
+
 ```bash
-# Restore a customer database
+# 1. Submit a restore request
 pulldb user=charles customer=acme
+
+# Output:
+#   Job submitted successfully.
+#   Job ID: abc123de-f456-7890-abcd-ef1234567890
+#   Target: chrles_acme
+#   Status: queued
+
+# 2. Wait for the restore to complete
+pulldb status abc123de-f456-7890-abcd-ef1234567890
+
+# Or watch all your active jobs
+pulldb status --watch
+
+# 3. Once complete, connect to your database
+mysql -u charles chrles_acme
+
+# That's it! The customer database is now available locally.
+```
+
+### Common Workflows
+
+```bash
+# Restore a customer database (most common)
+pulldb user=charles customer=acme
+
+# Restore a specific date's backup
+pulldb user=charles customer=acme date=2025-11-27
 
 # Check your active jobs
 pulldb status
@@ -18,10 +49,10 @@ pulldb status
 # View job history
 pulldb history
 
-# Cancel a job
+# Cancel a pending/running job
 pulldb cancel <job_id>
 
-# View job events
+# View detailed job events
 pulldb events <job_id>
 ```
 
