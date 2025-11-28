@@ -21,6 +21,9 @@ from pulldb.infra.mysql import (
     MySQLPool,
 )
 from pulldb.infra.mysql import (
+    SettingsRepository as MySQLSettingsRepository,
+)
+from pulldb.infra.mysql import (
     UserRepository as MySQLUserRepository,
 )
 
@@ -75,6 +78,38 @@ class _FakeJobRepository:
         # For simplicity, just reverse the list
         return list(reversed(candidates))[:limit]
 
+    def count_active_jobs_for_user(self, user_id: str) -> int:
+        """Count active jobs for a user."""
+        return sum(1 for j in self.active if j.owner_user_id == user_id)
+
+    def count_all_active_jobs(self) -> int:
+        """Count all active jobs."""
+        return len(self.active)
+
+
+class _FakeSettingsRepository:
+    """In-memory settings repository stub for smoke tests."""
+
+    def __init__(self) -> None:
+        self.settings: dict[str, str] = {
+            "max_active_jobs_per_user": "0",  # Unlimited
+            "max_active_jobs_global": "0",  # Unlimited
+        }
+
+    def get_max_active_jobs_per_user(self) -> int:
+        value = self.settings.get("max_active_jobs_per_user", "0")
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+
+    def get_max_active_jobs_global(self) -> int:
+        value = self.settings.get("max_active_jobs_global", "0")
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+
 
 class _ResponseProtocol(Protocol):
     """Subset of methods returned by the patched requests module."""
@@ -95,6 +130,7 @@ def test_dev_smoke_restore_then_status(monkeypatch: pytest.MonkeyPatch) -> None:
 
     user_repo = _FakeUserRepository()
     job_repo = _FakeJobRepository()
+    settings_repo = _FakeSettingsRepository()
     config = Config(
         mysql_host="coord-db",
         mysql_user="pulldb",
@@ -107,6 +143,7 @@ def test_dev_smoke_restore_then_status(monkeypatch: pytest.MonkeyPatch) -> None:
         pool=cast(MySQLPool, SimpleNamespace()),
         user_repo=cast(MySQLUserRepository, user_repo),
         job_repo=cast(MySQLJobRepository, job_repo),
+        settings_repo=cast(MySQLSettingsRepository, settings_repo),
     )
 
     def _override_state() -> APIState:

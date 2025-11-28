@@ -21,6 +21,7 @@ from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
 from pulldb.infra.mysql import (
     JobRepository,
     MySQLPool,
+    SettingsRepository,
     UserRepository,
     build_default_pool,
 )
@@ -113,6 +114,7 @@ class APIState(t.NamedTuple):
     pool: MySQLPool
     user_repo: UserRepository
     job_repo: JobRepository
+    settings_repo: SettingsRepository
 
 
 def _initialize_state() -> APIState:
@@ -171,6 +173,7 @@ def _initialize_state() -> APIState:
         pool=pool,
         user_repo=UserRepository(pool),
         job_repo=JobRepository(pool),
+        settings_repo=SettingsRepository(pool),
     )
 
 
@@ -231,12 +234,73 @@ def _validate_job_request(req: JobRequest) -> None:
         )
 
 
+def _check_concurrency_limits(state: APIState, user: User) -> None:
+    """Check concurrency limits before enqueueing a job.
+
+    Enforces per-user and global active job limits. A limit of 0 means unlimited.
+
+    Args:
+        state: API state with repositories.
+        user: User attempting to enqueue a job.
+
+    Raises:
+        HTTPException: 429 Too Many Requests if limit exceeded.
+    """
+    # Check global limit first (higher priority)
+    global_limit = state.settings_repo.get_max_active_jobs_global()
+    if global_limit > 0:
+        global_active = state.job_repo.count_all_active_jobs()
+        if global_active >= global_limit:
+            emit_event(
+                "job_enqueue_rejected",
+                f"Global limit reached: {global_active}/{global_limit} active jobs",
+                labels=MetricLabels(
+                    target="",
+                    phase="enqueue",
+                    status="rate_limited",
+                ),
+            )
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    f"System at capacity: {global_active} active jobs "
+                    f"(limit: {global_limit}). Please try again later."
+                ),
+            )
+
+    # Check per-user limit
+    per_user_limit = state.settings_repo.get_max_active_jobs_per_user()
+    if per_user_limit > 0:
+        user_active = state.job_repo.count_active_jobs_for_user(user.user_id)
+        if user_active >= per_user_limit:
+            emit_event(
+                "job_enqueue_rejected",
+                f"User limit reached for {user.username}: {user_active}/{per_user_limit}",
+                labels=MetricLabels(
+                    target="",
+                    phase="enqueue",
+                    status="rate_limited",
+                ),
+            )
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    f"User limit reached: you have {user_active} active jobs "
+                    f"(limit: {per_user_limit}). Wait for jobs to complete or cancel one."
+                ),
+            )
+
+
 def _enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
     user = state.user_repo.get_or_create_user(username=req.user)
     target = _construct_target(user, req)
+    dbhost = _select_dbhost(state, req)
+
+    # Phase 2: Concurrency controls - check limits before job creation
+    _check_concurrency_limits(state, user)
+
     job_id = str(uuid.uuid4())
     staging_name = generate_staging_name(target, job_id)
-    dbhost = _select_dbhost(state, req)
 
     job = Job(
         id=job_id,

@@ -565,6 +565,48 @@ class JobRepository:
             row = cursor.fetchone()
             return row[0] == 0 if row else True
 
+    def count_active_jobs_for_user(self, user_id: str) -> int:
+        """Count active jobs (queued or running) for a specific user.
+
+        Used for per-user concurrency limit enforcement.
+
+        Args:
+            user_id: User UUID.
+
+        Returns:
+            Count of active jobs for the user.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM jobs
+                WHERE owner_user_id = %s AND status IN ('queued', 'running')
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else 0
+
+    def count_all_active_jobs(self) -> int:
+        """Count all active jobs (queued or running) system-wide.
+
+        Used for global concurrency limit enforcement.
+
+        Returns:
+            Total count of active jobs across all users.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM jobs
+                WHERE status IN ('queued', 'running')
+                """
+            )
+            row = cursor.fetchone()
+            return row[0] if row else 0
+
     def append_job_event(
         self, job_id: str, event_type: str, detail: str | None = None
     ) -> None:
@@ -1432,6 +1474,34 @@ class SettingsRepository:
         if value is None:
             raise ValueError(f"Required setting '{key}' not found")
         return value
+
+    def get_max_active_jobs_per_user(self) -> int:
+        """Get maximum active jobs allowed per user.
+
+        Returns:
+            Maximum concurrent active jobs per user. 0 means unlimited.
+        """
+        value = self.get_setting("max_active_jobs_per_user")
+        if value is None:
+            return 0  # Default: unlimited
+        try:
+            return int(value)
+        except ValueError:
+            return 0  # Default: unlimited if setting is invalid
+
+    def get_max_active_jobs_global(self) -> int:
+        """Get maximum active jobs allowed system-wide.
+
+        Returns:
+            Maximum concurrent active jobs globally. 0 means unlimited.
+        """
+        value = self.get_setting("max_active_jobs_global")
+        if value is None:
+            return 0  # Default: unlimited
+        try:
+            return int(value)
+        except ValueError:
+            return 0  # Default: unlimited if setting is invalid
 
     def set_setting(self, key: str, value: str, description: str | None = None) -> None:
         """Set setting value (INSERT or UPDATE).

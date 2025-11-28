@@ -278,7 +278,18 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 -- Default working directory for downloads and extractions
 INSERT INTO settings (setting_key, setting_value) VALUES
     ('work_dir', '/var/lib/pulldb/work/');
+
+-- Concurrency limits (Phase 2 - v0.0.4)
+-- 0 = unlimited (default), any positive integer enforces the limit
+INSERT INTO settings (setting_key, setting_value) VALUES
+    ('max_active_jobs_per_user', '0'),   -- Max concurrent jobs per user
+    ('max_active_jobs_global', '0');     -- Max concurrent jobs system-wide
 ```
+
+**Concurrency Settings** (added v0.0.4):
+- `max_active_jobs_per_user`: Maximum concurrent active jobs per user (0=unlimited)
+- `max_active_jobs_global`: Maximum concurrent active jobs system-wide (0=unlimited)
+- See `docs/concurrency-controls.md` for detailed configuration and monitoring guidance.
 
 **Migration Note**: Users of legacy `pullDB-auth --type=SUPPORT` should use `pullDB user=<user> customer=<customer>` (default, now targeting the local sandbox).
 
