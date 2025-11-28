@@ -23,6 +23,7 @@ from pulldb.domain.models import Job
 from pulldb.infra.logging import current_task_name, get_logger
 from pulldb.infra.metrics import (
     MetricLabels,
+    emit_counter,
     emit_event,
     emit_gauge,
     time_operation,
@@ -270,6 +271,11 @@ def _emit_running_event(job_repo: JobRepository, job: Job) -> None:
                 "phase": "status_transition",
             },
             exc_info=True,
+        )
+        # Track event emission failures for monitoring
+        emit_counter(
+            "event_emission_failures_total",
+            labels=MetricLabels(phase="running_event"),
         )
         # Don't re-raise - job is already claimed and running
         # Event emission failure shouldn't stop job execution

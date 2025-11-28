@@ -223,11 +223,20 @@ Multi-format support is complete when:
   - Add `host_alias` column to `db_hosts` table or maintain alias mapping in `settings` table.
   - Update README with shortened syntax examples.
 
-## Phase 3 – Multi-Daemon & Distributed Locks
+## Phase 3 – Multi-Daemon & Distributed Locks ✅ COMPLETE (v0.0.5)
 
-- Evaluate distributed locking (e.g., Consul, DynamoDB, or MySQL advisory locks).
-- Document deployment topology, failover behaviour, audit adjustments.
-- Update diagrams to reflect new components.
+Implemented in v0.0.5 (November 2025):
+
+- [x] Atomic job claiming with `SELECT FOR UPDATE SKIP LOCKED` (MySQL native locking)
+- [x] Worker ID tracking (`jobs.worker_id` column) for multi-daemon debugging
+- [x] Deprecation of unsafe `get_next_queued_job()` + `mark_job_running()` pattern
+- [x] New `claim_next_job()` method for safe concurrent operation
+- [x] Concurrent worker tests with threading validation
+- [x] Schema migration `017_jobs_worker_id.sql`
+
+Decision: Used MySQL `FOR UPDATE SKIP LOCKED` instead of external locking (Consul/DynamoDB)
+because MySQL is already the coordination database and this pattern is sufficient for
+our scale requirements.
 
 ## Phase 4 – Web Interface & Enhanced Authentication
 

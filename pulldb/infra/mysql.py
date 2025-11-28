@@ -13,7 +13,7 @@ import typing as t
 import uuid
 import warnings
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 
 import mysql.connector
 from mysql.connector import errorcode
@@ -215,7 +215,7 @@ class JobRepository:
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
-                       completed_at, options_json, retry_count, error_detail
+                       completed_at, options_json, retry_count, error_detail, worker_id
                 FROM jobs
                 WHERE status = 'queued'
                 ORDER BY submitted_at ASC
@@ -261,7 +261,7 @@ class JobRepository:
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
-                       completed_at, options_json, retry_count, error_detail
+                       completed_at, options_json, retry_count, error_detail, worker_id
                 FROM jobs
                 WHERE status = 'queued'
                 ORDER BY submitted_at ASC
@@ -298,10 +298,10 @@ class JobRepository:
                 )
 
             # Transaction commits on context manager exit
-            # Return job with status still showing 'queued' from SELECT
-            # (status is updated in DB but our row dict has old value)
+            # Return job with updated status and started_at
+            # Use current time as approximation since DB sets it in UPDATE
             job = self._row_to_job(row)
-            # Return a new Job with updated status
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
             return Job(
                 id=job.id,
                 owner_user_id=job.owner_user_id,
@@ -312,11 +312,12 @@ class JobRepository:
                 dbhost=job.dbhost,
                 status=JobStatus.RUNNING,  # Reflect the updated status
                 submitted_at=job.submitted_at,
-                started_at=job.started_at,  # Will be set by DB
+                started_at=now,  # Approximate; DB sets via UTC_TIMESTAMP(6)
                 completed_at=job.completed_at,
                 options_json=job.options_json,
                 retry_count=job.retry_count,
                 error_detail=job.error_detail,
+                worker_id=worker_id,  # Reflect the worker that claimed this job
             )
 
     def get_job_by_id(self, job_id: str) -> Job | None:
@@ -334,7 +335,7 @@ class JobRepository:
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
-                       completed_at, options_json, retry_count, error_detail
+                       completed_at, options_json, retry_count, error_detail, worker_id
                 FROM jobs
                 WHERE id = %s
                 """,
@@ -382,6 +383,10 @@ class JobRepository:
         Called by worker when job successfully finishes. Updates status to
         'complete' and records completion time.
 
+        Note:
+            The worker_id column is intentionally retained after completion
+            for debugging purposes (to identify which worker processed the job).
+
         Args:
             job_id: UUID of job.
         """
@@ -402,6 +407,10 @@ class JobRepository:
 
         Called by worker when job execution fails. Updates status to 'failed',
         records completion time, and stores error message.
+
+        Note:
+            The worker_id column is intentionally retained after failure
+            for debugging purposes (to identify which worker processed the job).
 
         Args:
             job_id: UUID of job.
@@ -672,7 +681,7 @@ class JobRepository:
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
-                       completed_at, options_json, retry_count, error_detail
+                       completed_at, options_json, retry_count, error_detail, worker_id
                 FROM jobs
                 WHERE owner_user_id = %s
                 ORDER BY submitted_at DESC
@@ -884,7 +893,7 @@ class JobRepository:
                 SELECT id, owner_user_id, owner_username, owner_user_code,
                        target, staging_name, dbhost, status, submitted_at,
                        started_at, completed_at, options_json, retry_count,
-                       error_detail, source
+                       error_detail, source, worker_id
                 FROM jobs
                 WHERE target = %s AND dbhost = %s AND id LIKE %s
                 ORDER BY submitted_at DESC
@@ -1056,6 +1065,7 @@ class JobRepository:
             options_json=options_json,
             retry_count=row.get("retry_count", 0),
             error_detail=row.get("error_detail"),
+            worker_id=row.get("worker_id"),
             current_operation=self._derive_operation(row),
         )
 

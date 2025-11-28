@@ -86,6 +86,8 @@ class Job:
         options_json: JSON snapshot of CLI options (customer/qatemplate, overwrite).
         retry_count: Number of manual retries (incremented on resubmit).
         error_detail: Error message if job failed (NULL for success).
+        worker_id: Identifier of worker that claimed job (format: hostname:pid).
+            Set by claim_next_job() and retained after completion for debugging.
     """
 
     id: str
@@ -102,6 +104,7 @@ class Job:
     options_json: dict[str, str] | None = None
     retry_count: int = 0
     error_detail: str | None = None
+    worker_id: str | None = None
     current_operation: str | None = None
 
 
