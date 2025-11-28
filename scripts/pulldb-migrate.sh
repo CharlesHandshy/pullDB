@@ -59,17 +59,81 @@ confirm() {
 }
 
 # === Database URL Construction ===
-# Builds DATABASE_URL from AWS Secrets Manager or environment
+# Builds DATABASE_URL from environment, socket auth, or AWS Secrets Manager
+#
+# LESSONS LEARNED:
+# 1. For localhost, ALWAYS prefer socket auth - works with sudo, no passwords needed
+# 2. Socket auth is more secure (no password in URL/environment)
+# 3. AWS credentials may not be accessible when run as root (user-specific profiles)
+#
+# Priority for localhost:
+#   1. DATABASE_URL environment variable (explicit override)
+#   2. Unix socket auth (preferred - works with sudo, no passwords)
+#   3. TCP with AWS Secrets Manager credentials (fallback)
+#
+# Priority for remote hosts:
+#   1. DATABASE_URL environment variable
+#   2. TCP with AWS Secrets Manager credentials
+#
 build_database_url() {
+    # Default database for all paths
+    local database="${PULLDB_MYSQL_DATABASE:-pulldb_service}"
+    export MYSQL_DATABASE="$database"
+    
     # Check if DATABASE_URL is already set (for testing/override)
     if [[ -n "${DATABASE_URL:-}" ]]; then
         debug "Using existing DATABASE_URL"
         return 0
     fi
     
-    # Load from AWS Secrets Manager
-    local secret_ref="${PULLDB_COORDINATION_SECRET:-aws-secretsmanager:/pulldb/mysql/coordination-db}"
+    local host="${PULLDB_MYSQL_HOST:-localhost}"
+    local port="${PULLDB_MYSQL_PORT:-3306}"
+    local socket="${PULLDB_MYSQL_SOCKET:-}"
+    
+    # For localhost connections, ALWAYS prefer socket auth
+    # This works with sudo, doesn't require passwords, and is more secure
+    if [[ "$host" == "localhost" || "$host" == "127.0.0.1" ]]; then
+        # Try common socket locations if not specified
+        if [[ -z "$socket" ]]; then
+            for sock_path in /var/run/mysqld/mysqld.sock /tmp/mysql.sock /var/lib/mysql/mysql.sock; do
+                if [[ -S "$sock_path" ]]; then
+                    socket="$sock_path"
+                    debug "Found MySQL socket at: $socket"
+                    break
+                fi
+            done
+        fi
+        
+        # If socket exists, use socket auth
+        # With MySQL auth_socket plugin, root user doesn't need a password
+        # dbmate URL format for socket: mysql://user:pass@/database?socket=/path/to/socket
+        if [[ -S "${socket:-}" ]]; then
+            local mysql_user="${PULLDB_MIGRATION_MYSQL_USER:-root}"
+            debug "Using Unix socket authentication at: $socket (user: $mysql_user)"
+            # Note: empty password but still need : after user, @ before /
+            export DATABASE_URL="mysql://${mysql_user}:@/${database}?socket=${socket}"
+            # Track that we're using socket auth (for verify/baseline commands)
+            export USE_SOCKET_AUTH="true"
+            export SOCKET_PATH="$socket"
+            export MYSQL_USER="$mysql_user"
+            export MYSQL_DATABASE="$database"
+            return 0
+        fi
+        
+        debug "No socket found, will try TCP connection"
+    fi
+    
+    # For remote connections or when socket is not available, use TCP with credentials
+    local user="${PULLDB_MIGRATION_MYSQL_USER:-${PULLDB_MYSQL_USER:-pulldb_migrate}}"
+    local password=""
+    
+    # Get password from AWS Secrets Manager
+    local secret_ref="${PULLDB_COORDINATION_SECRET:-}"
     local aws_profile="${PULLDB_AWS_PROFILE:-}"
+    
+    if [[ -z "$secret_ref" ]]; then
+        fail "No MySQL connection method available. Socket not found and PULLDB_COORDINATION_SECRET not set."
+    fi
     
     debug "Loading credentials from: $secret_ref"
     
@@ -98,14 +162,19 @@ build_database_url() {
         fail "jq is required for parsing secrets. Install with: apt-get install jq"
     fi
     
-    local host port password database
-    host=$(echo "$secret_json" | jq -r '.host // "localhost"')
-    port=$(echo "$secret_json" | jq -r '.port // 3306')
-    password=$(echo "$secret_json" | jq -r '.password // empty')
-    database="${PULLDB_MYSQL_DATABASE:-pulldb_service}"
+    # Get host/port from secret if present (may override PULLDB_MYSQL_HOST for remote)
+    local secret_host secret_port
+    secret_host=$(echo "$secret_json" | jq -r '.host // empty')
+    secret_port=$(echo "$secret_json" | jq -r '.port // empty')
     
-    # Use environment variable for user (supports API/Worker separation)
-    local user="${PULLDB_MIGRATION_MYSQL_USER:-${PULLDB_MYSQL_USER:-root}}"
+    if [[ -n "$secret_host" ]]; then
+        host="$secret_host"
+    fi
+    if [[ -n "$secret_port" ]]; then
+        port="$secret_port"
+    fi
+    
+    password=$(echo "$secret_json" | jq -r '.password // empty')
     
     if [[ -z "$password" ]]; then
         fail "No password found in secret: $secret_name"
@@ -115,9 +184,12 @@ build_database_url() {
     local encoded_password
     encoded_password=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$password', safe=''))")
     
-    # Build MySQL URL for dbmate
+    # Build MySQL URL for dbmate (TCP connection)
     export DATABASE_URL="mysql://${user}:${encoded_password}@${host}:${port}/${database}"
-    debug "DATABASE_URL constructed for host: $host"
+    export USE_SOCKET_AUTH="false"
+    export MYSQL_USER="$user"
+    export MYSQL_DATABASE="$database"
+    debug "DATABASE_URL constructed for host: $host (TCP)"
 }
 
 # === Check Prerequisites ===
@@ -215,30 +287,43 @@ cmd_new() {
     run_dbmate new "$name"
 }
 
+# === Build mysql client command ===
+# Constructs mysql CLI command based on auth method
+# Uses socket auth for localhost, TCP with password for remote
+build_mysql_cmd() {
+    local database="${1:-$MYSQL_DATABASE}"
+    
+    if [[ -n "$USE_SOCKET_AUTH" && "$USE_SOCKET_AUTH" == "true" ]]; then
+        # Socket auth - no password needed
+        echo "mysql --socket='$SOCKET_PATH' -u'$MYSQL_USER' '$database' -N -e"
+    else
+        # TCP auth - parse from DATABASE_URL
+        local db_url="$DATABASE_URL"
+        local user host port password
+        
+        user=$(echo "$db_url" | sed -E 's|mysql://([^:]+):.*|\1|')
+        password=$(echo "$db_url" | sed -E 's|mysql://[^:]+:([^@]+)@.*|\1|' | python3 -c "import urllib.parse,sys; print(urllib.parse.unquote(sys.stdin.read().strip()))")
+        host=$(echo "$db_url" | sed -E 's|mysql://[^@]+@([^:]+):.*|\1|')
+        port=$(echo "$db_url" | sed -E 's|mysql://[^@]+@[^:]+:([0-9]+)/.*|\1|')
+        
+        echo "mysql -u'${user}' -p'${password}' -h'${host}' -P'${port}' '${database}' -N -e"
+    fi
+}
+
 cmd_verify() {
     info "Verifying schema..."
     
     build_database_url
     
-    # Extract connection params from DATABASE_URL for mysql client
-    local db_url="$DATABASE_URL"
-    local user host port database password
-    
-    # Parse URL (mysql://user:pass@host:port/database)
-    user=$(echo "$db_url" | sed -E 's|mysql://([^:]+):.*|\1|')
-    password=$(echo "$db_url" | sed -E 's|mysql://[^:]+:([^@]+)@.*|\1|' | python3 -c "import urllib.parse,sys; print(urllib.parse.unquote(sys.stdin.read().strip()))")
-    host=$(echo "$db_url" | sed -E 's|mysql://[^@]+@([^:]+):.*|\1|')
-    port=$(echo "$db_url" | sed -E 's|mysql://[^@]+@[^:]+:([0-9]+)/.*|\1|')
-    database=$(echo "$db_url" | sed -E 's|mysql://[^/]+/([^?]+).*|\1|')
-    
-    local mysql_cmd="mysql -u${user} -p${password} -h${host} -P${port} ${database} -N -e"
+    local mysql_cmd
+    mysql_cmd=$(build_mysql_cmd)
     
     # Verify essential tables exist
     local tables=("auth_users" "jobs" "job_events" "db_hosts" "settings" "locks" "schema_migrations")
     local missing=()
     
     for table in "${tables[@]}"; do
-        if ! $mysql_cmd "SELECT 1 FROM information_schema.tables WHERE table_schema='${database}' AND table_name='${table}'" 2>/dev/null | grep -q 1; then
+        if ! eval "$mysql_cmd \"SELECT 1 FROM information_schema.tables WHERE table_schema='${MYSQL_DATABASE}' AND table_name='${table}'\"" 2>/dev/null | grep -q 1; then
             missing+=("$table")
         fi
     done
@@ -253,7 +338,7 @@ cmd_verify() {
     local missing_settings=()
     
     for setting in "${phase2_settings[@]}"; do
-        if ! $mysql_cmd "SELECT 1 FROM settings WHERE setting_key='${setting}'" 2>/dev/null | grep -q 1; then
+        if ! eval "$mysql_cmd \"SELECT 1 FROM settings WHERE setting_key='${setting}'\"" 2>/dev/null | grep -q 1; then
             missing_settings+=("$setting")
         fi
     done
@@ -264,7 +349,7 @@ cmd_verify() {
     
     # Count migrations
     local applied_count
-    applied_count=$($mysql_cmd "SELECT COUNT(*) FROM schema_migrations" 2>/dev/null || echo "0")
+    applied_count=$(eval "$mysql_cmd \"SELECT COUNT(*) FROM schema_migrations\"" 2>/dev/null || echo "0")
     
     info "Schema verification passed"
     info "  - All required tables present"
@@ -273,6 +358,55 @@ cmd_verify() {
     if [[ ${#missing_settings[@]} -eq 0 ]]; then
         info "  - Phase 2 settings: OK"
     fi
+}
+
+# === Baseline existing database ===
+# Marks migrations as applied without running them
+# Used when database already has schema from manual setup
+cmd_baseline() {
+    info "Baseline: marking existing migrations as applied..."
+    
+    build_database_url
+    
+    local mysql_cmd
+    mysql_cmd=$(build_mysql_cmd)
+    
+    # Ensure schema_migrations table exists
+    eval "$mysql_cmd \"CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(255) PRIMARY KEY)\"" 2>/dev/null
+    
+    # Get list of all migration files
+    local migrations=()
+    while IFS= read -r -d '' file; do
+        migrations+=("$(basename "$file")")
+    done < <(find "$MIGRATIONS_DIR" -maxdepth 1 -name "*.sql" -print0 | sort -z)
+    
+    if [[ ${#migrations[@]} -eq 0 ]]; then
+        warn "No migration files found in $MIGRATIONS_DIR"
+        return 0
+    fi
+    
+    local baselined=0
+    for migration in "${migrations[@]}"; do
+        # Extract version (first 14 digits before underscore)
+        local version
+        version=$(echo "$migration" | grep -oE '^[0-9]+')
+        
+        if [[ -z "$version" ]]; then
+            warn "Skipping invalid migration filename: $migration"
+            continue
+        fi
+        
+        # Check if already recorded
+        if eval "$mysql_cmd \"SELECT 1 FROM schema_migrations WHERE version='$version'\"" 2>/dev/null | grep -q 1; then
+            debug "Already recorded: $migration"
+        else
+            eval "$mysql_cmd \"INSERT INTO schema_migrations (version) VALUES ('$version')\"" 2>/dev/null
+            info "  Baselined: $migration"
+            ((baselined++))
+        fi
+    done
+    
+    info "Baseline complete: $baselined migrations recorded"
 }
 
 cmd_wait() {
@@ -294,6 +428,7 @@ Commands:
   rollback            Rollback the last migration
   new <name>          Create a new migration file
   verify              Verify schema is correct
+  baseline            Mark all migrations as applied (for existing databases)
   wait                Wait for database to become available
 
 Options:
@@ -310,6 +445,11 @@ Environment Variables:
   PULLDB_MIGRATION_MYSQL_USER MySQL user for migrations (default: root)
   DATABASE_URL                Override: mysql://user:pass@host:port/database
 
+Authentication:
+  - For localhost: Uses socket auth (root or PULLDB_MIGRATION_MYSQL_USER)
+  - For remote: Uses AWS Secrets Manager credentials
+  - Override with DATABASE_URL for full control
+
 Examples:
   # Check migration status
   pulldb-migrate status
@@ -319,6 +459,9 @@ Examples:
 
   # Apply migrations non-interactively (CI/upgrade scripts)
   pulldb-migrate up --yes
+
+  # Baseline existing database (skip running migrations, just record them)
+  pulldb-migrate baseline
 
   # Create new migration
   pulldb-migrate new add_feature_table
@@ -380,6 +523,9 @@ main() {
             ;;
         verify)
             cmd_verify
+            ;;
+        baseline)
+            cmd_baseline
             ;;
         wait)
             cmd_wait
