@@ -15,6 +15,9 @@ from pulldb.cli.main import cli
 from pulldb.domain.config import Config
 from pulldb.domain.models import Job, User
 from pulldb.infra.mysql import (
+    HostRepository as MySQLHostRepository,
+)
+from pulldb.infra.mysql import (
     JobRepository as MySQLJobRepository,
 )
 from pulldb.infra.mysql import (
@@ -111,6 +114,18 @@ class _FakeSettingsRepository:
             return 0
 
 
+class _FakeHostRepository:
+    """In-memory host repository stub for smoke tests."""
+
+    def get_host_by_alias(self, alias: str) -> None:
+        """Returns None - no hosts configured in smoke test."""
+        return None
+
+    def resolve_hostname(self, name: str) -> str:
+        """Returns the name as-is - no alias resolution in smoke test."""
+        return name
+
+
 class _ResponseProtocol(Protocol):
     """Subset of methods returned by the patched requests module."""
 
@@ -131,6 +146,7 @@ def test_dev_smoke_restore_then_status(monkeypatch: pytest.MonkeyPatch) -> None:
     user_repo = _FakeUserRepository()
     job_repo = _FakeJobRepository()
     settings_repo = _FakeSettingsRepository()
+    host_repo = _FakeHostRepository()
     config = Config(
         mysql_host="coord-db",
         mysql_user="pulldb",
@@ -144,6 +160,7 @@ def test_dev_smoke_restore_then_status(monkeypatch: pytest.MonkeyPatch) -> None:
         user_repo=cast(MySQLUserRepository, user_repo),
         job_repo=cast(MySQLJobRepository, job_repo),
         settings_repo=cast(MySQLSettingsRepository, settings_repo),
+        host_repo=cast(MySQLHostRepository, host_repo),
     )
 
     def _override_state() -> APIState:
