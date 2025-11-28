@@ -12,11 +12,14 @@ The `pulldb-admin` CLI provides administrative commands for system-wide settings
 # View all settings
 pulldb-admin settings list
 
-# Update concurrency limits
+# Update concurrency limits (updates both db AND .env)
 pulldb-admin settings set max_active_jobs_per_user 3
 
 # View all active jobs
 pulldb-admin jobs list --active
+
+# Audit settings drift between db and .env
+pulldb-admin settings diff
 
 # Cleanup orphaned resources
 pulldb-admin cleanup --dry-run
@@ -28,15 +31,18 @@ pulldb-admin cleanup --dry-run
 
 ### settings
 
-View or modify system configuration settings.
+View or modify system configuration settings. Settings can be stored in both the database and `.env` file.
 
 **Subcommands:**
 ```bash
-pulldb-admin settings list              # List all settings
-pulldb-admin settings get <key>         # Get a specific setting
-pulldb-admin settings set <key> <value> # Set a setting value
-pulldb-admin settings reset <key>       # Reset setting to default
+pulldb-admin settings list              # List all settings with sources
+pulldb-admin settings get <key>         # Get setting from both db AND .env
+pulldb-admin settings set <key> <value> # Set in both db AND .env (default)
+pulldb-admin settings reset <key>       # Reset setting (remove from db)
 pulldb-admin settings export            # Export all settings
+pulldb-admin settings diff              # Show differences: db ↔ .env
+pulldb-admin settings pull              # Sync: database → .env file
+pulldb-admin settings push              # Sync: .env file → database
 ```
 
 **Examples:**
@@ -48,14 +54,17 @@ pulldb-admin settings list
 # View all settings including unset ones
 pulldb-admin settings list --all
 
-# View specific setting
+# View specific setting (shows both db and env values)
 pulldb-admin settings get max_active_jobs_per_user
 
-# Set per-user concurrent job limit
+# Set value in BOTH database AND .env (default behavior)
 pulldb-admin settings set max_active_jobs_per_user 3
 
-# Set global concurrent job limit
-pulldb-admin settings set max_active_jobs_global 10
+# Set only in database
+pulldb-admin settings set max_active_jobs_per_user 3 --db-only
+
+# Set only in .env file
+pulldb-admin settings set max_active_jobs_per_user 3 --env-only
 
 # Set with description
 pulldb-admin settings set max_active_jobs_per_user 3 -d "Limit for Phase 2"
@@ -68,6 +77,64 @@ pulldb-admin settings export
 
 # Export as JSON
 pulldb-admin settings export --format=json
+
+# Show differences between db and .env
+pulldb-admin settings diff
+
+# Sync database → .env file (preview)
+pulldb-admin settings pull --dry-run
+
+# Sync database → .env file
+pulldb-admin settings pull
+
+# Sync .env file → database (preview)
+pulldb-admin settings push --dry-run
+
+# Sync .env file → database  
+pulldb-admin settings push
+```
+
+**Output (get):**
+```
+Setting: max_active_jobs_per_user
+Description: Maximum active jobs per user (0=unlimited)
+Environment variable: PULLDB_MAX_ACTIVE_JOBS_PER_USER
+
+  db:      3
+  env:     5
+  default: 0
+
+  effective: 3 (from database)
+```
+
+**Output (diff):**
+```
+Comparing database vs .env file (/opt/pulldb.service/.env)
+
+DIFFERENCES (db ≠ env):
+------------------------------------------------------------
+  max_active_jobs_per_user:
+    db:  3
+    env: 5
+
+DATABASE ONLY (not in .env):
+------------------------------------------------------------
+  custom_setting: some_value
+
+.ENV ONLY (not in database):
+------------------------------------------------------------
+  myloader_threads (PULLDB_MYLOADER_THREADS): 16
+
+MATCHING: 8 setting(s) are in sync
+
+Summary:
+  Differences: 1
+  DB only:     1
+  .env only:   1
+  In sync:     8
+
+Use 'pulldb-admin settings pull' to sync db → .env
+Use 'pulldb-admin settings push' to sync .env → db
 ```
 
 **Output (list):**
