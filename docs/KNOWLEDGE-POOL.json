@@ -77,6 +77,40 @@
       "topic": "CLI Scope Separation",
       "issue": "Admin commands in user CLI could affect other users' work",
       "fix": "User CLI (pulldb) for own work only; admin CLI (pulldb-admin) for system operations"
+    },
+    {
+      "topic": "AWS Region Configuration",
+      "issue": "boto3 failed with 'You must specify a region' outside AWS",
+      "fix": "Set AWS_DEFAULT_REGION in .env; CredentialResolver uses fallback chain",
+      "phase": "2"
+    },
+    {
+      "topic": "Settings Sync",
+      "issue": "Settings changes required editing both db AND .env manually",
+      "fix": "Use pulldb-admin settings pull/push/diff commands",
+      "phase": "2"
+    },
+    {
+      "topic": "dpkg Upgrade Migrations",
+      "issue": "dpkg -i does NOT auto-run schema migrations",
+      "fix": "After dpkg install, run: sudo /opt/pulldb.service/scripts/pulldb-migrate.sh migrate",
+      "phase": "2"
+    },
+    {
+      "topic": "CLI dotenv Auto-Loading",
+      "issue": "CLIs required manual 'source .env' before use",
+      "fix": "load_dotenv() added at module import in admin.py and main.py",
+      "phase": "2"
     }
-  ]
+  ],
+  "migrations": {
+    "script": "/opt/pulldb.service/scripts/pulldb-migrate.sh",
+    "commands": ["status", "migrate", "verify", "baseline", "rollback"],
+    "post_install_required": true
+  },
+  "settings_sync": {
+    "pull": "db → .env (download settings from database)",
+    "push": ".env → db (upload settings to database)",
+    "diff": "compare db vs .env for differences"
+  }
 }

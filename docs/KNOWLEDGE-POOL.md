@@ -2,7 +2,7 @@
 
 Purpose: a single-source, trimmed knowledge base used by agents and maintainers. This file contains only the facts required for current operations (Nov 2025). It is intentionally concise and indexed for fast lookup.
 
-Last updated: 2025-11-27
+Last updated: 2025-11-28
 
 ---
 
@@ -285,6 +285,31 @@ This file should be created and applied in the production account only. Keep sec
   - **Socket Locations**: `/var/run/mysqld/mysqld.sock` (Debian/Ubuntu), `/tmp/mysql.sock` (macOS), `/var/lib/mysql/mysql.sock` (RHEL).
   - **Priority**: DATABASE_URL (override) → socket auth (localhost) → AWS Secrets Manager (remote/fallback).
 - **Migration Baseline**: When installing on an existing database, use `pulldb-migrate baseline` to mark all migrations as applied without running them. This prevents migration errors from schema drift.
+
+### Phase 2 Lessons (Nov 2025)
+
+- **AWS Region Configuration**:
+  - **Problem**: boto3 failed with "You must specify a region" when running outside AWS.
+  - **Root Cause**: CredentialResolver didn't pass region to boto3.Session().
+  - **Fix**: Added `aws_region` parameter with fallback chain: explicit param → `PULLDB_AWS_REGION` → `AWS_DEFAULT_REGION` → `"us-east-1"`.
+  - **Recommendation**: Always set `AWS_DEFAULT_REGION` in `.env` files for non-EC2 environments.
+
+- **Settings Sync (db ↔ .env)**:
+  - **Problem**: Settings changes required editing both database AND .env file manually.
+  - **Solution**: Implemented `pulldb-admin settings pull/push/diff` commands.
+  - **Commands**: `pull` (db→env), `push` (env→db), `diff` (compare both).
+  - **File Detection**: Auto-finds `/opt/pulldb.service/.env` (installed) or repo root `.env` (dev).
+
+- **dpkg Upgrade Does NOT Run Migrations**:
+  - **Problem**: Users expected `dpkg -i pulldb_*.deb` to auto-update schema.
+  - **Reality**: dpkg only upgrades files; migrations require separate step.
+  - **Fix**: Created `packaging/INSTALL-UPGRADE.md` with explicit post-install steps.
+  - **Required Steps**: After dpkg install, run `sudo /opt/pulldb.service/scripts/pulldb-migrate.sh migrate`.
+
+- **CLI dotenv Auto-Loading**:
+  - **Problem**: CLI tools required manual `source .env` before use.
+  - **Fix**: Added `load_dotenv()` at module import in `admin.py` and `main.py`.
+  - **Behavior**: Auto-loads `.env` from working directory or install paths.
 
 ## myloader 0.19 Metadata Compatibility
 - **Source**: `src/myloader/myloader_process.c` (GitHub)
