@@ -67,6 +67,7 @@ temp/
 *.sql
 !docs/atomic_rename_procedure.sql
 !schema/pulldb/*.sql
+!schema/pulldb_service/*.sql
 !schema/archived/pulldb.sql
 *.sql.gz
 *.sql.zst
