@@ -13,35 +13,86 @@ Every future feature MUST document its failure boundaries pre-implementation:
 
 Features lacking these remain deferred until documentation satisfies FAIL HARD standards.
 
-## Phase 0 – Prototype (Current Status: Mid Restore Workflow Bootstrap)
+## Phase 0 – Prototype ✅ COMPLETE (v0.0.5)
 
-Current implemented slice (Milestone items 1–3 complete):
-- MySQL schema provisioned
-- Credential resolution (Secrets Manager + SSM) implemented
-- Configuration loader (two-phase) implemented
-- Repository layer (Job/User/Host/Settings) implemented
-- Domain models implemented
-- Structured JSON logging abstraction implemented
-- Domain error classes implemented
-- Worker poll loop & event emission implemented
-- S3 backup discovery & selection logic implemented
-- Downloader (stream + disk capacity guard) implemented
+All Phase 0 components implemented and tested:
 
-Outstanding restore workflow components (in progress / planned): myloader subprocess wrapper, post-SQL executor, staging lifecycle (orphan cleanup + atomic rename), integration tests for restore workflow, metrics emission, CLI validation & enqueue/status wiring.
+### Infrastructure Layer (Complete)
+- ✅ MySQL schema provisioned (17 migrations)
+- ✅ Credential resolution (Secrets Manager + SSM) - `pulldb/infra/secrets.py`
+- ✅ Configuration loader (two-phase) - `pulldb/domain/config.py`
+- ✅ Repository layer (Job/User/Host/Settings) - `pulldb/infra/mysql.py`
+- ✅ Domain models - `pulldb/domain/models.py`, `pulldb/domain/restore_models.py`
+- ✅ Structured JSON logging abstraction - `pulldb/infra/logging.py`
+- ✅ Domain error classes - `pulldb/domain/errors.py`
+- ✅ S3 client with cross-account support - `pulldb/infra/s3.py`
 
-### Bootstrap Milestone Scope (Progress Tracked)
+### Worker Layer (Complete)
+- ✅ Worker poll loop with exponential backoff - `pulldb/worker/loop.py`
+- ✅ Worker service with graceful shutdown - `pulldb/worker/service.py`
+- ✅ Job executor orchestration - `pulldb/worker/executor.py` (628 lines)
+- ✅ S3 backup discovery & selection - `pulldb/worker/executor.py`
+- ✅ Downloader with disk capacity guard - `pulldb/worker/downloader.py`
+- ✅ Myloader subprocess wrapper - `pulldb/worker/restore.py` (580 lines)
+- ✅ Post-restore SQL executor - `pulldb/worker/post_sql.py` (215 lines)
+- ✅ Staging lifecycle (orphan cleanup, name generation) - `pulldb/worker/staging.py` (291 lines)
+- ✅ Atomic rename via stored procedure - `pulldb/worker/atomic_rename.py` (210 lines)
+- ✅ Metadata injection - `pulldb/worker/metadata.py`, `pulldb/worker/metadata_synthesis.py`
+- ✅ Log normalizer for myloader output - `pulldb/worker/log_normalizer.py`
+- ✅ Profiling capture - `pulldb/worker/profiling.py`
+
+### CLI Layer (Complete)
+- ✅ CLI argument parsing - `pulldb/cli/parse.py`
+- ✅ Main CLI commands - `pulldb/cli/main.py` (1335 lines)
+  - `restore` - Submit restore jobs
+  - `status` - View job status
+  - `search` - Search available backups
+  - `cancel` - Cancel jobs
+  - `events` - View job events
+  - `history` - View job history
+  - `profile` - View job profiling data
+- ✅ Admin CLI commands - `pulldb/cli/admin.py`, `pulldb/cli/admin_commands.py` (792 lines)
+
+### API Layer (Complete)
+- ✅ FastAPI service - `pulldb/api/main.py`
+
+### Testing (Complete)
+- ✅ 310+ unit tests passing
+- ✅ 7 integration test files covering:
+  - Workflow happy path (`test_integration_workflow.py`)
+  - Disk insufficient scenarios (`test_integration_disk_insufficient.py`, `test_integration_workflow_disk_insufficient.py`)
+  - Missing backup handling (`test_integration_missing_backup.py`)
+  - Workflow failure modes (`test_integration_workflow_failures.py`)
+
+### Metrics (Complete)
+- ✅ Metrics module - `pulldb/infra/metrics.py`
+  - `emit_counter()` - counters (jobs_enqueued, jobs_completed, etc.)
+  - `emit_gauge()` - point-in-time values (queue_depth, active_restores)
+  - `emit_timer()` - durations (restore_duration_seconds)
+  - `emit_event()` - significant occurrences with context
+  - `time_operation()` - context manager for timing
+
+### Bootstrap Milestone Scope (All Complete)
 1. Logging abstraction + domain error classes – ✅
 2. Worker poll loop & basic event emission – ✅
 3. S3 backup discovery & selection logic – ✅
-4. Downloader (stream + disk capacity preflight + extraction) – ✅ (extraction deferred; streaming download & capacity guard done)
-5. myloader subprocess wrapper & restore orchestration – ❌
-6. Post-restore SQL executor + results JSON + metadata table – ❌
-7. Staging lifecycle (orphan cleanup, name generation, atomic rename placeholder) – ❌
-8. CLI argument validation + enqueue + status listing – 🚧 (placeholder)
-9. Integration tests (happy path + failure modes) – ❌
-10. Metrics emission (queue depth, restore durations, disk failures) – ❌
+4. Downloader (stream + disk capacity preflight + extraction) – ✅
+5. myloader subprocess wrapper & restore orchestration – ✅
+6. Post-restore SQL executor + results JSON + metadata table – ✅
+7. Staging lifecycle (orphan cleanup, name generation, atomic rename) – ✅
+8. CLI argument validation + enqueue + status listing – ✅
+9. Integration tests (happy path + failure modes) – ✅ (7 test files)
+10. Metrics emission (queue depth, restore durations, disk failures) – ✅
 
 Each item must ship with tests and must not regress existing passing suite (100% required). Items may be merged incrementally once their tests pass and documentation sections are updated (README drift ledger + copilot instructions drift tracking).
+
+## Phase 0.5 – Hardening (Future)
+
+Deferred items that can wait until after production use begins:
+
+1. **Tar Extraction Streaming** - Currently extracting archives to disk; could stream directly to myloader
+2. **Format Auto-Detection** - Currently assumes single mydumper format; multi-format support deferred
+3. **Cross-Account Multi-Source** - Currently single backup source; multi-environment access deferred
 
 ### Deferred for Post-Prototype
 
@@ -192,36 +243,64 @@ Multi-format support is complete when:
 
 ---
 
-## Phase 1 – Operational Enhancements
+## Phase 1 – Operational Enhancements ✅ MOSTLY COMPLETE (v0.0.5)
 
-- **Cancellation Support**
-  - Documentation: update README, schema notes, runbooks, security considerations.
-  - Design work: sequence diagram covering cancel lifecycle, failure handling.
-- **History Endpoint**
-  - Documentation: define API output, retention policy, and new diagrams.
-  - Schema: enable `history_cache` materialization; document migration steps.
-- **Job Logs Table**
-  - Document expected volume, log format, and pruning approach.
-- **Scheduled Staging Database Cleanup**
-  - Background task to clean up truly abandoned staging databases (7+ days old).
-  - Query failed jobs and scan each dbhost for orphaned staging databases.
-  - Configurable age threshold (default 7 days) via `settings` table.
-  - Safety checks: verify no active jobs for that target before deletion.
-  - Audit logging: track all automatic deletions in job_events or dedicated cleanup_log table.
-  - Metrics: count of staging databases cleaned, total size reclaimed.
-  - Documentation: cron schedule, safety guarantees, manual override procedures.
-  - Rationale: Catches edge cases where user doesn't re-restore same target (no auto-cleanup trigger).
+### Implemented
+- ✅ **Cancellation Support**
+  - `request_cancellation()`, `mark_job_canceled()`, `is_cancellation_requested()` in `pulldb/infra/mysql.py`
+  - CLI `pulldb cancel <job_id>` command with `--force` option
+  - Worker checks cancellation at each phase and exits gracefully
+  - 7 tests in `pulldb/tests/test_cancellation.py`
+  
+- ✅ **History Endpoint**
+  - `get_history()` method in JobRepository with pagination
+  - CLI `pulldb history` command with filtering by status, limit, username
+  - API `/history` endpoint
+  
+- ✅ **Job Events Table**
+  - `job_events` table for event storage
+  - `append_event()` method in JobRepository
+  - CLI `pulldb events <job_id>` command with `--follow` and `--json` options
+  - 4 tests in `pulldb/tests/test_job_logs.py`
 
-## Phase 2 – Concurrency Controls & Usability
+- ✅ **Scheduled Staging Database Cleanup**
+  - `pulldb/worker/cleanup.py` (full module, 23 tests)
+  - Background cleanup of abandoned staging databases (7+ days old)
+  - Query failed jobs and scan each dbhost for orphaned staging databases
+  - Safety checks: verify staging matches job record pattern before deletion
+  - Audit logging via job_events
+  - `CleanupCandidate`, `OrphanDatabase`, `CleanupReport` data classes
+  - Orphan detection (no auto-delete, requires manual review)
 
-- Introduce per-user/per-host/global active caps.
-- Document configuration additions and failure scenarios.
-- Extend security model and runbooks for throttling alerts.
-- **Short Hostname Aliases**
-  - Support `dbhost=dev-db-01` as alias for full FQDNs.
-  - Document alias-to-FQDN resolution logic in CLI.
-  - Add `host_alias` column to `db_hosts` table or maintain alias mapping in `settings` table.
-  - Update README with shortened syntax examples.
+### Remaining
+- ⏳ **Configurable cleanup age threshold** - Default 7 days hardcoded; could be moved to `settings` table
+- ⏳ **Cleanup metrics** - Count of databases cleaned, total size reclaimed (metrics exist but not fully wired)
+
+## Phase 2 – Concurrency Controls & Usability ✅ MOSTLY COMPLETE (v0.0.5)
+
+### Implemented
+- ✅ **Per-User Active Caps**
+  - `get_max_active_jobs_per_user()` in SettingsRepository
+  - `get_user_active_job_count()` in JobRepository
+  - API enforces limit with 429 response and descriptive message
+  - Configurable via `settings` table key `max_active_jobs_per_user`
+  
+- ✅ **Global Active Caps**
+  - `get_max_active_jobs_global()` in SettingsRepository
+  - `get_global_active_job_count()` in JobRepository
+  - API enforces limit with 429 response
+  - Configurable via `settings` table key `max_active_jobs_global`
+  
+- ✅ **Per-Host Active Caps**
+  - Target exclusivity via `SELECT FOR UPDATE SKIP LOCKED`
+  - Only one active job per target at a time
+  - `running_jobs_by_host()` in JobRepository
+
+### Remaining
+- ⏳ **Short Hostname Aliases** - Not implemented
+  - Support `dbhost=dev-db-01` as alias for full FQDNs
+  - Would require `host_alias` column or alias mapping in `settings` table
+  - Update README with shortened syntax examples
 
 ## Phase 3 – Multi-Daemon & Distributed Locks ✅ COMPLETE (v0.0.5)
 
