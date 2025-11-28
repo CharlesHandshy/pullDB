@@ -33,7 +33,9 @@ class FakeCursor:
         # Minimal implementation: detect procedure existence query
         if "FROM information_schema.ROUTINES" in sql:
             # Simulate schema result
-            self._result = ("pulldb",) if RENAME_PROCEDURE_NAME in self.procedures else None
+            self._result = (
+                ("pulldb",) if RENAME_PROCEDURE_NAME in self.procedures else None
+            )
         else:
             self._result = None
 

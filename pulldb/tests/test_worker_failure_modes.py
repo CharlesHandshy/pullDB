@@ -228,4 +228,3 @@ def test_execute_post_sql_script_read_error(tmp_path: Path) -> None:
     finally:
         # Restore permissions for cleanup
         os.chmod(script, 0o644)
-

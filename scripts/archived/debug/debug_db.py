@@ -1,4 +1,3 @@
-
 import os
 import sys
 import mysql.connector
@@ -22,12 +21,9 @@ try:
     resolver = CredentialResolver(aws_profile)
     creds = resolver.resolve(secret_id)
     print(f"Resolved credentials for host: {creds.host}, user: {creds.username}")
-    
+
     conn = mysql.connector.connect(
-        host=creds.host,
-        user=creds.username,
-        password=creds.password,
-        database="pulldb"
+        host=creds.host, user=creds.username, password=creds.password, database="pulldb"
     )
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM jobs ORDER BY submitted_at DESC LIMIT 5")
@@ -35,9 +31,9 @@ try:
     print(f"Found {len(rows)} jobs:")
     for row in rows:
         print(f"  ID: {row['id']}, Status: {row['status']}, Target: {row['target']}")
-        if row['error_detail']:
+        if row["error_detail"]:
             print(f"    Error: {row['error_detail']}")
-        
+
     cursor.close()
     conn.close()
 

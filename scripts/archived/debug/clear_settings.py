@@ -4,12 +4,17 @@ from pulldb.domain.config import Config
 from pulldb.infra.mysql import build_default_pool, SettingsRepository
 from pulldb.infra.secrets import CredentialResolver
 
+
 def main():
     load_dotenv()
     config = Config.minimal_from_env()
-    
+
     coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
-    if coordination_secret and config.mysql_user == "root" and not config.mysql_password:
+    if (
+        coordination_secret
+        and config.mysql_user == "root"
+        and not config.mysql_password
+    ):
         try:
             resolver = CredentialResolver(config.aws_profile)
             creds = resolver.resolve(coordination_secret)
@@ -26,13 +31,16 @@ def main():
         password=config.mysql_password,
         database=config.mysql_database,
     )
-    
+
     with pool.connection() as conn:
         with conn.cursor() as cursor:
             print("Deleting obsolete settings...")
-            cursor.execute("DELETE FROM settings WHERE setting_key IN ('customers_after_sql_dir', 'qa_template_after_sql_dir')")
+            cursor.execute(
+                "DELETE FROM settings WHERE setting_key IN ('customers_after_sql_dir', 'qa_template_after_sql_dir')"
+            )
             print(f"Deleted {cursor.rowcount} rows.")
         conn.commit()
+
 
 if __name__ == "__main__":
     main()

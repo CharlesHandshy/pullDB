@@ -339,11 +339,12 @@ class WorkerJobExecutor:
             # Detect backup format from extracted contents (not S3 bucket)
             # This determines whether metadata synthesis is needed
             from pulldb.worker.restore import _detect_backup_version
+
             detected_version = _detect_backup_version(str(backup_dir))
             # format_tag is informational only - all backups use myloader 0.19.3-3
             # with metadata synthesis for legacy formats
             format_tag = "new" if "0.19" in detected_version else "legacy"
-            
+
             self._append_event(
                 job.id,
                 "format_detected",
@@ -363,9 +364,11 @@ class WorkerJobExecutor:
             # Progress callback for restore phase
             last_percent_logged = -1.0
 
-            def _restore_progress_callback(percent: float, detail: dict[str, t.Any]) -> None:
+            def _restore_progress_callback(
+                percent: float, detail: dict[str, t.Any]
+            ) -> None:
                 nonlocal last_percent_logged
-                
+
                 # Log file statistics as requested
                 if detail.get("status") == "finished":
                     logger.info(
@@ -375,9 +378,9 @@ class WorkerJobExecutor:
                             "phase": "restore_file",
                             "file": detail.get("file"),
                             "percent": f"{percent:.1f}",
-                        }
+                        },
                     )
-                
+
                 # Emit progress event (throttled to every 5% or completion)
                 if percent >= 100.0 or (percent - last_percent_logged) >= 5.0:
                     self._append_event(

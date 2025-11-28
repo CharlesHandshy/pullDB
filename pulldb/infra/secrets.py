@@ -103,7 +103,9 @@ class CredentialResolver:
         pulldb_app
 
         >>> # With explicit profile and region
-        >>> resolver = CredentialResolver(aws_profile="production", aws_region="us-west-2")
+        >>> resolver = CredentialResolver(
+        ...     aws_profile="production", aws_region="us-west-2"
+        ... )
         >>> creds = resolver.resolve("aws-ssm:/pulldb/mysql/localhost-test-credentials")
 
     Raises:
@@ -193,7 +195,9 @@ class CredentialResolver:
 
         Examples:
             >>> resolver = CredentialResolver()
-            >>> creds = resolver.resolve("aws-secretsmanager:/pulldb/mysql/localhost-test")
+            >>> creds = resolver.resolve(
+            ...     "aws-secretsmanager:/pulldb/mysql/localhost-test"
+            ... )
             >>> creds.username
             'pulldb_app'
         """

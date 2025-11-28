@@ -1,4 +1,3 @@
-
 import boto3
 import sys
 import time
@@ -16,15 +15,15 @@ try:
     start = time.time()
     resp = s3.list_objects_v2(Bucket=bucket, Prefix=search_prefix, MaxKeys=10)
     duration = time.time() - start
-    
+
     print(f"Call took {duration:.4f} seconds")
-    
+
     if "Contents" in resp:
         print(f"Found {len(resp['Contents'])} objects")
         for obj in resp["Contents"]:
             print(f" - {obj['Key']}")
     else:
         print("No objects found")
-        
+
 except Exception as e:
     print(f"Error: {e}")

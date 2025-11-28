@@ -5,7 +5,7 @@ import sys
 import tempfile
 
 # Add scripts directory to path so we can import synthesize_metadata
-sys.path.append(os.path.join(os.path.dirname(__file__), '../scripts'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "../scripts"))
 
 from pulldb.worker.metadata_synthesis import (
     count_rows_in_file,
@@ -15,7 +15,7 @@ from pulldb.worker.metadata_synthesis import (
 
 
 def create_dummy_sql_gz(filepath: str, content: str) -> None:
-    with gzip.open(filepath, 'wt', encoding='utf-8') as f:
+    with gzip.open(filepath, "wt", encoding="utf-8") as f:
         f.write(content)
 
 
@@ -68,23 +68,21 @@ def test_synthesize_metadata_integration() -> None:
         # Table 1: 5 rows total (split across 2 chunks)
         create_dummy_sql_gz(
             os.path.join(tmpdir, "mydb.table1.00000.sql.gz"),
-            "INSERT INTO `t` VALUES (1)\n,(2)\n,(3);"
+            "INSERT INTO `t` VALUES (1)\n,(2)\n,(3);",
         )
         create_dummy_sql_gz(
             os.path.join(tmpdir, "mydb.table1.00001.sql.gz"),
-            "INSERT INTO `t` VALUES (4)\n,(5);"
+            "INSERT INTO `t` VALUES (4)\n,(5);",
         )
 
         # Table 2: 1 row
         create_dummy_sql_gz(
-            os.path.join(tmpdir, "mydb.table2.sql.gz"),
-            "INSERT INTO `t` VALUES (1);"
+            os.path.join(tmpdir, "mydb.table2.sql.gz"), "INSERT INTO `t` VALUES (1);"
         )
 
         # Schema file (should be ignored)
         create_dummy_sql_gz(
-            os.path.join(tmpdir, "mydb.table1-schema.sql.gz"),
-            "CREATE TABLE ..."
+            os.path.join(tmpdir, "mydb.table1-schema.sql.gz"), "CREATE TABLE ..."
         )
 
         # Run synthesis
@@ -96,8 +94,7 @@ def test_synthesize_metadata_integration() -> None:
         config.read(output_ini)
 
         assert (
-            "mydb.table1" in config.sections() or
-            "`mydb`.`table1`" in config.sections()
+            "mydb.table1" in config.sections() or "`mydb`.`table1`" in config.sections()
         )
 
         # Check section names (synthesize_metadata uses backticks)
@@ -105,7 +102,7 @@ def test_synthesize_metadata_integration() -> None:
         s2 = "`mydb`.`table2`"
 
         assert s1 in config
-        assert config[s1]['rows'] == '5'
+        assert config[s1]["rows"] == "5"
 
         assert s2 in config
-        assert config[s2]['rows'] == '1'
+        assert config[s2]["rows"] == "1"

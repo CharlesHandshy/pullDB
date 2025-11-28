@@ -1,4 +1,3 @@
-
 import os
 import sys
 from dotenv import load_dotenv
@@ -20,7 +19,9 @@ if not secret_id:
 try:
     resolver = CredentialResolver(aws_profile)
     creds = resolver.resolve(secret_id)
-    print(f"Successfully resolved credentials for host: {creds.host}, user: {creds.username}")
+    print(
+        f"Successfully resolved credentials for host: {creds.host}, user: {creds.username}"
+    )
 except Exception as e:
     print(f"Failed to resolve secret: {e}")
     sys.exit(1)

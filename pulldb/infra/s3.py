@@ -274,7 +274,7 @@ def discover_latest_backup(
     else:
         # Default to staging regex for pestroutesrdsdbs and others
         regex = STAGING_BACKUP_REGEX
-    
+
     # format_tag will be determined post-extraction by _detect_backup_version()
     # Setting to None here - executor.py will detect after extraction
     format_tag = None
@@ -367,4 +367,3 @@ def discover_latest_backup(
         },
     )
     return spec
-

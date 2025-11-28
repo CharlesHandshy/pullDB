@@ -41,10 +41,7 @@ def test_restore_rate_limit_user(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_restore_rate_limit_global(monkeypatch: pytest.MonkeyPatch) -> None:
     """User-friendly message when system is at capacity."""
     base = _base_url(monkeypatch)
-    detail = (
-        "System at capacity: 10 active jobs (limit: 10). "
-        "Please try again later."
-    )
+    detail = "System at capacity: 10 active jobs (limit: 10). Please try again later."
     responses.add(
         responses.POST,
         f"{base}/api/jobs",

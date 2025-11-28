@@ -18,18 +18,19 @@ print("Initializing S3Client...")
 try:
     s3 = S3Client(profile="pr-prod")
     print("S3Client initialized.")
-    
+
     bucket = "pestroutes-rds-backup-prod-vpc-us-east-1-s3"
     prefix = "daily/prod/"
     target = "qatemplate"
-    
+
     print(f"Calling discover_latest_backup for {bucket}/{prefix}{target}...")
     spec = discover_latest_backup(s3, bucket, prefix, target)
     print(f"Success! Found: {spec.key}")
-    
+
 except Exception as e:
     print(f"Failed: {e}")
     import traceback
+
     traceback.print_exc()
     sys.exit(1)
 

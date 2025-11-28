@@ -13,9 +13,7 @@ creds = resolver.resolve(secret_id)
 try:
     # Try with default (likely C extension)
     conn = mysql.connector.connect(
-        user=creds.username, 
-        password=creds.password, 
-        host=creds.host
+        user=creds.username, password=creds.password, host=creds.host
     )
     cursor = conn.cursor()
     print(f"Default cursor type: {type(cursor)}")
@@ -33,16 +31,14 @@ print("-" * 20)
 try:
     # Try with use_pure=True
     conn = mysql.connector.connect(
-        user=creds.username, 
-        password=creds.password, 
-        host=creds.host, 
-        use_pure=True
+        user=creds.username, password=creds.password, host=creds.host, use_pure=True
     )
     cursor = conn.cursor()
     print(f"Pure cursor type: {type(cursor)}")
     print(dir(cursor))
     # Check execute signature
     import inspect
+
     print(inspect.signature(cursor.execute))
     try:
         cursor.execute("SELECT 1; SELECT 2", multi=True)

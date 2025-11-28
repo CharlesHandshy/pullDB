@@ -1,4 +1,3 @@
-
 import os
 import sys
 import logging
@@ -13,10 +12,11 @@ logger = logging.getLogger(__name__)
 # Load env
 load_dotenv("/opt/pulldb.service/.env")
 
+
 def main():
     secret_id = os.getenv("PULLDB_COORDINATION_SECRET")
     aws_profile = os.getenv("PULLDB_AWS_PROFILE")
-    
+
     if not secret_id:
         # Fallback to local dev env vars if secret not set
         host = os.getenv("PULLDB_MYSQL_HOST", "localhost")
@@ -31,22 +31,23 @@ def main():
         host = creds.host
         user = creds.username
         password = creds.password
-        database = "pulldb" # Assumed or from config
+        database = "pulldb"  # Assumed or from config
 
     try:
         pool = build_default_pool(host, user, password, database)
         repo = JobRepository(pool)
-        
+
         logger.info("Calling get_recent_jobs(limit=5)...")
         jobs = repo.get_recent_jobs(limit=5)
-        
+
         logger.info(f"Successfully retrieved {len(jobs)} jobs.")
         for job in jobs:
             logger.info(f"Job {job.id}: {job.status} - {job.current_operation}")
-            
+
     except Exception as e:
         logger.error(f"Failed to get recent jobs: {e}", exc_info=True)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

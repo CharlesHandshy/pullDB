@@ -266,7 +266,9 @@ def find_cleanup_candidates_from_jobs(
             continue
 
         target, job_prefix = parsed
-        job_status = job.status.value if hasattr(job.status, "value") else str(job.status)
+        job_status = (
+            job.status.value if hasattr(job.status, "value") else str(job.status)
+        )
 
         candidate = CleanupCandidate(
             database_name=staging_name,
@@ -363,16 +365,13 @@ def cleanup_from_jobs(
         try:
             dropped = _drop_database(credentials, candidate.database_name)
         except Exception as e:
-            result.errors.append(
-                f"Failed to drop {candidate.database_name}: {e}"
-            )
+            result.errors.append(f"Failed to drop {candidate.database_name}: {e}")
             continue
 
         # Step 2: Verify deletion
         if not dropped:
             result.errors.append(
-                f"Drop command succeeded but {candidate.database_name} "
-                "still exists"
+                f"Drop command succeeded but {candidate.database_name} still exists"
             )
             continue
 
@@ -507,9 +506,7 @@ def admin_delete_orphan_databases(
         try:
             dropped = _drop_database(credentials, db_name)
             if dropped:
-                logger.info(
-                    "Admin %s deleted orphan database: %s", admin_user, db_name
-                )
+                logger.info("Admin %s deleted orphan database: %s", admin_user, db_name)
                 results[db_name] = True
             else:
                 results[db_name] = False
@@ -594,9 +591,7 @@ def run_scheduled_cleanup(
             "hosts_scanned": summary.hosts_scanned,
             "total_dropped": summary.total_dropped,
             "total_archived": summary.total_archived,
-            "orphan_count": sum(
-                len(r.orphans) for r in summary.orphan_reports
-            ),
+            "orphan_count": sum(len(r.orphans) for r in summary.orphan_reports),
         },
     )
 

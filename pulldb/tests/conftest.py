@@ -66,6 +66,7 @@ import pytest
 _DATABASE_CREATED_BY_TESTS = False
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 
+
 # Load .env files early before any other imports that might use environment vars
 def _path_exists_safe(path: Path) -> bool:
     """Check if path exists, returning False on permission errors."""

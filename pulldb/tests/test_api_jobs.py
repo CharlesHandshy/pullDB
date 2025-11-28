@@ -157,7 +157,9 @@ def fake_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRepos]:
     if hasattr(app.state, "api_state"):
         delattr(app.state, "api_state")
     try:
-        yield FakeRepos(user_repo=user_repo, job_repo=job_repo, settings_repo=settings_repo)
+        yield FakeRepos(
+            user_repo=user_repo, job_repo=job_repo, settings_repo=settings_repo
+        )
     finally:
         app.dependency_overrides.pop(get_api_state, None)
         if hasattr(app.state, "api_state"):
@@ -293,9 +295,7 @@ def test_submit_job_respects_per_user_limit(
     ]
 
     # Submit a new job (FakeUserRepository always returns user_id="user-1")
-    response = _post_json(
-        client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"}
-    )
+    response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
 
     assert response.status_code == 429
     data = cast(dict[str, Any], response.json())
@@ -317,9 +317,7 @@ def test_submit_job_allows_under_per_user_limit(
         _build_job(id="job-2", owner_user_id="user-1"),
     ]
 
-    response = _post_json(
-        client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"}
-    )
+    response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
 
     assert response.status_code == 201
 
@@ -341,9 +339,7 @@ def test_submit_job_respects_global_limit(
         _build_job(id="job-5", owner_user_id="user-5"),
     ]
 
-    response = _post_json(
-        client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"}
-    )
+    response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
 
     assert response.status_code == 429
     data = cast(dict[str, Any], response.json())
@@ -366,9 +362,7 @@ def test_submit_job_global_limit_takes_precedence(
         _build_job(id="job-3", owner_user_id="other-user-3"),
     ]
 
-    response = _post_json(
-        client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"}
-    )
+    response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
 
     assert response.status_code == 429
     data = cast(dict[str, Any], response.json())
@@ -391,9 +385,7 @@ def test_submit_job_both_limits_satisfied(
         _build_job(id="job-4", owner_user_id="other-user"),
     ]
 
-    response = _post_json(
-        client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"}
-    )
+    response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
 
     # Under both limits (user: 1 < 3, global: 4 < 10)
     assert response.status_code == 201

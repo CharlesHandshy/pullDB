@@ -79,8 +79,7 @@ class TestHostRepository:
                 # Secrets Manager stores host + password only
                 # Username is set by caller (API/Worker service)
                 secret_json = (
-                    '{"password": "secretpass", '
-                    '"host": "db-mysql-cred.example.com"}'
+                    '{"password": "secretpass", "host": "db-mysql-cred.example.com"}'
                 )
                 return {"SecretString": secret_json}
 

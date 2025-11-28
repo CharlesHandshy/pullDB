@@ -1,4 +1,3 @@
-
 import json
 import logging
 import os
@@ -11,11 +10,12 @@ from pulldb.infra.secrets import CredentialResolver
 
 logging.basicConfig(level=logging.INFO)
 
+
 def main():
     print("Bootstrap config...")
     # Bootstrap config
     base_config = Config.minimal_from_env()
-    
+
     print("Resolving secret...")
     # Resolve coordination secret
     coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
@@ -185,6 +185,7 @@ def main():
             # This might be okay if we failed, but we checked for success.
             sys.exit(1)
         print("Staging database cleaned up.")
+
 
 if __name__ == "__main__":
     main()

@@ -23,7 +23,9 @@ def test_isolation_environment(isolated_mysql: str) -> None:
 
 
 @pytest.mark.integration
-def test_database_connection(isolated_mysql: str, isolated_mysql_pool: MySQLPool) -> None:
+def test_database_connection(
+    isolated_mysql: str, isolated_mysql_pool: MySQLPool
+) -> None:
     """Verify we can connect to the isolated database."""
     with isolated_mysql_pool.connection() as conn:
         cursor = conn.cursor()

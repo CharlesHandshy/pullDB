@@ -111,14 +111,14 @@ def _find_env_file() -> Path | None:
 
 def _read_env_file(env_path: Path) -> dict[str, str]:
     """Read settings from .env file.
-    
+
     Returns:
         Dict mapping env var names to their values.
     """
     settings: dict[str, str] = {}
     if not env_path.exists():
         return settings
-    
+
     with open(env_path, "r") as f:
         for line in f:
             line = line.strip()
@@ -131,8 +131,9 @@ def _read_env_file(env_path: Path) -> dict[str, str]:
                 key = key.strip()
                 value = value.strip()
                 # Remove surrounding quotes if present
-                if (value.startswith("'") and value.endswith("'")) or \
-                   (value.startswith('"') and value.endswith('"')):
+                if (value.startswith("'") and value.endswith("'")) or (
+                    value.startswith('"') and value.endswith('"')
+                ):
                     value = value[1:-1]
                 settings[key] = value
     return settings
@@ -140,18 +141,18 @@ def _read_env_file(env_path: Path) -> dict[str, str]:
 
 def _write_env_setting(env_path: Path, env_var: str, value: str) -> bool:
     """Write or update a single setting in the .env file.
-    
+
     Returns:
         True if setting was added/updated, False on error.
     """
     if not env_path.exists():
         click.echo(f"Warning: .env file not found at {env_path}", err=True)
         return False
-    
+
     lines: list[str] = []
     found = False
     pattern = re.compile(rf"^{re.escape(env_var)}\s*=")
-    
+
     with open(env_path, "r") as f:
         for line in f:
             if pattern.match(line.strip()):
@@ -160,16 +161,16 @@ def _write_env_setting(env_path: Path, env_var: str, value: str) -> bool:
                 found = True
             else:
                 lines.append(line)
-    
+
     if not found:
         # Add new setting at end of file
         if lines and not lines[-1].endswith("\n"):
             lines.append("\n")
         lines.append(f"{env_var}={value}\n")
-    
+
     with open(env_path, "w") as f:
         f.writelines(lines)
-    
+
     return True
 
 
@@ -185,7 +186,7 @@ def _get_env_value_for_key(key: str, env_settings: dict[str, str]) -> str | None
 
 def _get_mysql_pool() -> t.Any:
     """Get MySQL connection pool using bootstrap config.
-    
+
     Uses PULLDB_API_MYSQL_USER for admin CLI operations since we need
     read/write access to the settings table.
     """
@@ -194,19 +195,18 @@ def _get_mysql_pool() -> t.Any:
 
     # Get credentials from Secrets Manager (password only)
     secret_ref = os.getenv(
-        "PULLDB_COORDINATION_SECRET",
-        "aws-secretsmanager:/pulldb/mysql/coordination-db"
+        "PULLDB_COORDINATION_SECRET", "aws-secretsmanager:/pulldb/mysql/coordination-db"
     )
-    
+
     # Use the AWS profile for Secrets Manager
     aws_profile = os.getenv("PULLDB_AWS_PROFILE")
     resolver = CredentialResolver(aws_profile=aws_profile)
     creds = resolver.resolve(secret_ref)
-    
+
     # Use API user for admin operations
     mysql_user = os.getenv("PULLDB_API_MYSQL_USER", "pulldb_api")
     mysql_database = os.getenv("PULLDB_MYSQL_DATABASE", "pulldb_service")
-    
+
     return MySQLPool(
         host=creds.host,
         user=mysql_user,
@@ -335,7 +335,7 @@ def get_setting(key: str) -> None:
     if env_path:
         env_settings = _read_env_file(env_path)
         env_file_value = _get_env_value_for_key(key, env_settings)
-    
+
     # Get default value
     default_value: str | None = None
     env_var_name = f"PULLDB_{key.upper()}"
@@ -349,12 +349,16 @@ def get_setting(key: str) -> None:
         click.echo(f"Description: {description}")
     click.echo(f"Environment variable: {env_var_name}")
     click.echo("")
-    
+
     # Show both values with tags
     click.echo(f"  db:      {db_value if db_value is not None else '(not set)'}")
-    click.echo(f"  env:     {env_file_value if env_file_value is not None else '(not set)'}")
-    click.echo(f"  default: {default_value if default_value is not None else '(not set)'}")
-    
+    click.echo(
+        f"  env:     {env_file_value if env_file_value is not None else '(not set)'}"
+    )
+    click.echo(
+        f"  default: {default_value if default_value is not None else '(not set)'}"
+    )
+
     # Show effective value
     if db_value is not None:
         effective = db_value
@@ -368,7 +372,7 @@ def get_setting(key: str) -> None:
     else:
         effective = "(not set)"
         source = "none"
-    
+
     click.echo("")
     click.echo(f"  effective: {effective} (from {source})")
 
@@ -398,18 +402,18 @@ def set_setting(
     """
     if db_only and env_only:
         raise click.ClickException("Cannot specify both --db-only and --env-only")
-    
+
     update_db = not env_only
     update_env = not db_only
-    
+
     # Get env var name
     if key in KNOWN_SETTINGS:
         env_var, _, _ = KNOWN_SETTINGS[key]
     else:
         env_var = f"PULLDB_{key.upper()}"
-    
+
     results: list[str] = []
-    
+
     # Update database
     if update_db:
         try:
@@ -418,7 +422,7 @@ def set_setting(
             results.append("✓ Database updated")
         except Exception as e:
             results.append(f"✗ Database failed: {e}")
-    
+
     # Update .env file
     if update_env:
         env_path = _find_env_file()
@@ -429,11 +433,11 @@ def set_setting(
                 results.append("✗ .env update failed")
         else:
             results.append("✗ No .env file found")
-    
+
     click.echo(f"Setting '{key}' = '{value}'")
     for result in results:
         click.echo(f"  {result}")
-    
+
     if update_env:
         click.echo("\nNote: Running services need restart to pick up .env changes.")
 
@@ -535,42 +539,42 @@ def diff_settings() -> None:
     env_path = _find_env_file()
     if not env_path:
         raise click.ClickException("No .env file found")
-    
+
     env_file_settings = _read_env_file(env_path)
     click.echo(f"Comparing database vs .env file ({env_path})")
     click.echo("")
-    
+
     # Track all keys from both sources
     all_keys: set[str] = set()
-    
+
     # Add known settings keys
     for key in KNOWN_SETTINGS:
         all_keys.add(key)
-    
+
     # Add database keys
     all_keys.update(db_settings.keys())
-    
+
     # Map env var names to setting keys for comparison
     env_var_to_key: dict[str, str] = {}
     for key, (env_var, _, _) in KNOWN_SETTINGS.items():
         env_var_to_key[env_var] = key
-    
+
     differences: list[tuple[str, str | None, str | None]] = []
     matches: list[str] = []
     db_only: list[tuple[str, str]] = []
     env_only: list[tuple[str, str, str]] = []
-    
+
     for key in sorted(all_keys):
         db_value = db_settings.get(key)
-        
+
         # Get corresponding env var
         if key in KNOWN_SETTINGS:
             env_var, _, _ = KNOWN_SETTINGS[key]
         else:
             env_var = f"PULLDB_{key.upper()}"
-        
+
         env_value = env_file_settings.get(env_var)
-        
+
         if db_value is not None and env_value is not None:
             if db_value == env_value:
                 matches.append(key)
@@ -580,7 +584,7 @@ def diff_settings() -> None:
             db_only.append((key, db_value))
         elif env_value is not None:
             env_only.append((key, env_var, env_value))
-    
+
     # Display results
     if differences:
         click.echo("DIFFERENCES (db ≠ env):")
@@ -592,7 +596,7 @@ def diff_settings() -> None:
             click.echo(f"    db:  {db_display}")
             click.echo(f"    env: {env_display}")
         click.echo("")
-    
+
     if db_only:
         click.echo("DATABASE ONLY (not in .env):")
         click.echo("-" * 60)
@@ -600,7 +604,7 @@ def diff_settings() -> None:
             display = value[:50] + "..." if len(value) > 50 else value
             click.echo(f"  {key}: {display}")
         click.echo("")
-    
+
     if env_only:
         click.echo(".ENV ONLY (not in database):")
         click.echo("-" * 60)
@@ -608,10 +612,10 @@ def diff_settings() -> None:
             display = value[:50] + "..." if len(value) > 50 else value
             click.echo(f"  {key} ({env_var}): {display}")
         click.echo("")
-    
+
     if matches:
         click.echo(f"MATCHING: {len(matches)} setting(s) are in sync")
-    
+
     # Summary
     click.echo("")
     click.echo("Summary:")
@@ -619,14 +623,16 @@ def diff_settings() -> None:
     click.echo(f"  DB only:     {len(db_only)}")
     click.echo(f"  .env only:   {len(env_only)}")
     click.echo(f"  In sync:     {len(matches)}")
-    
+
     if differences or db_only or env_only:
         click.echo("\nUse 'pulldb-admin settings pull' to sync db → .env")
         click.echo("Use 'pulldb-admin settings push' to sync .env → db")
 
 
 @settings_group.command("pull")
-@click.option("--dry-run", is_flag=True, help="Show what would be changed without making changes")
+@click.option(
+    "--dry-run", is_flag=True, help="Show what would be changed without making changes"
+)
 @click.confirmation_option(prompt="Sync database settings to .env file?")
 def pull_settings(dry_run: bool) -> None:
     """Sync settings from database to .env file.
@@ -649,12 +655,12 @@ def pull_settings(dry_run: bool) -> None:
     env_path = _find_env_file()
     if not env_path:
         raise click.ClickException("No .env file found")
-    
+
     click.echo(f"Syncing database → .env ({env_path})")
     if dry_run:
         click.echo("(DRY RUN - no changes will be made)\n")
     click.echo("")
-    
+
     updated = 0
     for key, value in sorted(db_settings.items()):
         # Get env var name
@@ -662,9 +668,9 @@ def pull_settings(dry_run: bool) -> None:
             env_var, _, _ = KNOWN_SETTINGS[key]
         else:
             env_var = f"PULLDB_{key.upper()}"
-        
+
         display = value[:50] + "..." if len(value) > 50 else value
-        
+
         if dry_run:
             click.echo(f"  Would set {env_var}={display}")
         else:
@@ -673,7 +679,7 @@ def pull_settings(dry_run: bool) -> None:
                 updated += 1
             else:
                 click.echo(f"  ✗ Failed: {env_var}")
-    
+
     click.echo("")
     if dry_run:
         click.echo(f"Would update {len(db_settings)} setting(s).")
@@ -683,7 +689,9 @@ def pull_settings(dry_run: bool) -> None:
 
 
 @settings_group.command("push")
-@click.option("--dry-run", is_flag=True, help="Show what would be changed without making changes")
+@click.option(
+    "--dry-run", is_flag=True, help="Show what would be changed without making changes"
+)
 @click.confirmation_option(prompt="Sync .env settings to database?")
 def push_settings(dry_run: bool) -> None:
     """Sync settings from .env file to database.
@@ -695,36 +703,36 @@ def push_settings(dry_run: bool) -> None:
     env_path = _find_env_file()
     if not env_path:
         raise click.ClickException("No .env file found")
-    
+
     env_file_settings = _read_env_file(env_path)
-    
+
     # Filter to only PULLDB_* settings that map to known keys
     settings_to_push: dict[str, str] = {}
-    
+
     # Check known settings
     for key, (env_var, _, _) in KNOWN_SETTINGS.items():
         if env_var in env_file_settings:
             settings_to_push[key] = env_file_settings[env_var]
-    
+
     if not settings_to_push:
         click.echo("No PULLDB_* settings found in .env file.")
         return
-    
+
     # Get database connection
     try:
         repo = _get_settings_repo()
     except Exception as e:
         raise click.ClickException(f"Could not connect to database: {e}") from e
-    
+
     click.echo(f"Syncing .env ({env_path}) → database")
     if dry_run:
         click.echo("(DRY RUN - no changes will be made)\n")
     click.echo("")
-    
+
     updated = 0
     for key, value in sorted(settings_to_push.items()):
         display = value[:50] + "..." if len(value) > 50 else value
-        
+
         if dry_run:
             click.echo(f"  Would set {key}={display}")
         else:
@@ -734,7 +742,7 @@ def push_settings(dry_run: bool) -> None:
                 updated += 1
             except Exception as e:
                 click.echo(f"  ✗ Failed {key}: {e}")
-    
+
     click.echo("")
     if dry_run:
         click.echo(f"Would update {len(settings_to_push)} setting(s).")

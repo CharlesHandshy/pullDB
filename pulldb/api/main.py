@@ -121,7 +121,7 @@ def _initialize_state() -> APIState:
     """Build API state by loading configuration and repositories."""
     try:
         config = Config.minimal_from_env()
-        
+
         # REQUIRED: API service must have its own MySQL user
         api_mysql_user = os.getenv("PULLDB_API_MYSQL_USER")
         if not api_mysql_user:
@@ -130,7 +130,7 @@ def _initialize_state() -> APIState:
                 "Set it to the API service MySQL user (e.g., pulldb_api)."
             )
         config.mysql_user = api_mysql_user.strip()
-        
+
         # Resolve coordination credentials if provided via secret
         # Only fetch from Secrets Manager if password is not already set
         coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
@@ -148,7 +148,7 @@ def _initialize_state() -> APIState:
             except Exception as e:
                 # Log warning but proceed with defaults (will likely fail connection)
                 print(f"WARNING: Failed to resolve coordination secret: {e}")
-                
+
     except Exception as exc:  # FAIL HARD: configuration path invalid
         raise RuntimeError(
             "Failed loading pullDB configuration from environment for API service: "
@@ -520,9 +520,7 @@ async def list_jobs(
     filter: str | None = None,
     state: APIState = Depends(get_api_state),
 ) -> list[JobSummary]:
-    return await run_in_threadpool(
-        _list_jobs, state, limit, active, history, filter
-    )
+    return await run_in_threadpool(_list_jobs, state, limit, active, history, filter)
 
 
 @app.get(
@@ -1188,9 +1186,7 @@ class DeleteOrphansRequest(pydantic.BaseModel):
     database_names: list[str] = pydantic.Field(
         description="List of database names to delete"
     )
-    admin_user: str = pydantic.Field(
-        description="Username of admin approving deletion"
-    )
+    admin_user: str = pydantic.Field(description="Username of admin approving deletion")
 
 
 class DeleteOrphansResponse(pydantic.BaseModel):

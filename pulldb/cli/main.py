@@ -40,9 +40,7 @@ if t.TYPE_CHECKING:  # pragma: no cover - typing-only import
     from requests import RequestException, Response
 else:
     requests_module = t.cast(ModuleType, importlib.import_module("requests"))
-    RequestException = t.cast(
-        type[Exception], requests_module.RequestException
-    )
+    RequestException = t.cast(type[Exception], requests_module.RequestException)
     Response = t.cast(type, requests_module.Response)
 
 
@@ -213,11 +211,11 @@ def _job_row_from_payload(payload: dict[str, t.Any]) -> _JobRow:
     current_operation = payload.get("current_operation")
     if current_operation:
         current_operation = str(current_operation)
-    
+
     dbhost = payload.get("dbhost")
     if dbhost:
         dbhost = str(dbhost)
-    
+
     source = payload.get("source")
     if source:
         source = str(source)
@@ -338,7 +336,7 @@ def restore_cmd(options: tuple[str, ...]) -> None:
 @click.option(
     "--filter",
     "filter_json",
-    help="JSON string to filter results by column values (e.g. '{\"status\": \"failed\"}').",
+    help='JSON string to filter results by column values (e.g. \'{"status": "failed"}\').',
 )
 @click.option(
     "--rt",
@@ -391,7 +389,7 @@ def status_cmd(
         params["history"] = "true"
     if filter_json:
         params["filter"] = filter_json
-    
+
     # If job_id provided, filter by it
     if job_id:
         current_filter = {}
@@ -456,7 +454,17 @@ def status_cmd(
         )
         staging_values.append(summary.staging_name or "")
 
-    headers = ["STATUS", "OPERATION", "JOB_ID", "SOURCE", "TARGET", "DB", "USER", "SUBMITTED", "STARTED"]
+    headers = [
+        "STATUS",
+        "OPERATION",
+        "JOB_ID",
+        "SOURCE",
+        "TARGET",
+        "DB",
+        "USER",
+        "SUBMITTED",
+        "STARTED",
+    ]
     if wide:
         headers.append("STAGING")
     # Compute widths
@@ -553,23 +561,29 @@ def search_cmd(
     s3_profile = os.getenv("PULLDB_S3_AWS_PROFILE") or os.getenv("PULLDB_AWS_PROFILE")
 
     # Define bucket configurations
-    buckets: list[tuple[str, str, str, str | None]] = []  # (name, bucket, prefix, profile)
-    
+    buckets: list[
+        tuple[str, str, str, str | None]
+    ] = []  # (name, bucket, prefix, profile)
+
     if environment in ("staging", "both"):
-        buckets.append((
-            "staging",
-            "pestroutesrdsdbs",
-            "daily/stg/",
-            os.getenv("PULLDB_S3_STAGING_PROFILE", "pr-staging"),
-        ))
-    
+        buckets.append(
+            (
+                "staging",
+                "pestroutesrdsdbs",
+                "daily/stg/",
+                os.getenv("PULLDB_S3_STAGING_PROFILE", "pr-staging"),
+            )
+        )
+
     if environment in ("prod", "both"):
-        buckets.append((
-            "production",
-            "pestroutes-rds-backup-prod-vpc-us-east-1-s3",
-            "daily/prod/",
-            os.getenv("PULLDB_S3_PROD_PROFILE", "pr-prod"),
-        ))
+        buckets.append(
+            (
+                "production",
+                "pestroutes-rds-backup-prod-vpc-us-east-1-s3",
+                "daily/prod/",
+                os.getenv("PULLDB_S3_PROD_PROFILE", "pr-prod"),
+            )
+        )
 
     s3 = S3Client(profile=s3_profile)
 
@@ -582,35 +596,50 @@ def search_cmd(
                 # List the prefix to get customer directories
                 click.echo(f"Searching {env_name} bucket for '{customer}'...", err=True)
                 keys = s3.list_keys(bucket, prefix, profile=profile)
-                
+
                 # Extract unique customer names from keys
                 customer_dirs: set[str] = set()
                 for key in keys:
                     # Keys look like: daily/stg/customerX/daily_mydumper_customerX_...
-                    parts = key[len(prefix):].split("/")
+                    parts = key[len(prefix) :].split("/")
                     if parts:
                         customer_dirs.add(parts[0])
-                
+
                 # Filter by wildcard pattern
                 matching_customers = [
-                    c for c in customer_dirs
+                    c
+                    for c in customer_dirs
                     if fnmatch.fnmatch(c.lower(), customer.lower())
                 ]
-                
+
                 if not matching_customers:
                     continue
-                
+
                 # Search each matching customer
-                for cust in matching_customers[:20]:  # Limit to avoid too many API calls
+                for cust in matching_customers[
+                    :20
+                ]:  # Limit to avoid too many API calls
                     _search_customer_backups(
-                        s3, bucket, prefix, cust, profile, env_name,
-                        filter_date, all_backups
+                        s3,
+                        bucket,
+                        prefix,
+                        cust,
+                        profile,
+                        env_name,
+                        filter_date,
+                        all_backups,
                     )
             else:
                 # Direct search for specific customer
                 _search_customer_backups(
-                    s3, bucket, prefix, customer, profile, env_name,
-                    filter_date, all_backups
+                    s3,
+                    bucket,
+                    prefix,
+                    customer,
+                    profile,
+                    env_name,
+                    filter_date,
+                    all_backups,
                 )
         except Exception as e:
             click.echo(f"Warning: Error searching {env_name}: {e}", err=True)
@@ -626,10 +655,7 @@ def search_cmd(
 
     # Apply date filter if provided
     if filter_date:
-        all_backups = [
-            b for b in all_backups
-            if b["timestamp"] >= filter_date
-        ]
+        all_backups = [b for b in all_backups if b["timestamp"] >= filter_date]
         if not all_backups:
             click.echo(f"No backups found for '{customer}' on or after {start_date}")
             return
@@ -641,23 +667,25 @@ def search_cmd(
         # Convert datetime to ISO string for JSON
         output = []
         for b in all_backups:
-            output.append({
-                "customer": b["customer"],
-                "timestamp": b["timestamp"].strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "date": b["timestamp"].strftime("%Y%m%d"),
-                "size_mb": round(b["size_bytes"] / (1024 * 1024), 1),
-                "environment": b["environment"],
-                "key": b["key"],
-            })
+            output.append(
+                {
+                    "customer": b["customer"],
+                    "timestamp": b["timestamp"].strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "date": b["timestamp"].strftime("%Y%m%d"),
+                    "size_mb": round(b["size_bytes"] / (1024 * 1024), 1),
+                    "environment": b["environment"],
+                    "key": b["key"],
+                }
+            )
         click.echo(json_module.dumps(output, indent=2))
         return
 
     # Table output
     click.echo(f"\nBackups matching '{customer}':\n")
-    
+
     headers = ["CUSTOMER", "DATE", "TIME (UTC)", "SIZE", "ENV", "FILENAME"]
     rows: list[list[str]] = []
-    
+
     for b in all_backups:
         ts = b["timestamp"]
         size_mb = b["size_bytes"] / (1024 * 1024)
@@ -665,20 +693,22 @@ def search_cmd(
             size_str = f"{size_mb / 1024:.1f} GB"
         else:
             size_str = f"{size_mb:.1f} MB"
-        
+
         filename = b["key"].rsplit("/", 1)[-1]
         # Truncate long filenames
         if len(filename) > 50:
             filename = filename[:47] + "..."
-        
-        rows.append([
-            b["customer"],
-            ts.strftime("%Y-%m-%d"),
-            ts.strftime("%H:%M:%S"),
-            size_str,
-            b["environment"][:4],  # stag or prod
-            filename,
-        ])
+
+        rows.append(
+            [
+                b["customer"],
+                ts.strftime("%Y-%m-%d"),
+                ts.strftime("%H:%M:%S"),
+                size_str,
+                b["environment"][:4],  # stag or prod
+                filename,
+            ]
+        )
 
     # Calculate column widths
     col_widths = [len(h) for h in headers]
@@ -714,7 +744,7 @@ def _search_customer_backups(
     from pulldb.infra.s3 import BACKUP_FILENAME_REGEX
 
     search_prefix = f"{prefix}{customer}/daily_mydumper_{customer}_"
-    
+
     try:
         keys = s3.list_keys(bucket, search_prefix, profile=profile)
     except Exception as e:
@@ -726,7 +756,7 @@ def _search_customer_backups(
         match = BACKUP_FILENAME_REGEX.match(filename)
         if not match:
             continue
-        
+
         ts_str = match.group("ts")
         try:
             ts = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%SZ")
@@ -744,14 +774,16 @@ def _search_customer_backups(
         except Exception:
             size_bytes = 0
 
-        results.append({
-            "customer": customer,
-            "timestamp": ts,
-            "size_bytes": size_bytes,
-            "environment": env_name,
-            "bucket": bucket,
-            "key": key,
-        })
+        results.append(
+            {
+                "customer": customer,
+                "timestamp": ts,
+                "size_bytes": size_bytes,
+                "environment": env_name,
+                "bucket": bucket,
+                "key": key,
+            }
+        )
 
 
 def _stream_job_events(job_id: str) -> None:
@@ -761,13 +793,13 @@ def _stream_job_events(job_id: str) -> None:
         params: dict[str, t.Any] = {}
         if last_id is not None:
             params["since_id"] = last_id
-        
+
         try:
             events = _api_get(f"/api/jobs/{job_id}/events", params)
         except _APIError as exc:
-             click.echo(f"Error fetching events: {exc}")
-             time.sleep(5)
-             continue
+            click.echo(f"Error fetching events: {exc}")
+            time.sleep(5)
+            continue
 
         for event in events:
             ts = _parse_iso(event.get("logged_at"))
@@ -776,7 +808,7 @@ def _stream_job_events(job_id: str) -> None:
             detail = event.get("detail") or ""
             click.echo(f"[{ts_str}] {event_type}: {detail}")
             last_id = int(event["id"])
-        
+
         time.sleep(2)
 
 
@@ -807,8 +839,7 @@ def cancel_cmd(job_id: str, force: bool) -> None:
     # Validate job_id format (at least 8 chars for short form)
     if len(job_id) < 8:
         raise click.UsageError(
-            "Job ID must be at least 8 characters. "
-            "Use 'pulldb status' to find job IDs."
+            "Job ID must be at least 8 characters. Use 'pulldb status' to find job IDs."
         )
 
     # Confirm unless --force
@@ -880,8 +911,7 @@ def events_cmd(job_id: str, json_out: bool, follow: bool, limit: int) -> None:
     # Validate job_id format
     if len(job_id) < 8:
         raise click.UsageError(
-            "Job ID must be at least 8 characters. "
-            "Use 'pulldb status' to find job IDs."
+            "Job ID must be at least 8 characters. Use 'pulldb status' to find job IDs."
         )
 
     if follow:
@@ -1109,7 +1139,9 @@ def history_cmd(
     failed_count = sum(1 for item in history if item.get("status") == "failed")
     canceled_count = sum(1 for item in history if item.get("status") == "canceled")
 
-    click.echo(f"\n{len(history)} job(s): {complete_count} complete, {failed_count} failed, {canceled_count} canceled")
+    click.echo(
+        f"\n{len(history)} job(s): {complete_count} complete, {failed_count} failed, {canceled_count} canceled"
+    )
     click.echo(f"(showing last {days} days, limit {limit})")
 
 
@@ -1194,7 +1226,7 @@ def profile_cmd(job_id: str, json_out: bool) -> None:
 
     # Table headers
     click.echo(f"{'PHASE':<16} {'DURATION':>12} {'%':>8} {'THROUGHPUT':>12}")
-    click.echo(f"{'-'*16} {'-'*12} {'-'*8} {'-'*12}")
+    click.echo(f"{'-' * 16} {'-' * 12} {'-' * 8} {'-' * 12}")
 
     phases = profile.get("phases", {})
     breakdown = profile.get("phase_breakdown_percent", {})
@@ -1222,7 +1254,9 @@ def profile_cmd(job_id: str, json_out: bool) -> None:
         pct_str = f"{pct:.1f}%" if pct else "-"
         throughput_str = f"{mbps:.1f} MB/s" if mbps else "-"
 
-        click.echo(f"{phase_name:<16} {duration_str:>12} {pct_str:>8} {throughput_str:>12}")
+        click.echo(
+            f"{phase_name:<16} {duration_str:>12} {pct_str:>8} {throughput_str:>12}"
+        )
 
     click.echo("-" * 60)
 

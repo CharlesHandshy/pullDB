@@ -74,7 +74,9 @@ def test_run_myloader_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) ->
     def fake_run_command_streaming(*_a: Any, **_k: Any) -> FakeResult:
         return FakeResult()
 
-    monkeypatch.setattr(restore_module, "run_command_streaming", fake_run_command_streaming)
+    monkeypatch.setattr(
+        restore_module, "run_command_streaming", fake_run_command_streaming
+    )
 
     result = run_myloader(spec)
     assert result.exit_code == 0
@@ -108,7 +110,9 @@ def test_run_myloader_nonzero(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) ->
     ) -> FakeResult:  # pragma: no cover - trivial
         return FakeResult()
 
-    monkeypatch.setattr(restore_mod, "run_command_streaming", fake_run_command_streaming)
+    monkeypatch.setattr(
+        restore_mod, "run_command_streaming", fake_run_command_streaming
+    )
 
     with pytest.raises(MyLoaderError) as exc:
         run_myloader(spec)
@@ -124,12 +128,16 @@ def test_run_myloader_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) ->
     from pulldb.infra import exec as exec_mod
     from pulldb.worker import restore as restore_mod
 
-    def fake_run_command_streaming(*_a: Any, **_k: Any) -> None:  # raise timeout every call
+    def fake_run_command_streaming(
+        *_a: Any, **_k: Any
+    ) -> None:  # raise timeout every call
         raise exec_mod.CommandTimeoutError(
             ["myloader"], 0.1, "partial out", "partial err"
         )
 
-    monkeypatch.setattr(restore_mod, "run_command_streaming", fake_run_command_streaming)
+    monkeypatch.setattr(
+        restore_mod, "run_command_streaming", fake_run_command_streaming
+    )
 
     with pytest.raises(MyLoaderError) as exc:
         run_myloader(spec, timeout=0.05)

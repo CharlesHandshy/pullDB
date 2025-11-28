@@ -73,9 +73,7 @@ class PhaseProfile:
             bytes_processed: Optional data volume for throughput calculation.
         """
         self.completed_at = datetime.now(UTC)
-        self.duration_seconds = (
-            self.completed_at - self.started_at
-        ).total_seconds()
+        self.duration_seconds = (self.completed_at - self.started_at).total_seconds()
         if bytes_processed is not None:
             self.bytes_processed = bytes_processed
             if self.duration_seconds > 0:

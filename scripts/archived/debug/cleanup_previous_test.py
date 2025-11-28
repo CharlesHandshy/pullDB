@@ -9,14 +9,19 @@ from pulldb.infra.secrets import CredentialResolver
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cleanup")
 
+
 def cleanup():
     load_dotenv()
-    
+
     # 1. Load Config to get DB creds
     base_config = Config.minimal_from_env()
-    
+
     coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
-    if coordination_secret and base_config.mysql_user == "root" and not base_config.mysql_password:
+    if (
+        coordination_secret
+        and base_config.mysql_user == "root"
+        and not base_config.mysql_password
+    ):
         try:
             resolver = CredentialResolver(base_config.aws_profile)
             creds = resolver.resolve(coordination_secret)
@@ -48,7 +53,7 @@ def cleanup():
             password=base_config.mysql_password,
             database=base_config.mysql_database,
         )
-    
+
     # 3. Drop Staging Database
     staging_db = "charleactionpest_64d7e2d4350a"
     print(f"Dropping staging database: {staging_db}")
@@ -95,6 +100,7 @@ def cleanup():
             conn.commit()
     except Exception as e:
         print(f"Error cleaning up jobs: {e}")
+
 
 if __name__ == "__main__":
     cleanup()

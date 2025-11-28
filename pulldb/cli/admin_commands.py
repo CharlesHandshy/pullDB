@@ -23,17 +23,16 @@ def _get_mysql_pool() -> t.Any:
     from pulldb.infra.secrets import CredentialResolver
 
     secret_ref = os.getenv(
-        "PULLDB_COORDINATION_SECRET",
-        "aws-secretsmanager:/pulldb/mysql/coordination-db"
+        "PULLDB_COORDINATION_SECRET", "aws-secretsmanager:/pulldb/mysql/coordination-db"
     )
-    
+
     aws_profile = os.getenv("PULLDB_AWS_PROFILE")
     resolver = CredentialResolver(aws_profile=aws_profile)
     creds = resolver.resolve(secret_ref)
-    
+
     mysql_user = os.getenv("PULLDB_API_MYSQL_USER", "pulldb_api")
     mysql_database = os.getenv("PULLDB_MYSQL_DATABASE", "pulldb_service")
-    
+
     return MySQLPool(
         host=creds.host,
         user=mysql_user,
@@ -171,15 +170,17 @@ def jobs_list(
     for job in jobs:
         submitted = job.get("submitted_at")
         submitted_str = submitted.strftime("%Y-%m-%d %H:%M") if submitted else "-"
-        rows_out.append([
-            str(job.get("id", ""))[:12],
-            str(job.get("status", "")),
-            str(job.get("current_operation") or "-")[:15],
-            str(job.get("target", ""))[:20],
-            str(job.get("dbhost", ""))[:12],
-            str(job.get("user_code", ""))[:8],
-            submitted_str,
-        ])
+        rows_out.append(
+            [
+                str(job.get("id", ""))[:12],
+                str(job.get("status", "")),
+                str(job.get("current_operation") or "-")[:15],
+                str(job.get("target", ""))[:20],
+                str(job.get("dbhost", ""))[:12],
+                str(job.get("user_code", ""))[:8],
+                submitted_str,
+            ]
+        )
 
     # Calculate column widths
     col_widths = [len(h) for h in headers]
@@ -217,7 +218,7 @@ def jobs_cancel(job_id: str, force: bool) -> None:
             # Check job exists and is cancellable
             cursor.execute(
                 "SELECT status FROM jobs WHERE id = %s OR id LIKE %s",
-                (job_id, f"{job_id}%")
+                (job_id, f"{job_id}%"),
             )
             row = cursor.fetchone()
             if not row:
@@ -225,9 +226,7 @@ def jobs_cancel(job_id: str, force: bool) -> None:
 
             status = row[0]
             if status in ("complete", "failed", "canceled"):
-                raise click.ClickException(
-                    f"Job is already {status}, cannot cancel."
-                )
+                raise click.ClickException(f"Job is already {status}, cannot cancel.")
 
             # Update job
             cursor.execute(
@@ -236,7 +235,7 @@ def jobs_cancel(job_id: str, force: bool) -> None:
                 SET cancel_requested_at = NOW()
                 WHERE (id = %s OR id LIKE %s) AND status IN ('queued', 'running')
                 """,
-                (job_id, f"{job_id}%")
+                (job_id, f"{job_id}%"),
             )
             conn.commit()
 
@@ -343,7 +342,9 @@ def cleanup_cmd(
             for item in items:
                 finished = item.get("finished_at")
                 finished_str = finished.strftime("%Y-%m-%d") if finished else "?"
-                click.echo(f"    - {item.get('staging_name')} (job {item.get('status')} {finished_str})")
+                click.echo(
+                    f"    - {item.get('staging_name')} (job {item.get('status')} {finished_str})"
+                )
                 total_count += 1
 
         click.echo(f"\nSummary:")
@@ -369,7 +370,7 @@ def cleanup_cmd(
                     with conn.cursor() as cursor:
                         cursor.execute(
                             "UPDATE jobs SET staging_cleaned_at = NOW() WHERE id = %s",
-                            (job_id,)
+                            (job_id,),
                         )
                         conn.commit()
                 click.echo(f"  ✓ Marked cleaned: {staging_name}")
@@ -436,12 +437,14 @@ def hosts_list(json_out: bool) -> None:
         cred_ref = host.get("credential_reference") or "-"
         if len(cred_ref) > 40:
             cred_ref = cred_ref[:37] + "..."
-        rows_out.append([
-            str(host.get("hostname", "")),
-            str(host.get("max_concurrent_jobs", 1)),
-            "Yes" if host.get("enabled") else "No",
-            cred_ref,
-        ])
+        rows_out.append(
+            [
+                str(host.get("hostname", "")),
+                str(host.get("max_concurrent_jobs", 1)),
+                "Yes" if host.get("enabled") else "No",
+                cred_ref,
+            ]
+        )
 
     col_widths = [len(h) for h in headers]
     for row in rows_out:
@@ -468,8 +471,7 @@ def hosts_enable(hostname: str) -> None:
     with pool.connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "UPDATE db_hosts SET enabled = TRUE WHERE hostname = %s",
-                (hostname,)
+                "UPDATE db_hosts SET enabled = TRUE WHERE hostname = %s", (hostname,)
             )
             conn.commit()
             if cursor.rowcount == 0:
@@ -487,8 +489,7 @@ def hosts_disable(hostname: str) -> None:
     with pool.connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "UPDATE db_hosts SET enabled = FALSE WHERE hostname = %s",
-                (hostname,)
+                "UPDATE db_hosts SET enabled = FALSE WHERE hostname = %s", (hostname,)
             )
             conn.commit()
             if cursor.rowcount == 0:
@@ -522,12 +523,14 @@ def hosts_add(hostname: str, max_concurrent: int, credential_ref: str | None) ->
                     INSERT INTO db_hosts (hostname, max_concurrent_jobs, enabled, credential_reference)
                     VALUES (%s, %s, TRUE, %s)
                     """,
-                    (hostname, max_concurrent, credential_ref)
+                    (hostname, max_concurrent, credential_ref),
                 )
                 conn.commit()
             except Exception as e:
                 if "Duplicate" in str(e):
-                    raise click.ClickException(f"Host already exists: {hostname}") from e
+                    raise click.ClickException(
+                        f"Host already exists: {hostname}"
+                    ) from e
                 raise
 
     click.echo(f"✓ Host {hostname} added")
@@ -586,14 +589,16 @@ def users_list(json_out: bool) -> None:
     for user in users:
         created = user.get("created_at")
         created_str = created.strftime("%Y-%m-%d") if created else "-"
-        rows_out.append([
-            str(user.get("username", ""))[:15],
-            str(user.get("user_code", ""))[:8],
-            "Yes" if user.get("is_admin") else "No",
-            str(user.get("active_jobs", 0)),
-            "Yes" if user.get("disabled") else "No",
-            created_str,
-        ])
+        rows_out.append(
+            [
+                str(user.get("username", ""))[:15],
+                str(user.get("user_code", ""))[:8],
+                "Yes" if user.get("is_admin") else "No",
+                str(user.get("active_jobs", 0)),
+                "Yes" if user.get("disabled") else "No",
+                created_str,
+            ]
+        )
 
     col_widths = [len(h) for h in headers]
     for row in rows_out:
@@ -620,7 +625,7 @@ def users_enable(username: str) -> None:
         with conn.cursor() as cursor:
             cursor.execute(
                 "UPDATE auth_users SET disabled = FALSE WHERE username = %s",
-                (username,)
+                (username,),
             )
             conn.commit()
             if cursor.rowcount == 0:
@@ -638,8 +643,7 @@ def users_disable(username: str) -> None:
     with pool.connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "UPDATE auth_users SET disabled = TRUE WHERE username = %s",
-                (username,)
+                "UPDATE auth_users SET disabled = TRUE WHERE username = %s", (username,)
             )
             conn.commit()
             if cursor.rowcount == 0:
@@ -656,7 +660,8 @@ def users_show(username: str) -> None:
 
     with pool.connection() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT 
                     u.id,
                     u.username,
@@ -670,7 +675,9 @@ def users_show(username: str) -> None:
                     (SELECT COUNT(*) FROM jobs j WHERE j.owner_id = u.id AND j.status IN ('queued', 'running')) as active_jobs
                 FROM auth_users u
                 WHERE u.username = %s
-            """, (username,))
+            """,
+                (username,),
+            )
             row = cursor.fetchone()
             if not row:
                 raise click.ClickException(f"User not found: {username}")
@@ -683,7 +690,9 @@ def users_show(username: str) -> None:
     click.echo(f"  Admin: {'Yes' if user.get('is_admin') else 'No'}")
     click.echo(f"  Disabled: {'Yes' if user.get('disabled') else 'No'}")
     created = user.get("created_at")
-    click.echo(f"  Created: {created.strftime('%Y-%m-%d %H:%M:%S') if created else '-'}")
+    click.echo(
+        f"  Created: {created.strftime('%Y-%m-%d %H:%M:%S') if created else '-'}"
+    )
     click.echo(f"\nJob Statistics:")
     click.echo(f"  Total Jobs: {user.get('total_jobs', 0)}")
     click.echo(f"  Complete: {user.get('complete_jobs', 0)}")

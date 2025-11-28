@@ -206,35 +206,35 @@ def deploy_to_host(
         try:  # create procedure
             # Parse and execute statements separated by $$
             # We assume the file uses DELIMITER $$ for the procedures
-            
+
             # First, remove the DELIMITER lines to avoid confusion
             # We keep the content, just remove the delimiter commands
             clean_sql = sql.replace("DELIMITER $$", "").replace("DELIMITER ;", "")
-            
+
             # Now split by $$
             statements = clean_sql.split("$$")
-            
+
             for stmt in statements:
                 stmt = stmt.strip()
                 if not stmt:
                     continue
-                
+
                 # Skip comments-only blocks or empty blocks
                 # (Simple heuristic: if it doesn't start with DROP or CREATE, skip it)
                 # But comments might precede DROP/CREATE.
                 # Let's just try to execute it if it has content.
                 # But we should probably strip leading comments to check.
-                
+
                 # Actually, mysql-connector might handle comments fine.
                 # But let's be safe and skip if it's just comments.
                 lines = stmt.splitlines()
                 effective_lines = [l for l in lines if not l.strip().startswith("--")]
                 if not effective_lines:
                     continue
-                
+
                 # Reconstruct statement without leading/trailing whitespace
                 # We keep internal comments
-                
+
                 try:
                     cursor.execute(stmt)
                     # Consume results to avoid "Commands out of sync"

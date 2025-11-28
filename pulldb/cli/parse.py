@@ -106,7 +106,9 @@ def _initial_username(tokens: Sequence[str]) -> tuple[str, str]:
     return username, sanitized_username[:USER_CODE_LEN]
 
 
-def _tokenize(tokens: Sequence[str]) -> tuple[str | None, bool, str | None, str | None, bool]:
+def _tokenize(
+    tokens: Sequence[str],
+) -> tuple[str | None, bool, str | None, str | None, bool]:
     customer_id: str | None = None
     is_qatemplate = False
     dbhost: str | None = None

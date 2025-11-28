@@ -92,7 +92,7 @@ def test_real_staging_backup_listing_optional() -> None:  # pragma: no cover
     # Basic invariant: newest timestamp sorts last when parsed & sorted
     def _extract_ts(key: str) -> datetime:
         """Extract timestamp from backup filename.
-        
+
         Pattern: daily_mydumper_{target}_{ts}_{Day}_{dbN}.tar
         The target can contain underscores, so we use regex to extract ts.
         """

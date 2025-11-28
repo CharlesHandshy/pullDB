@@ -29,17 +29,17 @@ def parse_filename(filename: str) -> tuple[str, str] | None:
     Format: database.table.sql.gz or database.table.00001.sql.gz
     Ignores schema files (-schema.sql.gz, -schema-create.sql.gz).
     """
-    if not filename.endswith('.sql.gz'):
+    if not filename.endswith(".sql.gz"):
         return None
 
-    if '-schema.sql.gz' in filename or '-schema-create.sql.gz' in filename:
+    if "-schema.sql.gz" in filename or "-schema-create.sql.gz" in filename:
         return None
 
     # Remove extension
     base = filename[:-7]  # remove .sql.gz
 
     # Check for chunk number (e.g., .00001)
-    parts = base.split('.')
+    parts = base.split(".")
     min_parts = 2
     if len(parts) < min_parts:
         return None
@@ -54,7 +54,7 @@ def parse_filename(filename: str) -> tuple[str, str] | None:
     # Reassemble table name
     # Standard mydumper: first part is DB, rest is table.
     db_name = parts[0]
-    table_name = '.'.join(parts[1:])
+    table_name = ".".join(parts[1:])
 
     return db_name, table_name
 
@@ -71,10 +71,10 @@ def count_rows_in_file(filepath: str) -> int:
     """
     count = 0
     try:
-        with gzip.open(filepath, 'rt', encoding='utf-8', errors='replace') as f:
+        with gzip.open(filepath, "rt", encoding="utf-8", errors="replace") as f:
             for line in f:
                 stripped = line.lstrip()
-                if stripped.startswith('INSERT INTO') or stripped.startswith(',('):
+                if stripped.startswith("INSERT INTO") or stripped.startswith(",("):
                     count += 1
     except Exception as e:
         logger.warning(f"Failed to count rows in {filepath}: {e}")
@@ -106,36 +106,33 @@ def synthesize_metadata(backup_dir: str, output_file: str | None = None) -> None
     config.optionxform = str  # type: ignore # Preserve case
 
     # [config]
-    config['config'] = {
-        'quote-character': 'BACKTICK',
-        'local-infile': '1'
-    }
+    config["config"] = {"quote-character": "BACKTICK", "local-infile": "1"}
 
     # [myloader_session_variables]
-    config['myloader_session_variables'] = {
-        'SQL_MODE': "'NO_AUTO_VALUE_ON_ZERO,' /*!40101",
-        'foreign_key_checks': '0',
-        'time_zone': "'+00:00'",
-        'sql_log_bin': '0'
+    config["myloader_session_variables"] = {
+        "SQL_MODE": "'NO_AUTO_VALUE_ON_ZERO,' /*!40101",
+        "foreign_key_checks": "0",
+        "time_zone": "'+00:00'",
+        "sql_log_bin": "0",
     }
 
     # [source]
     # Try to read legacy metadata for binlog info
-    legacy_metadata_path = os.path.join(backup_dir, 'metadata')
-    binlog_file = ''
-    binlog_pos = ''
+    legacy_metadata_path = os.path.join(backup_dir, "metadata")
+    binlog_file = ""
+    binlog_pos = ""
 
     if os.path.exists(legacy_metadata_path):
         try:
             with open(legacy_metadata_path) as f_meta:
                 content = f_meta.read()
                 # Check if it's legacy (simple text)
-                if '[config]' not in content:
+                if "[config]" not in content:
                     # Parse legacy format
                     # Log: mysql-bin.000001
                     # Pos: 123
-                    m_log = re.search(r'Log: (\S+)', content)
-                    m_pos = re.search(r'Pos: (\d+)', content)
+                    m_log = re.search(r"Log: (\S+)", content)
+                    m_pos = re.search(r"Pos: (\d+)", content)
                     if m_log:
                         binlog_file = m_log.group(1)
                     if m_pos:
@@ -143,24 +140,21 @@ def synthesize_metadata(backup_dir: str, output_file: str | None = None) -> None
         except Exception as e:
             logger.warning(f"Failed to read legacy metadata: {e}")
 
-    config['source'] = {
-        'File': binlog_file,
-        'Position': binlog_pos,
-        'Executed_Gtid_Set': ''
+    config["source"] = {
+        "File": binlog_file,
+        "Position": binlog_pos,
+        "Executed_Gtid_Set": "",
     }
 
     # Tables
     for (db, table), rows in sorted(table_rows.items()):
         section_name = f"`{db}`.`{table}`"
-        config[section_name] = {
-            'real_table_name': table,
-            'rows': str(rows)
-        }
+        config[section_name] = {"real_table_name": table, "rows": str(rows)}
 
     # Output
-    target_file = output_file if output_file else os.path.join(backup_dir, 'metadata')
+    target_file = output_file if output_file else os.path.join(backup_dir, "metadata")
     try:
-        with open(target_file, 'w') as f_out:
+        with open(target_file, "w") as f_out:
             config.write(f_out)
         logger.info(f"Synthesized metadata written to {target_file}")
     except Exception as e:
@@ -173,9 +167,9 @@ def ensure_compatible_metadata(backup_dir: str) -> None:
     If 'metadata' is missing or in legacy format, it synthesizes a new one.
     """
     metadata_path = Path(backup_dir) / "metadata"
-    
+
     needs_synthesis = False
-    
+
     if not metadata_path.exists():
         # If no metadata file, check if we have .sql.gz files (implies 0.9 backup)
         # If we have .zst files, it's likely 0.19 and maybe metadata is missing or named differently?
@@ -186,12 +180,14 @@ def ensure_compatible_metadata(backup_dir: str) -> None:
     else:
         # Check format
         try:
-            with open(metadata_path, 'r') as f:
+            with open(metadata_path, "r") as f:
                 first_line = f.readline()
                 # INI files usually start with [section] or comments
                 # Legacy starts with "Started dump at:"
-                if not first_line.strip().startswith('['):
-                    logger.info("Legacy metadata format detected. Synthesizing upgrade...")
+                if not first_line.strip().startswith("["):
+                    logger.info(
+                        "Legacy metadata format detected. Synthesizing upgrade..."
+                    )
                     needs_synthesis = True
         except Exception as e:
             logger.warning(f"Failed to read metadata file header: {e}")

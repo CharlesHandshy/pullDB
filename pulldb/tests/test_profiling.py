@@ -296,11 +296,13 @@ class TestParseProfileFromEvent:
 
     def test_parse_minimal_profile(self) -> None:
         """Should handle minimal profile data."""
-        minimal = json.dumps({
-            "job_id": "test-456",
-            "started_at": "2024-01-15T10:00:00+00:00",
-            "phases": {},
-        })
+        minimal = json.dumps(
+            {
+                "job_id": "test-456",
+                "started_at": "2024-01-15T10:00:00+00:00",
+                "phases": {},
+            }
+        )
 
         parsed = parse_profile_from_event(minimal)
 

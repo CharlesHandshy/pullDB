@@ -61,7 +61,9 @@ class TestJobRepository:
         # Clean up any leftover queued jobs to ensure test isolation
         with mysql_pool.connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM job_events WHERE job_id IN (SELECT id FROM jobs WHERE status = 'queued')")
+            cursor.execute(
+                "DELETE FROM job_events WHERE job_id IN (SELECT id FROM jobs WHERE status = 'queued')"
+            )
             cursor.execute("DELETE FROM jobs WHERE status = 'queued'")
             conn.commit()
             cursor.close()
@@ -268,4 +270,3 @@ class TestJobRepository:
 
         with pytest.raises(ValueError, match="retention_days must be >= 1"):
             repo.prune_job_events(retention_days=-1)
-

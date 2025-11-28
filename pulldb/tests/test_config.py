@@ -167,7 +167,9 @@ class TestFromEnvAndMySQL:
         assert config.s3_bucket_path == "pestroutesrdsdbs"
         assert config.default_dbhost == "dev-db-01.example.com"
         assert config.work_dir == Path("/var/lib/pulldb")
-        assert config.customers_after_sql_dir == Path("/opt/pulldb.service/customers_after_sql")
+        assert config.customers_after_sql_dir == Path(
+            "/opt/pulldb.service/customers_after_sql"
+        )
         assert config.myloader_binary == "/usr/local/bin/myloader"
         assert config.myloader_extra_args == (
             "--skip-triggers",
@@ -227,10 +229,15 @@ class TestFromEnvAndMySQL:
         config = Config.from_env_and_mysql(mock_pool)
 
         import getpass
+
         expected_work_dir = Path(f"/mnt/data/tmp/{getpass.getuser()}/pulldb-work")
         assert config.work_dir == expected_work_dir
-        expected_customer_dir = Path(__file__).parent.parent / "template_after_sql" / "customer"
-        expected_qa_dir = Path(__file__).parent.parent / "template_after_sql" / "quality"
+        expected_customer_dir = (
+            Path(__file__).parent.parent / "template_after_sql" / "customer"
+        )
+        expected_qa_dir = (
+            Path(__file__).parent.parent / "template_after_sql" / "quality"
+        )
         assert config.customers_after_sql_dir == expected_customer_dir
         assert config.qa_template_after_sql_dir == expected_qa_dir
 

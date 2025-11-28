@@ -15,6 +15,7 @@ from pulldb.infra.secrets import CredentialResolver
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("deploy_proc")
 
+
 def main() -> None:
     load_dotenv("/opt/pulldb.service/.env")
 
@@ -62,7 +63,7 @@ def main() -> None:
     if not sql_path.exists():
         logger.error(f"SQL file not found: {sql_path}")
         sys.exit(1)
-    
+
     sql_content = sql_path.read_text()
 
     # Write credentials to temp file and run mysql client
@@ -70,24 +71,27 @@ def main() -> None:
     import tempfile
 
     logger.info(f"Deploying procedure to {target_host} using mysql client...")
-    
-    with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-        f.write(f"[client]\nuser={target_creds.username}\npassword={target_creds.password}\nhost={target_creds.host}\nport={target_creds.port}\n")
+
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+        f.write(
+            f"[client]\nuser={target_creds.username}\npassword={target_creds.password}\nhost={target_creds.host}\nport={target_creds.port}\n"
+        )
         cnf_path = f.name
 
     try:
         cmd = ["mysql", f"--defaults-file={cnf_path}", "--database=mysql"]
         with open(sql_path, "r") as sql_file:
             result = subprocess.run(cmd, stdin=sql_file, capture_output=True, text=True)
-            
+
         if result.returncode != 0:
             logger.error(f"mysql client failed:\n{result.stderr}")
             sys.exit(1)
         else:
             logger.info("Deployment complete via mysql client.")
-            
+
     finally:
         os.unlink(cnf_path)
+
 
 if __name__ == "__main__":
     main()

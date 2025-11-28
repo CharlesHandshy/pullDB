@@ -7,7 +7,12 @@ from datetime import datetime
 from dotenv import load_dotenv
 from pulldb.domain.config import Config
 from pulldb.domain.models import Job, JobStatus
-from pulldb.infra.mysql import MySQLPool, JobRepository, UserRepository, build_default_pool
+from pulldb.infra.mysql import (
+    MySQLPool,
+    JobRepository,
+    UserRepository,
+    build_default_pool,
+)
 from pulldb.worker.loop import run_poll_loop
 from pulldb.worker.service import _build_job_executor
 from pulldb.infra.secrets import CredentialResolver
@@ -16,24 +21,31 @@ from pulldb.infra.secrets import CredentialResolver
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("manual_test")
 
+
 def main():
     print("--- Manual Integration Test ---")
-    
+
     # Load environment variables
     load_dotenv()
 
     # Override for pr-prod test (v0.9 mydumper format)
     os.environ["PULLDB_S3_AWS_PROFILE"] = "pr-prod"
-    os.environ["PULLDB_S3_BUCKET_PATH"] = "s3://pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/"
-    
+    os.environ["PULLDB_S3_BUCKET_PATH"] = (
+        "s3://pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/"
+    )
+
     # 1. Load Config
     print("Loading configuration...")
     # Bootstrap config to get credentials for pool
     base_config = Config.minimal_from_env()
-    
+
     # Resolve coordination secret if needed (copied from service.py logic)
     coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
-    if coordination_secret and base_config.mysql_user == "root" and not base_config.mysql_password:
+    if (
+        coordination_secret
+        and base_config.mysql_user == "root"
+        and not base_config.mysql_password
+    ):
         try:
             resolver = CredentialResolver(base_config.aws_profile)
             creds = resolver.resolve(coordination_secret)
@@ -50,21 +62,21 @@ def main():
         password=base_config.mysql_password,
         database=base_config.mysql_database,
     )
-    
+
     config = Config.from_env_and_mysql(pool)
     print(f"Work Dir: {config.work_dir}")
     print(f"S3 Profile: {config.s3_aws_profile}")
-    
+
     # 2. Repositories
     job_repo = JobRepository(pool)
     user_repo = UserRepository(pool)
-    
+
     # 3. User Setup
     username = "charles"
     print(f"Getting/Creating user '{username}'...")
     user = user_repo.get_or_create_user(username)
     print(f"User: {user.username} (code: {user.user_code})")
-    
+
     # 4. Job Setup
     customer_id = "acceltermite"
     target = f"{user.user_code}{customer_id}"
@@ -73,13 +85,13 @@ def main():
     # {target}_{job_id_hex[:12]} (no hyphens)
     staging_name = f"{target}_{job_id.replace('-', '')[:12]}"
     dbhost = config.default_dbhost or "localhost"
-    
+
     print(f"Creating Job:")
     print(f"  ID: {job_id}")
     print(f"  Target: {target}")
     print(f"  Staging: {staging_name}")
     print(f"  Host: {dbhost}")
-    
+
     job = Job(
         id=job_id,
         owner_user_id=user.user_id,
@@ -92,7 +104,7 @@ def main():
         submitted_at=datetime.utcnow(),
         options_json={"customer_id": customer_id, "overwrite": "true"},
     )
-    
+
     # 5. Enqueue
     print("Enqueueing job...")
     try:
@@ -103,23 +115,24 @@ def main():
         # Check if it's an exclusivity error, maybe clear old jobs?
         # For now, just fail hard.
         sys.exit(1)
-        
+
     # 6. Run Worker
     print("Starting Worker (Oneshot)...")
     executor = _build_job_executor(config, job_repo)
-    
+
     try:
         run_poll_loop(
             job_repo,
             executor,
             max_iterations=1,
             poll_interval=1.0,
-            should_stop=lambda: False
+            should_stop=lambda: False,
         )
         print("Worker finished.")
     except Exception as e:
         print(f"Worker failed: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

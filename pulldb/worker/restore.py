@@ -248,18 +248,22 @@ def run_myloader(
     # Regex for parsing myloader output
     # Matches: "Thread 1 restoring ..." or "** Message: Thread 1 restoring ..."
     re_restoring = re.compile(r"(?:Thread \d+|Message: Thread \d+) restoring (.+)")
-    re_finished = re.compile(r"(?:Thread \d+|Message: Thread \d+) finished restoring (.+)")
-    
+    re_finished = re.compile(
+        r"(?:Thread \d+|Message: Thread \d+) finished restoring (.+)"
+    )
+
     # Matches verbose output: "** Message: <time>: Thread <id>: restoring <content> from <filename> ..."
     # We capture the filename after "from" until " |" (progress bar) or ". Tables" (status) or end of line.
-    re_verbose_restore = re.compile(r"Thread \d+: restoring .+ from (.+?)(?: \||\. Tables|$)")
+    re_verbose_restore = re.compile(
+        r"Thread \d+: restoring .+ from (.+?)(?: \||\. Tables|$)"
+    )
 
     def _progress_callback(line: str) -> None:
         nonlocal completed_tasks
-        
+
         filename = None
         is_finished = False
-        
+
         # Check for verbose output (matches both start/finish in one line effectively)
         # This format is common in newer myloader versions or specific verbosity levels
         match_verbose = re_verbose_restore.search(line)
@@ -278,7 +282,10 @@ def run_myloader(
         elif match_start := re_restoring.search(line):
             filename = match_start.group(1).strip()
             if progress_callback:
-                percent = min(100.0, (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0)
+                percent = min(
+                    100.0,
+                    (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0,
+                )
                 progress_callback(
                     percent,
                     {"status": "started", "file": filename},
@@ -298,9 +305,11 @@ def run_myloader(
             # This filters out "index", "trigger", etc. which cause >100% progress
             if ".sql" in filename:
                 completed_tasks += 1
-            
-            percent = min(100.0, (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0)
-            
+
+            percent = min(
+                100.0, (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0
+            )
+
             if progress_callback:
                 progress_callback(
                     percent,

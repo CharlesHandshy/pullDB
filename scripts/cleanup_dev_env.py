@@ -29,6 +29,7 @@ KEEP_DBS = {
     "pulldb_test_coordination",
 }
 
+
 def get_db_connection(config: Config):
     """Get MySQL connection using config credentials."""
     return mysql.connector.connect(
@@ -60,7 +61,7 @@ def cleanup():
                 user="root",
                 password="",
                 unix_socket="/var/run/mysqld/mysqld.sock",
-                database="pulldb"
+                database="pulldb",
             )
         except mysql.connector.Error as e2:
             logger.error(f"Failed to connect as root via socket: {e2}")
@@ -115,6 +116,7 @@ def cleanup():
 
     conn.close()
     logger.info("Cleanup complete.")
+
 
 if __name__ == "__main__":
     cleanup()

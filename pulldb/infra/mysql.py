@@ -386,7 +386,7 @@ class JobRepository:
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
-            
+
             query = """
                 WITH LatestEvents AS (
                     SELECT job_id, event_type, detail,
@@ -402,13 +402,13 @@ class JobRepository:
                 FROM jobs j
                 LEFT JOIN LatestEvents le ON j.id = le.job_id AND le.rn = 1
             """
-            
+
             params: list[t.Any] = []
             if statuses:
                 placeholders = ", ".join(["%s"] * len(statuses))
                 query += f" WHERE j.status IN ({placeholders})"
                 params.extend(statuses)
-                
+
             query += " ORDER BY j.submitted_at DESC LIMIT %s"
             params.append(limit)
 
@@ -457,7 +457,9 @@ class JobRepository:
 
             # Retention filter
             if retention_days is not None:
-                query += " AND j.completed_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)"
+                query += (
+                    " AND j.completed_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)"
+                )
                 params.append(retention_days)
 
             # User filter
@@ -641,7 +643,9 @@ class JobRepository:
             )
             conn.commit()
 
-    def get_job_events(self, job_id: str, since_id: int | None = None) -> list[JobEvent]:
+    def get_job_events(
+        self, job_id: str, since_id: int | None = None
+    ) -> list[JobEvent]:
         """Get all events for a job, optionally since a specific event ID.
 
         Returns events in chronological order for job history display.
@@ -655,20 +659,20 @@ class JobRepository:
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
-            
+
             query = """
                 SELECT id, job_id, event_type, detail, logged_at
                 FROM job_events
                 WHERE job_id = %s
             """
             params: list[t.Any] = [job_id]
-            
+
             if since_id is not None:
                 query += " AND id > %s"
                 params.append(since_id)
-                
+
             query += " ORDER BY id ASC"  # Use ID for stable ordering
-            
+
             cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
             return [self._row_to_job_event(row) for row in rows]
@@ -801,9 +805,7 @@ class JobRepository:
             row = cursor.fetchone()
             return row[0] > 0 if row else False
 
-    def get_old_terminal_jobs(
-        self, dbhost: str, cutoff_date: datetime
-    ) -> list[Job]:
+    def get_old_terminal_jobs(self, dbhost: str, cutoff_date: datetime) -> list[Job]:
         """Get terminal jobs older than cutoff date for a specific host.
 
         Used by scheduled cleanup to find jobs whose staging databases
@@ -1275,7 +1277,7 @@ class HostRepository:
         >>> creds = repo.get_host_credentials("localhost")
         >>> # username is empty - caller sets it per-service
         >>> # via PULLDB_API_MYSQL_USER or PULLDB_WORKER_MYSQL_USER
-        >>> print(creds.host)      # From Secrets Manager
+        >>> print(creds.host)  # From Secrets Manager
     """
 
     def __init__(

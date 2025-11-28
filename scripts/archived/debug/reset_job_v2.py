@@ -10,6 +10,7 @@ config = Config.minimal_from_env()
 coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
 if coordination_secret and config.mysql_user == "root" and not config.mysql_password:
     from pulldb.infra.secrets import CredentialResolver
+
     try:
         resolver = CredentialResolver(config.aws_profile)
         creds = resolver.resolve(coordination_secret)
@@ -34,7 +35,7 @@ with pool.connection() as conn:
     with conn.cursor() as cursor:
         cursor.execute(
             "UPDATE jobs SET status = 'failed', error_detail = 'Manual reset' WHERE id = %s",
-            (job_id,)
+            (job_id,),
         )
         conn.commit()
         print(f"Updated {cursor.rowcount} rows.")
