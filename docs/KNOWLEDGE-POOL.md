@@ -277,6 +277,14 @@ This file should be created and applied in the production account only. Keep sec
   - **Fix**: Use `PULLDB_S3_AWS_PROFILE=pr-prod` for S3 access, and leave `PULLDB_AWS_PROFILE` unset (to use instance profile) or set to `pr-dev`.
 - **Logical Hostnames**: The `hostname` column in `db_hosts` is a logical alias (e.g., `dev-db-01`), NOT the FQDN. The actual connection FQDN is stored in the AWS Secret referenced by `credential_ref`. This allows CLI users to use short names while the system connects securely.
 - **Testing Restriction**: Use `dev-db-01` or `localhost` for testing purposes.
+- **MySQL Root Socket Auth**: On localhost, root MySQL user uses `auth_socket` plugin (no password needed when connecting via Unix socket). Scripts running as root MUST use socket auth, not TCP with password.
+- **Migration Script Auth** (Nov 2025 fix):
+  - **Problem**: `pulldb-migrate` failed when run as root because AWS credentials are in user-specific `~/.aws/credentials` (not accessible to root).
+  - **Solution**: For localhost, use Unix socket auth instead of TCP with AWS credentials.
+  - **URL Format**: dbmate socket URL is `mysql://user:@/database?socket=/path/to/socket` (empty password, `@/` separator).
+  - **Socket Locations**: `/var/run/mysqld/mysqld.sock` (Debian/Ubuntu), `/tmp/mysql.sock` (macOS), `/var/lib/mysql/mysql.sock` (RHEL).
+  - **Priority**: DATABASE_URL (override) → socket auth (localhost) → AWS Secrets Manager (remote/fallback).
+- **Migration Baseline**: When installing on an existing database, use `pulldb-migrate baseline` to mark all migrations as applied without running them. This prevents migration errors from schema drift.
 
 ## myloader 0.19 Metadata Compatibility
 - **Source**: `src/myloader/myloader_process.c` (GitHub)
