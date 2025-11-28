@@ -6,8 +6,8 @@
 -- =============================================================================
 
 ALTER TABLE jobs 
-ADD COLUMN cancel_requested_at TIMESTAMP NULL DEFAULT NULL 
-AFTER finished_at;
+ADD COLUMN cancel_requested_at TIMESTAMP(6) NULL DEFAULT NULL 
+AFTER error_detail;
 
 
 -- migrate:down

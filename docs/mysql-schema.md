@@ -117,6 +117,8 @@ CREATE TABLE jobs (
     options_json JSON,
     retry_count INT NOT NULL DEFAULT 0,
     error_detail TEXT,
+    cancel_requested_at TIMESTAMP(6) NULL,
+    staging_cleaned_at TIMESTAMP(6) NULL,
     active_target_key VARCHAR(520) GENERATED ALWAYS AS (
         CASE WHEN status IN ('queued','running') THEN CONCAT(target,'@@',dbhost) ELSE NULL END
     ) VIRTUAL,
@@ -130,7 +132,9 @@ CREATE TABLE jobs (
 - `options_json`: frozen snapshot of CLI flags for replay and inspection.
 - `retry_count`: increments when operators resubmit after failure (manual only).
 - `error_detail`: optional payload describing failure context.
-- `status`: only `queued`, `running`, `failed`, `complete` are emitted in the prototype; `canceled` remains reserved for future work.
+- `cancel_requested_at`: timestamp when user requested cancellation (Phase 1). Worker checks this periodically and aborts gracefully if set.
+- `staging_cleaned_at`: timestamp when staging database was cleaned up after restore (Phase 1). Prevents re-processing in cleanup runs.
+- `status`: `queued`, `running`, `failed`, `complete`, `canceled`. The `canceled` status is set when a job is successfully canceled.
 - `active_target_key`: generated virtual column for per-target exclusivity (NULL unless status is queued/running).
 
 Enforce per-target exclusivity with unique index on generated column (MySQL 8.0 doesn't support partial indexes):
@@ -139,6 +143,9 @@ Enforce per-target exclusivity with unique index on generated column (MySQL 8.0 
 CREATE UNIQUE INDEX idx_jobs_active_target ON jobs(active_target_key);
 
 CREATE INDEX idx_jobs_queue ON jobs(status, submitted_at);
+
+-- Index for staging cleanup queries (Phase 1)
+CREATE INDEX idx_jobs_staging_cleanup ON jobs(dbhost, status, staging_cleaned_at, completed_at);
 ```
 
 ### job_events

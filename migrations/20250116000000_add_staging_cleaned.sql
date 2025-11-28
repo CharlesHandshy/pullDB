@@ -6,11 +6,11 @@
 -- =============================================================================
 
 ALTER TABLE jobs 
-ADD COLUMN staging_cleaned_at TIMESTAMP NULL DEFAULT NULL 
+ADD COLUMN staging_cleaned_at TIMESTAMP(6) NULL DEFAULT NULL 
 AFTER cancel_requested_at;
 
--- Index for cleanup monitoring queries
-CREATE INDEX idx_jobs_staging_cleanup ON jobs(status, staging_cleaned_at);
+-- Index for cleanup monitoring queries (matches schema file)
+CREATE INDEX idx_jobs_staging_cleanup ON jobs(dbhost, status, staging_cleaned_at, completed_at);
 
 
 -- migrate:down
