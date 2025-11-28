@@ -55,7 +55,6 @@ class TestClaimNextJob:
 
         job_repo.claim_next_job(worker_id="test-worker:1234")
 
-        after = datetime.now(timezone.utc)
         db_job = job_repo.get_job_by_id(sample_job.id)
         assert db_job is not None
         assert db_job.started_at is not None

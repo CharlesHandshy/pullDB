@@ -141,8 +141,8 @@ def _initialize_state() -> APIState:
                 # Secret provides host and password; username comes from PULLDB_API_MYSQL_USER
                 config.mysql_host = creds.host
                 config.mysql_password = creds.password
-                logger.info(
-                    f"Resolved coordination credentials from {coordination_secret} "
+                print(
+                    f"INFO: Resolved coordination credentials from {coordination_secret} "
                     f"(host={creds.host}, user={config.mysql_user})"
                 )
             except Exception as e:

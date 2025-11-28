@@ -84,8 +84,13 @@ class TestHostRepository:
                 return {"SecretString": secret_json}
 
         class FakeSession:
-            def __init__(self, profile_name: str | None = None):
+            def __init__(
+                self,
+                profile_name: str | None = None,
+                region_name: str | None = None,
+            ):
                 self.profile_name = profile_name
+                self.region_name = region_name
 
             def client(self, service_name: str) -> FakeSecretsClient:
                 assert service_name == "secretsmanager"

@@ -43,17 +43,19 @@ def test_atom_cp_sanitize() -> None:
 def test_atom_cp_tokens() -> None:
     """Verify tokenization loop logic."""
     # Case 1: Customer
-    cust, is_qa, host, over = _tokenize(["customer=Acme", "dbhost=db1", "overwrite"])
+    cust, is_qa, host, date, over = _tokenize(["customer=Acme", "dbhost=db1", "overwrite"])
     assert cust == "Acme"
     assert not is_qa
     assert host == "db1"
+    assert date is None
     assert over
 
     # Case 2: QA Template
-    cust, is_qa, host, over = _tokenize(["qatemplate"])
+    cust, is_qa, host, date, over = _tokenize(["qatemplate"])
     assert cust is None
     assert is_qa
     assert host is None
+    assert date is None
     assert not over
 
     # Case 3: Error (Unknown)
