@@ -107,6 +107,7 @@ fi
 # Copy documentation and example config files to package root
 cp docs/AWS-SETUP.md "$APP_ROOT/"
 cp packaging/SERVICE-README.md "$APP_ROOT/"
+cp packaging/INSTALL-UPGRADE.md "$APP_ROOT/"
 cp packaging/env.example "$APP_ROOT/"
 cp packaging/aws.config.example "$APP_ROOT/"
 
@@ -123,6 +124,7 @@ DOC_DIR="$WORKDIR/usr/share/doc/pulldb"
 mkdir -p "$DOC_DIR"
 cp docs/AWS-SETUP.md "$DOC_DIR/"
 cp packaging/SERVICE-README.md "$DOC_DIR/"
+cp packaging/INSTALL-UPGRADE.md "$DOC_DIR/"
 # Create a basic copyright file if none exists (Debian policy)
 if [ -f LICENSE ]; then
     cp LICENSE "$DOC_DIR/copyright"
