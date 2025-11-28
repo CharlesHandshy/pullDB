@@ -87,6 +87,23 @@ if [ -d "pulldb/binaries" ]; then
     fi
 fi
 
+# Copy migration files and scripts
+if [ -d "migrations" ]; then
+    mkdir -p "$APP_ROOT/migrations"
+    cp migrations/*.sql "$APP_ROOT/migrations/"
+    echo "Included $(ls migrations/*.sql | wc -l) migration files"
+fi
+if [ -f "scripts/pulldb-migrate.sh" ]; then
+    cp scripts/pulldb-migrate.sh "$APP_ROOT/scripts/"
+    chmod +x "$APP_ROOT/scripts/pulldb-migrate.sh"
+    echo "Included migration wrapper script"
+fi
+if [ -f "scripts/install-dbmate.sh" ]; then
+    cp scripts/install-dbmate.sh "$APP_ROOT/scripts/"
+    chmod +x "$APP_ROOT/scripts/install-dbmate.sh"
+    echo "Included dbmate installer script"
+fi
+
 # Copy documentation and example config files to package root
 cp docs/AWS-SETUP.md "$APP_ROOT/"
 cp packaging/SERVICE-README.md "$APP_ROOT/"

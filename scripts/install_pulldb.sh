@@ -24,6 +24,7 @@ PYTHON_BIN="python3"
 ASSUME_YES=0
 NO_SYSTEMD=0
 DO_VALIDATE=0
+NO_MIGRATE=0
 INSTALL_PREFIX=""
 AWS_PROFILE=""
 COORD_SECRET=""
@@ -99,6 +100,7 @@ Options:
   --tmp-dir DIR           Temp directory for downloads (default /mnt/data/tmp)
   --yes                   Assume yes for all confirmations
   --no-systemd            Do not install or enable systemd unit
+  --no-migrate            Do not run database migrations
   --validate              Validate AWS profile and secret existence
   --python BIN            Python interpreter (default python3)
   --help                  Show this help
@@ -137,6 +139,8 @@ parse_args() {
         ASSUME_YES=1; shift ;;
       --no-systemd)
         NO_SYSTEMD=1; shift ;;
+      --no-migrate)
+        NO_MIGRATE=1; shift ;;
       --validate)
         DO_VALIDATE=1; shift ;;
       --python)
@@ -275,6 +279,59 @@ create_virtualenv() {
   fi
 }
 
+install_dbmate() {
+  local dbmate_bin="${INSTALL_PREFIX}/bin/dbmate"
+  local install_script="${INSTALL_PREFIX}/scripts/install-dbmate.sh"
+  
+  if [[ -f "$dbmate_bin" ]]; then
+    info "dbmate already installed at $dbmate_bin"
+    return 0
+  fi
+  
+  if [[ -f "$install_script" ]]; then
+    info "Installing dbmate migration tool..."
+    PULLDB_INSTALL_PREFIX="$INSTALL_PREFIX" bash "$install_script"
+  else
+    warn "dbmate installer not found at $install_script (skipping)"
+    return 1
+  fi
+}
+
+run_migrations() {
+  local migrate_script="${INSTALL_PREFIX}/scripts/pulldb-migrate.sh"
+  
+  if [[ ! -f "$migrate_script" ]]; then
+    warn "Migration script not found at $migrate_script (skipping migrations)"
+    return 1
+  fi
+  
+  if [[ ! -f "${INSTALL_PREFIX}/bin/dbmate" ]]; then
+    warn "dbmate not installed (skipping migrations)"
+    return 1
+  fi
+  
+  info "Running database migrations..."
+  
+  # Export environment for the migration script
+  export PULLDB_INSTALL_PREFIX="$INSTALL_PREFIX"
+  export PULLDB_AWS_PROFILE="$AWS_PROFILE"
+  export PULLDB_COORDINATION_SECRET="$COORD_SECRET"
+  
+  local migrate_flags=""
+  if [[ $ASSUME_YES -eq 1 ]]; then
+    migrate_flags="--yes"
+  fi
+  
+  if bash "$migrate_script" up $migrate_flags; then
+    info "Migrations completed successfully"
+    return 0
+  else
+    warn "Migration failed - you may need to run migrations manually"
+    warn "Try: ${migrate_script} status"
+    return 1
+  fi
+}
+
 post_install_summary() {
   cat <<EOF
 Installation complete.
@@ -345,6 +402,19 @@ main() {
   generate_env_file ".env"
   create_virtualenv "$INSTALL_PREFIX/venv"
   validate_aws
+  
+  # Install dbmate and run migrations
+  if [[ $NO_MIGRATE -eq 1 ]]; then
+    warn "--no-migrate specified; skipping database migrations."
+  else
+    if install_dbmate; then
+      if confirm "Run database migrations?"; then
+        run_migrations || true
+      else
+        warn "Skipping migrations. Run later with: ${INSTALL_PREFIX}/scripts/pulldb-migrate.sh up"
+      fi
+    fi
+  fi
 
   if [[ $NO_SYSTEMD -eq 1 ]]; then
     warn "--no-systemd specified; skipping unit install."
