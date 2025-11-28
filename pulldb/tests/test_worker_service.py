@@ -22,14 +22,15 @@ from pulldb.worker.loop import run_poll_loop
 class _FakeJobRepo:
     """Minimal fake job repository for poll loop tests.
 
-    Counts how many times `get_next_queued_job` is invoked and always returns
+    Counts how many times `claim_next_job` is invoked and always returns
     no job (None) to trigger backoff path.
     """
 
     def __init__(self) -> None:
         self.poll_count = 0
 
-    def get_next_queued_job(self) -> t.Any:  # intentionally Any for simplicity
+    def claim_next_job(self, worker_id: str | None = None) -> t.Any:
+        """Atomic claim simulating empty queue."""
         self.poll_count += 1
         return None
 

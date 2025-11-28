@@ -67,6 +67,35 @@ class MySQLPool:
         finally:
             conn.close()
 
+    @contextmanager
+    def transaction(self) -> t.Iterator[t.Any]:
+        """Get a database connection with explicit transaction control.
+
+        Disables autocommit for manual transaction management. Commits on
+        successful exit, rolls back on exception. Used for atomic operations
+        like job claiming in multi-worker environments.
+
+        Yields:
+            MySQL connection object with autocommit disabled.
+
+        Example:
+            >>> with pool.transaction() as conn:
+            ...     cursor = conn.cursor()
+            ...     cursor.execute("SELECT ... FOR UPDATE")
+            ...     cursor.execute("UPDATE ...")
+            ...     # Commits automatically on exit
+        """
+        conn = mysql.connector.connect(**self._kwargs)
+        conn.autocommit = False
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
 
 def build_default_pool(host: str, user: str, password: str, database: str) -> MySQLPool:
     """Build a MySQL connection pool with default configuration.
@@ -165,6 +194,9 @@ class JobRepository:
         Returns oldest queued job by submitted_at timestamp. Used by worker
         to poll for work.
 
+        WARNING: This method does NOT lock the job. In multi-worker environments,
+        use claim_next_job() instead to atomically claim and lock a job.
+
         Returns:
             Next queued job or None if queue empty.
         """
@@ -183,6 +215,96 @@ class JobRepository:
             )
             row = cursor.fetchone()
             return self._row_to_job(row) if row else None
+
+    def claim_next_job(self, worker_id: str | None = None) -> Job | None:
+        """Atomically claim next queued job for processing.
+
+        Uses SELECT FOR UPDATE SKIP LOCKED to safely claim jobs when multiple
+        workers are running. The job is marked as 'running' within the same
+        transaction, ensuring no two workers can claim the same job.
+
+        This is the PREFERRED method for worker job acquisition. The older
+        get_next_queued_job() + mark_job_running() pattern is NOT safe for
+        multi-worker deployments.
+
+        Args:
+            worker_id: Optional identifier of claiming worker (for debugging).
+                       Format: "hostname:pid" or similar unique identifier.
+
+        Returns:
+            Claimed job (now in 'running' status) or None if queue empty.
+
+        Example:
+            >>> job = repo.claim_next_job(worker_id="worker-1:12345")
+            >>> if job:
+            ...     # Job is already 'running' - safe to process
+            ...     process(job)
+        """
+        with self.pool.transaction() as conn:
+            cursor = conn.cursor(dictionary=True)
+
+            # SELECT with FOR UPDATE SKIP LOCKED:
+            # - FOR UPDATE: Locks the row until transaction commits
+            # - SKIP LOCKED: If row already locked by another worker, skip it
+            # This prevents blocking and ensures each job claimed by exactly one worker
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail
+                FROM jobs
+                WHERE status = 'queued'
+                ORDER BY submitted_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+                """
+            )
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            job_id = row["id"]
+
+            # Update to running within same transaction
+            # This is atomic with the SELECT FOR UPDATE
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET status = 'running', started_at = UTC_TIMESTAMP(6)
+                WHERE id = %s
+                """,
+                (job_id,),
+            )
+
+            # Log worker claim if worker_id provided
+            if worker_id:
+                logger.debug(
+                    "Job claimed by worker",
+                    extra={"job_id": job_id, "worker_id": worker_id},
+                )
+
+            # Transaction commits on context manager exit
+            # Return job with status still showing 'queued' from SELECT
+            # (status is updated in DB but our row dict has old value)
+            job = self._row_to_job(row)
+            # Return a new Job with updated status
+            return Job(
+                id=job.id,
+                owner_user_id=job.owner_user_id,
+                owner_username=job.owner_username,
+                owner_user_code=job.owner_user_code,
+                target=job.target,
+                staging_name=job.staging_name,
+                dbhost=job.dbhost,
+                status=JobStatus.RUNNING,  # Reflect the updated status
+                submitted_at=job.submitted_at,
+                started_at=job.started_at,  # Will be set by DB
+                completed_at=job.completed_at,
+                options_json=job.options_json,
+                retry_count=job.retry_count,
+                error_detail=job.error_detail,
+            )
 
     def get_job_by_id(self, job_id: str) -> Job | None:
         """Get job by ID.

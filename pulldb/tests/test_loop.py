@@ -43,29 +43,43 @@ def sample_job() -> Job:
     )
 
 
+def _make_running_job(job: Job) -> Job:
+    """Create copy of job with RUNNING status (as returned by claim_next_job)."""
+    return Job(
+        id=job.id,
+        owner_user_id=job.owner_user_id,
+        owner_username=job.owner_username,
+        owner_user_code=job.owner_user_code,
+        target=job.target,
+        staging_name=job.staging_name,
+        dbhost=job.dbhost,
+        status=JobStatus.RUNNING,
+        submitted_at=job.submitted_at,
+    )
+
+
 def test_poll_loop_processes_job(
     mock_job_repo: MagicMock,
     mock_job_executor: MagicMock,
     sample_job: Job,
 ) -> None:
-    """Poll loop fetches job and transitions to running."""
-    mock_job_repo.get_next_queued_job.side_effect = [sample_job, None]
+    """Poll loop claims job and executes it."""
+    # claim_next_job returns job with RUNNING status (already transitioned)
+    running_job = _make_running_job(sample_job)
+    mock_job_repo.claim_next_job.side_effect = [running_job, None]
 
     # Run one iteration
     run_poll_loop(mock_job_repo, mock_job_executor, max_iterations=1)
 
-    # Verify job was fetched
-    assert mock_job_repo.get_next_queued_job.call_count == 1
-
-    # Verify job was transitioned to running
-    mock_job_repo.mark_job_running.assert_called_once_with(sample_job.id)
+    # Verify job was claimed
+    assert mock_job_repo.claim_next_job.call_count == 1
 
     # Verify running event was emitted
     mock_job_repo.append_event.assert_called_once()
     call_args = mock_job_repo.append_event.call_args
     assert call_args[1]["job_id"] == sample_job.id
     assert call_args[1]["event_type"] == "running"
-    mock_job_executor.assert_called_once_with(sample_job)
+    mock_job_executor.assert_called_once_with(running_job)
 
 
 def test_poll_loop_empty_queue_backs_off(
@@ -73,16 +87,15 @@ def test_poll_loop_empty_queue_backs_off(
 ) -> None:
     """Poll loop applies exponential backoff when queue is empty."""
     # Always return None (empty queue)
-    mock_job_repo.get_next_queued_job.return_value = None
+    mock_job_repo.claim_next_job.return_value = None
 
     # Run multiple iterations to trigger backoff
     run_poll_loop(mock_job_repo, mock_job_executor, max_iterations=3)
 
     # Should have polled 3 times
-    assert mock_job_repo.get_next_queued_job.call_count == 3
+    assert mock_job_repo.claim_next_job.call_count == 3
 
-    # Should not have called mark_running (no jobs)
-    mock_job_repo.mark_job_running.assert_not_called()
+    # Should not have executed any jobs
     mock_job_executor.assert_not_called()
 
 
@@ -91,11 +104,11 @@ def test_poll_loop_respects_max_iterations(
     mock_job_repo: MagicMock, mock_job_executor: MagicMock
 ) -> None:
     """Poll loop stops after max_iterations reached."""
-    mock_job_repo.get_next_queued_job.return_value = None
+    mock_job_repo.claim_next_job.return_value = None
 
     run_poll_loop(mock_job_repo, mock_job_executor, max_iterations=5)
 
-    assert mock_job_repo.get_next_queued_job.call_count == 5
+    assert mock_job_repo.claim_next_job.call_count == 5
 
 
 def test_poll_loop_handles_transition_error(
@@ -103,18 +116,15 @@ def test_poll_loop_handles_transition_error(
     mock_job_executor: MagicMock,
     sample_job: Job,
 ) -> None:
-    """Poll loop logs and continues after job transition failure."""
-    mock_job_repo.get_next_queued_job.side_effect = [sample_job, None]
-    mock_job_repo.mark_job_running.side_effect = Exception("Database error")
+    """Poll loop logs and continues after job claim failure."""
+    # First claim raises error, second returns None
+    mock_job_repo.claim_next_job.side_effect = [Exception("Database error"), None]
 
     # Should not raise - loop catches and logs error, then continues
     run_poll_loop(mock_job_repo, mock_job_executor, max_iterations=2)
 
-    # Should have attempted transition
-    mock_job_repo.mark_job_running.assert_called_once_with(sample_job.id)
-
     # Should have polled twice (once with error, once empty)
-    assert mock_job_repo.get_next_queued_job.call_count == 2
+    assert mock_job_repo.claim_next_job.call_count == 2
 
 
 def test_poll_loop_continues_after_poll_error(
@@ -122,7 +132,7 @@ def test_poll_loop_continues_after_poll_error(
 ) -> None:
     """Poll loop continues after unexpected error during poll."""
     # First call raises error, second succeeds
-    mock_job_repo.get_next_queued_job.side_effect = [
+    mock_job_repo.claim_next_job.side_effect = [
         Exception("Connection lost"),
         None,
     ]
@@ -131,7 +141,7 @@ def test_poll_loop_continues_after_poll_error(
     run_poll_loop(mock_job_repo, mock_job_executor, max_iterations=2)
 
     # Should have attempted poll twice
-    assert mock_job_repo.get_next_queued_job.call_count == 2
+    assert mock_job_repo.claim_next_job.call_count == 2
 
 
 def test_poll_loop_resets_backoff_after_job(
@@ -140,8 +150,9 @@ def test_poll_loop_resets_backoff_after_job(
     sample_job: Job,
 ) -> None:
     """Poll loop resets backoff interval after finding a job."""
+    running_job = _make_running_job(sample_job)
     # Empty queue, then job, then empty again
-    mock_job_repo.get_next_queued_job.side_effect = [None, sample_job, None]
+    mock_job_repo.claim_next_job.side_effect = [None, running_job, None]
 
     run_poll_loop(
         mock_job_repo,
@@ -150,8 +161,8 @@ def test_poll_loop_resets_backoff_after_job(
         poll_interval=MIN_POLL_INTERVAL_SECONDS,
     )
 
-    # Job should have been transitioned
-    mock_job_repo.mark_job_running.assert_called_once_with(sample_job.id)
+    # Job should have been executed (already running from claim)
+    mock_job_executor.assert_called_once_with(running_job)
 
 
 def test_poll_loop_emits_correct_event_detail(
@@ -160,7 +171,8 @@ def test_poll_loop_emits_correct_event_detail(
     sample_job: Job,
 ) -> None:
     """Poll loop emits event with correct job details."""
-    mock_job_repo.get_next_queued_job.return_value = sample_job
+    running_job = _make_running_job(sample_job)
+    mock_job_repo.claim_next_job.return_value = running_job
 
     run_poll_loop(mock_job_repo, mock_job_executor, max_iterations=1)
 
@@ -189,15 +201,13 @@ def test_poll_loop_multiple_jobs(
         submitted_at=sample_job.submitted_at,
     )
 
-    # Return two jobs, then None
-    mock_job_repo.get_next_queued_job.side_effect = [sample_job, job2, None]
+    running_job1 = _make_running_job(sample_job)
+    running_job2 = _make_running_job(job2)
+
+    # Return two jobs (as running), then None
+    mock_job_repo.claim_next_job.side_effect = [running_job1, running_job2, None]
 
     run_poll_loop(mock_job_repo, mock_job_executor, max_iterations=3)
-
-    # Both jobs should be transitioned
-    assert mock_job_repo.mark_job_running.call_count == 2
-    mock_job_repo.mark_job_running.assert_any_call(sample_job.id)
-    mock_job_repo.mark_job_running.assert_any_call(job2.id)
 
     # Two events should be emitted and executor invoked twice
     assert mock_job_repo.append_event.call_count == 2
@@ -210,11 +220,10 @@ def test_poll_loop_handles_job_executor_failure(
     sample_job: Job,
 ) -> None:
     """Poll loop logs executor failures and continues looping."""
-
-    mock_job_repo.get_next_queued_job.side_effect = [sample_job, None]
+    running_job = _make_running_job(sample_job)
+    mock_job_repo.claim_next_job.side_effect = [running_job, None]
     mock_job_executor.side_effect = RuntimeError("boom")
 
     run_poll_loop(mock_job_repo, mock_job_executor, max_iterations=2)
 
-    mock_job_repo.mark_job_running.assert_called_once_with(sample_job.id)
-    mock_job_executor.assert_called_once_with(sample_job)
+    mock_job_executor.assert_called_once_with(running_job)

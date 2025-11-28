@@ -1,8 +1,8 @@
 """Worker polling loop for job queue.
 
-Polls MySQL for queued jobs, transitions them to running status, and emits
-events for observability. Uses exponential backoff when queue is empty to
-reduce database load.
+Polls MySQL for queued jobs, claims them atomically, and executes restores.
+Uses SELECT FOR UPDATE SKIP LOCKED for safe multi-worker operation.
+Implements exponential backoff when queue is empty to reduce database load.
 
 Example:
     >>> from pulldb.infra.mysql import MySQLPool, JobRepository
@@ -14,6 +14,8 @@ Example:
 
 from __future__ import annotations
 
+import os
+import socket
 import time
 import typing as t
 
@@ -41,6 +43,17 @@ BACKOFF_MULTIPLIER = 2.0
 JobExecutor = t.Callable[[Job], None]
 
 
+def get_worker_id() -> str:
+    """Generate a unique identifier for this worker instance.
+
+    Returns:
+        Worker ID in format "hostname:pid", e.g. "worker-node-1:12345".
+    """
+    hostname = socket.gethostname()
+    pid = os.getpid()
+    return f"{hostname}:{pid}"
+
+
 def run_poll_loop(
     job_repo: JobRepository,
     job_executor: JobExecutor,
@@ -48,12 +61,13 @@ def run_poll_loop(
     max_iterations: int | None = None,
     poll_interval: float = MIN_POLL_INTERVAL_SECONDS,
     should_stop: t.Callable[[], bool] | None = None,
+    worker_id: str | None = None,
 ) -> None:
     """Poll job queue and process jobs.
 
-    Continuously polls MySQL for queued jobs. When a job is found, transitions
-    it to running status and emits events. Uses exponential backoff when queue
-    is empty to reduce load.
+    Continuously polls MySQL for queued jobs using atomic claim with
+    SELECT FOR UPDATE SKIP LOCKED. This is safe for multi-worker deployments
+    where multiple workers poll the same queue concurrently.
 
     Args:
         job_repo: Repository for job operations.
@@ -63,6 +77,8 @@ def run_poll_loop(
         should_stop: Optional callback returning True to request loop stop.
             Checked at start of each iteration for graceful shutdown (e.g.,
             signal handler sets an Event).
+        worker_id: Unique identifier for this worker instance. If None,
+            auto-generated as "hostname:pid".
 
     Example:
         >>> pool = MySQLPool(...)
@@ -71,19 +87,22 @@ def run_poll_loop(
         >>> run_poll_loop(
         ...     repo, executor, max_iterations=100
         ... )  # Poll 100 times then exit
-        >>> # Graceful stop after external condition:
-        >>> stop = False
-        >>> def _should_stop():
-        ...     return stop
+        >>> # Multi-worker with explicit ID:
         >>> run_poll_loop(
-        ...     repo, executor, should_stop=_should_stop
-        ... )  # Infinite until stop
+        ...     repo, executor, worker_id="worker-1"
+        ... )
     """
+    # Generate worker ID if not provided
+    effective_worker_id = worker_id or get_worker_id()
+
     iteration = 0
     current_interval = poll_interval
 
-    logger.info("Poll loop started", extra={"phase": "startup"})
-    emit_event("worker_start", "Worker poll loop started")
+    logger.info(
+        "Poll loop started",
+        extra={"phase": "startup", "worker_id": effective_worker_id},
+    )
+    emit_event("worker_start", f"Worker {effective_worker_id} poll loop started")
 
     while (max_iterations is None or iteration < max_iterations) and not (
         should_stop and should_stop()
@@ -91,33 +110,35 @@ def run_poll_loop(
         iteration += 1
 
         try:
-            # Attempt to fetch next queued job
+            # Atomically claim next queued job using SELECT FOR UPDATE SKIP LOCKED
+            # This is safe for multi-worker deployments
             with time_operation(
                 "queue_poll_duration_seconds",
                 MetricLabels(phase="queue_poll"),
             ):
-                job = job_repo.get_next_queued_job()
+                job = job_repo.claim_next_job(worker_id=effective_worker_id)
 
             if job:
                 # Set task name context for logging
                 token = current_task_name.set(job.id)
                 try:
-                    # Reset backoff on successful job fetch
+                    # Reset backoff on successful job claim
                     current_interval = poll_interval
                     emit_gauge("queue_backoff_interval_seconds", current_interval)
 
                     logger.info(
-                        "Job acquired from queue",
+                        "Job claimed from queue",
                         extra={
                             "job_id": job.id,
                             "target": job.target,
                             "owner": job.owner_username,
+                            "worker_id": effective_worker_id,
                             "phase": "queue_poll",
                         },
                     )
 
-                    # Transition job to running status
-                    _transition_to_running(job_repo, job)
+                    # Emit running event (job already transitioned in claim_next_job)
+                    _emit_running_event(job_repo, job)
 
                     try:
                         _execute_job(job_executor, job)
@@ -192,24 +213,30 @@ def run_poll_loop(
 
     logger.info(
         "Poll loop stopped",
-        extra={"iterations": iteration, "phase": "shutdown"},
+        extra={
+            "iterations": iteration,
+            "worker_id": effective_worker_id,
+            "phase": "shutdown",
+        },
     )
-    emit_event("worker_stop", f"iterations={iteration}", MetricLabels(phase="shutdown"))
+    emit_event(
+        "worker_stop",
+        f"worker={effective_worker_id} iterations={iteration}",
+        MetricLabels(phase="shutdown"),
+    )
 
 
-def _transition_to_running(job_repo: JobRepository, job: Job) -> None:
-    """Transition job from queued to running status.
+def _emit_running_event(job_repo: JobRepository, job: Job) -> None:
+    """Emit running event for job audit trail.
 
-    Updates job status in database and emits running event for audit trail.
+    Called after job is atomically claimed. The job status has already been
+    updated to 'running' by claim_next_job(), so this only emits the event.
 
     Args:
         job_repo: Repository for job operations.
-        job: Job to transition.
+        job: Job that was claimed (already in 'running' status).
     """
     try:
-        # Mark job as running (updates started_at timestamp)
-        job_repo.mark_job_running(job.id)
-
         # Emit running event (support legacy append_event name for tests)
         event_kwargs = {
             "job_id": job.id,
@@ -224,8 +251,8 @@ def _transition_to_running(job_repo: JobRepository, job: Job) -> None:
         else:
             job_repo.append_job_event(**event_kwargs)
 
-        logger.info(
-            "Job transitioned to running",
+        logger.debug(
+            "Running event emitted",
             extra={
                 "job_id": job.id,
                 "target": job.target,
@@ -235,7 +262,7 @@ def _transition_to_running(job_repo: JobRepository, job: Job) -> None:
 
     except Exception as e:
         logger.error(
-            "Failed to transition job to running",
+            "Failed to emit running event",
             extra={
                 "job_id": job.id,
                 "target": job.target,
@@ -244,7 +271,8 @@ def _transition_to_running(job_repo: JobRepository, job: Job) -> None:
             },
             exc_info=True,
         )
-        raise
+        # Don't re-raise - job is already claimed and running
+        # Event emission failure shouldn't stop job execution
 
 
 def _execute_job(job_executor: JobExecutor, job: Job) -> None:
