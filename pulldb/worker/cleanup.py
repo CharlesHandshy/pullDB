@@ -23,9 +23,11 @@ from typing import TYPE_CHECKING
 
 import mysql.connector
 
+from pulldb.infra.metrics import MetricLabels, emit_counter, emit_gauge
+
 
 if TYPE_CHECKING:
-    from pulldb.infra.mysql import HostRepository, JobRepository
+    from pulldb.infra.mysql import HostRepository, JobRepository, SettingsRepository
     from pulldb.infra.secrets import MySQLCredentials
 
 
@@ -525,9 +527,10 @@ def admin_delete_orphan_databases(
 def run_scheduled_cleanup(
     job_repo: JobRepository,
     host_repo: HostRepository,
-    retention_days: int = DEFAULT_RETENTION_DAYS,
+    retention_days: int | None = None,
     dry_run: bool = False,
     include_orphan_report: bool = True,
+    settings_repo: SettingsRepository | None = None,
 ) -> ScheduledCleanupSummary:
     """Run scheduled cleanup across all enabled database hosts.
 
@@ -538,12 +541,30 @@ def run_scheduled_cleanup(
         job_repo: JobRepository for job lookups.
         host_repo: HostRepository for host enumeration.
         retention_days: Days before a staging DB is considered abandoned.
+            If None, uses settings_repo or DEFAULT_RETENTION_DAYS.
         dry_run: If True, don't actually drop databases.
         include_orphan_report: If True, also detect orphan databases.
+        settings_repo: Optional SettingsRepository for configurable retention.
 
     Returns:
         ScheduledCleanupSummary with overall results and orphan reports.
     """
+    # Resolve retention days from settings if not provided
+    if retention_days is None:
+        if settings_repo is not None:
+            retention_days = settings_repo.get_staging_cleanup_retention_days()
+        else:
+            retention_days = DEFAULT_RETENTION_DAYS
+
+    # If retention is 0, cleanup is disabled
+    if retention_days == 0:
+        logger.info("Staging cleanup disabled (retention_days=0)")
+        return ScheduledCleanupSummary(
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+            retention_days=0,
+        )
+
     summary = ScheduledCleanupSummary(
         started_at=datetime.now(UTC),
         retention_days=retention_days,
@@ -584,6 +605,28 @@ def run_scheduled_cleanup(
                 summary.orphan_reports.append(orphan_report)
 
     summary.completed_at = datetime.now(UTC)
+
+    # Emit metrics
+    emit_counter(
+        "staging_cleanup_databases_dropped_total",
+        summary.total_dropped,
+        MetricLabels(phase="cleanup"),
+    )
+    emit_counter(
+        "staging_cleanup_jobs_archived_total",
+        summary.total_archived,
+        MetricLabels(phase="cleanup"),
+    )
+    emit_counter(
+        "staging_cleanup_errors_total",
+        summary.total_errors,
+        MetricLabels(phase="cleanup"),
+    )
+    emit_gauge(
+        "staging_cleanup_orphans_detected",
+        float(sum(len(r.orphans) for r in summary.orphan_reports)),
+        MetricLabels(phase="cleanup"),
+    )
 
     logger.info(
         "Scheduled cleanup complete",

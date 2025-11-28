@@ -152,6 +152,8 @@ class DBHost:
     Attributes:
         id: Auto-increment primary key.
         hostname: Fully qualified domain name of MySQL server.
+        host_alias: Optional short alias for the host (e.g., "dev-db-01").
+            Allows users to specify short names instead of full FQDNs.
         credential_ref: Reference to credentials in AWS service.
             Format: aws-secretsmanager:/pulldb/mysql/localhost-test (recommended)
             Format: aws-ssm:/pulldb/mysql/localhost-test-credentials (alternative)
@@ -166,6 +168,7 @@ class DBHost:
     max_concurrent_restores: int
     enabled: bool
     created_at: datetime
+    host_alias: str | None = None
 
 
 @dataclass(frozen=True)

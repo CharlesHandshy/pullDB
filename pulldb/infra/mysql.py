@@ -1457,7 +1457,7 @@ class HostRepository:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, hostname, credential_ref, max_concurrent_restores,
+                SELECT id, hostname, host_alias, credential_ref, max_concurrent_restores,
                        enabled, created_at
                 FROM db_hosts
                 WHERE hostname = %s
@@ -1466,6 +1466,54 @@ class HostRepository:
             )
             row = cursor.fetchone()
             return self._row_to_dbhost(row) if row else None
+
+    def get_host_by_alias(self, alias: str) -> DBHost | None:
+        """Get host configuration by alias.
+
+        Args:
+            alias: Host alias to look up (e.g., "dev-db-01").
+
+        Returns:
+            DBHost instance if found, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, hostname, host_alias, credential_ref, max_concurrent_restores,
+                       enabled, created_at
+                FROM db_hosts
+                WHERE host_alias = %s
+                """,
+                (alias,),
+            )
+            row = cursor.fetchone()
+            return self._row_to_dbhost(row) if row else None
+
+    def resolve_hostname(self, name: str) -> str | None:
+        """Resolve a hostname or alias to the canonical hostname.
+
+        Looks up by hostname first, then by alias if not found.
+        This allows users to use short aliases like "dev-db-01" instead
+        of full FQDNs like "dev-db-01.example.com".
+
+        Args:
+            name: Hostname or alias to resolve.
+
+        Returns:
+            Canonical hostname if found, None otherwise.
+        """
+        # Try exact hostname match first
+        host = self.get_host_by_hostname(name)
+        if host:
+            return host.hostname
+
+        # Try alias match
+        host = self.get_host_by_alias(name)
+        if host:
+            return host.hostname
+
+        return None
 
     def get_enabled_hosts(self) -> list[DBHost]:
         """Get all enabled database hosts.
@@ -1477,7 +1525,7 @@ class HostRepository:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, hostname, credential_ref, max_concurrent_restores,
+                SELECT id, hostname, host_alias, credential_ref, max_concurrent_restores,
                        enabled, created_at
                 FROM db_hosts
                 WHERE enabled = TRUE
@@ -1560,6 +1608,7 @@ class HostRepository:
         return DBHost(
             id=row["id"],
             hostname=row["hostname"],
+            host_alias=row.get("host_alias"),
             credential_ref=row["credential_ref"],
             max_concurrent_restores=row["max_concurrent_restores"],
             enabled=bool(row["enabled"]),
@@ -1656,6 +1705,20 @@ class SettingsRepository:
             return int(value)
         except ValueError:
             return 0  # Default: unlimited if setting is invalid
+
+    def get_staging_cleanup_retention_days(self) -> int:
+        """Get number of days before staging databases are eligible for cleanup.
+
+        Returns:
+            Retention days. 7 is the default. 0 means cleanup is disabled.
+        """
+        value = self.get_setting("staging_cleanup_retention_days")
+        if value is None:
+            return 7  # Default: 7 days
+        try:
+            return max(0, int(value))  # Ensure non-negative
+        except ValueError:
+            return 7  # Default: 7 days if setting is invalid
 
     def set_setting(self, key: str, value: str, description: str | None = None) -> None:
         """Set setting value (INSERT or UPDATE).

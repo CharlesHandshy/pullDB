@@ -1,6 +1,6 @@
 """HostRepository tests.
 
-Covers retrieval by hostname, secrets credential resolution, capacity check.
+Covers retrieval by hostname, alias resolution, secrets credential resolution, capacity check.
 
 MANDATE: Uses AWS Secrets Manager for DB login via conftest.py fixtures.
 """
@@ -65,6 +65,88 @@ class TestHostRepository:
             and host.credential_ref == credential_ref
         )
         self._cleanup_host(mysql_pool, host_id, hostname)
+
+    def test_get_host_by_alias(self, mysql_pool: Any) -> None:
+        """Test looking up host by alias."""
+        host_id = str(uuid.uuid4())
+        hostname = f"db-alias-full-{host_id[:8]}.example.com"
+        host_alias = f"dev-db-{host_id[:4]}"
+        credential_ref = "aws-secretsmanager:/pulldb/mysql/test-host"
+        with mysql_pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                (
+                    "INSERT INTO db_hosts (id, hostname, host_alias, credential_ref, "
+                    "max_concurrent_restores, enabled, created_at) VALUES "
+                    "(%s,%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
+                ),
+                (host_id, hostname, host_alias, credential_ref, 4),
+            )
+            conn.commit()
+            cursor.close()
+        repo = HostRepository(mysql_pool, CredentialResolver())
+        host = repo.get_host_by_alias(host_alias)
+        assert (
+            host is not None
+            and host.hostname == hostname
+            and host.host_alias == host_alias
+        )
+        self._cleanup_host(mysql_pool, host_id, hostname)
+        
+    def test_get_host_by_alias_not_found(self, mysql_pool: Any) -> None:
+        """Test alias lookup returns None for unknown alias."""
+        repo = HostRepository(mysql_pool, CredentialResolver())
+        assert repo.get_host_by_alias("no-such-alias") is None
+        
+    def test_resolve_hostname_by_hostname(self, mysql_pool: Any) -> None:
+        """Test resolve_hostname finds host by hostname."""
+        host_id = str(uuid.uuid4())
+        hostname = f"db-resolve-{host_id[:8]}.example.com"
+        credential_ref = "aws-secretsmanager:/pulldb/mysql/test-host"
+        with mysql_pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                (
+                    "INSERT INTO db_hosts (id, hostname, credential_ref, "
+                    "max_concurrent_restores, enabled, created_at) VALUES "
+                    "(%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
+                ),
+                (host_id, hostname, credential_ref, 4),
+            )
+            conn.commit()
+            cursor.close()
+        repo = HostRepository(mysql_pool, CredentialResolver())
+        resolved = repo.resolve_hostname(hostname)
+        assert resolved == hostname
+        self._cleanup_host(mysql_pool, host_id, hostname)
+        
+    def test_resolve_hostname_by_alias(self, mysql_pool: Any) -> None:
+        """Test resolve_hostname finds canonical hostname from alias."""
+        host_id = str(uuid.uuid4())
+        hostname = f"db-resolve-full-{host_id[:8]}.example.com"
+        host_alias = f"short-{host_id[:4]}"
+        credential_ref = "aws-secretsmanager:/pulldb/mysql/test-host"
+        with mysql_pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                (
+                    "INSERT INTO db_hosts (id, hostname, host_alias, credential_ref, "
+                    "max_concurrent_restores, enabled, created_at) VALUES "
+                    "(%s,%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
+                ),
+                (host_id, hostname, host_alias, credential_ref, 4),
+            )
+            conn.commit()
+            cursor.close()
+        repo = HostRepository(mysql_pool, CredentialResolver())
+        resolved = repo.resolve_hostname(host_alias)
+        assert resolved == hostname
+        self._cleanup_host(mysql_pool, host_id, hostname)
+        
+    def test_resolve_hostname_not_found(self, mysql_pool: Any) -> None:
+        """Test resolve_hostname returns None for unknown name."""
+        repo = HostRepository(mysql_pool, CredentialResolver())
+        assert repo.resolve_hostname("unknown-host-or-alias") is None
 
     def test_get_host_credentials_secretsmanager(
         self, mysql_pool: Any, monkeypatch: Any

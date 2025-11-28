@@ -243,7 +243,7 @@ Multi-format support is complete when:
 
 ---
 
-## Phase 1 – Operational Enhancements ✅ MOSTLY COMPLETE (v0.0.5)
+## Phase 1 – Operational Enhancements ✅ COMPLETE (v0.0.6)
 
 ### Implemented
 - ✅ **Cancellation Support**
@@ -265,18 +265,27 @@ Multi-format support is complete when:
 
 - ✅ **Scheduled Staging Database Cleanup**
   - `pulldb/worker/cleanup.py` (full module, 23 tests)
-  - Background cleanup of abandoned staging databases (7+ days old)
+  - Background cleanup of abandoned staging databases
   - Query failed jobs and scan each dbhost for orphaned staging databases
   - Safety checks: verify staging matches job record pattern before deletion
   - Audit logging via job_events
   - `CleanupCandidate`, `OrphanDatabase`, `CleanupReport` data classes
   - Orphan detection (no auto-delete, requires manual review)
 
-### Remaining
-- ⏳ **Configurable cleanup age threshold** - Default 7 days hardcoded; could be moved to `settings` table
-- ⏳ **Cleanup metrics** - Count of databases cleaned, total size reclaimed (metrics exist but not fully wired)
+- ✅ **Configurable Cleanup Age Threshold**
+  - `get_staging_cleanup_retention_days()` in SettingsRepository
+  - Configurable via `settings` table key `staging_cleanup_retention_days`
+  - Default: 7 days. Set to 0 to disable automatic cleanup
+  - Schema seed: `schema/pulldb_service/211_seed_cleanup_retention.sql`
+  - 4 tests in `pulldb/tests/test_settings_repository.py`
 
-## Phase 2 – Concurrency Controls & Usability ✅ MOSTLY COMPLETE (v0.0.5)
+- ✅ **Cleanup Metrics**
+  - `staging_cleanup_databases_dropped_total` - counter
+  - `staging_cleanup_jobs_archived_total` - counter
+  - `staging_cleanup_errors_total` - counter
+  - `staging_cleanup_orphans_detected` - gauge
+
+## Phase 2 – Concurrency Controls & Usability ✅ COMPLETE (v0.0.6)
 
 ### Implemented
 - ✅ **Per-User Active Caps**
@@ -296,11 +305,14 @@ Multi-format support is complete when:
   - Only one active job per target at a time
   - `running_jobs_by_host()` in JobRepository
 
-### Remaining
-- ⏳ **Short Hostname Aliases** - Not implemented
-  - Support `dbhost=dev-db-01` as alias for full FQDNs
-  - Would require `host_alias` column or alias mapping in `settings` table
-  - Update README with shortened syntax examples
+- ✅ **Short Hostname Aliases**
+  - `host_alias` column added to `db_hosts` table
+  - Schema migration: `schema/pulldb_service/031_db_hosts_alias.sql`
+  - `get_host_by_alias()` in HostRepository
+  - `resolve_hostname()` - resolves alias to canonical hostname
+  - DBHost model updated with `host_alias: str | None` field
+  - 5 tests in `pulldb/tests/test_host_repository.py`
+  - Users can now use `dbhost=dev-db-01` instead of full FQDNs
 
 ## Phase 3 – Multi-Daemon & Distributed Locks ✅ COMPLETE (v0.0.5)
 
