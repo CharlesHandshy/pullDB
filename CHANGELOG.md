@@ -10,6 +10,27 @@ Unreleased
   - This implements least-privilege MySQL access per service component
   - See `design/mysql-user-separation.md` for full details
 
+v0.0.6 - 2025-11-28
+-------------------
+- **Phase 1-2 Complete**: Operational enhancements and concurrency controls
+- Configurable cleanup retention via `staging_cleanup_retention_days` setting
+- Cleanup metrics: `staging_databases_dropped_total`, `staging_jobs_archived_total`, `staging_cleanup_errors_total`, `staging_orphans_detected_total`
+- Host aliases: `host_alias` column in db_hosts for multi-name resolution
+- New HostRepository methods: `get_host_by_alias()`, `resolve_hostname()`
+- Schema changes:
+  - `031_db_hosts_alias.sql` - host_alias column with unique index
+  - `211_seed_cleanup_retention.sql` - seeds default retention (7 days)
+  - `worker_id` column consolidated into `010_jobs.sql` (removed `017_jobs_worker_id.sql`)
+- Code quality fixes from QA audit
+
+v0.0.5 - 2025-11-28
+-------------------
+- **Phase 3 Complete**: Multi-daemon support with safe concurrent job claiming
+- Atomic job claiming with `SELECT FOR UPDATE SKIP LOCKED`
+- Worker ID tracking (`jobs.worker_id` column) for debugging
+- New `claim_next_job()` method for safe concurrent operation
+- Concurrent worker tests with threading validation
+
 v0.0.2 - 2025-11-26
 -------------------
 - **BREAKING**: Secrets Manager/SSM secrets now only store `host` and `password`
