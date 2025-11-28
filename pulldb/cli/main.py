@@ -14,9 +14,21 @@ from datetime import datetime
 from types import ModuleType
 
 import click
+from dotenv import load_dotenv
 
 from pulldb import __version__
 from pulldb.cli.parse import CLIParseError, parse_restore_args
+
+
+# Load .env file from standard locations
+# Priority: /opt/pulldb.service/.env (installed), then .env (dev)
+_installed_env = "/opt/pulldb.service/.env"
+_repo_env = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+
+if os.path.exists(_installed_env):
+    load_dotenv(_installed_env)
+elif os.path.exists(_repo_env):
+    load_dotenv(_repo_env)
 
 
 DEFAULT_API_URL = "http://localhost:8080"

@@ -84,8 +84,15 @@ class CredentialResolver:
     The AWS profile is determined by the PULLDB_AWS_PROFILE environment variable.
     If not set, uses the default AWS credentials chain (instance profile, etc.).
 
+    The AWS region is determined by:
+    1. aws_region parameter (if provided)
+    2. PULLDB_AWS_REGION environment variable
+    3. AWS_DEFAULT_REGION environment variable
+    4. Defaults to 'us-east-1'
+
     Attributes:
         aws_profile: AWS profile name to use for credentials (None = default chain).
+        aws_region: AWS region for API calls.
         _secrets_manager: Boto3 Secrets Manager client (lazy-initialized).
         _ssm: Boto3 SSM client (lazy-initialized).
 
@@ -95,8 +102,8 @@ class CredentialResolver:
         >>> print(creds.username)
         pulldb_app
 
-        >>> # With explicit profile
-        >>> resolver = CredentialResolver(aws_profile="production")
+        >>> # With explicit profile and region
+        >>> resolver = CredentialResolver(aws_profile="production", aws_region="us-west-2")
         >>> creds = resolver.resolve("aws-ssm:/pulldb/mysql/localhost-test-credentials")
 
     Raises:
@@ -104,14 +111,26 @@ class CredentialResolver:
         CredentialResolutionError: If credential retrieval fails.
     """
 
-    def __init__(self, aws_profile: str | None = None) -> None:
+    def __init__(
+        self,
+        aws_profile: str | None = None,
+        aws_region: str | None = None,
+    ) -> None:
         """Initialize CredentialResolver.
 
         Args:
             aws_profile: AWS profile name to use. If None, uses PULLDB_AWS_PROFILE
                 environment variable or default AWS credentials chain.
+            aws_region: AWS region for API calls. If None, uses PULLDB_AWS_REGION,
+                then AWS_DEFAULT_REGION, then defaults to 'us-east-1'.
         """
         self.aws_profile = aws_profile or os.getenv("PULLDB_AWS_PROFILE")
+        self.aws_region = (
+            aws_region
+            or os.getenv("PULLDB_AWS_REGION")
+            or os.getenv("AWS_DEFAULT_REGION")
+            or "us-east-1"
+        )
         self._secrets_manager: Any = None
         self._ssm: Any = None
 
@@ -119,6 +138,7 @@ class CredentialResolver:
         if self.aws_profile:
             os.environ["AWS_PROFILE"] = self.aws_profile
             logger.debug(f"Using AWS profile: {self.aws_profile}")
+        logger.debug(f"Using AWS region: {self.aws_region}")
 
     def _get_secrets_manager_client(self) -> Any:
         """Get or create Secrets Manager client (lazy initialization).
@@ -127,13 +147,15 @@ class CredentialResolver:
             Boto3 Secrets Manager client.
         """
         if self._secrets_manager is None:
-            session = (
-                boto3.Session(profile_name=self.aws_profile)
-                if self.aws_profile
-                else boto3.Session()
+            session = boto3.Session(
+                profile_name=self.aws_profile,
+                region_name=self.aws_region,
             )
             self._secrets_manager = session.client("secretsmanager")
-            logger.debug("Initialized Secrets Manager client")
+            logger.debug(
+                f"Initialized Secrets Manager client "
+                f"(region={self.aws_region}, profile={self.aws_profile})"
+            )
         return self._secrets_manager
 
     def _get_ssm_client(self) -> Any:
@@ -143,13 +165,15 @@ class CredentialResolver:
             Boto3 SSM client.
         """
         if self._ssm is None:
-            session = (
-                boto3.Session(profile_name=self.aws_profile)
-                if self.aws_profile
-                else boto3.Session()
+            session = boto3.Session(
+                profile_name=self.aws_profile,
+                region_name=self.aws_region,
             )
             self._ssm = session.client("ssm")
-            logger.debug("Initialized SSM client")
+            logger.debug(
+                f"Initialized SSM client "
+                f"(region={self.aws_region}, profile={self.aws_profile})"
+            )
         return self._ssm
 
     def resolve(self, credential_ref: str) -> MySQLCredentials:
