@@ -75,6 +75,17 @@ KNOWN_SETTINGS: dict[str, tuple[str, str | None, str]] = {
         None,
         "S3 bucket path for backups",
     ),
+    # Phase 2: Concurrency controls (v0.0.4)
+    "max_active_jobs_per_user": (
+        "PULLDB_MAX_ACTIVE_JOBS_PER_USER",
+        "0",
+        "Maximum active jobs per user (0=unlimited)",
+    ),
+    "max_active_jobs_global": (
+        "PULLDB_MAX_ACTIVE_JOBS_GLOBAL",
+        "0",
+        "Maximum active jobs system-wide (0=unlimited)",
+    ),
 }
 
 

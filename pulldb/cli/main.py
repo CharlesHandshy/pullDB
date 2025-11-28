@@ -66,6 +66,30 @@ def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
             f"Failed to reach pullDB API at {url}: {exc}. "
             "Ensure the API service is running and reachable."
         ) from exc
+    # Handle rate limiting (HTTP 429) with user-friendly message
+    if response.status_code == 429:
+        detail = ""
+        try:
+            err_payload = response.json()
+            if isinstance(err_payload, dict):
+                detail = err_payload.get("detail", "")
+        except ValueError:
+            pass
+        if "User limit" in detail:
+            raise click.ClickException(
+                f"Rate limited: {detail}\n"
+                "Tip: Use 'pulldb status' to see your active jobs."
+            )
+        elif "System at capacity" in detail:
+            raise click.ClickException(
+                f"Rate limited: {detail}\n"
+                "The system is busy. Please try again in a few minutes."
+            )
+        else:
+            raise click.ClickException(
+                f"Rate limited: {detail or 'Too many requests'}\n"
+                "Please wait before submitting more jobs."
+            )
     if response.status_code >= 400:
         raise click.ClickException(_format_api_error(response))
     payload = _parse_json_response(response)

@@ -571,7 +571,7 @@ Tables such as `history_cache`, per-user/host concurrency overrides, and detaile
 
 - `settings` table stores the default extraction directory, default `dbhost`, S3 bucket configuration, post-restore SQL script directories, and other operational parameters.
 - Per-target database caps live in `db_hosts.max_db_count`; the daemon reads this value before starting a restore.
-- Global concurrency limits (`max_active_restoring`, user/host overrides) are deferred. The prototype relies on MySQL locks to serialize per-target restores only.
+- **Concurrency Controls** (Phase 2, v0.0.4): Per-user and global active job limits are enforced via `max_active_jobs_per_user` and `max_active_jobs_global` settings. A value of 0 means unlimited. See `docs/concurrency-controls.md` for configuration.
 - Historical retention knobs (`history_retention_days`, detailed log pruning) will matter once history endpoints exist; keep placeholders but avoid implementing maintenance tasks until needed.
 
 ## Validation and Safeguards
@@ -580,7 +580,7 @@ Tables such as `history_cache`, per-user/host concurrency overrides, and detaile
 2. Honor the `overwrite` flag by having daemon check target database existence and rejecting when it exists without the flag.
 3. Ensure every job receives a UUID plus timestamp trio (`submitted`, `started`, `completed`). The daemon owns status transitions and writes them atomically.
 4. Validate disk space ahead of extraction using the S3 object size and reject jobs that cannot satisfy the `1.8x` buffer.
-5. Use MySQL advisory locks to prevent more than one active job per target database name; no additional concurrency tiers are enforced in the prototype.
+5. Per-target exclusivity is enforced via unique constraint on `active_target_key`. Per-user and global limits return HTTP 429 when exceeded (Phase 2).
 6. Prevent duplicate queue inserts for the same target by daemon checking existing `queued` or `running` jobs before writing a new record.
 7. Check the `dbhost` registration and projected database count before restore. Unknown hosts or over-capacity projections cause the daemon to fail the job immediately.
 8. Do not auto-retry failures; capture error context in `job_events` and require operators to resubmit once issues are resolved.
@@ -597,7 +597,7 @@ Tables such as `history_cache`, per-user/host concurrency overrides, and detaile
 
 - Re-evaluate archive reuse and multi-component architecture once the prototype stabilizes.
 - Introduce cancellation, history reporting, and admin tooling with corresponding audit coverage.
-- Expand concurrency controls beyond per-target locks (per-user/per-host/global caps) when demand appears.
+- ~~Expand concurrency controls beyond per-target locks~~ ✅ Implemented in Phase 2 (v0.0.4): per-user and global caps via settings table.
 - Enhance documentation with worked examples for filters, history, and admin flows as features roll out.
 - Explore distributed locking or service separation if multiple daemons run concurrently.
 
