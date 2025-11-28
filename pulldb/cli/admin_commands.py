@@ -124,7 +124,7 @@ def jobs_list(
     params.append(limit)
 
     query = f"""
-        SELECT 
+        SELECT
             j.id,
             j.status,
             j.target,
@@ -231,7 +231,7 @@ def jobs_cancel(job_id: str, force: bool) -> None:
             # Update job
             cursor.execute(
                 """
-                UPDATE jobs 
+                UPDATE jobs
                 SET cancel_requested_at = NOW()
                 WHERE (id = %s OR id LIKE %s) AND status IN ('queued', 'running')
                 """,
@@ -296,7 +296,7 @@ def cleanup_cmd(
 
     # Find orphaned staging databases (jobs completed but staging not cleaned)
     query = """
-        SELECT 
+        SELECT
             j.id,
             j.staging_name,
             j.dbhost,
@@ -347,9 +347,9 @@ def cleanup_cmd(
                 )
                 total_count += 1
 
-        click.echo(f"\nSummary:")
+        click.echo("\nSummary:")
         click.echo(f"  Staging databases: {total_count}")
-        click.echo(f"\nRun with --execute to perform cleanup.")
+        click.echo("\nRun with --execute to perform cleanup.")
         return
 
     # Execute cleanup
@@ -379,7 +379,7 @@ def cleanup_cmd(
                 click.echo(f"  ✗ Failed: {staging_name} - {e}")
                 failed += 1
 
-    click.echo(f"\nCleanup Complete:")
+    click.echo("\nCleanup Complete:")
     click.echo(f"  Cleaned: {cleaned}")
     if failed:
         click.echo(f"  Failed: {failed}")
@@ -405,7 +405,7 @@ def hosts_list(json_out: bool) -> None:
     with pool.connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT 
+                SELECT
                     hostname,
                     max_concurrent_jobs,
                     enabled,
@@ -556,7 +556,7 @@ def users_list(json_out: bool) -> None:
     with pool.connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT 
+                SELECT
                     u.id,
                     u.username,
                     u.user_code,
@@ -662,7 +662,7 @@ def users_show(username: str) -> None:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT 
+                SELECT
                     u.id,
                     u.username,
                     u.user_code,
@@ -693,7 +693,7 @@ def users_show(username: str) -> None:
     click.echo(
         f"  Created: {created.strftime('%Y-%m-%d %H:%M:%S') if created else '-'}"
     )
-    click.echo(f"\nJob Statistics:")
+    click.echo("\nJob Statistics:")
     click.echo(f"  Total Jobs: {user.get('total_jobs', 0)}")
     click.echo(f"  Complete: {user.get('complete_jobs', 0)}")
     click.echo(f"  Failed: {user.get('failed_jobs', 0)}")

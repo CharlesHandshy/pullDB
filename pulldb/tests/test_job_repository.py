@@ -9,6 +9,7 @@ MANDATE: Uses AWS Secrets Manager for DB login via conftest.py fixtures.
 from __future__ import annotations
 
 import uuid
+import warnings
 from datetime import UTC, datetime
 from typing import Any
 
@@ -52,6 +53,7 @@ class TestJobRepository:
         self._cleanup_job(mysql_pool, job_id, job.target)
 
     def test_get_next_queued_job(self, mysql_pool: Any) -> None:
+        """Test deprecated get_next_queued_job (for backward compat coverage)."""
         repo = JobRepository(mysql_pool)
         job_id1 = str(uuid.uuid4())
         job_id2 = str(uuid.uuid4())
@@ -92,13 +94,19 @@ class TestJobRepository:
         )
         repo.enqueue_job(job1)
         repo.enqueue_job(job2)
-        next_job = repo.get_next_queued_job()
+
+        # Suppress deprecation warning - testing legacy API intentionally
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            next_job = repo.get_next_queued_job()
+
         assert next_job is not None
         assert next_job.id == job_id1
         self._cleanup_job(mysql_pool, job_id1, target1)
         self._cleanup_job(mysql_pool, job_id2, target2)
 
     def test_status_transitions(self, mysql_pool: Any) -> None:
+        """Test job status transitions using claim_next_job."""
         repo = JobRepository(mysql_pool)
         job_id = str(uuid.uuid4())
         target = f"target_run_{job_id[:8]}"
@@ -114,13 +122,21 @@ class TestJobRepository:
             submitted_at=datetime.now(UTC),
         )
         repo.enqueue_job(job)
-        repo.mark_job_running(job_id)
+
+        # Use claim_next_job which atomically transitions to running
+        claimed = repo.claim_next_job(worker_id="test-worker:1234")
+        assert claimed is not None
+        assert claimed.id == job_id
+        assert claimed.status == JobStatus.RUNNING
+
+        # Verify in database
         running = repo.get_job_by_id(job_id)
         assert (
             running is not None
             and running.status == JobStatus.RUNNING
             and running.started_at is not None
         )
+
         repo.mark_job_complete(job_id)
         complete = repo.get_job_by_id(job_id)
         assert (
@@ -131,6 +147,7 @@ class TestJobRepository:
         self._cleanup_job(mysql_pool, job_id, target)
 
     def test_mark_job_failed(self, mysql_pool: Any) -> None:
+        """Test marking a job as failed."""
         repo = JobRepository(mysql_pool)
         job_id = str(uuid.uuid4())
         target = f"target_fail_{job_id[:8]}"
@@ -146,7 +163,11 @@ class TestJobRepository:
             submitted_at=datetime.now(UTC),
         )
         repo.enqueue_job(job)
-        repo.mark_job_running(job_id)
+
+        # Use claim_next_job to transition to running
+        claimed = repo.claim_next_job(worker_id="test-worker:1234")
+        assert claimed is not None
+
         error_msg = "Simulated failure"
         repo.mark_job_failed(job_id, error_msg)
         failed = repo.get_job_by_id(job_id)
@@ -158,6 +179,7 @@ class TestJobRepository:
         self._cleanup_job(mysql_pool, job_id, target)
 
     def test_per_target_exclusivity(self, mysql_pool: Any) -> None:
+        """Test that only one active job per target is allowed."""
         repo = JobRepository(mysql_pool)
         job_id1 = str(uuid.uuid4())
         job_id2 = str(uuid.uuid4())
@@ -174,7 +196,11 @@ class TestJobRepository:
             submitted_at=datetime.now(UTC),
         )
         repo.enqueue_job(job1)
-        repo.mark_job_running(job_id1)
+
+        # Use claim_next_job to transition to running
+        claimed = repo.claim_next_job(worker_id="test-worker:1234")
+        assert claimed is not None and claimed.id == job_id1
+
         job2 = Job(
             id=job_id2,
             owner_user_id=TEST_USER_ID,
@@ -247,8 +273,9 @@ class TestJobRepository:
         repo.append_job_event(job_id, "running", "Started")
         repo.append_job_event(job_id, "complete", "Done")
 
-        # Mark as completed (running first, then complete)
-        repo.mark_job_running(job_id)
+        # Use claim_next_job then mark complete
+        claimed = repo.claim_next_job(worker_id="test-worker:1234")
+        assert claimed is not None
         repo.mark_job_complete(job_id)
 
         # Prune with very long retention - should delete nothing

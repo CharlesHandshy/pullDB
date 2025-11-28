@@ -747,7 +747,7 @@ def _search_customer_backups(
 
     try:
         keys = s3.list_keys(bucket, search_prefix, profile=profile)
-    except Exception as e:
+    except Exception:
         # Silently skip customers we can't access
         return
 

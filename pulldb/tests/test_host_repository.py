@@ -151,7 +151,11 @@ class TestHostRepository:
             submitted_at=datetime.now(UTC),
         )
         job_repo.enqueue_job(job)
-        job_repo.mark_job_running(job_id)
+
+        # Use claim_next_job to transition to running
+        claimed = job_repo.claim_next_job(worker_id="test-worker:1234")
+        assert claimed is not None
+
         host_repo = HostRepository(mysql_pool, CredentialResolver())
         assert host_repo.check_host_capacity(hostname) is False
         self._cleanup_host(mysql_pool, host_id, hostname)

@@ -11,6 +11,7 @@ import json
 import logging
 import typing as t
 import uuid
+import warnings
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -124,8 +125,9 @@ class JobRepository:
         >>> pool = MySQLPool(host="localhost", user="root", database="pulldb")
         >>> repo = JobRepository(pool)
         >>> job_id = repo.enqueue_job(job)
-        >>> next_job = repo.get_next_queued_job()
-        >>> repo.mark_job_running(next_job.id)
+        >>> claimed = repo.claim_next_job(worker_id="worker-1:1234")
+        >>> if claimed:
+        ...     process(claimed)  # Job is already 'running'
     """
 
     def __init__(self, pool: MySQLPool) -> None:
@@ -192,15 +194,21 @@ class JobRepository:
     def get_next_queued_job(self) -> Job | None:
         """Get next queued job in FIFO order.
 
-        Returns oldest queued job by submitted_at timestamp. Used by worker
-        to poll for work.
+        .. deprecated:: 0.0.5
+            Use :meth:`claim_next_job` instead. This method does not lock the job
+            and is NOT safe for multi-worker deployments.
 
-        WARNING: This method does NOT lock the job. In multi-worker environments,
-        use claim_next_job() instead to atomically claim and lock a job.
+        Returns oldest queued job by submitted_at timestamp.
 
         Returns:
             Next queued job or None if queue empty.
         """
+        warnings.warn(
+            "get_next_queued_job() is deprecated and unsafe for multi-worker. "
+            "Use claim_next_job() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
@@ -334,8 +342,9 @@ class JobRepository:
     def mark_job_running(self, job_id: str) -> None:
         """Mark job as running and set started_at timestamp.
 
-        Called by worker when it begins processing a job. Updates status from
-        'queued' to 'running' and records start time.
+        .. deprecated:: 0.0.5
+            Use :meth:`claim_next_job` instead, which atomically claims and
+            marks the job as running in a single transaction.
 
         Args:
             job_id: UUID of job.
@@ -343,6 +352,12 @@ class JobRepository:
         Raises:
             ValueError: If job not found or not in queued status.
         """
+        warnings.warn(
+            "mark_job_running() is deprecated. Use claim_next_job() instead, "
+            "which atomically claims and transitions the job.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
