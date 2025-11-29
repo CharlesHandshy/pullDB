@@ -49,6 +49,8 @@ class JobRequest(pydantic.BaseModel):
     customer: str | None = None
     qatemplate: bool = False
     dbhost: str | None = None
+    date: str | None = None  # Specific backup date in YYYY-MM-DD format
+    env: str | None = None  # S3 environment: "staging" or "prod"
     overwrite: bool = False
 
 
@@ -224,12 +226,17 @@ def _construct_target(user: User, req: JobRequest) -> str:
 
 
 def _options_snapshot(req: JobRequest) -> dict[str, str]:
-    return {
+    opts: dict[str, str] = {
         "customer_id": req.customer or "",
         "is_qatemplate": str(req.qatemplate).lower(),
         "overwrite": str(req.overwrite).lower(),
         "api_version": "v1",
     }
+    if req.date:
+        opts["date"] = req.date
+    if req.env:
+        opts["env"] = req.env
+    return opts
 
 
 def _validate_job_request(req: JobRequest) -> None:
@@ -488,9 +495,40 @@ def _get_job_events(
     ]
 
 
+class UserInfoResponse(pydantic.BaseModel):
+    """Response for user lookup."""
+
+    username: str
+    user_code: str
+    is_admin: bool = False
+
+
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/users/{username}", response_model=UserInfoResponse)
+async def get_user_info(
+    username: str,
+    state: APIState = Depends(get_api_state),
+) -> UserInfoResponse:
+    """Get user info by username.
+
+    Returns user_code for the given username. Used by CLI to display
+    user identity when running under sudo.
+    """
+    user = await run_in_threadpool(state.user_repo.get_user_by_username, username)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User '{username}' not found",
+        )
+    return UserInfoResponse(
+        username=user.username,
+        user_code=user.user_code,
+        is_admin=user.is_admin,
+    )
 
 
 @app.get("/api/status")
@@ -538,6 +576,318 @@ async def list_active_jobs(
     state: APIState = Depends(get_api_state),
 ) -> list[JobSummary]:
     return await run_in_threadpool(_active_jobs, state, limit)
+
+
+# --- User's Last Job ---
+
+
+class UserLastJobResponse(pydantic.BaseModel):
+    """Response for user's last job lookup."""
+
+    job_id: str | None = None
+    target: str | None = None
+    status: str | None = None
+    submitted_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_detail: str | None = None
+    found: bool = False
+
+
+def _get_user_last_job(state: APIState, user_code: str) -> UserLastJobResponse:
+    """Get the user's most recently submitted job."""
+    job = state.job_repo.get_user_last_job(user_code)
+    if not job:
+        return UserLastJobResponse(found=False)
+    return UserLastJobResponse(
+        job_id=job.id,
+        target=job.target,
+        status=job.status.value,
+        submitted_at=job.submitted_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        error_detail=job.error_detail,
+        found=True,
+    )
+
+
+@app.get("/api/users/{user_code}/last-job")
+async def get_user_last_job(
+    user_code: str,
+    state: APIState = Depends(get_api_state),
+) -> UserLastJobResponse:
+    """Get the most recently submitted job for a user.
+
+    Returns the user's last job regardless of status (queued, running,
+    complete, failed, or canceled).
+
+    Args:
+        user_code: The 6-character user code.
+
+    Returns:
+        UserLastJobResponse with job details or found=False if no jobs.
+    """
+    return await run_in_threadpool(_get_user_last_job, state, user_code)
+
+
+# --- Job ID Resolution ---
+
+
+class JobMatch(pydantic.BaseModel):
+    """A job matching a prefix search."""
+
+    id: str
+    target: str
+    status: str
+    user_code: str
+    submitted_at: datetime | None = None
+
+
+class JobResolveResponse(pydantic.BaseModel):
+    """Response for job ID prefix resolution."""
+
+    resolved_id: str | None = pydantic.Field(
+        None, description="Full job ID if exactly one match"
+    )
+    matches: list[JobMatch] = pydantic.Field(
+        default_factory=list, description="List of matching jobs if multiple"
+    )
+    count: int = pydantic.Field(description="Number of matches found")
+
+
+def _resolve_job_id(state: APIState, prefix: str) -> JobResolveResponse:
+    """Resolve a job ID prefix to full job ID(s).
+
+    Args:
+        state: API state with repositories.
+        prefix: Job ID prefix (minimum 8 characters).
+
+    Returns:
+        JobResolveResponse with resolved_id if exactly one match,
+        or list of matches if multiple.
+
+    Raises:
+        HTTPException: 400 if prefix too short, 404 if no matches.
+    """
+    if len(prefix) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Job ID prefix must be at least 8 characters",
+        )
+
+    # First try exact match
+    exact_job = state.job_repo.get_job_by_id(prefix)
+    if exact_job:
+        return JobResolveResponse(
+            resolved_id=exact_job.id,
+            matches=[
+                JobMatch(
+                    id=exact_job.id,
+                    target=exact_job.target,
+                    status=exact_job.status.value,
+                    user_code=exact_job.owner_user_code,
+                    submitted_at=exact_job.submitted_at,
+                )
+            ],
+            count=1,
+        )
+
+    # Try prefix match
+    jobs = state.job_repo.find_jobs_by_prefix(prefix, limit=10)
+
+    if not jobs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No jobs found matching prefix '{prefix}'",
+        )
+
+    matches = [
+        JobMatch(
+            id=job.id,
+            target=job.target,
+            status=job.status.value,
+            user_code=job.owner_user_code,
+            submitted_at=job.submitted_at,
+        )
+        for job in jobs
+    ]
+
+    if len(jobs) == 1:
+        return JobResolveResponse(
+            resolved_id=jobs[0].id,
+            matches=matches,
+            count=1,
+        )
+
+    # Multiple matches - return list for user disambiguation
+    return JobResolveResponse(
+        resolved_id=None,
+        matches=matches,
+        count=len(matches),
+    )
+
+
+@app.get(
+    "/api/jobs/resolve/{prefix}",
+    response_model=JobResolveResponse,
+)
+async def resolve_job_id(
+    prefix: str,
+    state: APIState = Depends(get_api_state),
+) -> JobResolveResponse:
+    """Resolve a job ID prefix to full job ID.
+
+    Accepts short job ID prefixes (minimum 8 characters) and returns the
+    full job ID if exactly one match is found. If multiple jobs match,
+    returns a list for user disambiguation.
+
+    Args:
+        prefix: Job ID prefix (e.g., '8b4c4a3a' from '8b4c4a3a-85a1-4da2-...').
+
+    Returns:
+        - resolved_id: Full job ID if exactly one match
+        - matches: List of matching jobs (always populated)
+        - count: Number of matches
+
+    Use Cases:
+        - Single match: Use resolved_id directly
+        - Multiple matches: Present matches list for user selection
+        - No matches: Returns 404
+    """
+    return await run_in_threadpool(_resolve_job_id, state, prefix)
+
+
+class JobSearchResult(pydantic.BaseModel):
+    """Result from job search."""
+
+    id: str
+    target: str
+    status: str
+    user_code: str | None
+    owner_username: str | None
+    submitted_at: datetime | None
+    started_at: datetime | None
+    completed_at: datetime | None
+    dbhost: str | None
+
+
+class JobSearchResponse(pydantic.BaseModel):
+    """Response from job search endpoint."""
+
+    query: str
+    count: int
+    exact_match: bool
+    jobs: list[JobSearchResult]
+
+
+def _search_jobs(
+    state: APIState, query: str, limit: int, exact: bool
+) -> JobSearchResponse:
+    """Search jobs by query string."""
+    jobs = state.job_repo.search_jobs(query, limit=limit, exact=exact)
+
+    results = [
+        JobSearchResult(
+            id=job.id,
+            target=job.target,
+            status=job.status.value,
+            user_code=job.owner_user_code,
+            owner_username=job.owner_username,
+            submitted_at=job.submitted_at,
+            started_at=job.started_at,
+            completed_at=job.completed_at,
+            dbhost=job.dbhost,
+        )
+        for job in jobs
+    ]
+
+    return JobSearchResponse(
+        query=query, count=len(results), exact_match=exact, jobs=results
+    )
+
+
+@app.get("/api/jobs/search")
+async def search_jobs(
+    q: str = fastapi.Query(..., min_length=4, description="Search query (min 4 chars)"),
+    limit: int = fastapi.Query(50, ge=1, le=200, description="Max results"),
+    exact: bool = fastapi.Query(
+        False, description="Require exact match (default: prefix match for 4 chars)"
+    ),
+    state: APIState = fastapi.Depends(get_api_state),
+) -> JobSearchResponse:
+    """Search for jobs by ID, target, username, or user code.
+
+    Searches across multiple fields to find matching jobs:
+    - Job ID (full or prefix)
+    - Target database name
+    - Owner username
+    - Owner user code
+
+    Query behavior:
+    - 4 characters: Uses prefix matching (e.g., "char" matches "charle")
+    - 5+ characters: Uses exact matching by default
+    - Use exact=true to force exact matching
+
+    Args:
+        q: Search query string (minimum 4 characters).
+        limit: Maximum number of results to return (default 50, max 200).
+        exact: If true, require exact field match instead of prefix.
+
+    Returns:
+        JobSearchResponse with matching jobs.
+    """
+    # 4 chars = prefix match, 5+ chars = exact match (unless exact=false)
+    if len(q) == 4:
+        use_exact = False  # 4 chars always uses prefix
+    else:
+        use_exact = True  # 5+ chars defaults to exact match
+
+    return await run_in_threadpool(_search_jobs, state, q, limit, use_exact)
+
+
+class LastJobResponse(pydantic.BaseModel):
+    """Response for user's last submitted job."""
+
+    job: JobSummary | None
+    user_code: str
+
+
+def _get_last_job_by_user(state: APIState, user_code: str) -> LastJobResponse:
+    """Get the most recent job submitted by a user."""
+    job = state.job_repo.get_last_job_by_user_code(user_code)
+    if job is None:
+        return LastJobResponse(job=None, user_code=user_code)
+
+    summary = JobSummary(
+        id=job.id,
+        status=job.status,
+        target=job.target,
+        user_code=job.owner_user_code or user_code,
+        submitted_at=job.submitted_at,
+        started_at=job.started_at,
+        staging_name=job.staging_name,
+        dbhost=job.dbhost,
+    )
+    return LastJobResponse(job=summary, user_code=user_code)
+
+
+@app.get("/api/jobs/my-last")
+async def get_my_last_job(
+    user_code: str = fastapi.Query(..., description="User code to look up"),
+    state: APIState = fastapi.Depends(get_api_state),
+) -> LastJobResponse:
+    """Get the most recent job submitted by a user.
+
+    Returns the user's last submitted job regardless of status.
+    Useful for the CLI to show a quick status of the user's latest work.
+
+    Args:
+        user_code: The user code to look up jobs for.
+
+    Returns:
+        LastJobResponse with the job (or None if no jobs found).
+    """
+    return await run_in_threadpool(_get_last_job_by_user, state, user_code)
 
 
 DEFAULT_HISTORY_RETENTION_DAYS = 30

@@ -10,6 +10,18 @@ Unreleased
   - This implements least-privilege MySQL access per service component
   - See `design/mysql-user-separation.md` for full details
 
+v0.0.7 - 2025-11-28
+-------------------
+- **Short Job ID Prefixes**: All CLI commands accepting job_id now support 8+ character prefixes
+  - Commands updated: `status`, `cancel`, `events`, `profile`
+  - New API endpoint: `GET /api/jobs/resolve/{job_id_prefix}`
+  - New repository method: `JobRepository.find_jobs_by_prefix()`
+  - Interactive disambiguation when multiple jobs match a prefix
+  - Minimum prefix length: 8 characters
+- **User Identity Display**: CLI shows username and user_code when running commands
+  - New API endpoint: `GET /api/users/{username}`
+  - CLI displays "User: username (code: 6char)" at startup
+
 v0.0.6 - 2025-11-28
 -------------------
 - **Phase 1-2 Complete**: Operational enhancements and concurrency controls

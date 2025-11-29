@@ -62,7 +62,7 @@ KNOWN_SETTINGS: dict[str, tuple[str, str | None, str]] = {
         "7200",
         "Maximum execution time (seconds)",
     ),
-    "work_dir": (
+    "work_directory": (
         "PULLDB_WORK_DIR",
         "/opt/pulldb.service/work",
         "Working directory for downloads/extraction",

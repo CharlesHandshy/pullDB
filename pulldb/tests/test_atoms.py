@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from pulldb.cli.parse import _sanitize_letters, _tokenize
+from pulldb.cli.parse import _tokenize
 from pulldb.domain.config import (
     _parse_extra_args,
     _parse_positive_float,
@@ -30,32 +30,28 @@ from pulldb.worker.staging import (
 )
 
 
-# --- Atom: cp_sanitize ---
-def test_atom_cp_sanitize() -> None:
-    """Verify sanitization logic: lowercase, letters only."""
-    assert _sanitize_letters("Acme-123") == "acme"
-    assert _sanitize_letters("User_Name") == "username"
-    assert _sanitize_letters("123456") == ""
-    assert _sanitize_letters("") == ""
-
-
 # --- Atom: cp_tokens ---
 def test_atom_cp_tokens() -> None:
     """Verify tokenization loop logic."""
-    # Case 1: Customer
-    cust, is_qa, host, date, over = _tokenize(["customer=Acme", "dbhost=db1", "overwrite"])
+    # Case 1: Customer with dbhost and overwrite
+    user, cust, is_qa, host, date, s3env, over = _tokenize(
+        ["customer=Acme", "dbhost=db1", "overwrite"]
+    )
     assert cust == "Acme"
     assert not is_qa
     assert host == "db1"
     assert date is None
+    assert s3env is None
     assert over
+    assert user is None
 
     # Case 2: QA Template
-    cust, is_qa, host, date, over = _tokenize(["qatemplate"])
+    user, cust, is_qa, host, date, s3env, over = _tokenize(["qatemplate"])
     assert cust is None
     assert is_qa
     assert host is None
     assert date is None
+    assert s3env is None
     assert not over
 
     # Case 3: Error (Unknown)

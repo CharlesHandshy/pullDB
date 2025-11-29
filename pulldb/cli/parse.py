@@ -1,17 +1,23 @@
 """CLI argument parsing for pullDB restore command.
 
 Validation rules (strict FAIL HARD semantics):
- - First token must be ``user=<username>``
+ - Optional ``user=<username>`` token (admin override only; normally auto-detected)
  - Username must contain at least 6 alphabetic characters (letters only after
    sanitization) used for user_code derivation
  - Exactly one of ``customer=<id>`` or literal ``qatemplate`` must appear
  - Optional ``dbhost=<hostname>`` token
  - Optional ``date=<YYYY-MM-DD>`` token for specific backup date
+ - Optional ``s3env=<staging|prod>`` token to specify S3 environment
  - Optional ``overwrite`` flag token
  - Unknown tokens produce a validation error (never ignored)
  - Target length constraint: ``<user_code><sanitized_customer>`` <= 51 chars
    (reserves 13 for staging suffix). For qatemplate the target becomes
    ``<user_code>qatemplate``.
+
+Supported option syntax styles:
+ - option=value
+ - --option=value
+ - --option value (space-separated)
 
 Errors raise ``CLIParseError`` with actionable messages. No I/O performed; user
 and target uniqueness enforced later by repositories.
@@ -44,92 +50,135 @@ class RestoreCLIOptions:
 
     Attributes:
         raw_tokens: Original token sequence for audit/logging.
-        username: Raw username provided after ``user=`` prefix.
+        username: Raw username if provided via user= token (None if auto-detect).
         customer_id: Raw customer identifier if provided (None for qatemplate).
         is_qatemplate: True when qatemplate restore requested.
         dbhost: Optional explicit database host override.
         date: Optional specific backup date in YYYY-MM-DD format.
+        s3env: Optional S3 environment (staging or prod).
         overwrite: Whether overwrite flag was supplied.
-        user_code_candidate: First 6 letters of sanitized username (lowercase).
-        target_candidate: Candidate target database name (user_code + customer
-            or qatemplate) for length validation / preview purposes.
     """
 
     raw_tokens: tuple[str, ...]
-    username: str
+    username: str | None
     customer_id: str | None
     is_qatemplate: bool
     dbhost: str | None
     date: str | None
+    s3env: str | None
     overwrite: bool
-    user_code_candidate: str
-    target_candidate: str
 
 
-_TOKEN_USER = re.compile(r"^user=([A-Za-z0-9_.-]+)$")
-_TOKEN_CUSTOMER = re.compile(r"^customer=([A-Za-z0-9_.-]+)$")
-_TOKEN_DBHOST = re.compile(r"^dbhost=([A-Za-z0-9_.-]+)$")
-_TOKEN_DATE = re.compile(r"^date=(\d{4}-\d{2}-\d{2})$")
-
-
-def _sanitize_letters(value: str) -> str:
-    """Return lowercase letters-only version of value.
-
-    Args:
-        value: Input string.
-
-    Returns:
-        Sanitized string containing only lowercase a-z letters.
-    """
-    return "".join(ch for ch in value.lower() if ch.isalpha())
-
-
-def _initial_username(tokens: Sequence[str]) -> tuple[str, str]:
-    if not tokens:
-        raise CLIParseError(
-            "No arguments supplied. Usage: pullDB user=<name> customer=<id>|qatemplate "
-            "[dbhost=<host>] [overwrite]"
-        )
-    first = tokens[0]
-    m_user = _TOKEN_USER.match(first)
-    if not m_user:
-        raise CLIParseError(
-            "First argument must be user=<username>. Received: '" + first + "'"
-        )
-    username = m_user.group(1)
-    sanitized_username = _sanitize_letters(username)
-    if len(sanitized_username) < USER_CODE_LEN:
-        raise CLIParseError(
-            "Username must contain at least 6 alphabetic letters after sanitization. "
-            f"Provided '{username}' -> '{sanitized_username}'."
-        )
-    return username, sanitized_username[:USER_CODE_LEN]
+_TOKEN_USER = re.compile(r"^(?:--)?user=([A-Za-z0-9_.-]+)$")
+_TOKEN_CUSTOMER = re.compile(r"^(?:--)?customer=([A-Za-z0-9_.-]+)$")
+_TOKEN_DBHOST = re.compile(r"^(?:--)?dbhost=([A-Za-z0-9_.-]+)$")
+_TOKEN_DATE = re.compile(r"^(?:--)?date=(\d{4}-\d{2}-\d{2})$")
+_TOKEN_S3ENV = re.compile(r"^(?:--)?s3env=(staging|prod)$")
 
 
 def _tokenize(
     tokens: Sequence[str],
-) -> tuple[str | None, bool, str | None, str | None, bool]:
+) -> tuple[str | None, str | None, bool, str | None, str | None, str | None, bool]:
+    """Parse all tokens and return extracted values.
+    
+    Supports multiple syntax styles:
+    - option=value
+    - --option=value  
+    - --option value (space-separated)
+    
+    Returns:
+        Tuple of (username, customer_id, is_qatemplate, dbhost, date, s3env, overwrite)
+    """
+    username: str | None = None
     customer_id: str | None = None
     is_qatemplate = False
     dbhost: str | None = None
     date: str | None = None
+    s3env: str | None = None
     overwrite = False
-
-    def handle_qatemplate() -> None:
-        nonlocal is_qatemplate
-        if customer_id is not None:
-            raise CLIParseError(
-                "Cannot specify both customer=<id> and qatemplate. Choose one."
-            )
-        is_qatemplate = True
-
-    for tok in tokens:
-        if tok in {"qatemplate", "overwrite"}:
-            if tok == "overwrite":
-                overwrite = True
-            else:
-                handle_qatemplate()
+    
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        
+        # Check for flag tokens first (with or without --)
+        tok_stripped = tok.lstrip("-")
+        if tok_stripped == "qatemplate":
+            if customer_id is not None:
+                raise CLIParseError(
+                    "Cannot specify both customer=<id> and qatemplate. Choose one."
+                )
+            is_qatemplate = True
+            i += 1
             continue
+        if tok_stripped == "overwrite":
+            overwrite = True
+            i += 1
+            continue
+        
+        # Handle --option value (space-separated) syntax
+        if tok.startswith("--") and "=" not in tok:
+            opt_name = tok[2:]
+            if i + 1 >= len(tokens):
+                raise CLIParseError(f"Option {tok} requires a value")
+            opt_value = tokens[i + 1]
+            
+            if opt_name == "user":
+                if username is not None:
+                    raise CLIParseError(f"user specified more than once")
+                username = opt_value
+                i += 2
+                continue
+            elif opt_name == "customer":
+                if is_qatemplate:
+                    raise CLIParseError("Cannot specify both customer and qatemplate")
+                if customer_id is not None:
+                    raise CLIParseError(f"customer specified more than once")
+                customer_id = opt_value
+                i += 2
+                continue
+            elif opt_name == "dbhost":
+                if dbhost is not None:
+                    raise CLIParseError(f"dbhost specified more than once")
+                dbhost = opt_value
+                i += 2
+                continue
+            elif opt_name == "date":
+                if date is not None:
+                    raise CLIParseError(f"date specified more than once")
+                # Validate date format
+                if not re.match(r"^\d{4}-\d{2}-\d{2}$", opt_value):
+                    raise CLIParseError(f"Invalid date format '{opt_value}'. Use YYYY-MM-DD")
+                try:
+                    datetime.strptime(opt_value, "%Y-%m-%d")
+                except ValueError:
+                    raise CLIParseError(f"Invalid date '{opt_value}'") from None
+                date = opt_value
+                i += 2
+                continue
+            elif opt_name == "s3env":
+                if s3env is not None:
+                    raise CLIParseError(f"s3env specified more than once")
+                if opt_value not in ("staging", "prod"):
+                    raise CLIParseError(f"s3env must be staging or prod. Got: {opt_value}")
+                s3env = opt_value
+                i += 2
+                continue
+            else:
+                raise CLIParseError(f"Unrecognized option: {tok}")
+
+        # Check user= token (with optional --)
+        m_user = _TOKEN_USER.match(tok)
+        if m_user:
+            if username is not None:
+                raise CLIParseError(
+                    f"user specified more than once ('{username}', '{tok}')."
+                )
+            username = m_user.group(1)
+            i += 1
+            continue
+
+        # Check customer= token
         m_cust = _TOKEN_CUSTOMER.match(tok)
         if m_cust:
             if is_qatemplate:
@@ -138,10 +187,13 @@ def _tokenize(
                 )
             if customer_id is not None:
                 raise CLIParseError(
-                    f"Customer specified more than once ('{customer_id}', '{tok}')."
+                    f"customer specified more than once ('{customer_id}', '{tok}')."
                 )
             customer_id = m_cust.group(1)
+            i += 1
             continue
+
+        # Check dbhost= token
         m_host = _TOKEN_DBHOST.match(tok)
         if m_host:
             if dbhost is not None:
@@ -149,7 +201,10 @@ def _tokenize(
                     f"dbhost specified more than once ('{dbhost}', '{tok}')."
                 )
             dbhost = m_host.group(1)
+            i += 1
             continue
+
+        # Check date= token
         m_date = _TOKEN_DATE.match(tok)
         if m_date:
             if date is not None:
@@ -163,20 +218,33 @@ def _tokenize(
             except ValueError:
                 raise CLIParseError(
                     f"Invalid date '{date_str}'. Must be a valid date in YYYY-MM-DD format."
-                )
+                ) from None
             date = date_str
+            i += 1
             continue
+
+        # Check s3env= token
+        m_s3env = _TOKEN_S3ENV.match(tok)
+        if m_s3env:
+            if s3env is not None:
+                raise CLIParseError(
+                    f"s3env specified more than once ('{s3env}', '{tok}')."
+                )
+            s3env = m_s3env.group(1)
+            i += 1
+            continue
+
         raise CLIParseError(f"Unrecognized token: '{tok}'")
-    return customer_id, is_qatemplate, dbhost, date, overwrite
+
+    return username, customer_id, is_qatemplate, dbhost, date, s3env, overwrite
 
 
 def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
     """Parse restore command tokens into structured options.
 
     Args:
-        tokens: Sequence of CLI tokens (excluding program name). Order matters
-            for the first token (must be ``user=``); other tokens may appear in
-            any order.
+        tokens: Sequence of CLI tokens (excluding program name). Tokens may
+            appear in any order.
 
     Returns:
         ``RestoreCLIOptions`` instance with validated fields.
@@ -184,11 +252,14 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
     Raises:
         CLIParseError: On any validation failure.
     """
-    # First token / username processing
-    username, user_code_candidate = _initial_username(tokens)
+    if not tokens:
+        raise CLIParseError(
+            "No arguments supplied. Usage: pulldb restore customer=<id> [options]\n"
+            "  or: pulldb restore qatemplate [options]"
+        )
 
-    # Remaining tokens processing
-    customer_id, is_qatemplate, dbhost, date, overwrite = _tokenize(tokens[1:])
+    # Parse all tokens
+    username, customer_id, is_qatemplate, dbhost, date, s3env, overwrite = _tokenize(tokens)
 
     # Enforce exactly one of customer or qatemplate specified
     if customer_id is None and not is_qatemplate:
@@ -201,24 +272,6 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
             "Cannot specify both customer=<id> and qatemplate. Choose one."
         )
 
-    # Customer / qatemplate sanitization
-    if customer_id is not None:
-        sanitized_customer = _sanitize_letters(customer_id)
-        if not sanitized_customer:
-            raise CLIParseError(
-                f"Customer identifier '{customer_id}' must contain at least one letter."
-            )
-    else:
-        sanitized_customer = "qatemplate"
-
-    target_candidate = user_code_candidate + sanitized_customer
-    if len(target_candidate) > MAX_TARGET_LEN:
-        raise CLIParseError(
-            "Target database name '"
-            f"{target_candidate}' exceeds max length {MAX_TARGET_LEN}. "
-            "Shorten username or customer id."
-        )
-
     return RestoreCLIOptions(
         raw_tokens=tuple(tokens),
         username=username,
@@ -226,9 +279,8 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
         is_qatemplate=is_qatemplate,
         dbhost=dbhost,
         date=date,
+        s3env=s3env,
         overwrite=overwrite,
-        user_code_candidate=user_code_candidate,
-        target_candidate=target_candidate,
     )
 
 

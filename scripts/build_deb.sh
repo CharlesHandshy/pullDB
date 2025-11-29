@@ -87,8 +87,15 @@ if [ -d "pulldb/binaries" ]; then
     fi
 fi
 
-# Copy migration files and scripts
-if [ -d "migrations" ]; then
+# Copy schema files (required for fresh install)
+if [ -d "schema/pulldb_service" ]; then
+    mkdir -p "$APP_ROOT/schema/pulldb_service"
+    cp schema/pulldb_service/*.sql "$APP_ROOT/schema/pulldb_service/"
+    echo "Included $(ls schema/pulldb_service/*.sql | wc -l) schema files"
+fi
+
+# Copy migration files if any exist (optional for v0.0.6+)
+if [ -d "migrations" ] && ls migrations/*.sql 1>/dev/null 2>&1; then
     mkdir -p "$APP_ROOT/migrations"
     cp migrations/*.sql "$APP_ROOT/migrations/"
     echo "Included $(ls migrations/*.sql | wc -l) migration files"

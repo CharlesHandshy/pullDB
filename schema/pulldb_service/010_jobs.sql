@@ -1,5 +1,6 @@
 -- 010_jobs.sql
 -- Core table definition: jobs and associated indexes
+-- v0.0.6: Complete schema with Phase 1-3 columns
 
 CREATE TABLE jobs (
     id CHAR(36) PRIMARY KEY,
@@ -16,7 +17,9 @@ CREATE TABLE jobs (
     options_json JSON,
     retry_count INT NOT NULL DEFAULT 0,
     error_detail TEXT,
-    worker_id VARCHAR(255) NULL,
+    cancel_requested_at TIMESTAMP(6) NULL COMMENT 'Phase 1: User-requested cancellation timestamp',
+    staging_cleaned_at TIMESTAMP(6) NULL COMMENT 'Phase 1: When staging database was cleaned up',
+    worker_id VARCHAR(255) NULL COMMENT 'Phase 3: Worker that claimed this job (hostname:pid)',
     active_target_key VARCHAR(520) GENERATED ALWAYS AS (
         CASE WHEN status IN ('queued','running') THEN CONCAT(target,'@@',dbhost) ELSE NULL END
     ) VIRTUAL,
@@ -27,3 +30,4 @@ CREATE UNIQUE INDEX idx_jobs_active_target ON jobs(active_target_key);
 CREATE INDEX idx_jobs_queue ON jobs(status, submitted_at);
 CREATE INDEX idx_jobs_owner_status ON jobs(owner_user_id, status);
 CREATE INDEX idx_jobs_worker_id ON jobs(worker_id);
+CREATE INDEX idx_jobs_staging_cleanup ON jobs(dbhost, status, staging_cleaned_at, completed_at);

@@ -249,9 +249,13 @@ class CredentialResolver:
             # Parse JSON secret
             secret_data = json.loads(secret_string)
 
-            # Extract fields from Secrets Manager (host and password only)
+            # Extract fields from Secrets Manager
             password = secret_data.get("password")
             host = secret_data.get("host")
+            
+            # Username can come from secret (for target db credentials)
+            # or be empty (for coordination db where caller sets it)
+            username = secret_data.get("username", "")
 
             # Validate required secret fields
             if password is None:
@@ -262,11 +266,6 @@ class CredentialResolver:
                 raise CredentialResolutionError(
                     f"Secret {secret_id} missing required field 'host'"
                 )
-
-            # Get remaining fields from environment variables
-            # Note: username is set per-service via PULLDB_API_MYSQL_USER or PULLDB_WORKER_MYSQL_USER
-            # The caller sets config.mysql_user before calling resolve()
-            username = ""  # Placeholder - caller provides actual username
 
             port_str = os.getenv("PULLDB_MYSQL_PORT", "3306")
             try:

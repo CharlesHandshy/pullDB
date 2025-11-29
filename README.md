@@ -488,8 +488,13 @@ pullDB \
 - `pullDB list-customers`: Lists all customer IDs with available backups in S3. API service scans S3 prefixes and returns customer list with latest backup timestamps. Useful for discovering what can be restored.
 
 ### Job Management
-- `pullDB job-status <job_id>`: Shows detailed status and event history for a specific job. API service queries MySQL `jobs` and `job_events` tables.
-- Queue listing, cancellation, and history-style reporting are intentionally deferred until the core restore loop proves stable.
+- `pulldb status [job_id]`: Shows active jobs, or filter by a specific job.
+- `pulldb cancel <job_id>`: Cancel a queued or running job.
+- `pulldb events <job_id>`: Show event history for a specific job.
+- `pulldb profile <job_id>`: Show performance profile for a completed job.
+- `pulldb history`: Show completed/failed/canceled jobs with filtering options.
+
+**Short Job ID Prefixes**: All commands accepting a job_id support 8+ character prefixes instead of full UUIDs. For example, `pulldb cancel 8b4c4a3a` instead of `pulldb cancel 8b4c4a3a-85a1-4da2-9636-84c1d70a2159`. If multiple jobs match the prefix, you'll be prompted to select one interactively.
 
 **Note**: All discovery commands are implemented as HTTP calls to API service endpoints. The API service has read-only S3 access (ListBucket, HeadObject) specifically to support these commands without requiring CLI to have AWS credentials.
 

@@ -286,8 +286,22 @@ install_python_package() {
     chown -R "${SYSTEM_USER}:${SYSTEM_GROUP}" "${INSTALL_PREFIX}" || true
 }
 
+check_database_schema() {
+    echo "Step 6b: Checking database schema..."
+    
+    # Check if pulldb_service database exists with required tables
+    if sudo mysql -N -e "SELECT 1 FROM information_schema.tables WHERE table_schema='pulldb_service' AND table_name='jobs'" 2>/dev/null | grep -q 1; then
+        echo "  Database schema present"
+    else
+        echo "  Warning: Database schema not found"
+        echo "  v0.0.6 requires fresh schema setup. Run:"
+        echo "    sudo mysql -e 'CREATE DATABASE IF NOT EXISTS pulldb_service'"
+        echo "    cat ${INSTALL_PREFIX}/schema/pulldb_service/*.sql | sudo mysql pulldb_service"
+    fi
+}
+
 install_systemd_units() {
-    echo "Step 6b: Installing systemd units..."
+    echo "Step 6c: Installing systemd units..."
     
     if ! command -v systemctl >/dev/null 2>&1; then
         echo "  systemd not available, skipping"
@@ -315,7 +329,7 @@ install_systemd_units() {
 }
 
 start_services() {
-    echo "Step 6c: Starting services..."
+    echo "Step 6d: Starting services..."
     
     if ! command -v systemctl >/dev/null 2>&1; then
         echo "  systemd not available, skipping"
@@ -393,6 +407,7 @@ case "$1" in
         offer_interactive_config
         ensure_paths
         install_python_package
+        check_database_schema
         install_systemd_units
         start_services
         validate_installation

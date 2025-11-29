@@ -481,7 +481,28 @@ class WorkerJobExecutor:
         job: Job,
     ) -> tuple[BackupSpec, S3BackupLocationConfig, str]:
         attempts: list[dict[str, str]] = []
-        for location in self.backup_locations:
+        
+        # Get env filter from job options (if specified)
+        options = job.options_json or {}
+        job_env = options.get("env")  # e.g., "staging", "prod", or None for all
+        
+        # Filter locations by job's env preference
+        locations_to_search = self.backup_locations
+        if job_env:
+            locations_to_search = [
+                loc for loc in self.backup_locations
+                if loc.name.lower() == job_env.lower()
+                or job_env.lower() in loc.name.lower()
+            ]
+            if not locations_to_search:
+                # No matching locations - log and fall back to all locations
+                logger.warning(
+                    "No backup locations match requested env, searching all",
+                    extra={"job_id": job.id, "requested_env": job_env},
+                )
+                locations_to_search = self.backup_locations
+        
+        for location in locations_to_search:
             for lookup_target in build_lookup_targets_for_location(job, location):
                 try:
                     spec = self._discover_backup(

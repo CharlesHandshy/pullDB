@@ -2,7 +2,15 @@
 
 > **Foundation Documents**: This schema implements the architectural principles defined in `../.github/copilot-instructions.md` and coding standards from `../constitution.md`.
 
-> **Schema Update Mandate**: All schema changes must be reflected in the numbered files under `schema/pulldb_service/` and mirrored in `scripts/setup-tests-dbdata.sh`. See `.github/copilot-instructions.md` and `docs/mysql-setup.md` for the complete workflow. The legacy `scripts/setup-pulldb-schema.sh` helper now lives in `scripts/archived/` for historical reference.
+> **Schema Management**:
+> - **Source of Truth**: `schema/pulldb_service/*.sql` - numbered files defining all tables, views, indexes, and seed data
+> - **Production Migrations**: `migrations/*.sql` - dbmate migrations for upgrading existing databases
+> - **Test Setup**: Tests use `schema/pulldb_service/*.sql` directly for fresh databases each run
+>
+> When making schema changes:
+> 1. Update `schema/pulldb_service/*.sql` (always)
+> 2. Create a corresponding migration in `migrations/` for production upgrades
+> 3. Migrations must be **idempotent** (use IF NOT EXISTS, INSERT IGNORE, etc.)
 >
 > The former monolithic dump is preserved at `schema/archived/pulldb.sql` for audit history only.
 

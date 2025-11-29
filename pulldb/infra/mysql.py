@@ -344,6 +344,127 @@ class JobRepository:
             row = cursor.fetchone()
             return self._row_to_job(row) if row else None
 
+    def find_jobs_by_prefix(self, prefix: str, limit: int = 10) -> list[Job]:
+        """Find jobs by ID prefix.
+
+        Supports short job ID prefixes (minimum 8 characters) for user
+        convenience. Returns matching jobs ordered by submission time
+        (newest first).
+
+        Args:
+            prefix: Job ID prefix (minimum 8 characters recommended).
+            limit: Maximum number of results to return.
+
+        Returns:
+            List of matching jobs, empty if none found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            # Use LIKE for prefix matching - escape any special characters
+            safe_prefix = prefix.replace("%", r"\%").replace("_", r"\_")
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail, worker_id
+                FROM jobs
+                WHERE id LIKE %s
+                ORDER BY submitted_at DESC
+                LIMIT %s
+                """,
+                (f"{safe_prefix}%", limit),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows if row]
+
+    def search_jobs(
+        self, query: str, limit: int = 50, exact: bool = False
+    ) -> list[Job]:
+        """Search jobs by query string.
+
+        Searches across job ID, target database name, owner username, and
+        user code. For queries of 4 characters, uses prefix matching.
+        For queries longer than 4 characters, uses exact matching by default.
+
+        Args:
+            query: Search string (minimum 4 characters).
+            limit: Maximum number of results to return.
+            exact: If True, require exact match. If False, use LIKE prefix match.
+
+        Returns:
+            List of matching jobs ordered by submission time (newest first).
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            # Escape special SQL LIKE characters
+            safe_query = query.replace("%", r"\%").replace("_", r"\_")
+
+            if exact:
+                # Exact match on any searchable field
+                cursor.execute(
+                    """
+                    SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                           staging_name, dbhost, status, submitted_at, started_at,
+                           completed_at, options_json, retry_count, error_detail, worker_id
+                    FROM jobs
+                    WHERE id = %s
+                       OR target = %s
+                       OR owner_username = %s
+                       OR owner_user_code = %s
+                    ORDER BY submitted_at DESC
+                    LIMIT %s
+                    """,
+                    (query, query, query, query, limit),
+                )
+            else:
+                # Prefix match using LIKE
+                pattern = f"{safe_query}%"
+                cursor.execute(
+                    """
+                    SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                           staging_name, dbhost, status, submitted_at, started_at,
+                           completed_at, options_json, retry_count, error_detail, worker_id
+                    FROM jobs
+                    WHERE id LIKE %s
+                       OR target LIKE %s
+                       OR owner_username LIKE %s
+                       OR owner_user_code LIKE %s
+                    ORDER BY submitted_at DESC
+                    LIMIT %s
+                    """,
+                    (pattern, pattern, pattern, pattern, limit),
+                )
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows if row]
+
+    def get_last_job_by_user_code(self, user_code: str) -> Job | None:
+        """Get the most recent job submitted by a user.
+
+        Args:
+            user_code: The user code to look up jobs for.
+
+        Returns:
+            The most recent job for the user, or None if no jobs found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail, worker_id
+                FROM jobs
+                WHERE owner_user_code = %s
+                ORDER BY submitted_at DESC
+                LIMIT 1
+                """,
+                (user_code,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return self._row_to_job(row)
+
     def mark_job_running(self, job_id: str) -> None:
         """Mark job as running and set started_at timestamp.
 
@@ -566,6 +687,35 @@ class JobRepository:
             cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
             return [self._row_to_job(row) for row in rows]
+
+    def get_user_last_job(self, user_code: str) -> Job | None:
+        """Get the most recently submitted job for a user.
+
+        Returns the user's last submitted job regardless of status.
+
+        Args:
+            user_code: The 6-character user code.
+
+        Returns:
+            The most recent Job, or None if no jobs found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code,
+                       target, staging_name, dbhost, status, submitted_at,
+                       started_at, completed_at, options_json, retry_count,
+                       error_detail, worker_id
+                FROM jobs
+                WHERE owner_user_code = %s
+                ORDER BY submitted_at DESC
+                LIMIT 1
+                """,
+                (user_code,),
+            )
+            row = cursor.fetchone()
+            return self._row_to_job(row) if row else None
 
     def get_job_history(
         self,

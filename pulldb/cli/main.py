@@ -44,8 +44,14 @@ else:
     Response = t.cast(type, requests_module.Response)
 
 
-class _APIError(RuntimeError):
-    """Raised when the API returns an unexpected payload."""
+def _get_calling_username() -> str:
+    """Get the username of the calling user (handles sudo).
+
+    Returns:
+        The username from SUDO_USER if running under sudo,
+        otherwise the current USER.
+    """
+    return os.environ.get("SUDO_USER") or os.environ.get("USER") or "unknown"
 
 
 def _load_api_config() -> tuple[str, float]:
@@ -64,6 +70,240 @@ def _load_api_config() -> tuple[str, float]:
             "PULLDB_API_TIMEOUT must be greater than zero seconds."
         )
     return base_url, timeout
+
+
+def _get_user_info(username: str) -> tuple[str, str | None]:
+    """Lookup user in the system to get their user_code.
+
+    Args:
+        username: The username to lookup.
+
+    Returns:
+        Tuple of (username, user_code) where user_code may be None if not found.
+    """
+    try:
+        base_url, timeout = _load_api_config()
+        url = f"{base_url}/api/users/{username}"
+        response = requests_module.get(url, timeout=timeout)
+        if response.status_code == 200:
+            data = response.json()
+            return username, data.get("user_code")
+    except Exception:
+        pass  # Silently fail - user info is optional for help display
+    return username, None
+
+
+class _APIError(RuntimeError):
+    """Raised when the API returns an unexpected payload."""
+
+
+# Minimum length for job ID prefix matching
+MIN_JOB_ID_PREFIX_LENGTH = 8
+
+
+def _get_default_s3env() -> str:
+    """Get default S3 environment from PULLDB_S3ENV_DEFAULT or 'both'."""
+    return os.getenv("PULLDB_S3ENV_DEFAULT", "both")
+
+
+def _load_s3_backup_locations() -> list[tuple[str, str, str, str | None]]:
+    """Load S3 backup locations from PULLDB_S3_BACKUP_LOCATIONS env var.
+    
+    Returns:
+        List of tuples: (name, bucket, prefix, profile)
+        Falls back to hardcoded defaults if env var not set.
+    """
+    raw_locations = os.getenv("PULLDB_S3_BACKUP_LOCATIONS")
+    if raw_locations:
+        try:
+            payload = json_module.loads(raw_locations)
+            if isinstance(payload, list):
+                locations: list[tuple[str, str, str, str | None]] = []
+                for entry in payload:
+                    if isinstance(entry, dict):
+                        bucket_path = entry.get("bucket_path", "")
+                        name = entry.get("name", "unknown")
+                        profile = entry.get("profile")
+                        # Parse bucket_path like s3://bucket/prefix/
+                        if bucket_path.startswith("s3://"):
+                            path = bucket_path[5:]
+                            if "/" in path:
+                                bucket = path.split("/")[0]
+                                prefix = "/".join(path.split("/")[1:])
+                                if not prefix.endswith("/"):
+                                    prefix += "/"
+                            else:
+                                bucket = path
+                                prefix = ""
+                            locations.append((name, bucket, prefix, profile))
+                if locations:
+                    return locations
+        except json_module.JSONDecodeError:
+            pass  # Fall through to defaults
+    
+    # Fallback to hardcoded defaults
+    return [
+        ("staging", "pestroutesrdsdbs", "daily/stg/",
+         os.getenv("PULLDB_S3_STAGING_PROFILE", "pr-staging")),
+        ("prod", "pestroutes-rds-backup-prod-vpc-us-east-1-s3", "daily/prod/",
+         os.getenv("PULLDB_S3_PROD_PROFILE", "pr-prod")),
+    ]
+
+
+def _resolve_job_id(job_id_or_prefix: str) -> str:
+    """Resolve a job ID prefix to the full job ID.
+
+    Supports short 8-character prefixes (e.g., '8b4c4a3a') in addition to
+    full UUIDs. If multiple jobs match the prefix, prompts user to select.
+
+    Args:
+        job_id_or_prefix: Full job ID or 8+ character prefix.
+
+    Returns:
+        Full job ID (UUID).
+
+    Raises:
+        click.ClickException: If not found or resolution fails.
+        click.UsageError: If prefix too short.
+    """
+    # Validate minimum length
+    if len(job_id_or_prefix) < MIN_JOB_ID_PREFIX_LENGTH:
+        raise click.UsageError(
+            f"Job ID must be at least {MIN_JOB_ID_PREFIX_LENGTH} characters. "
+            "Use 'pulldb status' to find job IDs."
+        )
+
+    # If it looks like a full UUID (36 chars with dashes), use directly
+    if len(job_id_or_prefix) == 36 and job_id_or_prefix.count("-") == 4:
+        return job_id_or_prefix
+
+    # Call resolution API
+    base_url, timeout = _load_api_config()
+    url = f"{base_url}/api/jobs/resolve/{job_id_or_prefix}"
+    try:
+        response = requests_module.get(url, timeout=timeout)
+    except RequestException as exc:
+        raise click.ClickException(
+            f"Failed to reach pullDB API: {exc}. "
+            "Ensure the API service is running."
+        ) from exc
+
+    if response.status_code == 404:
+        raise click.ClickException(
+            f"No job found matching '{job_id_or_prefix}'. "
+            "Use 'pulldb status' or 'pulldb history' to find valid job IDs."
+        )
+    if response.status_code >= 400:
+        raise click.ClickException(_format_api_error(response))
+
+    data = _parse_json_response(response)
+    if not isinstance(data, dict):
+        raise click.ClickException("Unexpected API response format.")
+
+    resolved_id = data.get("resolved_id")
+    matches = data.get("matches", [])
+    count = data.get("count", 0)
+
+    # Single match - return it
+    if resolved_id:
+        return resolved_id
+
+    # Multiple matches - prompt user to select
+    if count > 1:
+        click.echo(f"\nMultiple jobs match '{job_id_or_prefix}':\n")
+        click.echo(f"{'#':<3} {'JOB_ID':<12} {'STATUS':<12} {'TARGET':<20} {'USER':<8}")
+        click.echo("-" * 60)
+
+        for idx, match in enumerate(matches, 1):
+            job_id_short = match.get("id", "")[:12]
+            status_val = match.get("status", "?")
+            target = match.get("target", "?")[:20]
+            user_code = match.get("user_code", "?")[:8]
+            click.echo(f"{idx:<3} {job_id_short:<12} {status_val:<12} {target:<20} {user_code:<8}")
+
+        click.echo("")
+
+        # Prompt for selection
+        while True:
+            choice = click.prompt(
+                "Enter number to select (or 'q' to quit)",
+                type=str,
+                default="q",
+            )
+            if choice.lower() == "q":
+                raise click.Abort()
+            try:
+                idx = int(choice)
+                if 1 <= idx <= len(matches):
+                    return matches[idx - 1]["id"]
+                click.echo(f"Please enter a number between 1 and {len(matches)}")
+            except ValueError:
+                click.echo("Invalid input. Enter a number or 'q' to quit.")
+
+    # No matches (shouldn't reach here due to 404 above, but handle anyway)
+    raise click.ClickException(f"No job found matching '{job_id_or_prefix}'.")
+
+
+def _print_formatted_detail(detail: str, indent: str = "  ") -> None:
+    """Print event detail in a readable, formatted way.
+
+    Handles JSON data by pretty-printing it with proper indentation.
+    For structured error messages, preserves their formatting.
+    """
+    # Try to parse as JSON for pretty printing
+    try:
+        parsed = json_module.loads(detail)
+        if isinstance(parsed, dict):
+            _print_formatted_dict(parsed, indent)
+        elif isinstance(parsed, list):
+            for item in parsed:
+                if isinstance(item, dict):
+                    _print_formatted_dict(item, indent)
+                    click.echo()
+                else:
+                    click.echo(f"{indent}{item}")
+        else:
+            click.echo(f"{indent}{parsed}")
+    except (json_module.JSONDecodeError, ValueError):
+        # Not JSON - print as-is, preserving newlines
+        for line in detail.split("\n"):
+            click.echo(f"{indent}{line}")
+
+
+def _print_formatted_dict(
+    data: dict[str, t.Any], indent: str = "  ", max_depth: int = 3, depth: int = 0
+) -> None:
+    """Recursively print a dictionary with proper formatting."""
+    if depth >= max_depth:
+        click.echo(f"{indent}{data}")
+        return
+
+    for key, value in data.items():
+        if isinstance(value, dict):
+            click.echo(f"{indent}{key}:")
+            _print_formatted_dict(value, indent + "  ", max_depth, depth + 1)
+        elif isinstance(value, list):
+            click.echo(f"{indent}{key}:")
+            for i, item in enumerate(value):
+                if isinstance(item, dict):
+                    click.echo(f"{indent}  [{i + 1}]")
+                    _print_formatted_dict(item, indent + "    ", max_depth, depth + 1)
+                else:
+                    # Handle strings that might have embedded newlines
+                    item_str = str(item)
+                    if "\n" in item_str:
+                        click.echo(f"{indent}  [{i + 1}]")
+                        for line in item_str.split("\n"):
+                            click.echo(f"{indent}    {line}")
+                    else:
+                        click.echo(f"{indent}  - {item}")
+        elif isinstance(value, str) and "\n" in value:
+            # Multi-line string - format nicely
+            click.echo(f"{indent}{key}:")
+            for line in value.split("\n"):
+                click.echo(f"{indent}  {line}")
+        else:
+            click.echo(f"{indent}{key}: {value}")
 
 
 def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
@@ -126,6 +366,25 @@ def _api_get(path: str, params: dict[str, t.Any]) -> list[dict[str, t.Any]]:
     raise click.ClickException(
         "Unexpected API response: expected list payload from status endpoint."
     )
+
+
+def _api_get_object(path: str, params: dict[str, t.Any]) -> dict[str, t.Any]:
+    """GET request expecting object (dict) response."""
+    base_url, timeout = _load_api_config()
+    url = f"{base_url}{path}"
+    try:
+        response = requests_module.get(url, params=params, timeout=timeout)
+    except RequestException as exc:
+        raise click.ClickException(
+            f"Failed to reach pullDB API at {url}: {exc}. "
+            "Ensure the API service is running and reachable."
+        ) from exc
+    if response.status_code >= 400:
+        raise click.ClickException(_format_api_error(response))
+    payload = _parse_json_response(response)
+    if isinstance(payload, dict):
+        return payload
+    raise click.ClickException("Unexpected API response: expected object payload.")
 
 
 def _parse_json_response(response: Response) -> t.Any:
@@ -234,30 +493,68 @@ def _job_row_from_payload(payload: dict[str, t.Any]) -> _JobRow:
     )
 
 
-@click.group(help="pullDB - Development database restore tool")
+@click.group(
+    help="pullDB - Development database restore tool",
+    invoke_without_command=True,
+)
 @click.version_option(__version__, prog_name="pulldb")
-def cli() -> None:
+@click.pass_context
+def cli(ctx: click.Context) -> None:
     """CLI entry point for pullDB commands.
 
     This is the main Click group that organizes all pullDB subcommands.
     Provides restore and status commands for end users.
 
+    When invoked without a subcommand, displays help with user identity.
+
     Note: Administrative commands (settings) are available via pulldb-admin.
     """
-    pass
+    if ctx.invoked_subcommand is None:
+        # Show help with user identity when no subcommand given
+        username = _get_calling_username()
+        _, user_code = _get_user_info(username)
+
+        # Display user identity
+        if user_code:
+            click.echo("pullDB - Database restore tool")
+            click.echo(f"User: {username} (code: {user_code})")
+        else:
+            click.echo("pullDB - Database restore tool")
+            click.echo(f"User: {username} (not registered)")
+
+        click.echo("")
+        click.echo(ctx.get_help())
 
 
-@cli.command("restore", help="Validate and submit a restore job (enqueue pending)")
-@click.argument("options", nargs=-1)
+@cli.command("restore",
+             context_settings={"ignore_unknown_options": True, "allow_interspersed_args": False})
+@click.argument("options", nargs=-1, type=click.UNPROCESSED)
 def restore_cmd(options: tuple[str, ...]) -> None:
-    """Validate restore CLI arguments and enqueue job to coordination database.
+    """Submit a database restore job.
 
-    Parses and validates CLI options, loads configuration, ensures user exists
-    (or creates), generates job specification, and enqueues via JobRepository.
+    \b
+    REQUIRED:
+      customer=<id>       Customer database to restore
+        OR
+      qatemplate          Restore the QA template database
 
-    Raises:
-        click.UsageError: On validation failures (FAIL HARD).
-        click.ClickException: On MySQL/configuration errors.
+    \b
+    OPTIONS:
+      dbhost=<hostname>     Target database host (default: localhost)
+      date=<YYYY-MM-DD>     Specific backup date (default: latest)
+      s3env=<staging|prod>  S3 environment (default: PULLDB_S3ENV_DEFAULT or both)
+      overwrite             Allow overwriting existing staging database
+      user=<username>       Override user (admin only)
+
+    \b
+    EXAMPLES:
+      pulldb restore customer=actionpest
+      pulldb restore customer=actionpest date=2025-11-25
+      pulldb restore qatemplate
+      pulldb restore customer=bigcorp dbhost=db2.example.com
+      pulldb restore customer=acme overwrite
+      pulldb restore customer=acme s3env=prod
+      pulldb restore --customer=acme --s3env=prod
     """
     # Step 1: Parse and validate CLI arguments
     try:
@@ -265,15 +562,26 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     except CLIParseError as e:  # FAIL HARD surface to user
         raise click.UsageError(str(e)) from e
 
-    # Step 2: Relay request to API service
-    payload = {
-        "user": parsed.username,
+    # Step 2: Get username - use parsed value or auto-detect
+    if parsed.username:
+        username = parsed.username
+    else:
+        username = _get_calling_username()
+
+    # Step 3: Relay request to API service
+    payload: dict[str, t.Any] = {
+        "user": username,
         "customer": parsed.customer_id,
         "qatemplate": parsed.is_qatemplate,
         "dbhost": parsed.dbhost,
         "date": parsed.date,
         "overwrite": parsed.overwrite,
     }
+    
+    # Add environment - use parsed value or default
+    s3env = parsed.s3env or _get_default_s3env()
+    if s3env != "both":
+        payload["env"] = s3env
 
     api_response = _api_post("/api/jobs", payload)
 
@@ -284,22 +592,21 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     target = str(api_response.get("target", ""))
     staging_name = str(api_response.get("staging_name", ""))
     status = str(api_response.get("status", "")) or "queued"
-    owner_username = str(api_response.get("owner_username", parsed.username))
+    owner_username = str(api_response.get("owner_username", username))
     owner_user_code = str(api_response.get("owner_user_code", ""))
 
     if not job_id or not target:
         raise click.ClickException("API response missing job_id or target fields.")
 
+    # Display job info with customer and target prominently
+    customer_display = parsed.customer_id if parsed.customer_id else "qatemplate"
     click.echo("Job submitted successfully!")
-    click.echo(f"  job_id: {job_id}")
-    click.echo(f"  target: {target}")
-    if staging_name:
-        click.echo(f"  staging_name: {staging_name}")
-    click.echo(f"  status: {status}")
-    click.echo(
-        f"  owner: {owner_username} "
-        f"(user_code: {owner_user_code if owner_user_code else 'unknown'})"
-    )
+    click.echo(f"  customer:     {customer_display}")
+    click.echo(f"  target:       {target}")
+    click.echo(f"  staging_name: {staging_name}")
+    click.echo(f"  job_id:       {job_id}")
+    click.echo(f"  status:       {status}")
+    click.echo(f"  user:         {owner_username} ({owner_user_code})")
     click.echo("\nUse 'pulldb status' to monitor progress.")
 
 
@@ -376,11 +683,60 @@ def status_cmd(
     if rt:
         if not job_id:
             raise click.UsageError("--rt requires a job_id argument")
-        _stream_job_events(job_id)
+        # Resolve short prefix to full job ID
+        resolved_id = _resolve_job_id(job_id)
+        _stream_job_events(resolved_id)
         return
 
     if limit <= 0 or limit > MAX_STATUS_LIMIT:
         raise click.UsageError(f"--limit must be between 1 and {MAX_STATUS_LIMIT}")
+
+    # When no arguments/flags: show user's last submitted job
+    if not job_id and not active and not history and not filter_json:
+        try:
+            username = _get_calling_username()
+            _, user_code = _get_user_info(username)
+            if user_code:
+                result = _api_get_object("/api/jobs/my-last", {"user_code": user_code})
+                job_data = result.get("job")
+                if job_data:
+                    click.echo(click.style("Your last submitted job:", bold=True))
+                    click.echo()
+                    if json_out:
+                        click.echo(json_module.dumps(job_data, separators=(",", ":")))
+                    else:
+                        # Format single job display
+                        row = _job_row_from_payload(job_data)
+
+                        def _fmt_dt(dt: datetime | None) -> str:
+                            return dt.isoformat(timespec="seconds") if dt else "—"
+
+                        # Build table for single job
+                        fields = [
+                            ("STATUS", row.status),
+                            ("OPERATION", row.current_operation or "—"),
+                            ("JOB_ID", row.id[:8]),
+                            ("SOURCE", row.source or "—"),
+                            ("TARGET", row.target),
+                            ("DB", row.dbhost or "—"),
+                            ("USER", row.user_code),
+                            ("SUBMITTED", _fmt_dt(row.submitted_at)),
+                            ("STARTED", _fmt_dt(row.started_at)),
+                        ]
+                        if wide:
+                            fields.append(("STAGING", row.staging_name or "—"))
+
+                        max_label = max(len(f[0]) for f in fields)
+                        for label, value in fields:
+                            click.echo(f"  {label.ljust(max_label)}: {value}")
+                    return
+                else:
+                    click.echo("No jobs found for your user. Submit a restore with:")
+                    click.echo("  pullDB user=<username> customer=<id>")
+                    return
+        except _APIError:
+            # Fall through to normal listing if we can't get user's last job
+            pass
 
     params: dict[str, t.Any] = {"limit": limit}
     if active:
@@ -390,15 +746,17 @@ def status_cmd(
     if filter_json:
         params["filter"] = filter_json
 
-    # If job_id provided, filter by it
+    # If job_id provided, resolve and filter by it
     if job_id:
+        # Resolve short prefix to full job ID
+        resolved_id = _resolve_job_id(job_id)
         current_filter = {}
         if filter_json:
             try:
                 current_filter = json_module.loads(filter_json)
             except ValueError:
                 pass
-        current_filter["id"] = job_id
+        current_filter["id"] = resolved_id
         params["filter"] = json_module.dumps(current_filter)
 
     try:
@@ -490,52 +848,118 @@ def status_cmd(
     click.echo(f"\n{len(primary_rows)} recent job(s) displayed (limit={limit}).")
 
 
-@cli.command("search", help="Search for available backups by customer name")
-@click.argument("customer")
-@click.option(
-    "--date",
-    "start_date",
-    help="Start date in YYYYMMDD format (show backups from this date onwards)",
-)
-@click.option(
-    "--limit",
-    type=int,
-    default=5,
-    show_default=True,
-    help="Maximum number of backups to show",
-)
-@click.option(
-    "--json",
-    "json_out",
-    is_flag=True,
-    help="Output JSON instead of table",
-)
-@click.option(
-    "--env",
-    "environment",
-    type=click.Choice(["staging", "prod", "both"]),
-    default="both",
-    show_default=True,
-    help="Which S3 environment to search",
-)
-def search_cmd(
-    customer: str,
-    start_date: str | None,
-    limit: int,
-    json_out: bool,
-    environment: str,
-) -> None:
+def _parse_search_args(
+    args: tuple[str, ...],
+) -> tuple[str, str | None, int | None, bool, str]:
+    """Parse search command arguments supporting both --opt and opt= syntax.
+    
+    Args:
+        args: Tuple of command line arguments.
+        
+    Returns:
+        Tuple of (customer, start_date, limit, json_out, s3env)
+    """
+    customer: str | None = None
+    start_date: str | None = None
+    limit: int | None = None
+    json_out = False
+    s3env: str | None = None  # Will use default if not specified
+    
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        
+        # Handle --option=value or option=value
+        if "=" in arg:
+            key, value = arg.lstrip("-").split("=", 1)
+            if key == "date":
+                start_date = value
+            elif key == "limit":
+                try:
+                    limit = int(value)
+                except ValueError:
+                    raise click.UsageError(f"Invalid limit value: {value}")
+            elif key == "s3env":
+                if value not in ("staging", "prod", "both"):
+                    raise click.UsageError(f"s3env must be staging, prod, or both. Got: {value}")
+                s3env = value
+            else:
+                # Treat as customer if no recognized key
+                if customer is None:
+                    customer = arg
+                else:
+                    raise click.UsageError(f"Unrecognized option: {arg}")
+        elif arg in ("--json", "json"):
+            json_out = True
+        elif arg.startswith("--"):
+            # Handle --option value syntax
+            opt = arg[2:]
+            if opt == "date" and i + 1 < len(args):
+                i += 1
+                start_date = args[i]
+            elif opt == "limit" and i + 1 < len(args):
+                i += 1
+                try:
+                    limit = int(args[i])
+                except ValueError:
+                    raise click.UsageError(f"Invalid limit value: {args[i]}")
+            elif opt == "s3env" and i + 1 < len(args):
+                i += 1
+                if args[i] not in ("staging", "prod", "both"):
+                    raise click.UsageError(f"s3env must be staging, prod, or both. Got: {args[i]}")
+                s3env = args[i]
+            elif opt == "json":
+                json_out = True
+            else:
+                raise click.UsageError(f"Unrecognized option: {arg}")
+        else:
+            # Positional argument - treat as customer
+            if customer is None:
+                customer = arg
+            else:
+                raise click.UsageError(f"Unexpected argument: {arg}")
+        i += 1
+    
+    if customer is None:
+        raise click.UsageError("Missing required argument: CUSTOMER")
+    
+    # Use default s3env if not specified
+    if s3env is None:
+        s3env = _get_default_s3env()
+    
+    return customer, start_date, limit, json_out, s3env
+
+
+@cli.command("search",
+              context_settings={"ignore_unknown_options": True, "allow_interspersed_args": False})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def search_cmd(args: tuple[str, ...]) -> None:
     """Search for available backups by customer name.
 
-    Supports wildcard patterns (e.g., 'acme*' to match all customers starting
-    with 'acme'). Shows the most recent backups first.
+    \b
+    USAGE:
+      pulldb search <customer> [options]
 
-    Examples:
-        pulldb search actionpest           # Last 5 backups for actionpest
-        pulldb search action*              # Last 5 backups matching action*
-        pulldb search actionpest --date 20251101  # Backups from Nov 1, 2025 onwards
-        pulldb search actionpest --limit 10       # Last 10 backups
+    \b
+    OPTIONS:
+      date=<YYYYMMDD>         Start date (show backups from this date onwards)
+      limit=<N>               Maximum backups to show (default: 5)
+      s3env=<staging|prod|both>  S3 environment (default: PULLDB_S3ENV_DEFAULT or both)
+      json                    Output JSON instead of table
+
+    \b
+    EXAMPLES:
+      pulldb search actionpest
+      pulldb search action*
+      pulldb search actionpest date=20251101
+      pulldb search actionpest limit=10
+      pulldb search actionpest s3env=prod
+      pulldb search actionpest --s3env=prod
     """
+    # Parse arguments
+    customer, start_date, limit_arg, json_out, environment = _parse_search_args(args)
+    limit = limit_arg if limit_arg is not None else 5
+    
     # Validate date format if provided
     filter_date: datetime | None = None
     if start_date:
@@ -560,30 +984,26 @@ def search_cmd(
     # Get S3 configuration from environment
     s3_profile = os.getenv("PULLDB_S3_AWS_PROFILE") or os.getenv("PULLDB_AWS_PROFILE")
 
-    # Define bucket configurations
-    buckets: list[
-        tuple[str, str, str, str | None]
-    ] = []  # (name, bucket, prefix, profile)
-
-    if environment in ("staging", "both"):
-        buckets.append(
-            (
-                "staging",
-                "pestroutesrdsdbs",
-                "daily/stg/",
-                os.getenv("PULLDB_S3_STAGING_PROFILE", "pr-staging"),
-            )
-        )
-
-    if environment in ("prod", "both"):
-        buckets.append(
-            (
-                "production",
-                "pestroutes-rds-backup-prod-vpc-us-east-1-s3",
-                "daily/prod/",
-                os.getenv("PULLDB_S3_PROD_PROFILE", "pr-prod"),
-            )
-        )
+    # Load configured backup locations
+    all_locations = _load_s3_backup_locations()
+    
+    # Filter by environment
+    buckets: list[tuple[str, str, str, str | None]] = []
+    for loc_name, bucket, prefix, profile in all_locations:
+        # Match environment: "both" matches all, otherwise exact or partial match
+        if environment == "both":
+            buckets.append((loc_name, bucket, prefix, profile))
+        elif loc_name.lower() == environment.lower():
+            buckets.append((loc_name, bucket, prefix, profile))
+        elif environment.lower() in loc_name.lower():
+            buckets.append((loc_name, bucket, prefix, profile))
+    
+    if not buckets:
+        click.echo(f"No backup locations configured for environment '{environment}'", err=True)
+        click.echo("Available locations:", err=True)
+        for loc_name, _, _, _ in all_locations:
+            click.echo(f"  - {loc_name}", err=True)
+        raise SystemExit(1)
 
     s3 = S3Client(profile=s3_profile)
 
@@ -592,10 +1012,18 @@ def search_cmd(
     for env_name, bucket, prefix, profile in buckets:
         try:
             if has_wildcard:
-                # For wildcards, we need to list all directories and filter
-                # List the prefix to get customer directories
+                # Extract the prefix before the first wildcard character
+                # e.g., "qat*" -> "qat", "action?pest" -> "action"
+                wildcard_pos = min(
+                    (customer.find(c) for c in "*?" if c in customer),
+                    default=len(customer)
+                )
+                search_prefix = customer[:wildcard_pos]
+                
+                # Use the prefix for efficient S3 listing
+                s3_prefix = f"{prefix}{search_prefix}"
                 click.echo(f"Searching {env_name} bucket for '{customer}'...", err=True)
-                keys = s3.list_keys(bucket, prefix, profile=profile)
+                keys = s3.list_keys(bucket, s3_prefix, profile=profile)
 
                 # Extract unique customer names from keys
                 customer_dirs: set[str] = set()
@@ -827,30 +1255,30 @@ def cancel_cmd(job_id: str, force: bool) -> None:
     For running jobs, the worker will stop at the next checkpoint
     (between major operations like download, restore, post-SQL).
 
+    Job ID can be specified as a full UUID or a short 8-character prefix.
+    If multiple jobs match the prefix, you'll be prompted to select one.
+
     Args:
-        job_id: UUID of the job to cancel (can use short prefix).
+        job_id: UUID or 8+ char prefix of the job to cancel.
         force: Skip confirmation prompt.
 
     Examples:
-        pulldb cancel abc12345-6789-...   # Full job ID
-        pulldb cancel abc12345            # Short prefix (will validate)
-        pulldb cancel abc12345 --force    # Skip confirmation
+        pulldb cancel 8b4c4a3a                # Short 8-char prefix
+        pulldb cancel 8b4c4a3a-85a1-4da2-...  # Full UUID
+        pulldb cancel 8b4c4a3a --force        # Skip confirmation
     """
-    # Validate job_id format (at least 8 chars for short form)
-    if len(job_id) < 8:
-        raise click.UsageError(
-            "Job ID must be at least 8 characters. Use 'pulldb status' to find job IDs."
-        )
+    # Resolve short prefix to full job ID
+    resolved_id = _resolve_job_id(job_id)
 
     # Confirm unless --force
     if not force:
-        click.echo(f"Requesting cancellation for job: {job_id}")
+        click.echo(f"Requesting cancellation for job: {resolved_id[:8]}...")
         if not click.confirm("Are you sure you want to cancel this job?"):
             click.echo("Aborted.")
             return
 
     try:
-        response = _api_post(f"/api/jobs/{job_id}/cancel", {})
+        response = _api_post(f"/api/jobs/{resolved_id}/cancel", {})
     except click.ClickException:
         # Re-raise click exceptions (404, 409, etc. formatted by _api_post)
         raise
@@ -859,12 +1287,12 @@ def cancel_cmd(job_id: str, force: bool) -> None:
     message = response.get("message", "")
 
     if status == "canceled":
-        click.echo(f"✓ Job {job_id[:8]}... canceled successfully.")
+        click.echo(f"✓ Job {resolved_id[:8]}... canceled successfully.")
         click.echo(f"  {message}")
     elif status == "pending":
-        click.echo(f"⏳ Cancellation requested for job {job_id[:8]}...")
+        click.echo(f"⏳ Cancellation requested for job {resolved_id[:8]}...")
         click.echo(f"  {message}")
-        click.echo("\nUse 'pulldb status --job-id {job_id}' to monitor.")
+        click.echo(f"\nUse 'pulldb status {resolved_id[:8]}' to monitor.")
     else:
         click.echo(f"Unexpected status: {status}")
         click.echo(f"  {message}")
@@ -891,42 +1319,49 @@ def cancel_cmd(job_id: str, force: bool) -> None:
     show_default=True,
     help="Maximum number of events to show",
 )
-def events_cmd(job_id: str, json_out: bool, follow: bool, limit: int) -> None:
+@click.option(
+    "--full",
+    is_flag=True,
+    help="Show full event details without truncation",
+)
+def events_cmd(job_id: str, json_out: bool, follow: bool, limit: int, full: bool) -> None:
     """Show detailed event log for a job.
 
     Displays timestamped events including job state transitions, progress
     updates, and any errors. Use --follow to stream events in realtime.
 
+    Job ID can be specified as a full UUID or a short 8-character prefix.
+    If multiple jobs match the prefix, you'll be prompted to select one.
+
     Args:
-        job_id: UUID of the job (can use short prefix, minimum 8 chars).
+        job_id: UUID or 8+ char prefix of the job.
         json_out: Output raw JSON instead of formatted table.
         follow: Stream events as they occur (Ctrl+C to stop).
         limit: Maximum number of events to retrieve.
+        full: Show complete event details without truncation.
 
     Examples:
-        pulldb events abc12345-6789-...   # Show all events
-        pulldb events abc12345 --follow   # Stream events
-        pulldb events abc12345 --json     # JSON output
+        pulldb events 8b4c4a3a              # Short 8-char prefix
+        pulldb events 8b4c4a3a --follow     # Stream events
+        pulldb events 8b4c4a3a --json       # JSON output
+        pulldb events 8b4c4a3a --full       # Full details
     """
-    # Validate job_id format
-    if len(job_id) < 8:
-        raise click.UsageError(
-            "Job ID must be at least 8 characters. Use 'pulldb status' to find job IDs."
-        )
+    # Resolve short prefix to full job ID
+    resolved_id = _resolve_job_id(job_id)
 
     if follow:
-        _stream_job_events(job_id)
+        _stream_job_events(resolved_id)
         return
 
     # Fetch events
     params: dict[str, t.Any] = {"limit": limit}
     try:
-        events = _api_get(f"/api/jobs/{job_id}/events", params)
+        events = _api_get(f"/api/jobs/{resolved_id}/events", params)
     except _APIError as exc:
         raise click.ClickException(str(exc)) from exc
 
     if not events:
-        click.echo(f"No events found for job {job_id[:8]}...")
+        click.echo(f"No events found for job {resolved_id[:8]}...")
         return
 
     if json_out:
@@ -934,36 +1369,51 @@ def events_cmd(job_id: str, json_out: bool, follow: bool, limit: int) -> None:
         return
 
     # Table output
-    click.echo(f"Events for job {job_id[:8]}...\n")
+    click.echo(f"Events for job {resolved_id[:8]}...\n")
 
-    headers = ["TIMESTAMP", "EVENT TYPE", "DETAIL"]
-    rows: list[list[str]] = []
+    if full:
+        # Full detail mode - show each event with complete formatted detail
+        for event in events:
+            ts = _parse_iso(event.get("logged_at"))
+            ts_str = ts.strftime("%Y-%m-%d %H:%M:%S") if ts else "-"
+            event_type = event.get("event_type", "unknown")
+            detail = event.get("detail") or "-"
 
-    for event in events:
-        ts = _parse_iso(event.get("logged_at"))
-        ts_str = ts.strftime("%Y-%m-%d %H:%M:%S") if ts else "-"
-        event_type = event.get("event_type", "unknown")
-        detail = event.get("detail") or "-"
-        # Truncate long details
-        if len(detail) > 60:
-            detail = detail[:57] + "..."
-        rows.append([ts_str, event_type, detail])
+            click.echo(f"[{ts_str}] {event_type}")
+            click.echo("-" * 60)
+            # Format detail - try to parse as JSON for pretty printing
+            _print_formatted_detail(detail)
+            click.echo()
+    else:
+        # Compact table mode
+        headers = ["TIMESTAMP", "EVENT TYPE", "DETAIL"]
+        rows: list[list[str]] = []
 
-    # Calculate column widths
-    col_widths = [len(h) for h in headers]
-    for row in rows:
-        for i, cell in enumerate(row):
-            col_widths[i] = max(col_widths[i], len(cell))
+        for event in events:
+            ts = _parse_iso(event.get("logged_at"))
+            ts_str = ts.strftime("%Y-%m-%d %H:%M:%S") if ts else "-"
+            event_type = event.get("event_type", "unknown")
+            detail = event.get("detail") or "-"
+            # Truncate long details
+            if len(detail) > 60:
+                detail = detail[:57] + "..."
+            rows.append([ts_str, event_type, detail])
 
-    # Print header
-    header_line = "  ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers))
-    click.echo(header_line)
-    click.echo("  ".join("-" * w for w in col_widths))
+        # Calculate column widths
+        col_widths = [len(h) for h in headers]
+        for row in rows:
+            for i, cell in enumerate(row):
+                col_widths[i] = max(col_widths[i], len(cell))
 
-    # Print rows
-    for row in rows:
-        line = "  ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row))
-        click.echo(line)
+        # Print header
+        header_line = "  ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers))
+        click.echo(header_line)
+        click.echo("  ".join("-" * w for w in col_widths))
+
+        # Print rows
+        for row in rows:
+            line = "  ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row))
+            click.echo(line)
 
     click.echo(f"\nTotal: {len(events)} event(s)")
 
@@ -1171,15 +1621,11 @@ def profile_cmd(job_id: str, json_out: bool) -> None:
         pulldb profile abc12345            # Short prefix
         pulldb profile abc12345 --json     # Raw JSON output
     """
-    # Validate job_id format (at least 8 chars for short form)
-    if len(job_id) < 8:
-        raise click.UsageError(
-            "Job ID must be at least 8 characters. "
-            "Use 'pulldb status' or 'pulldb history' to find job IDs."
-        )
+    # Resolve job_id (supports short prefixes)
+    resolved_job_id = _resolve_job_id(job_id)
 
     base_url, timeout = _load_api_config()
-    url = f"{base_url}/api/jobs/{job_id}/profile"
+    url = f"{base_url}/api/jobs/{resolved_job_id}/profile"
     try:
         response = requests_module.get(url, timeout=timeout)
     except RequestException as exc:
@@ -1212,7 +1658,13 @@ def profile_cmd(job_id: str, json_out: bool) -> None:
     click.echo("=" * 60)
 
     if error:
-        click.echo(f"Status: Failed - {error}")
+        click.echo("Status: Failed")
+        click.echo("\nError Details:")
+        click.echo("-" * 40)
+        # Format multi-line error properly
+        for line in str(error).split("\n"):
+            click.echo(f"  {line}")
+        click.echo("-" * 40)
     else:
         click.echo("Status: Complete")
 
