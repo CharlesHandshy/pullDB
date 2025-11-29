@@ -1,5 +1,7 @@
 # Roadmap (Documentation-First)
 
+[← Back to Documentation Index](../docs/START-HERE.md) · [Design README](README.md)
+
 > **Governance**: All feature additions must align with principles in `../.github/copilot-instructions.md` and `../constitution.md`. Update those documents first if architectural changes are needed.
 
 This roadmap records deferred features and the documentation prerequisites before implementation begins. Always update this file before expanding scope.
@@ -442,3 +444,7 @@ our scale requirements.
 - Review backlog items quarterly.
 - Keep this roadmap synchronized with `../constitution.md` and product decisions.
 - Ensure every phase has clear exit criteria and testing expectations before coding.
+
+---
+
+[← Back to Documentation Index](../docs/START-HERE.md) · [Restore Runbook](runbook-restore.md)

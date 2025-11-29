@@ -1,7 +1,9 @@
 pulldb policies
 ================
 
-This directory contains canonical, minimal IAM policy JSON files and trust policies referenced by `docs/KNOWLEDGE-POOL.md`.
+[← Back to Documentation Index](../START-HERE.md)
+
+This directory contains canonical, minimal IAM policy JSON files and trust policies referenced by [KNOWLEDGE-POOL.md](../KNOWLEDGE-POOL.md).
 
 Usage notes:
 - These files are templates. Replace `<ACCOUNT_ID>` and `<EXTERNAL_ID>` placeholders when deploying.
@@ -17,3 +19,7 @@ Files:
 Security guidance:
 - Prefer creating these policies in the account owning the resource (production account for prod S3 policy).
 - Use external IDs for cross-account trust where appropriate.
+
+---
+
+[← Back to Documentation Index](../START-HERE.md) · [KNOWLEDGE-POOL](../KNOWLEDGE-POOL.md)

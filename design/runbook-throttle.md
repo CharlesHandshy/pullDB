@@ -1,5 +1,7 @@
 # Throttle Runbook
 
+[← Back to Documentation Index](../docs/START-HERE.md) · [Design README](README.md)
+
 Use this guide to diagnose and resolve throttling-related issues (HTTP 429 responses).
 
 ## Overview
@@ -200,3 +202,7 @@ See `docs/concurrency-controls.md` for detailed configuration guidance.
 
 - [runbook-failure.md](runbook-failure.md) - General restore failure triage
 - [runbook-restore.md](runbook-restore.md) - Restore workflow procedures
+
+---
+
+[← Back to Documentation Index](../docs/START-HERE.md) · [Roadmap →](roadmap.md)

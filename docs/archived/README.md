@@ -1,20 +1,36 @@
 # Archived Documentation
 
-These files were moved here because their content has been consolidated into `docs/AWS-SETUP.md`, `docs/mysql-setup.md`, or `docs/testing.md`. Keep archived copies for history and reference. Do not edit these files in-place.
+These files were archived during the v0.0.8 documentation consolidation (December 2025). Content has been consolidated into the new unified documentation structure. Keep archived copies for historical reference. Do not edit these files.
+
+## Current Authoritative Docs
+
+The consolidated documentation set is:
+
+| Document | Purpose |
+|----------|---------|
+| `docs/getting-started.md` | Installation and quick start |
+| `docs/architecture.md` | System design and data flow |
+| `docs/cli-reference.md` | pulldb and pulldb-admin commands |
+| `docs/admin-guide.md` | Operations and maintenance |
+| `docs/deployment.md` | Service deployment and security |
+| `docs/development.md` | Contributing and coding standards |
+| `docs/mysql-schema.md` | Database schema reference |
+| `docs/KNOWLEDGE-POOL.md` | Quick reference for key values |
 
 ## Archive History
 
 | Date | Files | Reason |
 |------|-------|--------|
-| 2025-11-04 | aws-*.OBSOLETE | Initial consolidation into AWS-SETUP.md |
-| 2025-12 | aws-authentication-setup.md, aws-secrets-manager-setup.md | MySQL user separation - content merged into AWS-SETUP.md |
-| 2025-12 | parameter-store-setup.md, test-environment-validation.md | Obsolete - content in AWS-SETUP.md Section B |
-| 2025-12 | SECRETS-MANAGER-SUMMARY.md | Change summary doc - now obsolete |
+| 2025-12 | Phase planning docs | Consolidated into architecture.md |
+| 2025-12 | AWS setup docs | Consolidated into getting-started.md |
+| 2025-12 | CLI docs | Consolidated into cli-reference.md |
+| 2025-12 | Service docs | Consolidated into deployment.md |
+| 2025-12 | Coding standards | Consolidated into development.md |
+| 2025-12 | Testing docs | Consolidated into development.md |
+| 2025-11 | aws-*.OBSOLETE | Initial AWS consolidation |
 
-## Current Authoritative Docs
+## Archived Directories
 
-- **AWS Setup**: `docs/AWS-SETUP.md` (includes auth, secrets, cross-account, profiles)
-- **MySQL Setup**: `docs/mysql-setup.md` (includes user creation, schema)
-- **MySQL Schema**: `docs/mysql-schema.md` (canonical schema reference)
-- **Testing**: `docs/testing.md` (includes test environment setup)
-- **Knowledge Pool**: `docs/KNOWLEDGE-POOL.md` (quick reference for all key values)
+- `status-reports/` - Implementation status reports from Phase 1-4
+- AWS setup fragments (*.OBSOLETE)
+- Parameter store and test environment docs

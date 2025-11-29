@@ -1,5 +1,7 @@
 # pullDB Workspace Index
 
+[← Back to Documentation Index](START-HERE.md)
+
 > **Purpose**: Comprehensive atomic-level index for AI model searching and navigation.  
 > **Last Updated**: 2025-11-26  
 > **File Count**: ~297 project files (excluding venv, .git, caches)
@@ -676,3 +678,7 @@ pulldb/tests/test_worker_service.py
 ---
 
 *This index is designed for AI model context retrieval. For human navigation, start with `README.md` and `docs/KNOWLEDGE-POOL.md`.*
+
+---
+
+[← Back to Documentation Index](START-HERE.md)

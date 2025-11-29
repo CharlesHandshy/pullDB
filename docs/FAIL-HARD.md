@@ -1,5 +1,7 @@
 # FAIL HARD Documentation
 
+[← Back to Documentation Index](START-HERE.md)
+
 ## GOAL
 
 What was the intended outcome?
@@ -70,3 +72,7 @@ Ranked by effectiveness:
 - Resolution: [chosen solution number]
 
 <!-- Engineering DNA drift auditor verification: All required section headings present -->
+
+---
+
+[← Back to Documentation Index](START-HERE.md)

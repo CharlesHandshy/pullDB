@@ -1,5 +1,7 @@
 # Failure Runbook (Prototype)
 
+[← Back to Documentation Index](../docs/START-HERE.md) · [Design README](README.md)
+
 Use this guide to triage and resolve common pullDB restore failures.
 
 ## FAIL HARD Diagnostic Checklist
@@ -88,3 +90,7 @@ Solutions:
 - Capture job ID, timestamps, CLI output, relevant logs.
 - Notify on-call engineer with summary and immediate mitigations attempted.
 - Update incident ticket with remediation steps and prevention recommendations.
+
+---
+
+[← Back to Documentation Index](../docs/START-HERE.md) · [Throttle Runbook →](runbook-throttle.md)

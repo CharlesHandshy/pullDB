@@ -1,6 +1,10 @@
 # pullDB MySQL Schema Constitution
 
+[← Back to Documentation Index](START-HERE.md)
+
 > **Foundation Documents**: This schema implements the architectural principles defined in `../.github/copilot-instructions.md` and coding standards from `../constitution.md`.
+>
+> **Related:** [Architecture](architecture.md) · [Development Guide](development.md)
 
 > **Schema Management**:
 > - **Source of Truth**: `schema/pulldb_service/*.sql` - numbered files defining all tables, views, indexes, and seed data
@@ -106,6 +110,61 @@ CREATE TABLE auth_users (
 - `user_code`: six-character identifier used to derive restore targets. Generation rules follow the README prototype strategy and reject non-unique results.
 - `is_admin`: reserved for future admin tooling; prototype treats every authenticated user the same.
 - `disabled_at`: soft-delete marker so audit history remains intact.
+
+**Phase 4 Addition**: The `role` column was added to support role-based access control:
+
+```sql
+ALTER TABLE auth_users ADD COLUMN role ENUM('user','manager','admin') NOT NULL DEFAULT 'user';
+```
+
+### auth_credentials (Phase 4)
+
+Password and 2FA storage for web authentication:
+
+```sql
+CREATE TABLE auth_credentials (
+    user_id CHAR(36) PRIMARY KEY,
+    password_hash VARCHAR(255) NULL,  -- bcrypt hash, NULL = no password set
+    totp_secret VARCHAR(64) NULL,     -- Base32 encoded TOTP secret
+    totp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    CONSTRAINT fk_credentials_user FOREIGN KEY (user_id) 
+        REFERENCES auth_users(user_id) ON DELETE CASCADE
+);
+```
+
+- `password_hash`: bcrypt hash of user password. NULL means no password set (uses Linux system auth only).
+- `totp_secret`: Base32 encoded TOTP secret for 2FA. NULL if 2FA not configured.
+- `totp_enabled`: Whether 2FA is active for this user.
+
+### sessions (Phase 4)
+
+Session management for web authentication:
+
+```sql
+CREATE TABLE sessions (
+    session_id CHAR(36) PRIMARY KEY,
+    user_id CHAR(36) NOT NULL,
+    token_hash CHAR(64) NOT NULL,  -- SHA-256 of session token
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    expires_at TIMESTAMP(6) NOT NULL,
+    last_activity TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    ip_address VARCHAR(45) NULL,   -- IPv4 or IPv6
+    user_agent VARCHAR(255) NULL,
+    CONSTRAINT fk_session_user FOREIGN KEY (user_id) 
+        REFERENCES auth_users(user_id) ON DELETE CASCADE,
+    INDEX idx_sessions_user (user_id),
+    INDEX idx_sessions_expires (expires_at),
+    INDEX idx_sessions_token (token_hash)
+);
+```
+
+- `token_hash`: SHA-256 hash of session token for secure lookup.
+- `expires_at`: Session expiration time.
+- `last_activity`: Updated on each authenticated request for session timeout tracking.
+- `ip_address`: Client IP for security auditing.
+- `user_agent`: Browser/client identifier for session management UI.
 
 ### jobs
 
@@ -369,3 +428,7 @@ Documenting these tables now avoids architectural drift while keeping the protot
 - Triggers may use `UTC_TIMESTAMP(6)` for explicit UTC timestamp generation when needed.
 
 _This constitution guides the initial implementation and provides a grounded roadmap for the queued enhancements without committing code we are not ready to operate yet._
+
+---
+
+[← Back to Documentation Index](START-HERE.md) · [Architecture →](architecture.md)

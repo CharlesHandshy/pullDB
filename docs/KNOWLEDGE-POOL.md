@@ -1,10 +1,14 @@
 # pullDB Knowledge Pool (condensed facts)
 
-Purpose: a single-source, trimmed knowledge base used by agents and maintainers. This file contains only the facts required for current operations (Nov 2025). It is intentionally concise and indexed for fast lookup.
+[← Back to Documentation Index](START-HERE.md)
 
-Last updated: 2025-11-29
-Current version: v0.0.7
-Phases complete: 0-3
+Purpose: a single-source, trimmed knowledge base used by agents and maintainers. This file contains only the facts required for current operations. It is intentionally concise and indexed for fast lookup.
+
+**Related:** [Deployment](deployment.md) · [policies/](policies/) · [terraform/](terraform/)
+
+Last updated: 2025-12-03
+Current version: v0.0.8
+Phases complete: 0-4
 
 ---
 
@@ -389,3 +393,7 @@ If you'd like, I will:
 - create `docs/archived/` and move purge candidates there (commit), or
 - generate a machine-readable index (JSON) for quick programmatic lookups, or
 - expand any category with deeper extracted facts (e.g., full IAM policy JSON snippets)
+
+---
+
+[← Back to Documentation Index](START-HERE.md) · [Deployment →](deployment.md)

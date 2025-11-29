@@ -1,5 +1,7 @@
 # Restore Runbook (Prototype)
 
+[← Back to Documentation Index](../docs/START-HERE.md) · [Design README](README.md)
+
 Follow this checklist when performing or validating a restore with pullDB.
 
 ## FAIL HARD Operational Guardrail
@@ -95,3 +97,7 @@ against the same target if this recurs.
 Cutover (atomic rename) occurs only after successful restore, post‑SQL execution,
 and metadata injection. On failure prior to rename, the staging database is preserved
 for diagnostics and will be removed automatically on the next restore for that target.
+
+---
+
+[← Back to Documentation Index](../docs/START-HERE.md) · [Failure Runbook →](runbook-failure.md)
