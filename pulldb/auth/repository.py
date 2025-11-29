@@ -259,7 +259,10 @@ class AuthRepository:
                 return None
 
             # Check expiration
+            # MySQL returns naive datetime, treat as UTC
             expires_at = row["expires_at"]
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
             if expires_at < datetime.now(UTC):
                 # Session expired, clean it up
                 cursor.execute(

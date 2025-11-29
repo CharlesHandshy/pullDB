@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Jobs - pullDB{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Job History</h1>
+
+<div class="card">
+    <div class="card-header">
+        <h2>All Jobs</h2>
+        <div>
+            <select onchange="window.location.href='/web/jobs?status_filter=' + this.value">
+                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Status</option>
+                <option value="queued" {% if status_filter == 'queued' %}selected{% endif %}>Queued</option>
+                <option value="running" {% if status_filter == 'running' %}selected{% endif %}>Running</option>
+                <option value="complete" {% if status_filter == 'complete' %}selected{% endif %}>Complete</option>
+                <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
+            </select>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if jobs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Target</th>
+                    <th>Status</th>
+                    <th>User</th>
+                    <th>Database Host</th>
+                    <th>Submitted</th>
+                    <th>Completed</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in jobs %}
+                <tr>
+                    <td>
+                        <a href="/web/jobs/{{ job.id }}">
+                            <span class="mono">{{ job.target }}</span>
+                        </a>
+                        <div class="text-muted text-sm mono mt-1">
+                            {{ job.id[:8] }}...
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge badge-{{ job.status.value }}">
+                            {{ job.status.value }}
+                        </span>
+                        {% if job.error_detail %}
+                        <div class="text-sm text-muted mt-1" title="{{ job.error_detail }}">
+                            {{ job.error_detail[:30] }}{% if job.error_detail|length > 30 %}...{% endif %}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>{{ job.owner_username }}</td>
+                    <td class="mono text-sm">{{ job.dbhost }}</td>
+                    <td class="text-muted text-sm">
+                        {{ job.submitted_at.strftime('%Y-%m-%d %H:%M') }}
+                    </td>
+                    <td class="text-muted text-sm">
+                        {% if job.completed_at %}
+                        {{ job.completed_at.strftime('%Y-%m-%d %H:%M') }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <p>No jobs found</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

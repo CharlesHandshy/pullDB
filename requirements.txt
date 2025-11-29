@@ -19,3 +19,7 @@ python-dotenv>=1.2.0
 
 # Authentication
 bcrypt>=4.2.0
+
+# Web UI
+jinja2>=3.1.0
+python-multipart>=0.0.9

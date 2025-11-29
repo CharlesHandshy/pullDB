@@ -1,0 +1,32 @@
+{% if active_jobs %}
+<table>
+    <thead>
+        <tr>
+            <th>Target</th>
+            <th>Status</th>
+            <th>Operation</th>
+            <th>Owner</th>
+            <th>Started</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for job in active_jobs %}
+        <tr>
+            <td class="mono">{{ job.target }}</td>
+            <td>
+                <span class="badge badge-{{ job.status.value }}">{{ job.status.value }}</span>
+            </td>
+            <td>{{ job.current_operation or '-' }}</td>
+            <td>{{ job.owner_username }}</td>
+            <td class="text-sm">{{ job.started_at.strftime('%H:%M:%S') if job.started_at else job.submitted_at.strftime('%H:%M:%S') }}</td>
+            <td>
+                <a href="/web/jobs/{{ job.id }}" class="btn btn-sm btn-secondary">View</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="text-muted">No active jobs.</p>
+{% endif %}

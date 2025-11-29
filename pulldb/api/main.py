@@ -7,6 +7,7 @@ import os
 import typing as t
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import fastapi
 import pydantic
@@ -29,6 +30,9 @@ from pulldb.infra.mysql import (
 from pulldb.infra.secrets import CredentialResolver
 from pulldb.worker.staging import generate_staging_name
 
+if TYPE_CHECKING:
+    from pulldb.auth import AuthRepository
+
 
 DEFAULT_STATUS_LIMIT = 100
 MAX_STATUS_LIMIT = 1000
@@ -40,6 +44,13 @@ def _letters_only(value: str) -> str:
 
 
 app = fastapi.FastAPI(title="pullDB API Service", version="0.0.1.dev0")
+
+# Phase 4: Mount web UI router if templates available
+try:
+    from pulldb.web import router as web_router
+    app.include_router(web_router)
+except ImportError:
+    pass  # Web UI module not installed
 
 
 class JobRequest(pydantic.BaseModel):
@@ -119,6 +130,12 @@ class APIState(t.NamedTuple):
     job_repo: JobRepository
     settings_repo: SettingsRepository
     host_repo: HostRepository
+    auth_repo: "AuthRepository | None" = None  # Phase 4: Optional auth repository
+
+
+# Forward reference for type checking
+if TYPE_CHECKING:
+    from pulldb.auth import AuthRepository
 
 
 def _initialize_state() -> APIState:
@@ -175,6 +192,12 @@ def _initialize_state() -> APIState:
     # Create credential resolver for host lookups
     credential_resolver = CredentialResolver(config.aws_profile)
 
+    # Phase 4: Create auth repository if web UI is enabled
+    auth_repo = None
+    if os.getenv("PULLDB_ENABLE_WEB_UI", "false").lower() == "true":
+        from pulldb.auth import AuthRepository
+        auth_repo = AuthRepository(pool)
+
     return APIState(
         config=config,
         pool=pool,
@@ -182,6 +205,7 @@ def _initialize_state() -> APIState:
         job_repo=JobRepository(pool),
         settings_repo=SettingsRepository(pool),
         host_repo=HostRepository(pool, credential_resolver),
+        auth_repo=auth_repo,
     )
 
 

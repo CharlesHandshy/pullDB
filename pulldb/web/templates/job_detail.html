@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Job {{ job.id[:8] }} - pullDB{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="/web/jobs" class="text-muted">&larr; Back to Jobs</a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>
+            <span class="mono">{{ job.target }}</span>
+            <span class="badge badge-{{ job.status.value }}">{{ job.status.value }}</span>
+        </h2>
+        {% if can_cancel and job.status.value in ['queued', 'running'] %}
+        <form action="/api/jobs/{{ job.id }}/cancel" method="POST" style="display: inline;">
+            <button type="submit" class="btn btn-danger btn-sm">Cancel</button>
+        </form>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <table>
+            <tbody>
+                <tr>
+                    <th style="width: 150px;">Job ID</th>
+                    <td class="mono">{{ job.id }}</td>
+                </tr>
+                <tr>
+                    <th>Target Database</th>
+                    <td class="mono">{{ job.target }}</td>
+                </tr>
+                <tr>
+                    <th>Staging Name</th>
+                    <td class="mono">{{ job.staging_name }}</td>
+                </tr>
+                <tr>
+                    <th>Database Host</th>
+                    <td class="mono">{{ job.dbhost }}</td>
+                </tr>
+                <tr>
+                    <th>Owner</th>
+                    <td>{{ job.owner_username }} <span class="text-muted">({{ job.owner_user_code }})</span></td>
+                </tr>
+                <tr>
+                    <th>Submitted</th>
+                    <td>{{ job.submitted_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</td>
+                </tr>
+                {% if job.started_at %}
+                <tr>
+                    <th>Started</th>
+                    <td>{{ job.started_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</td>
+                </tr>
+                {% endif %}
+                {% if job.completed_at %}
+                <tr>
+                    <th>Completed</th>
+                    <td>{{ job.completed_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</td>
+                </tr>
+                {% endif %}
+                {% if job.worker_id %}
+                <tr>
+                    <th>Worker</th>
+                    <td class="mono">{{ job.worker_id }}</td>
+                </tr>
+                {% endif %}
+                {% if job.current_operation %}
+                <tr>
+                    <th>Current Operation</th>
+                    <td>{{ job.current_operation }}</td>
+                </tr>
+                {% endif %}
+                {% if job.error_detail %}
+                <tr>
+                    <th>Error</th>
+                    <td class="text-danger">{{ job.error_detail }}</td>
+                </tr>
+                {% endif %}
+                {% if job.options_json %}
+                <tr>
+                    <th>Options</th>
+                    <td class="mono text-sm">{{ job.options_json }}</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Job Events -->
+<div class="card">
+    <div class="card-header">
+        <h2>Event Log</h2>
+        <span class="htmx-indicator text-muted text-sm">Updating...</span>
+    </div>
+    <div class="card-body"
+         {% if job.status.value in ['queued', 'running'] %}
+         hx-get="/web/partials/job-events/{{ job.id }}"
+         hx-trigger="every 3s"
+         hx-indicator=".htmx-indicator"
+         {% endif %}>
+        {% include "partials/job_events.html" %}
+    </div>
+</div>
+{% endblock %}

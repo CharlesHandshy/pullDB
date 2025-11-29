@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - pullDB{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Dashboard</h1>
+
+<!-- Active Jobs Card -->
+<div class="card">
+    <div class="card-header">
+        <h2>Active Jobs</h2>
+        <span class="htmx-indicator text-muted text-sm">Loading...</span>
+    </div>
+    <div class="card-body" 
+         hx-get="/web/partials/active-jobs" 
+         hx-trigger="every 5s"
+         hx-indicator=".htmx-indicator">
+        {% include "partials/active_jobs.html" %}
+    </div>
+</div>
+
+<!-- Recent Jobs Card -->
+<div class="card">
+    <div class="card-header">
+        <h2>Recent Jobs</h2>
+        <a href="/web/jobs" class="btn btn-sm btn-primary">View All</a>
+    </div>
+    <div class="card-body">
+        {% if recent_jobs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Target</th>
+                    <th>Status</th>
+                    <th>User</th>
+                    <th>Submitted</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in recent_jobs %}
+                <tr>
+                    <td>
+                        <a href="/web/jobs/{{ job.id }}">
+                            <span class="mono">{{ job.target }}</span>
+                        </a>
+                    </td>
+                    <td>
+                        <span class="badge badge-{{ job.status.value }}">
+                            {{ job.status.value }}
+                        </span>
+                    </td>
+                    <td class="text-muted">{{ job.owner_username }}</td>
+                    <td class="text-muted text-sm">
+                        {{ job.submitted_at.strftime('%Y-%m-%d %H:%M') }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <p>No recent jobs</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
