@@ -2,12 +2,15 @@
 
 Purpose: a single-source, trimmed knowledge base used by agents and maintainers. This file contains only the facts required for current operations (Nov 2025). It is intentionally concise and indexed for fast lookup.
 
-Last updated: 2025-11-28
+Last updated: 2025-11-29
+Current version: v0.0.7
+Phases complete: 0-3
 
 ---
 
 ## Index (categories)
 - CLI Architecture & Scope
+- S3 Multi-Location Configuration (v0.0.7)
 - Accounts & ARNs
 - S3 buckets & paths
 - IAM roles & policies
@@ -65,6 +68,38 @@ Both CLIs are thin clients that:
 3. Display results
 
 The Worker performs all actual operations (database drops, S3 downloads, restores, etc.).
+
+---
+
+## S3 Multi-Location Configuration (v0.0.7)
+
+As of v0.0.7, pullDB supports multiple S3 backup locations configured via environment variable.
+
+**Configuration Format**:
+```bash
+PULLDB_S3_BACKUP_LOCATIONS='[
+  {"name": "staging", "bucket_path": "s3://pestroutesrdsdbs/daily/stg/", "profile": "pr-staging"},
+  {"name": "prod", "bucket_path": "s3://pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/", "profile": "pr-prod"}
+]'
+```
+
+**Location Fields**:
+- `name`: Human-readable identifier (used for filtering via `s3env=` option)
+- `bucket_path`: Full S3 path including bucket and prefix
+- `profile`: AWS profile name for cross-account access
+
+**Usage**:
+- `pulldb restore customer=acme` - Searches all configured locations
+- `pulldb restore customer=acme s3env=prod` - Searches only locations with "prod" in name
+- `pulldb search customer=acme` - Lists backups from all locations
+- `pulldb search customer=acme s3env=staging` - Lists backups from staging only
+
+**Worker Behavior**:
+The worker filters locations based on job options:
+```python
+if env and env.lower() not in location.name.lower():
+    continue  # Skip non-matching locations
+```
 
 ---
 

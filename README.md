@@ -1,9 +1,9 @@
 # pullDB Tool
 
-[![Release](https://img.shields.io/github/v/release/PestRoutes/infra.devops?filter=pulldb*&label=version&color=blue)](https://github.com/PestRoutes/infra.devops/releases/latest)
+[![Release](https://img.shields.io/badge/version-0.0.7-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-183%20passing-success.svg)](pulldb/tests/)
+[![Tests](https://img.shields.io/badge/tests-328%20passing-success.svg)](pulldb/tests/)
 [![Type Check](https://img.shields.io/badge/mypy-passing-success.svg)](pulldb/)
 
 > **For AI Agents & New Developers**: Start with `.github/copilot-instructions.md` for architectural overview and critical constraints, then read `constitution.md` for coding standards and workflow. This README provides complete API reference and usage patterns.
@@ -179,67 +179,34 @@ It checks:
 
 `pullDB` pulls production database backups from S3 and restores them into development environments. The prototype architecture consists of three services: a CLI that calls an API service, an API service that manages job requests via MySQL, and a worker service that executes restores. The services coordinate exclusively through MySQL.
 
-### Current Implementation Status (Nov 3 2025) - Phase 0: 100% Complete (Release Freeze Initiated)
+### Current Implementation Status (Nov 29 2025) - Phase 0-3: 100% Complete (v0.0.7)
 
-**Major Achievement**: Core restore workflow complete and tested (181/181 tests passing; 1 skipped, 1 xpassed). The system accepts restore jobs via CLI, lists active jobs with `pulldb status`, orchestrates complete database restores (staging → myloader → post-SQL → metadata → atomic rename), emits structured logs/metrics, and runs under a systemd-managed daemon (graceful shutdown confirmed). Project entered release freeze (bug/security fixes only) on Nov 3 2025 after final installer + packaging & daemon service runner validation.
+**Major Achievement**: Full restore workflow operational with multi-location S3 support. The system accepts restore jobs via CLI, lists active jobs with `pulldb status`, orchestrates complete database restores (staging → myloader → post-SQL → metadata → atomic rename), emits structured logs/metrics, and runs under systemd-managed services. **328 tests passing**.
 
-**Completed Milestones**:
-- ✅ Milestone 1: Foundation (MySQL schema, config, credentials, logging) - 100%
-- ✅ Milestone 2: Repository Layer (4 repositories, domain models, 87 tests) - 100%
-- ✅ Milestone 2.5: Worker Foundation (restore workflow, 48 tests) - 100%
-- ✅ Milestone 2.6: Atomic Rename Enhancements (deployment tooling, 14 tests) - 100%
-- ✅ Milestone 3: CLI Implementation (parser/validator/enqueue/status complete) - 100%
-- ✅ Milestone 5: S3 Integration (discovery, download, disk capacity) - 100%
-- ✅ Milestone 6: MySQL Restore (staging pattern, myloader, atomic rename) - 100%
-- ✅ Milestone 7: Post-Restore SQL (script execution, metadata injection) - 100%
-- ✅ Milestone 8: Logging & Metrics (JSON logging, metrics emission) - 100%
-- ✅ Milestone 9: Testing (175 tests, 100% pass rate) - 100%
-- ✅ Milestone 10: Deployment (daemon service runner + systemd unit + packaging + installer tests) - 100%
+**Completed Phases**:
+- ✅ **Phase 0 (Prototype)**: Full restore workflow, CLI, API, Worker services
+- ✅ **Phase 1 (Operational Enhancements)**: Cancellation, history, events, cleanup
+- ✅ **Phase 2 (Concurrency Controls)**: Per-user/global caps, host aliases
+- ✅ **Phase 3 (Multi-Daemon)**: Atomic job claiming, worker ID tracking
 
-**Test Suite**: 181 passing tests, 1 skipped, 1 xpassed (75.14s total execution, 60s timeout per test)
-- 87 repository + integration tests
-- 23 worker unit tests
-- 25+ integration tests (happy path + failure modes)
-- 14 deployment + benchmark tests
-- 14 secrets tests
-- 7 config tests
-- 5 CLI tests (status command)
-- 6 installer tests (flags, validation, systemd skip, root enforcement)
+**v0.0.7 Highlights**:
+- Multi-location S3 backup support (`PULLDB_S3_BACKUP_LOCATIONS`)
+- CLI syntax flexibility (`option=value`, `--option=value`, `--option value`)
+- Short job ID prefix matching (8+ characters)
+- Environment-based S3 filtering (`s3env=prod` or `s3env=staging`)
 
-**Remaining Work (Release Readiness)**:
-1. Production deployment & 2-week stability monitoring window
-2. Prepare Phase 1 roadmap refinement (post-freeze)
+**Next Phase (4)**: Web interface and enhanced authentication (optional)
 
-**Complete Status Report**: See `STATUS-REPORT-2025-11-03.md` (with addendum) for detailed milestone breakdown, metrics, and recommendations.
+**Test Suite**: 328 passing tests across:
+- Repository + integration tests
+- Worker unit tests
+- CLI tests
+- API tests
+- Deployment + benchmark tests
 
-### Release Freeze (Nov 3 2025)
+### Release Freeze (Nov 3 2025) - LIFTED
 
-The project is now in a release freeze. Only the following change categories are permitted until post‑deployment stability sign‑off:
-
-| Allowed | Description |
-|---------|-------------|
-| Bug Fix | Correct behavior that deviates from documented design |
-| Security Fix | Address vulnerabilities (dependency CVE, secret exposure) |
-| Critical Ops | Deployment scripting reliability (non-feature) |
-| Documentation Correction | Factual updates (no new feature docs) |
-
-| Disallowed | Rationale |
-|------------|-----------|
-| New Features | Risk of scope creep; deferred to Phase 1 |
-| Refactors Without Defect | Freeze preserves stability |
-| Performance Optimizations | Profile & optimize post-release |
-| Non-critical Style Tweaks | Avoid churn before release |
-
-Freeze Exit Criteria:
-1. ≥10 successful production restores
-2. Zero unhandled exceptions in daemon logs over 14 days
-3. Average restore duration < 30 minutes
-4. Metrics (queue depth, disk failures) validated in monitoring
-5. Post‑SQL scripts all succeed for customer & QA template restores
-6. Staging cleanup consistently removes orphaned staging DBs
-7. Security scan (dependencies + secrets) clean
-
-See `RELEASE-FREEZE.md` for authoritative policy.
+The project exited release freeze with v0.0.5 after meeting stability criteria. Active development has resumed with Phase 1-3 features now complete. Current version is v0.0.7.
 
 ### Engineering DNA Integration
 
@@ -409,11 +376,20 @@ CI runs the check on every push/PR (workflow: `.github/workflows/fail-hard-check
 
 | Option | Description | Required | Notes |
 | --- | --- | --- | --- |
-| `user=<name>` | Identity of the operator requesting the restore. | Yes | Must appear first; usernames must contain at least six alphabetic characters (non-letters are stripped) so a unique `user_code` can be derived. |
-| `customer=<id>` | Restore the latest backup for a specific customer. | Conditional | Mutually exclusive with `qatemplate`. Restores to `user_code` + sanitized customer token. |
-| `qatemplate` | Restore the latest QA template backup. | Conditional | Mutually exclusive with `customer`. Restores to `user_code + 'qatemplate'`. |
-| `dbhost=<hostname>` | Target database server when the default development host is not desired. | Optional | Prototype assumes a single default host; override cases must match a pre-registered host entry. |
-| `overwrite` | Allow restoring over an existing target database without an interactive prompt. | Optional | When omitted and the target exists, daemon API returns error and CLI exits with guidance to re-run using `overwrite`. |
+| `customer=<id>` | Restore the latest backup for a specific customer. | Conditional | Mutually exclusive with `qatemplate`. |
+| `qatemplate` | Restore the latest QA template backup. | Conditional | Mutually exclusive with `customer`. |
+| `user=<name>` | Identity of the operator (optional, auto-detected from sudo). | Optional | Override for admin use. |
+| `dbhost=<hostname>` | Target database server. | Optional | Defaults to localhost. |
+| `date=<YYYY-MM-DD>` | Restore backup from specific date. | Optional | Finds backup closest to this date. |
+| `s3env=<staging\|prod>` | Filter S3 locations by environment. | Optional | Search all configured locations if omitted. |
+| `overwrite` | Allow restoring over an existing target database. | Optional | Without this, existing targets are rejected. |
+
+**Supported Syntax Styles** (all equivalent):
+```bash
+pulldb restore customer=acme dbhost=dev-db-01
+pulldb restore --customer=acme --dbhost=dev-db-01
+pulldb restore --customer acme --dbhost dev-db-01
+```
 
 The CLI fails validation when `customer` and `qatemplate` are supplied together or both omitted. All other historical flags (cancel, history, user admin, filtering, snapshot targeting) are deferred to post-prototype milestones.
 
@@ -491,12 +467,18 @@ pullDB \
 - `pulldb status [job_id]`: Shows active jobs, or filter by a specific job.
 - `pulldb cancel <job_id>`: Cancel a queued or running job.
 - `pulldb events <job_id>`: Show event history for a specific job.
+  - `--follow`: Stream events as they occur
+  - `--full`: Show complete event details
 - `pulldb profile <job_id>`: Show performance profile for a completed job.
 - `pulldb history`: Show completed/failed/canceled jobs with filtering options.
+  - `--status`: Filter by job status
+  - `--limit`: Maximum results to return
+  - `--user`: Filter by username
+- `pulldb search <customer|qatemplate>`: Search available backups.
+  - `s3env=prod`: Search only production backups
+  - `s3env=staging`: Search only staging backups
 
 **Short Job ID Prefixes**: All commands accepting a job_id support 8+ character prefixes instead of full UUIDs. For example, `pulldb cancel 8b4c4a3a` instead of `pulldb cancel 8b4c4a3a-85a1-4da2-9636-84c1d70a2159`. If multiple jobs match the prefix, you'll be prompted to select one interactively.
-
-**Note**: All discovery commands are implemented as HTTP calls to API service endpoints. The API service has read-only S3 access (ListBucket, HeadObject) specifically to support these commands without requiring CLI to have AWS credentials.
 
 ## Retry Policy
 

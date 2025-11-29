@@ -13,12 +13,12 @@ Every future feature MUST document its failure boundaries pre-implementation:
 
 Features lacking these remain deferred until documentation satisfies FAIL HARD standards.
 
-## Phase 0 – Prototype ✅ COMPLETE (v0.0.5)
+## Phase 0 – Prototype ✅ COMPLETE (v0.0.7)
 
 All Phase 0 components implemented and tested:
 
 ### Infrastructure Layer (Complete)
-- ✅ MySQL schema provisioned (17 migrations)
+- ✅ MySQL schema provisioned (consolidated schema files)
 - ✅ Credential resolution (Secrets Manager + SSM) - `pulldb/infra/secrets.py`
 - ✅ Configuration loader (two-phase) - `pulldb/domain/config.py`
 - ✅ Repository layer (Job/User/Host/Settings) - `pulldb/infra/mysql.py`
@@ -26,38 +26,53 @@ All Phase 0 components implemented and tested:
 - ✅ Structured JSON logging abstraction - `pulldb/infra/logging.py`
 - ✅ Domain error classes - `pulldb/domain/errors.py`
 - ✅ S3 client with cross-account support - `pulldb/infra/s3.py`
+- ✅ Multi-location S3 backup support via `PULLDB_S3_BACKUP_LOCATIONS`
 
 ### Worker Layer (Complete)
 - ✅ Worker poll loop with exponential backoff - `pulldb/worker/loop.py`
 - ✅ Worker service with graceful shutdown - `pulldb/worker/service.py`
-- ✅ Job executor orchestration - `pulldb/worker/executor.py` (628 lines)
-- ✅ S3 backup discovery & selection - `pulldb/worker/executor.py`
+- ✅ Job executor orchestration - `pulldb/worker/executor.py`
+- ✅ S3 backup discovery with env filtering - `pulldb/worker/executor.py`
 - ✅ Downloader with disk capacity guard - `pulldb/worker/downloader.py`
-- ✅ Myloader subprocess wrapper - `pulldb/worker/restore.py` (580 lines)
-- ✅ Post-restore SQL executor - `pulldb/worker/post_sql.py` (215 lines)
-- ✅ Staging lifecycle (orphan cleanup, name generation) - `pulldb/worker/staging.py` (291 lines)
-- ✅ Atomic rename via stored procedure - `pulldb/worker/atomic_rename.py` (210 lines)
+- ✅ Myloader subprocess wrapper - `pulldb/worker/restore.py`
+- ✅ Post-restore SQL executor - `pulldb/worker/post_sql.py`
+- ✅ Staging lifecycle (orphan cleanup, name generation) - `pulldb/worker/staging.py`
+- ✅ Atomic rename via stored procedure - `pulldb/worker/atomic_rename.py`
 - ✅ Metadata injection - `pulldb/worker/metadata.py`, `pulldb/worker/metadata_synthesis.py`
 - ✅ Log normalizer for myloader output - `pulldb/worker/log_normalizer.py`
 - ✅ Profiling capture - `pulldb/worker/profiling.py`
+- ✅ Cleanup module - `pulldb/worker/cleanup.py`
 
 ### CLI Layer (Complete)
-- ✅ CLI argument parsing - `pulldb/cli/parse.py`
-- ✅ Main CLI commands - `pulldb/cli/main.py` (1335 lines)
+- ✅ CLI argument parsing with multiple syntax styles - `pulldb/cli/parse.py`
+  - `option=value`, `--option=value`, `--option value`
+- ✅ Main CLI commands - `pulldb/cli/main.py` (1788 lines)
   - `restore` - Submit restore jobs
-  - `status` - View job status
-  - `search` - Search available backups
-  - `cancel` - Cancel jobs
-  - `events` - View job events
-  - `history` - View job history
+  - `status` - View job status (with short ID prefix support)
+  - `search` - Search available backups across configured locations
+  - `cancel` - Cancel jobs (with short ID prefix support)
+  - `events` - View job events (with --follow and --full options)
+  - `history` - View job history with filtering
   - `profile` - View job profiling data
-- ✅ Admin CLI commands - `pulldb/cli/admin.py`, `pulldb/cli/admin_commands.py` (792 lines)
+- ✅ Admin CLI commands - `pulldb/cli/admin.py`, `pulldb/cli/admin_commands.py`
 
 ### API Layer (Complete)
-- ✅ FastAPI service - `pulldb/api/main.py`
+- ✅ FastAPI service - `pulldb/api/main.py` (1618 lines, 18 endpoints)
+  - POST /api/jobs - Submit jobs
+  - GET /api/jobs - List jobs with filtering
+  - GET /api/jobs/{job_id} - Get job details
+  - GET /api/jobs/resolve/{prefix} - Resolve job ID prefix
+  - GET /api/jobs/search - Search backups
+  - GET /api/users/{username} - Get user info
+  - GET /api/status - System status
+  - GET /api/health - Health check
+  - POST /api/jobs/{job_id}/cancel - Cancel job
+  - GET /api/jobs/{job_id}/events - Get job events
+  - GET /api/jobs/{job_id}/profile - Get job profile
+  - GET /api/history - Job history
 
 ### Testing (Complete)
-- ✅ 310+ unit tests passing
+- ✅ 328 unit tests passing
 - ✅ 7 integration test files covering:
   - Workflow happy path (`test_integration_workflow.py`)
   - Disk insufficient scenarios (`test_integration_disk_insufficient.py`, `test_integration_workflow_disk_insufficient.py`)

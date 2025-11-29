@@ -10,17 +10,38 @@ Unreleased
   - This implements least-privilege MySQL access per service component
   - See `design/mysql-user-separation.md` for full details
 
-v0.0.7 - 2025-11-28
+v0.0.7 - 2025-11-29
 -------------------
+### Features
+- **Multi-Location S3 Backup Support**: Configurable via `PULLDB_S3_BACKUP_LOCATIONS` JSON array
+  - Worker filters S3 locations by job's `s3env` option (staging/prod)
+  - CLI search command uses configured locations
+  - Supports named locations with different AWS profiles
+- **CLI Syntax Flexibility**: Three option styles now supported:
+  - `option=value` (original)
+  - `--option=value` (GNU-style)
+  - `--option value` (space-separated)
 - **Short Job ID Prefixes**: All CLI commands accepting job_id now support 8+ character prefixes
   - Commands updated: `status`, `cancel`, `events`, `profile`
   - New API endpoint: `GET /api/jobs/resolve/{job_id_prefix}`
   - New repository method: `JobRepository.find_jobs_by_prefix()`
   - Interactive disambiguation when multiple jobs match a prefix
-  - Minimum prefix length: 8 characters
 - **User Identity Display**: CLI shows username and user_code when running commands
   - New API endpoint: `GET /api/users/{username}`
-  - CLI displays "User: username (code: 6char)" at startup
+
+### Fixes
+- Fixed MySQL credential resolution (username now read from secret JSON)
+- Fixed duplicate return statement in parse.py `_tokenize()`
+- Deployed `pulldb_atomic_rename` stored procedure
+
+### Schema
+- Consolidated schema files (removed redundant migrations)
+- Schema now includes all columns in base files
+
+### Tests
+- 328 tests passing (was 310+)
+- Updated test_cli_parse.py for new parser behavior
+- Updated test_atoms.py for new _tokenize signature
 
 v0.0.6 - 2025-11-28
 -------------------
