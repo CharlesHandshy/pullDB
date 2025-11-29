@@ -16,3 +16,6 @@ requests>=2.32.0
 # Data validation and configuration
 pydantic>=2.12.0
 python-dotenv>=1.2.0
+
+# Authentication
+bcrypt>=4.2.0

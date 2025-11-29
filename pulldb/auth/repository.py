@@ -1,0 +1,375 @@
+"""Authentication repository for password and session management.
+
+Phase 4: Handles password verification, session creation/validation,
+and 2FA verification. Separate from UserRepository to maintain
+single responsibility.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import secrets
+import uuid
+from datetime import UTC, datetime, timedelta
+
+from pulldb.infra.mysql import MySQLPool
+
+
+class AuthRepository:
+    """Repository for authentication operations.
+
+    Handles password verification, session creation/validation,
+    and 2FA verification. Separate from UserRepository to maintain
+    single responsibility.
+
+    Example:
+        >>> repo = AuthRepository(pool)
+        >>> repo.set_password_hash(user_id, hashed_password)
+        >>> session_id, token = repo.create_session(user_id)
+        >>> user_id = repo.validate_session(token)
+    """
+
+    # Session token length in bytes (generates 64 hex chars)
+    TOKEN_BYTES = 32
+
+    # Default session TTL
+    DEFAULT_SESSION_TTL_HOURS = 24
+
+    def __init__(self, pool: MySQLPool) -> None:
+        """Initialize AuthRepository with connection pool.
+
+        Args:
+            pool: MySQL connection pool for database access.
+        """
+        self.pool = pool
+
+    def get_password_hash(self, user_id: str) -> str | None:
+        """Get stored password hash for user.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Password hash if set, None if no password configured.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT password_hash FROM auth_credentials WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            if row and row.get("password_hash"):
+                return str(row["password_hash"])
+            return None
+
+    def set_password_hash(self, user_id: str, password_hash: str) -> None:
+        """Set password hash for user.
+
+        Creates or updates the auth_credentials record for the user.
+
+        Args:
+            user_id: UUID of the user.
+            password_hash: Bcrypt hash of the password.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            # Use INSERT ... ON DUPLICATE KEY UPDATE for upsert
+            cursor.execute(
+                """
+                INSERT INTO auth_credentials
+                    (user_id, password_hash, created_at, updated_at)
+                VALUES (%s, %s, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+                ON DUPLICATE KEY UPDATE
+                    password_hash = VALUES(password_hash),
+                    updated_at = UTC_TIMESTAMP(6)
+                """,
+                (user_id, password_hash),
+            )
+            conn.commit()
+
+    def has_password(self, user_id: str) -> bool:
+        """Check if user has a password set.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            True if password is set, False otherwise.
+        """
+        return self.get_password_hash(user_id) is not None
+
+    def get_totp_secret(self, user_id: str) -> str | None:
+        """Get TOTP secret for user.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Base32-encoded TOTP secret if enabled, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT totp_secret FROM auth_credentials
+                WHERE user_id = %s AND totp_enabled = TRUE
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            if row and row.get("totp_secret"):
+                return str(row["totp_secret"])
+            return None
+
+    def set_totp_secret(self, user_id: str, totp_secret: str) -> None:
+        """Set and enable TOTP for user.
+
+        Args:
+            user_id: UUID of the user.
+            totp_secret: Base32-encoded TOTP secret.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO auth_credentials
+                    (user_id, totp_secret, totp_enabled, created_at, updated_at)
+                VALUES (%s, %s, TRUE, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+                ON DUPLICATE KEY UPDATE
+                    totp_secret = VALUES(totp_secret),
+                    totp_enabled = TRUE,
+                    updated_at = UTC_TIMESTAMP(6)
+                """,
+                (user_id, totp_secret),
+            )
+            conn.commit()
+
+    def disable_totp(self, user_id: str) -> None:
+        """Disable TOTP for user.
+
+        Args:
+            user_id: UUID of the user.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE auth_credentials
+                SET totp_enabled = FALSE,
+                    totp_secret = NULL,
+                    updated_at = UTC_TIMESTAMP(6)
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            conn.commit()
+
+    def is_totp_enabled(self, user_id: str) -> bool:
+        """Check if TOTP is enabled for user.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            True if TOTP is enabled, False otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT totp_enabled FROM auth_credentials WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            return bool(row and row.get("totp_enabled"))
+
+    def create_session(
+        self,
+        user_id: str,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        ttl_hours: int | None = None,
+    ) -> tuple[str, str]:
+        """Create new session for user.
+
+        Generates a cryptographically secure session token and stores
+        its hash in the database.
+
+        Args:
+            user_id: UUID of the user.
+            ip_address: Client IP address (optional).
+            user_agent: Client user agent string (optional).
+            ttl_hours: Session time-to-live in hours (default: 24).
+
+        Returns:
+            Tuple of (session_id, session_token). The token should be
+            returned to the client; only its hash is stored.
+        """
+        if ttl_hours is None:
+            ttl_hours = self.DEFAULT_SESSION_TTL_HOURS
+
+        session_id = str(uuid.uuid4())
+        token = secrets.token_hex(self.TOKEN_BYTES)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        expires_at = datetime.now(UTC) + timedelta(hours=ttl_hours)
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO sessions
+                    (session_id, user_id, token_hash, created_at,
+                     expires_at, last_activity, ip_address, user_agent)
+                VALUES
+                    (%s, %s, %s, UTC_TIMESTAMP(6), %s, UTC_TIMESTAMP(6), %s, %s)
+                """,
+                (session_id, user_id, token_hash, expires_at, ip_address, user_agent),
+            )
+            conn.commit()
+
+        return session_id, token
+
+    def validate_session(self, session_token: str) -> str | None:
+        """Validate session token and return user_id.
+
+        Checks token hash against database and verifies expiration.
+        Updates last_activity on successful validation.
+
+        Args:
+            session_token: The session token to validate.
+
+        Returns:
+            user_id if session is valid, None otherwise.
+        """
+        token_hash = hashlib.sha256(session_token.encode()).hexdigest()
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT session_id, user_id, expires_at
+                FROM sessions
+                WHERE token_hash = %s
+                """,
+                (token_hash,),
+            )
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            # Check expiration
+            expires_at = row["expires_at"]
+            if expires_at < datetime.now(UTC):
+                # Session expired, clean it up
+                cursor.execute(
+                    "DELETE FROM sessions WHERE session_id = %s",
+                    (row["session_id"],),
+                )
+                conn.commit()
+                return None
+
+            # Update last activity
+            cursor.execute(
+                """
+                UPDATE sessions
+                SET last_activity = UTC_TIMESTAMP(6)
+                WHERE session_id = %s
+                """,
+                (row["session_id"],),
+            )
+            conn.commit()
+
+            return str(row["user_id"])
+
+    def invalidate_session(self, session_id: str) -> None:
+        """Invalidate a session (logout).
+
+        Args:
+            session_id: UUID of the session to invalidate.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM sessions WHERE session_id = %s",
+                (session_id,),
+            )
+            conn.commit()
+
+    def invalidate_session_by_token(self, session_token: str) -> bool:
+        """Invalidate a session by its token.
+
+        Args:
+            session_token: The session token to invalidate.
+
+        Returns:
+            True if a session was invalidated, False if not found.
+        """
+        token_hash = hashlib.sha256(session_token.encode()).hexdigest()
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM sessions WHERE token_hash = %s",
+                (token_hash,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def invalidate_all_user_sessions(self, user_id: str) -> int:
+        """Invalidate all sessions for user.
+
+        Useful for security events like password change or
+        account compromise.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Number of sessions invalidated.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM sessions WHERE user_id = %s",
+                (user_id,),
+            )
+            conn.commit()
+            return cursor.rowcount
+
+    def cleanup_expired_sessions(self) -> int:
+        """Remove all expired sessions from database.
+
+        Should be called periodically to clean up old sessions.
+
+        Returns:
+            Number of sessions removed.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM sessions WHERE expires_at < UTC_TIMESTAMP(6)"
+            )
+            conn.commit()
+            return cursor.rowcount
+
+    def get_user_session_count(self, user_id: str) -> int:
+        """Get count of active sessions for user.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Number of active (non-expired) sessions.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM sessions
+                WHERE user_id = %s AND expires_at > UTC_TIMESTAMP(6)
+                """,
+                (user_id,),
+            )
+            result = cursor.fetchone()
+            return int(result[0]) if result else 0

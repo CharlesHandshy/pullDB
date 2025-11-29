@@ -19,7 +19,7 @@ import mysql.connector
 from mysql.connector import errorcode
 from mysql.connector import errors as mysql_errors
 
-from pulldb.domain.models import DBHost, Job, JobEvent, JobStatus, User
+from pulldb.domain.models import DBHost, Job, JobEvent, JobStatus, User, UserRole
 from pulldb.infra.secrets import CredentialResolver, MySQLCredentials
 
 
@@ -1351,7 +1351,7 @@ class UserRepository:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT user_id, username, user_code, is_admin, created_at,
+                SELECT user_id, username, user_code, is_admin, role, created_at,
                        disabled_at
                 FROM auth_users
                 WHERE username = %s
@@ -1374,7 +1374,7 @@ class UserRepository:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT user_id, username, user_code, is_admin, created_at,
+                SELECT user_id, username, user_code, is_admin, role, created_at,
                        disabled_at
                 FROM auth_users
                 WHERE user_id = %s
@@ -1405,8 +1405,8 @@ class UserRepository:
                 cursor.execute(
                     """
                     INSERT INTO auth_users
-                        (user_id, username, user_code, is_admin, created_at)
-                    VALUES (%s, %s, %s, FALSE, UTC_TIMESTAMP(6))
+                        (user_id, username, user_code, is_admin, role, created_at)
+                    VALUES (%s, %s, %s, FALSE, 'user', UTC_TIMESTAMP(6))
                     """,
                     (user_id, username, user_code),
                 )
@@ -1415,7 +1415,7 @@ class UserRepository:
                 # Fetch the created user
                 cursor.execute(
                     """
-                    SELECT user_id, username, user_code, is_admin,
+                    SELECT user_id, username, user_code, is_admin, role,
                            created_at, disabled_at
                     FROM auth_users
                     WHERE user_id = %s
@@ -1555,11 +1555,22 @@ class UserRepository:
         Returns:
             User instance with all fields populated.
         """
+        # Handle role field with backward compatibility
+        # If role column doesn't exist yet (pre-migration), derive from is_admin
+        role_value = row.get("role")
+        if role_value:
+            role = UserRole(role_value)
+        elif row.get("is_admin"):
+            role = UserRole.ADMIN
+        else:
+            role = UserRole.USER
+
         return User(
             user_id=row["user_id"],
             username=row["username"],
             user_code=row["user_code"],
             is_admin=bool(row["is_admin"]),
+            role=role,
             created_at=row["created_at"],
             disabled_at=row.get("disabled_at"),
         )

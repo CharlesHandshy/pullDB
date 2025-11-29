@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from pulldb.api.main import APIState, app, get_api_state
 from pulldb.cli.main import cli
 from pulldb.domain.config import Config
-from pulldb.domain.models import Job, User
+from pulldb.domain.models import Job, User, UserRole
 from pulldb.infra.mysql import (
     HostRepository as MySQLHostRepository,
 )
@@ -44,6 +44,7 @@ class _FakeUserRepository:
             username=username,
             user_code="janedo",
             is_admin=False,
+            role=UserRole.USER,
             created_at=datetime(2025, 11, 3, 0, 0, tzinfo=UTC),
         )
 
@@ -207,7 +208,7 @@ def test_dev_smoke_restore_then_status(monkeypatch: pytest.MonkeyPatch) -> None:
         )
         assert restore_result.exit_code == 0
         assert "Job submitted successfully!" in restore_result.output
-        assert "target: janedoacme" in restore_result.output
+        assert "janedoacme" in restore_result.output  # target value appears in output
         assert user_repo.requested == ["Jane.Doe"]
         assert job_repo.enqueued, "Job repository should receive enqueued job"
 

@@ -39,6 +39,23 @@ class JobStatus(Enum):
     CANCELED = "canceled"  # Reserved for Phase 1
 
 
+class UserRole(Enum):
+    """User role for RBAC.
+
+    Values correspond to auth_users.role ENUM in database.
+    Phase 4: Role-based access control.
+
+    Attributes:
+        USER: Standard user - can only manage own jobs.
+        MANAGER: Operational oversight - can view/cancel any job.
+        ADMIN: Full system access - can manage users and configuration.
+    """
+
+    USER = "user"
+    MANAGER = "manager"
+    ADMIN = "admin"
+
+
 @dataclass(frozen=True)
 class User:
     """User entity from auth_users table.
@@ -51,7 +68,8 @@ class User:
         user_id: UUID primary key.
         username: Unique username from authentication system.
         user_code: 6-character code derived from username.
-        is_admin: Whether user has admin privileges (reserved for Phase 4).
+        is_admin: Whether user has admin privileges (legacy, kept for compatibility).
+        role: RBAC role (user/manager/admin) - Phase 4.
         created_at: Timestamp when user was created.
         disabled_at: Timestamp when user was disabled (soft delete).
     """
@@ -60,8 +78,24 @@ class User:
     username: str
     user_code: str
     is_admin: bool
+    role: UserRole
     created_at: datetime
     disabled_at: datetime | None = None
+
+    @property
+    def is_manager_or_above(self) -> bool:
+        """Check if user has manager or admin role."""
+        return self.role in (UserRole.MANAGER, UserRole.ADMIN)
+
+    @property
+    def can_view_all_jobs(self) -> bool:
+        """Check if user can view all jobs (manager and admin)."""
+        return self.role in (UserRole.MANAGER, UserRole.ADMIN)
+
+    @property
+    def can_manage_users(self) -> bool:
+        """Check if user can manage other users (admin only)."""
+        return self.role == UserRole.ADMIN
 
 
 @dataclass(frozen=True)

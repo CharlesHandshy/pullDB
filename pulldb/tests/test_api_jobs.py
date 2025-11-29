@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from pulldb.api.main import APIState, app, get_api_state
 from pulldb.domain.config import Config
-from pulldb.domain.models import Job, JobStatus, User
+from pulldb.domain.models import Job, JobStatus, User, UserRole
 from pulldb.infra.mysql import (
     HostRepository as MySQLHostRepository,
 )
@@ -43,6 +43,7 @@ class FakeUserRepository:
             username=username,
             user_code="janedo",
             is_admin=False,
+            role=UserRole.USER,
             created_at=datetime(2025, 11, 3, 0, 0, tzinfo=UTC),
         )
 
