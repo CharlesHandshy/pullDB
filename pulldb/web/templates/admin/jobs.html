@@ -4,26 +4,20 @@
 
 {% block page_id %}admin-jobs{% endblock %}
 
-{% block content %}
-<div class="content-header">
-    <div class="content-header-inner">
-        <div>
-            <h1 class="page-title">Job Management</h1>
-            <p class="page-subtitle">Monitor and manage all restore jobs across the system</p>
-        </div>
-        <div class="header-actions">
-            <button type="button" class="btn btn-ghost" onclick="refreshJobs()">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="23 4 23 10 17 10"/>
-                    <polyline points="1 20 1 14 7 14"/>
-                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                </svg>
-                Refresh
-            </button>
-        </div>
-    </div>
-</div>
+{% block header_title %}Job Management{% endblock %}
+{% block header_subtitle %}<p class="page-subtitle">Monitor and manage all restore jobs</p>{% endblock %}
+{% block header_actions %}
+<button type="button" class="btn btn-ghost" onclick="refreshJobs()">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="23 4 23 10 17 10"/>
+        <polyline points="1 20 1 14 7 14"/>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+    </svg>
+    Refresh
+</button>
+{% endblock %}
 
+{% block content %}
 <div class="content-body">
     <!-- Stats Grid -->
     <div class="stats-grid">
