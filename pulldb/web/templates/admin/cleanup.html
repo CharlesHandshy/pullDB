@@ -4,16 +4,10 @@
 
 {% block page_id %}admin-cleanup{% endblock %}
 
-{% block content %}
-<div class="content-header">
-    <div class="content-header-inner">
-        <div>
-            <h1 class="page-title">Database Cleanup</h1>
-            <p class="page-subtitle">Remove orphaned staging databases from restore operations</p>
-        </div>
-    </div>
-</div>
+{% block header_title %}Database Cleanup{% endblock %}
+{% block header_subtitle %}Remove orphaned staging databases from restore operations{% endblock %}
 
+{% block content %}
 <div class="content-body">
     <!-- Warning Banner -->
     <div class="alert alert-warning">

@@ -1,0 +1,363 @@
+{# Reusable Filter Bar Component - see usage examples at bottom of file #}
+
+{% macro filter_bar_styles() %}
+<style>
+/* Filter Bar - Table Row Layout (Dashboard Style) */
+.filter-bar-table {
+    width: 100%;
+    margin-bottom: 1.5rem;
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.filter-bar-table .filter-row {
+    background: var(--surface, white);
+}
+
+.filter-bar-table .filter-cell {
+    padding: 0;
+    text-align: center;
+    border: 1px solid var(--border, #e5e7eb);
+    border-left: none;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.filter-bar-table .filter-cell:first-child {
+    border-left: 1px solid var(--border, #e5e7eb);
+    border-radius: 0.75rem 0 0 0.75rem;
+}
+
+.filter-bar-table .filter-cell:last-child {
+    border-radius: 0 0.75rem 0.75rem 0;
+}
+
+.filter-bar-table .filter-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 1rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border: none;
+    background: transparent;
+    color: var(--text-muted, #6b7280);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.filter-bar-table .filter-btn:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.filter-bar-table .filter-btn .filter-count {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+    line-height: 1;
+}
+
+.filter-bar-table .filter-btn .filter-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.8;
+}
+
+/* Active state */
+.filter-bar-table .filter-cell.active {
+    border-color: var(--primary, #3b82f6);
+    border-width: 2px;
+    z-index: 1;
+}
+
+.filter-bar-table .filter-cell.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: currentColor;
+}
+
+.filter-bar-table .filter-cell.active .filter-btn {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.filter-bar-table .filter-cell.active .filter-btn .filter-label {
+    opacity: 1;
+    font-weight: 700;
+}
+
+/* Status-specific colors - colored backgrounds with black text */
+.filter-bar-table .filter-cell.status-all { 
+    background: rgba(99, 102, 241, 0.15);
+}
+.filter-bar-table .filter-cell.status-all .filter-btn .filter-count { 
+    color: #4f46e5;
+}
+.filter-bar-table .filter-cell.status-all.active { 
+    background: rgba(99, 102, 241, 0.25);
+    border-color: #6366f1;
+}
+
+.filter-bar-table .filter-cell.status-pending,
+.filter-bar-table .filter-cell.status-queued { 
+    background: rgba(245, 158, 11, 0.15);
+}
+.filter-bar-table .filter-cell.status-pending .filter-btn .filter-count,
+.filter-bar-table .filter-cell.status-queued .filter-btn .filter-count { 
+    color: #d97706;
+}
+.filter-bar-table .filter-cell.status-pending.active,
+.filter-bar-table .filter-cell.status-queued.active { 
+    background: rgba(245, 158, 11, 0.25);
+    border-color: #f59e0b;
+}
+
+.filter-bar-table .filter-cell.status-running { 
+    background: rgba(59, 130, 246, 0.15);
+}
+.filter-bar-table .filter-cell.status-running .filter-btn .filter-count { 
+    color: #2563eb;
+}
+.filter-bar-table .filter-cell.status-running.active { 
+    background: rgba(59, 130, 246, 0.25);
+    border-color: #3b82f6;
+}
+
+.filter-bar-table .filter-cell.status-complete,
+.filter-bar-table .filter-cell.status-completed { 
+    background: rgba(34, 197, 94, 0.15);
+}
+.filter-bar-table .filter-cell.status-complete .filter-btn .filter-count,
+.filter-bar-table .filter-cell.status-completed .filter-btn .filter-count { 
+    color: #16a34a;
+}
+.filter-bar-table .filter-cell.status-complete.active,
+.filter-bar-table .filter-cell.status-completed.active { 
+    background: rgba(34, 197, 94, 0.25);
+    border-color: #22c55e;
+}
+
+.filter-bar-table .filter-cell.status-failed { 
+    background: rgba(239, 68, 68, 0.15);
+}
+.filter-bar-table .filter-cell.status-failed .filter-btn .filter-count { 
+    color: #dc2626;
+}
+.filter-bar-table .filter-cell.status-failed.active { 
+    background: rgba(239, 68, 68, 0.25);
+    border-color: #ef4444;
+}
+
+.filter-bar-table .filter-cell.status-cancelled { 
+    background: rgba(107, 114, 128, 0.15);
+}
+.filter-bar-table .filter-cell.status-cancelled .filter-btn .filter-count { 
+    color: #4b5563;
+}
+.filter-bar-table .filter-cell.status-cancelled.active { 
+    background: rgba(107, 114, 128, 0.25);
+    border-color: #6b7280;
+}
+
+/* Advanced Filter Bar (search + chips) */
+.advanced-filter-bar {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.search-box {
+    flex: 1;
+    min-width: 200px;
+    max-width: 400px;
+}
+.search-box input {
+    width: 100%;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.9rem;
+}
+.search-box input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* Filter Chips */
+.filter-chips {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.filter-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    background: var(--primary);
+    color: white;
+    border-radius: 1rem;
+    font-size: 0.8rem;
+}
+.filter-chip .remove-chip {
+    cursor: pointer;
+    opacity: 0.8;
+}
+.filter-chip .remove-chip:hover {
+    opacity: 1;
+}
+</style>
+{% endmacro %}
+
+
+{# ==================== HTML COMPONENT ==================== #}
+{% macro filter_bar(id, filters, show_search=false, search_placeholder="Search...", search_id=none) %}
+{# 
+    Parameters:
+        id: string - Unique ID for the filter bar
+        filters: list of dicts - Each filter has:
+            - value: string - The filter value (e.g., "all", "running")
+            - label: string - Display text (e.g., "All Jobs", "Running")
+            - active: bool (optional) - Whether this filter is active by default
+            - status_class: string (optional) - CSS class for status coloring (e.g., "running", "failed")
+            - count: int (optional) - Count badge to display
+        show_search: bool - Whether to show the search box
+        search_placeholder: string - Placeholder text for search
+        search_id: string - Custom ID for search input (defaults to {id}Search)
+#}
+{% set actual_search_id = search_id or (id ~ 'Search') %}
+
+<!-- Status Filter Bar - Table Layout -->
+<table class="filter-bar-table" id="{{ id }}">
+    <tr class="filter-row">
+        {% for filter in filters %}
+        <td class="filter-cell{% if filter.status_class %} status-{{ filter.status_class }}{% endif %}{% if filter.active %} active{% endif %}" 
+            data-filter="{{ filter.value }}">
+            <button class="filter-btn" data-filter="{{ filter.value }}">
+                {% if filter.count is defined and filter.count is not none %}
+                <span class="filter-count">{{ filter.count }}</span>
+                {% endif %}
+                <span class="filter-label">{{ filter.label }}</span>
+            </button>
+        </td>
+        {% endfor %}
+    </tr>
+</table>
+
+{% if show_search %}
+<!-- Advanced Filter Bar -->
+<div class="advanced-filter-bar">
+    <div class="search-box">
+        <input type="text" id="{{ actual_search_id }}" placeholder="{{ search_placeholder }}" />
+    </div>
+    <div class="filter-chips" id="{{ id }}Chips">
+        <!-- Active filter chips will appear here -->
+    </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{# ==================== JAVASCRIPT ==================== #}
+{% macro filter_bar_scripts(id, on_filter_change=none, on_search_change=none, search_id=none) %}
+{#
+    Parameters:
+        id: string - The filter bar ID (must match the one used in filter_bar macro)
+        on_filter_change: string - Name of callback function when filter changes
+                                   Receives (filterValue, buttonElement)
+        on_search_change: string - Name of callback function when search changes
+                                   Receives (searchValue, inputElement)
+        search_id: string - Custom search input ID (defaults to {id}Search)
+#}
+{% set actual_search_id = search_id or (id ~ 'Search') %}
+<script>
+(function() {
+    // Filter bar: {{ id }}
+    const filterBar = document.getElementById('{{ id }}');
+    const searchInput = document.getElementById('{{ actual_search_id }}');
+    
+    if (filterBar) {
+        filterBar.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Update active state on the parent cell (td)
+                filterBar.querySelectorAll('.filter-cell').forEach(cell => cell.classList.remove('active'));
+                const parentCell = btn.closest('.filter-cell');
+                if (parentCell) {
+                    parentCell.classList.add('active');
+                }
+                
+                const filterValue = btn.dataset.filter;
+                
+                {% if on_filter_change %}
+                // Call custom handler
+                if (typeof {{ on_filter_change }} === 'function') {
+                    {{ on_filter_change }}(filterValue, btn);
+                }
+                {% endif %}
+                
+                // Dispatch custom event for flexibility
+                filterBar.dispatchEvent(new CustomEvent('filterChange', {
+                    detail: { value: filterValue, button: btn }
+                }));
+            });
+        });
+    }
+    
+    if (searchInput) {
+        let searchTimeout;
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                const searchValue = e.target.value;
+                
+                {% if on_search_change %}
+                // Call custom handler
+                if (typeof {{ on_search_change }} === 'function') {
+                    {{ on_search_change }}(searchValue, searchInput);
+                }
+                {% endif %}
+                
+                // Dispatch custom event
+                searchInput.dispatchEvent(new CustomEvent('searchChange', {
+                    detail: { value: searchValue }
+                }));
+            }, 300); // Debounce 300ms
+        });
+    }
+})();
+</script>
+{% endmacro %}
+
+
+{# ==================== PRESET CONFIGURATIONS ==================== #}
+{% macro job_status_filters(active_filter="all", counts=none) %}
+{#
+    Convenience macro for job status filters
+    
+    Parameters:
+        active_filter: string - Which filter should be active ("all", "running", etc.)
+        counts: dict (optional) - Counts for each status, e.g., {"running": 3, "failed": 5}
+#}
+{% set filters = [
+    {"value": "all", "label": "All Jobs", "active": active_filter == "all"},
+    {"value": "running", "label": "Running", "status_class": "running", "active": active_filter == "running", "count": counts.running if counts else none},
+    {"value": "pending", "label": "Pending", "status_class": "pending", "active": active_filter == "pending", "count": counts.pending if counts else none},
+    {"value": "completed", "label": "Completed", "status_class": "completed", "active": active_filter == "completed", "count": counts.completed if counts else none},
+    {"value": "failed", "label": "Failed", "status_class": "failed", "active": active_filter == "failed", "count": counts.failed if counts else none},
+    {"value": "cancelled", "label": "Cancelled", "status_class": "cancelled", "active": active_filter == "cancelled", "count": counts.cancelled if counts else none}
+] %}
+{{ filters }}
+{% endmacro %}

@@ -4,28 +4,23 @@
 
 {% block page_id %}admin-hosts{% endblock %}
 
-{% block content %}
-<div class="content-header">
-    <div class="content-header-inner">
-        <div>
-            <h1 class="page-title">Database Hosts</h1>
-            <p class="page-subtitle">Manage target MySQL database hosts for restores</p>
-        </div>
-        <div class="header-actions">
-            <button type="button" class="btn btn-primary" onclick="showAddHostModal()">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
-                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
-                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-                    <line x1="12" x2="12" y1="10" y2="16"/>
-                    <line x1="15" x2="9" y1="13" y2="13"/>
-                </svg>
-                Add Host
-            </button>
-        </div>
-    </div>
-</div>
+{% block header_title %}Database Hosts{% endblock %}
+{% block header_subtitle %}Manage target MySQL database hosts for restores{% endblock %}
 
+{% block header_actions %}
+<button type="button" class="btn btn-primary btn-sm" onclick="showAddHostModal()">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+        <ellipse cx="12" cy="5" rx="9" ry="3"/>
+        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+        <line x1="12" x2="12" y1="10" y2="16"/>
+        <line x1="15" x2="9" y1="13" y2="13"/>
+    </svg>
+    Add Host
+</button>
+{% endblock %}
+
+{% block content %}
 <div class="content-body">
     <!-- Stats -->
     <div class="stats-grid">

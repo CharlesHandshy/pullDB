@@ -4,24 +4,19 @@
 
 {% block page_id %}profile{% endblock %}
 
-{% block content %}
-<div class="content-header">
-    <div class="content-header-inner">
-        <div>
-            <h1 class="page-title">Performance Profile</h1>
-            <p class="page-subtitle">Job {{ job.job_id[:8] }}... • {{ job.target }}</p>
-        </div>
-        <div class="header-actions">
-            <a href="/web/jobs/{{ job.job_id }}" class="btn btn-secondary">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="m15 18-6-6 6-6"/>
-                </svg>
-                Back to Job
-            </a>
-        </div>
-    </div>
-</div>
+{% block header_title %}Performance Profile{% endblock %}
+{% block header_subtitle %}Job {{ job.job_id[:8] }}... • {{ job.target }}{% endblock %}
 
+{% block header_actions %}
+<a href="/web/jobs/{{ job.job_id }}" class="btn btn-secondary btn-sm">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+        <path d="m15 18-6-6 6-6"/>
+    </svg>
+    Back to Job
+</a>
+{% endblock %}
+
+{% block content %}
 <div class="content-body">
     <!-- Summary Stats -->
     <div class="profile-summary">

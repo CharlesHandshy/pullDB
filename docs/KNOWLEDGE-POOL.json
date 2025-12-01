@@ -112,5 +112,56 @@
     "pull": "db → .env (download settings from database)",
     "push": ".env → db (upload settings to database)",
     "diff": "compare db vs .env for differences"
+  },
+  "web_ui": {
+    "sidebar_pattern": {
+      "name": "hover-reveal",
+      "default_state": "hidden (translateX(-100%))",
+      "content_width": "100% (margin-left: 0)",
+      "trigger_zone_width": "12px",
+      "open_delay_ms": 150,
+      "close_delay_ms": 200,
+      "css_classes": {
+        "sidebar_open": ".sidebar.open",
+        "backdrop": ".sidebar-backdrop.visible",
+        "trigger": ".sidebar-trigger"
+      }
+    },
+    "device_detection": {
+      "method": "CSS media queries",
+      "mouse_trackpad": {
+        "query": "@media (hover: hover) and (pointer: fine)",
+        "behavior": "hide menu button, use edge hover trigger"
+      },
+      "touch_devices": {
+        "query": "@media (hover: none), (pointer: coarse)",
+        "behavior": "show menu button, hide edge trigger"
+      },
+      "media_values": {
+        "hover_hover": "device supports true hover",
+        "hover_none": "no hover support (touch)",
+        "pointer_fine": "precise pointer (mouse)",
+        "pointer_coarse": "imprecise pointer (finger)"
+      },
+      "js_alternative": {
+        "hasHover": "window.matchMedia('(hover: hover)').matches",
+        "hasFinePointer": "window.matchMedia('(pointer: fine)').matches",
+        "isTouchDevice": "navigator.maxTouchPoints > 0"
+      }
+    },
+    "responsive_table": {
+      "key_class": ".main-content.full-height-page",
+      "layout": {
+        "container": "height: 100vh; max-height: 100vh; overflow: hidden",
+        "children": "flex: 1; min-height: 0 (allow shrinking)"
+      }
+    },
+    "virtual_scroller": {
+      "pattern": "3-window",
+      "windows": ["before viewport", "visible viewport", "after viewport"],
+      "each_window_size": "viewport height worth of rows",
+      "overscan_default": 10,
+      "requires": "fixed row height"
+    }
   }
 }

@@ -2,8 +2,40 @@
 
 {% block title %}Dashboard - pullDB{% endblock %}
 
+{% block header_title %}Dashboard{% endblock %}
+{% block header_subtitle %}Monitor your database restore jobs in real-time{% endblock %}
+
+{% block header_actions %}
+<div class="live-indicator">
+    <span class="live-dot"></span>
+    <span>Live updates</span>
+</div>
+{% endblock %}
+
 {% block content %}
 <style>
+    /* Live indicator in header */
+    .live-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.8125rem;
+        color: var(--gray-600);
+    }
+    
+    .live-dot {
+        width: 8px;
+        height: 8px;
+        background: var(--success-500);
+        border-radius: 50%;
+        animation: pulse-dot 2s infinite;
+    }
+    
+    @keyframes pulse-dot {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.6; transform: scale(0.9); }
+    }
+
     /* Tab Panel Styles */
     .tab-panel {
         background: white;
@@ -522,8 +554,6 @@
     .tab-panel {
         display: flex;
         flex-direction: column;
-        height: calc(100vh - 200px);
-        min-height: 400px;
     }
 
     .tab-content {
@@ -539,14 +569,12 @@
     }
 
     .table-container {
-        flex: 1;
         overflow: hidden;
         display: flex;
         flex-direction: column;
     }
 
     .table-scroll-wrapper {
-        flex: 1;
         overflow: auto;
         position: relative;
     }
@@ -637,22 +665,6 @@
         height: 14px;
     }
 </style>
-
-<!-- Page Header -->
-<header class="content-header">
-    <div class="content-header-inner">
-        <div>
-            <h1 class="page-title">Dashboard</h1>
-            <p class="page-subtitle">Monitor your database restore jobs in real-time</p>
-        </div>
-        <div class="header-actions">
-            <div class="live-indicator">
-                <span class="live-dot"></span>
-                <span>Live updates</span>
-            </div>
-        </div>
-    </div>
-</header>
 
 <div class="content-body">
     <!-- Tabbed Jobs Panel -->

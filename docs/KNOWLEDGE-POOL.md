@@ -382,6 +382,117 @@ This file should be created and applied in the production account only. Keep sec
 
 ---
 
+## Web UI Design Patterns (December 2025)
+
+### Hover-Reveal Sidebar Pattern
+The pullDB web interface uses a **hover-reveal sidebar** pattern for maximum content area:
+
+**Core Behavior**:
+- Sidebar hidden by default at ALL screen sizes (`transform: translateX(-100%)`)
+- Content area uses 100% width (`margin-left: 0`)
+- Sidebar floats over content as overlay when triggered
+- Opens via: left edge hover (12px trigger zone) OR menu button tap
+- Closes via: mouse leave (with delay) OR backdrop click
+
+**CSS Architecture**:
+```css
+.sidebar {
+    position: fixed;
+    transform: translateX(-100%);  /* Hidden by default */
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 200;
+}
+.sidebar.open {
+    transform: translateX(0);
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
+}
+.sidebar-trigger {  /* Invisible left edge zone */
+    position: fixed; left: 0; width: 12px; height: 100%; z-index: 100;
+}
+.sidebar-backdrop {  /* Dark overlay when open */
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); z-index: 150;
+}
+```
+
+**JavaScript Timing**:
+- Open delay: 150ms (prevents accidental triggers)
+- Close delay: 200ms (prevents flickering)
+- Menu button: immediate (no delay needed)
+
+### Device Detection (Touch vs Mouse)
+Use CSS media queries to detect input capabilities:
+
+**Media Queries**:
+```css
+/* Mouse/trackpad devices: hide menu button, use edge hover */
+@media (hover: hover) and (pointer: fine) {
+    .menu-btn { display: none; }
+    .sidebar-trigger { display: block; }
+}
+
+/* Touch devices: show menu button, hide edge trigger */
+@media (hover: none), (pointer: coarse) {
+    .menu-btn { display: flex; }
+    .sidebar-trigger { display: none; }
+}
+```
+
+**Values**:
+- `hover: hover` - Device supports true hover (mouse/trackpad)
+- `hover: none` - No hover support (touch devices)
+- `pointer: fine` - Precise pointer (mouse)
+- `pointer: coarse` - Imprecise pointer (finger/touch)
+
+**JavaScript Alternative**:
+```javascript
+// Check if device has hover capability
+const hasHover = window.matchMedia('(hover: hover)').matches;
+const hasFinePointer = window.matchMedia('(pointer: fine)').matches;
+const isTouchDevice = navigator.maxTouchPoints > 0;
+```
+
+### Responsive Table Layout Pattern
+For full-viewport data tables (Jobs page):
+
+**Key Classes**:
+- `.main-content.full-height-page` - prevents scroll on container
+- `.layout-fullheight` - flex column, `min-height: 0` for shrinking
+- `.layout-body` - `flex: 1` fills remaining space
+
+**Critical CSS**:
+```css
+.main-content {
+    height: 100vh;
+    max-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+.main-content.full-height-page {
+    overflow: hidden;  /* Children manage scroll */
+}
+.main-content.full-height-page > div {
+    flex: 1;
+    min-height: 0;  /* Allow shrinking */
+}
+```
+
+### VirtualScroller (3-Window Pattern)
+For large datasets with smooth scrolling:
+
+**Architecture**:
+- Renders 3 "windows" of rows (before, visible, after)
+- Each window = viewport height worth of rows
+- Scroll position determines which rows to render
+- Placeholder divs maintain scroll height
+
+**Key Parameters**:
+- `rowHeight`: Fixed height per row (required)
+- `overscan`: Extra rows above/below viewport (default: 10)
+- `totalRows`: Total dataset size
+- `visibleRange`: Currently rendered row indices
+
+---
+
 ## How to use this file
 - For quick lookups, search this file for the keyword (ARN, secret name, bucket name)
 - For step-by-step actions, follow `docs/AWS-SETUP.md` (canonical), and use this KNOWLEDGE-POOL for fast facts

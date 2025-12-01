@@ -967,7 +967,12 @@ async def admin_jobs_page(
 ) -> Response:
     """Display all jobs (equivalent to pulldb-admin jobs list)."""
     limit = 50
-    jobs = state.job_repo.get_recent_jobs(limit=limit * page)
+    # Get both active and recent jobs
+    active_jobs = []
+    if hasattr(state.job_repo, "get_active_jobs"):
+        active_jobs = state.job_repo.get_active_jobs()
+    recent_jobs = state.job_repo.get_recent_jobs(limit=limit * page)
+    jobs = list(active_jobs) + list(recent_jobs)
     
     # Get users and hosts for filters
     users = state.user_repo.list_users() if hasattr(state.user_repo, "list_users") else []
@@ -976,7 +981,7 @@ async def admin_jobs_page(
         hosts = state.host_repo.list_hosts()
     
     # Calculate stats
-    all_jobs = state.job_repo.get_recent_jobs(limit=1000)
+    all_jobs = jobs  # Use combined jobs list for stats
     today_jobs = [j for j in all_jobs if j.created_at and j.created_at.date() == datetime.now(UTC).date()]
     
     stats = {
@@ -990,9 +995,11 @@ async def admin_jobs_page(
     total_jobs = len(jobs)
     pagination = {
         "page": page,
-        "total_pages": (total_jobs // limit) + 1,
+        "per_page": limit,
+        "total": total_jobs,
+        "total_pages": (total_jobs // limit) + (1 if total_jobs % limit else 0) if total_jobs else 1,
         "has_prev": page > 1,
-        "has_next": total_jobs >= limit * page,
+        "has_next": total_jobs > limit * page,
     }
     
     return templates.TemplateResponse(

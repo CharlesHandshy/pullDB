@@ -4,20 +4,19 @@
 
 {% block page_id %}admin-users{% endblock %}
 
-{% block content %}
-<div class="content-header">
-    <div class="content-header-inner">
-        <div class="breadcrumb-nav">
-            <a href="/web/admin/users" class="breadcrumb-link">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="15 18 9 12 15 6"/>
-                </svg>
-                Users
-            </a>
-        </div>
-    </div>
-</div>
+{% block header_title %}{{ user.username }}{% endblock %}
+{% block header_subtitle %}User Profile{% endblock %}
 
+{% block header_actions %}
+<a href="/web/admin/users" class="btn btn-secondary btn-sm">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+        <polyline points="15 18 9 12 15 6"/>
+    </svg>
+    Back to Users
+</a>
+{% endblock %}
+
+{% block content %}
 <div class="content-body">
     <!-- User Header Card -->
     <div class="user-header-card">

@@ -4,27 +4,22 @@
 
 {% block page_id %}admin-users{% endblock %}
 
-{% block content %}
-<div class="content-header">
-    <div class="content-header-inner">
-        <div>
-            <h1 class="page-title">User Management</h1>
-            <p class="page-subtitle">View and manage registered users</p>
-        </div>
-        <div class="header-actions">
-            <button type="button" class="btn btn-primary" onclick="showAddUserModal()">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                    <circle cx="9" cy="7" r="4"/>
-                    <line x1="19" x2="19" y1="8" y2="14"/>
-                    <line x1="22" x2="16" y1="11" y2="11"/>
-                </svg>
-                Add User
-            </button>
-        </div>
-    </div>
-</div>
+{% block header_title %}User Management{% endblock %}
+{% block header_subtitle %}View and manage registered users{% endblock %}
 
+{% block header_actions %}
+<button type="button" class="btn btn-primary btn-sm" onclick="showAddUserModal()">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <line x1="19" x2="19" y1="8" y2="14"/>
+        <line x1="22" x2="16" y1="11" y2="11"/>
+    </svg>
+    Add User
+</button>
+{% endblock %}
+
+{% block content %}
 <div class="content-body">
     <!-- Stats -->
     <div class="stats-grid">
