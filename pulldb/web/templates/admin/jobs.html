@@ -278,10 +278,43 @@
 </div>
 
 <style>
+/* Admin Jobs Page Layout - Fix whitespace issue */
+#admin-jobs .content-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;  /* Allow shrinking */
+    height: auto;   /* Don't stretch to fill */
+    flex: 0 1 auto; /* Don't grow, can shrink, base on content */
+}
+
+#admin-jobs .stats-grid {
+    flex-shrink: 0;
+}
+
+/* Jobs table card - flex item that can scroll */
+#admin-jobs .card:has(.table-container) {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 0 1 auto;
+}
+
+#admin-jobs .card:has(.table-container) .card-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#admin-jobs .table-container {
+    max-height: calc(100vh - 450px);  /* Account for header, stats, filters */
+    overflow-y: auto;
+}
+
 /* Filters Card */
 .filters-card {
     padding: var(--space-4);
     margin-bottom: var(--space-5);
+    flex-shrink: 0;
 }
 
 .filters-row {
