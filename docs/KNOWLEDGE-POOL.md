@@ -14,6 +14,7 @@ Phases complete: 0-4
 
 ## Index (categories)
 - CLI Architecture & Scope
+- Web UI Layout Architecture
 - S3 Multi-Location Configuration (v0.0.7)
 - Accounts & ARNs
 - S3 buckets & paths
@@ -72,6 +73,45 @@ Both CLIs are thin clients that:
 3. Display results
 
 The Worker performs all actual operations (database drops, S3 downloads, restores, etc.).
+
+---
+
+## Web UI Layout Architecture
+
+**Full documentation**: [design/web-layout.md](design/web-layout.md)
+
+### Layout Structure
+```
+┌───────────────────────────────────────────────────────────────────┐
+│3│               │          PAGE HEADER BAR                        │
+│p│  [Video Logo] │ Page Title    │ Subtitle │          [Login Info]│
+│x├─────┐───────────────────────────────────────────────────────────┤
+│ │SIDE │                    WORK AREA                              │
+│ │BAR  │                  (content-body)                           │
+│ │HOVER│               Scrolls independently                       │
+│ │     ├───────────────────────────────────────────────────────────┤
+│ │     │ © 2025 pullDB • v0.0.8    │    Service Titan/Field Routes │
+└───────┴───────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+- **3px Strip**: Fixed left edge, gradient accent, full viewport height
+- **Header**: Full width, video logo + title/subtitle + login info
+- **Sidebar**: 12px invisible trigger zone, expands to 220px on hover, overlays content
+- **Work Area**: Scrollable content area, flex child of app-body
+- **Footer**: Two rows - copyright/version + branding
+
+### Template Blocks
+```jinja
+{% block header_title %}Page Title{% endblock %}
+{% block header_subtitle %}<p class="page-subtitle">Description</p>{% endblock %}
+{% block header_actions %}<!-- Buttons/controls -->{% endblock %}
+{% block content %}<!-- Main page content -->{% endblock %}
+```
+
+### Static Assets
+- Logo video: `pulldb/images/pullDB_logo.mp4` → `/static/images/pullDB_logo.mp4`
+- Brand logos: `servicetitan-logo.svg`, `fieldroutes-logo.svg`
 
 ---
 
