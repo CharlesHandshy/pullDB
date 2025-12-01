@@ -179,23 +179,23 @@
             position: relative;
         }
 
-        /* Sidebar - starts below header, hovers over work area */
+        /* Sidebar - starts below header, fixed position */
         .sidebar {
-            width: 0;
+            width: 12px;  /* Small visible width for hover detection */
             background: var(--gray-900);
             color: white;
             display: flex;
             flex-direction: column;
-            position: absolute;
-            top: 0;
-            left: 0;
+            position: fixed;
+            top: var(--page-header-height);
+            left: 3px;
             bottom: 0;
             z-index: 200;
             overflow: hidden;
-            transition: width var(--transition-base);
+            transition: width var(--transition-base), box-shadow var(--transition-base);
         }
 
-        /* Hover expand - overlays content */
+        /* Expand on hover */
         .sidebar:hover {
             width: var(--sidebar-width);
             box-shadow: var(--shadow-xl);
@@ -210,6 +210,7 @@
             height: 100%;
             opacity: 0;
             transition: opacity var(--transition-fast);
+            transition-delay: 0.05s;
         }
 
         .sidebar:hover .sidebar-inner {
@@ -407,10 +408,11 @@
             background: rgba(239, 68, 68, 0.1);
         }
 
-        /* Main Content Area - fills body, sidebar overlays */
+        /* Main Content Area - fills body, offset for sidebar trigger zone */
         .main-content {
             flex: 1;
             min-width: 0;
+            margin-left: 12px;  /* Space for sidebar hover trigger */
             display: flex;
             flex-direction: column;
             background: var(--gray-50);
