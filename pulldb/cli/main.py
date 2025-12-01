@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fnmatch
 import importlib
 import json as json_module
 import os
@@ -104,50 +103,6 @@ MIN_JOB_ID_PREFIX_LENGTH = 8
 def _get_default_s3env() -> str:
     """Get default S3 environment from PULLDB_S3ENV_DEFAULT or 'both'."""
     return os.getenv("PULLDB_S3ENV_DEFAULT", "both")
-
-
-def _load_s3_backup_locations() -> list[tuple[str, str, str, str | None]]:
-    """Load S3 backup locations from PULLDB_S3_BACKUP_LOCATIONS env var.
-    
-    Returns:
-        List of tuples: (name, bucket, prefix, profile)
-        Falls back to hardcoded defaults if env var not set.
-    """
-    raw_locations = os.getenv("PULLDB_S3_BACKUP_LOCATIONS")
-    if raw_locations:
-        try:
-            payload = json_module.loads(raw_locations)
-            if isinstance(payload, list):
-                locations: list[tuple[str, str, str, str | None]] = []
-                for entry in payload:
-                    if isinstance(entry, dict):
-                        bucket_path = entry.get("bucket_path", "")
-                        name = entry.get("name", "unknown")
-                        profile = entry.get("profile")
-                        # Parse bucket_path like s3://bucket/prefix/
-                        if bucket_path.startswith("s3://"):
-                            path = bucket_path[5:]
-                            if "/" in path:
-                                bucket = path.split("/")[0]
-                                prefix = "/".join(path.split("/")[1:])
-                                if not prefix.endswith("/"):
-                                    prefix += "/"
-                            else:
-                                bucket = path
-                                prefix = ""
-                            locations.append((name, bucket, prefix, profile))
-                if locations:
-                    return locations
-        except json_module.JSONDecodeError:
-            pass  # Fall through to defaults
-    
-    # Fallback to hardcoded defaults
-    return [
-        ("staging", "pestroutesrdsdbs", "daily/stg/",
-         os.getenv("PULLDB_S3_STAGING_PROFILE", "pr-staging")),
-        ("prod", "pestroutes-rds-backup-prod-vpc-us-east-1-s3", "daily/prod/",
-         os.getenv("PULLDB_S3_PROD_PROFILE", "pr-prod")),
-    ]
 
 
 def _resolve_job_id(job_id_or_prefix: str) -> str:
@@ -540,6 +495,7 @@ def restore_cmd(options: tuple[str, ...]) -> None:
 
     \b
     OPTIONS:
+      ext=<ABC>             Extension suffix for qatemplate (letters only)
       dbhost=<hostname>     Target database host (default: localhost)
       date=<YYYY-MM-DD>     Specific backup date (default: latest)
       s3env=<staging|prod>  S3 environment (default: PULLDB_S3ENV_DEFAULT or both)
@@ -551,6 +507,7 @@ def restore_cmd(options: tuple[str, ...]) -> None:
       pulldb restore customer=actionpest
       pulldb restore customer=actionpest date=2025-11-25
       pulldb restore qatemplate
+      pulldb restore qatemplate ext=DEV
       pulldb restore customer=bigcorp dbhost=db2.example.com
       pulldb restore customer=acme overwrite
       pulldb restore customer=acme s3env=prod
@@ -573,6 +530,7 @@ def restore_cmd(options: tuple[str, ...]) -> None:
         "user": username,
         "customer": parsed.customer_id,
         "qatemplate": parsed.is_qatemplate,
+        "ext": parsed.ext,
         "dbhost": parsed.dbhost,
         "date": parsed.date,
         "overwrite": parsed.overwrite,
@@ -599,7 +557,12 @@ def restore_cmd(options: tuple[str, ...]) -> None:
         raise click.ClickException("API response missing job_id or target fields.")
 
     # Display job info with customer and target prominently
-    customer_display = parsed.customer_id if parsed.customer_id else "qatemplate"
+    if parsed.customer_id:
+        customer_display = parsed.customer_id
+    elif parsed.ext:
+        customer_display = f"qatemplate (ext={parsed.ext})"
+    else:
+        customer_display = "qatemplate"
     click.echo("Job submitted successfully!")
     click.echo(f"  customer:     {customer_display}")
     click.echo(f"  target:       {target}")
@@ -961,151 +924,43 @@ def search_cmd(args: tuple[str, ...]) -> None:
     limit = limit_arg if limit_arg is not None else 5
     
     # Validate date format if provided
-    filter_date: datetime | None = None
     if start_date:
         if not re.match(r"^\d{8}$", start_date):
             raise click.UsageError(
                 f"Invalid date format: '{start_date}'. Use YYYYMMDD (e.g., 20251101)"
             )
         try:
-            filter_date = datetime.strptime(start_date, "%Y%m%d")
+            datetime.strptime(start_date, "%Y%m%d")
         except ValueError as e:
             raise click.UsageError(f"Invalid date: {start_date}") from e
 
     if limit <= 0 or limit > 100:
         raise click.UsageError("--limit must be between 1 and 100")
 
-    # Determine if customer contains a wildcard
-    has_wildcard = "*" in customer or "?" in customer
+    # Call backup search API
+    params: dict[str, t.Any] = {
+        "customer": customer,
+        "environment": environment,
+        "limit": limit,
+    }
+    if start_date:
+        params["date_from"] = start_date
 
-    # Import S3 utilities
-    from pulldb.infra.s3 import S3Client
+    try:
+        response = _api_get_object("/api/backups/search", params)
+    except _APIError as exc:
+        raise click.ClickException(str(exc)) from exc
 
-    # Get S3 configuration from environment
-    s3_profile = os.getenv("PULLDB_S3_AWS_PROFILE") or os.getenv("PULLDB_AWS_PROFILE")
-
-    # Load configured backup locations
-    all_locations = _load_s3_backup_locations()
+    backups = response.get("backups", [])
     
-    # Filter by environment
-    buckets: list[tuple[str, str, str, str | None]] = []
-    for loc_name, bucket, prefix, profile in all_locations:
-        # Match environment: "both" matches all, otherwise exact or partial match
-        if environment == "both":
-            buckets.append((loc_name, bucket, prefix, profile))
-        elif loc_name.lower() == environment.lower():
-            buckets.append((loc_name, bucket, prefix, profile))
-        elif environment.lower() in loc_name.lower():
-            buckets.append((loc_name, bucket, prefix, profile))
-    
-    if not buckets:
-        click.echo(f"No backup locations configured for environment '{environment}'", err=True)
-        click.echo("Available locations:", err=True)
-        for loc_name, _, _, _ in all_locations:
-            click.echo(f"  - {loc_name}", err=True)
-        raise SystemExit(1)
-
-    s3 = S3Client(profile=s3_profile)
-
-    all_backups: list[dict[str, t.Any]] = []
-
-    for env_name, bucket, prefix, profile in buckets:
-        try:
-            if has_wildcard:
-                # Extract the prefix before the first wildcard character
-                # e.g., "qat*" -> "qat", "action?pest" -> "action"
-                wildcard_pos = min(
-                    (customer.find(c) for c in "*?" if c in customer),
-                    default=len(customer)
-                )
-                search_prefix = customer[:wildcard_pos]
-                
-                # Use the prefix for efficient S3 listing
-                s3_prefix = f"{prefix}{search_prefix}"
-                click.echo(f"Searching {env_name} bucket for '{customer}'...", err=True)
-                keys = s3.list_keys(bucket, s3_prefix, profile=profile)
-
-                # Extract unique customer names from keys
-                customer_dirs: set[str] = set()
-                for key in keys:
-                    # Keys look like: daily/stg/customerX/daily_mydumper_customerX_...
-                    parts = key[len(prefix) :].split("/")
-                    if parts:
-                        customer_dirs.add(parts[0])
-
-                # Filter by wildcard pattern
-                matching_customers = [
-                    c
-                    for c in customer_dirs
-                    if fnmatch.fnmatch(c.lower(), customer.lower())
-                ]
-
-                if not matching_customers:
-                    continue
-
-                # Search each matching customer
-                for cust in matching_customers[
-                    :20
-                ]:  # Limit to avoid too many API calls
-                    _search_customer_backups(
-                        s3,
-                        bucket,
-                        prefix,
-                        cust,
-                        profile,
-                        env_name,
-                        filter_date,
-                        all_backups,
-                    )
-            else:
-                # Direct search for specific customer
-                _search_customer_backups(
-                    s3,
-                    bucket,
-                    prefix,
-                    customer,
-                    profile,
-                    env_name,
-                    filter_date,
-                    all_backups,
-                )
-        except Exception as e:
-            click.echo(f"Warning: Error searching {env_name}: {e}", err=True)
-
-    if not all_backups:
+    if not backups:
         click.echo(f"No backups found for '{customer}'")
-        if has_wildcard:
+        if "*" in customer or "?" in customer:
             click.echo("Try a more specific pattern or check the customer name.")
         return
 
-    # Sort by timestamp descending (newest first)
-    all_backups.sort(key=lambda x: x["timestamp"], reverse=True)
-
-    # Apply date filter if provided
-    if filter_date:
-        all_backups = [b for b in all_backups if b["timestamp"] >= filter_date]
-        if not all_backups:
-            click.echo(f"No backups found for '{customer}' on or after {start_date}")
-            return
-
-    # Limit results
-    all_backups = all_backups[:limit]
-
     if json_out:
-        # Convert datetime to ISO string for JSON
-        output = []
-        for b in all_backups:
-            output.append(
-                {
-                    "customer": b["customer"],
-                    "timestamp": b["timestamp"].strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    "date": b["timestamp"].strftime("%Y%m%d"),
-                    "size_mb": round(b["size_bytes"] / (1024 * 1024), 1),
-                    "environment": b["environment"],
-                    "key": b["key"],
-                }
-            )
-        click.echo(json_module.dumps(output, indent=2))
+        click.echo(json_module.dumps(backups, indent=2))
         return
 
     # Table output
@@ -1114,26 +969,32 @@ def search_cmd(args: tuple[str, ...]) -> None:
     headers = ["CUSTOMER", "DATE", "TIME (UTC)", "SIZE", "ENV", "FILENAME"]
     rows: list[list[str]] = []
 
-    for b in all_backups:
-        ts = b["timestamp"]
-        size_mb = b["size_bytes"] / (1024 * 1024)
+    for b in backups:
+        # Parse timestamp from ISO format
+        ts_str = b.get("timestamp", "")
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        except ValueError:
+            ts = None
+        
+        size_mb = float(b.get("size_mb", 0))
         if size_mb >= 1024:
             size_str = f"{size_mb / 1024:.1f} GB"
         else:
             size_str = f"{size_mb:.1f} MB"
 
-        filename = b["key"].rsplit("/", 1)[-1]
+        filename = b.get("key", "").rsplit("/", 1)[-1]
         # Truncate long filenames
         if len(filename) > 50:
             filename = filename[:47] + "..."
 
         rows.append(
             [
-                b["customer"],
-                ts.strftime("%Y-%m-%d"),
-                ts.strftime("%H:%M:%S"),
+                b.get("customer", ""),
+                ts.strftime("%Y-%m-%d") if ts else "—",
+                ts.strftime("%H:%M:%S") if ts else "—",
                 size_str,
-                b["environment"][:4],  # stag or prod
+                b.get("environment", "")[:4],
                 filename,
             ]
         )
@@ -1154,64 +1015,8 @@ def search_cmd(args: tuple[str, ...]) -> None:
         click.echo("  ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row)))
 
     click.echo(f"\n{len(rows)} backup(s) found.")
-    if len(all_backups) == limit:
+    if len(backups) == limit:
         click.echo(f"(showing first {limit}, use --limit to see more)")
-
-
-def _search_customer_backups(
-    s3: t.Any,
-    bucket: str,
-    prefix: str,
-    customer: str,
-    profile: str | None,
-    env_name: str,
-    filter_date: datetime | None,
-    results: list[dict[str, t.Any]],
-) -> None:
-    """Search for backups of a specific customer and append to results."""
-    from pulldb.infra.s3 import BACKUP_FILENAME_REGEX
-
-    search_prefix = f"{prefix}{customer}/daily_mydumper_{customer}_"
-
-    try:
-        keys = s3.list_keys(bucket, search_prefix, profile=profile)
-    except Exception:
-        # Silently skip customers we can't access
-        return
-
-    for key in keys:
-        filename = key.rsplit("/", 1)[-1]
-        match = BACKUP_FILENAME_REGEX.match(filename)
-        if not match:
-            continue
-
-        ts_str = match.group("ts")
-        try:
-            ts = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%SZ")
-        except ValueError:
-            continue
-
-        # Get size via HEAD (only for recent backups to avoid too many API calls)
-        # Skip if we have a date filter and this is before the filter
-        if filter_date and ts < filter_date:
-            continue
-
-        try:
-            head = s3.head_object(bucket, key, profile=profile)
-            size_bytes = int(head.get("ContentLength", 0))
-        except Exception:
-            size_bytes = 0
-
-        results.append(
-            {
-                "customer": customer,
-                "timestamp": ts,
-                "size_bytes": size_bytes,
-                "environment": env_name,
-                "bucket": bucket,
-                "key": key,
-            }
-        )
 
 
 def _stream_job_events(job_id: str) -> None:

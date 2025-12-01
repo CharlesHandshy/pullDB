@@ -62,12 +62,11 @@ class TestWebRouteDefinitions:
         routes = {r.path: r.methods for r in router.routes if hasattr(r, "methods")}
         assert "/web/dashboard" in routes
 
-    def test_router_has_jobs_routes(self) -> None:
-        """Router has jobs listing and detail routes."""
+    def test_router_has_job_detail_route(self) -> None:
+        """Router has job detail route."""
         from pulldb.web import router
 
         routes = {r.path: r.methods for r in router.routes if hasattr(r, "methods")}
-        assert "/web/jobs" in routes
         assert "/web/jobs/{job_id}" in routes
 
 

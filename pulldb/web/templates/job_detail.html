@@ -1,105 +1,169 @@
 {% extends "base.html" %}
 
-{% block title %}Job {{ job.id[:8] }} - pullDB{% endblock %}
+{% block title %}Job {{ job.job_id[:8] }} - pullDB{% endblock %}
 
 {% block content %}
-<div class="mb-4">
-    <a href="/web/jobs" class="text-muted">&larr; Back to Jobs</a>
-</div>
+<!-- Page Header -->
+<header class="content-header">
+    <div class="content-header-inner">
+        <div>
+            <div class="flex items-center gap-3 mb-2">
+                <a href="/web/dashboard{% if back_tab %}?tab={{ back_tab }}{% endif %}" class="btn btn-ghost btn-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="16" height="16">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                    </svg>
+                    Back to Dashboard
+                </a>
+            </div>
+            <h1 class="page-title font-mono">{{ job.target }}</h1>
+            <p class="page-subtitle font-mono">{{ job.job_id }}</p>
+        </div>
+        <div class="header-actions">
+            <span class="badge badge-{{ job.status }}" style="font-size: 0.875rem; padding: 0.5rem 1rem;">
+                <span class="badge-dot"></span>
+                {{ job.status }}
+            </span>
+            {% if can_cancel and job.status in ['queued', 'running'] %}
+            <form action="/api/jobs/{{ job.job_id }}/cancel" method="POST" style="display: inline;">
+                <button type="submit" class="btn btn-danger">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Cancel Job
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</header>
 
-<div class="card">
-    <div class="card-header">
-        <h2>
-            <span class="mono">{{ job.target }}</span>
-            <span class="badge badge-{{ job.status.value }}">{{ job.status.value }}</span>
-        </h2>
-        {% if can_cancel and job.status.value in ['queued', 'running'] %}
-        <form action="/api/jobs/{{ job.id }}/cancel" method="POST" style="display: inline;">
-            <button type="submit" class="btn btn-danger btn-sm">Cancel</button>
-        </form>
-        {% endif %}
+<div class="content-body">
+    <!-- Job Details Card -->
+    <div class="card mb-6">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                </svg>
+                Job Details
+            </h2>
+        </div>
+        <div class="card-body no-padding">
+            <div class="table-container">
+                <table>
+                    <tbody>
+                        <tr>
+                            <td class="font-semibold text-muted" style="width: 180px;">Job ID</td>
+                            <td class="font-mono">{{ job.job_id }}</td>
+                        </tr>
+                        <tr>
+                            <td class="font-semibold text-muted">Target Database</td>
+                            <td class="font-mono font-semibold">{{ job.target }}</td>
+                        </tr>
+                        <tr>
+                            <td class="font-semibold text-muted">Staging Name</td>
+                            <td class="font-mono">{{ job.staging_name or '—' }}</td>
+                        </tr>
+                        <tr>
+                            <td class="font-semibold text-muted">Database Host</td>
+                            <td class="font-mono">{{ job.dbhost or '—' }}</td>
+                        </tr>
+                        <tr>
+                            <td class="font-semibold text-muted">Source Customer</td>
+                            <td class="font-mono font-semibold">{{ job.source_customer or '—' }}</td>
+                        </tr>
+                        <tr>
+                            <td class="font-semibold text-muted">Backup File</td>
+                            <td class="font-mono text-sm">{{ job.backup_file or '—' }}</td>
+                        </tr>
+                        <tr>
+                            <td class="font-semibold text-muted">Owner</td>
+                            <td>
+                                {{ job.owner_username }}
+                                <span class="text-muted text-sm">({{ job.owner_user_code or job.owner_user_id }})</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="font-semibold text-muted">Submitted</td>
+                            <td>{{ job.submitted_at.strftime('%B %d, %Y at %H:%M:%S UTC') }}</td>
+                        </tr>
+                        {% if job.started_at %}
+                        <tr>
+                            <td class="font-semibold text-muted">Started</td>
+                            <td>{{ job.started_at.strftime('%B %d, %Y at %H:%M:%S UTC') }}</td>
+                        </tr>
+                        {% endif %}
+                        {% if job.completed_at %}
+                        <tr>
+                            <td class="font-semibold text-muted">Completed</td>
+                            <td>{{ job.completed_at.strftime('%B %d, %Y at %H:%M:%S UTC') }}</td>
+                        </tr>
+                        {% endif %}
+                        {% if job.worker_id %}
+                        <tr>
+                            <td class="font-semibold text-muted">Worker</td>
+                            <td class="font-mono">{{ job.worker_id }}</td>
+                        </tr>
+                        {% endif %}
+                        {% if job.current_operation %}
+                        <tr>
+                            <td class="font-semibold text-muted">Current Operation</td>
+                            <td>
+                                <span class="badge badge-running">
+                                    <span class="badge-dot"></span>
+                                    {{ job.current_operation }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
-    <div class="card-body">
-        <table>
-            <tbody>
-                <tr>
-                    <th style="width: 150px;">Job ID</th>
-                    <td class="mono">{{ job.id }}</td>
-                </tr>
-                <tr>
-                    <th>Target Database</th>
-                    <td class="mono">{{ job.target }}</td>
-                </tr>
-                <tr>
-                    <th>Staging Name</th>
-                    <td class="mono">{{ job.staging_name }}</td>
-                </tr>
-                <tr>
-                    <th>Database Host</th>
-                    <td class="mono">{{ job.dbhost }}</td>
-                </tr>
-                <tr>
-                    <th>Owner</th>
-                    <td>{{ job.owner_username }} <span class="text-muted">({{ job.owner_user_code }})</span></td>
-                </tr>
-                <tr>
-                    <th>Submitted</th>
-                    <td>{{ job.submitted_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</td>
-                </tr>
-                {% if job.started_at %}
-                <tr>
-                    <th>Started</th>
-                    <td>{{ job.started_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</td>
-                </tr>
-                {% endif %}
-                {% if job.completed_at %}
-                <tr>
-                    <th>Completed</th>
-                    <td>{{ job.completed_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</td>
-                </tr>
-                {% endif %}
-                {% if job.worker_id %}
-                <tr>
-                    <th>Worker</th>
-                    <td class="mono">{{ job.worker_id }}</td>
-                </tr>
-                {% endif %}
-                {% if job.current_operation %}
-                <tr>
-                    <th>Current Operation</th>
-                    <td>{{ job.current_operation }}</td>
-                </tr>
-                {% endif %}
-                {% if job.error_detail %}
-                <tr>
-                    <th>Error</th>
-                    <td class="text-danger">{{ job.error_detail }}</td>
-                </tr>
-                {% endif %}
-                {% if job.options_json %}
-                <tr>
-                    <th>Options</th>
-                    <td class="mono text-sm">{{ job.options_json }}</td>
-                </tr>
-                {% endif %}
-            </tbody>
-        </table>
-    </div>
-</div>
 
-<!-- Job Events -->
-<div class="card">
-    <div class="card-header">
-        <h2>Event Log</h2>
-        <span class="htmx-indicator text-muted text-sm">Updating...</span>
+    {% if job.error_detail %}
+    <!-- Error Details -->
+    <div class="alert alert-error mb-6">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+        </svg>
+        <div>
+            <div class="font-semibold mb-1">Job Failed</div>
+            <div>{{ job.error_detail }}</div>
+        </div>
     </div>
-    <div class="card-body"
-         {% if job.status.value in ['queued', 'running'] %}
-         hx-get="/web/partials/job-events/{{ job.id }}"
-         hx-trigger="every 3s"
-         hx-indicator=".htmx-indicator"
-         {% endif %}>
-        {% include "partials/job_events.html" %}
+    {% endif %}
+
+    <!-- Job Events Card -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
+                </svg>
+                Event Log
+            </h2>
+            <div class="flex items-center gap-3">
+                {% if job.status in ['queued', 'running'] %}
+                <div class="live-indicator">
+                    <span class="live-dot"></span>
+                    <span>Live</span>
+                </div>
+                {% endif %}
+                <span class="htmx-indicator">
+                    <div class="spinner"></div>
+                </span>
+            </div>
+        </div>
+        <div class="card-body"
+             {% if job.status in ['queued', 'running'] %}
+             hx-get="/web/partials/job-events/{{ job.job_id }}"
+             hx-trigger="every 3s"
+             hx-indicator=".htmx-indicator"
+             {% endif %}>
+            {% include "partials/job_events.html" %}
+        </div>
     </div>
 </div>
 {% endblock %}

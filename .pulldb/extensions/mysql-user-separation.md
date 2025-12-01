@@ -7,6 +7,7 @@
 ## Overview
 
 pullDB uses service-specific MySQL users with least-privilege access:
+passwords for the service by host can be found in aws secret manager profile pr-dev:
 
 | User | Service | Access Level |
 |------|---------|--------------|
@@ -19,6 +20,7 @@ pullDB uses service-specific MySQL users with least-privilege access:
 ## Secret Structure
 
 Each user has a dedicated AWS Secrets Manager secret:
+Use profile pr-dev for secrets access to passwords by host:
 
 | Secret Path | Contents | Service |
 |-------------|----------|---------|

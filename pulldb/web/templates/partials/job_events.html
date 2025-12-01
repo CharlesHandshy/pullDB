@@ -1,26 +1,118 @@
 {% if events %}
-<table>
-    <thead>
-        <tr>
-            <th style="width: 180px;">Timestamp</th>
-            <th style="width: 120px;">Event Type</th>
-            <th>Details</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for event in events %}
-        <tr>
-            <td class="mono text-sm">{{ event.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-            <td>
-                <span class="badge {% if event.event_type == 'error' %}badge-failed{% elif event.event_type == 'complete' %}badge-completed{% elif event.event_type == 'start' %}badge-running{% else %}badge-secondary{% endif %}">
-                    {{ event.event_type }}
-                </span>
-            </td>
-            <td>{{ event.detail or '' }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="event-timeline">
+    <style>
+        .event-timeline {
+            position: relative;
+            padding-left: 24px;
+        }
+        
+        .event-timeline::before {
+            content: '';
+            position: absolute;
+            left: 7px;
+            top: 8px;
+            bottom: 8px;
+            width: 2px;
+            background: var(--gray-200);
+        }
+        
+        .event-item {
+            position: relative;
+            padding-bottom: 1.5rem;
+        }
+        
+        .event-item:last-child {
+            padding-bottom: 0;
+        }
+        
+        .event-dot {
+            position: absolute;
+            left: -24px;
+            top: 4px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: white;
+            border: 2px solid var(--gray-300);
+            z-index: 1;
+        }
+        
+        .event-item.event-complete .event-dot {
+            background: var(--success-500);
+            border-color: var(--success-500);
+        }
+        
+        .event-item.event-error .event-dot,
+        .event-item.event-failed .event-dot {
+            background: var(--danger-500);
+            border-color: var(--danger-500);
+        }
+        
+        .event-item.event-running .event-dot,
+        .event-item.event-start .event-dot {
+            background: var(--primary-500);
+            border-color: var(--primary-500);
+            animation: pulse 2s infinite;
+        }
+        
+        .event-item.event-claimed .event-dot {
+            background: var(--primary-400);
+            border-color: var(--primary-400);
+        }
+        
+        .event-content {
+            background: var(--gray-50);
+            border-radius: var(--radius-lg);
+            padding: 1rem;
+            border: 1px solid var(--gray-100);
+        }
+        
+        .event-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+        
+        .event-type {
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-transform: capitalize;
+        }
+        
+        .event-time {
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            font-family: var(--font-mono);
+        }
+        
+        .event-message {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+        }
+    </style>
+    
+    {% for event in events|reverse %}
+    <div class="event-item event-{{ event.event_type }}">
+        <div class="event-dot"></div>
+        <div class="event-content">
+            <div class="event-header">
+                <span class="event-type">{{ event.event_type }}</span>
+                <span class="event-time">{{ event.created_at.strftime('%H:%M:%S') }}</span>
+            </div>
+            {% if event.message or event.detail %}
+            <div class="event-message">{{ event.message or event.detail }}</div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
 {% else %}
-<p class="text-muted">No events recorded yet.</p>
+<div class="empty-state">
+    <svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <h3 class="empty-state-title">Waiting for events</h3>
+    <p class="empty-state-text">Events will appear here as the job progresses.</p>
+</div>
 {% endif %}

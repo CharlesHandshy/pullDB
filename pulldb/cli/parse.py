@@ -5,6 +5,7 @@ Validation rules (strict FAIL HARD semantics):
  - Username must contain at least 6 alphabetic characters (letters only after
    sanitization) used for user_code derivation
  - Exactly one of ``customer=<id>`` or literal ``qatemplate`` must appear
+ - Optional ``ext=<ABC>`` token for qatemplate extension suffix (letters only)
  - Optional ``dbhost=<hostname>`` token
  - Optional ``date=<YYYY-MM-DD>`` token for specific backup date
  - Optional ``s3env=<staging|prod>`` token to specify S3 environment
@@ -12,7 +13,7 @@ Validation rules (strict FAIL HARD semantics):
  - Unknown tokens produce a validation error (never ignored)
  - Target length constraint: ``<user_code><sanitized_customer>`` <= 51 chars
    (reserves 13 for staging suffix). For qatemplate the target becomes
-   ``<user_code>qatemplate``.
+   ``<user_code>qatemplate`` or ``<user_code>qatemplate_<ext>``.
 
 Supported option syntax styles:
  - option=value
@@ -53,6 +54,7 @@ class RestoreCLIOptions:
         username: Raw username if provided via user= token (None if auto-detect).
         customer_id: Raw customer identifier if provided (None for qatemplate).
         is_qatemplate: True when qatemplate restore requested.
+        ext: Optional extension suffix for qatemplate (letters only, e.g., 'DEV').
         dbhost: Optional explicit database host override.
         date: Optional specific backup date in YYYY-MM-DD format.
         s3env: Optional S3 environment (staging or prod).
@@ -63,6 +65,7 @@ class RestoreCLIOptions:
     username: str | None
     customer_id: str | None
     is_qatemplate: bool
+    ext: str | None
     dbhost: str | None
     date: str | None
     s3env: str | None
@@ -74,11 +77,12 @@ _TOKEN_CUSTOMER = re.compile(r"^(?:--)?customer=([A-Za-z0-9_.-]+)$")
 _TOKEN_DBHOST = re.compile(r"^(?:--)?dbhost=([A-Za-z0-9_.-]+)$")
 _TOKEN_DATE = re.compile(r"^(?:--)?date=(\d{4}-\d{2}-\d{2})$")
 _TOKEN_S3ENV = re.compile(r"^(?:--)?s3env=(staging|prod)$")
+_TOKEN_EXT = re.compile(r"^(?:--)?ext=([A-Za-z]+)$")
 
 
 def _tokenize(
     tokens: Sequence[str],
-) -> tuple[str | None, str | None, bool, str | None, str | None, str | None, bool]:
+) -> tuple[str | None, str | None, bool, str | None, str | None, str | None, str | None, bool]:
     """Parse all tokens and return extracted values.
     
     Supports multiple syntax styles:
@@ -87,11 +91,12 @@ def _tokenize(
     - --option value (space-separated)
     
     Returns:
-        Tuple of (username, customer_id, is_qatemplate, dbhost, date, s3env, overwrite)
+        Tuple of (username, customer_id, is_qatemplate, ext, dbhost, date, s3env, overwrite)
     """
     username: str | None = None
     customer_id: str | None = None
     is_qatemplate = False
+    ext: str | None = None
     dbhost: str | None = None
     date: str | None = None
     s3env: str | None = None
@@ -164,6 +169,14 @@ def _tokenize(
                 s3env = opt_value
                 i += 2
                 continue
+            elif opt_name == "ext":
+                if ext is not None:
+                    raise CLIParseError(f"ext specified more than once")
+                if not re.match(r"^[A-Za-z]+$", opt_value):
+                    raise CLIParseError(f"ext must contain only letters. Got: {opt_value}")
+                ext = opt_value.upper()
+                i += 2
+                continue
             else:
                 raise CLIParseError(f"Unrecognized option: {tok}")
 
@@ -234,9 +247,20 @@ def _tokenize(
             i += 1
             continue
 
+        # Check ext= token
+        m_ext = _TOKEN_EXT.match(tok)
+        if m_ext:
+            if ext is not None:
+                raise CLIParseError(
+                    f"ext specified more than once ('{ext}', '{tok}')."
+                )
+            ext = m_ext.group(1).upper()
+            i += 1
+            continue
+
         raise CLIParseError(f"Unrecognized token: '{tok}'")
 
-    return username, customer_id, is_qatemplate, dbhost, date, s3env, overwrite
+    return username, customer_id, is_qatemplate, ext, dbhost, date, s3env, overwrite
 
 
 def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
@@ -259,7 +283,7 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
         )
 
     # Parse all tokens
-    username, customer_id, is_qatemplate, dbhost, date, s3env, overwrite = _tokenize(tokens)
+    username, customer_id, is_qatemplate, ext, dbhost, date, s3env, overwrite = _tokenize(tokens)
 
     # Enforce exactly one of customer or qatemplate specified
     if customer_id is None and not is_qatemplate:
@@ -271,12 +295,19 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
         raise CLIParseError(
             "Cannot specify both customer=<id> and qatemplate. Choose one."
         )
+    
+    # ext is only valid with qatemplate
+    if ext is not None and not is_qatemplate:
+        raise CLIParseError(
+            "ext= option is only valid with qatemplate. Remove ext= or use qatemplate instead of customer=."
+        )
 
     return RestoreCLIOptions(
         raw_tokens=tuple(tokens),
         username=username,
         customer_id=customer_id,
         is_qatemplate=is_qatemplate,
+        ext=ext,
         dbhost=dbhost,
         date=date,
         s3env=s3env,

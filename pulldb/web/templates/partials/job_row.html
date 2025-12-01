@@ -2,7 +2,7 @@
     <td class="mono text-sm">{{ job.id[:8] }}...</td>
     <td class="mono">{{ job.target }}</td>
     <td>
-        <span class="badge badge-{{ job.status.value }}">{{ job.status.value }}</span>
+        <span class="badge badge-{{ job.status }}">{{ job.status }}</span>
     </td>
     <td>{{ job.owner_username }}</td>
     <td class="text-sm">{{ job.submitted_at.strftime('%Y-%m-%d %H:%M') }}</td>

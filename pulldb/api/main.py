@@ -48,7 +48,9 @@ app = fastapi.FastAPI(title="pullDB API Service", version="0.0.1.dev0")
 # Phase 4: Mount web UI router if templates available
 try:
     from pulldb.web import router as web_router
+    from pulldb.web.routes import SessionExpiredError, create_session_expired_handler
     app.include_router(web_router)
+    app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
 except ImportError:
     pass  # Web UI module not installed
 
@@ -233,6 +235,14 @@ def _select_dbhost(state: APIState, req: JobRequest) -> str:
 
 
 def _construct_target(user: User, req: JobRequest) -> str:
+    """Construct target database name from user code and customer/qatemplate.
+    
+    Target names MUST be lowercase letters only (a-z). No numbers, no special
+    characters, no underscores. This is a hard requirement enforced at:
+    - API level (this function)
+    - CLI level (parse.py validation)
+    - Web UI level (JavaScript validation + input filtering)
+    """
     if req.qatemplate:
         return f"{user.user_code}qatemplate"
 
@@ -246,7 +256,18 @@ def _construct_target(user: User, req: JobRequest) -> str:
                 f"Received '{customer_value}'."
             ),
         )
-    return f"{user.user_code}{sanitized}"
+    target = f"{user.user_code}{sanitized}"
+    
+    # Final validation: target must be lowercase letters only
+    if not target.isalpha() or not target.islower():
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Target database name must contain only lowercase letters (a-z). "
+                f"Generated target '{target}' contains invalid characters."
+            ),
+        )
+    return target
 
 
 def _options_snapshot(req: JobRequest) -> dict[str, str]:
@@ -1624,6 +1645,247 @@ async def delete_orphan_databases(
 
 def create_app() -> fastapi.FastAPI:
     return app
+
+
+# ---------------------------------------------------------------------------
+# Backup Search API - S3 backup discovery for CLI
+# ---------------------------------------------------------------------------
+
+
+class BackupInfo(pydantic.BaseModel):
+    """Information about a discovered backup."""
+
+    customer: str
+    timestamp: datetime
+    date: str  # YYYYMMDD format for display
+    size_mb: float
+    environment: str
+    key: str
+    bucket: str
+
+
+class BackupSearchResponse(pydantic.BaseModel):
+    """Response from backup search endpoint."""
+
+    backups: list[BackupInfo]
+    total: int
+    query: str
+    environment: str
+
+
+def _search_backups(
+    customer: str,
+    environment: str,
+    date_from: str | None,
+    limit: int,
+) -> BackupSearchResponse:
+    """Search S3 for backups matching customer pattern.
+    
+    This runs on the API server which has AWS credentials.
+    """
+    import fnmatch
+    import json as json_module
+    
+    from pulldb.infra.s3 import BACKUP_FILENAME_REGEX, S3Client
+    
+    # Load configured backup locations from environment
+    raw_locations = os.getenv("PULLDB_S3_BACKUP_LOCATIONS")
+    all_locations: list[tuple[str, str, str, str | None]] = []
+    
+    if raw_locations:
+        try:
+            payload = json_module.loads(raw_locations)
+            if isinstance(payload, list):
+                for entry in payload:
+                    if isinstance(entry, dict):
+                        bucket_path = entry.get("bucket_path", "")
+                        name = entry.get("name", "unknown")
+                        profile = entry.get("profile")
+                        if bucket_path.startswith("s3://"):
+                            path = bucket_path[5:]
+                            if "/" in path:
+                                bucket = path.split("/")[0]
+                                prefix = "/".join(path.split("/")[1:])
+                                if not prefix.endswith("/"):
+                                    prefix += "/"
+                            else:
+                                bucket = path
+                                prefix = ""
+                            all_locations.append((name, bucket, prefix, profile))
+        except json_module.JSONDecodeError:
+            pass
+    
+    # Fallback to hardcoded defaults
+    if not all_locations:
+        all_locations = [
+            ("staging", "pestroutesrdsdbs", "daily/stg/",
+             os.getenv("PULLDB_S3_STAGING_PROFILE", "pr-staging")),
+            ("prod", "pestroutes-rds-backup-prod-vpc-us-east-1-s3", "daily/prod/",
+             os.getenv("PULLDB_S3_PROD_PROFILE", "pr-prod")),
+        ]
+    
+    # Filter by environment
+    buckets: list[tuple[str, str, str, str | None]] = []
+    for loc_name, bucket, prefix, profile in all_locations:
+        if environment == "both":
+            buckets.append((loc_name, bucket, prefix, profile))
+        elif loc_name.lower() == environment.lower():
+            buckets.append((loc_name, bucket, prefix, profile))
+        elif environment.lower() in loc_name.lower():
+            buckets.append((loc_name, bucket, prefix, profile))
+    
+    if not buckets:
+        return BackupSearchResponse(
+            backups=[],
+            total=0,
+            query=customer,
+            environment=environment,
+        )
+    
+    # Parse date filter
+    filter_date: datetime | None = None
+    if date_from:
+        try:
+            filter_date = datetime.strptime(date_from, "%Y%m%d")
+        except ValueError:
+            pass
+    
+    s3_profile = os.getenv("PULLDB_S3_AWS_PROFILE") or os.getenv("PULLDB_AWS_PROFILE")
+    s3 = S3Client(profile=s3_profile)
+    
+    all_backups: list[BackupInfo] = []
+    has_wildcard = "*" in customer or "?" in customer
+    
+    for env_name, bucket, prefix, profile in buckets:
+        try:
+            if has_wildcard:
+                # Extract prefix before wildcard
+                wildcard_pos = min(
+                    (customer.find(c) for c in "*?" if c in customer),
+                    default=len(customer)
+                )
+                search_prefix = customer[:wildcard_pos]
+                s3_prefix = f"{prefix}{search_prefix}"
+                keys = s3.list_keys(bucket, s3_prefix, profile=profile)
+                
+                # Extract unique customer dirs
+                customer_dirs: set[str] = set()
+                for key in keys:
+                    parts = key[len(prefix):].split("/")
+                    if parts:
+                        customer_dirs.add(parts[0])
+                
+                # Filter by wildcard
+                matching = [c for c in customer_dirs 
+                           if fnmatch.fnmatch(c.lower(), customer.lower())]
+                
+                for cust in matching[:20]:
+                    _collect_customer_backups(
+                        s3, bucket, prefix, cust, profile, env_name,
+                        filter_date, all_backups
+                    )
+            else:
+                _collect_customer_backups(
+                    s3, bucket, prefix, customer, profile, env_name,
+                    filter_date, all_backups
+                )
+        except Exception:
+            continue
+    
+    # Sort by timestamp descending
+    all_backups.sort(key=lambda x: x.timestamp, reverse=True)
+    
+    # Apply limit
+    all_backups = all_backups[:limit]
+    
+    return BackupSearchResponse(
+        backups=all_backups,
+        total=len(all_backups),
+        query=customer,
+        environment=environment,
+    )
+
+
+def _collect_customer_backups(
+    s3: t.Any,
+    bucket: str,
+    prefix: str,
+    customer: str,
+    profile: str | None,
+    env_name: str,
+    filter_date: datetime | None,
+    results: list[BackupInfo],
+) -> None:
+    """Collect backups for a specific customer."""
+    from pulldb.infra.s3 import BACKUP_FILENAME_REGEX
+    
+    search_prefix = f"{prefix}{customer}/daily_mydumper_{customer}_"
+    
+    try:
+        keys = s3.list_keys(bucket, search_prefix, profile=profile)
+    except Exception:
+        return
+    
+    for key in keys:
+        filename = key.rsplit("/", 1)[-1]
+        match = BACKUP_FILENAME_REGEX.match(filename)
+        if not match:
+            continue
+        
+        ts_str = match.group("ts")
+        try:
+            ts = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%SZ")
+        except ValueError:
+            continue
+        
+        if filter_date and ts < filter_date:
+            continue
+        
+        try:
+            head = s3.head_object(bucket, key, profile=profile)
+            size_bytes = int(head.get("ContentLength", 0))
+        except Exception:
+            size_bytes = 0
+        
+        results.append(BackupInfo(
+            customer=customer,
+            timestamp=ts,
+            date=ts.strftime("%Y%m%d"),
+            size_mb=round(size_bytes / (1024 * 1024), 1),
+            environment=env_name,
+            key=key,
+            bucket=bucket,
+        ))
+
+
+@app.get("/api/backups/search", response_model=BackupSearchResponse)
+async def search_backups(
+    customer: str = fastapi.Query(..., min_length=1, description="Customer name or pattern (supports * and ? wildcards)"),
+    environment: str = fastapi.Query("both", description="S3 environment: staging, prod, or both"),
+    date_from: str | None = fastapi.Query(None, description="Filter backups from date (YYYYMMDD)"),
+    limit: int = fastapi.Query(5, ge=1, le=100, description="Max results"),
+) -> BackupSearchResponse:
+    """Search for available backups in S3.
+    
+    This endpoint searches the configured S3 backup locations for
+    backups matching the customer pattern.
+    
+    Args:
+        customer: Customer name or wildcard pattern (e.g., "actionpest" or "action*")
+        environment: S3 environment to search (staging, prod, or both)
+        date_from: Optional start date filter in YYYYMMDD format
+        limit: Maximum number of results (default 5, max 100)
+    
+    Returns:
+        BackupSearchResponse with matching backups sorted by date (newest first)
+    """
+    if environment not in ("staging", "prod", "both"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"environment must be staging, prod, or both. Got: {environment}",
+        )
+    
+    return await run_in_threadpool(_search_backups, customer, environment, date_from, limit)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -15,10 +15,10 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, 
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from pulldb.domain.models import User
 
 if TYPE_CHECKING:
     from pulldb.api.main import APIState
-    from pulldb.domain.models import User
 
 
 # Template configuration
@@ -27,6 +27,52 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Router for web UI routes
 router = APIRouter(prefix="/web", tags=["web"])
+
+
+class SessionExpiredError(Exception):
+    """Raised when a session is invalid or expired."""
+    
+    def __init__(self, is_htmx: bool = False):
+        self.is_htmx = is_htmx
+        super().__init__("Session expired")
+
+
+def _render_error_page(
+    request: Request,
+    user: User | None,
+    status_code: int,
+    title: str,
+    message: str,
+    detail: str | None = None,
+    suggestions: list[str] | None = None,
+    back_url: str | None = None,
+) -> Response:
+    """Render a user-friendly error page."""
+    error_types = {
+        404: "warning",
+        403: "error",
+        500: "error",
+    }
+    # Use referer header as back URL if not specified
+    if back_url is None:
+        back_url = request.headers.get("referer")
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="error.html",
+        context={
+            "user": user,
+            "status_code": status_code,
+            "title": title,
+            "subtitle": message,
+            "message": message,
+            "detail": detail,
+            "error_type": error_types.get(status_code, "warning"),
+            "suggestions": suggestions,
+            "back_url": back_url,
+        },
+        status_code=status_code,
+    )
 
 
 def _get_api_state(request: Request) -> "APIState":
@@ -38,7 +84,7 @@ def _get_api_state(request: Request) -> "APIState":
 def _get_session_user(
     request: Request,
     state: "APIState" = Depends(_get_api_state),
-) -> "User | None":
+) -> User | None:
     """Get current user from session cookie if valid."""
     session_token = request.cookies.get("session_token")
     if not session_token:
@@ -55,15 +101,48 @@ def _get_session_user(
 
 
 def _require_login(
-    user: Annotated["User | None", Depends(_get_session_user)],
-) -> "User":
-    """Require authenticated user, redirect to login if not."""
+    request: Request,
+    user: Annotated[User | None, Depends(_get_session_user)],
+) -> User:
+    """Require authenticated user, redirect to login if not.
+    
+    Handles both regular requests (via Location header) and HTMX requests
+    (via HX-Redirect header) to properly redirect to the login page when
+    the session is invalid or expired.
+    """
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_303_SEE_OTHER,
-            headers={"Location": "/web/login"},
-        )
+        # Check if this is an HTMX request
+        is_htmx = request.headers.get("HX-Request") == "true"
+        raise SessionExpiredError(is_htmx=is_htmx)
     return user
+
+
+def create_session_expired_handler():
+    """Create exception handler for SessionExpiredError.
+    
+    Returns a response that clears the session cookie and redirects to login.
+    For HTMX requests, uses HX-Redirect header.
+    For regular requests, uses HTTP 303 redirect.
+    """
+    async def handler(request: Request, exc: SessionExpiredError) -> Response:
+        if exc.is_htmx:
+            # For HTMX requests, return 200 with HX-Redirect header
+            response = Response(
+                content="",
+                status_code=200,
+                headers={"HX-Redirect": "/web/login"},
+            )
+        else:
+            # For regular requests, use HTTP redirect
+            response = RedirectResponse(
+                url="/web/login",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+        # Clear the invalid session cookie
+        response.delete_cookie("session_token")
+        return response
+    
+    return handler
 
 
 # =============================================================================
@@ -75,7 +154,7 @@ def _require_login(
 async def login_page(
     request: Request,
     error: str | None = None,
-    user: Annotated["User | None", Depends(_get_session_user)] = None,
+    user: Annotated[User | None, Depends(_get_session_user)] = None,
 ) -> Response:
     """Display login form."""
     # If already logged in, redirect to dashboard
@@ -182,7 +261,7 @@ async def logout(
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(
     request: Request,
-    user: Annotated["User", Depends(_require_login)],
+    user: Annotated[User, Depends(_require_login)],
     state: "APIState" = Depends(_get_api_state),
 ) -> Response:
     """Display user dashboard with active jobs."""
@@ -191,16 +270,16 @@ async def dashboard(
     # Get jobs based on user role
     if can_view_all_jobs(user):
         active_jobs = state.job_repo.get_active_jobs()
-        recent_jobs = state.job_repo.get_recent_jobs(limit=10)
+        recent_jobs = state.job_repo.get_recent_jobs(limit=400)
     else:
         active_jobs = [
             j for j in state.job_repo.get_active_jobs()
             if j.owner_user_id == user.user_id
         ]
         recent_jobs = [
-            j for j in state.job_repo.get_recent_jobs(limit=50)
+            j for j in state.job_repo.get_recent_jobs(limit=400)
             if j.owner_user_id == user.user_id
-        ][:10]
+        ]
     
     return templates.TemplateResponse(
         request=request,
@@ -214,59 +293,55 @@ async def dashboard(
     )
 
 
-@router.get("/jobs", response_class=HTMLResponse)
-async def jobs_list(
-    request: Request,
-    user: Annotated["User", Depends(_require_login)],
-    state: "APIState" = Depends(_get_api_state),
-    status_filter: str | None = None,
-    limit: int = 50,
-) -> Response:
-    """Display job history with optional filtering."""
-    from pulldb.domain.permissions import can_view_all_jobs
-    
-    # Determine status filter
-    statuses = None
-    if status_filter and status_filter != "all":
-        statuses = [status_filter]
-    
-    # Get jobs based on user role
-    if can_view_all_jobs(user):
-        jobs = state.job_repo.get_recent_jobs(limit=limit, statuses=statuses)
-    else:
-        all_jobs = state.job_repo.get_recent_jobs(limit=limit * 2, statuses=statuses)
-        jobs = [j for j in all_jobs if j.owner_user_id == user.user_id][:limit]
-    
-    return templates.TemplateResponse(
-        request=request,
-        name="jobs.html",
-        context={
-            "user": user,
-            "jobs": jobs,
-            "status_filter": status_filter or "all",
-            "now": datetime.now(UTC),
-        },
-    )
-
-
 @router.get("/jobs/{job_id}", response_class=HTMLResponse)
 async def job_detail(
     request: Request,
     job_id: str,
-    user: Annotated["User", Depends(_require_login)],
+    user: Annotated[User, Depends(_require_login)],
     state: "APIState" = Depends(_get_api_state),
 ) -> Response:
     """Display job details."""
     from pulldb.domain.permissions import can_cancel_job, can_view_job
+    from urllib.parse import urlparse, parse_qs
     
     job = state.job_repo.get_job_by_id(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        return _render_error_page(
+            request=request,
+            user=user,
+            status_code=404,
+            title="Job Not Found",
+            message=f"The job '{job_id}' could not be found.",
+            suggestions=[
+                "Check that the job ID is correct",
+                "The job may have been deleted or expired",
+                "Return to the dashboard to see your active jobs",
+            ],
+        )
     
     if not can_view_job(user, job.owner_user_id):
-        raise HTTPException(status_code=403, detail="Access denied")
+        return _render_error_page(
+            request=request,
+            user=user,
+            status_code=403,
+            title="Access Denied",
+            message="You don't have permission to view this job.",
+            suggestions=[
+                "You can only view jobs that you created",
+                "Contact an administrator if you need access",
+            ],
+        )
     
-    events = state.job_repo.get_job_events(job_id)
+    events = state.job_repo.get_job_events(job_id) if hasattr(state.job_repo, 'get_job_events') else []
+    
+    # Extract tab from referrer URL to preserve navigation state
+    back_tab = None
+    referer = request.headers.get("referer", "")
+    if referer:
+        parsed = urlparse(referer)
+        query_params = parse_qs(parsed.query)
+        if "tab" in query_params:
+            back_tab = query_params["tab"][0]
     
     return templates.TemplateResponse(
         request=request,
@@ -274,9 +349,10 @@ async def job_detail(
         context={
             "user": user,
             "job": job,
-            "events": events,
+            "events": events or [],
             "can_cancel": can_cancel_job(user, job.owner_user_id),
             "now": datetime.now(UTC),
+            "back_tab": back_tab,
         },
     )
 
@@ -289,7 +365,7 @@ async def job_detail(
 @router.get("/partials/active-jobs", response_class=HTMLResponse)
 async def partial_active_jobs(
     request: Request,
-    user: Annotated["User", Depends(_require_login)],
+    user: Annotated[User, Depends(_require_login)],
     state: "APIState" = Depends(_get_api_state),
 ) -> Response:
     """Return active jobs partial for HTMX updates."""
@@ -317,7 +393,7 @@ async def partial_active_jobs(
 async def partial_job_events(
     request: Request,
     job_id: str,
-    user: Annotated["User", Depends(_require_login)],
+    user: Annotated[User, Depends(_require_login)],
     state: "APIState" = Depends(_get_api_state),
     since_id: int | None = None,
 ) -> Response:
@@ -339,5 +415,637 @@ async def partial_job_events(
         context={
             "events": events,
             "job": job,
+        },
+    )
+
+
+# =============================================================================
+# User Pages (CLI Command Equivalents)
+# =============================================================================
+
+
+@router.get("/restore", response_class=HTMLResponse)
+async def restore_page(
+    request: Request,
+    user: Annotated[User, Depends(_require_login)],
+    state: "APIState" = Depends(_get_api_state),
+    customer: str | None = None,
+    date: str | None = None,
+    s3env: str | None = None,
+) -> Response:
+    """Display restore form (equivalent to pulldb restore command).
+    
+    URL params for pre-filling (from Search page):
+      - customer: Pre-fill customer name
+      - date: Pre-select backup date (YYYYMMDD format)
+      - s3env: Pre-select source environment (staging/prod)
+    """
+    # Get available hosts for dropdown
+    hosts = []
+    if hasattr(state, "host_repo") and state.host_repo:
+        hosts = state.host_repo.get_enabled_hosts()
+    
+    # Get user's recent restore jobs
+    recent_jobs = []
+    if hasattr(state, "job_repo") and state.job_repo:
+        if hasattr(state.job_repo, "get_user_recent_jobs"):
+            recent_jobs = state.job_repo.get_user_recent_jobs(user.user_id, limit=5)
+    
+    # Pre-fill context for linking from search page
+    prefill = {
+        "customer": customer or "",
+        "date": date or "",
+        "s3env": s3env or "",
+    }
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="restore.html",
+        context={
+            "user": user,
+            "hosts": hosts,
+            "recent_jobs": recent_jobs,
+            "prefill": prefill,
+        },
+    )
+
+
+@router.post("/restore")
+async def restore_submit(
+    request: Request,
+    user: Annotated[User, Depends(_require_login)],
+    state: "APIState" = Depends(_get_api_state),
+    customer: str | None = Form(None),
+    date: str | None = Form(None),
+    s3env: str | None = Form(None),
+    qatemplate: str = Form("false"),
+    dbhost: str | None = Form(None),
+    target: str | None = Form(None),
+    overwrite: str | None = Form(None),
+) -> Response:
+    """Handle restore form submission.
+    
+    Submits a new restore job and redirects to the job detail page.
+    """
+    import uuid
+    from datetime import UTC, datetime
+    
+    # Build the job request
+    is_qatemplate = qatemplate.lower() == "true"
+    
+    try:
+        # Check if we're in dev server mode (mock state without settings_repo)
+        if not hasattr(state, "settings_repo") or state.settings_repo is None:
+            # Dev server mock flow - create a simple mock job
+            job_id = str(uuid.uuid4())
+            
+            # Construct target name: user_code + customer (lowercase letters only)
+            if is_qatemplate:
+                target_name = f"{user.user_code}qatemplate"
+            else:
+                # Sanitize customer name to lowercase letters only
+                clean_customer = "".join(c for c in (customer or "").lower() if c.isalpha())
+                target_name = f"{user.user_code}{clean_customer}"
+            
+            # Create a simple mock job object
+            from unittest.mock import MagicMock
+            job = MagicMock()
+            job.id = job_id
+            job.job_id = job_id
+            job.target = target_name
+            job.staging_name = f"{target_name}_{job_id.replace('-', '')[:12]}"
+            job.status = "queued"
+            job.owner_user_id = user.user_id
+            job.owner_username = user.username
+            job.owner_user_code = user.user_code
+            job.user_code = user.user_code
+            job.username = user.username
+            job.created_at = datetime.now(UTC)
+            job.submitted_at = datetime.now(UTC)
+            job.started_at = None
+            job.finished_at = None
+            job.completed_at = None
+            job.dbhost = dbhost or "localhost"
+            job.worker_id = None
+            job.error_detail = None
+            job.source_customer = customer if not is_qatemplate else "QA Template"
+            job.backup_env = s3env if s3env and s3env != "both" else "prd"
+            job.backup_file = f"{customer or 'qatemplate'}/{job.backup_env}/{date or 'latest'}/backup.tar.gz"
+            job.current_operation = None
+            job.options_json = {
+                "is_qatemplate": str(is_qatemplate).lower(),
+                "customer_id": customer,
+                "env": s3env,
+                "overwrite": str(overwrite == "true").lower(),
+            }
+            
+            # Add to mock job repo
+            if hasattr(state, "job_repo") and hasattr(state.job_repo, "enqueue_job"):
+                state.job_repo.enqueue_job(job)
+            
+            # Redirect to the job detail page
+            return RedirectResponse(
+                url=f"/web/jobs/{job_id}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+        
+        # Production flow - use the real API enqueue
+        from pulldb.api.main import JobRequest, _enqueue_job
+        from starlette.concurrency import run_in_threadpool
+        
+        req = JobRequest(
+            user=user.username,
+            customer=customer if not is_qatemplate else None,
+            qatemplate=is_qatemplate,
+            dbhost=dbhost if dbhost else None,
+            date=date,
+            env=s3env if s3env and s3env != "both" else None,
+            overwrite=overwrite == "true",
+        )
+        
+        job_response = await run_in_threadpool(_enqueue_job, state, req)
+        
+        # Redirect to the job detail page
+        return RedirectResponse(
+            url=f"/web/jobs/{job_response.job_id}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    except HTTPException as exc:
+        # Show error page with the error detail
+        return _render_error_page(
+            request=request,
+            user=user,
+            status_code=exc.status_code,
+            title="Job Submission Failed",
+            message=exc.detail,
+            suggestions=[
+                "Check that the customer name and backup date are valid",
+                "Ensure you don't already have an active job for this target",
+                "Try a different database host if the default is busy",
+            ],
+            back_url="/web/restore",
+        )
+    except Exception as exc:
+        # Handle unexpected errors
+        return _render_error_page(
+            request=request,
+            user=user,
+            status_code=500,
+            title="Unexpected Error",
+            message=str(exc),
+            suggestions=[
+                "Try again in a few moments",
+                "Contact support if the problem persists",
+            ],
+            back_url="/web/restore",
+        )
+
+
+@router.get("/search", response_class=HTMLResponse)
+async def search_page(
+    request: Request,
+    user: Annotated[User, Depends(_require_login)],
+    customer: str | None = None,
+    s3env: str = "both",
+    date_from: str | None = None,
+    limit: int = 10,
+) -> Response:
+    """Display backup search (equivalent to pulldb search command)."""
+    import fnmatch
+    import random
+    from datetime import timedelta
+    
+    backups = []
+    searched = bool(customer)
+    
+    if customer:
+        # Mock backup data - generate realistic results
+        mock_customers = [
+            "acmehvac", "acmepest", "actionpest", "actionplumbing",
+            "bigcorp", "cleanpro", "deltaplumbing", "eliteelectric",
+            "fastfix", "greenscapes", "homeservices", "techcorp",
+        ]
+        
+        # Filter by customer pattern (supports wildcards)
+        pattern = customer.replace("*", ".*")
+        import re
+        matching = [c for c in mock_customers if re.match(f"^{pattern}$", c, re.IGNORECASE)]
+        
+        # If no wildcard match, try contains
+        if not matching and "*" not in customer:
+            matching = [c for c in mock_customers if customer.lower() in c.lower()]
+        
+        # Generate mock backups for matching customers
+        base_date = datetime.now(UTC)
+        for cust in matching[:5]:  # Limit customers
+            for i in range(min(3, limit // len(matching) + 1)):  # 3 backups per customer
+                backup_date = base_date - timedelta(days=i)
+                env = "staging" if i % 2 == 0 else "prod"
+                
+                # Apply s3env filter
+                if s3env != "both" and env != s3env:
+                    continue
+                
+                size_mb = random.randint(500, 4000)
+                size_display = f"{size_mb / 1000:.1f} GB" if size_mb >= 1000 else f"{size_mb} MB"
+                
+                backups.append({
+                    "customer": cust,
+                    "date": backup_date.strftime("%b %d, %Y"),
+                    "date_raw": backup_date.strftime("%Y%m%d"),
+                    "time": backup_date.strftime("%H:%M"),
+                    "size_display": size_display,
+                    "environment": env,
+                    "s3_key": f"s3://pulldb-backups-{env}/{cust}/{backup_date.strftime('%Y%m%d')}/backup.tar.gz",
+                })
+        
+        # Sort by date descending
+        backups.sort(key=lambda b: b["date_raw"], reverse=True)
+        backups = backups[:limit]
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="search.html",
+        context={
+            "user": user,
+            "backups": backups,
+            "customer": customer,
+            "s3env": s3env,
+            "date_from": date_from,
+            "limit": limit,
+            "searched": searched,
+            "total_count": len(backups),
+        },
+    )
+
+
+@router.get("/jobs/{job_id}/profile", response_class=HTMLResponse)
+async def job_profile_page(
+    request: Request,
+    job_id: str,
+    user: Annotated[User, Depends(_require_login)],
+    state: "APIState" = Depends(_get_api_state),
+) -> Response:
+    """Display job profile (equivalent to pulldb profile command)."""
+    from pulldb.domain.permissions import can_view_job
+    
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        return _render_error_page(
+            request=request,
+            user=user,
+            status_code=404,
+            title="Job Not Found",
+            message=f"The job '{job_id}' could not be found.",
+            suggestions=[
+                "Check that the job ID is correct",
+                "The job may have been purged from the system",
+                "Try searching for the job on the dashboard",
+            ],
+        )
+    
+    if not can_view_job(user, job.owner_user_id):
+        return _render_error_page(
+            request=request,
+            user=user,
+            status_code=403,
+            title="Access Denied",
+            message="You don't have permission to view this job profile.",
+            suggestions=[
+                "This job belongs to another user",
+                "Contact an administrator if you need access",
+            ],
+        )
+    
+    events = state.job_repo.get_job_events(job_id)
+    
+    # Build profile from events (timing analysis)
+    profile = _build_job_profile(events)
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="job_profile.html",
+        context={
+            "user": user,
+            "job": job,
+            "events": events,
+            "profile": profile,
+            "now": datetime.now(UTC),
+        },
+    )
+
+
+def _build_job_profile(events: list) -> dict:
+    """Build timing profile from job events."""
+    phases = []
+    total_duration = 0
+    
+    # Simple phase extraction from events
+    phase_starts = {}
+    for event in events:
+        msg = event.message.lower() if hasattr(event, "message") else ""
+        
+        if "starting" in msg or "began" in msg:
+            phase_name = msg.replace("starting", "").replace("began", "").strip()
+            phase_starts[phase_name] = event.created_at if hasattr(event, "created_at") else None
+        elif "completed" in msg or "finished" in msg:
+            phase_name = msg.replace("completed", "").replace("finished", "").strip()
+            if phase_name in phase_starts and phase_starts[phase_name]:
+                end_time = event.created_at if hasattr(event, "created_at") else None
+                if end_time and phase_starts[phase_name]:
+                    duration = (end_time - phase_starts[phase_name]).total_seconds()
+                    phases.append({
+                        "name": phase_name.title() or "Phase",
+                        "duration": duration,
+                        "formatted_duration": f"{int(duration)}s",
+                    })
+                    total_duration += duration
+    
+    # Calculate percentages
+    for phase in phases:
+        if total_duration > 0:
+            phase["percentage"] = (phase["duration"] / total_duration) * 100
+        else:
+            phase["percentage"] = 0
+    
+    return {
+        "phases": phases,
+        "total_duration": total_duration,
+        "formatted_total": f"{int(total_duration // 60)}m {int(total_duration % 60)}s" if total_duration else "N/A",
+    }
+
+
+# =============================================================================
+# Admin Routes (Require Admin Role)
+# =============================================================================
+
+
+def _require_admin(
+    user: Annotated[User, Depends(_require_login)],
+) -> User:
+    """Require admin user."""
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+@router.get("/admin/settings", response_class=HTMLResponse)
+async def admin_settings_page(
+    request: Request,
+    user: Annotated[User, Depends(_require_admin)],
+    state: "APIState" = Depends(_get_api_state),
+) -> Response:
+    """Display settings management (equivalent to pulldb-admin settings)."""
+    # Mock settings - in real implementation, read from config
+    settings = [
+        {"key": "myloader_threads", "value": "4", "default": "4", "description": "Number of myloader threads"},
+        {"key": "myloader_compress_protocol", "value": "true", "default": "true", "description": "Enable compression"},
+        {"key": "work_directory", "value": "/tmp/pulldb", "default": "/tmp/pulldb", "description": "Work directory path"},
+        {"key": "customers_after_sql_dir", "value": "/etc/pulldb/after_sql", "default": "", "description": "Custom SQL directory"},
+        {"key": "backup_retention_days", "value": "30", "default": "30", "description": "Backup retention period"},
+    ]
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/settings.html",
+        context={
+            "user": user,
+            "settings": settings,
+        },
+    )
+
+
+@router.get("/admin/users", response_class=HTMLResponse)
+async def admin_users_page(
+    request: Request,
+    user: Annotated[User, Depends(_require_admin)],
+    state: "APIState" = Depends(_get_api_state),
+) -> Response:
+    """Display user management (equivalent to pulldb-admin users list)."""
+    users = state.user_repo.list_users() if hasattr(state.user_repo, "list_users") else []
+    
+    # Calculate stats
+    stats = {
+        "total": len(users),
+        "admins": len([u for u in users if u.is_admin]),
+        "active": len([u for u in users if not u.disabled_at]),
+        "disabled": len([u for u in users if u.disabled_at]),
+    }
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/users.html",
+        context={
+            "user": user,
+            "users": users,
+            "stats": stats,
+        },
+    )
+
+
+@router.get("/admin/users/{username}", response_class=HTMLResponse)
+async def admin_user_detail_page(
+    request: Request,
+    username: str,
+    user: Annotated[User, Depends(_require_admin)],
+    state: "APIState" = Depends(_get_api_state),
+) -> Response:
+    """Display user detail (equivalent to pulldb-admin users show)."""
+    target_user = state.user_repo.get_user_by_username(username)
+    if not target_user:
+        return _render_error_page(
+            request=request,
+            user=user,
+            status_code=404,
+            title="User Not Found",
+            message=f"The user '{username}' could not be found.",
+            suggestions=[
+                "Check that the username is spelled correctly",
+                "The user may have been deleted",
+                "Go back to the users list to find the correct user",
+            ],
+        )
+    
+    # Get user's jobs
+    all_jobs = state.job_repo.get_recent_jobs(limit=100)
+    user_jobs = [j for j in all_jobs if j.owner_user_id == target_user.user_id][:10]
+    
+    # Calculate stats
+    stats = {
+        "active_jobs": len([j for j in user_jobs if j.status in ("pending", "running")]),
+        "total_jobs": len(user_jobs),
+        "completed_jobs": len([j for j in user_jobs if j.status == "completed"]),
+        "failed_jobs": len([j for j in user_jobs if j.status == "failed"]),
+        "cancelled_jobs": len([j for j in user_jobs if j.status == "cancelled"]),
+    }
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/user_detail.html",
+        context={
+            "user": target_user,  # The user being viewed
+            "current_user": user,  # The logged-in admin
+            "jobs": user_jobs,
+            "stats": stats,
+        },
+    )
+
+
+@router.post("/admin/users/{username}/enable")
+async def admin_enable_user(
+    request: Request,
+    username: str,
+    user: Annotated[User, Depends(_require_admin)],
+    state: "APIState" = Depends(_get_api_state),
+) -> Response:
+    """Enable a user account."""
+    target_user = state.user_repo.get_user_by_username(username)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if hasattr(state.user_repo, "enable_user"):
+        state.user_repo.enable_user(target_user.user_id)
+    
+    return RedirectResponse(url=f"/web/admin/users/{username}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/admin/users/{username}/disable")
+async def admin_disable_user(
+    request: Request,
+    username: str,
+    user: Annotated[User, Depends(_require_admin)],
+    state: "APIState" = Depends(_get_api_state),
+) -> Response:
+    """Disable a user account."""
+    target_user = state.user_repo.get_user_by_username(username)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if hasattr(state.user_repo, "disable_user"):
+        state.user_repo.disable_user(target_user.user_id)
+    
+    return RedirectResponse(url=f"/web/admin/users/{username}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/admin/hosts", response_class=HTMLResponse)
+async def admin_hosts_page(
+    request: Request,
+    user: Annotated[User, Depends(_require_admin)],
+    state: "APIState" = Depends(_get_api_state),
+) -> Response:
+    """Display host management (equivalent to pulldb-admin hosts list)."""
+    # Mock hosts - in real implementation, read from host_repo
+    hosts = []
+    if hasattr(state, "host_repo") and state.host_repo:
+        hosts = state.host_repo.list_hosts() if hasattr(state.host_repo, "list_hosts") else []
+    
+    # Calculate stats
+    stats = {
+        "total": len(hosts),
+        "enabled": len([h for h in hosts if not getattr(h, "disabled", False)]),
+        "disabled": len([h for h in hosts if getattr(h, "disabled", False)]),
+        "active_restores": 0,  # Would need to calculate from job_repo
+    }
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/hosts.html",
+        context={
+            "user": user,
+            "hosts": hosts,
+            "stats": stats,
+        },
+    )
+
+
+@router.get("/admin/jobs", response_class=HTMLResponse)
+async def admin_jobs_page(
+    request: Request,
+    user: Annotated[User, Depends(_require_admin)],
+    state: "APIState" = Depends(_get_api_state),
+    page: int = 1,
+) -> Response:
+    """Display all jobs (equivalent to pulldb-admin jobs list)."""
+    limit = 50
+    jobs = state.job_repo.get_recent_jobs(limit=limit * page)
+    
+    # Get users and hosts for filters
+    users = state.user_repo.list_users() if hasattr(state.user_repo, "list_users") else []
+    hosts = []
+    if hasattr(state, "host_repo") and state.host_repo and hasattr(state.host_repo, "list_hosts"):
+        hosts = state.host_repo.list_hosts()
+    
+    # Calculate stats
+    all_jobs = state.job_repo.get_recent_jobs(limit=1000)
+    today_jobs = [j for j in all_jobs if j.created_at and j.created_at.date() == datetime.now(UTC).date()]
+    
+    stats = {
+        "running": len([j for j in all_jobs if j.status == "running"]),
+        "pending": len([j for j in all_jobs if j.status == "pending"]),
+        "completed_today": len([j for j in today_jobs if j.status == "completed"]),
+        "failed_today": len([j for j in today_jobs if j.status == "failed"]),
+    }
+    
+    # Pagination
+    total_jobs = len(jobs)
+    pagination = {
+        "page": page,
+        "total_pages": (total_jobs // limit) + 1,
+        "has_prev": page > 1,
+        "has_next": total_jobs >= limit * page,
+    }
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/jobs.html",
+        context={
+            "user": user,
+            "jobs": jobs[(page - 1) * limit:page * limit],
+            "users": users,
+            "hosts": hosts,
+            "stats": stats,
+            "pagination": pagination,
+            "now": datetime.now(UTC),
+        },
+    )
+
+
+@router.post("/admin/jobs/{job_id}/cancel")
+async def admin_cancel_job(
+    request: Request,
+    job_id: str,
+    user: Annotated[User, Depends(_require_admin)],
+    state: "APIState" = Depends(_get_api_state),
+) -> Response:
+    """Cancel a job (admin override)."""
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if hasattr(state.job_repo, "cancel_job"):
+        state.job_repo.cancel_job(job_id)
+    
+    return RedirectResponse(url="/web/admin/jobs", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/admin/cleanup", response_class=HTMLResponse)
+async def admin_cleanup_page(
+    request: Request,
+    user: Annotated[User, Depends(_require_admin)],
+    state: "APIState" = Depends(_get_api_state),
+) -> Response:
+    """Display cleanup page (equivalent to pulldb-admin cleanup)."""
+    # Get hosts for dropdown
+    hosts = []
+    if hasattr(state, "host_repo") and state.host_repo and hasattr(state.host_repo, "list_hosts"):
+        hosts = state.host_repo.list_hosts()
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/cleanup.html",
+        context={
+            "user": user,
+            "hosts": hosts,
+            "last_cleanup": None,  # Would need to track cleanup history
         },
     )
