@@ -139,42 +139,60 @@
         }
 
         /* =================================================================
-           LAYOUT - Hover-Reveal Sidebar Pattern
+           LAYOUT - New Structure per wireframe
+           3px strip | Header (full width)
+                     | Sidebar + Work Area + Footer
            ================================================================= */
         
         .app-layout {
             display: flex;
+            flex-direction: column;
             min-height: 100vh;
             width: 100%;
-            overflow-x: hidden;
         }
 
-        /* Sidebar - 3px attention strip that expands on hover */
+        /* 3px attention strip - runs full height on left edge */
+        .attention-strip {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 3px;
+            height: 100vh;
+            background: linear-gradient(180deg, var(--primary-400) 0%, var(--primary-600) 50%, var(--primary-400) 100%);
+            z-index: 300;
+        }
+
+        /* Main container - everything to the right of 3px strip */
+        .app-main {
+            margin-left: 3px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            width: calc(100% - 3px);
+        }
+
+        /* Body area - sidebar + content, below header */
+        .app-body {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            position: relative;
+        }
+
+        /* Sidebar - starts below header, hovers over work area */
         .sidebar {
-            width: var(--sidebar-collapsed);
+            width: 0;
             background: var(--gray-900);
             color: white;
             display: flex;
             flex-direction: column;
-            position: fixed;
+            position: absolute;
             top: 0;
             left: 0;
             bottom: 0;
             z-index: 200;
             overflow: hidden;
             transition: width var(--transition-base);
-        }
-
-        /* 3px strip visual - gradient accent */
-        .sidebar::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 3px;
-            height: 100%;
-            background: linear-gradient(180deg, var(--primary-400) 0%, var(--primary-600) 50%, var(--primary-400) 100%);
-            z-index: 1;
         }
 
         /* Hover expand - overlays content */
@@ -389,20 +407,18 @@
             background: rgba(239, 68, 68, 0.1);
         }
 
-        /* Main Content Area - no margin, sidebar overlays */
+        /* Main Content Area - fills body, sidebar overlays */
         .main-content {
             flex: 1;
-            margin-left: var(--sidebar-collapsed);  /* Just 3px for the attention strip */
             min-width: 0;
-            height: 100vh;  /* Fixed viewport height */
             display: flex;
             flex-direction: column;
             background: var(--gray-50);
-            overflow: hidden;  /* Prevent outer scroll */
+            overflow: hidden;
         }
 
         /* =================================================================
-           PAGE HEADER BAR - Video Logo + Page Title
+           PAGE HEADER BAR - Full width, Video Logo + Page Title + Login
            ================================================================= */
         
         .page-header-bar {
@@ -412,9 +428,7 @@
             display: flex;
             align-items: center;
             padding: 0 var(--space-4);
-            position: sticky;
-            top: 0;
-            z-index: 100;
+            flex-shrink: 0;
             gap: var(--space-4);
         }
 
@@ -449,6 +463,50 @@
             display: flex;
             flex-direction: column;
             min-width: 0;
+        }
+
+        /* Login info in header */
+        .header-user {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            margin-left: auto;
+        }
+
+        .header-user-info {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: 0.875rem;
+            color: var(--gray-700);
+        }
+
+        .header-user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: var(--radius-full);
+            background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.75rem;
+            color: white;
+            text-transform: uppercase;
+        }
+
+        .header-logout {
+            color: var(--gray-500);
+            text-decoration: none;
+            font-size: 0.8125rem;
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--radius-md);
+            transition: all var(--transition-fast);
+        }
+
+        .header-logout:hover {
+            color: var(--danger-600);
+            background: var(--danger-50);
         }
 
         .page-title {
@@ -502,7 +560,7 @@
         }
 
         /* =================================================================
-           FOOTER
+           FOOTER - Two lines
            ================================================================= */
         
         .app-footer {
@@ -511,10 +569,19 @@
             padding: var(--space-2) var(--space-4);
             font-size: 0.75rem;
             color: var(--gray-500);
+            flex-shrink: 0;
+        }
+
+        .footer-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            flex-shrink: 0;
+        }
+
+        .footer-row + .footer-row {
+            margin-top: var(--space-1);
+            padding-top: var(--space-1);
+            border-top: 1px solid var(--gray-100);
         }
 
         .footer-left {
@@ -537,6 +604,11 @@
 
         .footer-link:hover {
             color: var(--primary-600);
+        }
+
+        .footer-brand {
+            font-weight: 500;
+            color: var(--gray-600);
         }
 
         /* =================================================================
@@ -1272,29 +1344,68 @@
 <body>
     {% if user %}
     <div class="app-layout">
-        <!-- Sidebar Navigation - 3px hover-reveal -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-inner">
-                <div class="sidebar-header">
-                    <a href="/web/dashboard" class="sidebar-logo">
-                        <svg viewBox="0 0 180 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="logo-svg">
-                            <!-- Database icon -->
-                            <ellipse cx="20" cy="10" rx="14" ry="5" stroke="url(#logoGradient)" stroke-width="2" fill="none"/>
-                            <path d="M6 10v20c0 2.76 6.27 5 14 5s14-2.24 14-5V10" stroke="url(#logoGradient)" stroke-width="2" fill="none"/>
-                            <ellipse cx="20" cy="20" rx="14" ry="5" stroke="url(#logoGradient)" stroke-width="2" fill="none"/>
-                            <!-- Arrow pulling down -->
-                            <path d="M20 2v12M15 10l5 5 5-5" stroke="url(#logoGradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            <!-- Text -->
-                            <text x="44" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" fill="url(#logoGradient)">pullDB</text>
-                            <defs>
-                                <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" stop-color="#818cf8"/>
-                                    <stop offset="100%" stop-color="#a5b4fc"/>
-                                </linearGradient>
-                            </defs>
+        <!-- 3px Attention Strip - Full Height -->
+        <div class="attention-strip"></div>
+        
+        <!-- Main App Container (right of 3px strip) -->
+        <div class="app-main">
+            <!-- Page Header Bar - Full Width -->
+            <header class="page-header-bar">
+                <div class="page-header-logo">
+                    <video autoplay loop muted playsinline>
+                        <source src="/static/videos/pulldb-logo.webm" type="video/webm">
+                        <source src="/static/videos/pulldb-logo.mp4" type="video/mp4">
+                        <svg viewBox="0 0 40 40" width="32" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <ellipse cx="20" cy="10" rx="14" ry="5" stroke="#818cf8" stroke-width="2" fill="none"/>
+                            <path d="M6 10v20c0 2.76 6.27 5 14 5s14-2.24 14-5V10" stroke="#818cf8" stroke-width="2" fill="none"/>
+                            <ellipse cx="20" cy="20" rx="14" ry="5" stroke="#818cf8" stroke-width="2" fill="none"/>
+                            <path d="M20 2v12M15 10l5 5 5-5" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
-                    </a>
+                    </video>
                 </div>
+                <div class="page-header-divider"></div>
+                <div class="page-header-content">
+                    <div class="page-header-titles">
+                        <h1 class="page-title">{% block header_title %}pullDB{% endblock %}</h1>
+                        {% block header_subtitle %}<p class="page-subtitle"></p>{% endblock %}
+                    </div>
+                    <div class="header-actions">
+                        {% block header_actions %}{% endblock %}
+                    </div>
+                </div>
+                <!-- Login Info -->
+                <div class="header-user">
+                    <div class="header-user-info">
+                        <div class="header-user-avatar">{{ user.username[0] }}</div>
+                        <span>{{ user.username }}</span>
+                        <span class="role-badge {{ user.role.value }}">{{ user.role.value }}</span>
+                    </div>
+                    <a href="/web/logout" class="header-logout">Sign out</a>
+                </div>
+            </header>
+            
+            <!-- Body: Sidebar + Content -->
+            <div class="app-body">
+                <!-- Sidebar Navigation - Hover reveal -->
+                <aside class="sidebar" id="sidebar">
+                    <div class="sidebar-inner">
+                        <div class="sidebar-header">
+                            <a href="/web/dashboard" class="sidebar-logo">
+                                <svg viewBox="0 0 180 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="logo-svg">
+                                    <ellipse cx="20" cy="10" rx="14" ry="5" stroke="url(#logoGradient)" stroke-width="2" fill="none"/>
+                                    <path d="M6 10v20c0 2.76 6.27 5 14 5s14-2.24 14-5V10" stroke="url(#logoGradient)" stroke-width="2" fill="none"/>
+                                    <ellipse cx="20" cy="20" rx="14" ry="5" stroke="url(#logoGradient)" stroke-width="2" fill="none"/>
+                                    <path d="M20 2v12M15 10l5 5 5-5" stroke="url(#logoGradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <text x="44" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" fill="url(#logoGradient)">pullDB</text>
+                                    <defs>
+                                        <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" stop-color="#818cf8"/>
+                                            <stop offset="100%" stop-color="#a5b4fc"/>
+                                        </linearGradient>
+                                    </defs>
+                                </svg>
+                            </a>
+                        </div>
             
             <nav class="sidebar-nav">
                 <div class="nav-section">
@@ -1369,55 +1480,37 @@
                             </div>
                         </div>
                     </div>
-                </div>
-            </div><!-- /.sidebar-inner -->
-        </aside>
+                    </div>
+                </div><!-- /.sidebar-inner -->
+            </aside>
 
-        <!-- Main Content -->
-        <main class="main-content">
-            <!-- Page Header Bar with Video Logo -->
-            <header class="page-header-bar">
-                <div class="page-header-logo">
-                    <video autoplay loop muted playsinline>
-                        <source src="/static/videos/pulldb-logo.webm" type="video/webm">
-                        <source src="/static/videos/pulldb-logo.mp4" type="video/mp4">
-                        <!-- Fallback SVG -->
-                        <svg viewBox="0 0 40 40" width="32" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <ellipse cx="20" cy="10" rx="14" ry="5" stroke="#818cf8" stroke-width="2" fill="none"/>
-                            <path d="M6 10v20c0 2.76 6.27 5 14 5s14-2.24 14-5V10" stroke="#818cf8" stroke-width="2" fill="none"/>
-                            <ellipse cx="20" cy="20" rx="14" ry="5" stroke="#818cf8" stroke-width="2" fill="none"/>
-                            <path d="M20 2v12M15 10l5 5 5-5" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </video>
-                </div>
-                <div class="page-header-divider"></div>
-                <div class="page-header-content">
-                    <div class="page-header-titles">
-                        <h1 class="page-title">{% block header_title %}pullDB{% endblock %}</h1>
-                        {% block header_subtitle %}<p class="page-subtitle"></p>{% endblock %}
+            <!-- Main Content -->
+            <main class="main-content">
+                {% block content %}{% endblock %}
+                
+                <!-- Footer -->
+                <footer class="app-footer">
+                    <div class="footer-row">
+                        <div class="footer-left">
+                            <span>© 2025 pullDB</span>
+                            <span>•</span>
+                            <span>v0.0.8</span>
+                        </div>
+                        <div class="footer-right">
+                            <a href="/web/docs" class="footer-link">Docs</a>
+                            <a href="https://github.com/CharlesHandshy/pullDB" class="footer-link" target="_blank">GitHub</a>
+                        </div>
                     </div>
-                    <div class="header-actions">
-                        {% block header_actions %}{% endblock %}
+                    <div class="footer-row">
+                        <div class="footer-left">
+                            <span class="footer-brand">Service Titan / Field Routes</span>
+                        </div>
                     </div>
-                </div>
-            </header>
-            
-            {% block content %}{% endblock %}
-            
-            <!-- Footer -->
-            <footer class="app-footer">
-                <div class="footer-left">
-                    <span>© 2025 pullDB</span>
-                    <span>•</span>
-                    <span>v0.0.8</span>
-                </div>
-                <div class="footer-right">
-                    <a href="/web/docs" class="footer-link">Docs</a>
-                    <a href="https://github.com/CharlesHandshy/pullDB" class="footer-link" target="_blank">GitHub</a>
-                </div>
-            </footer>
-        </main>
-    </div>
+                </footer>
+            </main>
+        </div><!-- /.app-body -->
+    </div><!-- /.app-main -->
+    </div><!-- /.app-layout -->
     {% else %}
     {% block public_content %}{% endblock %}
     {% endif %}
