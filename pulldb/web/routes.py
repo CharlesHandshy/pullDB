@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status, UploadFile, File
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from pulldb.domain.models import User
@@ -882,6 +882,61 @@ async def save_logo_config(
         json.dump(data, f, indent=2)
     
     return {"status": "success", "message": "Logo configuration saved"}
+
+
+# Logo upload directory
+LOGO_UPLOAD_DIR = Path(__file__).parent.parent / "images"
+
+
+@router.post("/admin/logo/upload")
+async def upload_logo(
+    user: Annotated[User, Depends(_require_admin)],
+    file: UploadFile = File(...),
+) -> JSONResponse:
+    """Upload a new logo file."""
+    # Validate file type
+    allowed_types = ["video/mp4", "video/webm", "image/png", "image/jpeg", "image/svg+xml", "image/gif"]
+    if file.content_type not in allowed_types:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Invalid file type: {file.content_type}. Allowed: {', '.join(allowed_types)}"}
+        )
+    
+    # Ensure upload directory exists
+    LOGO_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Generate filename (keep original name but sanitize)
+    filename = file.filename or "logo"
+    # Sanitize filename - keep only alphanumeric, dash, underscore, dot
+    safe_filename = "".join(c for c in filename if c.isalnum() or c in ".-_")
+    if not safe_filename:
+        safe_filename = "uploaded_logo"
+    
+    # Add extension if missing
+    ext_map = {
+        "video/mp4": ".mp4",
+        "video/webm": ".webm",
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/svg+xml": ".svg",
+        "image/gif": ".gif",
+    }
+    if not any(safe_filename.lower().endswith(e) for e in ext_map.values()):
+        safe_filename += ext_map.get(file.content_type, "")
+    
+    # Save file
+    file_path = LOGO_UPLOAD_DIR / safe_filename
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+    
+    # Return the path to use in config
+    return JSONResponse(content={
+        "status": "success",
+        "path": f"/static/images/{safe_filename}",
+        "filename": safe_filename,
+        "type": "video" if file.content_type.startswith("video/") else "image"
+    })
 
 
 @router.get("/admin/users", response_class=HTMLResponse)
