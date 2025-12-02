@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from pulldb.domain.models import CommandResult
+from pulldb.simulation.core.bus import EventType, get_event_bus
 from pulldb.simulation.core.state import get_simulation_state
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class MockProcessExecutor:
     def __init__(self) -> None:
         """Initialize with shared simulation state."""
         self.state = get_simulation_state()
+        self._bus = get_event_bus()
         # Map command prefix (first arg) to config
         self.configs: dict[str, MockCommandConfig] = {}
         # Default config if no match found
@@ -56,17 +58,37 @@ class MockProcessExecutor:
     def run_command(self, command: list[str], env: dict[str, str] | None = None) -> int:
         """Run command and return exit code."""
         config = self._get_config(command)
+        cmd_str = " ".join(command)
 
-        logger.info(f"Mock executing: {' '.join(command)}")
+        logger.info(f"Mock executing: {cmd_str}")
+        self._bus.emit(
+            EventType.EXEC_START,
+            source="MockProcessExecutor",
+            data={"command": cmd_str, "method": "run_command"},
+        )
 
         if config.delay_seconds > 0:
             time.sleep(config.delay_seconds)
 
         if config.handler:
             exit_code, _, _ = config.handler(command, env)
-            return exit_code
+        else:
+            exit_code = config.exit_code
 
-        return config.exit_code
+        if exit_code == 0:
+            self._bus.emit(
+                EventType.EXEC_COMPLETE,
+                source="MockProcessExecutor",
+                data={"command": cmd_str, "exit_code": exit_code},
+            )
+        else:
+            self._bus.emit(
+                EventType.EXEC_ERROR,
+                source="MockProcessExecutor",
+                data={"command": cmd_str, "exit_code": exit_code},
+            )
+
+        return exit_code
 
     def run_command_streaming(
         self,
@@ -80,8 +102,14 @@ class MockProcessExecutor:
         """Execute command, streaming merged stdout/stderr to callback."""
         started_at = datetime.now(UTC)
         config = self._get_config(command)
+        cmd_str = " ".join(command)
 
-        logger.info(f"Mock streaming: {' '.join(command)}")
+        logger.info(f"Mock streaming: {cmd_str}")
+        self._bus.emit(
+            EventType.EXEC_START,
+            source="MockProcessExecutor",
+            data={"command": cmd_str, "method": "run_command_streaming"},
+        )
 
         if config.delay_seconds > 0:
             time.sleep(config.delay_seconds)
@@ -103,6 +131,19 @@ class MockProcessExecutor:
 
         completed_at = datetime.now(UTC)
         duration = (completed_at - started_at).total_seconds()
+
+        if exit_code == 0:
+            self._bus.emit(
+                EventType.EXEC_COMPLETE,
+                source="MockProcessExecutor",
+                data={"command": cmd_str, "exit_code": exit_code, "duration": duration},
+            )
+        else:
+            self._bus.emit(
+                EventType.EXEC_ERROR,
+                source="MockProcessExecutor",
+                data={"command": cmd_str, "exit_code": exit_code, "stderr": stderr},
+            )
 
         return CommandResult(
             exit_code=exit_code,

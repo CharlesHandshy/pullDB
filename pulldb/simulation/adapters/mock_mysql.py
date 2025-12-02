@@ -29,6 +29,7 @@ from pulldb.domain.models import (
     UserRole,
     UserSummary,
 )
+from pulldb.simulation.core.bus import EventType, get_event_bus
 from pulldb.simulation.core.state import get_simulation_state
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ class SimulatedJobRepository:
     def __init__(self) -> None:
         """Initialize the repository with shared simulation state."""
         self.state = get_simulation_state()
+        self._bus = get_event_bus()
 
     def enqueue_job(self, job: Job) -> str:
         """Insert new job into queue."""
@@ -52,6 +54,12 @@ class SimulatedJobRepository:
             
             self.state.jobs[job.id] = job
             self.append_job_event(job.id, "queued", "Job submitted to queue")
+            self._bus.emit(
+                EventType.JOB_CREATED,
+                "SimulatedJobRepository",
+                {"target": job.target, "owner": job.owner_username},
+                job_id=job.id,
+            )
             return job.id
 
     def claim_next_job(self, worker_id: str | None = None) -> Job | None:
@@ -79,6 +87,12 @@ class SimulatedJobRepository:
                 )
                 self.state.jobs[job.id] = updated_job
                 self.append_job_event(job.id, "running", f"Job claimed by {worker_id}")
+                self._bus.emit(
+                    EventType.JOB_CLAIMED,
+                    "SimulatedJobRepository",
+                    {"worker_id": worker_id},
+                    job_id=job.id,
+                )
                 return updated_job
             
             return None
@@ -174,6 +188,12 @@ class SimulatedJobRepository:
                 )
                 self.state.jobs[job_id] = updated
                 self.append_job_event(job_id, "complete", "Job completed successfully")
+                self._bus.emit(
+                    EventType.JOB_COMPLETED,
+                    "SimulatedJobRepository",
+                    {"target": job.target},
+                    job_id=job_id,
+                )
 
     def mark_job_failed(self, job_id: str, error: str) -> None:
         """Mark job as failed with error detail."""
@@ -188,6 +208,12 @@ class SimulatedJobRepository:
                 )
                 self.state.jobs[job_id] = updated
                 self.append_job_event(job_id, "failed", f"Job failed: {error}")
+                self._bus.emit(
+                    EventType.JOB_FAILED,
+                    "SimulatedJobRepository",
+                    {"target": job.target, "error": error},
+                    job_id=job_id,
+                )
 
     def request_cancellation(self, job_id: str) -> bool:
         """Request cancellation of a job."""

@@ -9,6 +9,7 @@ import logging
 import typing as t
 from io import BytesIO
 
+from pulldb.simulation.core.bus import EventType, get_event_bus
 from pulldb.simulation.core.state import get_simulation_state
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ class MockS3Client:
     def __init__(self) -> None:
         """Initialize with shared simulation state."""
         self.state = get_simulation_state()
+        self._bus = get_event_bus()
 
     def list_keys(
         self, bucket: str, prefix: str, profile: str | None = None
@@ -64,7 +66,13 @@ class MockS3Client:
                     # It's a file at this level
                     results.add(key)
 
-            return sorted(results)
+            sorted_results = sorted(results)
+            self._bus.emit(
+                EventType.S3_LIST_KEYS,
+                source="MockS3Client",
+                data={"bucket": bucket, "prefix": prefix, "count": len(sorted_results)},
+            )
+            return sorted_results
 
     def head_object(
         self, bucket: str, key: str, profile: str | None = None
@@ -73,13 +81,24 @@ class MockS3Client:
         with self.state.lock:
             if bucket in self.state.s3_buckets and key in self.state.s3_buckets[bucket]:
                 # Return mock metadata
-                return {
+                metadata = {
                     "ContentLength": 1024 * 1024 * 100,  # 100MB mock size
                     "ContentType": "application/octet-stream",
                     "LastModified": "2023-01-01T00:00:00Z",
                 }
+                self._bus.emit(
+                    EventType.S3_HEAD_OBJECT,
+                    source="MockS3Client",
+                    data={"bucket": bucket, "key": key, "found": True},
+                )
+                return metadata
             # Simulate boto3 exception? Or just raise generic for now.
             # The real implementation raises ClientError.
+            self._bus.emit(
+                EventType.S3_ERROR,
+                source="MockS3Client",
+                data={"bucket": bucket, "key": key, "error": "key_not_found"},
+            )
             raise ValueError(f"Key {key} not found in bucket {bucket}")
 
     def get_object(
@@ -88,11 +107,21 @@ class MockS3Client:
         """Return object (streaming body)."""
         with self.state.lock:
             if bucket in self.state.s3_buckets and key in self.state.s3_buckets[bucket]:
+                self._bus.emit(
+                    EventType.S3_GET_OBJECT,
+                    source="MockS3Client",
+                    data={"bucket": bucket, "key": key},
+                )
                 return {
                     "Body": MockStreamingBody(b"mock content"),
                     "ContentLength": 12,
                     "ContentType": "application/octet-stream",
                 }
+            self._bus.emit(
+                EventType.S3_ERROR,
+                source="MockS3Client",
+                data={"bucket": bucket, "key": key, "error": "key_not_found"},
+            )
             raise ValueError(f"Key {key} not found in bucket {bucket}")
 
     def load_fixtures(self, bucket: str, keys: list[str]) -> None:
