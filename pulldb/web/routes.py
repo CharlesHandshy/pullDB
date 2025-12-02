@@ -815,6 +815,75 @@ async def admin_settings_page(
     )
 
 
+# Logo configuration file path
+LOGO_CONFIG_PATH = Path(__file__).parent.parent / "images" / "logo_config.json"
+
+
+def _get_logo_config() -> dict:
+    """Load logo configuration from JSON file."""
+    default_config = {
+        "path": "/static/images/pullDB_logo.mp4",
+        "type": "video",
+        "crop_top": 13,
+        "crop_bottom": 17,
+        "crop_left": 0,
+        "crop_right": 0,
+    }
+    
+    if LOGO_CONFIG_PATH.exists():
+        try:
+            with open(LOGO_CONFIG_PATH) as f:
+                config = json.load(f)
+                return {
+                    "path": config.get("path", default_config["path"]),
+                    "type": config.get("type", default_config["type"]),
+                    "crop_top": config.get("crop", {}).get("top", default_config["crop_top"]),
+                    "crop_bottom": config.get("crop", {}).get("bottom", default_config["crop_bottom"]),
+                    "crop_left": config.get("crop", {}).get("left", default_config["crop_left"]),
+                    "crop_right": config.get("crop", {}).get("right", default_config["crop_right"]),
+                }
+        except Exception:
+            pass
+    
+    return default_config
+
+
+@router.get("/admin/logo", response_class=HTMLResponse)
+async def admin_logo_page(
+    request: Request,
+    user: Annotated[User, Depends(_require_admin)],
+) -> Response:
+    """Display logo management screen."""
+    logo_config = _get_logo_config()
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/logo.html",
+        context={
+            "user": user,
+            "logo_config": logo_config,
+        },
+    )
+
+
+@router.post("/admin/logo")
+async def save_logo_config(
+    request: Request,
+    user: Annotated[User, Depends(_require_admin)],
+) -> dict:
+    """Save logo configuration to JSON file."""
+    data = await request.json()
+    
+    # Ensure directory exists
+    LOGO_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Save config
+    with open(LOGO_CONFIG_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+    
+    return {"status": "success", "message": "Logo configuration saved"}
+
+
 @router.get("/admin/users", response_class=HTMLResponse)
 async def admin_users_page(
     request: Request,
