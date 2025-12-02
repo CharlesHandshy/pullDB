@@ -436,15 +436,17 @@
 
         .page-header-logo {
             display: flex;
-            align-items: flex-end;
+            align-items: center;
+            justify-content: center;
             flex-shrink: 0;
             overflow: hidden;
+            height: var(--page-header-height);
         }
 
         .page-header-logo video {
-            height: auto;
-            width: 52px;
-            margin-top: -15px;
+            height: calc(var(--page-header-height) + 30px);
+            width: auto;
+            margin: -15px 0;
         }
 
         .page-header-divider {
