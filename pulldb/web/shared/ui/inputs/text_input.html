@@ -1,0 +1,37 @@
+{#
+    HCA Layer 0: Text Input Component
+    =================================
+    Purpose: Styled text input field.
+    
+    Usage:
+        {% include "shared/ui/inputs/text_input.html" with name="username" label="Username" %}
+    
+    Parameters:
+        - name: Input name (required)
+        - label: Optional label text
+        - type: Input type (default: text)
+        - placeholder: Optional placeholder
+        - value: Optional default value
+        - required: Boolean
+        - autofocus: Boolean
+        - class: Additional classes
+    
+    Size: ~30 lines (HCA compliant)
+#}
+{% set input_type = type|default('text') %}
+
+{% if label %}
+<div class="form-group">
+    <label for="{{ name }}" class="form-label">{{ label }}</label>
+{% endif %}
+    <input type="{{ input_type }}"
+           id="{{ name }}"
+           name="{{ name }}"
+           class="form-input {{ class|default('') }}"
+           {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+           {% if value %}value="{{ value }}"{% endif %}
+           {% if required %}required{% endif %}
+           {% if autofocus %}autofocus{% endif %}>
+{% if label %}
+</div>
+{% endif %}

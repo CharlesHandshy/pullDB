@@ -35,9 +35,11 @@
                 </h3>
             </div>
             <div class="card-body">
+                <!-- Hidden file input - OUTSIDE the upload zone -->
+                <input type="file" id="logo-upload" accept="video/*,image/*" style="position:absolute;left:-9999px;opacity:0">
+                
                 <!-- File Upload Zone -->
                 <div class="upload-zone" id="upload-zone" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave(event)">
-                    <input type="file" id="logo-upload" accept="video/*,image/*" style="display:none">
                     <div class="upload-icon">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -56,6 +58,12 @@
                         <input type="text" id="logo-path" class="form-input" value="{{ logo_config.path }}" placeholder="/static/images/pullDB_logo.mp4" onchange="loadLogoFromPath()">
                         <button type="button" class="btn btn-secondary btn-sm" onclick="loadLogoFromPath()">Load</button>
                     </div>
+                </div>
+
+                <!-- Logo Label -->
+                <div class="current-logo-info">
+                    <label>Logo Label <span class="label-hint">(optional - displayed next to logo)</span></label>
+                    <input type="text" id="logo-label" class="form-input" value="{{ logo_config.label }}" placeholder="e.g., pullDB" oninput="updateLabelPreview()">
                 </div>
             </div>
         </div>
@@ -80,13 +88,46 @@
                 </div>
             </div>
             <div class="card-body">
-                <!-- Preview Container -->
+                <!-- Preview Container with Visual Crop -->
                 <div class="preview-wrapper">
                     <div class="preview-container" id="preview-container">
-                        <video id="logo-preview-video" autoplay loop muted playsinline style="display:none">
-                            <source src="{{ logo_config.path }}" type="video/mp4">
-                        </video>
-                        <img id="logo-preview-image" src="" alt="Logo preview" style="display:none">
+                        <div class="media-wrapper" id="media-wrapper">
+                            <video id="logo-preview-video" autoplay loop muted playsinline style="display:none">
+                                <source src="{{ logo_config.path }}" type="video/mp4">
+                            </video>
+                            <img id="logo-preview-image" src="" alt="Logo preview" style="display:none">
+                            <!-- Visual crop overlay with floating inputs -->
+                            <div class="crop-overlay" id="crop-overlay">
+                                <!-- Edge handles -->
+                                <div class="crop-handle crop-handle-top" id="handle-top"></div>
+                                <div class="crop-handle crop-handle-bottom" id="handle-bottom"></div>
+                                <div class="crop-handle crop-handle-left" id="handle-left"></div>
+                                <div class="crop-handle crop-handle-right" id="handle-right"></div>
+                                <!-- Corner handles -->
+                                <div class="crop-corner crop-corner-tl" id="corner-tl"></div>
+                                <div class="crop-corner crop-corner-tr" id="corner-tr"></div>
+                                <div class="crop-corner crop-corner-bl" id="corner-bl"></div>
+                                <div class="crop-corner crop-corner-br" id="corner-br"></div>
+                                <!-- Floating pixel inputs -->
+                                <div class="crop-input-float crop-input-top" id="input-float-top">
+                                    <input type="number" id="crop-top" value="{{ logo_config.crop_top }}" min="0" oninput="updatePreview()">
+                                </div>
+                                <div class="crop-input-float crop-input-bottom" id="input-float-bottom">
+                                    <input type="number" id="crop-bottom" value="{{ logo_config.crop_bottom }}" min="0" oninput="updatePreview()">
+                                </div>
+                                <div class="crop-input-float crop-input-left" id="input-float-left">
+                                    <input type="number" id="crop-left" value="{{ logo_config.crop_left }}" min="0" oninput="updatePreview()">
+                                </div>
+                                <div class="crop-input-float crop-input-right" id="input-float-right">
+                                    <input type="number" id="crop-right" value="{{ logo_config.crop_right }}" min="0" oninput="updatePreview()">
+                                </div>
+                                <!-- Shaded areas -->
+                                <div class="crop-shaded crop-shaded-top" id="shade-top"></div>
+                                <div class="crop-shaded crop-shaded-bottom" id="shade-bottom"></div>
+                                <div class="crop-shaded crop-shaded-left" id="shade-left"></div>
+                                <div class="crop-shaded crop-shaded-right" id="shade-right"></div>
+                            </div>
+                        </div>
                         <div class="no-preview" id="no-preview">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -97,39 +138,8 @@
                         </div>
                     </div>
                     <div class="preview-dimensions" id="preview-dimensions">
-                        Original: <span id="orig-width">--</span> × <span id="orig-height">--</span>px
-                    </div>
-                </div>
-
-                <!-- Crop Controls -->
-                <div class="crop-controls">
-                    <h4>Crop Settings (pixels)</h4>
-                    <div class="crop-grid">
-                        <div class="crop-row top-row">
-                            <div class="crop-field">
-                                <label for="crop-top">Top</label>
-                                <input type="number" id="crop-top" class="form-input" value="{{ logo_config.crop_top }}" min="0" oninput="updatePreview()">
-                            </div>
-                        </div>
-                        <div class="crop-row middle-row">
-                            <div class="crop-field">
-                                <label for="crop-left">Left</label>
-                                <input type="number" id="crop-left" class="form-input" value="{{ logo_config.crop_left }}" min="0" oninput="updatePreview()">
-                            </div>
-                            <div class="crop-preview-box">
-                                <span id="result-width">--</span> × <span id="result-height">--</span>
-                            </div>
-                            <div class="crop-field">
-                                <label for="crop-right">Right</label>
-                                <input type="number" id="crop-right" class="form-input" value="{{ logo_config.crop_right }}" min="0" oninput="updatePreview()">
-                            </div>
-                        </div>
-                        <div class="crop-row bottom-row">
-                            <div class="crop-field">
-                                <label for="crop-bottom">Bottom</label>
-                                <input type="number" id="crop-bottom" class="form-input" value="{{ logo_config.crop_bottom }}" min="0" oninput="updatePreview()">
-                            </div>
-                        </div>
+                        Original: <span id="orig-width">--</span> × <span id="orig-height">--</span>px | 
+                        Cropped: <span id="result-width">--</span> × <span id="result-height">--</span>px
                     </div>
                 </div>
             </div>
@@ -137,7 +147,7 @@
     </div>
 
     <!-- Live Header Preview -->
-    <div class="card">
+    <div class="card header-preview-card">
         <div class="card-header">
             <h3 class="card-title">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -149,23 +159,87 @@
             </h3>
         </div>
         <div class="card-body">
-            <div class="header-preview-bar">
-                <div class="header-preview-logo" id="header-preview-logo">
-                    <video id="header-preview-video" autoplay loop muted playsinline>
-                        <source src="{{ logo_config.path }}" type="video/mp4">
-                    </video>
-                </div>
-                <div class="header-preview-divider"></div>
-                <div class="header-preview-content">
-                    <h1>Job Management</h1>
-                    <p>Monitor and manage all restore jobs</p>
-                </div>
-                <div class="header-preview-user">
-                    <span class="badge">ADMIN</span>
-                    <span>devadmin</span>
+            <!-- Interactive Header Preview -->
+            <div class="header-preview-container">
+                <div class="header-preview-bar">
+                    <div class="header-preview-logo-wrapper" id="header-preview-logo-wrapper">
+                        <div class="header-preview-logo" id="header-preview-logo">
+                            <video id="header-preview-video" autoplay loop muted playsinline>
+                                <source src="{{ logo_config.path }}" type="video/mp4">
+                            </video>
+                        </div>
+                        <div class="header-preview-label-wrapper" id="header-preview-label-wrapper">
+                            <span class="header-preview-label" id="header-preview-label">{{ logo_config.label }}</span>
+                            <div class="label-drag-handle" id="label-drag-handle" title="Drag to move label"></div>
+                        </div>
+                    </div>
+                    <div class="header-preview-divider"></div>
+                    <div class="header-preview-content">
+                        <h1>Job Management</h1>
+                        <p>Monitor and manage all restore jobs</p>
+                    </div>
+                    <div class="header-preview-user">
+                        <span class="badge">ADMIN</span>
+                        <span>devadmin</span>
+                    </div>
                 </div>
             </div>
-            <p class="preview-note">This shows how the logo will appear in the application header (52px height)</p>
+            
+            <!-- Compact Controls Row -->
+            <div class="header-controls-row">
+                <!-- Logo Scale -->
+                <div class="control-compact">
+                    <label>Scale</label>
+                    <input type="range" id="logo-scale" min="1" max="100" value="{{ logo_config.logo_scale }}" oninput="updateLogoScale()">
+                    <span id="logo-scale-value">{{ logo_config.logo_scale }}%</span>
+                </div>
+                
+                <!-- Label Controls - only show if label exists -->
+                <div class="label-controls-compact" id="label-controls-compact">
+                    <div class="control-compact">
+                        <label>Font</label>
+                        <select id="label-font" class="form-select-sm" onchange="updateLabelStyle()">
+                            <option value="system-ui, -apple-system, sans-serif" {% if logo_config.label_style.font == "system-ui, -apple-system, sans-serif" %}selected{% endif %}>System</option>
+                            <option value="'Inter', sans-serif" {% if "'Inter'" in logo_config.label_style.font %}selected{% endif %}>Inter</option>
+                            <option value="'Roboto', sans-serif" {% if "'Roboto'" in logo_config.label_style.font %}selected{% endif %}>Roboto</option>
+                            <option value="'Montserrat', sans-serif" {% if "'Montserrat'" in logo_config.label_style.font %}selected{% endif %}>Montserrat</option>
+                            <option value="'Georgia', serif" {% if "'Georgia'" in logo_config.label_style.font %}selected{% endif %}>Georgia</option>
+                            <option value="'Courier New', monospace" {% if "'Courier New'" in logo_config.label_style.font %}selected{% endif %}>Mono</option>
+                        </select>
+                    </div>
+                    <div class="control-compact">
+                        <label>Size</label>
+                        <input type="range" id="label-size" min="10" max="36" value="{{ logo_config.label_style.size }}" oninput="updateLabelStyle()">
+                        <span id="label-size-value">{{ logo_config.label_style.size }}px</span>
+                    </div>
+                    <div class="control-compact">
+                        <label>Weight</label>
+                        <select id="label-weight" class="form-select-sm" onchange="updateLabelStyle()">
+                            <option value="400" {% if logo_config.label_style.weight == "400" %}selected{% endif %}>Regular</option>
+                            <option value="500" {% if logo_config.label_style.weight == "500" %}selected{% endif %}>Medium</option>
+                            <option value="600" {% if logo_config.label_style.weight == "600" %}selected{% endif %}>Semi</option>
+                            <option value="700" {% if logo_config.label_style.weight == "700" %}selected{% endif %}>Bold</option>
+                            <option value="800" {% if logo_config.label_style.weight == "800" %}selected{% endif %}>Extra</option>
+                        </select>
+                    </div>
+                    <div class="control-compact">
+                        <label>Color</label>
+                        <input type="color" id="label-color" value="{{ logo_config.label_style.color }}" onchange="updateLabelStyle()">
+                    </div>
+                    <div class="control-compact">
+                        <label>Spacing</label>
+                        <input type="range" id="label-spacing" min="-2" max="10" value="{{ logo_config.label_style.spacing }}" oninput="updateLabelStyle()">
+                        <span id="label-spacing-value">{{ logo_config.label_style.spacing }}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Hidden inputs for values we still need -->
+            <input type="hidden" id="label-x" value="{{ logo_config.label_style.x }}">
+            <input type="hidden" id="label-y" value="{{ logo_config.label_style.y }}">
+            <input type="hidden" id="label-style" value="{{ logo_config.label_style.style }}">
+            <input type="hidden" id="label-rotation" value="{{ logo_config.label_style.rotation }}">
+            <input type="hidden" id="label-transform" value="{{ logo_config.label_style.transform }}">
         </div>
     </div>
 
@@ -294,11 +368,198 @@
     position: relative;
 }
 
-.preview-container video,
-.preview-container img {
+.media-wrapper {
+    position: relative;
+    display: none;
+}
+
+.media-wrapper video,
+.media-wrapper img {
     max-width: 100%;
     max-height: 300px;
-    object-fit: contain;
+    display: block;
+}
+
+/* Visual Crop Overlay */
+.crop-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    display: none;
+}
+
+.crop-shaded {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+}
+
+.crop-shaded-top {
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 0;
+}
+
+.crop-shaded-bottom {
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 0;
+}
+
+.crop-shaded-left {
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+}
+
+.crop-shaded-right {
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+}
+
+.crop-handle {
+    position: absolute;
+    background: var(--primary-500);
+    pointer-events: auto;
+    z-index: 10;
+}
+
+.crop-handle-top,
+.crop-handle-bottom {
+    left: 0;
+    right: 0;
+    height: 4px;
+    cursor: ns-resize;
+}
+
+.crop-handle-top {
+    top: 0;
+}
+
+.crop-handle-bottom {
+    bottom: 0;
+}
+
+.crop-handle-left,
+.crop-handle-right {
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    cursor: ew-resize;
+}
+
+.crop-handle-left {
+    left: 0;
+}
+
+.crop-handle-right {
+    right: 0;
+}
+
+.crop-handle:hover {
+    background: var(--primary-600);
+}
+
+.crop-handle.dragging {
+    background: var(--primary-700);
+}
+
+/* Corner handles */
+.crop-corner {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: white;
+    border: 2px solid var(--primary-500);
+    border-radius: 2px;
+    pointer-events: auto;
+    z-index: 20;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.crop-corner:hover {
+    background: var(--primary-100);
+    border-color: var(--primary-600);
+    transform: scale(1.1);
+}
+
+.crop-corner.dragging {
+    background: var(--primary-200);
+    border-color: var(--primary-700);
+}
+
+.crop-corner-tl {
+    cursor: nwse-resize;
+}
+
+.crop-corner-tr {
+    cursor: nesw-resize;
+}
+
+.crop-corner-bl {
+    cursor: nesw-resize;
+}
+
+.crop-corner-br {
+    cursor: nwse-resize;
+}
+
+/* Floating crop inputs */
+.crop-input-float {
+    position: absolute;
+    z-index: 25;
+    pointer-events: auto;
+}
+
+.crop-input-float input {
+    width: 50px;
+    padding: 2px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+    border: 1px solid var(--primary-400);
+    border-radius: 3px;
+    background: white;
+    color: var(--gray-700);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.crop-input-float input:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 2px var(--primary-100);
+}
+
+.crop-input-top {
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.crop-input-bottom {
+    bottom: 0;
+    left: 50%;
+    transform: translate(-50%, 50%);
+}
+
+.crop-input-left {
+    left: 0;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.crop-input-right {
+    right: 0;
+    top: 50%;
+    transform: translate(50%, -50%);
 }
 
 .no-preview {
@@ -324,68 +585,18 @@
     margin-top: var(--space-2);
 }
 
-/* Crop Controls */
-.crop-controls {
-    background: var(--gray-50);
-    border-radius: var(--radius-md);
+/* Header Preview - Redesigned */
+.header-preview-card .card-body {
     padding: var(--space-4);
 }
 
-.crop-controls h4 {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--gray-600);
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-    margin: 0 0 var(--space-4);
-    text-align: center;
-}
-
-.crop-grid {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-}
-
-.crop-row {
-    display: flex;
-    justify-content: center;
-    gap: var(--space-4);
-}
-
-.crop-field {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-1);
-}
-
-.crop-field label {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    color: var(--gray-500);
-    text-transform: uppercase;
-}
-
-.crop-field input {
-    width: 80px;
-    text-align: center;
-}
-
-.crop-preview-box {
-    width: 100px;
-    height: 60px;
-    border: 2px dashed var(--gray-300);
+.header-preview-container {
+    background: var(--gray-100);
     border-radius: var(--radius-md);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.75rem;
-    color: var(--gray-500);
-    background: white;
+    padding: var(--space-3);
+    margin-bottom: var(--space-4);
 }
 
-/* Header Preview */
 .header-preview-bar {
     background: white;
     border: 1px solid var(--gray-200);
@@ -394,7 +605,15 @@
     display: flex;
     align-items: center;
     padding: 0 var(--space-4);
-    gap: var(--space-4);
+    gap: var(--space-3);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.header-preview-logo-wrapper {
+    display: flex;
+    align-items: center;
+    position: relative;
+    flex-shrink: 0;
 }
 
 .header-preview-logo {
@@ -403,7 +622,6 @@
     justify-content: center;
     overflow: hidden;
     height: 52px;
-    flex-shrink: 0;
 }
 
 .header-preview-logo video,
@@ -411,6 +629,50 @@
     height: calc(52px + 30px);
     width: auto;
     margin: -13px 0 -17px 0;
+}
+
+.header-preview-label-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.header-preview-label {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--gray-800);
+    margin-left: var(--space-2);
+    white-space: nowrap;
+    cursor: move;
+    user-select: none;
+}
+
+.header-preview-label:empty {
+    display: none;
+}
+
+.header-preview-label:empty + .label-drag-handle {
+    display: none;
+}
+
+.label-drag-handle {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 10px;
+    height: 10px;
+    background: var(--primary-500);
+    border: 2px solid white;
+    border-radius: 2px;
+    cursor: move;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.header-preview-label-wrapper:hover .label-drag-handle,
+.label-drag-handle.dragging {
+    opacity: 1;
 }
 
 .header-preview-divider {
@@ -426,7 +688,7 @@
 }
 
 .header-preview-content h1 {
-    font-size: 1rem;
+    font-size: 0.9375rem;
     font-weight: 700;
     color: var(--gray-900);
     margin: 0;
@@ -434,7 +696,7 @@
 }
 
 .header-preview-content p {
-    font-size: 0.6875rem;
+    font-size: 0.625rem;
     color: var(--gray-500);
     margin: 0;
 }
@@ -443,7 +705,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     color: var(--gray-600);
 }
 
@@ -452,15 +714,98 @@
     color: var(--primary-700);
     padding: 0.125rem 0.375rem;
     border-radius: var(--radius-sm);
-    font-size: 0.6875rem;
+    font-size: 0.625rem;
     font-weight: 600;
 }
 
-.preview-note {
-    font-size: 0.75rem;
+/* Compact Controls Row */
+.header-controls-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    align-items: flex-start;
+    padding: var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius-md);
+}
+
+.control-compact {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.control-compact label {
+    font-size: 0.6875rem;
+    font-weight: 600;
     color: var(--gray-500);
-    margin: var(--space-2) 0 0;
-    text-align: center;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.control-compact input[type="range"] {
+    width: 80px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--gray-200);
+    appearance: none;
+    cursor: pointer;
+}
+
+.control-compact input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--primary-500);
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+.control-compact span {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--gray-600);
+    min-width: 32px;
+}
+
+.control-compact input[type="color"] {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.form-select-sm {
+    padding: 4px 8px;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    background: white;
+    cursor: pointer;
+    min-width: 70px;
+}
+
+.form-select-sm:focus {
+    outline: none;
+    border-color: var(--primary-400);
+}
+
+.label-controls-compact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding-left: var(--space-3);
+    border-left: 1px solid var(--gray-200);
+}
+
+.label-hint {
+    font-weight: 400;
+    color: var(--gray-400);
+    font-size: 0.6875rem;
 }
 
 /* Config Output */
@@ -501,35 +846,233 @@
 let currentFile = null;
 let originalWidth = 0;
 let originalHeight = 0;
+let displayWidth = 0;
+let displayHeight = 0;
 let logoType = '{{ logo_config.type }}';
 let hasChanges = false;
+let isDragging = false;
+let dragHandle = null;
+let dragStartY = 0;
+let dragStartX = 0;
+let dragStartValue = 0;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
-    // Set up click handler for upload zone
+    initUploadZone();
+    initCropHandles();
+    initLabelDrag();
+    
+    // Apply saved label styles on load
+    applyInitialLabelStyle();
+    
+    // Don't auto-load - let user click "Load" button
+    // This prevents blocking on page load
+});
+
+function applyInitialLabelStyle() {
+    // Apply saved styles to the label preview
+    const labelEl = document.getElementById('header-preview-label');
+    if (!labelEl) return;
+    
+    const x = parseInt(document.getElementById('label-x').value) || 0;
+    const y = parseInt(document.getElementById('label-y').value) || 0;
+    const font = document.getElementById('label-font').value;
+    const size = parseInt(document.getElementById('label-size').value) || 20;
+    const weight = document.getElementById('label-weight').value;
+    const fontStyle = document.getElementById('label-style').value;
+    const color = document.getElementById('label-color').value;
+    const rotation = parseInt(document.getElementById('label-rotation').value) || 0;
+    const spacing = parseInt(document.getElementById('label-spacing').value) || 0;
+    const transform = document.getElementById('label-transform').value;
+    
+    labelEl.style.fontFamily = font;
+    labelEl.style.fontSize = size + 'px';
+    labelEl.style.fontWeight = weight;
+    labelEl.style.fontStyle = fontStyle;
+    labelEl.style.color = color;
+    labelEl.style.letterSpacing = spacing + 'px';
+    labelEl.style.textTransform = transform;
+    labelEl.style.transform = `translate(${x}px, ${y}px) rotate(${rotation}deg)`;
+    labelEl.style.transformOrigin = 'left center';
+}
+
+function initUploadZone() {
     const uploadZone = document.getElementById('upload-zone');
     const fileInput = document.getElementById('logo-upload');
     
-    uploadZone.addEventListener('click', function(e) {
-        // Don't trigger if clicking on the file input itself
-        if (e.target !== fileInput) {
-            fileInput.click();
-        }
-    });
+    if (!uploadZone || !fileInput) {
+        console.error('Upload elements not found');
+        return;
+    }
     
-    fileInput.addEventListener('change', function(e) {
+    // Click to upload
+    uploadZone.onclick = function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        fileInput.click();
+    };
+    
+    // File selected
+    fileInput.onchange = function(e) {
         const file = e.target.files[0];
         if (file) {
             uploadFile(file);
         }
+    };
+}
+
+function initCropHandles() {
+    // Edge handles
+    const handles = {
+        'handle-top': { fields: ['crop-top'], axis: 'y', invert: false },
+        'handle-bottom': { fields: ['crop-bottom'], axis: 'y', invert: true },
+        'handle-left': { fields: ['crop-left'], axis: 'x', invert: false },
+        'handle-right': { fields: ['crop-right'], axis: 'x', invert: true }
+    };
+    
+    // Corner handles - adjust two fields at once
+    const corners = {
+        'corner-tl': { fieldsX: ['crop-left'], fieldsY: ['crop-top'], invertX: false, invertY: false },
+        'corner-tr': { fieldsX: ['crop-right'], fieldsY: ['crop-top'], invertX: true, invertY: false },
+        'corner-bl': { fieldsX: ['crop-left'], fieldsY: ['crop-bottom'], invertX: false, invertY: true },
+        'corner-br': { fieldsX: ['crop-right'], fieldsY: ['crop-bottom'], invertX: true, invertY: true }
+    };
+    
+    let dragStartValues = {};
+    
+    // Setup edge handles
+    Object.keys(handles).forEach(handleId => {
+        const handle = document.getElementById(handleId);
+        if (!handle) return;
+        
+        handle.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            isDragging = true;
+            dragHandle = { ...handles[handleId], type: 'edge' };
+            dragStartY = e.clientY;
+            dragStartX = e.clientX;
+            dragStartValues = {};
+            dragHandle.fields.forEach(f => {
+                dragStartValues[f] = parseInt(document.getElementById(f).value) || 0;
+            });
+            handle.classList.add('dragging');
+            document.body.style.cursor = dragHandle.axis === 'y' ? 'ns-resize' : 'ew-resize';
+        });
     });
     
-    // Load existing logo if path is set
-    const path = document.getElementById('logo-path').value;
-    if (path) {
-        loadLogoFromPath();
-    }
-});
+    // Setup corner handles
+    Object.keys(corners).forEach(cornerId => {
+        const corner = document.getElementById(cornerId);
+        if (!corner) return;
+        
+        corner.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            isDragging = true;
+            dragHandle = { ...corners[cornerId], type: 'corner' };
+            dragStartY = e.clientY;
+            dragStartX = e.clientX;
+            dragStartValues = {};
+            dragHandle.fieldsX.forEach(f => {
+                dragStartValues[f] = parseInt(document.getElementById(f).value) || 0;
+            });
+            dragHandle.fieldsY.forEach(f => {
+                dragStartValues[f] = parseInt(document.getElementById(f).value) || 0;
+            });
+            corner.classList.add('dragging');
+            document.body.style.cursor = cornerId.includes('tl') || cornerId.includes('br') ? 'nwse-resize' : 'nesw-resize';
+        });
+    });
+    
+    document.addEventListener('mousemove', function(e) {
+        if (!isDragging || !dragHandle) return;
+        
+        const scaleX = originalWidth / displayWidth;
+        const scaleY = originalHeight / displayHeight;
+        
+        if (dragHandle.type === 'edge') {
+            let delta;
+            if (dragHandle.axis === 'y') {
+                delta = (e.clientY - dragStartY) * scaleY;
+            } else {
+                delta = (e.clientX - dragStartX) * scaleX;
+            }
+            if (dragHandle.invert) delta = -delta;
+            
+            dragHandle.fields.forEach(f => {
+                const newValue = Math.max(0, Math.round(dragStartValues[f] + delta));
+                document.getElementById(f).value = newValue;
+            });
+        } else if (dragHandle.type === 'corner') {
+            // X axis
+            let deltaX = (e.clientX - dragStartX) * scaleX;
+            if (dragHandle.invertX) deltaX = -deltaX;
+            dragHandle.fieldsX.forEach(f => {
+                const newValue = Math.max(0, Math.round(dragStartValues[f] + deltaX));
+                document.getElementById(f).value = newValue;
+            });
+            
+            // Y axis
+            let deltaY = (e.clientY - dragStartY) * scaleY;
+            if (dragHandle.invertY) deltaY = -deltaY;
+            dragHandle.fieldsY.forEach(f => {
+                const newValue = Math.max(0, Math.round(dragStartValues[f] + deltaY));
+                document.getElementById(f).value = newValue;
+            });
+        }
+        
+        updatePreview();
+    });
+    
+    document.addEventListener('mouseup', function() {
+        if (isDragging) {
+            isDragging = false;
+            document.body.style.cursor = '';
+            document.querySelectorAll('.crop-handle, .crop-corner').forEach(h => h.classList.remove('dragging'));
+            dragHandle = null;
+        }
+    });
+}
+
+function initLabelDrag() {
+    const dragHandle = document.getElementById('label-drag-handle');
+    const labelWrapper = document.getElementById('header-preview-label-wrapper');
+    
+    if (!dragHandle || !labelWrapper) return;
+    
+    let isDraggingLabel = false;
+    let startX, startY, startLabelX, startLabelY;
+    
+    dragHandle.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        isDraggingLabel = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        startLabelX = parseInt(document.getElementById('label-x').value) || 0;
+        startLabelY = parseInt(document.getElementById('label-y').value) || 0;
+        dragHandle.classList.add('dragging');
+        document.body.style.cursor = 'move';
+    });
+    
+    document.addEventListener('mousemove', function(e) {
+        if (!isDraggingLabel) return;
+        
+        const deltaX = e.clientX - startX;
+        const deltaY = e.clientY - startY;
+        
+        document.getElementById('label-x').value = Math.round(startLabelX + deltaX);
+        document.getElementById('label-y').value = Math.round(startLabelY + deltaY);
+        
+        updateLabelStyle();
+    });
+    
+    document.addEventListener('mouseup', function() {
+        if (isDraggingLabel) {
+            isDraggingLabel = false;
+            dragHandle.classList.remove('dragging');
+            document.body.style.cursor = '';
+        }
+    });
+}
 
 // File handling
 function handleFileSelect(event) {
@@ -603,9 +1146,8 @@ async function uploadFile(file) {
         showToast('Upload failed: ' + error.message, 'error');
     }
     
-    // Restore upload zone and re-attach event listeners
+    // Restore upload zone (file input is outside, no need to recreate)
     uploadZone.innerHTML = `
-        <input type="file" id="logo-upload" accept="video/*,image/*" style="display:none">
         <div class="upload-icon">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -616,15 +1158,6 @@ async function uploadFile(file) {
         <p class="upload-text">Click or drag to upload logo</p>
         <p class="upload-hint">Supports MP4, WebM, PNG, JPG, SVG</p>
     `;
-    
-    // Re-attach file input listener
-    const fileInput = document.getElementById('logo-upload');
-    fileInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (file) {
-            uploadFile(file);
-        }
-    });
 }
 
 function processFile(file) {
@@ -651,14 +1184,20 @@ function showPreview(src, type) {
     const video = document.getElementById('logo-preview-video');
     const image = document.getElementById('logo-preview-image');
     const noPreview = document.getElementById('no-preview');
+    const mediaWrapper = document.getElementById('media-wrapper');
+    const cropOverlay = document.getElementById('crop-overlay');
     const headerVideo = document.getElementById('header-preview-video');
+    
+    // Show media wrapper
+    mediaWrapper.style.display = 'inline-block';
+    cropOverlay.style.display = 'block';
+    noPreview.style.display = 'none';
     
     if (type === 'video') {
         video.querySelector('source').src = src;
         video.load();
         video.style.display = 'block';
         image.style.display = 'none';
-        noPreview.style.display = 'none';
         
         headerVideo.querySelector('source').src = src;
         headerVideo.load();
@@ -666,14 +1205,15 @@ function showPreview(src, type) {
         video.onloadedmetadata = function() {
             originalWidth = video.videoWidth;
             originalHeight = video.videoHeight;
+            displayWidth = video.offsetWidth;
+            displayHeight = video.offsetHeight;
             updateDimensions();
-            updatePreview();
+            updateCropOverlay();
         };
     } else {
         image.src = src;
         image.style.display = 'block';
         video.style.display = 'none';
-        noPreview.style.display = 'none';
         
         // For header preview, replace video with image
         const headerLogo = document.getElementById('header-preview-logo');
@@ -682,8 +1222,10 @@ function showPreview(src, type) {
         image.onload = function() {
             originalWidth = image.naturalWidth;
             originalHeight = image.naturalHeight;
+            displayWidth = image.offsetWidth;
+            displayHeight = image.offsetHeight;
             updateDimensions();
-            updatePreview();
+            updateCropOverlay();
         };
     }
 }
@@ -694,6 +1236,26 @@ function updateDimensions() {
 }
 
 function updatePreview() {
+    updateCropOverlay();
+    
+    // Update header preview
+    const cropTop = parseInt(document.getElementById('crop-top').value) || 0;
+    const cropBottom = parseInt(document.getElementById('crop-bottom').value) || 0;
+    
+    const headerLogo = document.getElementById('header-preview-logo');
+    const headerElement = headerLogo.querySelector('video, img');
+    if (headerElement) {
+        const totalCrop = cropTop + cropBottom;
+        headerElement.style.height = `calc(52px + ${totalCrop}px)`;
+        headerElement.style.margin = `-${cropTop}px 0 -${cropBottom}px 0`;
+    }
+    
+    // Update config output
+    updateConfigOutput();
+    markChanged();
+}
+
+function updateCropOverlay() {
     const cropTop = parseInt(document.getElementById('crop-top').value) || 0;
     const cropBottom = parseInt(document.getElementById('crop-bottom').value) || 0;
     const cropLeft = parseInt(document.getElementById('crop-left').value) || 0;
@@ -705,43 +1267,194 @@ function updatePreview() {
     document.getElementById('result-width').textContent = resultWidth;
     document.getElementById('result-height').textContent = resultHeight;
     
-    // Apply crop to preview via CSS
+    // Get current display dimensions
     const video = document.getElementById('logo-preview-video');
     const image = document.getElementById('logo-preview-image');
     const element = logoType === 'video' ? video : image;
     
-    if (element.style.display !== 'none') {
-        element.style.clipPath = `inset(${cropTop}px ${cropRight}px ${cropBottom}px ${cropLeft}px)`;
+    if (element && element.style.display !== 'none') {
+        displayWidth = element.offsetWidth;
+        displayHeight = element.offsetHeight;
     }
     
-    // Update header preview
-    const headerLogo = document.getElementById('header-preview-logo');
-    const headerElement = headerLogo.querySelector('video, img');
-    if (headerElement) {
-        // Calculate margins for header based on crop values
-        const totalCrop = cropTop + cropBottom;
-        headerElement.style.height = `calc(52px + ${totalCrop}px)`;
-        headerElement.style.margin = `-${cropTop}px 0 -${cropBottom}px 0`;
-    }
+    if (!displayWidth || !displayHeight || !originalWidth || !originalHeight) return;
     
-    // Update config output
-    updateConfigOutput();
-    markChanged();
+    // Calculate scale factor
+    const scaleX = displayWidth / originalWidth;
+    const scaleY = displayHeight / originalHeight;
+    
+    // Update shaded areas (visual crop preview)
+    const shadeTop = document.getElementById('shade-top');
+    const shadeBottom = document.getElementById('shade-bottom');
+    const shadeLeft = document.getElementById('shade-left');
+    const shadeRight = document.getElementById('shade-right');
+    
+    const displayCropTop = cropTop * scaleY;
+    const displayCropBottom = cropBottom * scaleY;
+    const displayCropLeft = cropLeft * scaleX;
+    const displayCropRight = cropRight * scaleX;
+    
+    shadeTop.style.height = displayCropTop + 'px';
+    shadeBottom.style.height = displayCropBottom + 'px';
+    shadeLeft.style.width = displayCropLeft + 'px';
+    shadeLeft.style.top = displayCropTop + 'px';
+    shadeLeft.style.bottom = displayCropBottom + 'px';
+    shadeRight.style.width = displayCropRight + 'px';
+    shadeRight.style.top = displayCropTop + 'px';
+    shadeRight.style.bottom = displayCropBottom + 'px';
+    
+    // Update handle positions
+    const handleTop = document.getElementById('handle-top');
+    const handleBottom = document.getElementById('handle-bottom');
+    const handleLeft = document.getElementById('handle-left');
+    const handleRight = document.getElementById('handle-right');
+    
+    handleTop.style.top = displayCropTop + 'px';
+    handleBottom.style.bottom = displayCropBottom + 'px';
+    handleLeft.style.left = displayCropLeft + 'px';
+    handleRight.style.right = displayCropRight + 'px';
+    
+    // Update corner positions
+    const cornerTL = document.getElementById('corner-tl');
+    const cornerTR = document.getElementById('corner-tr');
+    const cornerBL = document.getElementById('corner-bl');
+    const cornerBR = document.getElementById('corner-br');
+    
+    // Position corners at the intersection of crop edges (offset by half their size)
+    cornerTL.style.top = (displayCropTop - 6) + 'px';
+    cornerTL.style.left = (displayCropLeft - 6) + 'px';
+    
+    cornerTR.style.top = (displayCropTop - 6) + 'px';
+    cornerTR.style.right = (displayCropRight - 6) + 'px';
+    
+    cornerBL.style.bottom = (displayCropBottom - 6) + 'px';
+    cornerBL.style.left = (displayCropLeft - 6) + 'px';
+    
+    cornerBR.style.bottom = (displayCropBottom - 6) + 'px';
+    cornerBR.style.right = (displayCropRight - 6) + 'px';
+    
+    // Position floating crop inputs
+    const inputTop = document.getElementById('input-float-top');
+    const inputBottom = document.getElementById('input-float-bottom');
+    const inputLeft = document.getElementById('input-float-left');
+    const inputRight = document.getElementById('input-float-right');
+    
+    if (inputTop) inputTop.style.top = displayCropTop + 'px';
+    if (inputBottom) inputBottom.style.bottom = displayCropBottom + 'px';
+    if (inputLeft) inputLeft.style.left = displayCropLeft + 'px';
+    if (inputRight) inputRight.style.right = displayCropRight + 'px';
 }
 
 function updateConfigOutput() {
+    const label = document.getElementById('logo-label').value;
     const config = {
         path: document.getElementById('logo-path').value,
         type: logoType,
+        label: label,
+        logoScale: parseInt(document.getElementById('logo-scale').value) || 100,
         crop: {
             top: parseInt(document.getElementById('crop-top').value) || 0,
             bottom: parseInt(document.getElementById('crop-bottom').value) || 0,
             left: parseInt(document.getElementById('crop-left').value) || 0,
             right: parseInt(document.getElementById('crop-right').value) || 0
+        },
+        labelStyle: {
+            x: parseInt(document.getElementById('label-x').value) || 0,
+            y: parseInt(document.getElementById('label-y').value) || 0,
+            font: document.getElementById('label-font').value,
+            size: parseInt(document.getElementById('label-size').value) || 20,
+            weight: document.getElementById('label-weight').value,
+            style: document.getElementById('label-style').value,
+            color: document.getElementById('label-color').value,
+            rotation: parseInt(document.getElementById('label-rotation').value) || 0,
+            spacing: parseInt(document.getElementById('label-spacing').value) || 0,
+            transform: document.getElementById('label-transform').value
         }
     };
     
     document.getElementById('config-output').textContent = JSON.stringify(config, null, 2);
+}
+
+function updateLabelPreview() {
+    const label = document.getElementById('logo-label').value;
+    document.getElementById('header-preview-label').textContent = label;
+    updateConfigOutput();
+    markChanged();
+}
+
+// Logo scale function
+function updateLogoScale() {
+    const scale = parseInt(document.getElementById('logo-scale').value) || 100;
+    document.getElementById('logo-scale-value').textContent = scale + '%';
+    
+    const headerLogo = document.getElementById('header-preview-logo');
+    const headerElement = headerLogo.querySelector('video, img');
+    if (headerElement) {
+        const cropTop = parseInt(document.getElementById('crop-top').value) || 0;
+        const cropBottom = parseInt(document.getElementById('crop-bottom').value) || 0;
+        const totalCrop = cropTop + cropBottom;
+        const baseHeight = 52 * (scale / 100);
+        headerElement.style.height = `calc(${baseHeight}px + ${totalCrop}px)`;
+    }
+    
+    updateConfigOutput();
+    markChanged();
+}
+
+// Label style functions
+function updateLabelStyle() {
+    const labelEl = document.getElementById('header-preview-label');
+    if (!labelEl) return;
+    
+    // Position (from hidden inputs, set by drag handle)
+    const x = parseInt(document.getElementById('label-x').value) || 0;
+    const y = parseInt(document.getElementById('label-y').value) || 0;
+    
+    // Font
+    const font = document.getElementById('label-font').value;
+    const size = parseInt(document.getElementById('label-size').value) || 20;
+    const weight = document.getElementById('label-weight').value;
+    const fontStyle = document.getElementById('label-style').value;
+    
+    // Update size display
+    const sizeValue = document.getElementById('label-size-value');
+    if (sizeValue) sizeValue.textContent = size + 'px';
+    
+    // Color
+    const color = document.getElementById('label-color').value;
+    
+    // Rotation (from hidden input)
+    const rotation = parseInt(document.getElementById('label-rotation').value) || 0;
+    
+    // Letter spacing
+    const spacing = parseInt(document.getElementById('label-spacing').value) || 0;
+    const spacingValue = document.getElementById('label-spacing-value');
+    if (spacingValue) spacingValue.textContent = spacing + 'px';
+    
+    // Transform
+    const transform = document.getElementById('label-transform').value;
+    
+    // Apply styles
+    labelEl.style.fontFamily = font;
+    labelEl.style.fontSize = size + 'px';
+    labelEl.style.fontWeight = weight;
+    labelEl.style.fontStyle = fontStyle;
+    labelEl.style.color = color;
+    labelEl.style.letterSpacing = spacing + 'px';
+    labelEl.style.textTransform = transform;
+    labelEl.style.transform = `translate(${x}px, ${y}px) rotate(${rotation}deg)`;
+    labelEl.style.transformOrigin = 'left center';
+    
+    updateConfigOutput();
+    markChanged();
+}
+
+function syncLabelColor() {
+    const hexInput = document.getElementById('label-color-hex').value;
+    if (/^#[0-9A-Fa-f]{6}$/.test(hexInput)) {
+        document.getElementById('label-color').value = hexInput;
+        updateLabelStyle();
+    }
 }
 
 function resetCrop() {
@@ -761,11 +1474,25 @@ async function saveLogo() {
     const config = {
         path: document.getElementById('logo-path').value,
         type: logoType,
+        label: document.getElementById('logo-label').value,
+        logoScale: parseInt(document.getElementById('logo-scale').value) || 100,
         crop: {
             top: parseInt(document.getElementById('crop-top').value) || 0,
             bottom: parseInt(document.getElementById('crop-bottom').value) || 0,
             left: parseInt(document.getElementById('crop-left').value) || 0,
             right: parseInt(document.getElementById('crop-right').value) || 0
+        },
+        labelStyle: {
+            x: parseInt(document.getElementById('label-x').value) || 0,
+            y: parseInt(document.getElementById('label-y').value) || 0,
+            font: document.getElementById('label-font').value,
+            size: parseInt(document.getElementById('label-size').value) || 20,
+            weight: document.getElementById('label-weight').value,
+            style: document.getElementById('label-style').value,
+            color: document.getElementById('label-color').value,
+            rotation: parseInt(document.getElementById('label-rotation').value) || 0,
+            spacing: parseInt(document.getElementById('label-spacing').value) || 0,
+            transform: document.getElementById('label-transform').value
         }
     };
     

@@ -1,0 +1,21 @@
+{#
+    HCA Layer 0: Status Badge Component
+    ===================================
+    Purpose: Visual indicator for job/entity status.
+    
+    Usage:
+        {% include "shared/ui/badges/status_badge.html" with status="running" %}
+    
+    Parameters:
+        - status: queued, running, complete, failed, canceled (required)
+        - text: Optional override for display text (defaults to status)
+    
+    Size: ~20 lines (HCA compliant)
+#}
+{% set badge_status = status|lower %}
+{% set display_text = text|default(badge_status|capitalize) %}
+
+<span class="badge badge-{{ badge_status }}">
+    <span class="badge-dot"></span>
+    {{ display_text }}
+</span>

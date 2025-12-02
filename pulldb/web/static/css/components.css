@@ -1,0 +1,416 @@
+/* =================================================================
+   pullDB Component Styles
+   HCA Layer 0: Shared UI Atoms
+   
+   Purpose: Reusable UI components (buttons, cards, badges, forms, etc.)
+   Depends: design-system.css (must be loaded first)
+   
+   Size: ~300 lines (HCA compliant)
+   ================================================================= */
+
+/* =================================================================
+   CARDS
+   ================================================================= */
+
+.card {
+    background: white;
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-200);
+    overflow: hidden;
+}
+
+.card-header {
+    padding: var(--space-5) var(--space-6);
+    border-bottom: 1px solid var(--gray-100);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+
+.card-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--gray-900);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.card-title svg {
+    width: 20px;
+    height: 20px;
+    color: var(--gray-400);
+}
+
+.card-body {
+    padding: var(--space-6);
+}
+
+.card-body.no-padding {
+    padding: 0;
+}
+
+/* =================================================================
+   BUTTONS
+   ================================================================= */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: 0.625rem 1rem;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+}
+
+.btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.btn-primary {
+    background: var(--primary-600);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary-700);
+}
+
+.btn-secondary {
+    background: white;
+    color: var(--gray-700);
+    border: 1px solid var(--gray-300);
+}
+
+.btn-secondary:hover {
+    background: var(--gray-50);
+    border-color: var(--gray-400);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--gray-600);
+}
+
+.btn-ghost:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
+}
+
+.btn-danger {
+    background: var(--danger-600);
+    color: white;
+}
+
+.btn-danger:hover {
+    background: var(--danger-700);
+}
+
+.btn-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+}
+
+.btn-lg {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+}
+
+/* Icon buttons */
+.btn-icon {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    border: none;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-decoration: none;
+}
+
+.btn-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.btn-icon-view {
+    background: var(--gray-100);
+    color: var(--gray-600);
+}
+
+.btn-icon-view:hover {
+    background: var(--primary-100);
+    color: var(--primary-700);
+}
+
+.btn-icon-cancel {
+    background: var(--danger-100);
+    color: var(--danger-600);
+}
+
+.btn-icon-cancel:hover {
+    background: var(--danger-200);
+    color: var(--danger-700);
+}
+
+.action-buttons {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+}
+
+/* =================================================================
+   STATUS BADGES
+   ================================================================= */
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    padding: 0.25rem 0.625rem;
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: capitalize;
+    white-space: nowrap;
+    min-width: 90px;
+}
+
+td:has(.badge),
+.status-cell {
+    text-align: center;
+}
+
+.badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-full);
+}
+
+.badge-queued {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.badge-queued .badge-dot {
+    background: var(--gray-500);
+}
+
+.badge-running {
+    background: var(--primary-100);
+    color: var(--primary-700);
+}
+
+.badge-running .badge-dot {
+    background: var(--primary-500);
+    animation: pulse 2s infinite;
+}
+
+.badge-complete {
+    background: var(--success-100);
+    color: var(--success-700);
+}
+
+.badge-complete .badge-dot {
+    background: var(--success-500);
+}
+
+.badge-failed {
+    background: var(--danger-100);
+    color: var(--danger-700);
+}
+
+.badge-failed .badge-dot {
+    background: var(--danger-500);
+}
+
+.badge-canceled {
+    background: var(--warning-100);
+    color: var(--warning-700);
+}
+
+.badge-canceled .badge-dot {
+    background: var(--warning-500);
+}
+
+/* =================================================================
+   FORMS
+   ================================================================= */
+
+.form-group {
+    margin-bottom: var(--space-5);
+}
+
+.form-label {
+    display: block;
+    margin-bottom: var(--space-2);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--gray-700);
+}
+
+.form-input,
+.form-select {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-md);
+    font-size: 0.9375rem;
+    font-family: inherit;
+    color: var(--gray-900);
+    background: white;
+    transition: all var(--transition-fast);
+}
+
+.form-input:focus,
+.form-select:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+.form-input::placeholder {
+    color: var(--gray-400);
+}
+
+/* =================================================================
+   ALERTS
+   ================================================================= */
+
+.alert {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-4);
+}
+
+.alert svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.alert-error {
+    background: var(--danger-50);
+    border: 1px solid var(--danger-200);
+    color: var(--danger-700);
+}
+
+.alert-success {
+    background: var(--success-50);
+    border: 1px solid var(--success-200);
+    color: var(--success-700);
+}
+
+.alert-warning {
+    background: var(--warning-50);
+    border: 1px solid var(--warning-200);
+    color: var(--warning-700);
+}
+
+.alert-info {
+    background: var(--primary-50);
+    border: 1px solid var(--primary-200);
+    color: var(--primary-700);
+}
+
+/* =================================================================
+   TABLES
+   ================================================================= */
+
+.table-container {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+thead {
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-200);
+}
+
+th {
+    text-align: left;
+    padding: var(--space-2) var(--space-2);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+td {
+    padding: var(--space-2);
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 0.8125rem;
+    color: var(--gray-700);
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+tbody tr {
+    transition: background var(--transition-fast);
+}
+
+tbody tr:hover {
+    background: var(--gray-50);
+}
+
+th.text-center,
+td.text-center {
+    text-align: center;
+}
+
+/* =================================================================
+   EMPTY STATE
+   ================================================================= */
+
+.empty-state {
+    text-align: center;
+    padding: var(--space-12) var(--space-8);
+    color: var(--gray-500);
+}
+
+.empty-state-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto var(--space-4);
+    color: var(--gray-300);
+}
+
+.empty-state-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--gray-700);
+    margin-bottom: var(--space-2);
+}
+
+.empty-state-text {
+    font-size: 0.875rem;
+    color: var(--gray-500);
+    max-width: 300px;
+    margin: 0 auto;
+}

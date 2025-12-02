@@ -139,16 +139,34 @@
         }
 
         /* =================================================================
-           LAYOUT - New Structure per wireframe
-           3px strip | Header (full width)
-                     | Sidebar + Work Area + Footer
+           LAYOUT - CSS Grid "Pancake Stack" Pattern
+           
+           Structure: 3px strip | Header | Body (sidebar + content) | Footer
+           
+           CRITICAL: 
+           - Grid calculates heights automatically
+           - Only .content-body scrolls
+           - Everything else is viewport-locked
            ================================================================= */
         
+        /* Prevent any page-level scrolling */
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        /* Root layout container - CSS Grid with 3 rows */
         .app-layout {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            width: 100%;
+            display: grid;
+            grid-template-rows: auto 1fr auto;  /* header | body | footer */
+            grid-template-columns: 1fr;
+            height: 100vh;       /* Exactly viewport height */
+            height: 100dvh;      /* Dynamic viewport (mobile-safe) */
+            width: 100vw;
+            overflow: hidden;    /* Contain everything */
+            position: relative;  /* For absolute children */
         }
 
         /* 3px attention strip - runs full height on left edge */
@@ -162,21 +180,50 @@
             z-index: 300;
         }
 
-        /* Main container - everything to the right of 3px strip */
+        /* Main container - sits to right of 3px strip, spans all grid rows */
         .app-main {
-            margin-left: 3px;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            width: calc(100% - 3px);
+            grid-row: 1 / -1;      /* Span all rows */
+            grid-column: 1;
+            margin-left: 3px;      /* Space for attention strip */
+            display: grid;
+            grid-template-rows: auto 1fr auto;  /* header | body | footer */
+            height: 100%;
+            width: calc(100vw - 3px);
+            overflow: hidden;
         }
 
-        /* Body area - sidebar + content, below header */
-        .app-body {
+        /* Page Header Bar - Row 1, auto-sized to content */
+        .page-header-bar {
+            grid-row: 1;
+            background: white;
+            border-bottom: 1px solid var(--gray-200);
+            height: var(--page-header-height);
             display: flex;
-            flex: 1;
-            min-height: 0;
-            position: relative;
+            align-items: center;
+            padding: var(--space-2) var(--space-4) 0 var(--space-6);
+            gap: var(--space-4);
+            overflow: hidden;
+        }
+
+        /* Body area - Row 2, takes ALL remaining space */
+        .app-body {
+            grid-row: 2;
+            display: flex;         /* Sidebar + Content side by side */
+            min-height: 0;         /* Critical: allow shrinking */
+            overflow: hidden;      /* Contain children */
+        }
+
+        /* Footer - Row 3, auto-sized to content */
+        .app-footer {
+            grid-row: 3;
+            background: white;
+            border-top: 1px solid var(--gray-200);
+            padding: var(--space-2) var(--space-4);
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
         /* Sidebar - invisible trigger zone overlays content */
@@ -409,30 +456,20 @@
             background: rgba(239, 68, 68, 0.1);
         }
 
-        /* Main Content Area - fills body, no offset (trigger overlays) */
+        /* Main Content Area - fills body width minus sidebar */
         .main-content {
-            flex: 1;
-            min-width: 0;
+            flex: 1;               /* Take remaining width */
+            min-width: 0;          /* Allow shrinking */
+            min-height: 0;         /* Allow shrinking */
             display: flex;
             flex-direction: column;
             background: var(--gray-50);
-            overflow: hidden;
+            overflow: hidden;      /* Content-body handles scrolling */
         }
 
         /* =================================================================
-           PAGE HEADER BAR - Full width, Video Logo + Page Title + Login
+           PAGE HEADER BAR - Additional styling
            ================================================================= */
-        
-        .page-header-bar {
-            background: white;
-            border-bottom: 1px solid var(--gray-200);
-            height: var(--page-header-height);
-            display: flex;
-            align-items: center;
-            padding: var(--space-2) var(--space-4) 0 var(--space-6);
-            flex-shrink: 0;
-            gap: var(--space-4);
-        }
 
         .page-header-logo {
             display: flex;
@@ -477,6 +514,9 @@
             align-items: center;
             gap: var(--space-3);
             margin-left: auto;
+            flex-shrink: 1;  /* Allow shrinking on narrow viewports */
+            min-width: 0;  /* Allow shrinking */
+            overflow: hidden;  /* Clip overflow */
         }
 
         .header-user-info {
@@ -557,38 +597,20 @@
             gap: var(--space-4);
         }
 
+        /* =================================================================
+           WORK AREA - The ONLY scrollable region
+           ================================================================= */
         .content-body {
+            flex: 1;              /* Fill remaining space in main-content */
             padding: var(--space-4);
-            flex: 1;  /* Fill available space */
-            width: 100%;
-            overflow-y: auto;  /* Scroll within work area */
-            min-height: 0;  /* Allow flex shrinking */
+            overflow-y: auto;     /* VERTICAL SCROLL HERE ONLY */
+            overflow-x: hidden;
+            min-height: 0;        /* Critical: allows shrinking */
         }
 
         /* =================================================================
-           FOOTER - Two lines
+           FOOTER - Additional styling
            ================================================================= */
-        
-        .app-footer {
-            background: white;
-            border-top: 1px solid var(--gray-200);
-            padding: var(--space-2) var(--space-4);
-            font-size: 0.75rem;
-            color: var(--gray-500);
-            flex-shrink: 0;
-        }
-
-        .footer-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .footer-row + .footer-row {
-            margin-top: var(--space-1);
-            padding-top: var(--space-1);
-            border-top: 1px solid var(--gray-100);
-        }
 
         .footer-left {
             display: flex;
@@ -599,20 +621,6 @@
         .footer-right {
             display: flex;
             align-items: center;
-            gap: var(--space-4);
-        }
-
-        .footer-link {
-            color: var(--gray-500);
-            text-decoration: none;
-            transition: color var(--transition-fast);
-        }
-
-        .footer-link:hover {
-            color: var(--primary-600);
-        }
-
-        .footer-brand {
             font-weight: 500;
             color: var(--gray-600);
         }
@@ -1499,30 +1507,207 @@
             <!-- Main Content -->
             <main class="main-content">
                 {% block content %}{% endblock %}
-                
-                <!-- Footer -->
-                <footer class="app-footer">
-                    <div class="footer-row">
-                        <div class="footer-left">
-                            <span>© 2025 pullDB</span>
-                            <span>•</span>
-                            <span>v0.0.8</span>
-                        </div>
-                        <div class="footer-right">
-                            <a href="/web/docs" class="footer-link">Docs</a>
-                            <a href="https://github.com/CharlesHandshy/pullDB" class="footer-link" target="_blank">GitHub</a>
-                        </div>
-                    </div>
-                    <div class="footer-row">
-                        <div class="footer-left">
-                            <span class="footer-brand">Service Titan / Field Routes</span>
-                        </div>
-                    </div>
-                </footer>
             </main>
         </div><!-- /.app-body -->
+        
+        <!-- Footer - Grid Row 3, outside app-body -->
+        <footer class="app-footer">
+            <div class="footer-left">
+                <span>© 2025 pullDB</span>
+                <span>•</span>
+                <span>v0.0.8</span>
+            </div>
+            <div class="footer-right">
+                <span>Service Titan / Field Routes</span>
+            </div>
+        </footer>
     </div><!-- /.app-main -->
     </div><!-- /.app-layout -->
+    
+    <!-- DEBUG TOOLBAR - Floating viewport size indicator with common device sizes -->
+    <div id="debug-toolbar" style="
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+        color: white;
+        padding: 12px 16px;
+        border-radius: 12px;
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 12px;
+        z-index: 9999;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.1);
+        cursor: move;
+        user-select: none;
+        min-width: 280px;
+    ">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-weight:600;color:#60a5fa;">📐 Viewport Debug</span>
+            <button onclick="document.getElementById('debug-toolbar').style.display='none'" style="background:transparent;color:#6b7280;border:none;cursor:pointer;font-size:16px;line-height:1;">✕</button>
+        </div>
+        
+        <div style="background:#374151;padding:8px 12px;border-radius:8px;margin-bottom:10px;text-align:center;">
+            <span style="color:#9ca3af;font-size:11px;">Current Size</span>
+            <div id="viewport-size" style="font-weight:700;font-size:18px;color:#34d399;font-family:monospace;"></div>
+        </div>
+        
+        <div style="color:#9ca3af;font-size:10px;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Common Breakpoints</div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <div class="size-btn" data-w="375" data-h="667" style="background:#374151;padding:6px 8px;border-radius:6px;text-align:center;cursor:pointer;">
+                <div style="font-size:10px;color:#9ca3af;">📱 Mobile S</div>
+                <div style="font-weight:600;color:#f9fafb;">375×667</div>
+            </div>
+            <div class="size-btn" data-w="414" data-h="896" style="background:#374151;padding:6px 8px;border-radius:6px;text-align:center;cursor:pointer;">
+                <div style="font-size:10px;color:#9ca3af;">📱 Mobile L</div>
+                <div style="font-weight:600;color:#f9fafb;">414×896</div>
+            </div>
+            <div class="size-btn" data-w="768" data-h="1024" style="background:#374151;padding:6px 8px;border-radius:6px;text-align:center;cursor:pointer;">
+                <div style="font-size:10px;color:#9ca3af;">📱 Tablet</div>
+                <div style="font-weight:600;color:#f9fafb;">768×1024</div>
+            </div>
+            <div class="size-btn" data-w="1024" data-h="768" style="background:#374151;padding:6px 8px;border-radius:6px;text-align:center;cursor:pointer;">
+                <div style="font-size:10px;color:#9ca3af;">💻 Tablet Land</div>
+                <div style="font-weight:600;color:#f9fafb;">1024×768</div>
+            </div>
+            <div class="size-btn" data-w="1366" data-h="768" style="background:#374151;padding:6px 8px;border-radius:6px;text-align:center;cursor:pointer;">
+                <div style="font-size:10px;color:#9ca3af;">💻 Laptop</div>
+                <div style="font-weight:600;color:#f9fafb;">1366×768</div>
+            </div>
+            <div class="size-btn" data-w="1920" data-h="1080" style="background:#374151;padding:6px 8px;border-radius:6px;text-align:center;cursor:pointer;">
+                <div style="font-size:10px;color:#9ca3af;">🖥️ Desktop</div>
+                <div style="font-weight:600;color:#f9fafb;">1920×1080</div>
+            </div>
+        </div>
+        
+        <div id="size-match" style="margin-top:10px;padding:8px;border-radius:6px;text-align:center;font-size:11px;display:none;"></div>
+        
+        <div style="margin-top:8px;font-size:10px;color:#6b7280;text-align:center;">
+            Use DevTools (F12) → Toggle Device Toolbar (Ctrl+Shift+M) to test sizes
+        </div>
+    </div>
+    
+    <script>
+        (function() {
+            const toolbar = document.getElementById('debug-toolbar');
+            const sizeDisplay = document.getElementById('viewport-size');
+            const sizeMatch = document.getElementById('size-match');
+            
+            const breakpoints = [
+                { name: 'Mobile S', w: 375, h: 667, icon: '📱' },
+                { name: 'Mobile L', w: 414, h: 896, icon: '📱' },
+                { name: 'Tablet', w: 768, h: 1024, icon: '📱' },
+                { name: 'Tablet Land', w: 1024, h: 768, icon: '💻' },
+                { name: 'Laptop', w: 1366, h: 768, icon: '💻' },
+                { name: 'Desktop', w: 1920, h: 1080, icon: '🖥️' },
+            ];
+            
+            function updateViewportSize() {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                sizeDisplay.textContent = w + ' × ' + h;
+                
+                // Find closest breakpoint
+                let closest = null;
+                let minDiff = Infinity;
+                breakpoints.forEach(bp => {
+                    const diff = Math.abs(bp.w - w) + Math.abs(bp.h - h);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closest = bp;
+                    }
+                });
+                
+                // Highlight matching size buttons
+                document.querySelectorAll('.size-btn').forEach(btn => {
+                    const btnW = parseInt(btn.dataset.w);
+                    const btnH = parseInt(btn.dataset.h);
+                    if (Math.abs(btnW - w) < 50 && Math.abs(btnH - h) < 50) {
+                        btn.style.background = '#059669';
+                        btn.style.boxShadow = '0 0 0 2px #34d399';
+                    } else {
+                        btn.style.background = '#374151';
+                        btn.style.boxShadow = 'none';
+                    }
+                });
+                
+                // Show closest match
+                if (minDiff < 100) {
+                    sizeMatch.style.display = 'block';
+                    sizeMatch.style.background = '#065f46';
+                    sizeMatch.style.color = '#34d399';
+                    sizeMatch.innerHTML = '✓ Matches <strong>' + closest.icon + ' ' + closest.name + '</strong>';
+                } else {
+                    sizeMatch.style.display = 'block';
+                    sizeMatch.style.background = '#374151';
+                    sizeMatch.style.color = '#9ca3af';
+                    sizeMatch.innerHTML = 'Closest: ' + closest.icon + ' ' + closest.name + ' (' + closest.w + '×' + closest.h + ')';
+                }
+            }
+            
+            updateViewportSize();
+            window.addEventListener('resize', updateViewportSize);
+            
+            // Make toolbar draggable
+            let isDragging = false;
+            let offsetX, offsetY;
+            
+            toolbar.addEventListener('mousedown', function(e) {
+                if (e.target.tagName === 'BUTTON') return;
+                isDragging = true;
+                offsetX = e.clientX - toolbar.offsetLeft;
+                offsetY = e.clientY - toolbar.offsetTop;
+                toolbar.style.transition = 'none';
+            });
+            
+            document.addEventListener('mousemove', function(e) {
+                if (!isDragging) return;
+                toolbar.style.left = (e.clientX - offsetX) + 'px';
+                toolbar.style.top = (e.clientY - offsetY) + 'px';
+                toolbar.style.right = 'auto';
+                toolbar.style.bottom = 'auto';
+            });
+            
+            document.addEventListener('mouseup', function() {
+                isDragging = false;
+                toolbar.style.transition = '';
+            });
+            
+            // Size button clicks - copy instructions
+            document.querySelectorAll('.size-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const w = this.dataset.w;
+                    const h = this.dataset.h;
+                    const text = 'Open DevTools (F12) → Click device toolbar icon (or Ctrl+Shift+M) → Set dimensions to ' + w + '×' + h;
+                    
+                    // Flash feedback
+                    this.style.background = '#2563eb';
+                    setTimeout(() => updateViewportSize(), 200);
+                    
+                    // Try to copy to clipboard
+                    navigator.clipboard.writeText(w + 'x' + h).then(() => {
+                        sizeMatch.innerHTML = '📋 Copied "' + w + '×' + h + '" - Use DevTools device mode to test';
+                        sizeMatch.style.background = '#1e40af';
+                        sizeMatch.style.color = '#93c5fd';
+                        sizeMatch.style.display = 'block';
+                    }).catch(() => {
+                        sizeMatch.innerHTML = 'Use DevTools (Ctrl+Shift+M) → Set to ' + w + '×' + h;
+                        sizeMatch.style.display = 'block';
+                    });
+                });
+                
+                btn.addEventListener('mouseenter', function() {
+                    if (this.style.boxShadow !== '0 0 0 2px #34d399') {
+                        this.style.background = '#4b5563';
+                    }
+                });
+                btn.addEventListener('mouseleave', function() {
+                    updateViewportSize();
+                });
+            });
+        })();
+    </script>
+    
     {% else %}
     {% block public_content %}{% endblock %}
     {% endif %}

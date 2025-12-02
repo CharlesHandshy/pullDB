@@ -1,0 +1,43 @@
+{#
+    HCA Layer 0: Button Component
+    =============================
+    Purpose: Reusable button partial with multiple variants.
+    
+    Usage:
+        {% include "shared/ui/buttons/button.html" with variant="primary" text="Click Me" %}
+    
+    Parameters:
+        - variant: primary, secondary, ghost, danger (default: primary)
+        - size: sm, md, lg (default: md)
+        - text: Button label
+        - href: Optional - makes it a link
+        - icon: Optional - SVG icon path
+        - type: Optional - button type (default: button)
+        - disabled: Optional - disable the button
+        - class: Optional - additional classes
+    
+    Size: ~50 lines (HCA compliant)
+#}
+{% set btn_variant = variant|default('primary') %}
+{% set btn_size = size|default('md') %}
+{% set btn_type = type|default('button') %}
+
+{% set size_class = '' %}
+{% if btn_size == 'sm' %}{% set size_class = 'btn-sm' %}{% endif %}
+{% if btn_size == 'lg' %}{% set size_class = 'btn-lg' %}{% endif %}
+
+{% if href %}
+<a href="{{ href }}" 
+   class="btn btn-{{ btn_variant }} {{ size_class }} {{ class|default('') }}"
+   {% if disabled %}aria-disabled="true" tabindex="-1"{% endif %}>
+    {% if icon %}{% include icon %}{% endif %}
+    {{ text }}
+</a>
+{% else %}
+<button type="{{ btn_type }}" 
+        class="btn btn-{{ btn_variant }} {{ size_class }} {{ class|default('') }}"
+        {% if disabled %}disabled{% endif %}>
+    {% if icon %}{% include icon %}{% endif %}
+    {{ text }}
+</button>
+{% endif %}

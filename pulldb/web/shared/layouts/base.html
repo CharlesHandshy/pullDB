@@ -1,0 +1,71 @@
+{#
+    HCA Layer 0: Base HTML Skeleton
+    ================================
+    Purpose: Minimal HTML5 document structure. All pages extend this.
+    
+    Contract:
+    - Provides: DOCTYPE, html, head, body structure
+    - Expects: Child templates to define blocks
+    
+    Blocks:
+    - title: Page title (default: "pullDB")
+    - head_meta: Additional meta tags
+    - head_links: CSS/font links
+    - head_scripts: JavaScript in head
+    - body_class: Classes for body element
+    - body_content: Full body content
+    - body_scripts: JavaScript at end of body
+    
+    Size: ~80 lines (HCA compliant)
+#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}pullDB{% endblock %}</title>
+    
+    {# Favicons #}
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/images/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/images/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/images/apple-touch-icon.png">
+    
+    {# Core Dependencies #}
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" 
+          rel="stylesheet" 
+          integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" 
+          crossorigin="anonymous">
+    
+    {# Typography #}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    {# HTMX for live updates #}
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    {# Design System CSS - Loaded by layouts that need it #}
+    {% block head_styles %}{% endblock %}
+    
+    {# Additional meta tags #}
+    {% block head_meta %}{% endblock %}
+    
+    {# Additional CSS links #}
+    {% block head_links %}{% endblock %}
+    
+    {# Head scripts (minimal - prefer body_scripts) #}
+    {% block head_scripts %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    {% block body_content %}{% endblock %}
+    
+    {# Bootstrap JS Bundle #}
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" 
+            integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" 
+            crossorigin="anonymous"></script>
+    
+    {# Page-specific scripts #}
+    {% block body_scripts %}{% endblock %}
+</body>
+</html>

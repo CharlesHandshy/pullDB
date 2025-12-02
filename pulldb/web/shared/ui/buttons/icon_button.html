@@ -1,0 +1,42 @@
+{#
+    HCA Layer 0: Icon Button Component
+    ==================================
+    Purpose: Small icon-only button for actions like view, edit, delete.
+    
+    Usage:
+        {% include "shared/ui/buttons/icon_button.html" with variant="view" icon="shared/ui/icons/eye.svg" title="View" %}
+    
+    Parameters:
+        - variant: view, cancel, edit (default: view)
+        - icon: SVG icon path (required)
+        - title: Tooltip text
+        - href: Optional - makes it a link
+        - hx_*: Optional - HTMX attributes
+    
+    Size: ~35 lines (HCA compliant)
+#}
+{% set btn_variant = variant|default('view') %}
+
+{% if href %}
+<a href="{{ href }}" 
+   class="btn-icon btn-icon-{{ btn_variant }}"
+   title="{{ title|default('') }}"
+   {% if hx_get %}hx-get="{{ hx_get }}"{% endif %}
+   {% if hx_post %}hx-post="{{ hx_post }}"{% endif %}
+   {% if hx_target %}hx-target="{{ hx_target }}"{% endif %}
+   {% if hx_swap %}hx-swap="{{ hx_swap }}"{% endif %}
+   {% if hx_confirm %}hx-confirm="{{ hx_confirm }}"{% endif %}>
+    {% include icon %}
+</a>
+{% else %}
+<button type="button" 
+        class="btn-icon btn-icon-{{ btn_variant }}"
+        title="{{ title|default('') }}"
+        {% if hx_get %}hx-get="{{ hx_get }}"{% endif %}
+        {% if hx_post %}hx-post="{{ hx_post }}"{% endif %}
+        {% if hx_target %}hx-target="{{ hx_target }}"{% endif %}
+        {% if hx_swap %}hx-swap="{{ hx_swap }}"{% endif %}
+        {% if hx_confirm %}hx-confirm="{{ hx_confirm }}"{% endif %}>
+    {% include icon %}
+</button>
+{% endif %}

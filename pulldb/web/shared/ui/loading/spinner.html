@@ -1,0 +1,22 @@
+{#
+    HCA Layer 0: Loading Spinner Component
+    ======================================
+    Purpose: Loading indicator for async operations.
+    
+    Usage:
+        {% include "shared/ui/loading/spinner.html" %}
+        {% include "shared/ui/loading/spinner.html" with size="lg" %}
+    
+    Parameters:
+        - size: sm, md, lg (default: md)
+        - class: Additional classes
+    
+    Size: ~20 lines (HCA compliant)
+#}
+{% set spinner_size = size|default('md') %}
+
+{% set size_style = 'width: 16px; height: 16px;' %}
+{% if spinner_size == 'sm' %}{% set size_style = 'width: 12px; height: 12px;' %}{% endif %}
+{% if spinner_size == 'lg' %}{% set size_style = 'width: 24px; height: 24px;' %}{% endif %}
+
+<span class="spinner {{ class|default('') }}" style="{{ size_style }}"></span>

@@ -1,0 +1,50 @@
+{#
+    HCA Layer 0: Select Input Component
+    ===================================
+    Purpose: Styled dropdown select field.
+    
+    Usage:
+        {% include "shared/ui/inputs/select_input.html" with name="status" label="Status" options=status_options %}
+    
+    Parameters:
+        - name: Input name (required)
+        - label: Optional label text
+        - options: List of {value, label} dicts or simple list
+        - selected: Currently selected value
+        - placeholder: Optional placeholder option
+        - required: Boolean
+        - class: Additional classes
+        - hx_*: Optional HTMX attributes
+    
+    Size: ~45 lines (HCA compliant)
+#}
+{% if label %}
+<div class="form-group">
+    <label for="{{ name }}" class="form-label">{{ label }}</label>
+{% endif %}
+    <select id="{{ name }}"
+            name="{{ name }}"
+            class="form-select {{ class|default('') }}"
+            {% if required %}required{% endif %}
+            {% if hx_get %}hx-get="{{ hx_get }}"{% endif %}
+            {% if hx_post %}hx-post="{{ hx_post }}"{% endif %}
+            {% if hx_target %}hx-target="{{ hx_target }}"{% endif %}
+            {% if hx_trigger %}hx-trigger="{{ hx_trigger }}"{% endif %}>
+        {% if placeholder %}
+        <option value="">{{ placeholder }}</option>
+        {% endif %}
+        {% for opt in options %}
+            {% if opt is mapping %}
+            <option value="{{ opt.value }}" {% if opt.value == selected %}selected{% endif %}>
+                {{ opt.label }}
+            </option>
+            {% else %}
+            <option value="{{ opt }}" {% if opt == selected %}selected{% endif %}>
+                {{ opt }}
+            </option>
+            {% endif %}
+        {% endfor %}
+    </select>
+{% if label %}
+</div>
+{% endif %}
