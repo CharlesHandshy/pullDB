@@ -25,13 +25,13 @@
 
 ## Phase 2: Simulation Core (The Engine)
 
-- [ ] **2.1 Scaffold Simulation Domain**
-    - [ ] Create `pulldb/simulation/` directory structure.
-    - [ ] Create `pulldb/simulation/__init__.py`.
-- [ ] **2.2 Implement In-Memory Repository**
-    - [ ] Create `pulldb/simulation/adapters/mock_mysql.py`.
-    - [ ] Implement `InMemoryJobRepository` using a thread-safe dictionary.
-    - [ ] Implement `SKIP LOCKED` logic for queue polling using locks.
+- [x] **2.1 Scaffold Simulation Domain**
+    - [x] Create `pulldb/simulation/` directory structure.
+    - [x] Create `pulldb/simulation/__init__.py`.
+- [x] **2.2 Implement In-Memory Repository**
+    - [x] Create `pulldb/simulation/adapters/mock_mysql.py`.
+    - [x] Implement `InMemoryJobRepository` using a thread-safe dictionary.
+    - [x] Implement `SKIP LOCKED` logic for queue polling using locks.
 - [ ] **2.3 Implement Mock S3**
     - [ ] Create `pulldb/simulation/adapters/mock_s3.py`.
     - [ ] Implement `MockS3Client`.
