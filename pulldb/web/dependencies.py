@@ -11,15 +11,37 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Request
 from fastapi.templating import Jinja2Templates
+from jinja2 import ChoiceLoader, FileSystemLoader
 
 from pulldb.domain.models import User
 
 if TYPE_CHECKING:
     from pulldb.api.main import APIState
 
-# Template configuration - shared across all route modules
-TEMPLATES_DIR = Path(__file__).parent / "templates"
+# Template configuration - HCA multi-directory support
+# Search order: feature pages → shared layouts → legacy templates
+WEB_DIR = Path(__file__).parent
+TEMPLATES_DIR = WEB_DIR / "templates"  # Legacy templates (backward compat)
+FEATURES_DIR = WEB_DIR / "features"
+SHARED_DIR = WEB_DIR / "shared"
+
+# Create loader that searches multiple directories
+_loader = ChoiceLoader([
+    # Feature-specific pages
+    FileSystemLoader(str(FEATURES_DIR / "auth" / "pages")),
+    FileSystemLoader(str(FEATURES_DIR / "dashboard" / "pages")),
+    FileSystemLoader(str(FEATURES_DIR / "job_view" / "pages")),
+    FileSystemLoader(str(FEATURES_DIR / "restore" / "pages")),
+    FileSystemLoader(str(FEATURES_DIR / "search" / "pages")),
+    FileSystemLoader(str(FEATURES_DIR / "admin" / "pages")),
+    # Shared layouts
+    FileSystemLoader(str(SHARED_DIR / "layouts")),
+    # Legacy templates (fallback)
+    FileSystemLoader(str(TEMPLATES_DIR)),
+])
+
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.loader = _loader
 
 
 def get_api_state(request: Request) -> "APIState":

@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In - pullDB</title>
+    
+    <!-- Favicons -->
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/images/favicon-32x32.png">
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-50: #eff6ff;
+            --primary-100: #dbeafe;
+            --primary-500: #3b82f6;
+            --primary-600: #2563eb;
+            --primary-700: #1d4ed8;
+            --primary-800: #1e40af;
+            --danger-50: #fef2f2;
+            --danger-100: #fee2e2;
+            --danger-500: #ef4444;
+            --danger-600: #dc2626;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Main wrapper - uses viewport height minus footer */
+        .login-wrapper {
+            height: calc(100vh - 40px);
+            overflow: hidden;
+        }
+
+        /* Brand side gradient background */
+        .brand-side {
+            background: linear-gradient(135deg, var(--primary-600) 0%, var(--primary-800) 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .brand-side::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+            animation: pulse-bg 15s ease-in-out infinite;
+        }
+
+        @keyframes pulse-bg {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(10%, 10%); }
+        }
+
+        .brand-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Brand video - responsive sizing (desktop/landscape) */
+        .brand-video {
+            width: 100%;
+            max-width: 260px;
+            height: auto;
+            aspect-ratio: 4 / 3;
+            border-radius: 1.25rem;
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+            object-fit: cover;
+            object-position: center;
+            background: white;
+        }
+
+        /* Mobile hero video - sized to match tagline width */
+        .mobile-hero-video {
+            width: 100%;
+            max-width: 280px;
+            height: auto;
+            aspect-ratio: 4 / 3;
+            border-radius: 1rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+            object-fit: cover;
+            object-position: center;
+            background: white;
+        }
+
+        .brand-tagline {
+            font-size: 0.9375rem;
+            opacity: 0.9;
+            max-width: 260px;
+            line-height: 1.35;
+        }
+
+        .brand-feature {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8125rem;
+            opacity: 0.9;
+        }
+
+        .brand-feature svg {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+
+        /* Form side */
+        .form-side {
+            background: var(--gray-50);
+            overflow-y: auto;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+
+        .form-control {
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            color: var(--gray-900);
+            transition: all 0.15s ease;
+        }
+
+        .form-control:focus {
+            border-color: var(--primary-500);
+            box-shadow: 0 0 0 4px var(--primary-100);
+        }
+
+        .form-control::placeholder {
+            color: var(--gray-400);
+        }
+        
+        /* Password input wrapper */
+        .password-wrapper {
+            position: relative;
+        }
+        
+        .password-wrapper .form-control {
+            padding-right: 3rem;
+        }
+        
+        .password-toggle {
+            position: absolute;
+            right: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            padding: 0.25rem;
+            cursor: pointer;
+            color: var(--gray-400);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.15s ease;
+        }
+        
+        .password-toggle:hover {
+            color: var(--gray-600);
+        }
+        
+        .password-toggle:focus {
+            outline: none;
+            color: var(--primary-500);
+        }
+        
+        .password-toggle svg {
+            width: 20px;
+            height: 20px;
+        }
+        
+        /* Hide the open eye icon by default, show closed */
+        .password-toggle .eye-open {
+            display: none;
+        }
+        
+        .password-toggle .eye-closed {
+            display: block;
+        }
+        
+        /* When password is visible, show open eye, hide closed */
+        .password-toggle.showing .eye-open {
+            display: block;
+        }
+        
+        .password-toggle.showing .eye-closed {
+            display: none;
+        }
+
+        .form-label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--gray-700);
+        }
+
+        .btn-primary {
+            background: var(--primary-600);
+            border: none;
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            font-weight: 600;
+            padding: 0.875rem 1.5rem;
+            transition: all 0.15s ease;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-700);
+        }
+
+        .btn-primary:focus {
+            box-shadow: 0 0 0 4px var(--primary-100);
+        }
+
+        .btn-primary svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Alert styles */
+        .alert-error {
+            background: var(--danger-50);
+            border: 1px solid var(--danger-100);
+            color: var(--danger-600);
+            border-radius: 0.75rem;
+        }
+
+        .alert-error svg {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+
+        /* Fixed footer */
+        .login-footer {
+            height: 40px;
+            background: var(--gray-900);
+            z-index: 100;
+        }
+
+        .footer-link {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.8125rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .footer-link:hover {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .footer-divider {
+            width: 1px;
+            height: 14px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Responsive adjustments */
+        
+        /* 
+         * LAYOUT MODES:
+         * - Landscape (wide displays): 2-column layout
+         * - Portrait (narrow displays): 1-column layout
+         * 
+         * We combine orientation with min-width to ensure:
+         * - Very small landscape screens still get 1-column
+         * - Tablets in portrait get 1-column
+         */
+        
+        /* Portrait mode OR small landscape - show mobile hero, hide desktop brand */
+        .brand-side-desktop {
+            display: none !important;
+        }
+        
+        .mobile-hero {
+            display: block !important;
+        }
+        
+        /* Landscape mode with sufficient width - show desktop 2-column layout */
+        @media (orientation: landscape) and (min-width: 768px) {
+            .brand-side-desktop {
+                display: flex !important;
+            }
+            
+            .mobile-hero {
+                display: none !important;
+            }
+            
+            .form-column {
+                flex: 0 0 50%;
+                max-width: 50%;
+            }
+        }
+        
+        /* Very wide landscape screens - slightly larger content */
+        @media (orientation: landscape) and (min-width: 1200px) {
+            .brand-video {
+                max-width: 280px;
+            }
+            
+            .brand-tagline {
+                font-size: 1rem;
+                max-width: 280px;
+            }
+            
+            .brand-content .text-start {
+                max-width: 280px !important;
+            }
+            
+            .brand-feature {
+                font-size: 0.875rem;
+            }
+            
+            .brand-feature svg {
+                width: 20px;
+                height: 20px;
+            }
+        }
+        
+        /* Short landscape screens - smaller content */
+        @media (orientation: landscape) and (max-height: 700px) {
+            .brand-video {
+                max-width: 200px;
+                aspect-ratio: 5 / 4;
+            }
+            
+            .brand-tagline {
+                font-size: 0.8125rem;
+                margin-bottom: 0.5rem !important;
+                max-width: 200px;
+            }
+            
+            .brand-content .text-start {
+                max-width: 200px !important;
+            }
+            
+            .brand-feature {
+                font-size: 0.75rem;
+                margin-bottom: 0.125rem !important;
+            }
+            
+            .brand-feature svg {
+                width: 16px;
+                height: 16px;
+            }
+        }
+        
+        /* Portrait mode adjustments */
+        @media (orientation: portrait) {
+            .mobile-hero-video {
+                max-width: min(280px, 85vw);
+            }
+            
+            /* Ensure tagline matches video width */
+            .mobile-hero .brand-content p {
+                max-width: min(280px, 85vw) !important;
+            }
+            
+            /* Remove vertical centering - content flows from top */
+            .form-side {
+                justify-content: flex-start !important;
+                padding-top: 1.5rem !important;
+            }
+            
+            .login-header {
+                margin-bottom: 1rem !important;
+            }
+        }
+        
+        /* Very tall portrait (phones) - more compact */
+        @media (orientation: portrait) and (max-width: 480px) {
+            .mobile-hero-video {
+                max-width: min(260px, 80vw);
+            }
+            
+            .mobile-hero .brand-content p {
+                max-width: min(260px, 80vw) !important;
+            }
+            
+            .mobile-hero {
+                padding: 0.75rem !important;
+            }
+            
+            .form-side {
+                padding: 1rem !important;
+                padding-top: 1rem !important;
+            }
+            
+            .login-header {
+                margin-bottom: 0.75rem !important;
+            }
+            
+            .login-card {
+                padding: 1.25rem !important;
+            }
+        }
+        
+        /* Very short portrait screens - even more compact */
+        @media (orientation: portrait) and (max-height: 700px) {
+            .mobile-hero-video {
+                max-width: min(180px, 60vw);
+                aspect-ratio: 5 / 4;
+            }
+            
+            .mobile-hero .brand-content p {
+                max-width: min(180px, 60vw) !important;
+                font-size: 0.6875rem !important;
+            }
+            
+            .mobile-hero {
+                padding: 0.5rem !important;
+            }
+            
+            .form-side {
+                padding-top: 0.75rem !important;
+            }
+        }
+    </style>
+</head>
+<body class="d-flex flex-column">
+    <!-- Main content wrapper -->
+    <div class="login-wrapper flex-grow-1">
+        <div class="row g-0 h-100">
+            <!-- Left side - Branding (visible in landscape mode) -->
+            <div class="col-6 brand-side brand-side-desktop">
+                <div class="d-flex flex-column justify-content-center align-items-center w-100 h-100 p-4">
+                    <div class="brand-content text-center text-white">
+                        <video src="/static/images/pullDB_logo.mp4" class="brand-video mb-2" autoplay loop muted playsinline></video>
+                        <p class="brand-tagline mx-auto mb-3">Production-safe database restore automation for development teams</p>
+                        
+                        <div class="text-start mx-auto" style="max-width: 260px;">
+                            <div class="brand-feature mb-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                                </svg>
+                                <span>Secure credential handling</span>
+                            </div>
+                            <div class="brand-feature mb-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                                </svg>
+                                <span>Fast parallel restores with myloader</span>
+                            </div>
+                            <div class="brand-feature">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                                <span>Real-time job monitoring</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right side with optional mobile hero -->
+            <div class="col d-flex flex-column h-100 form-column">
+                <!-- Mobile hero (visible in portrait mode) -->
+                <div class="mobile-hero brand-side py-3 px-3 text-center flex-shrink-0">
+                    <div class="brand-content">
+                        <video src="/static/images/pullDB_logo.mp4" class="mobile-hero-video mb-2" autoplay loop muted playsinline></video>
+                        <p class="text-white opacity-75 small mb-0 mx-auto" style="max-width: 280px;">Production-safe database restore automation for development teams</p>
+                    </div>
+                </div>
+
+                <!-- Form side -->
+                <div class="form-side flex-grow-1 d-flex flex-column justify-content-center align-items-center p-3 p-md-4">
+                    <div class="w-100" style="max-width: 400px;">
+                        <div class="text-center mb-4">
+                            <h1 class="h3 fw-bold text-dark mb-1">Welcome back</h1>
+                            <p class="text-muted mb-0">Sign in to your pullDB account</p>
+                        </div>
+
+                        <div class="login-card p-4">
+                            {% if error %}
+                            <div class="alert alert-error d-flex align-items-start gap-2 mb-4 p-3">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="mt-1">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                                </svg>
+                                <span>{{ error }}</span>
+                            </div>
+                            {% endif %}
+
+                            <form method="post" action="/web/login">
+                                <div class="mb-3">
+                                    <label for="username" class="form-label">Username</label>
+                                    <input 
+                                        type="text" 
+                                        id="username" 
+                                        name="username" 
+                                        class="form-control"
+                                        placeholder="Enter your username"
+                                        autocomplete="username"
+                                        required 
+                                        autofocus
+                                    >
+                                </div>
+
+                                <div class="mb-4">
+                                    <label for="password" class="form-label">Password</label>
+                                    <div class="password-wrapper">
+                                        <input 
+                                            type="password" 
+                                            id="password" 
+                                            name="password" 
+                                            class="form-control"
+                                            placeholder="Enter your password"
+                                            autocomplete="current-password"
+                                            required
+                                        >
+                                        <button type="button" class="password-toggle" id="passwordToggle" aria-label="Show password">
+                                            <!-- Eye closed (password hidden) -->
+                                            <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                                            </svg>
+                                            <!-- Eye open (password visible) -->
+                                            <svg class="eye-open" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2">
+                                    Sign in
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                                    </svg>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Fixed footer -->
+    <footer class="login-footer d-flex align-items-center justify-content-center gap-3 flex-shrink-0">
+        <a href="https://www.servicetitan.com" target="_blank" rel="noopener" class="footer-link">ServiceTitan</a>
+        <div class="footer-divider"></div>
+        <a href="https://www.fieldroutes.com" target="_blank" rel="noopener" class="footer-link">FieldRoutes</a>
+    </footer>
+
+    <!-- Bootstrap 5 JS (optional, for any interactive components) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    
+    <!-- Password visibility toggle -->
+    <script>
+        (function() {
+            const passwordInput = document.getElementById('password');
+            const toggleBtn = document.getElementById('passwordToggle');
+            
+            if (!passwordInput || !toggleBtn) return;
+            
+            // Toggle password visibility on click
+            toggleBtn.addEventListener('click', function() {
+                const isPassword = passwordInput.type === 'password';
+                passwordInput.type = isPassword ? 'text' : 'password';
+                toggleBtn.classList.toggle('showing', isPassword);
+                toggleBtn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+            });
+            
+            function hidePassword() {
+                if (passwordInput.type === 'text') {
+                    passwordInput.type = 'password';
+                    toggleBtn.classList.remove('showing');
+                    toggleBtn.setAttribute('aria-label', 'Show password');
+                }
+            }
+            
+            // Hide password when mouse leaves the toggle button
+            toggleBtn.addEventListener('mouseleave', hidePassword);
+            
+            // Also hide on blur (for keyboard users)
+            toggleBtn.addEventListener('blur', hidePassword);
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+
+{% block title %}User Management - pullDB Admin{% endblock %}
+
+{% block page_id %}admin-users{% endblock %}
+
+{% block header_title %}User Management{% endblock %}
+{% block header_subtitle %}View and manage registered users{% endblock %}
+
+{% block header_actions %}
+<button type="button" class="btn btn-primary btn-sm" onclick="showAddUserModal()">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <line x1="19" x2="19" y1="8" y2="14"/>
+        <line x1="22" x2="16" y1="11" y2="11"/>
+    </svg>
+    Add User
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="content-body">
+    <!-- Stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: var(--primary-100); color: var(--primary-600);">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ stats.total }}</div>
+                <div class="stat-label">Total Users</div>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon" style="background: var(--warning-100); color: var(--warning-600);">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ stats.admins }}</div>
+                <div class="stat-label">Admins</div>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon" style="background: var(--success-100); color: var(--success-600);">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ stats.active }}</div>
+                <div class="stat-label">Active</div>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon" style="background: var(--gray-100); color: var(--gray-600);">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ stats.disabled }}</div>
+                <div class="stat-label">Disabled</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users Table -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                All Users
+            </h3>
+            <div class="header-search">
+                <input type="text" id="user-search" class="search-input-sm" placeholder="Search users...">
+            </div>
+        </div>
+        
+        <div class="card-body no-padding">
+            <div class="table-container">
+                <table class="data-table" id="users-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>User Code</th>
+                            <th>Role</th>
+                            <th>Active Jobs</th>
+                            <th>Total Jobs</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr class="user-row" data-username="{{ user.username }}" data-usercode="{{ user.user_code }}">
+                            <td>
+                                <div class="user-cell">
+                                    <div class="user-avatar-sm">{{ user.username[0]|upper }}</div>
+                                    <span class="username">{{ user.username }}</span>
+                                </div>
+                            </td>
+                            <td>
+                                <code class="user-code">{{ user.user_code }}</code>
+                            </td>
+                            <td>
+                                {% if user.is_admin %}
+                                <span class="role-badge admin">Admin</span>
+                                {% else %}
+                                <span class="role-badge developer">Developer</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if user.active_jobs > 0 %}
+                                <span class="job-count active">{{ user.active_jobs }}</span>
+                                {% else %}
+                                <span class="job-count">0</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="job-count">{{ user.total_jobs or 0 }}</span>
+                            </td>
+                            <td>
+                                {% if user.disabled %}
+                                <span class="status-badge disabled">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"/>
+                                        <line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/>
+                                    </svg>
+                                    Disabled
+                                </span>
+                                {% else %}
+                                <span class="status-badge enabled">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                    Enabled
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="date-value">{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}</span>
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="/web/admin/users/{{ user.username }}" class="btn btn-sm btn-ghost" title="View Details">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                            <circle cx="12" cy="12" r="3"/>
+                                        </svg>
+                                    </a>
+                                    {% if user.disabled %}
+                                    <form method="POST" action="/web/admin/users/{{ user.username }}/enable" style="display: inline;">
+                                        <button type="submit" class="btn btn-sm btn-ghost" title="Enable User">
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <polyline points="20 6 9 17 4 12"/>
+                                            </svg>
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <form method="POST" action="/web/admin/users/{{ user.username }}/disable" style="display: inline;">
+                                        <button type="submit" class="btn btn-sm btn-ghost btn-danger" title="Disable User">
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <circle cx="12" cy="12" r="10"/>
+                                                <line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/>
+                                            </svg>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.header-search {
+    display: flex;
+}
+
+.search-input-sm {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    width: 200px;
+}
+
+.user-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.user-avatar-sm {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-full);
+    background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: white;
+}
+
+.username {
+    font-weight: 500;
+}
+
+.user-code {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    padding: 0.125rem 0.375rem;
+    background: var(--gray-100);
+    border-radius: var(--radius-sm);
+}
+
+.role-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.role-badge.admin {
+    background: var(--warning-100);
+    color: var(--warning-700);
+}
+
+.role-badge.developer {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.job-count {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+}
+
+.job-count.active {
+    background: var(--primary-100);
+    color: var(--primary-700);
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-badge svg {
+    width: 14px;
+    height: 14px;
+}
+
+.status-badge.enabled {
+    background: var(--success-100);
+    color: var(--success-700);
+}
+
+.status-badge.disabled {
+    background: var(--gray-100);
+    color: var(--gray-600);
+}
+
+.date-value {
+    font-size: 0.875rem;
+    color: var(--gray-600);
+}
+
+.action-buttons {
+    display: flex;
+    gap: var(--space-1);
+}
+
+.btn-danger:hover {
+    color: var(--danger-600);
+    background: var(--danger-50);
+}
+</style>
+
+<script>
+// Simple search filter
+document.getElementById('user-search').addEventListener('input', function() {
+    const query = this.value.toLowerCase();
+    document.querySelectorAll('.user-row').forEach(row => {
+        const username = row.dataset.username.toLowerCase();
+        const usercode = row.dataset.usercode.toLowerCase();
+        if (username.includes(query) || usercode.includes(query)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+
+function showAddUserModal() {
+    // TODO: Implement add user modal
+    alert('Add user functionality coming soon');
+}
+</script>
+{% endblock %}

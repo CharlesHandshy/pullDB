@@ -1,0 +1,1712 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - pullDB{% endblock %}
+
+{% block header_title %}Dashboard{% endblock %}
+{% block header_subtitle %}Monitor your database restore jobs in real-time{% endblock %}
+
+{% block header_actions %}
+<div class="live-indicator">
+    <span class="live-dot"></span>
+    <span>Live updates</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+    /* Live indicator in header */
+    .live-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.8125rem;
+        color: var(--gray-600);
+    }
+    
+    .live-dot {
+        width: 8px;
+        height: 8px;
+        background: var(--success-500);
+        border-radius: 50%;
+        animation: pulse-dot 2s infinite;
+    }
+    
+    @keyframes pulse-dot {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.6; transform: scale(0.9); }
+    }
+
+    /* Tab Panel Styles */
+    .tab-panel {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-xl);
+        overflow: hidden;
+    }
+
+    .tab-header {
+        display: flex;
+        border-bottom: 1px solid var(--gray-200);
+        background: var(--gray-50);
+    }
+
+    .tab-btn {
+        flex: 1;
+        padding: var(--space-2) var(--space-3);
+        background: none;
+        border: none;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--gray-500);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--space-2);
+        transition: all var(--transition-fast);
+        position: relative;
+    }
+
+    .tab-btn:hover {
+        color: var(--gray-700);
+        background: var(--gray-100);
+    }
+
+    .tab-btn.active {
+        color: var(--primary-600);
+        background: white;
+    }
+
+    .tab-btn.active::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: var(--primary-600);
+    }
+
+    .tab-btn svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .tab-btn .tab-count {
+        background: var(--gray-200);
+        color: var(--gray-600);
+        padding: 2px 8px;
+        border-radius: var(--radius-full);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .tab-btn.active .tab-count {
+        background: var(--primary-100);
+        color: var(--primary-700);
+    }
+
+    .tab-content {
+        display: none;
+    }
+
+    .tab-content.active {
+        display: block;
+    }
+
+    /* Filter Bar Styles */
+    .filter-bar {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-4);
+        border-bottom: 1px solid var(--gray-100);
+        flex-wrap: wrap;
+    }
+
+    .filter-bar-label {
+        font-size: 0.8125rem;
+        color: var(--gray-500);
+        font-weight: 500;
+        margin-right: var(--space-2);
+    }
+
+    .filter-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+        padding: var(--space-2) var(--space-3);
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-full);
+        background: white;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--gray-600);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+    }
+
+    .filter-btn:hover {
+        border-color: var(--gray-300);
+        background: var(--gray-50);
+    }
+
+    .filter-btn.active {
+        border-color: currentColor;
+        background: currentColor;
+        color: white;
+    }
+
+    .filter-btn.active .filter-count {
+        background: rgba(255,255,255,0.3);
+        color: white;
+    }
+
+    .filter-btn.queued { color: var(--gray-600); }
+    .filter-btn.queued.active { background: var(--gray-600); border-color: var(--gray-600); color: white; }
+    
+    .filter-btn.running { color: var(--primary-600); }
+    .filter-btn.running.active { background: var(--primary-600); border-color: var(--primary-600); color: white; }
+    
+    .filter-btn.complete { color: var(--success-600); }
+    .filter-btn.complete.active { background: var(--success-600); border-color: var(--success-600); color: white; }
+    
+    .filter-btn.failed { color: var(--danger-600); }
+    .filter-btn.failed.active { background: var(--danger-600); border-color: var(--danger-600); color: white; }
+
+    .filter-count {
+        background: var(--gray-100);
+        padding: 1px 6px;
+        border-radius: var(--radius-full);
+        font-size: 0.6875rem;
+        font-weight: 600;
+    }
+
+    /* Advanced Filter Bar */
+    .advanced-filter-bar {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-2);
+        background: var(--gray-50);
+        border-bottom: 1px solid var(--gray-200);
+    }
+
+    .filter-bar-icon {
+        color: var(--gray-400);
+        flex-shrink: 0;
+    }
+
+    .filter-bar-icon svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .advanced-filter-inputs {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        flex: 1;
+        flex-wrap: wrap;
+    }
+
+    .filter-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+        padding: var(--space-1) var(--space-2);
+        background: var(--primary-100);
+        color: var(--primary-700);
+        border-radius: var(--radius-full);
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .filter-chip-remove {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
+        border: none;
+        background: var(--primary-200);
+        border-radius: var(--radius-full);
+        color: var(--primary-700);
+        cursor: pointer;
+        padding: 0;
+        transition: background var(--transition-fast);
+    }
+
+    .filter-chip-remove:hover {
+        background: var(--primary-300);
+    }
+
+    .filter-chip-remove svg {
+        width: 10px;
+        height: 10px;
+    }
+
+    .filter-search-input {
+        flex: 1;
+        min-width: 200px;
+        padding: var(--space-2) var(--space-3);
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-md);
+        font-size: 0.8125rem;
+        color: var(--gray-700);
+        background: white;
+        transition: all var(--transition-fast);
+    }
+
+    .filter-search-input:focus {
+        outline: none;
+        border-color: var(--primary-500);
+        box-shadow: 0 0 0 3px var(--primary-100);
+    }
+
+    .filter-search-input::placeholder {
+        color: var(--gray-400);
+    }
+
+    /* Column Filter Icon (funnel) - inline in controls row */
+    .column-filter-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: var(--gray-400);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        border-radius: var(--radius-sm);
+    }
+
+    .column-filter-btn:hover {
+        color: var(--primary-600);
+        background: var(--primary-50);
+    }
+
+    .column-filter-btn.active {
+        color: var(--primary-600);
+        background: var(--primary-100);
+    }
+
+    .column-filter-btn svg {
+        width: 10px;
+        height: 10px;
+    }
+
+    /* Column Filter Dropdown */
+    .column-filter-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        z-index: 100;
+        min-width: 200px;
+        max-width: 280px;
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-lg);
+        padding: var(--space-3);
+        display: none;
+    }
+
+    .column-filter-dropdown.open {
+        display: block;
+    }
+
+    .column-filter-dropdown-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: var(--space-2);
+        padding-bottom: var(--space-2);
+        border-bottom: 1px solid var(--gray-100);
+    }
+
+    .column-filter-dropdown-title {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--gray-700);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .column-filter-dropdown-close {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: none;
+        background: var(--gray-100);
+        border-radius: var(--radius-sm);
+        color: var(--gray-500);
+        cursor: pointer;
+    }
+
+    .column-filter-dropdown-close:hover {
+        background: var(--gray-200);
+        color: var(--gray-700);
+    }
+
+    .column-filter-dropdown-close svg {
+        width: 12px;
+        height: 12px;
+    }
+
+    .column-filter-input {
+        width: 100%;
+        padding: var(--space-2);
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-md);
+        font-size: 0.8125rem;
+        margin-bottom: var(--space-2);
+    }
+
+    .column-filter-input:focus {
+        outline: none;
+        border-color: var(--primary-500);
+        box-shadow: 0 0 0 2px var(--primary-100);
+    }
+
+    .column-filter-options {
+        max-height: 150px;
+        overflow-y: auto;
+    }
+
+    .column-filter-option {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-2);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        font-size: 0.8125rem;
+        color: var(--gray-700);
+    }
+
+    .column-filter-option:hover {
+        background: var(--gray-50);
+    }
+
+    .column-filter-option input[type="checkbox"] {
+        width: 14px;
+        height: 14px;
+        accent-color: var(--primary-600);
+    }
+
+    .column-filter-actions {
+        display: flex;
+        gap: var(--space-2);
+        margin-top: var(--space-2);
+        padding-top: var(--space-2);
+        border-top: 1px solid var(--gray-100);
+    }
+
+    .column-filter-apply {
+        flex: 1;
+        padding: var(--space-2);
+        border: none;
+        border-radius: var(--radius-md);
+        background: var(--primary-600);
+        color: white;
+        font-size: 0.75rem;
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+    .column-filter-apply:hover {
+        background: var(--primary-700);
+    }
+
+    .column-filter-clear {
+        padding: var(--space-2);
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-md);
+        background: white;
+        color: var(--gray-600);
+        font-size: 0.75rem;
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+    .column-filter-clear:hover {
+        background: var(--gray-50);
+    }
+
+    .filter-divider {
+        width: 1px;
+        height: 24px;
+        background: var(--gray-200);
+        margin: 0 var(--space-2);
+    }
+
+    /* Column sorting styles - vertical stack layout */
+    .sortable-th {
+        cursor: pointer;
+        user-select: none;
+        position: relative;
+        white-space: nowrap;
+        padding: var(--space-1) var(--space-2) !important;
+        vertical-align: bottom;
+    }
+
+    .sortable-th .th-content {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+    }
+
+    .sortable-th .th-text {
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .sortable-th .th-controls {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        opacity: 0.5;
+        transition: opacity var(--transition-fast);
+    }
+
+    .sortable-th:hover .th-controls {
+        opacity: 1;
+    }
+
+    /* Center content in sortable headers when text-center class is applied */
+    .sortable-th.text-center {
+        text-align: center;
+    }
+
+    .sortable-th.text-center .th-content {
+        align-items: center;
+    }
+
+    /* Center content in table cells with text-center class */
+    td.text-center {
+        text-align: center;
+    }
+
+    /* Use a wrapper approach - all sortable-th content is wrapped in a th-wrapper */
+    .sortable-th .th-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+    }
+
+    .sortable-th.text-center .th-wrapper {
+        align-items: center;
+    }
+
+    .sortable-th .sort-indicator {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
+        opacity: 0.4;
+    }
+
+    .sortable-th.sort-active .sort-indicator {
+        opacity: 1;
+    }
+
+    .sort-indicator svg {
+        width: 12px;
+        height: 12px;
+    }
+
+    .sort-indicator.desc svg {
+        transform: rotate(180deg);
+    }
+
+    .clear-filters {
+        margin-left: auto;
+        padding: var(--space-1) var(--space-2);
+        border: none;
+        background: none;
+        font-size: 0.75rem;
+        color: var(--gray-500);
+        cursor: pointer;
+        text-decoration: underline;
+    }
+
+    .clear-filters:hover {
+        color: var(--gray-700);
+    }
+
+    .clear-filters.hidden {
+        display: none;
+    }
+
+    /* Virtual scrolling table container */
+    .tab-panel {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .tab-content {
+        flex: 1;
+        display: none;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .tab-content.active {
+        display: flex;
+    }
+
+    .table-container {
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .table-scroll-wrapper {
+        overflow: auto;
+        position: relative;
+    }
+
+    .jobs-table {
+        width: 100%;
+    }
+
+    .jobs-table thead {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--gray-50);
+    }
+
+    /* Paging controls */
+    .paging-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-2);
+        border-top: 1px solid var(--gray-200);
+        background: var(--gray-50);
+        font-size: 0.75rem;
+        color: var(--gray-600);
+    }
+
+    .paging-info {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+    }
+
+    .paging-buttons {
+        display: flex;
+        gap: var(--space-1);
+    }
+
+    .paging-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-md);
+        background: white;
+        color: var(--gray-600);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+    }
+
+    .paging-btn:hover:not(:disabled) {
+        border-color: var(--primary-500);
+        color: var(--primary-600);
+        background: var(--primary-50);
+    }
+
+    .paging-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .paging-btn svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .row-range {
+        font-weight: 500;
+        color: var(--gray-700);
+    }
+
+    .loading-indicator {
+        display: none;
+        align-items: center;
+        gap: var(--space-2);
+        color: var(--gray-500);
+    }
+
+    .loading-indicator.visible {
+        display: flex;
+    }
+
+    .loading-indicator .spinner {
+        width: 14px;
+        height: 14px;
+    }
+</style>
+
+<div class="content-body">
+    <!-- Tabbed Jobs Panel -->
+    <div class="tab-panel" id="jobsPanel">
+        <!-- Tab Header -->
+        <div class="tab-header">
+            <button class="tab-btn active" data-tab="active">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                </svg>
+                Active Jobs
+                <span class="tab-count">{{ active_jobs|length }}</span>
+            </button>
+            <button class="tab-btn" data-tab="recent">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Recent Jobs
+                <span class="tab-count">{{ recent_jobs|length }}</span>
+            </button>
+        </div>
+
+        <!-- Advanced Filter Bar -->
+        <div class="advanced-filter-bar">
+            <div class="filter-bar-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+                </svg>
+            </div>
+            <div class="advanced-filter-inputs" id="activeFiltersContainer">
+                <!-- Active filter chips will be inserted here -->
+                <input type="text" class="filter-search-input" id="filterSearchInput" placeholder="Search or add filter... (e.g., status:running, owner:demo)">
+            </div>
+            <div class="filter-bar" style="border: none; padding: 0; flex-wrap: nowrap;">
+                <button class="filter-btn queued" data-filter="queued">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="14" height="14">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span class="filter-count" id="count-queued">0</span>
+                </button>
+                <button class="filter-btn running" data-filter="running">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="14" height="14">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                    </svg>
+                    <span class="filter-count" id="count-running">0</span>
+                </button>
+                <button class="filter-btn complete" data-filter="complete">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="14" height="14">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span class="filter-count" id="count-complete">0</span>
+                </button>
+                <button class="filter-btn failed" data-filter="failed">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="14" height="14">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                    <span class="filter-count" id="count-failed">0</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Active Jobs Tab -->
+        <div class="tab-content active" id="tab-active">
+            {% if active_jobs %}
+            <div class="table-container">
+                <div class="table-scroll-wrapper" id="activeScrollWrapper">
+                <table class="jobs-table" id="activeJobsTable" data-filter="">
+                    <thead>
+                        <tr>
+                            <th class="sortable-th" data-sort="target" data-filter-column="target">
+                                <div class="th-content">
+                                    <span class="th-text">Target Database</span>
+                                    <span class="th-controls">
+                                        <span class="sort-indicator"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg></span>
+                                        <button class="column-filter-btn" title="Filter this column"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg></button>
+                                    </span>
+                                </div>
+                                <div class="column-filter-dropdown" data-column="target"></div>
+                            </th>
+                            <th class="sortable-th text-center" data-sort="status" data-filter-column="status">
+                                <div class="th-content">
+                                    <span class="th-text">Status</span>
+                                    <span class="th-controls">
+                                        <span class="sort-indicator"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg></span>
+                                        <button class="column-filter-btn" title="Filter this column"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg></button>
+                                    </span>
+                                </div>
+                                <div class="column-filter-dropdown" data-column="status"></div>
+                            </th>
+                            <th class="sortable-th" data-sort="operation" data-filter-column="operation">
+                                <div class="th-content">
+                                    <span class="th-text">Operation</span>
+                                    <span class="th-controls">
+                                        <span class="sort-indicator"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg></span>
+                                        <button class="column-filter-btn" title="Filter this column"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg></button>
+                                    </span>
+                                </div>
+                                <div class="column-filter-dropdown" data-column="operation"></div>
+                            </th>
+                            <th class="sortable-th" data-sort="owner" data-filter-column="owner">
+                                <div class="th-content">
+                                    <span class="th-text">Owner</span>
+                                    <span class="th-controls">
+                                        <span class="sort-indicator"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg></span>
+                                        <button class="column-filter-btn" title="Filter this column"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg></button>
+                                    </span>
+                                </div>
+                                <div class="column-filter-dropdown" data-column="owner"></div>
+                            </th>
+                            <th class="sortable-th" data-sort="submitted" data-filter-column="submitted">
+                                <div class="th-content">
+                                    <span class="th-text">Submitted</span>
+                                    <span class="th-controls">
+                                        <span class="sort-indicator"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg></span>
+                                        <button class="column-filter-btn" title="Filter this column"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg></button>
+                                    </span>
+                                </div>
+                                <div class="column-filter-dropdown" data-column="submitted"></div>
+                            </th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for job in active_jobs %}
+                        <tr data-status="{{ job.status }}" data-submitted="{{ job.submitted_at.isoformat() }}" data-target="{{ job.target }}" data-operation="{{ job.current_operation or '' }}" data-owner="{{ job.owner_username }}">
+                            <td>
+                                <span class="font-mono font-medium">{{ job.target }}</span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge badge-{{ job.status }}">
+                                    <span class="badge-dot"></span>
+                                    {{ job.status }}
+                                </span>
+                            </td>
+                            <td class="text-muted">{{ job.current_operation or '—' }}</td>
+                            <td class="text-muted">{{ job.owner_username }}</td>
+                            <td class="text-muted text-sm">
+                                {{ job.submitted_at.strftime('%b %d, %H:%M') }}
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="/web/jobs/{{ job.job_id }}" class="btn-icon btn-icon-view" title="View details">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M13.125 12h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125M20.625 12c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5M12 14.625v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 14.625c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 0v1.5c0 .621-.504 1.125-1.125 1.125" />
+                                        </svg>
+                                    </a>
+                                    {% if job.status in ['queued', 'running'] %}
+                                    <button class="btn-icon btn-icon-cancel" title="Cancel job" onclick="if(confirm('Are you sure you want to cancel this job?')) { htmx.ajax('POST', '/web/jobs/{{ job.job_id }}/cancel', {target:'body', swap:'none'}).then(() => location.reload()); }">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+                                        </svg>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+                <!-- Paging Controls for Active Jobs -->
+                <div class="paging-controls" id="activePaging">
+                    <div class="paging-info">
+                        <span class="row-range">Showing <span id="activeStart">1</span>-<span id="activeEnd">{{ active_jobs|length }}</span> of <span id="activeTotal">{{ active_jobs|length }}</span></span>
+                        <div class="loading-indicator" id="activeLoading">
+                            <span class="spinner"></span>
+                            <span>Loading...</span>
+                        </div>
+                    </div>
+                    <div class="paging-buttons">
+                        <button class="paging-btn" id="activeFirst" title="First page" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" />
+                            </svg>
+                        </button>
+                        <button class="paging-btn" id="activePrev" title="Previous page" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                            </svg>
+                        </button>
+                        <button class="paging-btn" id="activeNext" title="Next page" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                            </svg>
+                        </button>
+                        <button class="paging-btn" id="activeLast" title="Last page" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 4.5l7.5 7.5-7.5 7.5m6-15l7.5 7.5-7.5 7.5" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h3 class="empty-state-title">All clear!</h3>
+                <p class="empty-state-text">No jobs are currently running or queued.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Recent Jobs Tab -->
+        <div class="tab-content" id="tab-recent">
+            {% if recent_jobs %}
+            <div class="table-container">
+                <div class="table-scroll-wrapper" id="recentScrollWrapper">
+                <table class="jobs-table" id="recentJobsTable" data-filter="">
+                    <thead>
+                        <tr>
+                            <th class="sortable-th" data-sort="target" data-filter-column="target">
+                                <div class="th-content">
+                                    <span class="th-text">Target Database</span>
+                                    <span class="th-controls">
+                                        <span class="sort-indicator"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg></span>
+                                        <button class="column-filter-btn" title="Filter this column"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg></button>
+                                    </span>
+                                </div>
+                                <div class="column-filter-dropdown" data-column="target"></div>
+                            </th>
+                            <th class="sortable-th text-center" data-sort="status" data-filter-column="status">
+                                <div class="th-content">
+                                    <span class="th-text">Status</span>
+                                    <span class="th-controls">
+                                        <span class="sort-indicator"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg></span>
+                                        <button class="column-filter-btn" title="Filter this column"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg></button>
+                                    </span>
+                                </div>
+                                <div class="column-filter-dropdown" data-column="status"></div>
+                            </th>
+                            <th class="sortable-th" data-sort="owner" data-filter-column="owner">
+                                <div class="th-content">
+                                    <span class="th-text">Owner</span>
+                                    <span class="th-controls">
+                                        <span class="sort-indicator"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg></span>
+                                        <button class="column-filter-btn" title="Filter this column"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg></button>
+                                    </span>
+                                </div>
+                                <div class="column-filter-dropdown" data-column="owner"></div>
+                            </th>
+                            <th class="sortable-th" data-sort="submitted" data-filter-column="submitted">
+                                <div class="th-content">
+                                    <span class="th-text">Submitted</span>
+                                    <span class="th-controls">
+                                        <span class="sort-indicator"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg></span>
+                                        <button class="column-filter-btn" title="Filter this column"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg></button>
+                                    </span>
+                                </div>
+                                <div class="column-filter-dropdown" data-column="submitted"></div>
+                            </th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for job in recent_jobs %}
+                        <tr data-status="{{ job.status }}" data-submitted="{{ job.submitted_at.isoformat() }}" data-target="{{ job.target }}" data-owner="{{ job.owner_username }}">
+                            <td>
+                                <span class="font-mono font-medium">{{ job.target }}</span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge badge-{{ job.status }}">
+                                    <span class="badge-dot"></span>
+                                    {{ job.status }}
+                                </span>
+                            </td>
+                            <td class="text-muted">{{ job.owner_username }}</td>
+                            <td class="text-muted text-sm">
+                                {{ job.submitted_at.strftime('%b %d, %H:%M') }}
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="/web/jobs/{{ job.job_id }}" class="btn-icon btn-icon-view" title="View details">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M13.125 12h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125M20.625 12c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5M12 14.625v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 14.625c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 0v1.5c0 .621-.504 1.125-1.125 1.125" />
+                                        </svg>
+                                    </a>
+                                    {% if job.status in ['queued', 'running'] %}
+                                    <button class="btn-icon btn-icon-cancel" title="Cancel job" onclick="if(confirm('Are you sure you want to cancel this job?')) { htmx.ajax('POST', '/web/jobs/{{ job.job_id }}/cancel', {target:'body', swap:'none'}).then(() => location.reload()); }">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+                                        </svg>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+                <!-- Paging Controls for Recent Jobs -->
+                <div class="paging-controls" id="recentPaging">
+                    <div class="paging-info">
+                        <span class="row-range">Showing <span id="recentStart">1</span>-<span id="recentEnd">{{ recent_jobs|length }}</span> of <span id="recentTotal">{{ recent_jobs|length }}</span></span>
+                        <div class="loading-indicator" id="recentLoading">
+                            <span class="spinner"></span>
+                            <span>Loading...</span>
+                        </div>
+                    </div>
+                    <div class="paging-buttons">
+                        <button class="paging-btn" id="recentFirst" title="First page" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" />
+                            </svg>
+                        </button>
+                        <button class="paging-btn" id="recentPrev" title="Previous page" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                            </svg>
+                        </button>
+                        <button class="paging-btn" id="recentNext" title="Next page" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                            </svg>
+                        </button>
+                        <button class="paging-btn" id="recentLast" title="Last page" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 4.5l7.5 7.5-7.5 7.5m6-15l7.5 7.5-7.5 7.5" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                </svg>
+                <h3 class="empty-state-title">No recent jobs</h3>
+                <p class="empty-state-text">Jobs you submit will appear here once processed.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    // State
+    let currentFilter = '';
+    // sortColumns: array of {column, direction} in order of priority
+    // column = data-sort attribute, direction = 'asc' or 'desc'
+    let sortColumns = [];
+    // columnFilters: object { column: [values] } for column-specific filters
+    let columnFilters = {};
+    
+    // Elements
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+    const filterBtns = document.querySelectorAll('.filter-btn');
+    const tables = document.querySelectorAll('.jobs-table');
+    const sortableHeaders = document.querySelectorAll('.sortable-th');
+    const filterSearchInput = document.getElementById('filterSearchInput');
+    const activeFiltersContainer = document.getElementById('activeFiltersContainer');
+    const columnFilterBtns = document.querySelectorAll('.column-filter-btn');
+    const columnFilterDropdowns = document.querySelectorAll('.column-filter-dropdown');
+
+    // Tab switching
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            
+            // Update tab buttons
+            tabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // Update tab content
+            tabContents.forEach(c => c.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+            
+            // Update URL to preserve tab state for back navigation
+            const url = new URL(window.location);
+            if (tab === 'active') {
+                url.searchParams.delete('tab');
+            } else {
+                url.searchParams.set('tab', tab);
+            }
+            window.history.replaceState({}, '', url);
+            
+            // Update counts for new tab
+            updateCounts();
+        });
+    });
+    
+    // Restore tab from URL on page load
+    (function restoreTabFromUrl() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const tab = urlParams.get('tab');
+        if (tab) {
+            const tabBtn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+            if (tabBtn) {
+                tabBtn.click();
+            }
+        }
+    })();
+
+    // Filter buttons (toggle on/off)
+    filterBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const filter = btn.dataset.filter;
+            
+            if (currentFilter === filter) {
+                // Click again removes filter
+                currentFilter = '';
+                btn.classList.remove('active');
+            } else {
+                // Set new filter
+                currentFilter = filter;
+                filterBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+            
+            applyFilter();
+            updateClearButton();
+        });
+    });
+
+    // Sortable column headers
+    sortableHeaders.forEach(th => {
+        // Click on header (not on order buttons or filter buttons) toggles sort
+        th.addEventListener('click', (e) => {
+            // Don't trigger if clicking on order buttons or column filter
+            if (e.target.closest('.sort-order-arrows')) return;
+            if (e.target.closest('.column-filter-btn')) return;
+            if (e.target.closest('.column-filter-dropdown')) return;
+            
+            const column = th.dataset.sort;
+            const indicator = th.querySelector('.sort-indicator');
+            const existingIdx = sortColumns.findIndex(s => s.column === column);
+            
+            if (existingIdx >= 0) {
+                // Column already sorted - toggle direction or remove
+                const current = sortColumns[existingIdx];
+                if (current.direction === 'asc') {
+                    current.direction = 'desc';
+                    indicator.classList.add('desc');
+                } else {
+                    // Remove from sort
+                    sortColumns.splice(existingIdx, 1);
+                    th.classList.remove('sort-active');
+                    indicator.classList.remove('desc');
+                }
+            } else {
+                // Add new sort column
+                sortColumns.push({ column, direction: 'asc' });
+                th.classList.add('sort-active');
+                indicator.classList.remove('desc');
+            }
+            
+            updateSortOrderNumbers();
+            applySort();
+        });
+    });
+    
+    function updateSortOrderNumbers() {
+        sortableHeaders.forEach(th => {
+            const column = th.dataset.sort;
+            const idx = sortColumns.findIndex(s => s.column === column);
+            const indicator = th.querySelector('.sort-indicator');
+            
+            if (idx >= 0) {
+                th.classList.add('sort-active');
+                if (indicator) {
+                    indicator.classList.toggle('desc', sortColumns[idx].direction === 'desc');
+                }
+            } else {
+                th.classList.remove('sort-active');
+                if (indicator) {
+                    indicator.classList.remove('desc');
+                }
+            }
+        });
+    }
+
+    function applyFilter() {
+        tables.forEach(table => {
+            table.dataset.filter = currentFilter;
+            
+            // Show/hide rows based on status filter AND column filters
+            const rows = table.querySelectorAll('tbody tr[data-status]');
+            rows.forEach(row => {
+                let visible = true;
+                
+                // Check status filter
+                if (currentFilter && row.dataset.status !== currentFilter) {
+                    visible = false;
+                }
+                
+                // Check column filters
+                for (const [column, values] of Object.entries(columnFilters)) {
+                    if (values && values.length > 0) {
+                        const rowValue = (row.dataset[column] || '').toLowerCase();
+                        const matchesAny = values.some(v => rowValue.includes(v.toLowerCase()));
+                        if (!matchesAny) {
+                            visible = false;
+                            break;
+                        }
+                    }
+                }
+                
+                row.style.display = visible ? '' : 'none';
+            });
+        });
+        
+        updateFilterChips();
+    }
+
+    function updateFilterChips() {
+        // Remove existing chips
+        const existingChips = activeFiltersContainer.querySelectorAll('.filter-chip');
+        existingChips.forEach(chip => chip.remove());
+        
+        // Add chips for column filters
+        const inputEl = activeFiltersContainer.querySelector('.filter-search-input');
+        for (const [column, values] of Object.entries(columnFilters)) {
+            if (values && values.length > 0) {
+                values.forEach(value => {
+                    const chip = document.createElement('span');
+                    chip.className = 'filter-chip';
+                    chip.innerHTML = `
+                        <span>${column}:${value}</span>
+                        <button class="filter-chip-remove" data-column="${column}" data-value="${value}">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    `;
+                    inputEl.before(chip);
+                    
+                    // Add remove handler
+                    chip.querySelector('.filter-chip-remove').addEventListener('click', (e) => {
+                        const col = e.currentTarget.dataset.column;
+                        const val = e.currentTarget.dataset.value;
+                        removeColumnFilter(col, val);
+                    });
+                });
+            }
+        }
+    }
+
+    function addColumnFilter(column, value) {
+        if (!columnFilters[column]) {
+            columnFilters[column] = [];
+        }
+        if (!columnFilters[column].includes(value)) {
+            columnFilters[column].push(value);
+            applyFilter();
+            updateClearButton();
+            
+            // Update the filter button state
+            updateColumnFilterButtons();
+        }
+    }
+
+    function removeColumnFilter(column, value) {
+        if (columnFilters[column]) {
+            columnFilters[column] = columnFilters[column].filter(v => v !== value);
+            if (columnFilters[column].length === 0) {
+                delete columnFilters[column];
+            }
+            applyFilter();
+            updateClearButton();
+            updateColumnFilterButtons();
+        }
+    }
+
+    function clearAllColumnFilters() {
+        columnFilters = {};
+        applyFilter();
+        updateClearButton();
+        updateColumnFilterButtons();
+    }
+
+    function updateColumnFilterButtons() {
+        columnFilterBtns.forEach(btn => {
+            const th = btn.closest('.sortable-th');
+            const column = th?.dataset.filterColumn;
+            if (column && columnFilters[column] && columnFilters[column].length > 0) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
+
+    // Column filter button click handlers
+    columnFilterBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const th = btn.closest('.sortable-th');
+            const column = th?.dataset.filterColumn;
+            const dropdown = th?.querySelector('.column-filter-dropdown');
+            
+            if (!dropdown || !column) return;
+            
+            // Close other dropdowns
+            columnFilterDropdowns.forEach(d => {
+                if (d !== dropdown) d.classList.remove('open');
+            });
+            
+            // Toggle this dropdown
+            const isOpen = dropdown.classList.toggle('open');
+            
+            if (isOpen) {
+                populateColumnDropdown(dropdown, column);
+            }
+        });
+    });
+
+    function populateColumnDropdown(dropdown, column) {
+        // Get unique values from current tab's data
+        const activeTab = document.querySelector('.tab-content.active');
+        const rows = activeTab ? activeTab.querySelectorAll('tr[data-' + column + ']') : [];
+        const values = new Set();
+        
+        rows.forEach(row => {
+            const val = row.dataset[column];
+            if (val) values.add(val);
+        });
+        
+        const sortedValues = Array.from(values).sort();
+        const currentFilters = columnFilters[column] || [];
+        
+        dropdown.innerHTML = `
+            <div class="column-filter-dropdown-header">
+                <span class="column-filter-dropdown-title">Filter ${column}</span>
+                <button class="column-filter-dropdown-close">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <input type="text" class="column-filter-input" placeholder="Search ${column}...">
+            <div class="column-filter-options">
+                ${sortedValues.map(v => `
+                    <label class="column-filter-option">
+                        <input type="checkbox" value="${v}" ${currentFilters.includes(v) ? 'checked' : ''}>
+                        <span>${v}</span>
+                    </label>
+                `).join('')}
+            </div>
+            <div class="column-filter-actions">
+                <button class="column-filter-clear">Clear</button>
+                <button class="column-filter-apply">Apply</button>
+            </div>
+        `;
+        
+        // Close button
+        dropdown.querySelector('.column-filter-dropdown-close').addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.remove('open');
+        });
+        
+        // Search input
+        const searchInput = dropdown.querySelector('.column-filter-input');
+        searchInput.addEventListener('input', () => {
+            const search = searchInput.value.toLowerCase();
+            dropdown.querySelectorAll('.column-filter-option').forEach(opt => {
+                const text = opt.querySelector('span').textContent.toLowerCase();
+                opt.style.display = text.includes(search) ? '' : 'none';
+            });
+        });
+        
+        // Clear button
+        dropdown.querySelector('.column-filter-clear').addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+            delete columnFilters[column];
+            applyFilter();
+            updateClearButton();
+            updateColumnFilterButtons();
+            dropdown.classList.remove('open');
+        });
+        
+        // Apply button
+        dropdown.querySelector('.column-filter-apply').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const selected = Array.from(dropdown.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+            if (selected.length > 0) {
+                columnFilters[column] = selected;
+            } else {
+                delete columnFilters[column];
+            }
+            applyFilter();
+            updateClearButton();
+            updateColumnFilterButtons();
+            dropdown.classList.remove('open');
+        });
+    }
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.column-filter-dropdown') && !e.target.closest('.column-filter-btn')) {
+            columnFilterDropdowns.forEach(d => d.classList.remove('open'));
+        }
+    });
+
+    // Filter search input handler
+    if (filterSearchInput) {
+        filterSearchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const value = filterSearchInput.value.trim();
+                if (value) {
+                    // Parse filter syntax: column:value
+                    const match = value.match(/^(\w+):(.+)$/);
+                    if (match) {
+                        const [, column, filterValue] = match;
+                        addColumnFilter(column, filterValue);
+                        filterSearchInput.value = '';
+                    }
+                }
+            }
+        });
+    }
+
+    function applySort() {
+        if (sortColumns.length === 0) return;
+        
+        tables.forEach(table => {
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            
+            const rows = Array.from(tbody.querySelectorAll('tr[data-submitted]'));
+            
+            rows.sort((a, b) => {
+                for (const { column, direction } of sortColumns) {
+                    let valA, valB;
+                    
+                    switch (column) {
+                        case 'target':
+                            valA = (a.dataset.target || '').toLowerCase();
+                            valB = (b.dataset.target || '').toLowerCase();
+                            break;
+                        case 'status':
+                            valA = a.dataset.status || '';
+                            valB = b.dataset.status || '';
+                            break;
+                        case 'operation':
+                            valA = (a.dataset.operation || '').toLowerCase();
+                            valB = (b.dataset.operation || '').toLowerCase();
+                            break;
+                        case 'owner':
+                            valA = (a.dataset.owner || '').toLowerCase();
+                            valB = (b.dataset.owner || '').toLowerCase();
+                            break;
+                        case 'submitted':
+                            valA = new Date(a.dataset.submitted);
+                            valB = new Date(b.dataset.submitted);
+                            break;
+                        default:
+                            valA = '';
+                            valB = '';
+                    }
+                    
+                    let comparison = 0;
+                    if (column === 'submitted') {
+                        comparison = valA - valB;
+                    } else {
+                        comparison = valA.localeCompare(valB);
+                    }
+                    
+                    if (comparison !== 0) {
+                        return direction === 'asc' ? comparison : -comparison;
+                    }
+                }
+                return 0;
+            });
+            
+            rows.forEach(row => tbody.appendChild(row));
+        });
+    }
+
+    function updateCounts() {
+        const activeTab = document.querySelector('.tab-content.active');
+        const rows = activeTab ? activeTab.querySelectorAll('tr[data-status]') : [];
+        
+        const counts = { queued: 0, running: 0, complete: 0, failed: 0 };
+        rows.forEach(row => {
+            const status = row.dataset.status;
+            if (counts.hasOwnProperty(status)) {
+                counts[status]++;
+            }
+        });
+        
+        document.getElementById('count-queued').textContent = counts.queued;
+        document.getElementById('count-running').textContent = counts.running;
+        document.getElementById('count-complete').textContent = counts.complete;
+        document.getElementById('count-failed').textContent = counts.failed;
+    }
+
+    // =================================================================
+    // VIRTUAL SCROLLING WITH WINDOWED CACHING (1/3 - 1/3 - 1/3)
+    // =================================================================
+    
+    const PREFETCH_THRESHOLD = 5;       // Rows before edge to trigger fetch
+    const DEFAULT_ROW_HEIGHT = 48;      // Estimated row height in px
+    
+    class VirtualScroller {
+        constructor(scrollWrapper, table, pagingControls) {
+            this.wrapper = scrollWrapper;
+            this.table = table;
+            this.tbody = table.querySelector('tbody');
+            this.controls = pagingControls;
+            
+            // All rows data (for client-side simulation)
+            this.allRows = Array.from(this.tbody.querySelectorAll('tr'));
+            this.totalRows = this.allRows.length;
+            
+            // Calculate row height from actual DOM
+            this.rowHeight = this.calculateRowHeight();
+            
+            // Calculate cache size based on viewport
+            this.visibleRowCount = this.calculateVisibleRows();
+            this.cacheSize = this.visibleRowCount * 3;  // 1/3 above + 1/3 visible + 1/3 below
+            
+            // Cache window state
+            this.cacheStart = 0;              // First row index in cache
+            this.cacheEnd = Math.min(this.cacheSize, this.totalRows);
+            this.isLoading = false;
+            
+            this.init();
+        }
+        
+        calculateRowHeight() {
+            // Try to get actual row height from first visible row
+            const firstRow = this.allRows[0];
+            if (firstRow) {
+                const style = window.getComputedStyle(firstRow);
+                const height = firstRow.getBoundingClientRect().height;
+                if (height > 0) return height;
+            }
+            return DEFAULT_ROW_HEIGHT;
+        }
+        
+        calculateVisibleRows() {
+            const viewportHeight = this.wrapper.clientHeight;
+            if (viewportHeight === 0) {
+                // Fallback if not yet rendered
+                return 15;
+            }
+            return Math.max(5, Math.ceil(viewportHeight / this.rowHeight));
+        }
+        
+        init() {
+            // Initially hide rows outside cache window
+            this.updateVisibleRows();
+            this.updatePagingInfo();
+            this.bindScrollEvents();
+            this.bindPagingButtons();
+        }
+        
+        updateVisibleRows() {
+            this.allRows.forEach((row, idx) => {
+                if (idx >= this.cacheStart && idx < this.cacheEnd) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+            this.updatePagingInfo();
+        }
+        
+        updatePagingInfo() {
+            const startEl = this.controls.querySelector('[id$="Start"]');
+            const endEl = this.controls.querySelector('[id$="End"]');
+            const totalEl = this.controls.querySelector('[id$="Total"]');
+            
+            if (startEl) startEl.textContent = this.cacheStart + 1;
+            if (endEl) endEl.textContent = Math.min(this.cacheEnd, this.totalRows);
+            if (totalEl) totalEl.textContent = this.totalRows;
+            
+            // Update button states
+            const firstBtn = this.controls.querySelector('[id$="First"]');
+            const prevBtn = this.controls.querySelector('[id$="Prev"]');
+            const nextBtn = this.controls.querySelector('[id$="Next"]');
+            const lastBtn = this.controls.querySelector('[id$="Last"]');
+            
+            const canGoBack = this.cacheStart > 0;
+            const canGoForward = this.cacheEnd < this.totalRows;
+            
+            if (firstBtn) firstBtn.disabled = !canGoBack;
+            if (prevBtn) prevBtn.disabled = !canGoBack;
+            if (nextBtn) nextBtn.disabled = !canGoForward;
+            if (lastBtn) lastBtn.disabled = !canGoForward;
+        }
+        
+        bindScrollEvents() {
+            this.wrapper.addEventListener('scroll', () => {
+                this.handleScroll();
+            });
+        }
+        
+        handleScroll() {
+            if (this.isLoading) return;
+            
+            const scrollTop = this.wrapper.scrollTop;
+            const viewportHeight = this.wrapper.clientHeight;
+            const scrollHeight = this.wrapper.scrollHeight;
+            
+            // Check if near bottom - need to load next page
+            if (scrollTop + viewportHeight >= scrollHeight - (PREFETCH_THRESHOLD * this.rowHeight)) {
+                if (this.cacheEnd < this.totalRows) {
+                    this.loadNextWindow();
+                }
+            }
+            
+            // Check if near top - need to load previous page
+            if (scrollTop <= PREFETCH_THRESHOLD * this.rowHeight) {
+                if (this.cacheStart > 0) {
+                    this.loadPrevWindow();
+                }
+            }
+        }
+        
+        async loadNextWindow() {
+            if (this.isLoading) return;
+            this.isLoading = true;
+            this.showLoading(true);
+            
+            // Simulate API delay
+            await new Promise(r => setTimeout(r, 100));
+            
+            // Shift window forward by 1/3 (visible row count)
+            const shift = this.visibleRowCount;
+            this.cacheStart = Math.min(this.cacheStart + shift, this.totalRows - this.cacheSize);
+            this.cacheStart = Math.max(0, this.cacheStart);
+            this.cacheEnd = Math.min(this.cacheStart + this.cacheSize, this.totalRows);
+            
+            this.updateVisibleRows();
+            this.showLoading(false);
+            this.isLoading = false;
+        }
+        
+        async loadPrevWindow() {
+            if (this.isLoading) return;
+            this.isLoading = true;
+            this.showLoading(true);
+            
+            // Simulate API delay
+            await new Promise(r => setTimeout(r, 100));
+            
+            // Shift window backward by 1/3 (visible row count)
+            const shift = this.visibleRowCount;
+            this.cacheStart = Math.max(0, this.cacheStart - shift);
+            this.cacheEnd = Math.min(this.cacheStart + this.cacheSize, this.totalRows);
+            
+            this.updateVisibleRows();
+            this.showLoading(false);
+            this.isLoading = false;
+            
+            this.updateVisibleRows();
+            this.showLoading(false);
+            this.isLoading = false;
+        }
+        
+        showLoading(show) {
+            const loadingEl = this.controls.querySelector('[id$="Loading"]');
+            if (loadingEl) {
+                loadingEl.classList.toggle('visible', show);
+            }
+        }
+        
+        bindPagingButtons() {
+            const firstBtn = this.controls.querySelector('[id$="First"]');
+            const prevBtn = this.controls.querySelector('[id$="Prev"]');
+            const nextBtn = this.controls.querySelector('[id$="Next"]');
+            const lastBtn = this.controls.querySelector('[id$="Last"]');
+            
+            if (firstBtn) {
+                firstBtn.addEventListener('click', () => this.goToFirst());
+            }
+            if (prevBtn) {
+                prevBtn.addEventListener('click', () => this.goToPrev());
+            }
+            if (nextBtn) {
+                nextBtn.addEventListener('click', () => this.goToNext());
+            }
+            if (lastBtn) {
+                lastBtn.addEventListener('click', () => this.goToLast());
+            }
+        }
+        
+        async goToFirst() {
+            if (this.isLoading || this.cacheStart === 0) return;
+            this.isLoading = true;
+            this.showLoading(true);
+            await new Promise(r => setTimeout(r, 100));
+            
+            this.cacheStart = 0;
+            this.cacheEnd = Math.min(this.cacheSize, this.totalRows);
+            
+            this.updateVisibleRows();
+            this.wrapper.scrollTop = 0;
+            this.showLoading(false);
+            this.isLoading = false;
+        }
+        
+        async goToLast() {
+            if (this.isLoading || this.cacheEnd >= this.totalRows) return;
+            this.isLoading = true;
+            this.showLoading(true);
+            await new Promise(r => setTimeout(r, 100));
+            
+            this.cacheEnd = this.totalRows;
+            this.cacheStart = Math.max(0, this.totalRows - this.cacheSize);
+            
+            this.updateVisibleRows();
+            this.wrapper.scrollTop = this.wrapper.scrollHeight;
+            this.showLoading(false);
+            this.isLoading = false;
+        }
+        
+        async goToNext() {
+            await this.loadNextWindow();
+        }
+        
+        async goToPrev() {
+            await this.loadPrevWindow();
+        }
+    }
+    
+    // Initialize virtual scrollers for both tables
+    const activeScrollWrapper = document.getElementById('activeScrollWrapper');
+    const activeTable = document.getElementById('activeJobsTable');
+    const activePaging = document.getElementById('activePaging');
+    
+    const recentScrollWrapper = document.getElementById('recentScrollWrapper');
+    const recentTable = document.getElementById('recentJobsTable');
+    const recentPaging = document.getElementById('recentPaging');
+    
+    if (activeScrollWrapper && activeTable && activePaging) {
+        new VirtualScroller(activeScrollWrapper, activeTable, activePaging);
+    }
+    
+    if (recentScrollWrapper && recentTable && recentPaging) {
+        new VirtualScroller(recentScrollWrapper, recentTable, recentPaging);
+    }
+
+    // Initialize
+    updateCounts();
+})();
+</script>
+{% endblock %}
