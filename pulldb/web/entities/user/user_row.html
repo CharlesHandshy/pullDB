@@ -1,0 +1,62 @@
+{#
+    HCA Layer 1: User Row Entity
+    ============================
+    Purpose: Single user row for admin user list.
+    
+    Contract:
+    - Requires: user object with id, username, role, created_at, is_active
+    
+    Usage:
+        {% for user in users %}
+            {% include "entities/user/user_row.html" %}
+        {% endfor %}
+    
+    Size: ~50 lines (HCA compliant)
+#}
+<tr class="user-row" data-user-id="{{ user.id }}" data-role="{{ user.role.value }}">
+    {# Avatar + Username #}
+    <td>
+        <div class="user-cell flex items-center gap-2">
+            <div class="user-avatar-sm">{{ user.username[0]|upper }}</div>
+            <span class="font-medium">{{ user.username }}</span>
+        </div>
+    </td>
+    
+    {# Role Badge #}
+    <td>
+        <span class="role-badge {{ user.role.value }}">{{ user.role.value }}</span>
+    </td>
+    
+    {# Status #}
+    <td>
+        {% if user.is_active %}
+        <span class="badge badge-complete">Active</span>
+        {% else %}
+        <span class="badge badge-canceled">Inactive</span>
+        {% endif %}
+    </td>
+    
+    {# Created Date #}
+    <td>
+        <span class="text-sm text-muted">
+            {{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}
+        </span>
+    </td>
+    
+    {# Actions #}
+    <td>
+        <div class="action-buttons">
+            <a href="/web/admin/users/{{ user.id }}" class="btn-icon btn-icon-view" title="Edit User">
+                {% include "shared/ui/icons/settings.svg" %}
+            </a>
+            {% if not user.is_admin %}
+            <form method="POST" action="/web/admin/users/{{ user.id }}/delete" style="display: inline;">
+                <button type="submit" class="btn-icon btn-icon-cancel" title="Delete User"
+                        onclick="return confirm('Delete user {{ user.username }}?')">
+                    {% include "shared/ui/icons/trash.svg" %}
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </td>
+</tr>

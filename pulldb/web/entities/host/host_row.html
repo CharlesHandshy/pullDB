@@ -1,0 +1,56 @@
+{#
+    HCA Layer 1: Host Row Entity
+    ============================
+    Purpose: Single host row for admin host list.
+    
+    Contract:
+    - Requires: host object with id, name, hostname, port, status, job_count
+    
+    Usage:
+        {% for host in hosts %}
+            {% include "entities/host/host_row.html" %}
+        {% endfor %}
+    
+    Size: ~45 lines (HCA compliant)
+#}
+<tr class="host-row" data-host-id="{{ host.id }}" data-status="{{ host.status }}">
+    {# Host Name #}
+    <td>
+        <div class="host-cell flex items-center gap-2">
+            {% include "shared/ui/icons/hosts.svg" %}
+            <span class="font-medium">{{ host.name }}</span>
+        </div>
+    </td>
+    
+    {# Hostname:Port #}
+    <td>
+        <code class="font-mono text-sm">{{ host.hostname }}:{{ host.port }}</code>
+    </td>
+    
+    {# Status #}
+    <td class="status-cell">
+        {% if host.status == 'active' %}
+        <span class="badge badge-complete">Online</span>
+        {% elif host.status == 'maintenance' %}
+        <span class="badge badge-canceled">Maintenance</span>
+        {% else %}
+        <span class="badge badge-failed">Offline</span>
+        {% endif %}
+    </td>
+    
+    {# Active Jobs #}
+    <td class="text-center">
+        <span class="text-sm {% if host.job_count > 0 %}font-semibold{% else %}text-muted{% endif %}">
+            {{ host.job_count or 0 }}
+        </span>
+    </td>
+    
+    {# Actions #}
+    <td>
+        <div class="action-buttons">
+            <a href="/web/admin/hosts/{{ host.id }}" class="btn-icon btn-icon-view" title="Edit Host">
+                {% include "shared/ui/icons/settings.svg" %}
+            </a>
+        </div>
+    </td>
+</tr>

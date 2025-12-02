@@ -1,0 +1,103 @@
+{#
+    HCA Layer 1: Job Table Row Entity
+    =================================
+    Purpose: Single job row for table display.
+    
+    Contract:
+    - Requires: job object with id, status, username, source_database, dbhost, 
+                created_at, duration, progress
+    
+    Usage:
+        {% for job in jobs %}
+            {% include "entities/job/job_row.html" %}
+        {% endfor %}
+    
+    Size: ~70 lines (HCA compliant)
+#}
+<tr class="job-row" 
+    data-status="{{ job.status }}" 
+    data-user="{{ job.username }}"
+    data-host="{{ job.dbhost }}"
+    data-id="{{ job.id }}"
+    data-database="{{ job.source_database }}">
+    {# Job ID #}
+    <td>
+        <a href="/web/jobs/{{ job.id }}" class="job-id-link font-mono text-sm">
+            {{ job.id[:8] }}...
+        </a>
+    </td>
+    
+    {# Status Badge #}
+    <td class="status-cell">
+        {% include "shared/ui/badges/status_badge.html" with status=job.status %}
+    </td>
+    
+    {# User #}
+    <td>
+        <div class="user-cell-sm flex items-center gap-2">
+            <span class="user-avatar-xs">{{ job.username[0]|upper }}</span>
+            {{ job.username }}
+        </div>
+    </td>
+    
+    {# Database #}
+    <td>
+        <code class="db-name font-mono text-sm">{{ job.source_database }}</code>
+    </td>
+    
+    {# Host #}
+    <td>
+        <span class="host-name">{{ job.dbhost }}</span>
+    </td>
+    
+    {# Progress #}
+    <td>
+        {% if job.status == 'running' %}
+        <div class="progress-bar-mini">
+            <div class="progress-fill" style="width: {{ job.progress or 0 }}%;"></div>
+        </div>
+        <span class="progress-text text-xs">{{ job.progress or 0 }}%</span>
+        {% elif job.status == 'completed' %}
+        <span class="progress-complete text-success">✓ Done</span>
+        {% else %}
+        <span class="progress-na text-muted">—</span>
+        {% endif %}
+    </td>
+    
+    {# Started #}
+    <td>
+        <span class="date-cell text-sm">
+            {{ job.created_at.strftime('%m/%d %H:%M') if job.created_at else '-' }}
+        </span>
+    </td>
+    
+    {# Duration #}
+    <td>
+        <span class="duration-cell text-sm">
+            {% if job.duration %}
+            {{ job.duration }}
+            {% elif job.status == 'running' %}
+            <span class="running-timer text-primary">⏱ Running</span>
+            {% else %}
+            —
+            {% endif %}
+        </span>
+    </td>
+    
+    {# Actions #}
+    <td>
+        <div class="action-buttons">
+            <a href="/web/jobs/{{ job.id }}" class="btn-icon btn-icon-view" title="View Details">
+                {% include "shared/ui/icons/eye.svg" %}
+            </a>
+            {% if job.status in ['pending', 'running'] %}
+            <form method="POST" action="/web/admin/jobs/{{ job.id }}/cancel" style="display: inline;">
+                <button type="submit" class="btn-icon btn-icon-cancel" title="Cancel Job" 
+                        onclick="return confirm('Cancel this job?')">
+                    {% include "shared/ui/icons/x.svg" %}
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </td>
+</tr>

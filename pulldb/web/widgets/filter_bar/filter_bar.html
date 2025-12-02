@@ -1,0 +1,77 @@
+{#
+    HCA Layer 3: Filter Bar Widget
+    ==============================
+    Purpose: Reusable filtering controls for job lists.
+    
+    Contract:
+    - Requires: users list, hosts list
+    - Provides: Filter dropdowns with onChange handlers
+    
+    Usage:
+        {% include "widgets/filter_bar/filter_bar.html" %}
+    
+    Size: ~80 lines (HCA compliant)
+#}
+<div class="card filters-card">
+    <div class="filters-row">
+        {# Status Filter #}
+        <div class="filter-group">
+            <label class="filter-label">Status</label>
+            <select id="filter-status" class="filter-select" onchange="applyFilters()">
+                <option value="">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="running">Running</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+        </div>
+        
+        {# User Filter #}
+        <div class="filter-group">
+            <label class="filter-label">User</label>
+            <select id="filter-user" class="filter-select" onchange="applyFilters()">
+                <option value="">All Users</option>
+                {% for u in users %}
+                <option value="{{ u.username }}">{{ u.username }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        {# Host Filter #}
+        <div class="filter-group">
+            <label class="filter-label">Host</label>
+            <select id="filter-host" class="filter-select" onchange="applyFilters()">
+                <option value="">All Hosts</option>
+                {% for h in hosts %}
+                <option value="{{ h.hostname }}">{{ h.hostname }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        {# Date Range Filter #}
+        <div class="filter-group">
+            <label class="filter-label">Date Range</label>
+            <select id="filter-date" class="filter-select" onchange="applyFilters()">
+                <option value="">All Time</option>
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+            </select>
+        </div>
+        
+        {# Search Input #}
+        <div class="filter-group filter-search">
+            <label class="filter-label">Search</label>
+            <input type="text" id="filter-search" class="filter-input" 
+                   placeholder="Job ID or database name..." oninput="applyFilters()">
+        </div>
+        
+        {# Clear Button #}
+        <button type="button" class="btn btn-ghost" onclick="clearFilters()">
+            {% include "shared/ui/icons/x.svg" %}
+            Clear
+        </button>
+    </div>
+</div>

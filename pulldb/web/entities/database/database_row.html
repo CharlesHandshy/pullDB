@@ -1,0 +1,45 @@
+{#
+    HCA Layer 1: Database Entity
+    ============================
+    Purpose: Database/backup item display.
+    
+    Contract:
+    - Requires: db object with name, size, backup_date, type
+    
+    Usage:
+        {% for db in databases %}
+            {% include "entities/database/database_row.html" %}
+        {% endfor %}
+    
+    Size: ~35 lines (HCA compliant)
+#}
+<tr class="database-row" data-database="{{ db.name }}">
+    {# Database Name #}
+    <td>
+        <code class="font-mono font-medium">{{ db.name }}</code>
+    </td>
+    
+    {# Type #}
+    <td>
+        <span class="text-sm text-muted">{{ db.type|default('MySQL') }}</span>
+    </td>
+    
+    {# Size #}
+    <td>
+        <span class="text-sm">{{ db.size|default('-') }}</span>
+    </td>
+    
+    {# Backup Date #}
+    <td>
+        <span class="text-sm text-muted">
+            {{ db.backup_date.strftime('%Y-%m-%d %H:%M') if db.backup_date else '-' }}
+        </span>
+    </td>
+    
+    {# Select/Action #}
+    <td>
+        <button type="button" class="btn btn-sm btn-secondary select-database" data-database="{{ db.name }}">
+            Select
+        </button>
+    </td>
+</tr>

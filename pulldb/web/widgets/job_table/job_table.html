@@ -1,0 +1,58 @@
+{#
+    HCA Layer 3: Job Table Widget
+    =============================
+    Purpose: Complete job table with header and body.
+    
+    Contract:
+    - Requires: jobs list with job objects
+    - Uses: entities/job/job_row.html for each row
+    
+    Usage:
+        {% include "widgets/job_table/job_table.html" %}
+    
+    Size: ~60 lines (HCA compliant)
+#}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            {% include "shared/ui/icons/jobs.svg" %}
+            {{ table_title|default('Jobs') }}
+        </h3>
+        <span class="results-count" id="results-count">{{ jobs|length }} jobs</span>
+    </div>
+    
+    <div class="card-body no-padding">
+        <div class="table-container">
+            <table class="data-table" id="jobs-table">
+                <thead>
+                    <tr>
+                        <th>Job ID</th>
+                        <th class="text-center">Status</th>
+                        <th>User</th>
+                        <th>Database</th>
+                        <th>Target Host</th>
+                        <th>Progress</th>
+                        <th>Started</th>
+                        <th>Duration</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="jobs-tbody">
+                    {% if jobs %}
+                        {% for job in jobs %}
+                            {% include "entities/job/job_row.html" %}
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="9">
+                                {% include "shared/ui/empty/empty_state.html" with 
+                                    title="No jobs found" 
+                                    text="No restore jobs match your criteria." %}
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

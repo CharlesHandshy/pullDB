@@ -1,0 +1,84 @@
+{#
+    HCA Layer 1: Job Card Entity
+    ============================
+    Purpose: Job display as a card (for dashboard/detail views).
+    
+    Contract:
+    - Requires: job object with id, status, username, source_database, dbhost, 
+                target, created_at, duration, progress, error_message
+    
+    Usage:
+        {% include "entities/job/job_card.html" %}
+    
+    Size: ~80 lines (HCA compliant)
+#}
+<div class="card job-card" data-job-id="{{ job.id }}" data-status="{{ job.status }}">
+    <div class="card-header">
+        <div class="card-title">
+            {% include "shared/ui/icons/jobs.svg" %}
+            <span>Job {{ job.id[:8] }}...</span>
+        </div>
+        {% include "shared/ui/badges/status_badge.html" with status=job.status %}
+    </div>
+    
+    <div class="card-body">
+        <dl class="job-details">
+            <div class="detail-row">
+                <dt>Database</dt>
+                <dd><code class="font-mono">{{ job.source_database }}</code></dd>
+            </div>
+            
+            <div class="detail-row">
+                <dt>Target Host</dt>
+                <dd>{{ job.dbhost }}</dd>
+            </div>
+            
+            {% if job.target %}
+            <div class="detail-row">
+                <dt>Target</dt>
+                <dd>{{ job.target }}</dd>
+            </div>
+            {% endif %}
+            
+            <div class="detail-row">
+                <dt>Requested By</dt>
+                <dd>
+                    <span class="user-avatar-xs">{{ job.username[0]|upper }}</span>
+                    {{ job.username }}
+                </dd>
+            </div>
+            
+            <div class="detail-row">
+                <dt>Started</dt>
+                <dd>{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S') if job.created_at else 'Not started' }}</dd>
+            </div>
+            
+            {% if job.duration %}
+            <div class="detail-row">
+                <dt>Duration</dt>
+                <dd>{{ job.duration }}</dd>
+            </div>
+            {% endif %}
+        </dl>
+        
+        {# Progress Bar for Running Jobs #}
+        {% if job.status == 'running' %}
+        <div class="job-progress mt-4">
+            <div class="progress-label flex justify-between mb-2">
+                <span>Progress</span>
+                <span>{{ job.progress or 0 }}%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ job.progress or 0 }}%;"></div>
+            </div>
+        </div>
+        {% endif %}
+        
+        {# Error Message for Failed Jobs #}
+        {% if job.status == 'failed' and job.error_message %}
+        <div class="mt-4">
+            {% include "shared/ui/alerts/alert.html" with type="error" message=job.error_message title="Error" %}
+        </div>
+        {% endif %}
+    </div>
+</div>
