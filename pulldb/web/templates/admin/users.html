@@ -9,7 +9,7 @@
 
 {% block header_actions %}
 <button type="button" class="btn btn-primary btn-sm" onclick="showAddUserModal()">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
         <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
         <circle cx="9" cy="7" r="4"/>
         <line x1="19" x2="19" y1="8" y2="14"/>
@@ -24,7 +24,7 @@
     <!-- Stats -->
     <div class="stats-grid">
         <div class="stat-card">
-            <div class="stat-icon" style="background: var(--primary-100); color: var(--primary-600);">
+            <div class="stat-icon stat-icon-primary">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
                     <circle cx="9" cy="7" r="4"/>
@@ -39,7 +39,7 @@
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon" style="background: var(--warning-100); color: var(--warning-600);">
+            <div class="stat-icon stat-icon-warning">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                 </svg>
@@ -51,7 +51,7 @@
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon" style="background: var(--success-100); color: var(--success-600);">
+            <div class="stat-icon stat-icon-success">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
                     <polyline points="22 4 12 14.01 9 11.01"/>
@@ -64,7 +64,7 @@
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon" style="background: var(--gray-100); color: var(--gray-600);">
+            <div class="stat-icon stat-icon-gray">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"/>
                     <line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/>
@@ -168,7 +168,7 @@
                                         </svg>
                                     </a>
                                     {% if user.disabled %}
-                                    <form method="POST" action="/web/admin/users/{{ user.username }}/enable" style="display: inline;">
+                                    <form method="POST" action="/web/admin/users/{{ user.username }}/enable" class="d-inline">
                                         <button type="submit" class="btn btn-sm btn-ghost" title="Enable User">
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                 <polyline points="20 6 9 17 4 12"/>
@@ -176,7 +176,7 @@
                                         </button>
                                     </form>
                                     {% else %}
-                                    <form method="POST" action="/web/admin/users/{{ user.username }}/disable" style="display: inline;">
+                                    <form method="POST" action="/web/admin/users/{{ user.username }}/disable" class="d-inline">
                                         <button type="submit" class="btn btn-sm btn-ghost btn-danger" title="Disable User">
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                 <circle cx="12" cy="12" r="10"/>

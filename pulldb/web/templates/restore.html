@@ -99,17 +99,16 @@
                             </div>
                         </div>
                         
-                        <div class="form-row" style="margin-top: var(--space-4);">
+                        <div class="form-row mt-4">
                             <div class="form-group">
                                 <label for="qa_extension" class="form-label">Target Extension (optional)</label>
                                 <input 
                                     type="text" 
                                     id="qa_extension" 
-                                    class="form-input" 
+                                    class="form-input text-uppercase"
                                     placeholder="e.g., ABC"
                                     maxlength="3"
                                     pattern="[A-Za-z]{0,3}"
-                                    style="text-transform: uppercase;"
                                 >
                                 <p class="form-hint" id="qa-extension-hint">Add 3-letter suffix: {user_code}_qatemplate_XXX</p>
                             </div>

@@ -7,19 +7,19 @@
 
 {% block header_actions %}
 <a href="/web/dashboard{% if back_tab %}?tab={{ back_tab }}{% endif %}" class="btn btn-secondary btn-sm">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:16px;height:16px">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="icon-sm">
         <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
     </svg>
     Back
 </a>
-<span class="badge badge-{{ job.status }}" style="font-size: 0.75rem; padding: 0.375rem 0.75rem;">
+<span class="badge badge-{{ job.status }} text-xs">
     <span class="badge-dot"></span>
     {{ job.status }}
 </span>
 {% if can_cancel and job.status in ['queued', 'running'] %}
-<form action="/api/jobs/{{ job.job_id }}/cancel" method="POST" style="display: inline;">
+<form action="/api/jobs/{{ job.job_id }}/cancel" method="POST" class="d-inline">
     <button type="submit" class="btn btn-danger btn-sm">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:16px;height:16px">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="icon-sm">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
         </svg>
         Cancel
@@ -45,7 +45,7 @@
                 <table>
                     <tbody>
                         <tr>
-                            <td class="font-semibold text-muted" style="width: 180px;">Job ID</td>
+                            <td class="font-semibold text-muted col-w-20">Job ID</td>
                             <td class="font-mono">{{ job.job_id }}</td>
                         </tr>
                         <tr>
