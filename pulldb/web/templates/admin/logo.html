@@ -36,8 +36,8 @@
             </div>
             <div class="card-body">
                 <!-- File Upload Zone -->
-                <div class="upload-zone" id="upload-zone" onclick="document.getElementById('logo-upload').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave(event)">
-                    <input type="file" id="logo-upload" accept="video/*,image/*" style="display:none" onchange="handleFileSelect(event)">
+                <div class="upload-zone" id="upload-zone" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave(event)">
+                    <input type="file" id="logo-upload" accept="video/*,image/*" style="display:none">
                     <div class="upload-icon">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -506,6 +506,25 @@ let hasChanges = false;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
+    // Set up click handler for upload zone
+    const uploadZone = document.getElementById('upload-zone');
+    const fileInput = document.getElementById('logo-upload');
+    
+    uploadZone.addEventListener('click', function(e) {
+        // Don't trigger if clicking on the file input itself
+        if (e.target !== fileInput) {
+            fileInput.click();
+        }
+    });
+    
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            uploadFile(file);
+        }
+    });
+    
+    // Load existing logo if path is set
     const path = document.getElementById('logo-path').value;
     if (path) {
         loadLogoFromPath();
@@ -516,7 +535,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function handleFileSelect(event) {
     const file = event.target.files[0];
     if (file) {
-        processFile(file);
+        uploadFile(file);
     }
 }
 
@@ -546,6 +565,8 @@ function handleDrop(event) {
 async function uploadFile(file) {
     // Show uploading state
     const uploadZone = document.getElementById('upload-zone');
+    const originalHTML = uploadZone.innerHTML;
+    
     uploadZone.innerHTML = `
         <div class="upload-icon">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
@@ -582,9 +603,9 @@ async function uploadFile(file) {
         showToast('Upload failed: ' + error.message, 'error');
     }
     
-    // Restore upload zone
+    // Restore upload zone and re-attach event listeners
     uploadZone.innerHTML = `
-        <input type="file" id="logo-upload" accept="video/*,image/*" style="display:none" onchange="handleFileSelect(event)">
+        <input type="file" id="logo-upload" accept="video/*,image/*" style="display:none">
         <div class="upload-icon">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -595,6 +616,15 @@ async function uploadFile(file) {
         <p class="upload-text">Click or drag to upload logo</p>
         <p class="upload-hint">Supports MP4, WebM, PNG, JPG, SVG</p>
     `;
+    
+    // Re-attach file input listener
+    const fileInput = document.getElementById('logo-upload');
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            uploadFile(file);
+        }
+    });
 }
 
 function processFile(file) {
