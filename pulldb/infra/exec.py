@@ -22,6 +22,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from pulldb.domain.models import CommandResult
+
 
 STDOUT_LIMIT = 200_000  # 200 KB safety cap
 STDERR_LIMIT = 200_000
@@ -63,19 +65,6 @@ class CommandTimeoutError(Exception):
         super().__init__(
             f"Command timed out after {timeout_seconds}s: {' '.join(command)}"
         )
-
-
-@dataclass(slots=True)
-class CommandResult:
-    """Captured results of a subprocess execution."""
-
-    command: list[str]
-    exit_code: int
-    started_at: datetime
-    completed_at: datetime
-    duration_seconds: float
-    stdout: str
-    stderr: str
 
 
 def _truncate(data: bytes, limit: int) -> str:
@@ -253,3 +242,26 @@ def run_command_streaming(
         stdout=_truncate_str(stdout_str, STDOUT_LIMIT),
         stderr="",  # Merged into stdout
     )
+
+
+class SubprocessExecutor:
+    """Executor implementation using subprocess."""
+
+    def run_command(self, command: list[str], env: dict[str, str] | None = None) -> int:
+        """Run command and return exit code."""
+        result = run_command(command, env=env)
+        return result.exit_code
+
+    def run_command_streaming(
+        self,
+        command: Sequence[str],
+        line_callback: t.Callable[[str], None],
+        *,
+        env: Mapping[str, str] | None = None,
+        timeout: float | None = None,
+        cwd: str | None = None,
+    ) -> CommandResult:
+        """Execute command, streaming merged stdout/stderr to callback."""
+        return run_command_streaming(
+            command, line_callback, env=env, timeout=timeout, cwd=cwd
+        )

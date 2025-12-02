@@ -230,3 +230,63 @@ class Setting:
     setting_value: str
     description: str | None
     updated_at: datetime
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    """Captured results of a subprocess execution."""
+
+    command: list[str]
+    exit_code: int
+    started_at: datetime
+    completed_at: datetime
+    duration_seconds: float
+    stdout: str
+    stderr: str
+
+
+@dataclass(frozen=True)
+class MySQLCredentials:
+    """MySQL database connection credentials.
+
+    Attributes:
+        username: MySQL username for authentication.
+        password: MySQL password for authentication.
+        host: MySQL server hostname or endpoint.
+        port: MySQL server port (default: 3306).
+        dbClusterIdentifier: Optional RDS/Aurora cluster identifier for rotation.
+    """
+
+    username: str
+    password: str
+    host: str
+    port: int = 3306
+    db_cluster_identifier: str | None = None
+
+    def __repr__(self) -> str:
+        """Return string representation with password redacted."""
+        return (
+            f"MySQLCredentials(username={self.username!r}, "
+            f"password='***REDACTED***', "
+            f"host={self.host!r}, "
+            f"port={self.port})"
+        )
+
+
+@dataclass(frozen=True)
+class UserSummary:
+    """User summary with job statistics."""
+
+    user: User
+    active_jobs_count: int
+
+
+@dataclass(frozen=True)
+class UserDetail:
+    """Detailed user statistics."""
+
+    user: User
+    total_jobs: int
+    complete_jobs: int
+    failed_jobs: int
+    active_jobs: int
