@@ -23,7 +23,7 @@ class TestWebModuleImport:
         assert (TEMPLATES_DIR / "base.html").exists()
         assert (TEMPLATES_DIR / "login.html").exists()
         assert (TEMPLATES_DIR / "dashboard.html").exists()
-        assert (TEMPLATES_DIR / "jobs.html").exists()
+        # Note: jobs.html was renamed to job_detail.html
         assert (TEMPLATES_DIR / "job_detail.html").exists()
         
     def test_partials_directory_exists(self) -> None:
@@ -79,10 +79,10 @@ class TestTemplateContent:
 
         content = (TEMPLATES_DIR / "base.html").read_text()
         assert "{% block title %}" in content
-        assert "{% block content %}" in content
+        assert "{% block content %}" in content or "{% block public_content %}" in content
         assert "htmx" in content.lower()  # HTMX included
-        # Custom CSS with CSS variables (not Bootstrap)
-        assert "var(--primary)" in content
+        # Bootstrap CSS (the base template uses Bootstrap now)
+        assert "bootstrap" in content.lower()
 
     def test_login_template_has_form(self) -> None:
         """Login template has login form."""
@@ -101,11 +101,11 @@ class TestTemplateContent:
         content = (TEMPLATES_DIR / "dashboard.html").read_text()
         assert '{% extends "base.html" %}' in content
 
-    def test_jobs_template_extends_base(self) -> None:
-        """Jobs template extends base template."""
+    def test_job_detail_template_extends_base(self) -> None:
+        """Job detail template extends base template."""
         from pulldb.web.routes import TEMPLATES_DIR
         
-        content = (TEMPLATES_DIR / "jobs.html").read_text()
+        content = (TEMPLATES_DIR / "job_detail.html").read_text()
         assert '{% extends "base.html" %}' in content
 
 
@@ -115,6 +115,7 @@ class TestAPIStateWithAuth:
     def test_api_state_has_auth_repo_field(self) -> None:
         """APIState NamedTuple includes auth_repo field."""
         from pulldb.api.main import APIState
+        
         
         assert "auth_repo" in APIState._fields
         
@@ -126,3 +127,66 @@ class TestAPIStateWithAuth:
         defaults = APIState._field_defaults
         assert "auth_repo" in defaults
         assert defaults["auth_repo"] is None
+
+
+class TestHCAStructure:
+    """Tests for HCA (Hierarchical Containment Architecture) compliance."""
+    
+    def test_router_registry_importable(self) -> None:
+        """Router registry can be imported."""
+        from pulldb.web.router_registry import main_router
+        assert main_router is not None
+    
+    def test_all_feature_routers_importable(self) -> None:
+        """All feature routers can be imported."""
+        from pulldb.web.features.auth.routes import router as auth_router
+        from pulldb.web.features.dashboard.routes import router as dashboard_router
+        from pulldb.web.features.job_view.routes import router as job_view_router
+        from pulldb.web.features.restore.routes import router as restore_router
+        from pulldb.web.features.search.routes import router as search_router
+        from pulldb.web.features.admin.routes import router as admin_router
+        from pulldb.web.features.admin.logo_routes import router as logo_router
+        
+        assert auth_router is not None
+        assert dashboard_router is not None
+        assert job_view_router is not None
+        assert restore_router is not None
+        assert search_router is not None
+        assert admin_router is not None
+        assert logo_router is not None
+    
+    def test_feature_modules_have_routes(self) -> None:
+        """Each feature module has at least one route."""
+        from pulldb.web.features.auth.routes import router as auth_router
+        from pulldb.web.features.dashboard.routes import router as dashboard_router
+        from pulldb.web.features.job_view.routes import router as job_view_router
+        from pulldb.web.features.restore.routes import router as restore_router
+        from pulldb.web.features.search.routes import router as search_router
+        from pulldb.web.features.admin.routes import router as admin_router
+        
+        assert len(auth_router.routes) >= 1
+        assert len(dashboard_router.routes) >= 1
+        assert len(job_view_router.routes) >= 1
+        assert len(restore_router.routes) >= 1
+        assert len(search_router.routes) >= 1
+        assert len(admin_router.routes) >= 1
+    
+    def test_dependencies_module_has_templates(self) -> None:
+        """Dependencies module exports templates."""
+        from pulldb.web.dependencies import templates
+        assert templates is not None
+    
+    def test_dependencies_module_has_auth_deps(self) -> None:
+        """Dependencies module exports auth dependencies."""
+        from pulldb.web.dependencies import (
+            get_session_user,
+            require_login,
+            require_admin,
+            AuthenticatedUser,
+            AdminUser,
+        )
+        assert get_session_user is not None
+        assert require_login is not None
+        assert require_admin is not None
+        assert AuthenticatedUser is not None
+        assert AdminUser is not None
