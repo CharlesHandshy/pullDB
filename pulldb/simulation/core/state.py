@@ -22,6 +22,10 @@ class SimulationState:
     hosts: dict[str, DBHost] = field(default_factory=dict)
     settings: dict[str, str] = field(default_factory=dict)
     job_events: list[JobEvent] = field(default_factory=list)
+    
+    # S3 State
+    # bucket_name -> list of keys
+    s3_buckets: dict[str, list[str]] = field(default_factory=dict)
 
     # Indexes (for performance/lookups)
     # user_code -> User
@@ -38,6 +42,7 @@ class SimulationState:
             self.hosts.clear()
             self.settings.clear()
             self.job_events.clear()
+            self.s3_buckets.clear()
             self.users_by_code.clear()
 
 
@@ -48,3 +53,8 @@ _state = SimulationState()
 def get_simulation_state() -> SimulationState:
     """Get the global simulation state instance."""
     return _state
+
+
+def reset_simulation() -> None:
+    """Reset simulation state (for testing)."""
+    _state.clear()
