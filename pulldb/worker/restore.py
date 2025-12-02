@@ -21,7 +21,7 @@ from typing import Any
 
 from pulldb.domain.config import Config
 from pulldb.domain.errors import MyLoaderError
-from pulldb.domain.models import Job
+from pulldb.domain.models import CommandResult, Job
 from pulldb.domain.restore_models import (
     MyLoaderResult,
     MyLoaderSpec,
@@ -29,7 +29,6 @@ from pulldb.domain.restore_models import (
 )
 from pulldb.infra.exec import (
     CommandExecutionError,
-    CommandResult,
     CommandTimeoutError,
     run_command_streaming,
 )

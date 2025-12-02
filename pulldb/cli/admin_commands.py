@@ -17,29 +17,6 @@ from datetime import datetime
 import click
 
 
-def _get_mysql_pool() -> t.Any:
-    """Get MySQL connection pool using bootstrap config."""
-    from pulldb.infra.mysql import MySQLPool
-    from pulldb.infra.secrets import CredentialResolver
-
-    secret_ref = os.getenv(
-        "PULLDB_COORDINATION_SECRET", "aws-secretsmanager:/pulldb/mysql/coordination-db"
-    )
-
-    aws_profile = os.getenv("PULLDB_AWS_PROFILE")
-    resolver = CredentialResolver(aws_profile=aws_profile)
-    creds = resolver.resolve(secret_ref)
-
-    mysql_user = os.getenv("PULLDB_API_MYSQL_USER", "pulldb_api")
-    mysql_database = os.getenv("PULLDB_MYSQL_DATABASE", "pulldb_service")
-
-    return MySQLPool(
-        host=creds.host,
-        user=mysql_user,
-        password=creds.password,
-        database=mysql_database,
-        port=creds.port,
-    )
 
 
 # =============================================================================
@@ -100,62 +77,32 @@ def jobs_list(
     By default shows most recent jobs. Use --active to show only
     queued/running jobs.
     """
-    pool = _get_mysql_pool()
+    from dataclasses import asdict
+    from pulldb.infra.factory import get_job_repository
 
-    # Build query
-    conditions = []
-    params: list[t.Any] = []
+    repo = get_job_repository()
 
-    if active:
-        conditions.append("j.status IN ('queued', 'running')")
-    elif status_filter:
-        conditions.append("j.status = %s")
-        params.append(status_filter)
-
-    if user_filter:
-        conditions.append("(u.username LIKE %s OR u.user_code LIKE %s)")
-        params.extend([f"%{user_filter}%", f"%{user_filter}%"])
-
-    if dbhost:
-        conditions.append("j.dbhost = %s")
-        params.append(dbhost)
-
-    where_clause = " AND ".join(conditions) if conditions else "1=1"
-    params.append(limit)
-
-    query = f"""
-        SELECT
-            j.id,
-            j.status,
-            j.target,
-            j.dbhost,
-            u.username,
-            u.user_code,
-            j.submitted_at,
-            j.started_at,
-            j.finished_at,
-            j.current_operation
-        FROM jobs j
-        JOIN auth_users u ON j.owner_id = u.id
-        WHERE {where_clause}
-        ORDER BY j.submitted_at DESC
-        LIMIT %s
-    """
-
-    with pool.connection() as conn, conn.cursor() as cursor:
-        cursor.execute(query, tuple(params))
-        rows = cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description]
-
-    jobs = [dict(zip(columns, row)) for row in rows]
+    jobs = repo.list_jobs(
+        limit=limit,
+        active_only=active,
+        user_filter=user_filter,
+        dbhost=dbhost,
+        status_filter=status_filter,
+    )
 
     if json_out:
-        # Convert datetime objects to strings
+        jobs_dict = []
         for job in jobs:
-            for key in ["submitted_at", "started_at", "finished_at"]:
-                if job.get(key) and isinstance(job[key], datetime):
-                    job[key] = job[key].isoformat()
-        click.echo(json.dumps(jobs, indent=2))
+            d = asdict(job)
+            # Convert enums to values
+            d["status"] = job.status.value
+            # Convert datetimes to strings
+            for key in ["submitted_at", "started_at", "completed_at"]:
+                if d.get(key) and isinstance(d[key], datetime):
+                    d[key] = d[key].isoformat()
+            jobs_dict.append(d)
+
+        click.echo(json.dumps(jobs_dict, indent=2))
         return
 
     if not jobs:
@@ -167,16 +114,20 @@ def jobs_list(
     rows_out: list[list[str]] = []
 
     for job in jobs:
-        submitted = job.get("submitted_at")
+        submitted = job.submitted_at
         submitted_str = submitted.strftime("%Y-%m-%d %H:%M") if submitted else "-"
+        
+        # current_operation might be None or string
+        op = job.current_operation or "-"
+
         rows_out.append(
             [
-                str(job.get("id", ""))[:12],
-                str(job.get("status", "")),
-                str(job.get("current_operation") or "-")[:15],
-                str(job.get("target", ""))[:20],
-                str(job.get("dbhost", ""))[:12],
-                str(job.get("user_code", ""))[:8],
+                str(job.id)[:12],
+                job.status.value,
+                op[:15],
+                job.target[:20],
+                job.dbhost[:12],
+                job.owner_user_code[:8],
                 submitted_str,
             ]
         )
@@ -196,7 +147,7 @@ def jobs_list(
         click.echo("  ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row)))
 
     # Summary
-    active_count = sum(1 for j in jobs if j.get("status") in ("queued", "running"))
+    active_count = sum(1 for j in jobs if j.status.value in ("queued", "running"))
     click.echo(f"\nTotal: {len(jobs)} job(s) ({active_count} active)")
 
 
@@ -210,37 +161,31 @@ def jobs_cancel(job_id: str, force: bool) -> None:
             click.echo("Aborted.")
             return
 
-    pool = _get_mysql_pool()
+    from pulldb.infra.factory import get_job_repository
 
-    with pool.connection() as conn, conn.cursor() as cursor:
-        # Check job exists and is cancellable
-        cursor.execute(
-            "SELECT status FROM jobs WHERE id = %s OR id LIKE %s",
-            (job_id, f"{job_id}%"),
-        )
-        row = cursor.fetchone()
-        if not row:
+    repo = get_job_repository()
+
+    # Resolve job ID
+    job = repo.get_job_by_id(job_id)
+    if not job:
+        # Try prefix search
+        candidates = repo.find_jobs_by_prefix(job_id)
+        if not candidates:
             raise click.ClickException(f"Job not found: {job_id}")
+        if len(candidates) > 1:
+            raise click.ClickException(
+                f"Ambiguous job ID prefix '{job_id}'. Matches: "
+                + ", ".join(j.id[:8] for j in candidates)
+            )
+        job = candidates[0]
 
-        status = row[0]
-        if status in ("complete", "failed", "canceled"):
-            raise click.ClickException(f"Job is already {status}, cannot cancel.")
+    if job.status.value in ("complete", "failed", "canceled"):
+        raise click.ClickException(f"Job is already {job.status.value}, cannot cancel.")
 
-        # Update job
-        cursor.execute(
-            """
-                UPDATE jobs
-                SET cancel_requested_at = NOW()
-                WHERE (id = %s OR id LIKE %s) AND status IN ('queued', 'running')
-                """,
-            (job_id, f"{job_id}%"),
-        )
-        conn.commit()
-
-        if cursor.rowcount == 0:
-            raise click.ClickException("Failed to cancel job.")
-
-    click.echo(f"✓ Cancellation requested for job {job_id[:12]}...")
+    if repo.request_cancellation(job.id):
+        click.echo(f"✓ Cancellation requested for job {job.id[:12]}...")
+    else:
+        raise click.ClickException("Failed to cancel job.")
 
 
 # =============================================================================
@@ -290,43 +235,19 @@ def cleanup_cmd(
     if dry_run and execute:
         raise click.UsageError("Cannot specify both --dry-run and --execute")
 
-    pool = _get_mysql_pool()
+    from pulldb.infra.factory import get_job_repository
 
-    # Find orphaned staging databases (jobs completed but staging not cleaned)
-    query = """
-        SELECT
-            j.id,
-            j.staging_name,
-            j.dbhost,
-            j.status,
-            j.finished_at
-        FROM jobs j
-        WHERE j.staging_name IS NOT NULL
-          AND j.staging_cleaned_at IS NULL
-          AND j.status IN ('complete', 'failed', 'canceled')
-          AND j.finished_at < DATE_SUB(NOW(), INTERVAL %s HOUR)
-    """
-    params: list[t.Any] = [older_than]
-
-    if dbhost:
-        query += " AND j.dbhost = %s"
-        params.append(dbhost)
-
-    with pool.connection() as conn, conn.cursor() as cursor:
-        cursor.execute(query, tuple(params))
-        rows = cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description]
-
-    orphans = [dict(zip(columns, row)) for row in rows]
+    repo = get_job_repository()
+    orphans = repo.find_orphaned_staging_databases(older_than, dbhost)
 
     if not orphans:
         click.echo("No orphaned staging databases found.")
         return
 
     # Group by host
-    by_host: dict[str, list[dict[str, t.Any]]] = {}
+    by_host: dict[str, list[t.Any]] = {}
     for orphan in orphans:
-        host = orphan.get("dbhost", "unknown")
+        host = orphan.dbhost or "unknown"
         by_host.setdefault(host, []).append(orphan)
 
     if dry_run:
@@ -337,10 +258,10 @@ def cleanup_cmd(
         for host, items in sorted(by_host.items()):
             click.echo(f"  {host}:")
             for item in items:
-                finished = item.get("finished_at")
+                finished = item.finished_at
                 finished_str = finished.strftime("%Y-%m-%d") if finished else "?"
                 click.echo(
-                    f"    - {item.get('staging_name')} (job {item.get('status')} {finished_str})"
+                    f"    - {item.staging_name} (job {item.status.value} {finished_str})"
                 )
                 total_count += 1
 
@@ -357,18 +278,13 @@ def cleanup_cmd(
     for host, items in sorted(by_host.items()):
         click.echo(f"Processing {host}...")
         for item in items:
-            staging_name = item.get("staging_name")
-            job_id = item.get("id")
+            staging_name = item.staging_name
+            job_id = item.id
 
             try:
                 # In a real implementation, we would connect to the target host
                 # and drop the staging database. For now, we just mark it cleaned.
-                with pool.connection() as conn, conn.cursor() as cursor:
-                    cursor.execute(
-                        "UPDATE jobs SET staging_cleaned_at = NOW() WHERE id = %s",
-                        (job_id,),
-                    )
-                    conn.commit()
+                repo.mark_staging_cleaned(job_id)
                 click.echo(f"  ✓ Marked cleaned: {staging_name}")
                 cleaned += 1
             except Exception as e:
@@ -396,29 +312,20 @@ def hosts_group() -> None:
 @click.option("--json", "json_out", is_flag=True, help="Output JSON")
 def hosts_list(json_out: bool) -> None:
     """List all registered database hosts."""
-    pool = _get_mysql_pool()
+    from dataclasses import asdict
+    from pulldb.infra.factory import get_host_repository
 
-    with pool.connection() as conn, conn.cursor() as cursor:
-        cursor.execute("""
-                SELECT
-                    hostname,
-                    max_concurrent_jobs,
-                    enabled,
-                    credential_reference,
-                    created_at
-                FROM db_hosts
-                ORDER BY hostname
-            """)
-        rows = cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description]
-
-    hosts = [dict(zip(columns, row)) for row in rows]
+    repo = get_host_repository()
+    hosts = repo.get_all_hosts()
 
     if json_out:
+        hosts_dict = []
         for host in hosts:
-            if host.get("created_at"):
-                host["created_at"] = host["created_at"].isoformat()
-        click.echo(json.dumps(hosts, indent=2))
+            d = asdict(host)
+            if d.get("created_at"):
+                d["created_at"] = d["created_at"].isoformat()
+            hosts_dict.append(d)
+        click.echo(json.dumps(hosts_dict, indent=2))
         return
 
     if not hosts:
@@ -429,14 +336,14 @@ def hosts_list(json_out: bool) -> None:
     rows_out: list[list[str]] = []
 
     for host in hosts:
-        cred_ref = host.get("credential_reference") or "-"
+        cred_ref = host.credential_ref or "-"
         if len(cred_ref) > 40:
             cred_ref = cred_ref[:37] + "..."
         rows_out.append(
             [
-                str(host.get("hostname", "")),
-                str(host.get("max_concurrent_jobs", 1)),
-                "Yes" if host.get("enabled") else "No",
+                str(host.hostname),
+                str(host.max_concurrent_restores),
+                "Yes" if host.enabled else "No",
                 cred_ref,
             ]
         )
@@ -453,7 +360,7 @@ def hosts_list(json_out: bool) -> None:
     for row in rows_out:
         click.echo("  ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row)))
 
-    enabled_count = sum(1 for h in hosts if h.get("enabled"))
+    enabled_count = sum(1 for h in hosts if h.enabled)
     click.echo(f"\nTotal: {len(hosts)} host(s) ({enabled_count} enabled)")
 
 
@@ -461,15 +368,13 @@ def hosts_list(json_out: bool) -> None:
 @click.argument("hostname")
 def hosts_enable(hostname: str) -> None:
     """Enable a database host (allow new jobs)."""
-    pool = _get_mysql_pool()
+    from pulldb.infra.factory import get_host_repository
 
-    with pool.connection() as conn, conn.cursor() as cursor:
-        cursor.execute(
-            "UPDATE db_hosts SET enabled = TRUE WHERE hostname = %s", (hostname,)
-        )
-        conn.commit()
-        if cursor.rowcount == 0:
-            raise click.ClickException(f"Host not found: {hostname}")
+    repo = get_host_repository()
+    try:
+        repo.enable_host(hostname)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
 
     click.echo(f"✓ Host {hostname} enabled")
 
@@ -478,15 +383,13 @@ def hosts_enable(hostname: str) -> None:
 @click.argument("hostname")
 def hosts_disable(hostname: str) -> None:
     """Disable a database host (prevent new jobs)."""
-    pool = _get_mysql_pool()
+    from pulldb.infra.factory import get_host_repository
 
-    with pool.connection() as conn, conn.cursor() as cursor:
-        cursor.execute(
-            "UPDATE db_hosts SET enabled = FALSE WHERE hostname = %s", (hostname,)
-        )
-        conn.commit()
-        if cursor.rowcount == 0:
-            raise click.ClickException(f"Host not found: {hostname}")
+    repo = get_host_repository()
+    try:
+        repo.disable_host(hostname)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
 
     click.echo(f"✓ Host {hostname} disabled")
 
@@ -506,25 +409,13 @@ def hosts_disable(hostname: str) -> None:
 )
 def hosts_add(hostname: str, max_concurrent: int, credential_ref: str | None) -> None:
     """Add a new database host."""
-    pool = _get_mysql_pool()
+    from pulldb.infra.factory import get_host_repository
 
-    with pool.connection() as conn:
-        with conn.cursor() as cursor:
-            try:
-                cursor.execute(
-                    """
-                    INSERT INTO db_hosts (hostname, max_concurrent_jobs, enabled, credential_reference)
-                    VALUES (%s, %s, TRUE, %s)
-                    """,
-                    (hostname, max_concurrent, credential_ref),
-                )
-                conn.commit()
-            except Exception as e:
-                if "Duplicate" in str(e):
-                    raise click.ClickException(
-                        f"Host already exists: {hostname}"
-                    ) from e
-                raise
+    repo = get_host_repository()
+    try:
+        repo.add_host(hostname, max_concurrent, credential_ref)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
 
     click.echo(f"✓ Host {hostname} added")
 
@@ -544,51 +435,41 @@ def users_group() -> None:
 @click.option("--json", "json_out", is_flag=True, help="Output JSON")
 def users_list(json_out: bool) -> None:
     """List all registered users."""
-    pool = _get_mysql_pool()
+    from dataclasses import asdict
+    from pulldb.infra.factory import get_user_repository
 
-    with pool.connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT
-                    u.id,
-                    u.username,
-                    u.user_code,
-                    u.is_admin,
-                    u.disabled,
-                    u.created_at,
-                    (SELECT COUNT(*) FROM jobs j WHERE j.owner_id = u.id AND j.status IN ('queued', 'running')) as active_jobs
-                FROM auth_users u
-                ORDER BY u.username
-            """)
-            rows = cursor.fetchall()
-            columns = [desc[0] for desc in cursor.description]
-
-    users = [dict(zip(columns, row)) for row in rows]
+    repo = get_user_repository()
+    summaries = repo.get_users_with_job_counts()
 
     if json_out:
-        for user in users:
-            if user.get("created_at"):
-                user["created_at"] = user["created_at"].isoformat()
-        click.echo(json.dumps(users, indent=2))
+        users_dict = []
+        for summary in summaries:
+            d = asdict(summary.user)
+            d["active_jobs"] = summary.active_jobs_count
+            if d.get("created_at"):
+                d["created_at"] = d["created_at"].isoformat()
+            users_dict.append(d)
+        click.echo(json.dumps(users_dict, indent=2))
         return
 
-    if not users:
+    if not summaries:
         click.echo("No users registered.")
         return
 
     headers = ["USERNAME", "USER_CODE", "ADMIN", "ACTIVE_JOBS", "DISABLED", "CREATED"]
     rows_out: list[list[str]] = []
 
-    for user in users:
-        created = user.get("created_at")
+    for summary in summaries:
+        user = summary.user
+        created = user.created_at
         created_str = created.strftime("%Y-%m-%d") if created else "-"
         rows_out.append(
             [
-                str(user.get("username", ""))[:15],
-                str(user.get("user_code", ""))[:8],
-                "Yes" if user.get("is_admin") else "No",
-                str(user.get("active_jobs", 0)),
-                "Yes" if user.get("disabled") else "No",
+                str(user.username)[:15],
+                str(user.user_code)[:8],
+                "Yes" if user.is_admin else "No",
+                str(summary.active_jobs_count),
+                "Yes" if user.disabled_at else "No",
                 created_str,
             ]
         )
@@ -605,23 +486,21 @@ def users_list(json_out: bool) -> None:
     for row in rows_out:
         click.echo("  ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row)))
 
-    click.echo(f"\nTotal: {len(users)} user(s)")
+    click.echo(f"\nTotal: {len(summaries)} user(s)")
+
 
 
 @users_group.command("enable")
 @click.argument("username")
 def users_enable(username: str) -> None:
     """Enable a user (allow new jobs)."""
-    pool = _get_mysql_pool()
+    from pulldb.infra.factory import get_user_repository
 
-    with pool.connection() as conn, conn.cursor() as cursor:
-        cursor.execute(
-            "UPDATE auth_users SET disabled = FALSE WHERE username = %s",
-            (username,),
-        )
-        conn.commit()
-        if cursor.rowcount == 0:
-            raise click.ClickException(f"User not found: {username}")
+    repo = get_user_repository()
+    try:
+        repo.enable_user(username)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
 
     click.echo(f"✓ User {username} enabled")
 
@@ -630,15 +509,13 @@ def users_enable(username: str) -> None:
 @click.argument("username")
 def users_disable(username: str) -> None:
     """Disable a user (prevent new jobs)."""
-    pool = _get_mysql_pool()
+    from pulldb.infra.factory import get_user_repository
 
-    with pool.connection() as conn, conn.cursor() as cursor:
-        cursor.execute(
-            "UPDATE auth_users SET disabled = TRUE WHERE username = %s", (username,)
-        )
-        conn.commit()
-        if cursor.rowcount == 0:
-            raise click.ClickException(f"User not found: {username}")
+    repo = get_user_repository()
+    try:
+        repo.disable_user(username)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
 
     click.echo(f"✓ User {username} disabled")
 
@@ -647,45 +524,25 @@ def users_disable(username: str) -> None:
 @click.argument("username")
 def users_show(username: str) -> None:
     """Show details for a specific user."""
-    pool = _get_mysql_pool()
+    from pulldb.infra.factory import get_user_repository
 
-    with pool.connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    u.id,
-                    u.username,
-                    u.user_code,
-                    u.is_admin,
-                    u.disabled,
-                    u.created_at,
-                    (SELECT COUNT(*) FROM jobs j WHERE j.owner_id = u.id) as total_jobs,
-                    (SELECT COUNT(*) FROM jobs j WHERE j.owner_id = u.id AND j.status = 'complete') as complete_jobs,
-                    (SELECT COUNT(*) FROM jobs j WHERE j.owner_id = u.id AND j.status = 'failed') as failed_jobs,
-                    (SELECT COUNT(*) FROM jobs j WHERE j.owner_id = u.id AND j.status IN ('queued', 'running')) as active_jobs
-                FROM auth_users u
-                WHERE u.username = %s
-            """,
-                (username,),
-            )
-            row = cursor.fetchone()
-            if not row:
-                raise click.ClickException(f"User not found: {username}")
-            columns = [desc[0] for desc in cursor.description]
+    repo = get_user_repository()
+    detail = repo.get_user_detail(username)
 
-    user = dict(zip(columns, row))
+    if not detail:
+        raise click.ClickException(f"User not found: {username}")
 
-    click.echo(f"User: {user.get('username')}")
-    click.echo(f"  User Code: {user.get('user_code')}")
-    click.echo(f"  Admin: {'Yes' if user.get('is_admin') else 'No'}")
-    click.echo(f"  Disabled: {'Yes' if user.get('disabled') else 'No'}")
-    created = user.get("created_at")
+    user = detail.user
+    click.echo(f"User: {user.username}")
+    click.echo(f"  User Code: {user.user_code}")
+    click.echo(f"  Admin: {'Yes' if user.is_admin else 'No'}")
+    click.echo(f"  Disabled: {'Yes' if user.disabled_at else 'No'}")
+    created = user.created_at
     click.echo(
         f"  Created: {created.strftime('%Y-%m-%d %H:%M:%S') if created else '-'}"
     )
     click.echo("\nJob Statistics:")
-    click.echo(f"  Total Jobs: {user.get('total_jobs', 0)}")
-    click.echo(f"  Complete: {user.get('complete_jobs', 0)}")
-    click.echo(f"  Failed: {user.get('failed_jobs', 0)}")
-    click.echo(f"  Active: {user.get('active_jobs', 0)}")
+    click.echo(f"  Total Jobs: {detail.total_jobs}")
+    click.echo(f"  Complete:   {detail.complete_jobs}")
+    click.echo(f"  Failed:     {detail.failed_jobs}")
+    click.echo(f"  Active:     {detail.active_jobs}")

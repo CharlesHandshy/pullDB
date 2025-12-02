@@ -19,7 +19,7 @@ import mysql.connector
 from mysql.connector import errorcode
 from mysql.connector import errors as mysql_errors
 
-from pulldb.domain.models import DBHost, Job, JobEvent, JobStatus, User, UserRole
+from pulldb.domain.models import DBHost, Job, JobEvent, JobStatus, User, UserRole, UserSummary, UserDetail
 from pulldb.infra.secrets import CredentialResolver, MySQLCredentials
 
 
@@ -790,6 +790,59 @@ class JobRepository:
             rows = cursor.fetchall()
             return [self._row_to_job(row) for row in rows]
 
+    def list_jobs(
+        self,
+        limit: int = 20,
+        active_only: bool = False,
+        user_filter: str | None = None,
+        dbhost: str | None = None,
+        status_filter: str | None = None,
+    ) -> list[Job]:
+        """List jobs with flexible filtering for Admin CLI.
+
+        Args:
+            limit: Maximum number of jobs to return.
+            active_only: If True, only return queued/running jobs.
+            user_filter: Filter by username or user_code (partial match).
+            dbhost: Filter by target database host.
+            status_filter: Filter by specific status.
+
+        Returns:
+            List of matching jobs ordered by submission time (newest first).
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+
+            query = """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail, worker_id
+                FROM jobs
+                WHERE 1=1
+            """
+            params: list[t.Any] = []
+
+            if active_only:
+                query += " AND status IN ('queued', 'running')"
+            elif status_filter:
+                query += " AND status = %s"
+                params.append(status_filter)
+
+            if user_filter:
+                query += " AND (owner_username LIKE %s OR owner_user_code LIKE %s)"
+                params.extend([f"%{user_filter}%", f"%{user_filter}%"])
+
+            if dbhost:
+                query += " AND dbhost = %s"
+                params.append(dbhost)
+
+            query += " ORDER BY submitted_at DESC LIMIT %s"
+            params.append(limit)
+
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
+
     def _fetch_active_job_rows(self, cursor: t.Any) -> list[dict[str, t.Any]]:
         """Fetch active jobs using view when available.
 
@@ -1271,6 +1324,56 @@ class JobRepository:
 
         return event_type.replace("_", " ").capitalize()
 
+    def find_orphaned_staging_databases(
+        self, older_than_hours: int, dbhost: str | None = None
+    ) -> list[Job]:
+        """Find jobs with uncleaned staging databases.
+
+        Args:
+            older_than_hours: Minimum age of finished_at in hours.
+            dbhost: Optional filter by database host.
+
+        Returns:
+            List of Job instances representing orphaned staging databases.
+        """
+        query = """
+            SELECT
+                id, owner_user_id, owner_username, owner_user_code, target,
+                staging_name, dbhost, status, submitted_at, started_at,
+                completed_at, finished_at, options_json, retry_count,
+                error_detail, staging_cleaned_at
+            FROM jobs
+            WHERE staging_name IS NOT NULL
+              AND staging_cleaned_at IS NULL
+              AND status IN ('complete', 'failed', 'canceled')
+              AND finished_at < DATE_SUB(NOW(), INTERVAL %s HOUR)
+        """
+        params: list[t.Any] = [older_than_hours]
+
+        if dbhost:
+            query += " AND dbhost = %s"
+            params.append(dbhost)
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
+
+    def mark_staging_cleaned(self, job_id: str) -> None:
+        """Mark staging database as cleaned.
+
+        Args:
+            job_id: Job ID to update.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE jobs SET staging_cleaned_at = NOW() WHERE id = %s",
+                (job_id,),
+            )
+            conn.commit()
+
     def _row_to_active_job(self, row: dict[str, t.Any]) -> Job:
         """Convert active_jobs view row to Job dataclass.
 
@@ -1546,6 +1649,108 @@ class UserRepository:
             count: int = result[0]
             return count > 0
 
+    def get_users_with_job_counts(self) -> list[UserSummary]:
+        """Get users with active job counts.
+
+        Returns:
+            List of UserSummary instances.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT
+                    u.user_id, u.username, u.user_code, u.is_admin, u.role,
+                    u.created_at, u.disabled_at,
+                    (SELECT COUNT(*) FROM jobs j WHERE j.owner_user_id = u.user_id AND j.status IN ('queued', 'running')) as active_jobs
+                FROM auth_users u
+                ORDER BY u.username
+                """
+            )
+            rows = cursor.fetchall()
+            
+            summaries = []
+            for row in rows:
+                user = self._row_to_user(row)
+                summaries.append(UserSummary(user=user, active_jobs_count=row["active_jobs"]))
+            return summaries
+
+    def enable_user(self, username: str) -> None:
+        """Enable a user.
+
+        Args:
+            username: Username to enable.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE auth_users SET disabled_at = NULL WHERE username = %s",
+                (username,),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"User not found: {username}")
+
+    def disable_user(self, username: str) -> None:
+        """Disable a user.
+
+        Args:
+            username: Username to disable.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE auth_users SET disabled_at = UTC_TIMESTAMP(6) WHERE username = %s",
+                (username,),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"User not found: {username}")
+
+    def get_user_detail(self, username: str) -> UserDetail | None:
+        """Get detailed user statistics.
+
+        Args:
+            username: Username to look up.
+
+        Returns:
+            UserDetail instance if found, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT
+                    u.user_id, u.username, u.user_code, u.is_admin, u.role,
+                    u.created_at, u.disabled_at,
+                    (SELECT COUNT(*) FROM jobs j WHERE j.owner_user_id = u.user_id) as total_jobs,
+                    (SELECT COUNT(*) FROM jobs j WHERE j.owner_user_id = u.user_id AND j.status = 'complete') as complete_jobs,
+                    (SELECT COUNT(*) FROM jobs j WHERE j.owner_user_id = u.user_id AND j.status = 'failed') as failed_jobs,
+                    (SELECT COUNT(*) FROM jobs j WHERE j.owner_user_id = u.user_id AND j.status IN ('queued', 'running')) as active_jobs
+                FROM auth_users u
+                WHERE u.username = %s
+                """,
+                (username,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            
+            user = self._row_to_user(row)
+            return UserDetail(
+                user=user,
+                total_jobs=row["total_jobs"],
+                complete_jobs=row["complete_jobs"],
+                failed_jobs=row["failed_jobs"],
+                active_jobs=row["active_jobs"],
+            )
+
     def _row_to_user(self, row: dict[str, t.Any]) -> User:
         """Convert database row to User dataclass.
 
@@ -1696,6 +1901,25 @@ class HostRepository:
             rows = cursor.fetchall()
             return [self._row_to_dbhost(row) for row in rows]
 
+    def get_all_hosts(self) -> list[DBHost]:
+        """Get all database hosts.
+
+        Returns:
+            List of DBHost instances, ordered by hostname.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, hostname, host_alias, credential_ref, max_concurrent_restores,
+                       enabled, created_at
+                FROM db_hosts
+                ORDER BY hostname ASC
+                """
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_dbhost(row) for row in rows]
+
     def get_host_credentials(self, hostname: str) -> MySQLCredentials:
         """Get resolved MySQL credentials for host.
 
@@ -1756,6 +1980,73 @@ class HostRepository:
                 running_count = result[0]
 
             return running_count < host.max_concurrent_restores
+
+    def add_host(
+        self, hostname: str, max_concurrent: int, credential_ref: str | None
+    ) -> None:
+        """Add a new database host.
+
+        Args:
+            hostname: Hostname of the database server.
+            max_concurrent: Maximum concurrent jobs allowed.
+            credential_ref: AWS Secrets Manager reference.
+
+        Raises:
+            ValueError: If host already exists.
+        """
+        try:
+            with self.pool.connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO db_hosts (hostname, max_concurrent_jobs, enabled, credential_reference)
+                        VALUES (%s, %s, TRUE, %s)
+                        """,
+                        (hostname, max_concurrent, credential_ref),
+                    )
+                    conn.commit()
+        except mysql.connector.IntegrityError as e:
+            if "Duplicate" in str(e):
+                raise ValueError(f"Host already exists: {hostname}") from e
+            raise
+
+    def enable_host(self, hostname: str) -> None:
+        """Enable a database host.
+
+        Args:
+            hostname: Hostname to enable.
+
+        Raises:
+            ValueError: If host not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE db_hosts SET enabled = TRUE WHERE hostname = %s",
+                (hostname,),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"Host not found: {hostname}")
+
+    def disable_host(self, hostname: str) -> None:
+        """Disable a database host.
+
+        Args:
+            hostname: Hostname to disable.
+
+        Raises:
+            ValueError: If host not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE db_hosts SET enabled = FALSE WHERE hostname = %s",
+                (hostname,),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"Host not found: {hostname}")
 
     def _row_to_dbhost(self, row: dict[str, t.Any]) -> DBHost:
         """Convert database row to DBHost dataclass.

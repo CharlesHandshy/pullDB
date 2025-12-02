@@ -175,53 +175,13 @@ def _write_env_setting(env_path: Path, env_var: str, value: str) -> bool:
 
 
 def _get_env_value_for_key(key: str, env_settings: dict[str, str]) -> str | None:
-    """Get the .env file value for a setting key."""
+    """Get the absolute env value for a setting key."""
     if key not in KNOWN_SETTINGS:
         # Try to guess env var name
         env_var = f"PULLDB_{key.upper()}"
         return env_settings.get(env_var)
     env_var, _, _ = KNOWN_SETTINGS[key]
     return env_settings.get(env_var)
-
-
-def _get_mysql_pool() -> t.Any:
-    """Get MySQL connection pool using bootstrap config.
-
-    Uses PULLDB_API_MYSQL_USER for admin CLI operations since we need
-    read/write access to the settings table.
-    """
-    from pulldb.infra.mysql import MySQLPool
-    from pulldb.infra.secrets import CredentialResolver
-
-    # Get credentials from Secrets Manager (password only)
-    secret_ref = os.getenv(
-        "PULLDB_COORDINATION_SECRET", "aws-secretsmanager:/pulldb/mysql/coordination-db"
-    )
-
-    # Use the AWS profile for Secrets Manager
-    aws_profile = os.getenv("PULLDB_AWS_PROFILE")
-    resolver = CredentialResolver(aws_profile=aws_profile)
-    creds = resolver.resolve(secret_ref)
-
-    # Use API user for admin operations
-    mysql_user = os.getenv("PULLDB_API_MYSQL_USER", "pulldb_api")
-    mysql_database = os.getenv("PULLDB_MYSQL_DATABASE", "pulldb_service")
-
-    return MySQLPool(
-        host=creds.host,
-        user=mysql_user,
-        password=creds.password,
-        database=mysql_database,
-        port=creds.port,
-    )
-
-
-def _get_settings_repo() -> t.Any:
-    """Get SettingsRepository instance."""
-    from pulldb.infra.mysql import SettingsRepository
-
-    pool = _get_mysql_pool()
-    return SettingsRepository(pool)
 
 
 def _get_setting_source(
@@ -265,8 +225,10 @@ def list_settings(show_all: bool) -> None:
     - environment: Set via environment variable / .env file
     - default: Built-in default value
     """
+    from pulldb.infra.factory import get_settings_repository
+
     try:
-        repo = _get_settings_repo()
+        repo = get_settings_repository()
         db_settings = repo.get_all_settings()
     except Exception as e:
         click.echo(f"Warning: Could not connect to database: {e}", err=True)
@@ -320,10 +282,12 @@ def get_setting(key: str) -> None:
 
     Shows values from both sources so you can see if they differ.
     """
+    from pulldb.infra.factory import get_settings_repository
+
     # Get database value
     db_value: str | None = None
     try:
-        repo = _get_settings_repo()
+        repo = get_settings_repository()
         db_settings = repo.get_all_settings()
         db_value = db_settings.get(key)
     except Exception as e:
@@ -416,8 +380,10 @@ def set_setting(
 
     # Update database
     if update_db:
+        from pulldb.infra.factory import get_settings_repository
+
         try:
-            repo = _get_settings_repo()
+            repo = get_settings_repository()
             repo.set_setting(key, value, description)
             results.append("✓ Database updated")
         except Exception as e:
@@ -450,8 +416,10 @@ def reset_setting(key: str) -> None:
 
     After reset, the setting will use its environment variable or default value.
     """
+    from pulldb.infra.factory import get_settings_repository
+
     try:
-        repo = _get_settings_repo()
+        repo = get_settings_repository()
 
         # Check current source before reset
         db_settings = repo.get_all_settings()
@@ -488,8 +456,10 @@ def export_settings(output_format: str) -> None:
     Outputs settings in .env format (default) or JSON format.
     Useful for backup or migration.
     """
+    from pulldb.infra.factory import get_settings_repository
+
     try:
-        repo = _get_settings_repo()
+        repo = get_settings_repository()
         db_settings = repo.get_all_settings()
     except Exception as e:
         click.echo(f"Warning: Could not connect to database: {e}", err=True)
@@ -527,10 +497,12 @@ def diff_settings() -> None:
     Compares settings stored in the database versus those in the .env file.
     Useful for auditing configuration drift.
     """
+    from pulldb.infra.factory import get_settings_repository
+
     # Get database settings
     db_settings: dict[str, str] = {}
     try:
-        repo = _get_settings_repo()
+        repo = get_settings_repository()
         db_settings = repo.get_all_settings()
     except Exception as e:
         raise click.ClickException(f"Could not connect to database: {e}") from e
@@ -642,9 +614,11 @@ def pull_settings(dry_run: bool) -> None:
     Copies all settings from the database into the .env file.
     Existing .env values will be overwritten with database values.
     """
+    from pulldb.infra.factory import get_settings_repository
+
     # Get database settings
     try:
-        repo = _get_settings_repo()
+        repo = get_settings_repository()
         db_settings = repo.get_all_settings()
     except Exception as e:
         raise click.ClickException(f"Could not connect to database: {e}") from e
@@ -720,8 +694,10 @@ def push_settings(dry_run: bool) -> None:
         return
 
     # Get database connection
+    from pulldb.infra.factory import get_settings_repository
+
     try:
-        repo = _get_settings_repo()
+        repo = get_settings_repository()
     except Exception as e:
         raise click.ClickException(f"Could not connect to database: {e}") from e
 

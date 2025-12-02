@@ -32,46 +32,9 @@ from typing import Any
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
+from pulldb.domain.models import MySQLCredentials
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class MySQLCredentials:
-    """MySQL database connection credentials.
-
-    Attributes:
-        username: MySQL username for authentication.
-        password: MySQL password for authentication.
-        host: MySQL server hostname or endpoint.
-        port: MySQL server port (default: 3306).
-        dbClusterIdentifier: Optional RDS/Aurora cluster identifier for rotation.
-
-    Examples:
-        >>> creds = MySQLCredentials(
-        ...     username="pulldb_app",
-        ...     password="secret123",
-        ...     host="localhost",
-        ...     port=3306,
-        ... )
-        >>> creds.host
-        'localhost'
-    """
-
-    username: str
-    password: str
-    host: str
-    port: int = 3306
-    db_cluster_identifier: str | None = None
-
-    def __repr__(self) -> str:
-        """Return string representation with password redacted."""
-        return (
-            f"MySQLCredentials(username={self.username!r}, "
-            f"password='***REDACTED***', "
-            f"host={self.host!r}, "
-            f"port={self.port})"
-        )
 
 
 class CredentialResolver:
