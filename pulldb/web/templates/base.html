@@ -429,20 +429,22 @@
             height: var(--page-header-height);
             display: flex;
             align-items: center;
-            padding: 0 var(--space-4) 0 var(--space-6);
+            padding: var(--space-2) var(--space-4) 0 var(--space-6);
             flex-shrink: 0;
             gap: var(--space-4);
         }
 
         .page-header-logo {
             display: flex;
-            align-items: center;
+            align-items: flex-end;
             flex-shrink: 0;
+            overflow: hidden;
         }
 
         .page-header-logo video {
-            height: 32px;
-            width: auto;
+            height: auto;
+            width: 52px;
+            margin-top: -15px;
         }
 
         .page-header-divider {
