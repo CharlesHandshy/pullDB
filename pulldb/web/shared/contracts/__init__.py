@@ -3,3 +3,31 @@
 HCA Layer 0: Shared contracts
 Purpose: Define interfaces that modules depend on, not implementations.
 """
+
+from pulldb.web.shared.contracts.page_contracts import (
+    AdminContext,
+    DashboardContext,
+    ErrorPageContext,
+    JobDetailContext,
+    PageContext,
+    PageRenderer,
+)
+from pulldb.web.shared.contracts.service_contracts import (
+    AuthService,
+    JobRepository,
+    UserRepository,
+)
+
+__all__ = [
+    # Page contexts
+    "PageContext",
+    "ErrorPageContext",
+    "DashboardContext",
+    "JobDetailContext",
+    "AdminContext",
+    "PageRenderer",
+    # Service contracts
+    "AuthService",
+    "UserRepository",
+    "JobRepository",
+]
