@@ -5,33 +5,33 @@
 
 ## Phase 1: Foundation & Refactoring (Interfaces)
 
-- [ ] **1.1 Define Domain Interfaces**
-    - [ ] Create `pulldb/domain/interfaces.py`.
-    - [ ] Define `JobRepository` Protocol (add, get, list, update_status).
-    - [ ] Define `S3Client` Protocol (list_backups, download_backup).
-    - [ ] Define `ProcessExecutor` Protocol (run_command).
-- [ ] **1.2 Refactor MySQL Infra**
-    - [ ] Modify `pulldb/infra/mysql.py` to implement `JobRepository`.
-    - [ ] Ensure all SQL logic is encapsulated within the repository methods.
-- [ ] **1.3 Refactor S3 Infra**
-    - [ ] Modify `pulldb/infra/s3.py` to implement `S3Client`.
-- [ ] **1.4 Refactor Admin CLI**
-    - [ ] Audit `pulldb/cli/admin.py` for direct SQL usage.
-    - [ ] Replace direct SQL with calls to `JobRepository`.
-- [ ] **1.5 Implement Infra Factory**
-    - [ ] Create `pulldb/infra/factory.py`.
-    - [ ] Implement `get_repository()`, `get_s3_client()`, `get_executor()`.
-    - [ ] Add logic to read `PULLDB_MODE` env var.
+- [x] **1.1 Define Domain Interfaces**
+    - [x] Create `pulldb/domain/interfaces.py`.
+    - [x] Define `JobRepository` Protocol (add, get, list, update_status).
+    - [x] Define `S3Client` Protocol (list_backups, download_backup).
+    - [x] Define `ProcessExecutor` Protocol (run_command).
+- [x] **1.2 Refactor MySQL Infra**
+    - [x] Modify `pulldb/infra/mysql.py` to implement `JobRepository`.
+    - [x] Ensure all SQL logic is encapsulated within the repository methods.
+- [x] **1.3 Refactor S3 Infra**
+    - [x] Modify `pulldb/infra/s3.py` to implement `S3Client`.
+- [x] **1.4 Refactor Admin CLI**
+    - [x] Audit `pulldb/cli/admin.py` for direct SQL usage.
+    - [x] Replace direct SQL with calls to `JobRepository`.
+- [x] **1.5 Implement Infra Factory**
+    - [x] Create `pulldb/infra/factory.py`.
+    - [x] Implement `get_repository()`, `get_s3_client()`, `get_executor()`.
+    - [x] Add logic to read `PULLDB_MODE` env var.
 
 ## Phase 2: Simulation Core (The Engine)
 
-- [ ] **2.1 Scaffold Simulation Domain**
-    - [ ] Create `pulldb/simulation/` directory structure.
-    - [ ] Create `pulldb/simulation/__init__.py`.
-- [ ] **2.2 Implement In-Memory Repository**
-    - [ ] Create `pulldb/simulation/adapters/mock_mysql.py`.
-    - [ ] Implement `InMemoryJobRepository` using a thread-safe dictionary.
-    - [ ] Implement `SKIP LOCKED` logic for queue polling using locks.
+- [x] **2.1 Scaffold Simulation Domain**
+    - [x] Create `pulldb/simulation/` directory structure.
+    - [x] Create `pulldb/simulation/__init__.py`.
+- [x] **2.2 Implement In-Memory Repository**
+    - [x] Create `pulldb/simulation/adapters/mock_mysql.py`.
+    - [x] Implement `InMemoryJobRepository` using a thread-safe dictionary.
+    - [x] Implement `SKIP LOCKED` logic for queue polling using locks.
 - [ ] **2.3 Implement Mock S3**
     - [ ] Create `pulldb/simulation/adapters/mock_s3.py`.
     - [ ] Implement `MockS3Client`.

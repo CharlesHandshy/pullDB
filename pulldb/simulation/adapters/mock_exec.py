@@ -1,0 +1,115 @@
+"""Mock Process Executor for Simulation Mode.
+
+Implements the ProcessExecutor protocol.
+Simulates command execution with configurable delays and outcomes.
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
+from pulldb.domain.models import CommandResult
+from pulldb.simulation.core.state import get_simulation_state
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MockCommandConfig:
+    """Configuration for a specific command simulation."""
+
+    exit_code: int = 0
+    stdout: str = ""
+    stderr: str = ""
+    delay_seconds: float = 0.0
+    # If set, this function is called instead of default behavior
+    # signature: (command, env) -> (exit_code, stdout, stderr)
+    handler: Callable[..., tuple[int, str, str]] | None = None
+
+
+class MockProcessExecutor:
+    """In-memory implementation of ProcessExecutor."""
+
+    def __init__(self) -> None:
+        """Initialize with shared simulation state."""
+        self.state = get_simulation_state()
+        # Map command prefix (first arg) to config
+        self.configs: dict[str, MockCommandConfig] = {}
+        # Default config if no match found
+        self.default_config = MockCommandConfig()
+
+    def configure_command(self, command_prefix: str, config: MockCommandConfig) -> None:
+        """Configure behavior for a specific command."""
+        self.configs[command_prefix] = config
+
+    def _get_config(self, command: Sequence[str]) -> MockCommandConfig:
+        if not command:
+            return self.default_config
+
+        cmd_name = command[0]
+        return self.configs.get(cmd_name, self.default_config)
+
+    def run_command(self, command: list[str], env: dict[str, str] | None = None) -> int:
+        """Run command and return exit code."""
+        config = self._get_config(command)
+
+        logger.info(f"Mock executing: {' '.join(command)}")
+
+        if config.delay_seconds > 0:
+            time.sleep(config.delay_seconds)
+
+        if config.handler:
+            exit_code, _, _ = config.handler(command, env)
+            return exit_code
+
+        return config.exit_code
+
+    def run_command_streaming(
+        self,
+        command: Sequence[str],
+        line_callback: Callable[[str], None],
+        *,
+        env: Mapping[str, str] | None = None,
+        timeout: float | None = None,
+        cwd: str | None = None,
+    ) -> CommandResult:
+        """Execute command, streaming merged stdout/stderr to callback."""
+        started_at = datetime.now(UTC)
+        config = self._get_config(command)
+
+        logger.info(f"Mock streaming: {' '.join(command)}")
+
+        if config.delay_seconds > 0:
+            time.sleep(config.delay_seconds)
+
+        stdout = config.stdout
+        stderr = config.stderr
+        exit_code = config.exit_code
+
+        if config.handler:
+            exit_code, stdout, stderr = config.handler(command, env)
+
+        # Stream output line by line
+        if stdout:
+            for line in stdout.splitlines():
+                line_callback(line)
+        if stderr:
+            for line in stderr.splitlines():
+                line_callback(line)
+
+        completed_at = datetime.now(UTC)
+        duration = (completed_at - started_at).total_seconds()
+
+        return CommandResult(
+            exit_code=exit_code,
+            stdout=stdout,
+            stderr=stderr,
+            command=list(command),
+            started_at=started_at,
+            completed_at=completed_at,
+            duration_seconds=duration,
+        )
