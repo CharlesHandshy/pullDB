@@ -149,11 +149,14 @@ def _default_extract_archive(archive_path: str, dest_dir: Path, job_id: str) -> 
 
 @dataclass(slots=True)
 class WorkerExecutorDependencies:
-    """Repositories and shared clients required by the executor."""
+    """Repositories and shared clients required by the executor.
 
-    job_repo: JobRepository
-    host_repo: HostRepository
-    s3_client: S3Client
+    Uses t.Any types to allow both real and simulated implementations.
+    """
+
+    job_repo: t.Any  # JobRepository or SimulatedJobRepository
+    host_repo: t.Any  # HostRepository or SimulatedHostRepository
+    s3_client: t.Any  # S3Client or MockS3Client
 
 
 @dataclass(slots=True)

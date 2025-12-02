@@ -32,23 +32,23 @@
     - [x] Create `pulldb/simulation/adapters/mock_mysql.py`.
     - [x] Implement `InMemoryJobRepository` using a thread-safe dictionary.
     - [x] Implement `SKIP LOCKED` logic for queue polling using locks.
-- [ ] **2.3 Implement Mock S3**
-    - [ ] Create `pulldb/simulation/adapters/mock_s3.py`.
-    - [ ] Implement `MockS3Client`.
-    - [ ] Create fixture loader to read fake backup lists from JSON.
-- [ ] **2.4 Implement Mock Executor**
-    - [ ] Create `pulldb/simulation/adapters/mock_exec.py`.
-    - [ ] Implement `MockProcessExecutor`.
-    - [ ] Add support for simulated delays (`time.sleep`).
+- [x] **2.3 Implement Mock S3**
+    - [x] Create `pulldb/simulation/adapters/mock_s3.py`.
+    - [x] Implement `MockS3Client`.
+    - [x] Create fixture loader to read fake backup lists from JSON.
+- [x] **2.4 Implement Mock Executor**
+    - [x] Create `pulldb/simulation/adapters/mock_exec.py`.
+    - [x] Implement `MockProcessExecutor`.
+    - [x] Add support for simulated delays (`time.sleep`).
 
 ## Phase 3: Integration & Scenarios
 
-- [ ] **3.1 Wire Up API Service**
-    - [ ] Update `pulldb/api/main.py` to use `InfraFactory`.
-    - [ ] Verify API works with `PULLDB_MODE=SIMULATION`.
-- [ ] **3.2 Wire Up Worker Service**
-    - [ ] Update `pulldb/worker/service.py` to use `InfraFactory`.
-    - [ ] Verify Worker picks up jobs from in-memory queue.
+- [x] **3.1 Wire Up API Service**
+    - [x] Update `pulldb/api/main.py` to use `InfraFactory`.
+    - [x] Verify API works with `PULLDB_MODE=SIMULATION`.
+- [x] **3.2 Wire Up Worker Service**
+    - [x] Update `pulldb/worker/service.py` to use `InfraFactory`.
+    - [x] Verify Worker picks up jobs from in-memory queue.
 - [ ] **3.3 Implement Event Bus**
     - [ ] Create `pulldb/simulation/core/bus.py`.
     - [ ] Define event types (`JobCreated`, `S3DownloadStarted`, etc.).

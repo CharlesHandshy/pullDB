@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 
 from pulldb.domain.config import Config
 from pulldb.domain.models import JobStatus
+from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.logging import get_logger
 from pulldb.infra.metrics import MetricLabels, emit_event, emit_gauge
 from pulldb.infra.mysql import (
@@ -126,8 +127,14 @@ def _load_config() -> Config:
     return config
 
 
-def _build_job_repository(config: Config) -> JobRepository:
-    kwargs = {
+def _build_job_repository(config: Config) -> t.Any:
+    """Build job repository based on mode."""
+    if is_simulation_mode():
+        from pulldb.simulation import SimulatedJobRepository
+
+        return SimulatedJobRepository()
+
+    kwargs: dict[str, t.Any] = {
         "host": config.mysql_host,
         "user": config.mysql_user,
         "password": config.mysql_password,
@@ -140,7 +147,24 @@ def _build_job_repository(config: Config) -> JobRepository:
     return JobRepository(pool)
 
 
-def _build_job_executor(config: Config, job_repo: JobRepository) -> WorkerJobExecutor:
+def _build_job_executor(config: Config, job_repo: t.Any) -> WorkerJobExecutor:
+    """Build job executor with appropriate dependencies for mode."""
+    if is_simulation_mode():
+        from pulldb.simulation import (
+            MockS3Client,
+            SimulatedHostRepository,
+        )
+
+        # Note: In simulation mode, subprocess execution still uses real exec
+        # The full mock of subprocess execution requires deeper refactoring
+        # of the restore workflow to inject an executor dependency.
+        deps = WorkerExecutorDependencies(
+            job_repo=job_repo,
+            host_repo=SimulatedHostRepository(),
+            s3_client=MockS3Client(),
+        )
+        return WorkerJobExecutor(config=config, deps=deps)
+
     credential_resolver = CredentialResolver(config.aws_profile)
     host_repo = HostRepository(job_repo.pool, credential_resolver)
     s3_profile = config.s3_aws_profile or config.aws_profile

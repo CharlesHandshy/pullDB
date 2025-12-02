@@ -17,14 +17,6 @@ from pulldb.domain.interfaces import (
     SettingsRepository,
     UserRepository,
 )
-from pulldb.infra.exec import SubprocessExecutor
-from pulldb.infra.mysql import HostRepository as MySQLHostRepository
-from pulldb.infra.mysql import JobRepository as MySQLJobRepository
-from pulldb.infra.mysql import MySQLPool
-from pulldb.infra.mysql import SettingsRepository as MySQLSettingsRepository
-from pulldb.infra.mysql import UserRepository as MySQLUserRepository
-from pulldb.infra.s3 import S3Client as BotoS3Client
-from pulldb.infra.secrets import CredentialResolver
 
 
 def get_mode() -> str:
@@ -32,44 +24,57 @@ def get_mode() -> str:
     return os.getenv("PULLDB_MODE", "REAL").upper()
 
 
+def is_simulation_mode() -> bool:
+    """Check if running in simulation mode."""
+    return get_mode() == "SIMULATION"
+
+
 def get_job_repository() -> JobRepository:
     """Get JobRepository implementation."""
-    mode = get_mode()
-    if mode == "SIMULATION":
-        # TODO: Import and return SimulatedJobRepository
-        raise NotImplementedError("Simulation mode not yet implemented")
+    if is_simulation_mode():
+        from pulldb.simulation import SimulatedJobRepository
 
-    # Real mode
+        return SimulatedJobRepository()
+
+    # Real mode - lazy import to avoid circular deps
+    from pulldb.infra.mysql import JobRepository as MySQLJobRepository
+
     pool = _get_real_mysql_pool()
     return MySQLJobRepository(pool)
 
 
 def get_s3_client(profile: str | None = None, region: str | None = None) -> S3Client:
     """Get S3Client implementation."""
-    mode = get_mode()
-    if mode == "SIMULATION":
-        # TODO: Import and return SimulatedS3Client
-        raise NotImplementedError("Simulation mode not yet implemented")
+    if is_simulation_mode():
+        from pulldb.simulation import MockS3Client
+
+        return MockS3Client()
+
+    from pulldb.infra.s3 import S3Client as BotoS3Client
 
     return BotoS3Client(profile=profile, region=region)
 
 
 def get_process_executor() -> ProcessExecutor:
     """Get ProcessExecutor implementation."""
-    mode = get_mode()
-    if mode == "SIMULATION":
-        # TODO: Import and return SimulatedProcessExecutor
-        raise NotImplementedError("Simulation mode not yet implemented")
+    if is_simulation_mode():
+        from pulldb.simulation import MockProcessExecutor
+
+        return MockProcessExecutor()
+
+    from pulldb.infra.exec import SubprocessExecutor
 
     return SubprocessExecutor()
 
 
 def get_user_repository() -> UserRepository:
     """Get UserRepository implementation."""
-    mode = get_mode()
-    if mode == "SIMULATION":
-        # TODO: Import and return SimulatedUserRepository
-        raise NotImplementedError("Simulation mode not yet implemented")
+    if is_simulation_mode():
+        from pulldb.simulation import SimulatedUserRepository
+
+        return SimulatedUserRepository()
+
+    from pulldb.infra.mysql import UserRepository as MySQLUserRepository
 
     pool = _get_real_mysql_pool()
     return MySQLUserRepository(pool)
@@ -77,10 +82,13 @@ def get_user_repository() -> UserRepository:
 
 def get_host_repository() -> HostRepository:
     """Get HostRepository implementation."""
-    mode = get_mode()
-    if mode == "SIMULATION":
-        # TODO: Import and return SimulatedHostRepository
-        raise NotImplementedError("Simulation mode not yet implemented")
+    if is_simulation_mode():
+        from pulldb.simulation import SimulatedHostRepository
+
+        return SimulatedHostRepository()
+
+    from pulldb.infra.mysql import HostRepository as MySQLHostRepository
+    from pulldb.infra.secrets import CredentialResolver
 
     pool = _get_real_mysql_pool()
     aws_profile = os.getenv("PULLDB_AWS_PROFILE")
@@ -90,10 +98,12 @@ def get_host_repository() -> HostRepository:
 
 def get_settings_repository() -> SettingsRepository:
     """Get SettingsRepository implementation."""
-    mode = get_mode()
-    if mode == "SIMULATION":
-        # TODO: Import and return SimulatedSettingsRepository
-        raise NotImplementedError("Simulation mode not yet implemented")
+    if is_simulation_mode():
+        from pulldb.simulation import SimulatedSettingsRepository
+
+        return SimulatedSettingsRepository()
+
+    from pulldb.infra.mysql import SettingsRepository as MySQLSettingsRepository
 
     pool = _get_real_mysql_pool()
     return MySQLSettingsRepository(pool)
@@ -101,6 +111,9 @@ def get_settings_repository() -> SettingsRepository:
 
 def _get_real_mysql_pool() -> t.Any:
     """Create real MySQL connection pool."""
+    from pulldb.infra.mysql import MySQLPool
+    from pulldb.infra.secrets import CredentialResolver
+
     secret_ref = os.getenv(
         "PULLDB_COORDINATION_SECRET", "aws-secretsmanager:/pulldb/mysql/coordination-db"
     )
@@ -119,3 +132,4 @@ def _get_real_mysql_pool() -> t.Any:
         database=mysql_database,
         port=creds.port,
     )
+

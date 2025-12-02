@@ -18,6 +18,7 @@ from fastapi.concurrency import run_in_threadpool
 from pulldb.domain.config import Config
 from pulldb.domain.errors import StagingError
 from pulldb.domain.models import Job, JobStatus, User
+from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
 from pulldb.infra.mysql import (
     HostRepository,
@@ -126,11 +127,11 @@ class APIState(t.NamedTuple):
     """Cached application state shared across requests."""
 
     config: Config
-    pool: MySQLPool
-    user_repo: UserRepository
-    job_repo: JobRepository
-    settings_repo: SettingsRepository
-    host_repo: HostRepository
+    pool: t.Any  # MySQLPool in REAL mode, None in SIMULATION mode
+    user_repo: t.Any  # UserRepository protocol
+    job_repo: t.Any  # JobRepository protocol
+    settings_repo: t.Any  # SettingsRepository protocol
+    host_repo: t.Any  # HostRepository protocol
     auth_repo: "AuthRepository | None" = None  # Phase 4: Optional auth repository
 
 
@@ -140,7 +141,41 @@ if TYPE_CHECKING:
 
 
 def _initialize_state() -> APIState:
-    """Build API state by loading configuration and repositories."""
+    """Build API state by loading configuration and repositories.
+
+    In SIMULATION mode, uses in-memory repositories.
+    In REAL mode, connects to MySQL and AWS.
+    """
+    if is_simulation_mode():
+        return _initialize_simulation_state()
+
+    return _initialize_real_state()
+
+
+def _initialize_simulation_state() -> APIState:
+    """Initialize API state with simulation components."""
+    from pulldb.simulation import (
+        SimulatedHostRepository,
+        SimulatedJobRepository,
+        SimulatedSettingsRepository,
+        SimulatedUserRepository,
+    )
+
+    config = Config.minimal_from_env()
+
+    return APIState(
+        config=config,
+        pool=None,  # No pool in simulation mode
+        user_repo=SimulatedUserRepository(),
+        job_repo=SimulatedJobRepository(),
+        settings_repo=SimulatedSettingsRepository(),
+        host_repo=SimulatedHostRepository(),
+        auth_repo=None,
+    )
+
+
+def _initialize_real_state() -> APIState:
+    """Build API state with real MySQL/AWS connections."""
     try:
         config = Config.minimal_from_env()
 
