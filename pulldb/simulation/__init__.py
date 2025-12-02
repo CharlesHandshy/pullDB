@@ -8,7 +8,7 @@ This package contains the Mock System implementation, including:
 - Scenario engine for chaos engineering
 """
 
-from pulldb.simulation.adapters.mock_exec import MockProcessExecutor
+from pulldb.simulation.adapters.mock_exec import MockCommandConfig, MockProcessExecutor
 from pulldb.simulation.adapters.mock_mysql import (
     SimulatedHostRepository,
     SimulatedJobRepository,
@@ -22,6 +22,14 @@ from pulldb.simulation.core.bus import (
     SimulationEventBus,
     get_event_bus,
 )
+from pulldb.simulation.core.scenarios import (
+    ChaosConfig,
+    Scenario,
+    ScenarioManager,
+    ScenarioType,
+    get_scenario_manager,
+    reset_scenario_manager,
+)
 from pulldb.simulation.core.state import (
     SimulationState,
     get_simulation_state,
@@ -30,6 +38,7 @@ from pulldb.simulation.core.state import (
 
 __all__ = [
     # Adapters
+    "MockCommandConfig",
     "MockProcessExecutor",
     "MockS3Client",
     "SimulatedHostRepository",
@@ -41,6 +50,13 @@ __all__ = [
     "SimulationEvent",
     "SimulationEventBus",
     "get_event_bus",
+    # Scenarios
+    "ChaosConfig",
+    "Scenario",
+    "ScenarioManager",
+    "ScenarioType",
+    "get_scenario_manager",
+    "reset_scenario_manager",
     # State
     "SimulationState",
     "get_simulation_state",
