@@ -47,8 +47,7 @@ app = fastapi.FastAPI(title="pullDB API Service", version="0.0.1.dev0")
 
 # Phase 4: Mount web UI router if templates available
 try:
-    from pulldb.web import router as web_router
-    from pulldb.web.routes import SessionExpiredError, create_session_expired_handler
+    from pulldb.web import router as web_router, SessionExpiredError, create_session_expired_handler
     app.include_router(web_router)
     app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
 except ImportError:

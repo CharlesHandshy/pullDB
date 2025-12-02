@@ -250,7 +250,7 @@ class MockAPIState:
 
 def create_test_app() -> FastAPI:
     """Create a FastAPI app configured for testing."""
-    from pulldb.web.routes import router as web_router
+    from pulldb.web import router as web_router
 
     app = FastAPI(title="pullDB Test")
 
@@ -261,7 +261,6 @@ def create_test_app() -> FastAPI:
     app.include_router(web_router)
 
     return app
-
 
 def _mock_get_api_state() -> MockAPIState:
     """Override for get_api_state that returns our mock."""

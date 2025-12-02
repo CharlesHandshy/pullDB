@@ -53,10 +53,10 @@ class TestWebModuleExports:
         assert "router" in content
         assert "__all__" in content
 
-    def test_imports_from_routes(self) -> None:
-        """Web module imports router from routes."""
+    def test_imports_from_router_registry(self) -> None:
+        """Web module imports router from router_registry (HCA)."""
         content = (WEB_DIR / "__init__.py").read_text()
-        assert "from pulldb.web.routes import router" in content
+        assert "from pulldb.web.router_registry import main_router" in content
 
 
 # ---------------------------------------------------------------------------

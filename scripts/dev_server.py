@@ -20,7 +20,7 @@ from fastapi import FastAPI
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pulldb.domain.models import UserRole
-from pulldb.web.routes import router as web_router
+from pulldb.web import router as web_router
 
 
 # =============================================================================
@@ -631,7 +631,7 @@ def create_dev_app() -> FastAPI:
     """Create FastAPI app with mocked repositories."""
     from fastapi.responses import RedirectResponse
     from fastapi.staticfiles import StaticFiles
-    from pulldb.web.routes import SessionExpiredError, create_session_expired_handler
+    from pulldb.web import SessionExpiredError, create_session_expired_handler
 
     app = FastAPI(
         title="pullDB Dev Server",

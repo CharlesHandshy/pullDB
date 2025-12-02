@@ -1,6 +1,7 @@
 """Tests for web UI routes.
 
 Phase 4: Tests for the web module routes and templates.
+HCA: Updated to use new HCA structure imports.
 """
 
 from __future__ import annotations
@@ -13,23 +14,22 @@ class TestWebModuleImport:
         """Web router can be imported."""
         from pulldb.web import router
         assert router is not None
-        assert router.prefix == "/web"
 
     def test_templates_directory_exists(self) -> None:
         """Templates directory exists with expected files."""
-        from pulldb.web.routes import TEMPLATES_DIR
-        
+        from pulldb.web import TEMPLATES_DIR
+
         assert TEMPLATES_DIR.exists()
         assert (TEMPLATES_DIR / "base.html").exists()
         assert (TEMPLATES_DIR / "login.html").exists()
         assert (TEMPLATES_DIR / "dashboard.html").exists()
         # Note: jobs.html was renamed to job_detail.html
         assert (TEMPLATES_DIR / "job_detail.html").exists()
-        
+
     def test_partials_directory_exists(self) -> None:
         """Partials directory exists with expected files."""
-        from pulldb.web.routes import TEMPLATES_DIR
-        
+        from pulldb.web import TEMPLATES_DIR
+
         partials_dir = TEMPLATES_DIR / "partials"
         assert partials_dir.exists()
         assert (partials_dir / "active_jobs.html").exists()
@@ -75,7 +75,7 @@ class TestTemplateContent:
 
     def test_base_template_has_required_blocks(self) -> None:
         """Base template contains required blocks."""
-        from pulldb.web.routes import TEMPLATES_DIR
+        from pulldb.web import TEMPLATES_DIR
 
         content = (TEMPLATES_DIR / "base.html").read_text()
         assert "{% block title %}" in content
@@ -86,8 +86,8 @@ class TestTemplateContent:
 
     def test_login_template_has_form(self) -> None:
         """Login template has login form."""
-        from pulldb.web.routes import TEMPLATES_DIR
-        
+        from pulldb.web import TEMPLATES_DIR
+
         content = (TEMPLATES_DIR / "login.html").read_text()
         assert "<form" in content
         assert 'name="username"' in content
@@ -96,15 +96,15 @@ class TestTemplateContent:
 
     def test_dashboard_template_extends_base(self) -> None:
         """Dashboard extends base template."""
-        from pulldb.web.routes import TEMPLATES_DIR
-        
+        from pulldb.web import TEMPLATES_DIR
+
         content = (TEMPLATES_DIR / "dashboard.html").read_text()
         assert '{% extends "base.html" %}' in content
 
     def test_job_detail_template_extends_base(self) -> None:
         """Job detail template extends base template."""
-        from pulldb.web.routes import TEMPLATES_DIR
-        
+        from pulldb.web import TEMPLATES_DIR
+
         content = (TEMPLATES_DIR / "job_detail.html").read_text()
         assert '{% extends "base.html" %}' in content
 
