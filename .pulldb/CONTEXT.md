@@ -35,6 +35,8 @@ engineering-dna/           ← Shared template (READ-ONLY from pullDB)
 CLI → API Service → MySQL Queue ← Worker Service → S3/myloader
 ```
 
+**Core Architecture**: Hierarchical Containment Architecture (HCA) is the strict standard for all new development.
+
 | Component | DNA Standard | pullDB Extension |
 |-----------|--------------|------------------|
 | Error handling | `protocols/fail-hard.md` | `.pulldb/standards/restore-errors.md` |

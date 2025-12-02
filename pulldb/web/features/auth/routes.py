@@ -26,7 +26,7 @@ router = APIRouter(prefix="/web", tags=["web-auth"])
 async def login_page(
     request: Request,
     error: str | None = None,
-    user: Annotated[User | None, Depends(get_session_user)] = None,
+    user: User | None = Depends(get_session_user),
 ) -> Response:
     """Display login form."""
     if user:
@@ -44,7 +44,7 @@ async def login_submit(
     request: Request,
     username: Annotated[str, Form()],
     password: Annotated[str, Form()],
-    state: Annotated["APIState", Depends(get_api_state)],
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Process login form submission."""
     from pulldb.auth.password import verify_password
@@ -106,7 +106,7 @@ async def login_submit(
 @router.get("/logout")
 async def logout(
     request: Request,
-    state: Annotated["APIState", Depends(get_api_state)],
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Log out user and clear session."""
     session_token = request.cookies.get("session_token")

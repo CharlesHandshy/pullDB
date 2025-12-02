@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse
 
 from pulldb.web.dependencies import (
     AuthenticatedUser,
-    APIStateDep,
+    get_api_state,
     templates,
 )
 from pulldb.web.exceptions import render_error_page
@@ -32,7 +32,7 @@ async def job_detail(
     request: Request,
     job_id: str,
     user: AuthenticatedUser,
-    state: APIStateDep,
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Display job details."""
     from pulldb.domain.permissions import can_cancel_job, can_view_job
@@ -94,7 +94,7 @@ async def partial_job_events(
     request: Request,
     job_id: str,
     user: AuthenticatedUser,
-    state: APIStateDep,
+    state: "APIState" = Depends(get_api_state),
     since_id: int | None = None,
 ) -> Response:
     """Return job events partial for HTMX updates."""
@@ -124,7 +124,7 @@ async def job_profile_page(
     request: Request,
     job_id: str,
     user: AuthenticatedUser,
-    state: APIStateDep,
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Display job profile (timing analysis)."""
     from pulldb.domain.permissions import can_view_job

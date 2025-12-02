@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -89,7 +89,7 @@ def _get_logo_config() -> dict:
 @router.get("/logo", response_class=HTMLResponse)
 async def admin_logo_page(
     request: Request,
-    user: Annotated["User", Depends(require_admin)],
+    user: "User" = Depends(require_admin),
 ) -> Response:
     """Display logo management screen."""
     logo_config = _get_logo_config()
@@ -104,7 +104,7 @@ async def admin_logo_page(
 @router.post("/logo")
 async def save_logo_config(
     request: Request,
-    user: Annotated["User", Depends(require_admin)],
+    user: "User" = Depends(require_admin),
 ) -> dict:
     """Save logo configuration to JSON file."""
     data = await request.json()
@@ -119,7 +119,7 @@ async def save_logo_config(
 
 @router.post("/logo/upload")
 async def upload_logo(
-    user: Annotated["User", Depends(require_admin)],
+    user: "User" = Depends(require_admin),
     file: UploadFile = File(...),
 ) -> JSONResponse:
     """Upload a new logo file."""

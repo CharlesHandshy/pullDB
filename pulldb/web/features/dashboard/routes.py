@@ -18,7 +18,7 @@ from pulldb.web.dependencies import (
     require_login,
     templates,
     AuthenticatedUser,
-    APIStateDep,
+    get_api_state,
 )
 from pulldb.domain.models import User
 
@@ -32,7 +32,7 @@ router = APIRouter(prefix="/web", tags=["web-dashboard"])
 async def dashboard(
     request: Request,
     user: AuthenticatedUser,
-    state: APIStateDep,
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Display user dashboard with active jobs."""
     from pulldb.domain.permissions import can_view_all_jobs
@@ -66,7 +66,7 @@ async def dashboard(
 async def partial_active_jobs(
     request: Request,
     user: AuthenticatedUser,
-    state: APIStateDep,
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Return active jobs partial for HTMX updates."""
     from pulldb.domain.permissions import can_view_all_jobs

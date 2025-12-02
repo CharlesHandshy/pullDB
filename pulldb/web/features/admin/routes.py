@@ -12,13 +12,13 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pulldb.web.dependencies import (
-    APIStateDep,
+    get_api_state,
     templates,
     require_admin,
 )
@@ -34,8 +34,8 @@ router = APIRouter(prefix="/web/admin", tags=["web-admin"])
 @router.get("/settings", response_class=HTMLResponse)
 async def admin_settings_page(
     request: Request,
-    user: Annotated["User", Depends(require_admin)],
-    state: APIStateDep,
+    user: "User" = Depends(require_admin),
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Display settings management."""
     settings = [
@@ -81,8 +81,8 @@ async def admin_settings_page(
 @router.get("/users", response_class=HTMLResponse)
 async def admin_users_page(
     request: Request,
-    user: Annotated["User", Depends(require_admin)],
-    state: APIStateDep,
+    user: "User" = Depends(require_admin),
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Display user management."""
     repo = state.user_repo
@@ -106,8 +106,8 @@ async def admin_users_page(
 async def admin_user_detail_page(
     request: Request,
     username: str,
-    user: Annotated["User", Depends(require_admin)],
-    state: APIStateDep,
+    user: "User" = Depends(require_admin),
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Display user detail."""
     target_user = state.user_repo.get_user_by_username(username)
@@ -152,8 +152,8 @@ async def admin_user_detail_page(
 async def admin_enable_user(
     request: Request,
     username: str,
-    user: Annotated["User", Depends(require_admin)],
-    state: APIStateDep,
+    user: "User" = Depends(require_admin),
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Enable a user account."""
     target_user = state.user_repo.get_user_by_username(username)
@@ -173,8 +173,8 @@ async def admin_enable_user(
 async def admin_disable_user(
     request: Request,
     username: str,
-    user: Annotated["User", Depends(require_admin)],
-    state: APIStateDep,
+    user: "User" = Depends(require_admin),
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Disable a user account."""
     target_user = state.user_repo.get_user_by_username(username)
@@ -193,8 +193,8 @@ async def admin_disable_user(
 @router.get("/hosts", response_class=HTMLResponse)
 async def admin_hosts_page(
     request: Request,
-    user: Annotated["User", Depends(require_admin)],
-    state: APIStateDep,
+    user: "User" = Depends(require_admin),
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Display host management."""
     hosts = []
@@ -219,8 +219,8 @@ async def admin_hosts_page(
 @router.get("/jobs", response_class=HTMLResponse)
 async def admin_jobs_page(
     request: Request,
-    user: Annotated["User", Depends(require_admin)],
-    state: APIStateDep,
+    user: "User" = Depends(require_admin),
+    state: "APIState" = Depends(get_api_state),
     page: int = 1,
 ) -> Response:
     """Display all jobs."""
@@ -279,8 +279,8 @@ async def admin_jobs_page(
 async def admin_cancel_job(
     request: Request,
     job_id: str,
-    user: Annotated["User", Depends(require_admin)],
-    state: APIStateDep,
+    user: "User" = Depends(require_admin),
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Cancel a job (admin override)."""
     job = state.job_repo.get_job_by_id(job_id)
@@ -299,8 +299,8 @@ async def admin_cancel_job(
 @router.get("/cleanup", response_class=HTMLResponse)
 async def admin_cleanup_page(
     request: Request,
-    user: Annotated["User", Depends(require_admin)],
-    state: APIStateDep,
+    user: "User" = Depends(require_admin),
+    state: "APIState" = Depends(get_api_state),
 ) -> Response:
     """Display cleanup page."""
     hosts = []

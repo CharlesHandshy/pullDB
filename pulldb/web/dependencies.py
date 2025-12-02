@@ -56,7 +56,7 @@ def get_api_state(request: Request) -> "APIState":
 
 def get_session_user(
     request: Request,
-    state: Annotated["APIState", Depends(get_api_state)],
+    state: "APIState" = Depends(get_api_state),
 ) -> User | None:
     """Get current user from session cookie if valid.
     
@@ -133,7 +133,9 @@ def require_admin(
 
 
 # Type aliases for cleaner route signatures
+# Note: Using Annotated with non-forward-reference types works correctly
 SessionUser = Annotated[User | None, Depends(get_session_user)]
 AuthenticatedUser = Annotated[User, Depends(require_login)]
 AdminUser = Annotated[User, Depends(require_admin)]
-APIStateDep = Annotated["APIState", Depends(get_api_state)]
+# Note: APIState as string forward-reference doesn't work with Annotated due to
+# FastAPI parsing it as a query param. Use the pattern: state: "APIState" = Depends(...)

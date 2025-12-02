@@ -11,12 +11,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Form, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pulldb.web.dependencies import (
     AuthenticatedUser,
-    APIStateDep,
+    get_api_state,
     templates,
 )
 from pulldb.web.exceptions import render_error_page
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/web", tags=["web-restore"])
 async def restore_page(
     request: Request,
     user: AuthenticatedUser,
-    state: APIStateDep,
+    state: "APIState" = Depends(get_api_state),
     customer: str | None = None,
     date: str | None = None,
     s3env: str | None = None,
@@ -68,7 +68,7 @@ async def restore_page(
 async def restore_submit(
     request: Request,
     user: AuthenticatedUser,
-    state: APIStateDep,
+    state: "APIState" = Depends(get_api_state),
     customer: str | None = Form(None),
     date: str | None = Form(None),
     s3env: str | None = Form(None),

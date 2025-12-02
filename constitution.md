@@ -18,6 +18,15 @@ Deliver a dependable, minimal restore pipeline that prioritizes correctness, cla
 4. **Function Over Fashion**: choose reliability and transparency over stylistic novelty. Consistency matters more than novelty.
 5. **Minimal Is Best**: ship the smallest viable slice (CLI + daemon REST API + MySQL) and iterate deliberately.
 6. **Prototype Before Scale**: validate workflows end-to-end with constrained scope before layering on options, services, or automation.
+7. **HCA Mandate**: All new development must strictly adhere to Hierarchical Containment Architecture (HCA) principles. Legacy code will be migrated incrementally; do not refactor old code unless necessary for the current task.
+
+## HCA Enforcement
+
+**Primary Directive**: All new development MUST utilize Hierarchical Containment Architecture (HCA). This is a strict requirement.
+
+- **New Code**: Must be designed and implemented according to HCA principles (see `docs/IngestMe/HCA/`).
+- **Legacy Code**: Existing code that does not follow HCA is currently exempt but will be migrated eventually. Do not refactor legacy code to HCA solely for the sake of refactoring; focus on new features and bug fixes using HCA.
+- **Enforcement**: Code reviews and architectural decisions must prioritize HCA compliance.
 
 ## Architecture Charter
 

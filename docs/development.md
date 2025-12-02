@@ -96,6 +96,14 @@ pulldb/
 
 ## Coding Standards
 
+### Architecture Standards (HCA)
+
+All new development MUST follow **Hierarchical Containment Architecture (HCA)** principles.
+See `docs/IngestMe/HCA/` for detailed guidelines.
+
+- **Structure**: Code must be organized according to HCA layers.
+- **Compliance**: New features must be HCA-compliant. Legacy code is exempt until migration.
+
 ### FAIL HARD Protocol
 
 Error handling MUST follow the FAIL HARD principle (see `constitution.md`):
