@@ -8,8 +8,8 @@
 | Document | Purpose | Status |
 |----------|---------|--------|
 | [myloader.md](myloader.md) | myloader usage & patterns | ✅ Active |
-| [terraform.md](terraform.md) | Infrastructure as code | 📝 Planned |
-| [aws-cli.md](aws-cli.md) | AWS CLI integration | 📝 Planned |
+| [policies/](policies/) | IAM policy templates | ✅ Active |
+| [terraform/](terraform/) | Infrastructure as code | ✅ Active |
 
 ## External Tools
 

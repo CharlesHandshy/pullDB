@@ -10,7 +10,8 @@
 | [cli-reference.md](cli-reference.md) | CLI command reference | ✅ Active |
 | [admin-guide.md](admin-guide.md) | Administration guide | ✅ Active |
 | [getting-started.md](getting-started.md) | User quickstart | ✅ Active |
-| [web-ui.md](web-ui.md) | Web interface guide | 📝 Planned |
+| [development.md](development.md) | Developer/contributor guide | ✅ Active |
+| [web-layout.md](web-layout.md) | Web UI layout design | ✅ Active |
 
 ## Entry Points
 

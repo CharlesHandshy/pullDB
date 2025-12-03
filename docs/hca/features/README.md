@@ -7,9 +7,10 @@
 
 | Document | Purpose | Status |
 |----------|---------|--------|
+| [staging.md](staging.md) | Staging database lifecycle | ✅ Active |
+| [atomic_rename_procedure.sql](atomic_rename_procedure.sql) | Atomic rename stored procedure | ✅ Active |
 | [restore.md](restore.md) | Restore workflow | 📝 Planned |
 | [download.md](download.md) | S3 download patterns | 📝 Planned |
-| [staging.md](staging.md) | Staging database lifecycle | 📝 Planned |
 | [post-sql.md](post-sql.md) | Post-restore SQL execution | 📝 Planned |
 
 ## Feature Boundaries

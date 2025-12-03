@@ -6,194 +6,81 @@
 
 ## HCA Documentation Structure
 
-Documentation is organized by **Hierarchical Containment Architecture** layers:
+All documentation is organized by **Hierarchical Containment Architecture** layers:
 
 ```
-docs/hca/                 ← HCA-organized documentation
-├── shared/              Infrastructure (FAIL-HARD, MySQL, S3)
-├── entities/            Data models (schema, config)
-├── features/            Business logic (restore, staging)
+docs/hca/                 ← ALL documentation lives here
+├── shared/              Infrastructure (FAIL-HARD)
+├── entities/            Data models (mysql-schema)
+├── features/            Business logic (staging, atomic rename)
 ├── widgets/             Integration (deployment, architecture)
-├── pages/               User guides (CLI, admin)
-└── plugins/             External tools (myloader, terraform)
+├── pages/               User guides (CLI, admin, development)
+└── plugins/             External tools (myloader, policies, terraform)
 ```
 
-> **[📂 Browse HCA Docs →](hca/README.md)**
+> **[📂 Browse All Docs →](hca/README.md)**
 
 ---
 
-## Documentation Map
-
-```
-START-HERE.md (you are here)
-│
-├─► User Documentation
-│   ├── getting-started.md ──► Installation & quick start
-│   └── cli-reference.md ────► Command reference
-│
-├─► Operations
-│   ├── admin-guide.md ──────► Migrations, cleanup, monitoring
-│   ├── deployment.md ───────► Service configuration
-│   └── runbooks/ ───────────► Operational checklists
-│       ├── runbook-restore.md
-│       ├── runbook-failure.md
-│       └── runbook-throttle.md
-│
-├─► Technical Reference
-│   ├── architecture.md ─────► System design & data flow
-│   ├── mysql-schema.md ─────► Database schema
-│   └── development.md ──────► Contributing & dev setup
-│
-├─► Infrastructure
-│   ├── policies/ ───────────► IAM policy templates
-│   ├── terraform/ ──────────► IaC examples
-│   └── KNOWLEDGE-POOL.md ───► AWS accounts, ARNs, secrets
-│
-└─► Design & Planning
-    ├── roadmap.md ──────────► Future features
-    └── diagrams/ ───────────► Architecture diagrams
-```
-
----
-
-## By Role
+## Quick Links by Role
 
 ### 👨‍💻 Developer (CLI User)
 
-**Goal**: Restore databases for local development
-
-1. **[Getting Started](getting-started.md)** - Install CLI, configure endpoint
-2. **[CLI Reference](cli-reference.md)** - All commands and options
-
-```bash
-# Quick start
-pulldb restore customer=acme
-pulldb status
-pulldb history
-```
-
----
+| Goal | Document |
+|------|----------|
+| Install & setup | [hca/pages/getting-started.md](hca/pages/getting-started.md) |
+| CLI commands | [hca/pages/cli-reference.md](hca/pages/cli-reference.md) |
 
 ### 🔧 System Administrator
 
-**Goal**: Deploy, configure, and maintain pullDB services
-
-1. **[Deployment](deployment.md)** - Install and configure services
-2. **[Admin Guide](admin-guide.md)** - Migrations, cleanup, monitoring
-3. **[Runbooks](../design/)** - Operational procedures
-
-| Runbook | When to Use |
-|---------|-------------|
-| [runbook-restore.md](../design/runbook-restore.md) | Pre-restore checklist |
-| [runbook-failure.md](../design/runbook-failure.md) | Troubleshooting failures |
-| [runbook-throttle.md](../design/runbook-throttle.md) | Managing load |
-
----
+| Goal | Document |
+|------|----------|
+| Deploy services | [hca/widgets/deployment.md](hca/widgets/deployment.md) |
+| Admin tasks | [hca/pages/admin-guide.md](hca/pages/admin-guide.md) |
+| Architecture | [hca/widgets/architecture.md](hca/widgets/architecture.md) |
 
 ### 🏗️ Infrastructure Engineer
 
-**Goal**: Set up AWS resources and cross-account access
+| Goal | Document |
+|------|----------|
+| IAM policies | [hca/plugins/policies/](hca/plugins/policies/) |
+| Terraform | [hca/plugins/terraform/](hca/plugins/terraform/) |
+| AWS facts | [KNOWLEDGE-POOL.md](KNOWLEDGE-POOL.md) |
 
-1. **[KNOWLEDGE-POOL.md](KNOWLEDGE-POOL.md)** - Account IDs, ARNs, secrets
-2. **[policies/](policies/)** - IAM policy templates
-3. **[terraform/](terraform/)** - Infrastructure as Code examples
+### 🧑‍💻 Contributor
 
-| Resource | File |
-|----------|------|
-| Staging S3 read | `policies/pulldb-staging-s3-read.json` |
-| Secrets Manager access | `policies/pulldb-secrets-manager-access.json` |
-| Production cross-account | `policies/pulldb-prod-policy.json` |
-| Cross-account Terraform | `terraform/pulldb_cross_account.tf` |
-
----
-
-### 🧑‍💻 Contributor / Developer
-
-**Goal**: Contribute to pullDB codebase
-
-1. **[Development](development.md)** - Dev environment setup
-2. **[Architecture](architecture.md)** - System design
-3. **[MySQL Schema](mysql-schema.md)** - Database structure
-
-**Key source directories:**
-```
-pulldb/
-├── api/      # FastAPI service
-├── cli/      # Click CLI
-├── worker/   # Job processing
-├── domain/   # Models, config
-└── infra/    # MySQL, S3, secrets
-```
+| Goal | Document |
+|------|----------|
+| Development setup | [hca/pages/development.md](hca/pages/development.md) |
+| Schema reference | [hca/entities/mysql-schema.md](hca/entities/mysql-schema.md) |
+| myloader patterns | [hca/plugins/myloader.md](hca/plugins/myloader.md) |
 
 ---
 
-## Document Index
+## Reference Files (Non-HCA)
 
-### Core Documentation
+These files are kept at docs/ root for tooling/operational access:
 
-| Document | Description | Audience |
-|----------|-------------|----------|
-| [getting-started.md](getting-started.md) | Installation and quick start | All |
-| [cli-reference.md](cli-reference.md) | Complete CLI command reference | Users |
-| [architecture.md](architecture.md) | System design, components, data flow | Developers |
-| [deployment.md](deployment.md) | Service installation and configuration | Admins |
-| [admin-guide.md](admin-guide.md) | Migrations, cleanup, monitoring | Admins |
-| [development.md](development.md) | Contributing, testing, coding standards | Contributors |
-| [mysql-schema.md](mysql-schema.md) | Database schema and invariants | Developers |
-
-### Reference
-
-| Document | Description |
-|----------|-------------|
-| [KNOWLEDGE-POOL.md](KNOWLEDGE-POOL.md) | AWS accounts, ARNs, secrets, operational facts |
-| [FAIL-HARD.md](FAIL-HARD.md) | Template for documenting failures |
-| [WORKSPACE-INDEX.md](WORKSPACE-INDEX.md) | Codebase structure index |
-
-### Infrastructure
-
-| Path | Description |
-|------|-------------|
-| [policies/](policies/) | IAM policy JSON templates |
-| [terraform/](terraform/) | Terraform examples for cross-account setup |
-
-### Operational
-
-| Document | Description |
-|----------|-------------|
-| [runbook-restore.md](../design/runbook-restore.md) | Restore operation checklist |
-| [runbook-failure.md](../design/runbook-failure.md) | Failure troubleshooting |
-| [runbook-throttle.md](../design/runbook-throttle.md) | Load management |
-| [roadmap.md](../design/roadmap.md) | Future features and phases |
+| File | Purpose |
+|------|---------|
+| `KNOWLEDGE-POOL.md` | AWS account IDs, ARNs, secrets |
+| `KNOWLEDGE-POOL.json` | Machine-readable operational facts |
+| `WORKSPACE-INDEX.md` | Codebase structure index |
+| `WORKSPACE-INDEX.json` | Machine-readable code index |
+| `VERIFICATION-REPORT.md` | Project audit results |
 
 ---
 
-## Quick Links
+## Archived Documentation
 
-| Task | Go To |
-|------|-------|
-| Install CLI | [getting-started.md#quick-start](getting-started.md#quick-start-5-minutes) |
-| Submit a restore | [cli-reference.md#restore](cli-reference.md#restore) |
-| Check job status | [cli-reference.md#status](cli-reference.md#status) |
-| Deploy services | [deployment.md](deployment.md) |
-| Run migrations | [admin-guide.md#schema-migrations](admin-guide.md#schema-migrations) |
-| Clean orphaned DBs | [admin-guide.md#staging-cleanup](admin-guide.md#staging-cleanup) |
-| Set concurrency limits | [admin-guide.md#settings-management](admin-guide.md#settings-management) |
-| Troubleshoot failure | [runbook-failure.md](../design/runbook-failure.md) |
+Historical and superseded documents are in `archived/`:
+- `archived/superseded/` - Docs replaced by HCA versions
+- `archived/debug-reports/` - Debug session artifacts
+- `archived/audit-reports/` - Previous audits
+- `archived/historical/` - Planning documents
 
 ---
 
-## Version History
+*Last updated: December 2025*
 
-| Version | Phase | Key Changes |
-|---------|-------|-------------|
-| 0.0.8 | 4 | Web auth, sessions, role-based access |
-| 0.0.7 | 3 | Multi-S3 locations, search command |
-| 0.0.6 | 2 | Concurrency controls, cleanup |
-| 0.0.5 | 1 | Cancellation, staging cleanup |
-| 0.0.1 | 0 | Initial release |
-
----
-
-[Getting Started →](getting-started.md) · [CLI Reference](cli-reference.md) · [Architecture](architecture.md)
-
-*Last updated: November 2025*
+*[HCA Documentation Root →](hca/README.md)*
