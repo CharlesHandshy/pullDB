@@ -7,6 +7,7 @@
 
 | Document | Purpose | Status |
 |----------|---------|--------|
+| [configuration.md](configuration.md) | **All configurable variables** | ✅ Active |
 | [FAIL-HARD.md](FAIL-HARD.md) | Error handling philosophy | ✅ Active |
 | [mysql.md](mysql.md) | MySQL client patterns | 📝 Planned |
 | [s3.md](s3.md) | S3 access patterns | 📝 Planned |
