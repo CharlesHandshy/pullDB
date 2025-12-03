@@ -3,7 +3,7 @@
 [![Release](https://img.shields.io/badge/version-0.0.8-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-449%20passing-success.svg)](pulldb/tests/)
+[![Tests](https://img.shields.io/badge/tests-585%20total-success.svg)](pulldb/tests/)
 
 > Pull production database backups from S3 and restore them into development environments.
 
