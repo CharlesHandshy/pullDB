@@ -11,10 +11,17 @@
 |-------|-------------|--------|
 | 1 | Create HCA standard in .pulldb + update copilot instructions | ✅ Complete |
 | 2 | Create HCA directory structure in docs/hca/ | ✅ Complete |
-| 3 | Migrate existing documents | 🔄 In Progress |
+| 3 | Migrate existing documents | ✅ Complete |
 | 4 | Update START-HERE.md as root | ✅ Complete |
-| 5 | Clean up archived files | ⏳ Pending |
-| 6 | Validation and testing | ⏳ Pending |
+| 5 | Clean up archived files | ✅ Partial (see CLEANUP-PLAN.md) |
+| 6 | Validation and testing | ✅ Complete |
+
+### Commits
+
+1. `3611a18` - Create HCA documentation audit plan
+2. `8b6130b` - Integrate HCA into copilot instructions
+3. `b70de0e` - Create HCA directory structure
+4. `3a93634` - Clean up archived files
 
 ---
 
