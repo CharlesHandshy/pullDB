@@ -20,6 +20,7 @@
 | AWS timeout config (I-002) | 1 | ✅ FIXED |
 | Mock data mode-aware (U-002) | 1 | ✅ FIXED |
 | String vs Enum (D-002) | 1 | ✅ FIXED |
+| Memory leak test (T-007) | 1 | ✅ FIXED |
 
 **Files Modified (Phase 1 - Static Analysis):**
 - `pulldb/web/features/dashboard/routes.py` - Fixed duplicate import, removed unused imports
@@ -47,7 +48,14 @@
 - `pulldb/web/features/search/routes.py` - Made mock data simulation-only; production shows placeholder
 - `pulldb/web/features/admin/routes.py` - Changed string literals to JobStatus enum values
 
-**Test Results:** 60 simulation tests passing ✅
+**Files Modified (Phase 3 - Memory Leak Test Fix):**
+- `tests/simulation/test_integration.py` - Fixed skipped `test_end_to_end_job_execution` test by adding:
+  - `SafeMockMySQLCursor` class with proper finite return values (returns `[]` not MagicMock)
+  - `SafeMockMySQLConnection` class returning the safe cursor
+  - `mock_mysql_connector()` context manager for safe MySQL mocking
+  - Root cause: `cursor.fetchall()` returning MagicMock caused infinite iteration/memory exhaustion
+
+**Test Results:** 52 core tests passing ✅ (simulation + unit)
 
 ---
 
@@ -254,6 +262,7 @@ Primary purpose: Test coverage for all layers.
 | T-004 | 9.1 | LOW | `test_s3_real_listing_optional.py:40` | **PytestUnknownMarkWarning**: `pytest.mark.timeout` not registered |
 | T-005 | 9.2-9.4 | MEDIUM | `tests/` | Missing dependencies block collection: `playwright`, `responses`, `moto` |
 | T-006 | 9.1 | INFO | Various | 507 tests collected (when deps available), 82 simulation tests pass |
+| T-007 | 9.2 | MEDIUM | `test_integration.py` | Skipped test due to memory leak from incomplete MySQL mocking |
 
 ---
 
