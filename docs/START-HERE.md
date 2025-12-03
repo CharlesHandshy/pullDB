@@ -4,6 +4,24 @@
 
 ---
 
+## HCA Documentation Structure
+
+Documentation is organized by **Hierarchical Containment Architecture** layers:
+
+```
+docs/hca/                 ← HCA-organized documentation
+├── shared/              Infrastructure (FAIL-HARD, MySQL, S3)
+├── entities/            Data models (schema, config)
+├── features/            Business logic (restore, staging)
+├── widgets/             Integration (deployment, architecture)
+├── pages/               User guides (CLI, admin)
+└── plugins/             External tools (myloader, terraform)
+```
+
+> **[📂 Browse HCA Docs →](hca/README.md)**
+
+---
+
 ## Documentation Map
 
 ```
