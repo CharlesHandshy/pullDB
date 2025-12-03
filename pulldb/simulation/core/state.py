@@ -22,6 +22,7 @@ class SimulationState:
     users: dict[str, User] = field(default_factory=dict)
     hosts: dict[str, DBHost] = field(default_factory=dict)
     settings: dict[str, str] = field(default_factory=dict)
+    settings_metadata: dict[str, dict[str, t.Any]] = field(default_factory=dict)
     job_events: list[JobEvent] = field(default_factory=list)
     
     # S3 State
@@ -51,6 +52,7 @@ class SimulationState:
             self.users.clear()
             self.hosts.clear()
             self.settings.clear()
+            self.settings_metadata.clear()
             self.job_events.clear()
             self.s3_buckets.clear()
             self.users_by_code.clear()

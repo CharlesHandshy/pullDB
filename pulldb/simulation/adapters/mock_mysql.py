@@ -453,6 +453,73 @@ class SimulatedJobRepository:
             ]
             return original_count - len(self.state.job_events)
 
+    # ==================== Additional Methods for Real Parity ====================
+
+    def find_job_by_staging_prefix(
+        self, target: str, dbhost: str, job_id_prefix: str
+    ) -> Job | None:
+        """Find a job by its staging database prefix.
+
+        Used by scheduled cleanup to match staging databases to jobs.
+        """
+        with self.state.lock:
+            for job in self.state.jobs.values():
+                if (
+                    job.target == target
+                    and job.dbhost == dbhost
+                    and job.id.startswith(job_id_prefix)
+                ):
+                    return job
+            return None
+
+    def get_job_completion_time(self, job_id: str) -> datetime | None:
+        """Get the completion time of a job from events.
+
+        Looks for the last terminal event (complete, failed, canceled).
+        """
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if job and job.completed_at:
+                return job.completed_at
+            
+            # Fall back to events
+            terminal_events = [
+                e for e in self.state.job_events
+                if e.job_id == job_id and e.event_type in ('complete', 'failed', 'canceled')
+            ]
+            if terminal_events:
+                return max(terminal_events, key=lambda e: e.id).logged_at
+            return None
+
+    def has_active_jobs_for_target(self, target: str, dbhost: str) -> bool:
+        """Check if there are any active (queued/running) jobs for a target.
+
+        Used as a safety check before scheduled cleanup drops staging databases.
+        """
+        with self.state.lock:
+            return any(
+                j.target == target
+                and j.dbhost == dbhost
+                and j.status in (JobStatus.QUEUED, JobStatus.RUNNING)
+                for j in self.state.jobs.values()
+            )
+
+    def get_old_terminal_jobs(self, dbhost: str, cutoff_date: datetime) -> list[Job]:
+        """Get terminal jobs older than cutoff date for a specific host.
+
+        Used by scheduled cleanup to find jobs whose staging databases
+        may need cleanup.
+        """
+        with self.state.lock:
+            return [
+                job for job in self.state.jobs.values()
+                if job.dbhost == dbhost
+                and job.status in (JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED)
+                and job.staging_name
+                and job.completed_at
+                and job.completed_at < cutoff_date
+            ]
+
 
 class SimulatedUserRepository:
     """In-memory implementation of UserRepository."""
@@ -753,6 +820,12 @@ class SimulatedSettingsRepository:
         """Set a setting value."""
         with self.state.lock:
             self.state.settings[key] = value
+            # Store description in metadata if provided
+            if description is not None:
+                self.state.settings_metadata[key] = {
+                    'description': description,
+                    'updated_at': datetime.now(UTC)
+                }
 
     def delete_setting(self, key: str) -> bool:
         """Delete a setting."""
@@ -761,6 +834,38 @@ class SimulatedSettingsRepository:
                 del self.state.settings[key]
                 return True
             return False
+
+    def get_staging_cleanup_retention_days(self) -> int:
+        """Get number of days before staging databases are eligible for cleanup.
+
+        Returns:
+            Retention days. 7 is the default. 0 means cleanup is disabled.
+        """
+        val = self.get_setting("staging_cleanup_retention_days")
+        if val is None:
+            return 7  # Default: 7 days
+        try:
+            return max(0, int(val))  # Ensure non-negative
+        except ValueError:
+            return 7  # Default: 7 days if setting is invalid
+
+    def get_all_settings_with_metadata(self) -> list[dict[str, str | None]]:
+        """Get all settings with their metadata (description, updated_at).
+
+        Returns:
+            List of dicts with keys: setting_key, setting_value, description, updated_at
+        """
+        with self.state.lock:
+            results = []
+            for key, value in sorted(self.state.settings.items()):
+                meta = self.state.settings_metadata.get(key, {})
+                results.append({
+                    'setting_key': key,
+                    'setting_value': value,
+                    'description': meta.get('description'),
+                    'updated_at': meta.get('updated_at'),
+                })
+            return results
 
 
 class SimulatedAuthRepository:
@@ -872,6 +977,20 @@ class SimulatedAuthRepository:
         Alias for delete_session to match AuthRepository interface.
         """
         return self.delete_session(session_token)
+
+    def invalidate_session(self, session_id: str) -> None:
+        """Invalidate a session by session_id (logout).
+
+        Args:
+            session_id: UUID of the session to invalidate.
+        """
+        with self.state.lock:
+            to_delete = [
+                token_hash for token_hash, session in self.state.sessions.items()
+                if session.get('session_id') == session_id
+            ]
+            for token_hash in to_delete:
+                del self.state.sessions[token_hash]
 
     def delete_user_sessions(self, user_id: str) -> int:
         """Delete all sessions for a user."""
