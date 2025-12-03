@@ -9,14 +9,13 @@ Note: Logo management is in a separate admin_logo.py module.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from pulldb.domain.models import JobStatus
 from pulldb.web.dependencies import (
     get_api_state,
     templates,
@@ -114,6 +113,7 @@ async def admin_user_detail_page(
     if not target_user:
         return render_error_page(
             request=request,
+            templates=templates,
             user=user,
             status_code=404,
             title="User Not Found",
@@ -129,11 +129,11 @@ async def admin_user_detail_page(
     user_jobs = [j for j in all_jobs if j.owner_user_id == target_user.user_id][:10]
 
     stats = {
-        "active_jobs": len([j for j in user_jobs if j.status in ("pending", "running")]),
+        "active_jobs": len([j for j in user_jobs if j.status in (JobStatus.QUEUED, JobStatus.RUNNING)]),
         "total_jobs": len(user_jobs),
-        "completed_jobs": len([j for j in user_jobs if j.status == "completed"]),
-        "failed_jobs": len([j for j in user_jobs if j.status == "failed"]),
-        "cancelled_jobs": len([j for j in user_jobs if j.status == "cancelled"]),
+        "completed_jobs": len([j for j in user_jobs if j.status == JobStatus.COMPLETE]),
+        "failed_jobs": len([j for j in user_jobs if j.status == JobStatus.FAILED]),
+        "cancelled_jobs": len([j for j in user_jobs if j.status == JobStatus.CANCELED]),
     }
 
     return templates.TemplateResponse(
@@ -243,10 +243,10 @@ async def admin_jobs_page(
     today_jobs = [j for j in jobs if j.created_at and j.created_at.date() == today]
 
     stats = {
-        "running": len([j for j in jobs if j.status == "running"]),
-        "pending": len([j for j in jobs if j.status == "pending"]),
-        "completed_today": len([j for j in today_jobs if j.status == "completed"]),
-        "failed_today": len([j for j in today_jobs if j.status == "failed"]),
+        "running": len([j for j in jobs if j.status == JobStatus.RUNNING]),
+        "pending": len([j for j in jobs if j.status == JobStatus.QUEUED]),
+        "completed_today": len([j for j in today_jobs if j.status == JobStatus.COMPLETE]),
+        "failed_today": len([j for j in today_jobs if j.status == JobStatus.FAILED]),
     }
 
     total_jobs = len(jobs)

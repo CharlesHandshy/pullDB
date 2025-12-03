@@ -85,14 +85,14 @@ This plan follows pullDB's **FAIL HARD** principle and tiered testing approach:
 
 ### 1.3 UserRole Enum (`pulldb/domain/models.py`)
 **File**: `pulldb/tests/test_models.py` (new)
-**Status**: ⏳ TODO
+**Status**: ✅ Complete (6 tests)
 
 | Test | Description | Status |
 |------|-------------|--------|
-| `test_userrole_values` | USER, MANAGER, ADMIN values | ⏳ |
-| `test_userrole_from_string` | String to enum conversion | ⏳ |
-| `test_user_default_role` | User.role defaults to USER | ⏳ |
-| `test_user_role_in_dict` | User.to_dict includes role | ⏳ |
+| `test_userrole_values` | USER, MANAGER, ADMIN values | ✅ |
+| `test_userrole_from_string` | String to enum conversion | ✅ |
+| `test_user_requires_role` | User requires role field | ✅ |
+| `test_user_role_in_dict` | User.to_dict includes role | ✅ |
 
 ---
 
@@ -100,25 +100,25 @@ This plan follows pullDB's **FAIL HARD** principle and tiered testing approach:
 
 ### 2.1 Web Route Authentication Flow
 **File**: `pulldb/tests/test_web_auth_flow.py` (new)
-**Status**: ⏳ TODO
+**Status**: ✅ Complete (8 tests)
 
 | Test | Description | Status |
 |------|-------------|--------|
-| `test_login_validates_password` | Login uses verify_password | ⏳ |
-| `test_login_creates_session` | Login calls create_session | ⏳ |
-| `test_logout_invalidates_session` | Logout calls invalidate | ⏳ |
-| `test_protected_route_validates_session` | Session check on protected | ⏳ |
-| `test_protected_route_redirects_unauthenticated` | Redirect to login | ⏳ |
+| `test_login_validates_password` | Login uses verify_password | ✅ |
+| `test_login_creates_session` | Login calls create_session | ✅ |
+| `test_logout_invalidates_session` | Logout calls invalidate | ✅ |
+| `test_protected_route_validates_session` | Session check on protected | ✅ |
+| `test_protected_route_redirects_unauthenticated` | Redirect to login | ✅ |
 
 ### 2.2 Permission + User Model Integration
 **File**: `pulldb/tests/test_permissions_integration.py` (new)
-**Status**: ⏳ TODO
+**Status**: ✅ Complete (6 tests)
 
 | Test | Description | Status |
 |------|-------------|--------|
-| `test_is_admin_true_gives_admin_permissions` | is_admin compat | ⏳ |
-| `test_role_admin_gives_admin_permissions` | role=ADMIN compat | ⏳ |
-| `test_disabled_user_permissions` | disabled_at blocks | ⏳ |
+| `test_is_admin_true_gives_admin_permissions` | is_admin compat | ✅ |
+| `test_role_admin_gives_admin_permissions` | role=ADMIN compat | ✅ |
+| `test_disabled_user_permissions` | disabled_at blocks | ✅ |
 
 ---
 
@@ -132,6 +132,17 @@ This plan follows pullDB's **FAIL HARD** principle and tiered testing approach:
 |------------|-------|--------|
 | `TestAuthRepositoryPassword` | 4 tests | ✅ |
 | `TestAuthRepositorySessions` | 11 tests | ✅ |
+
+**File**: `pulldb/tests/test_simulated_auth_repository.py` (new)
+**Status**: ✅ Complete (5 tests) - Simulation Mode
+
+| Test | Description | Status |
+|------|-------------|--------|
+| `test_create_session` | Session creation | ✅ |
+| `test_validate_session` | Session validation | ✅ |
+| `test_session_expiry` | Expiry handling | ✅ |
+| `test_delete_session` | Session deletion | ✅ |
+| `test_delete_user_sessions` | Bulk deletion | ✅ |
 
 ### 3.2 Schema Migration Validation
 **File**: `pulldb/tests/test_schema_phase4.py` (new)
@@ -165,25 +176,25 @@ This plan follows pullDB's **FAIL HARD** principle and tiered testing approach:
 
 ### 4.1 API + Auth + Database Flow
 **File**: `pulldb/tests/test_api_auth_integration.py` (new)
-**Status**: ⏳ TODO
+**Status**: ✅ Complete (6 tests)
 
 | Test | Description | AWS Profile | Status |
 |------|-------------|-------------|--------|
-| `test_api_state_includes_auth_repo` | auth_repo in APIState | pr-dev | ⏳ |
-| `test_web_router_mounted` | /web routes accessible | pr-dev | ⏳ |
-| `test_login_endpoint_accepts_valid` | POST /web/login works | pr-dev | ⏳ |
-| `test_login_endpoint_rejects_invalid` | Bad password = 401 | pr-dev | ⏳ |
-| `test_session_cookie_set` | session_token cookie | pr-dev | ⏳ |
-| `test_dashboard_requires_auth` | /web/dashboard protected | pr-dev | ⏳ |
+| `test_api_state_includes_auth_repo` | auth_repo in APIState | pr-dev | ✅ |
+| `test_web_router_mounted` | /web routes accessible | pr-dev | ✅ |
+| `test_login_endpoint_accepts_valid` | POST /web/login works | pr-dev | ✅ |
+| `test_login_endpoint_rejects_invalid` | Bad password = 401 | pr-dev | ✅ |
+| `test_session_cookie_set` | session_token cookie | pr-dev | ✅ |
+| `test_dashboard_requires_auth` | /web/dashboard protected | pr-dev | ✅ |
 
 ### 4.2 Worker Service with RBAC
 **File**: `pulldb/tests/test_worker_rbac.py` (new)
-**Status**: ⏳ TODO
+**Status**: ✅ Complete (2 tests)
 
 | Test | Description | AWS Profile | Status |
 |------|-------------|-------------|--------|
-| `test_worker_respects_user_permissions` | USER can only own jobs | pr-dev | ⏳ |
-| `test_worker_logs_include_role` | Events show role | pr-dev | ⏳ |
+| `test_worker_respects_user_permissions` | USER can only own jobs | pr-dev | ✅ |
+| `test_worker_logs_include_role` | Events show role | pr-dev | ✅ |
 
 ### 4.3 Isolated MySQL Testing
 **File**: Uses `isolated_mysql` fixture

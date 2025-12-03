@@ -23,7 +23,6 @@ from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
 from pulldb.infra.mysql import (
     HostRepository,
     JobRepository,
-    MySQLPool,
     SettingsRepository,
     UserRepository,
     build_default_pool,
@@ -1726,7 +1725,7 @@ def _search_backups(
     import fnmatch
     import json as json_module
     
-    from pulldb.infra.s3 import BACKUP_FILENAME_REGEX, S3Client
+    from pulldb.infra.s3 import S3Client
     
     # Load configured backup locations from environment
     raw_locations = os.getenv("PULLDB_S3_BACKUP_LOCATIONS")

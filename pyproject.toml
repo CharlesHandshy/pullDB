@@ -110,4 +110,5 @@ skips = ["B101"]  # Skip assert_used check (needed for tests)
 [tool.pytest.ini_options]
 markers = [
     "integration: Integration tests (real database, real AWS)",
+    "timeout: Test execution timeout (requires pytest-timeout)",
 ]

@@ -8,19 +8,16 @@ Size: ~70 lines (HCA compliant)
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import HTMLResponse
 
 from pulldb.web.dependencies import (
     get_api_state,
-    require_login,
     templates,
     AuthenticatedUser,
-    get_api_state,
 )
-from pulldb.domain.models import User
 
 if TYPE_CHECKING:
     from pulldb.api.main import APIState

@@ -35,14 +35,21 @@ class MockCommandConfig:
 class MockProcessExecutor:
     """In-memory implementation of ProcessExecutor."""
 
-    def __init__(self) -> None:
-        """Initialize with shared simulation state."""
+    def __init__(self, fast_mode: bool = True) -> None:
+        """Initialize with shared simulation state.
+        
+        Args:
+            fast_mode: If True (default), skip sleep delays for faster tests.
+                      Set False only for real-time simulation scenarios.
+        """
         self.state = get_simulation_state()
         self._bus = get_event_bus()
         # Map command prefix (first arg) to config
         self.configs: dict[str, MockCommandConfig] = {}
         # Default config if no match found
         self.default_config = MockCommandConfig()
+        # Fast mode skips real sleeps (useful for tests)
+        self.fast_mode = fast_mode
 
     def configure_command(self, command_prefix: str, config: MockCommandConfig) -> None:
         """Configure behavior for a specific command."""
@@ -54,6 +61,11 @@ class MockProcessExecutor:
 
         cmd_name = command[0]
         return self.configs.get(cmd_name, self.default_config)
+
+    def _maybe_sleep(self, seconds: float) -> None:
+        """Sleep only if not in fast_mode."""
+        if not self.fast_mode and seconds > 0:
+            time.sleep(seconds)
 
     def run_command(self, command: list[str], env: dict[str, str] | None = None) -> int:
         """Run command and return exit code."""
@@ -67,8 +79,7 @@ class MockProcessExecutor:
             data={"command": cmd_str, "method": "run_command"},
         )
 
-        if config.delay_seconds > 0:
-            time.sleep(config.delay_seconds)
+        self._maybe_sleep(config.delay_seconds)
 
         if config.handler:
             exit_code, _, _ = config.handler(command, env)
@@ -111,8 +122,7 @@ class MockProcessExecutor:
             data={"command": cmd_str, "method": "run_command_streaming"},
         )
 
-        if config.delay_seconds > 0:
-            time.sleep(config.delay_seconds)
+        self._maybe_sleep(config.delay_seconds)
 
         stdout = config.stdout
         stderr = config.stderr

@@ -8,7 +8,7 @@ Size: ~180 lines (HCA compliant)
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse, parse_qs
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response

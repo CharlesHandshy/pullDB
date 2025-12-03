@@ -38,6 +38,9 @@ class SimulationState:
     # token_hash -> session data
     sessions: dict[str, dict[str, t.Any]] = field(default_factory=dict)
     
+    # Job cancellation tracking (set of job_ids with pending cancellation requests)
+    cancellation_requested: set[str] = field(default_factory=set)
+    
     # Concurrency control
     lock: threading.RLock = field(default_factory=threading.RLock)
 
@@ -53,6 +56,7 @@ class SimulationState:
             self.users_by_code.clear()
             self.auth_credentials.clear()
             self.sessions.clear()
+            self.cancellation_requested.clear()
 
 
 # Global singleton instance
@@ -67,10 +71,12 @@ def get_simulation_state() -> SimulationState:
 def reset_simulation() -> None:
     """Reset simulation state (for testing).
 
-    This also resets the event bus to ensure clean test isolation.
+    This also resets the event bus and scenario manager to ensure clean test isolation.
     """
     # Import here to avoid circular import
     from pulldb.simulation.core.bus import reset_event_bus
+    from pulldb.simulation.core.scenarios import reset_scenario_manager
 
     _state.clear()
     reset_event_bus()
+    reset_scenario_manager()

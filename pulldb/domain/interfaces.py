@@ -289,6 +289,10 @@ class SettingsRepository(Protocol):
         """Get maximum active jobs allowed per user."""
         ...
 
+    def get_max_active_jobs_global(self) -> int:
+        """Get maximum active jobs allowed globally."""
+        ...
+
     def get_all_settings(self) -> dict[str, str]:
         """Get all settings as a dictionary."""
         ...

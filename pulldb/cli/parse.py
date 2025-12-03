@@ -130,7 +130,7 @@ def _tokenize(
             
             if opt_name == "user":
                 if username is not None:
-                    raise CLIParseError(f"user specified more than once")
+                    raise CLIParseError("user specified more than once")
                 username = opt_value
                 i += 2
                 continue
@@ -138,19 +138,19 @@ def _tokenize(
                 if is_qatemplate:
                     raise CLIParseError("Cannot specify both customer and qatemplate")
                 if customer_id is not None:
-                    raise CLIParseError(f"customer specified more than once")
+                    raise CLIParseError("customer specified more than once")
                 customer_id = opt_value
                 i += 2
                 continue
             elif opt_name == "dbhost":
                 if dbhost is not None:
-                    raise CLIParseError(f"dbhost specified more than once")
+                    raise CLIParseError("dbhost specified more than once")
                 dbhost = opt_value
                 i += 2
                 continue
             elif opt_name == "date":
                 if date is not None:
-                    raise CLIParseError(f"date specified more than once")
+                    raise CLIParseError("date specified more than once")
                 # Validate date format
                 if not re.match(r"^\d{4}-\d{2}-\d{2}$", opt_value):
                     raise CLIParseError(f"Invalid date format '{opt_value}'. Use YYYY-MM-DD")
@@ -163,7 +163,7 @@ def _tokenize(
                 continue
             elif opt_name == "s3env":
                 if s3env is not None:
-                    raise CLIParseError(f"s3env specified more than once")
+                    raise CLIParseError("s3env specified more than once")
                 if opt_value not in ("staging", "prod"):
                     raise CLIParseError(f"s3env must be staging or prod. Got: {opt_value}")
                 s3env = opt_value
@@ -171,7 +171,7 @@ def _tokenize(
                 continue
             elif opt_name == "ext":
                 if ext is not None:
-                    raise CLIParseError(f"ext specified more than once")
+                    raise CLIParseError("ext specified more than once")
                 if not re.match(r"^[A-Za-z]+$", opt_value):
                     raise CLIParseError(f"ext must contain only letters. Got: {opt_value}")
                 ext = opt_value.upper()

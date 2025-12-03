@@ -15,7 +15,7 @@ from jinja2 import ChoiceLoader, FileSystemLoader
 
 from pulldb.domain.models import User
 from pulldb.infra.factory import is_simulation_mode
-from pulldb.simulation import get_simulation_state, get_scenario_manager
+from pulldb.simulation import get_scenario_manager
 
 if TYPE_CHECKING:
     from pulldb.api.main import APIState

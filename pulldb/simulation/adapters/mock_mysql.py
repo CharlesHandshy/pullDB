@@ -12,12 +12,6 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import typing as t
 
-from pulldb.domain.interfaces import (
-    HostRepository,
-    JobRepository,
-    SettingsRepository,
-    UserRepository,
-)
 from pulldb.domain.models import (
     DBHost,
     Job,
@@ -216,7 +210,12 @@ class SimulatedJobRepository:
                 )
 
     def request_cancellation(self, job_id: str) -> bool:
-        """Request cancellation of a job."""
+        """Request cancellation of a job.
+        
+        This sets a flag that the worker should check. It does NOT
+        immediately cancel the job - the worker is responsible for
+        checking is_cancellation_requested() and calling mark_job_canceled().
+        """
         with self.state.lock:
             job = self.state.jobs.get(job_id)
             if not job:
@@ -224,18 +223,13 @@ class SimulatedJobRepository:
             if job.status in (JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED):
                 return False
             
-            # In simulation, we just mark it canceled immediately for now
-            updated = self._update_job_status(
-                job, 
-                JobStatus.CANCELED, 
-                completed_at=datetime.now(UTC)
-            )
-            self.state.jobs[job_id] = updated
-            self.append_job_event(job_id, "canceled", "Job cancellation requested")
+            # Set the cancellation flag
+            self.state.cancellation_requested.add(job_id)
+            self.append_job_event(job_id, "cancellation_requested", "Job cancellation requested")
             return True
 
     def mark_job_canceled(self, job_id: str, reason: str | None = None) -> None:
-        """Mark job as canceled."""
+        """Mark job as canceled (called by worker when it honors cancellation)."""
         with self.state.lock:
             job = self.state.jobs.get(job_id)
             if job:
@@ -246,13 +240,14 @@ class SimulatedJobRepository:
                     error_detail=reason
                 )
                 self.state.jobs[job_id] = updated
+                # Clear the cancellation flag
+                self.state.cancellation_requested.discard(job_id)
                 self.append_job_event(job_id, "canceled", reason or "Job canceled")
 
     def is_cancellation_requested(self, job_id: str) -> bool:
         """Check if cancellation has been requested for a job."""
         with self.state.lock:
-            job = self.state.jobs.get(job_id)
-            return job.status == JobStatus.CANCELED if job else False
+            return job_id in self.state.cancellation_requested
 
     def get_active_jobs(self) -> list[Job]:
         """Get all active jobs (queued or running)."""
@@ -359,8 +354,17 @@ class SimulatedJobRepository:
             return orphans
 
     def mark_staging_cleaned(self, job_id: str) -> None:
-        # In simulation, we just assume it's cleaned.
-        pass
+        """Mark that a job's staging database has been cleaned up.
+        
+        In real MySQL, this might update a 'staging_cleaned_at' column.
+        For simulation, we track cleanup via job events since staging_name
+        is a required field (cannot be nulled).
+        """
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if job:
+                # Track cleanup via event (staging_name remains for audit)
+                self.append_job_event(job_id, "staging_cleaned", f"Staging database {job.staging_name} cleaned up")
 
     def check_target_exclusivity(self, target: str, dbhost: str) -> bool:
         return not self._is_target_busy(target, dbhost)
@@ -379,7 +383,43 @@ class SimulatedJobRepository:
                 1 for j in self.state.jobs.values() 
                 if j.status in (JobStatus.QUEUED, JobStatus.RUNNING)
             )
-            
+
+    def get_user_recent_jobs(self, user_id: str, limit: int = 10) -> list[Job]:
+        """Get recent jobs for a specific user."""
+        with self.state.lock:
+            user_jobs = [
+                j for j in self.state.jobs.values()
+                if j.owner_user_id == user_id
+            ]
+            return sorted(
+                user_jobs, key=lambda j: j.submitted_at, reverse=True
+            )[:limit]
+
+    def cancel_job(self, job_id: str) -> bool:
+        """Cancel a job. Returns True if canceled, False if not found or invalid state."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if not job:
+                return False
+            if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
+                return False
+
+            updated = self._update_job_status(
+                job,
+                JobStatus.CANCELED,
+                completed_at=datetime.now(UTC),
+                error_detail="Canceled by user"
+            )
+            self.state.jobs[job_id] = updated
+            self.append_job_event(job_id, "canceled", "Job canceled by user")
+            self._bus.emit(
+                EventType.JOB_COMPLETED,
+                "SimulatedJobRepository",
+                {"target": job.target, "status": "canceled"},
+                job_id=job_id,
+            )
+            return True
+
     def append_job_event(
         self, job_id: str, event_type: str, detail: str | None = None
     ) -> None:
@@ -393,6 +433,26 @@ class SimulatedJobRepository:
             )
             self.state.job_events.append(event)
 
+    def get_job_events(
+        self, job_id: str, since_id: int | None = None
+    ) -> list[JobEvent]:
+        """Get events for a job, optionally after a certain event ID."""
+        with self.state.lock:
+            events = [e for e in self.state.job_events if e.job_id == job_id]
+            if since_id is not None:
+                events = [e for e in events if e.id > since_id]
+            return sorted(events, key=lambda e: e.id)
+
+    def prune_job_events(self, retention_days: int) -> int:
+        """Prune old job events. Returns count of deleted events."""
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        with self.state.lock:
+            original_count = len(self.state.job_events)
+            self.state.job_events = [
+                e for e in self.state.job_events if e.logged_at >= cutoff
+            ]
+            return original_count - len(self.state.job_events)
+
 
 class SimulatedUserRepository:
     """In-memory implementation of UserRepository."""
@@ -401,13 +461,59 @@ class SimulatedUserRepository:
         """Initialize the repository with shared simulation state."""
         self.state = get_simulation_state()
 
+    # ==================== Internal unlocked helpers ====================
+    # These methods assume the caller already holds self.state.lock.
+    # They exist to avoid nested lock acquisition and race conditions.
+
+    def _get_user_by_username_unlocked(self, username: str) -> User | None:
+        """Get user by username (caller must hold lock)."""
+        for user in self.state.users.values():
+            if user.username == username:
+                return user
+        return None
+
+    def _generate_user_code_unlocked(self, username: str) -> str:
+        """Generate unique user code (caller must hold lock)."""
+        import random
+        
+        base = "".join(c for c in username if c.isalnum()).lower()[:6]
+        while len(base) < 6:
+            base += "x"
+        
+        # Check collision with retry logic (max 100 attempts)
+        candidate = base
+        for _ in range(100):
+            if candidate not in self.state.users_by_code:
+                return candidate
+            # Generate new candidate: base[:5] + random alphanumeric
+            suffix = random.choice('0123456789abcdefghijklmnopqrstuvwxyz')
+            candidate = base[:5] + suffix
+        
+        # Final fallback: use UUID suffix
+        return str(uuid.uuid4())[:6]
+
+    def _create_user_unlocked(self, username: str, user_code: str) -> User:
+        """Create a new user (caller must hold lock)."""
+        user_id = str(uuid.uuid4())
+        user = User(
+            user_id=user_id,
+            username=username,
+            user_code=user_code,
+            is_admin=False,
+            role=UserRole.USER,
+            created_at=datetime.now(UTC),
+            disabled_at=None
+        )
+        self.state.users[user_id] = user
+        self.state.users_by_code[user_code] = user
+        return user
+
+    # ==================== Public API ====================
+
     def get_user_by_username(self, username: str) -> User | None:
         """Get user by username."""
         with self.state.lock:
-            for user in self.state.users.values():
-                if user.username == username:
-                    return user
-            return None
+            return self._get_user_by_username_unlocked(username)
 
     def get_user_by_id(self, user_id: str) -> User | None:
         """Get user by ID."""
@@ -417,42 +523,27 @@ class SimulatedUserRepository:
     def create_user(self, username: str, user_code: str) -> User:
         """Create a new user."""
         with self.state.lock:
-            user_id = str(uuid.uuid4())
-            user = User(
-                user_id=user_id,
-                username=username,
-                user_code=user_code,
-                is_admin=False,
-                role=UserRole.USER,
-                created_at=datetime.now(UTC),
-                disabled_at=None
-            )
-            self.state.users[user_id] = user
-            self.state.users_by_code[user_code] = user
-            return user
+            return self._create_user_unlocked(username, user_code)
 
     def get_or_create_user(self, username: str) -> User:
-        """Get existing user or create new one."""
+        """Get existing user or create new one.
+        
+        Uses internal methods that don't re-acquire lock to avoid race conditions.
+        """
         with self.state.lock:
-            existing = self.get_user_by_username(username)
+            # Check existing without re-acquiring lock
+            existing = self._get_user_by_username_unlocked(username)
             if existing:
                 return existing
             
-            # Generate code
-            code = self.generate_user_code(username)
-            return self.create_user(username, code)
+            # Generate code and create user without releasing lock
+            code = self._generate_user_code_unlocked(username)
+            return self._create_user_unlocked(username, code)
 
     def generate_user_code(self, username: str) -> str:
-        """Generate a unique user code."""
-        base = "".join(c for c in username if c.isalnum()).lower()[:6]
-        while len(base) < 6:
-            base += "x"
-        
-        # Check collision
-        if self.check_user_code_exists(base):
-            # Append random digit
-            base = base[:5] + "1" # Simplified
-        return base
+        """Generate a unique user code with collision handling."""
+        with self.state.lock:
+            return self._generate_user_code_unlocked(username)
 
     def check_user_code_exists(self, user_code: str) -> bool:
         """Check if user code already exists."""
@@ -475,27 +566,33 @@ class SimulatedUserRepository:
     def enable_user(self, username: str) -> None:
         """Enable a user."""
         with self.state.lock:
-            user = self.get_user_by_username(username)
+            user = self._get_user_by_username_unlocked(username)
             if not user:
                 raise ValueError(f"User not found: {username}")
             
             updated = replace(user, disabled_at=None)
             self.state.users[user.user_id] = updated
+            # Keep users_by_code index in sync
+            if user.user_code in self.state.users_by_code:
+                self.state.users_by_code[user.user_code] = updated
 
     def disable_user(self, username: str) -> None:
         """Disable a user."""
         with self.state.lock:
-            user = self.get_user_by_username(username)
+            user = self._get_user_by_username_unlocked(username)
             if not user:
                 raise ValueError(f"User not found: {username}")
             
             updated = replace(user, disabled_at=datetime.now(UTC))
             self.state.users[user.user_id] = updated
+            # Keep users_by_code index in sync
+            if user.user_code in self.state.users_by_code:
+                self.state.users_by_code[user.user_code] = updated
 
     def get_user_detail(self, username: str) -> UserDetail | None:
         """Get detailed user info including job stats."""
         with self.state.lock:
-            user = self.get_user_by_username(username)
+            user = self._get_user_by_username_unlocked(username)
             if not user:
                 return None
             
@@ -507,6 +604,11 @@ class SimulatedUserRepository:
                 failed_jobs=sum(1 for j in jobs if j.status == JobStatus.FAILED),
                 active_jobs=sum(1 for j in jobs if j.status in (JobStatus.QUEUED, JobStatus.RUNNING))
             )
+
+    def list_users(self) -> list[User]:
+        """Get all users."""
+        with self.state.lock:
+            return sorted(self.state.users.values(), key=lambda u: u.username)
 
 
 class SimulatedHostRepository:
@@ -608,6 +710,10 @@ class SimulatedHostRepository:
             
             self.state.hosts[hostname] = replace(host, enabled=False)
 
+    def list_hosts(self) -> list[DBHost]:
+        """Get all hosts (alias for get_all_hosts)."""
+        return self.get_all_hosts()
+
 
 class SimulatedSettingsRepository:
     """In-memory implementation of SettingsRepository."""
@@ -631,6 +737,11 @@ class SimulatedSettingsRepository:
     def get_max_active_jobs_per_user(self) -> int:
         """Get max active jobs per user setting."""
         val = self.get_setting("max_active_jobs_per_user")
+        return int(val) if val else 0
+
+    def get_max_active_jobs_global(self) -> int:
+        """Get max active jobs global setting."""
+        val = self.get_setting("max_active_jobs_global")
         return int(val) if val else 0
 
     def get_all_settings(self) -> dict[str, str]:
@@ -772,3 +883,72 @@ class SimulatedAuthRepository:
             for token_hash in to_delete:
                 del self.state.sessions[token_hash]
             return len(to_delete)
+
+    # ==================== TOTP Methods ====================
+
+    def get_totp_secret(self, user_id: str) -> str | None:
+        """Get TOTP secret for user if enabled."""
+        with self.state.lock:
+            creds = self.state.auth_credentials.get(user_id, {})
+            if creds.get('totp_enabled'):
+                secret = creds.get('totp_secret')
+                return str(secret) if secret else None
+            return None
+
+    def set_totp_secret(self, user_id: str, totp_secret: str) -> None:
+        """Set and enable TOTP for user."""
+        with self.state.lock:
+            if user_id not in self.state.auth_credentials:
+                self.state.auth_credentials[user_id] = {}
+            self.state.auth_credentials[user_id]['totp_secret'] = totp_secret
+            self.state.auth_credentials[user_id]['totp_enabled'] = True
+            self.state.auth_credentials[user_id]['updated_at'] = datetime.now(UTC)
+
+    def disable_totp(self, user_id: str) -> None:
+        """Disable TOTP for user."""
+        with self.state.lock:
+            if user_id in self.state.auth_credentials:
+                self.state.auth_credentials[user_id]['totp_enabled'] = False
+                self.state.auth_credentials[user_id]['totp_secret'] = None
+                self.state.auth_credentials[user_id]['updated_at'] = datetime.now(UTC)
+
+    def is_totp_enabled(self, user_id: str) -> bool:
+        """Check if TOTP is enabled for user."""
+        with self.state.lock:
+            creds = self.state.auth_credentials.get(user_id, {})
+            return bool(creds.get('totp_enabled'))
+
+    # ==================== Session Management Methods ====================
+
+    def get_user_session_count(self, user_id: str) -> int:
+        """Get count of active (non-expired) sessions for user."""
+        now = datetime.now(UTC)
+        with self.state.lock:
+            return sum(
+                1 for session in self.state.sessions.values()
+                if session['user_id'] == user_id and session['expires_at'] > now
+            )
+
+    def cleanup_expired_sessions(self) -> int:
+        """Remove all expired sessions. Returns count removed."""
+        now = datetime.now(UTC)
+        with self.state.lock:
+            to_delete = [
+                token_hash for token_hash, session in self.state.sessions.items()
+                if session['expires_at'] < now
+            ]
+            for token_hash in to_delete:
+                del self.state.sessions[token_hash]
+            return len(to_delete)
+
+    def get_session_by_id(self, session_id: str) -> dict[str, t.Any] | None:
+        """Get session details by session_id."""
+        with self.state.lock:
+            for session in self.state.sessions.values():
+                if session['session_id'] == session_id:
+                    return dict(session)  # Return copy
+            return None
+
+    def invalidate_all_user_sessions(self, user_id: str) -> int:
+        """Invalidate all sessions for user. Alias for delete_user_sessions."""
+        return self.delete_user_sessions(user_id)

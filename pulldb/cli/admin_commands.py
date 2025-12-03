@@ -10,7 +10,6 @@ Commands:
 from __future__ import annotations
 
 import json
-import os
 import typing as t
 from datetime import datetime
 

@@ -19,10 +19,7 @@ from pulldb.simulation import (
     MockProcessExecutor,
     MockS3Client,
     ScenarioType,
-    SimulatedHostRepository,
     SimulatedJobRepository,
-    SimulatedSettingsRepository,
-    SimulatedUserRepository,
     get_event_bus,
     get_scenario_manager,
     get_simulation_state,
@@ -280,8 +277,9 @@ class TestMockS3Client:
 
     def test_head_object_not_found(self) -> None:
         """head_object raises for missing keys."""
+        from pulldb.simulation.adapters.mock_s3 import S3Error
         s3 = MockS3Client()
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(S3Error, match="not found"):
             s3.head_object("test-bucket", "missing.txt")
 
     def test_get_object_found(self) -> None:
@@ -292,7 +290,8 @@ class TestMockS3Client:
         result = s3.get_object("test-bucket", "file.txt")
         assert "Body" in result
         content = result["Body"].read()
-        assert content == b"mock content"
+        # Content is now unique per key
+        assert b"test-bucket/file.txt" in content
 
 
 class TestMockProcessExecutor:

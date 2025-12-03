@@ -32,7 +32,6 @@ from pulldb.domain.errors import (
 )
 from pulldb.domain.models import Job
 from pulldb.infra.logging import get_logger
-from pulldb.infra.mysql import HostRepository, JobRepository
 from pulldb.infra.s3 import (
     BackupSpec,
     S3Client,

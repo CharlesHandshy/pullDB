@@ -15,12 +15,30 @@ from pulldb.simulation.core.state import get_simulation_state
 logger = logging.getLogger(__name__)
 
 
+class S3Error(Exception):
+    """Mock exception that mimics boto3 ClientError structure."""
+    
+    def __init__(self, error_code: str, message: str, operation: str = "Unknown") -> None:
+        self.response = {
+            "Error": {
+                "Code": error_code,
+                "Message": message,
+            },
+            "ResponseMetadata": {
+                "HTTPStatusCode": 404 if error_code == "404" else 500,
+            },
+        }
+        self.operation_name = operation
+        super().__init__(f"An error occurred ({error_code}) when calling the {operation} operation: {message}")
+
+
 class MockStreamingBody:
     """Mock for botocore.response.StreamingBody."""
 
     def __init__(self, content: bytes = b"") -> None:
         """Initialize with content."""
         self._stream = BytesIO(content)
+        self._content = content
 
     def read(self, amt: int | None = None) -> bytes:
         """Read bytes from stream."""
@@ -29,6 +47,20 @@ class MockStreamingBody:
     def close(self) -> None:
         """Close the stream."""
         self._stream.close()
+
+    def iter_lines(self, chunk_size: int = 1024) -> t.Iterator[bytes]:
+        """Iterate over lines in the stream."""
+        for line in self._content.splitlines():
+            yield line
+
+    def iter_chunks(self, chunk_size: int = 1024) -> t.Iterator[bytes]:
+        """Iterate over chunks of the stream."""
+        self._stream.seek(0)
+        while True:
+            chunk = self._stream.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
 
 
 class MockS3Client:
@@ -92,19 +124,21 @@ class MockS3Client:
                     data={"bucket": bucket, "key": key, "found": True},
                 )
                 return metadata
-            # Simulate boto3 exception? Or just raise generic for now.
-            # The real implementation raises ClientError.
+            # Raise S3Error that mimics boto3 ClientError structure
             self._bus.emit(
                 EventType.S3_ERROR,
                 source="MockS3Client",
                 data={"bucket": bucket, "key": key, "error": "key_not_found"},
             )
-            raise ValueError(f"Key {key} not found in bucket {bucket}")
+            raise S3Error("404", f"Key {key} not found in bucket {bucket}", "HeadObject")
 
     def get_object(
         self, bucket: str, key: str, profile: str | None = None
     ) -> dict[str, t.Any]:
-        """Return object (streaming body)."""
+        """Return object (streaming body).
+        
+        Returns unique content per key for more realistic simulation.
+        """
         with self.state.lock:
             if bucket in self.state.s3_buckets and key in self.state.s3_buckets[bucket]:
                 self._bus.emit(
@@ -112,9 +146,11 @@ class MockS3Client:
                     source="MockS3Client",
                     data={"bucket": bucket, "key": key},
                 )
+                # Generate unique content based on key for more realistic simulation
+                content = f"mock content for {bucket}/{key}".encode()
                 return {
-                    "Body": MockStreamingBody(b"mock content"),
-                    "ContentLength": 12,
+                    "Body": MockStreamingBody(content),
+                    "ContentLength": len(content),
                     "ContentType": "application/octet-stream",
                 }
             self._bus.emit(
@@ -122,7 +158,7 @@ class MockS3Client:
                 source="MockS3Client",
                 data={"bucket": bucket, "key": key, "error": "key_not_found"},
             )
-            raise ValueError(f"Key {key} not found in bucket {bucket}")
+            raise S3Error("404", f"Key {key} not found in bucket {bucket}", "GetObject")
 
     def load_fixtures(self, bucket: str, keys: list[str]) -> None:
         """Load mock keys into a bucket."""

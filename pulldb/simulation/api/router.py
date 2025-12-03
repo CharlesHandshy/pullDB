@@ -486,7 +486,10 @@ async def seed_user(request: SeedUserRequest) -> SeedUserResponse:
     if request.is_admin:
         state = get_simulation_state()
         with state.lock:
-            state.users[user.username] = replace(user, is_admin=True)
+            state.users[user.user_id] = replace(user, is_admin=True)
+            # Also update users_by_code index
+            if user.user_code in state.users_by_code:
+                state.users_by_code[user.user_code] = replace(user, is_admin=True)
 
     return SeedUserResponse(
         success=True,

@@ -19,7 +19,6 @@ import subprocess
 import time
 import typing as t
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from pulldb.domain.models import CommandResult

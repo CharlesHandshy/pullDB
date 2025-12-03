@@ -6,6 +6,8 @@ Purpose: Centralized exception handling for web routes.
 
 from __future__ import annotations
 
+import typing as t
+
 from fastapi import Request, Response, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -38,7 +40,7 @@ class ResourceNotFoundError(Exception):
         super().__init__(f"{resource_type} not found: {resource_id}")
 
 
-def create_session_expired_handler():
+def create_session_expired_handler() -> t.Callable[[Request, SessionExpiredError], t.Awaitable[Response]]:
     """Create exception handler for SessionExpiredError.
 
     Returns a response that clears the session cookie and redirects to login.

@@ -1,5 +1,11 @@
 """Tests for Mock MySQL repositories."""
 
+import os
+import sys
+
+# Ensure we import from the local project, not system packages
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
 import unittest
 from datetime import UTC, datetime, timedelta
 

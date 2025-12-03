@@ -26,10 +26,10 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import dataclass
 from typing import Any
 
 import boto3
+from botocore.config import Config as BotoConfig
 from botocore.exceptions import BotoCoreError, ClientError
 
 from pulldb.domain.models import MySQLCredentials
@@ -80,6 +80,8 @@ class CredentialResolver:
         self,
         aws_profile: str | None = None,
         aws_region: str | None = None,
+        connect_timeout: float = 5.0,
+        read_timeout: float = 10.0,
     ) -> None:
         """Initialize CredentialResolver.
 
@@ -88,6 +90,8 @@ class CredentialResolver:
                 environment variable or default AWS credentials chain.
             aws_region: AWS region for API calls. If None, uses PULLDB_AWS_REGION,
                 then AWS_DEFAULT_REGION, then defaults to 'us-east-1'.
+            connect_timeout: Connection timeout in seconds (default: 5.0).
+            read_timeout: Read timeout in seconds (default: 10.0).
         """
         self.aws_profile = aws_profile or os.getenv("PULLDB_AWS_PROFILE")
         self.aws_region = (
@@ -95,6 +99,11 @@ class CredentialResolver:
             or os.getenv("PULLDB_AWS_REGION")
             or os.getenv("AWS_DEFAULT_REGION")
             or "us-east-1"
+        )
+        self._boto_config = BotoConfig(
+            connect_timeout=connect_timeout,
+            read_timeout=read_timeout,
+            retries={"max_attempts": 3, "mode": "standard"},
         )
         self._secrets_manager: Any = None
         self._ssm: Any = None
@@ -116,7 +125,10 @@ class CredentialResolver:
                 profile_name=self.aws_profile,
                 region_name=self.aws_region,
             )
-            self._secrets_manager = session.client("secretsmanager")
+            self._secrets_manager = session.client(
+                "secretsmanager",
+                config=self._boto_config,
+            )
             logger.debug(
                 f"Initialized Secrets Manager client "
                 f"(region={self.aws_region}, profile={self.aws_profile})"
@@ -134,7 +146,7 @@ class CredentialResolver:
                 profile_name=self.aws_profile,
                 region_name=self.aws_region,
             )
-            self._ssm = session.client("ssm")
+            self._ssm = session.client("ssm", config=self._boto_config)
             logger.debug(
                 f"Initialized SSM client "
                 f"(region={self.aws_region}, profile={self.aws_profile})"
