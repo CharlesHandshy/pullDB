@@ -5,6 +5,7 @@ This CLI is intended for server operators, not end users.
 
 Commands:
 - settings: Manage configuration settings (list, get, set, reset, export)
+- secrets: Manage AWS Secrets Manager credentials (list, get, set, delete, test, rotate)
 - jobs: View and manage jobs across all users
 - cleanup: Cleanup orphaned staging databases and work files
 - hosts: Manage registered database hosts
@@ -38,6 +39,7 @@ from pulldb.cli.admin_commands import (
     jobs_group,
     users_group,
 )
+from pulldb.cli.secrets_commands import secrets_group
 from pulldb.cli.settings import settings_group
 
 
@@ -54,6 +56,7 @@ def cli() -> None:
 
 # Register command groups
 cli.add_command(settings_group)
+cli.add_command(secrets_group)
 cli.add_command(jobs_group)
 cli.add_command(cleanup_cmd)
 cli.add_command(hosts_group)

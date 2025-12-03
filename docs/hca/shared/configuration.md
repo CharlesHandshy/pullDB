@@ -329,3 +329,98 @@ PULLDB_WORK_DIR=/var/lib/pulldb/work
 - [Deployment Guide](widgets/deployment.md) - Service installation
 - [Admin Guide](pages/admin-guide.md) - Settings management
 - [Architecture](widgets/architecture.md) - System design
+
+---
+
+## Configuration Management CLI
+
+> CLI commands for managing configuration, settings, and secrets.
+
+### Settings CLI (`pulldb-admin settings`)
+
+Manage MySQL settings table and .env file:
+
+```bash
+# List all settings
+pulldb-admin settings list
+
+# Get a specific setting
+pulldb-admin settings get myloader_threads
+
+# Set a value (updates both MySQL and .env)
+pulldb-admin settings set myloader_threads 16
+
+# Reset to default
+pulldb-admin settings reset myloader_threads
+
+# Export settings to file
+pulldb-admin settings export --format=json > settings.json
+
+# Diff local vs database
+pulldb-admin settings diff
+
+# Sync operations
+pulldb-admin settings pull    # DB → .env
+pulldb-admin settings push    # .env → DB
+```
+
+### Secrets CLI (`pulldb-admin secrets`)
+
+Manage AWS Secrets Manager credentials:
+
+```bash
+# List all pullDB secrets
+pulldb-admin secrets list
+pulldb-admin secrets list --prefix=/pulldb/mysql/ --json
+
+# Get secret details
+pulldb-admin secrets get /pulldb/mysql/coordination-db
+pulldb-admin secrets get /pulldb/mysql/coordination-db --show-password
+
+# Create/update secret
+pulldb-admin secrets set /pulldb/mysql/myhost \
+  --host=mysql.example.com \
+  --password=secret123 \
+  --port=3306
+
+# Use stdin for password
+echo "mypassword" | pulldb-admin secrets set /pulldb/mysql/myhost \
+  --host=mysql.example.com \
+  --password=-
+
+# Test secret connectivity
+pulldb-admin secrets test /pulldb/mysql/coordination-db --username=pulldb_api
+
+# Delete secret (with recovery window)
+pulldb-admin secrets delete /pulldb/mysql/old-secret
+pulldb-admin secrets delete /pulldb/mysql/old-secret --force  # immediate
+
+# Rotate password (update secret only, not MySQL user)
+pulldb-admin secrets rotate /pulldb/mysql/coordination-db
+```
+
+**Secrets JSON Format:**
+```json
+{
+  "host": "mysql.example.com",
+  "password": "secure_password",
+  "port": 3306,
+  "username": "optional_username"
+}
+```
+
+### AWS Options
+
+Both CLI groups support AWS profile and region options:
+
+```bash
+# Use specific AWS profile
+pulldb-admin --profile=production secrets list
+
+# Use specific region
+pulldb-admin --region=us-west-2 secrets list
+```
+
+Environment variables:
+- `PULLDB_AWS_PROFILE` - Default AWS profile
+- `PULLDB_AWS_REGION` - Default AWS region
