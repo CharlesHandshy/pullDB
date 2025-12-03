@@ -1,7 +1,7 @@
 # Task List: pullDB Simulation Engine
 
 > **Parent Project**: [Mock System Plan](mock-system-plan.md)
-> **Status**: Phase 4 Complete ✅
+> **Status**: **ALL PHASES COMPLETE** ✅ (Phase 1-4)
 > **Branch**: `feature/mock-system-phase3`
 
 ## Phase 1: Foundation & Refactoring (Interfaces)
@@ -77,14 +77,27 @@
 
 ## Phase 4: Web UI & Validation
 
-- [ ] **4.1 Simulation Control API** (Future)
-    - [ ] Create `pulldb/simulation/api/router.py`.
-    - [ ] Add `POST /simulation/reset` endpoint.
-    - [ ] Add `POST /simulation/scenario` endpoint.
-    - [ ] Mount router in `pulldb/api/main.py` (only if in SIMULATION mode).
-- [ ] **4.2 Web UI Integration** (Future)
-    - [ ] Add visual indicator "SIMULATION MODE" to Web UI.
-    - [ ] Add "Debug Panel" to view Event Bus stream.
+- [x] **4.1 Simulation Control API**
+    - [x] Create `pulldb/simulation/api/router.py`.
+    - [x] Add `POST /simulation/reset` endpoint.
+    - [x] Add `POST /simulation/scenarios/activate` endpoint.
+    - [x] Add `GET /simulation/status` endpoint.
+    - [x] Add `GET /simulation/events` endpoint.
+    - [x] Add `GET /simulation/scenarios` endpoint.
+    - [x] Add `POST /simulation/chaos` endpoint.
+    - [x] Add `GET /simulation/state` endpoint.
+    - [x] Add `DELETE /simulation/events` endpoint.
+    - [x] Add `GET /simulation/event-types`, `GET /simulation/scenario-types` endpoints.
+    - [x] Mount router in `pulldb/api/main.py` (only if in SIMULATION mode).
+- [x] **4.2 Web UI Integration**
+    - [x] Add visual indicator "SIMULATION MODE" banner to base.html.
+    - [x] Add "Debug Panel" modal with:
+        - [x] Current state display
+        - [x] Scenario selector dropdown
+        - [x] Event history log (latest 20 events)
+    - [x] Wire `simulation_mode()` and `simulation_scenario_name()` Jinja2 globals.
+    - [x] Add CSS styles for `.simulation-banner`, `.simulation-panel`, etc.
+    - [x] Add JavaScript for panel open/close and API interactions.
 - [x] **4.3 Comprehensive Testing**
     - [x] Create `pulldb/tests/simulation/test_simulation.py` with 34 tests.
     - [x] Test `SimulationState` singleton and reset behavior.
