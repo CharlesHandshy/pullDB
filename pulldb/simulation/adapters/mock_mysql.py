@@ -650,3 +650,125 @@ class SimulatedSettingsRepository:
                 del self.state.settings[key]
                 return True
             return False
+
+
+class SimulatedAuthRepository:
+    """In-memory implementation of AuthRepository for simulation mode.
+
+    Supports password verification and session management without a database.
+    """
+
+    # Session token length in bytes (generates 64 hex chars)
+    TOKEN_BYTES = 32
+
+    # Default session TTL
+    DEFAULT_SESSION_TTL_HOURS = 24
+
+    def __init__(self) -> None:
+        """Initialize the repository with shared simulation state."""
+        self.state = get_simulation_state()
+
+    def get_password_hash(self, user_id: str) -> str | None:
+        """Get stored password hash for user."""
+        with self.state.lock:
+            if user_id in self.state.auth_credentials:
+                pw_hash = self.state.auth_credentials[user_id].get('password_hash')
+                return str(pw_hash) if pw_hash else None
+            return None
+
+    def set_password_hash(self, user_id: str, password_hash: str) -> None:
+        """Set password hash for user."""
+        with self.state.lock:
+            if user_id not in self.state.auth_credentials:
+                self.state.auth_credentials[user_id] = {}
+            self.state.auth_credentials[user_id]['password_hash'] = password_hash
+            self.state.auth_credentials[user_id]['updated_at'] = datetime.now(UTC)
+
+    def has_password(self, user_id: str) -> bool:
+        """Check if user has a password set."""
+        return self.get_password_hash(user_id) is not None
+
+    def create_session(
+        self,
+        user_id: str,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        ttl_hours: int | None = None,
+    ) -> tuple[str, str]:
+        """Create new session for user."""
+        import hashlib
+        import secrets
+
+        if ttl_hours is None:
+            ttl_hours = self.DEFAULT_SESSION_TTL_HOURS
+
+        session_id = str(uuid.uuid4())
+        token = secrets.token_hex(self.TOKEN_BYTES)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        expires_at = datetime.now(UTC) + timedelta(hours=ttl_hours)
+
+        with self.state.lock:
+            self.state.sessions[token_hash] = {
+                'session_id': session_id,
+                'user_id': user_id,
+                'token_hash': token_hash,
+                'expires_at': expires_at,
+                'last_activity': datetime.now(UTC),
+                'ip_address': ip_address,
+                'user_agent': user_agent,
+            }
+
+        return session_id, token
+
+    def validate_session(self, session_token: str) -> str | None:
+        """Validate session token and return user_id."""
+        import hashlib
+
+        token_hash = hashlib.sha256(session_token.encode()).hexdigest()
+
+        with self.state.lock:
+            session = self.state.sessions.get(token_hash)
+
+            if not session:
+                return None
+
+            # Check expiration
+            expires_at = session['expires_at']
+            if expires_at < datetime.now(UTC):
+                # Session expired, clean it up
+                del self.state.sessions[token_hash]
+                return None
+
+            # Update last activity
+            session['last_activity'] = datetime.now(UTC)
+            return str(session['user_id'])
+
+    def delete_session(self, session_token: str) -> bool:
+        """Delete a session."""
+        import hashlib
+
+        token_hash = hashlib.sha256(session_token.encode()).hexdigest()
+
+        with self.state.lock:
+            if token_hash in self.state.sessions:
+                del self.state.sessions[token_hash]
+                return True
+            return False
+
+    def invalidate_session_by_token(self, session_token: str) -> bool:
+        """Invalidate a session by its token.
+
+        Alias for delete_session to match AuthRepository interface.
+        """
+        return self.delete_session(session_token)
+
+    def delete_user_sessions(self, user_id: str) -> int:
+        """Delete all sessions for a user."""
+        with self.state.lock:
+            to_delete = [
+                token_hash for token_hash, session in self.state.sessions.items()
+                if session['user_id'] == user_id
+            ]
+            for token_hash in to_delete:
+                del self.state.sessions[token_hash]
+            return len(to_delete)

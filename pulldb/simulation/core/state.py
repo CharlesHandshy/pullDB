@@ -7,6 +7,7 @@ structures. Acts as the single source of truth for all Mock Repositories.
 from __future__ import annotations
 
 import threading
+import typing as t
 from dataclasses import dataclass, field
 
 from pulldb.domain.models import DBHost, Job, JobEvent, User
@@ -31,6 +32,12 @@ class SimulationState:
     # user_code -> User
     users_by_code: dict[str, User] = field(default_factory=dict)
     
+    # Auth state (Phase 4)
+    # user_id -> {password_hash, totp_secret, etc.}
+    auth_credentials: dict[str, dict[str, t.Any]] = field(default_factory=dict)
+    # token_hash -> session data
+    sessions: dict[str, dict[str, t.Any]] = field(default_factory=dict)
+    
     # Concurrency control
     lock: threading.RLock = field(default_factory=threading.RLock)
 
@@ -44,6 +51,8 @@ class SimulationState:
             self.job_events.clear()
             self.s3_buckets.clear()
             self.users_by_code.clear()
+            self.auth_credentials.clear()
+            self.sessions.clear()
 
 
 # Global singleton instance

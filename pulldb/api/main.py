@@ -160,6 +160,7 @@ def _initialize_state() -> APIState:
 def _initialize_simulation_state() -> APIState:
     """Initialize API state with simulation components."""
     from pulldb.simulation import (
+        SimulatedAuthRepository,
         SimulatedHostRepository,
         SimulatedJobRepository,
         SimulatedSettingsRepository,
@@ -175,7 +176,7 @@ def _initialize_simulation_state() -> APIState:
         job_repo=SimulatedJobRepository(),
         settings_repo=SimulatedSettingsRepository(),
         host_repo=SimulatedHostRepository(),
-        auth_repo=None,
+        auth_repo=SimulatedAuthRepository(),
     )
 
 

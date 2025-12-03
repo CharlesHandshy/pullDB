@@ -10,17 +10,21 @@ Provides REST endpoints to control the simulation engine:
 from __future__ import annotations
 
 import typing as t
+from dataclasses import replace
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
+from pulldb.auth.password import hash_password
+from pulldb.simulation import SimulatedAuthRepository, SimulatedUserRepository
 from pulldb.simulation.core.bus import EventType, get_event_bus
 from pulldb.simulation.core.scenarios import (
     ScenarioType,
     get_scenario_manager,
 )
 from pulldb.simulation.core.state import get_simulation_state, reset_simulation
+
 
 router = APIRouter(prefix="/simulation", tags=["simulation"])
 
@@ -194,7 +198,9 @@ async def list_scenarios() -> ScenarioListResponse:
 
 
 @router.post("/scenarios/activate", response_model=ActivateScenarioResponse)
-async def activate_scenario(request: ActivateScenarioRequest) -> ActivateScenarioResponse:
+async def activate_scenario(
+    request: ActivateScenarioRequest,
+) -> ActivateScenarioResponse:
     """Activate a scenario.
 
     Resets simulation state and applies the specified scenario configuration,
@@ -211,7 +217,7 @@ async def activate_scenario(request: ActivateScenarioRequest) -> ActivateScenari
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid scenario type: {request.scenario_type}. "
             f"Valid types: {valid_types}",
-        )
+        ) from None
 
     # Activate scenario
     scenario = manager.activate_scenario(scenario_type)
@@ -251,8 +257,9 @@ async def get_events(
             valid_types = [et.value for et in EventType]
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid event type: {event_type}. Valid types: {valid_types}",
-            )
+                detail=f"Invalid event type: {event_type}. "
+                f"Valid types: {valid_types}",
+            ) from None
 
     events = bus.get_history(
         event_type=parsed_event_type,
@@ -320,22 +327,25 @@ async def get_state_snapshot() -> StateSnapshotResponse:
 
     with state.lock:
         # Convert jobs to dicts
-        jobs = []
+        jobs: list[dict[str, t.Any]] = []
         for job in state.jobs.values():
+            submitted_at_str = (
+                job.submitted_at.isoformat() if job.submitted_at else None
+            )
             jobs.append(
                 {
                     "id": job.id,
                     "target": job.target,
                     "status": job.status.value,
                     "owner_username": job.owner_username,
-                    "submitted_at": job.submitted_at.isoformat() if job.submitted_at else None,
+                    "submitted_at": submitted_at_str,
                     "worker_id": job.worker_id,
                     "error_detail": job.error_detail,
                 }
             )
 
         # Convert users to dicts
-        users = []
+        users: list[dict[str, t.Any]] = []
         for user in state.users.values():
             users.append(
                 {
@@ -347,13 +357,13 @@ async def get_state_snapshot() -> StateSnapshotResponse:
             )
 
         # Convert hosts to dicts
-        hosts = []
+        hosts: list[dict[str, t.Any]] = []
         for host in state.hosts.values():
             hosts.append(
                 {
-                    "host_id": host.host_id,
+                    "id": host.id,
                     "hostname": host.hostname,
-                    "display_name": host.display_name,
+                    "host_alias": host.host_alias,
                     "enabled": host.enabled,
                 }
             )
@@ -426,3 +436,61 @@ async def list_scenario_types() -> dict[str, list[str]]:
             ScenarioType.INTERMITTENT_FAILURES.value,
         ],
     }
+
+
+class SeedUserRequest(BaseModel):
+    """Request to seed a test user."""
+
+    username: str = Field(..., description="Username for the test user")
+    password: str = Field(..., description="Password for the test user")
+    user_code: str = Field(default="test", description="User code")
+    is_admin: bool = Field(default=False, description="Whether user is admin")
+
+
+class SeedUserResponse(BaseModel):
+    """Response after seeding a test user."""
+
+    success: bool = True
+    user_id: str
+    username: str
+    message: str
+
+
+@router.post("/seed-user", response_model=SeedUserResponse)
+async def seed_user(request: SeedUserRequest) -> SeedUserResponse:
+    """Seed a test user for simulation mode.
+
+    Creates a user with the given credentials for testing authentication flows.
+    """
+    user_repo = SimulatedUserRepository()
+    auth_repo = SimulatedAuthRepository()
+
+    # Check if user already exists
+    existing = user_repo.get_user_by_username(request.username)
+    if existing:
+        return SeedUserResponse(
+            success=True,
+            user_id=existing.user_id,
+            username=existing.username,
+            message=f"User '{request.username}' already exists",
+        )
+
+    # Create the user
+    user = user_repo.create_user(request.username, request.user_code)
+
+    # Set password
+    password_hash = hash_password(request.password)
+    auth_repo.set_password_hash(user.user_id, password_hash)
+
+    # Make admin if requested
+    if request.is_admin:
+        state = get_simulation_state()
+        with state.lock:
+            state.users[user.username] = replace(user, is_admin=True)
+
+    return SeedUserResponse(
+        success=True,
+        user_id=user.user_id,
+        username=user.username,
+        message=f"Created user '{request.username}' with password",
+    )
