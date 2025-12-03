@@ -14,6 +14,8 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import ChoiceLoader, FileSystemLoader
 
 from pulldb.domain.models import User
+from pulldb.infra.factory import is_simulation_mode
+from pulldb.simulation import get_simulation_state, get_scenario_manager
 
 if TYPE_CHECKING:
     from pulldb.api.main import APIState
@@ -42,6 +44,25 @@ _loader = ChoiceLoader([
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.loader = _loader
+
+
+def _get_active_scenario_name() -> str | None:
+    """Get the name of the currently active scenario (for template display)."""
+    if not is_simulation_mode():
+        return None
+    try:
+        manager = get_scenario_manager()
+        if manager.active_scenario:
+            return manager.active_scenario.name.replace("_", " ").title()
+    except Exception:
+        pass
+    return None
+
+
+# Add simulation mode globals to Jinja2 environment
+# These are evaluated at template render time via callable
+templates.env.globals["simulation_mode"] = is_simulation_mode
+templates.env.globals["simulation_scenario_name"] = _get_active_scenario_name
 
 
 def get_api_state(request: Request) -> "APIState":

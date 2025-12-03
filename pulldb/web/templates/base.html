@@ -114,6 +114,74 @@
             --sidebar-collapsed: 3px;  /* Attention capture strip */
             --header-height: 56px;
             --page-header-height: 52px;
+            
+            /* Simulation Mode Colors */
+            --simulation-bg: #fef3c7;
+            --simulation-border: #f59e0b;
+            --simulation-text: #92400e;
+        }
+
+        /* =================================================================
+           SIMULATION MODE INDICATOR
+           Shows when PULLDB_MODE=SIMULATION
+           ================================================================= */
+        
+        .simulation-banner {
+            background: linear-gradient(90deg, var(--simulation-bg) 0%, #fef9c3 50%, var(--simulation-bg) 100%);
+            border-bottom: 2px solid var(--simulation-border);
+            color: var(--simulation-text);
+            padding: var(--space-2) var(--space-4);
+            font-size: 0.8125rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-3);
+            animation: simulation-pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes simulation-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.85; }
+        }
+        
+        .simulation-banner svg {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+        }
+        
+        .simulation-banner .sim-label {
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .simulation-banner .sim-scenario {
+            font-weight: 400;
+            opacity: 0.9;
+        }
+        
+        .simulation-banner .sim-actions {
+            margin-left: auto;
+            display: flex;
+            gap: var(--space-2);
+        }
+        
+        .simulation-banner .sim-btn {
+            background: white;
+            border: 1px solid var(--simulation-border);
+            color: var(--simulation-text);
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition-fast);
+        }
+        
+        .simulation-banner .sim-btn:hover {
+            background: var(--simulation-bg);
+            transform: translateY(-1px);
         }
 
         /* Reset & Base */
@@ -1361,6 +1429,27 @@
         <!-- 3px Attention Strip - Full Height -->
         <div class="attention-strip"></div>
         
+        {% if simulation_mode() %}
+        <!-- Simulation Mode Banner -->
+        <div class="simulation-banner" id="simulation-banner">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <span class="sim-label">Simulation Mode</span>
+            <span class="sim-scenario" id="sim-scenario-label">
+                {% if simulation_scenario_name() %}Scenario: {{ simulation_scenario_name() }}{% else %}No scenario active{% endif %}
+            </span>
+            <div class="sim-actions">
+                <button class="sim-btn" onclick="openSimulationPanel()">
+                    Debug Panel
+                </button>
+                <button class="sim-btn" onclick="resetSimulation()">
+                    Reset State
+                </button>
+            </div>
+        </div>
+        {% endif %}
+        
         <!-- Main App Container (right of 3px strip) -->
         <div class="app-main">
             <!-- Page Header Bar - Full Width -->
@@ -1710,6 +1799,241 @@
     
     {% else %}
     {% block public_content %}{% endblock %}
+    {% endif %}
+    
+    {% if simulation_mode() %}
+    <!-- Simulation Debug Panel Modal -->
+    <div id="simulation-panel" class="simulation-panel" style="display: none;">
+        <div class="sim-panel-content">
+            <div class="sim-panel-header">
+                <h3>🔬 Simulation Debug Panel</h3>
+                <button class="sim-panel-close" onclick="closeSimulationPanel()">&times;</button>
+            </div>
+            <div class="sim-panel-body">
+                <div class="sim-section">
+                    <h4>Current State</h4>
+                    <div id="sim-state-info">Loading...</div>
+                </div>
+                <div class="sim-section">
+                    <h4>Scenarios</h4>
+                    <select id="sim-scenario-select" onchange="activateScenario(this.value)">
+                        <option value="">-- Select Scenario --</option>
+                    </select>
+                </div>
+                <div class="sim-section">
+                    <h4>Event History (Latest 20)</h4>
+                    <div id="sim-event-log" class="sim-event-log"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        .simulation-panel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .sim-panel-content {
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+        }
+        .sim-panel-header {
+            background: linear-gradient(90deg, #fef3c7, #fef9c3);
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #f59e0b;
+        }
+        .sim-panel-header h3 {
+            margin: 0;
+            font-size: 1.1rem;
+            color: #92400e;
+        }
+        .sim-panel-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #92400e;
+        }
+        .sim-panel-body {
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .sim-section {
+            margin-bottom: 20px;
+        }
+        .sim-section h4 {
+            font-size: 0.9rem;
+            color: #374151;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        #sim-state-info {
+            background: #f3f4f6;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+        }
+        #sim-scenario-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        .sim-event-log {
+            background: #1f2937;
+            color: #e5e7eb;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .sim-event {
+            padding: 4px 0;
+            border-bottom: 1px solid #374151;
+        }
+        .sim-event:last-child {
+            border-bottom: none;
+        }
+        .sim-event-type {
+            color: #60a5fa;
+        }
+        .sim-event-source {
+            color: #a78bfa;
+        }
+        .sim-event-time {
+            color: #6b7280;
+        }
+    </style>
+    
+    <script>
+        // Simulation mode control functions
+        async function openSimulationPanel() {
+            document.getElementById('simulation-panel').style.display = 'flex';
+            await refreshSimulationState();
+            await loadScenarios();
+            await loadEventHistory();
+        }
+        
+        function closeSimulationPanel() {
+            document.getElementById('simulation-panel').style.display = 'none';
+        }
+        
+        async function resetSimulation() {
+            if (!confirm('Reset all simulation state? This will clear jobs, events, and S3 fixtures.')) {
+                return;
+            }
+            try {
+                const resp = await fetch('/simulation/reset', { method: 'POST' });
+                const data = await resp.json();
+                alert(data.message);
+                location.reload();
+            } catch (e) {
+                alert('Reset failed: ' + e.message);
+            }
+        }
+        
+        async function refreshSimulationState() {
+            try {
+                const resp = await fetch('/simulation/status');
+                const data = await resp.json();
+                document.getElementById('sim-state-info').innerHTML = `
+                    <div><strong>Scenario:</strong> ${data.current_scenario || 'None'}</div>
+                    <div><strong>Jobs:</strong> ${data.job_count} | <strong>Users:</strong> ${data.user_count} | <strong>Hosts:</strong> ${data.host_count}</div>
+                    <div><strong>S3 Buckets:</strong> ${data.s3_bucket_count} | <strong>Events:</strong> ${data.event_count}</div>
+                `;
+            } catch (e) {
+                document.getElementById('sim-state-info').textContent = 'Error loading state: ' + e.message;
+            }
+        }
+        
+        async function loadScenarios() {
+            try {
+                const resp = await fetch('/simulation/scenarios');
+                const data = await resp.json();
+                const select = document.getElementById('sim-scenario-select');
+                select.innerHTML = '<option value="">-- Select Scenario --</option>';
+                data.scenarios.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.type;
+                    opt.textContent = `${s.name} - ${s.description}`;
+                    if (s.type === data.current) {
+                        opt.selected = true;
+                    }
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.error('Failed to load scenarios:', e);
+            }
+        }
+        
+        async function activateScenario(scenarioType) {
+            if (!scenarioType) return;
+            try {
+                const resp = await fetch('/simulation/scenarios/activate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scenario_type: scenarioType })
+                });
+                const data = await resp.json();
+                document.getElementById('sim-scenario-label').textContent = 'Scenario: ' + data.scenario_name;
+                await refreshSimulationState();
+                await loadEventHistory();
+            } catch (e) {
+                alert('Failed to activate scenario: ' + e.message);
+            }
+        }
+        
+        async function loadEventHistory() {
+            try {
+                const resp = await fetch('/simulation/events?limit=20');
+                const data = await resp.json();
+                const log = document.getElementById('sim-event-log');
+                if (data.events.length === 0) {
+                    log.innerHTML = '<div style="color: #6b7280;">No events recorded yet</div>';
+                    return;
+                }
+                log.innerHTML = data.events.map(e => `
+                    <div class="sim-event">
+                        <span class="sim-event-time">${new Date(e.timestamp).toLocaleTimeString()}</span>
+                        <span class="sim-event-type">${e.event_type}</span>
+                        <span class="sim-event-source">[${e.source}]</span>
+                        ${e.job_id ? `<span style="color:#f59e0b">job:${e.job_id.substring(0,8)}</span>` : ''}
+                    </div>
+                `).join('');
+            } catch (e) {
+                document.getElementById('sim-event-log').innerHTML = '<div style="color:#ef4444">Error: ' + e.message + '</div>';
+            }
+        }
+        
+        // Close panel on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeSimulationPanel();
+            }
+        });
+    </script>
     {% endif %}
     
     <!-- Bootstrap 5 JS Bundle (includes Popper) -->
