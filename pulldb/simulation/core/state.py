@@ -56,5 +56,12 @@ def get_simulation_state() -> SimulationState:
 
 
 def reset_simulation() -> None:
-    """Reset simulation state (for testing)."""
+    """Reset simulation state (for testing).
+
+    This also resets the event bus to ensure clean test isolation.
+    """
+    # Import here to avoid circular import
+    from pulldb.simulation.core.bus import reset_event_bus
+
     _state.clear()
+    reset_event_bus()
