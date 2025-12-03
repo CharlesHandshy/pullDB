@@ -2,6 +2,34 @@
 
 > **SLIM VERSION** - Optimized for context window efficiency. Use `list_dir` and `read_file` for details.
 
+## HCA Activation
+
+**All development MUST follow Hierarchical Containment Architecture (HCA).**
+
+Before creating or modifying files:
+1. **Determine HCA layer**: shared → entities → features → widgets → pages → plugins
+2. **Place file correctly**: See layer mapping below
+3. **Validate imports**: Only import from same or lower layers
+4. **Name explicitly**: File names include layer context
+
+```
+┌─────────────────────────────────────────────────────┐
+│ plugins/  → pulldb/binaries/        External tools │
+├─────────────────────────────────────────────────────┤
+│ pages/    → pulldb/cli/, web/, api/ Entry points   │
+├─────────────────────────────────────────────────────┤
+│ widgets/  → pulldb/worker/service   Orchestration  │
+├─────────────────────────────────────────────────────┤
+│ features/ → pulldb/worker/*.py      Business logic │
+├─────────────────────────────────────────────────────┤
+│ entities/ → pulldb/domain/          Data models    │
+├─────────────────────────────────────────────────────┤
+│ shared/   → pulldb/infra/           Infrastructure │
+└─────────────────────────────────────────────────────┘
+```
+
+> **Reference**: `.pulldb/standards/hca.md` for detailed guidance
+
 ## Context Loading Architecture
 
 pullDB uses a **tiered context system** separating universal guidance from project-specific extensions:
@@ -60,6 +88,7 @@ Read the relevant file **before** performing that type of task:
 | Task Type | engineering-dna | .pulldb/ | .github/ |
 |-----------|-----------------|----------|----------|
 | **Any task** | `AGENT-CONTEXT.md` | `CONTEXT.md` | `copilot-instructions-behavior.md` |
+| **New code/files** | | **`standards/hca.md`** | |
 | Python code | `standards/python.md`, `ai-agent-*.md` | | `copilot-instructions-python.md` |
 | myloader/restore | | `standards/myloader.md` | |
 | Staging databases | `standards/database.md` | `standards/staging-lifecycle.md` | |
@@ -74,6 +103,7 @@ Read the relevant file **before** performing that type of task:
 |-----|---------|------|
 | `engineering-dna/AGENT-CONTEXT.md` | Universal AI entry point | 1 |
 | `.pulldb/CONTEXT.md` | **pullDB extensions entry point** | 2 |
+| **`.pulldb/standards/hca.md`** | **HCA layer model & enforcement** | 2 |
 | `docs/KNOWLEDGE-POOL.md` | AWS/infra quick facts | 3 |
 | `docs/WORKSPACE-INDEX.md` | Atomic-level code index | 3 |
 | `constitution.md` | Project governance | 3 |

@@ -37,6 +37,19 @@ CLI → API Service → MySQL Queue ← Worker Service → S3/myloader
 
 **Core Architecture**: Hierarchical Containment Architecture (HCA) is the strict standard for all new development.
 
+### HCA Layer Model
+
+```
+plugins/  → pulldb/binaries/          External integrations
+pages/    → pulldb/cli/, web/, api/   User-facing entry points  
+widgets/  → pulldb/worker/service.py  Job orchestration
+features/ → pulldb/worker/*.py        Business logic
+entities/ → pulldb/domain/            Data models
+shared/   → pulldb/infra/             Infrastructure
+```
+
+> **CRITICAL**: All new code MUST follow `.pulldb/standards/hca.md`
+
 | Component | DNA Standard | pullDB Extension |
 |-----------|--------------|------------------|
 | Error handling | `protocols/fail-hard.md` | `.pulldb/standards/restore-errors.md` |
@@ -52,6 +65,7 @@ CLI → API Service → MySQL Queue ← Worker Service → S3/myloader
 
 | Document | Purpose | Extends |
 |----------|---------|---------|
+| **`hca.md`** | **Hierarchical Containment Architecture standard** | HCA methodology |
 | `myloader.md` | myloader subprocess wrapper patterns | `ai-agent-code-generation.md` |
 | `restore-flow.md` | Restore workflow orchestration | `fail-hard.md` |
 | `staging-rename.md` | Staging database lifecycle | `database.md` |
