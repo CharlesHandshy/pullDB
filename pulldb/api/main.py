@@ -54,6 +54,11 @@ try:
 except ImportError:
     pass  # Web UI module not installed
 
+# Mount simulation control API if in simulation mode
+if is_simulation_mode():
+    from pulldb.simulation.api import router as simulation_router
+    app.include_router(simulation_router)
+
 
 class JobRequest(pydantic.BaseModel):
     """Incoming job submission payload."""
