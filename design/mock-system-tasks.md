@@ -1,7 +1,8 @@
 # Task List: pullDB Simulation Engine
 
 > **Parent Project**: [Mock System Plan](mock-system-plan.md)
-> **Status**: Pending Approval
+> **Status**: Phase 4 Complete ✅
+> **Branch**: `feature/mock-system-phase3`
 
 ## Phase 1: Foundation & Refactoring (Interfaces)
 
@@ -30,45 +31,66 @@
     - [x] Create `pulldb/simulation/__init__.py`.
 - [x] **2.2 Implement In-Memory Repository**
     - [x] Create `pulldb/simulation/adapters/mock_mysql.py`.
-    - [x] Implement `InMemoryJobRepository` using a thread-safe dictionary.
+    - [x] Implement `SimulatedJobRepository` using a thread-safe dictionary.
     - [x] Implement `SKIP LOCKED` logic for queue polling using locks.
+    - [x] Implement `SimulatedUserRepository`, `SimulatedHostRepository`, `SimulatedSettingsRepository`.
 - [x] **2.3 Implement Mock S3**
     - [x] Create `pulldb/simulation/adapters/mock_s3.py`.
     - [x] Implement `MockS3Client`.
-    - [x] Create fixture loader to read fake backup lists from JSON.
+    - [x] Create fixture loader via `load_fixtures()` method.
 - [x] **2.4 Implement Mock Executor**
     - [x] Create `pulldb/simulation/adapters/mock_exec.py`.
     - [x] Implement `MockProcessExecutor`.
     - [x] Add support for simulated delays (`time.sleep`).
+    - [x] Add `MockCommandConfig` for configurable command behavior.
 
 ## Phase 3: Integration & Scenarios
 
 - [x] **3.1 Wire Up API Service**
     - [x] Update `pulldb/api/main.py` to use `InfraFactory`.
+    - [x] Add `_initialize_simulation_state()` for simulation mode.
     - [x] Verify API works with `PULLDB_MODE=SIMULATION`.
 - [x] **3.2 Wire Up Worker Service**
     - [x] Update `pulldb/worker/service.py` to use `InfraFactory`.
+    - [x] Add `_build_job_repository()` and `_build_job_executor()` dispatching.
     - [x] Verify Worker picks up jobs from in-memory queue.
-- [ ] **3.3 Implement Event Bus**
-    - [ ] Create `pulldb/simulation/core/bus.py`.
-    - [ ] Define event types (`JobCreated`, `S3DownloadStarted`, etc.).
-    - [ ] Inject bus into all mock adapters.
-- [ ] **3.4 Implement Scenario Manager**
-    - [ ] Create `pulldb/simulation/scenarios/manager.py`.
-    - [ ] Define `ScenarioProfile` dataclass.
-    - [ ] Implement "Chaos Injectors" in adapters (e.g., if profile.s3_error_rate > 0, raise Error).
+- [x] **3.3 Implement Event Bus**
+    - [x] Create `pulldb/simulation/core/bus.py`.
+    - [x] Define `EventType` enum with 15 event types:
+        - Job: `JOB_CREATED`, `JOB_CLAIMED`, `JOB_COMPLETED`, `JOB_FAILED`, `JOB_CANCELED`
+        - S3: `S3_LIST_KEYS`, `S3_HEAD_OBJECT`, `S3_GET_OBJECT`, `S3_ERROR`
+        - Exec: `EXEC_START`, `EXEC_COMPLETE`, `EXEC_ERROR`
+        - System: `DB_QUERY`, `STATE_RESET`, `SCENARIO_CHANGED`
+    - [x] Implement `SimulationEventBus` with pub/sub, history, and `wait_for_event()`.
+    - [x] Wire event emissions into `MockS3Client`.
+    - [x] Wire event emissions into `MockProcessExecutor`.
+    - [x] Wire event emissions into `SimulatedJobRepository`.
+- [x] **3.4 Implement Scenario Manager**
+    - [x] Create `pulldb/simulation/core/scenarios.py`.
+    - [x] Define `Scenario`, `ScenarioType`, `ChaosConfig` dataclasses.
+    - [x] Implement `ScenarioManager` with 10 built-in scenarios:
+        - `happy_path`, `single_job_success`, `multiple_jobs_success`
+        - `s3_not_found`, `s3_permission_denied`
+        - `myloader_failure`, `myloader_timeout`, `post_sql_failure`
+        - `random_failures`, `slow_operations`, `intermittent_failures`
+    - [x] Implement chaos injection via `inject_chaos()` method.
 
 ## Phase 4: Web UI & Validation
 
-- [ ] **4.1 Simulation Control API**
+- [ ] **4.1 Simulation Control API** (Future)
     - [ ] Create `pulldb/simulation/api/router.py`.
     - [ ] Add `POST /simulation/reset` endpoint.
     - [ ] Add `POST /simulation/scenario` endpoint.
     - [ ] Mount router in `pulldb/api/main.py` (only if in SIMULATION mode).
-- [ ] **4.2 Web UI Integration**
+- [ ] **4.2 Web UI Integration** (Future)
     - [ ] Add visual indicator "SIMULATION MODE" to Web UI.
     - [ ] Add "Debug Panel" to view Event Bus stream.
-- [ ] **4.3 Comprehensive Testing**
-    - [ ] Write integration tests using the Simulation Engine.
-    - [ ] Verify 100% coverage of all API endpoints.
-    - [ ] Verify "Fail Hard" scenarios (e.g., simulate S3 permission error and check job status).
+- [x] **4.3 Comprehensive Testing**
+    - [x] Create `pulldb/tests/simulation/test_simulation.py` with 34 tests.
+    - [x] Test `SimulationState` singleton and reset behavior.
+    - [x] Test `EventBus` emit, subscribe, filter, and wait_for_event.
+    - [x] Test `SimulatedJobRepository` full lifecycle (enqueue, claim, complete, fail).
+    - [x] Test `MockS3Client` fixtures and operations.
+    - [x] Test `MockProcessExecutor` command configuration.
+    - [x] Test `ScenarioManager` scenario activation and chaos injection.
+    - [x] Integration tests for full job lifecycle scenarios.

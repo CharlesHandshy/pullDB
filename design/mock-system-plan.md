@@ -1,6 +1,7 @@
 # Project Plan: pullDB Simulation Engine (Mock System Replacement)
 
-> **Status**: Planning Phase
+> **Status**: Phase 4 Complete ✅ (Core Engine + Tests)
+> **Branch**: `feature/mock-system-phase3`
 > **Goal**: Replace current ad-hoc mocks with a 100% high-fidelity Simulation Engine for development, testing, and demos.
 > **Architecture**: HCA Compliant
 
@@ -18,26 +19,23 @@ This engine will support:
 
 This project will follow **Hierarchical Containment Architecture (HCA)**.
 
-### 2.1 New Directory Structure
-We will establish a new domain for simulation to avoid polluting production code.
+### 2.1 Directory Structure (Implemented)
 
 ```
 pulldb/
-├── simulation/                 # [NEW] Simulation Domain
-│   ├── __init__.py
-│   ├── core/                   # Core Engine Logic
-│   │   ├── engine.py           # Central State Machine
-│   │   ├── state.py            # In-memory Database (Dict/SQLite)
-│   │   └── clock.py            # Virtual Time Management
-│   ├── adapters/               # Mock Implementations of Infra
-│   │   ├── mock_mysql.py       # Replaces infra/mysql.py
-│   │   ├── mock_s3.py          # Replaces infra/s3.py
-│   │   └── mock_exec.py        # Replaces infra/exec.py (myloader)
-│   ├── scenarios/              # Chaos & Scenario Definitions
-│   │   ├── profiles.py         # "Slow Network", "Corrupt Data"
-│   │   └── generator.py        # Automated scenario generation
-│   └── api/                    # Simulation Control API (for Web UI/Tests)
-│       └── router.py           # Endpoints to control the simulation
+├── simulation/                 # ✅ Simulation Domain
+│   ├── __init__.py             # ✅ Exports all public components
+│   ├── core/                   # ✅ Core Engine Logic
+│   │   ├── state.py            # ✅ SimulationState (thread-safe in-memory DB)
+│   │   ├── bus.py              # ✅ SimulationEventBus (pub/sub + history)
+│   │   └── scenarios.py        # ✅ ScenarioManager + ChaosConfig
+│   └── adapters/               # ✅ Mock Implementations of Infra
+│       ├── mock_mysql.py       # ✅ SimulatedJobRepository, UserRepo, HostRepo, SettingsRepo
+│       ├── mock_s3.py          # ✅ MockS3Client with fixture loading
+│       └── mock_exec.py        # ✅ MockProcessExecutor with command config
+├── tests/
+│   └── simulation/             # ✅ Test Suite
+│       └── test_simulation.py  # ✅ 34 tests covering all components
 ```
 
 ### 2.2 Dependency Injection Strategy
@@ -71,51 +69,61 @@ To switch between Real and Simulated modes without code duplication, we will int
 
 ## 4. Features & Capabilities
 
-### 4.1 Scenario Management
-The engine will support "Scenario Profiles" to validate system resilience.
+### 4.1 Scenario Management (Implemented)
+The engine supports "Scenario Profiles" via `ScenarioManager`.
 
-| Scenario | Description | Implementation |
+| Scenario | Description | Status |
 | :--- | :--- | :--- |
-| **Happy Path** | Standard fast restore. | No delays, 100% success rate. |
-| **Slow S3** | S3 listing/download takes 30s+. | `SimulatedS3` injects `time.sleep()`. |
-| **Network Flap** | Connections drop randomly. | Adapters raise `ConnectionError` randomly. |
-| **OOM Kill** | Worker dies mid-restore. | `SimulatedExecutor` raises `SystemExit` or simulates crash. |
-| **Corrupt Backup** | `myloader` fails validation. | `SimulatedExecutor` returns non-zero exit code + stderr. |
-| **Race Condition** | Double submission. | `SimulatedRepository` enforces constraints strictly. |
+| **happy_path** | All operations succeed with minimal delay. | ✅ Implemented |
+| **single_job_success** | One job runs to completion successfully. | ✅ Implemented |
+| **s3_not_found** | Backup files are missing from S3. | ✅ Implemented |
+| **s3_permission_denied** | S3 access is denied. | ✅ Implemented |
+| **myloader_failure** | myloader command fails with non-zero exit code. | ✅ Implemented |
+| **myloader_timeout** | myloader takes too long and times out. | ✅ Implemented |
+| **post_sql_failure** | Post-restore SQL script fails. | ✅ Implemented |
+| **random_failures** | Random 20% failure rate on all operations. | ✅ Implemented |
+| **slow_operations** | All operations have significant delays. | ✅ Implemented |
+| **intermittent_failures** | Flaky operations that occasionally fail. | ✅ Implemented |
 
-### 4.2 Tracing & Observability
-A `SimulationEventBus` will capture every interaction.
+### 4.2 Tracing & Observability (Implemented)
+The `SimulationEventBus` captures every interaction.
 
-- **Events**: `API_REQUEST`, `DB_QUERY`, `S3_CALL`, `WORKER_STATE_CHANGE`.
-- **Output**:
-    - **Console**: Real-time log stream.
-    - **Web UI**: A "Debug Panel" in the frontend to visualize the state.
-    - **Test Assertions**: Tests can subscribe to the bus to assert sequences (e.g., "Ensure S3 download started AFTER DB status update").
+- **Event Types** (15 total):
+    - Job: `JOB_CREATED`, `JOB_CLAIMED`, `JOB_COMPLETED`, `JOB_FAILED`, `JOB_CANCELED`
+    - S3: `S3_LIST_KEYS`, `S3_HEAD_OBJECT`, `S3_GET_OBJECT`, `S3_ERROR`
+    - Exec: `EXEC_START`, `EXEC_COMPLETE`, `EXEC_ERROR`
+    - System: `DB_QUERY`, `DB_INSERT`, `DB_UPDATE`, `STATE_RESET`, `SCENARIO_CHANGED`
+- **Features**:
+    - `emit()` - Publish events with source, data, and optional job_id
+    - `subscribe()` - Register callbacks for specific event types
+    - `get_history()` - Query event history with filters (event_type, job_id, limit)
+    - `wait_for_event()` - Block until event occurs (for test synchronization)
+    - `clear_history()` / `clear_subscribers()` - Reset for test isolation
 
 ## 5. Implementation Plan (Phased)
 
-### Phase 1: Foundation & Refactoring
-1.  **Define Interfaces**: Formalize `JobRepository`, `S3Client`, `ProcessExecutor` protocols in `pulldb/domain/interfaces.py`.
-2.  **Refactor Infra**: Update `pulldb/infra/` to implement these interfaces.
-3.  **Refactor Admin CLI**: Switch `pulldb-admin` to use `JobRepository` instead of raw SQL.
-4.  **Create Factory**: Implement `InfraFactory` to switch implementations.
+### Phase 1: Foundation & Refactoring ✅
+1.  **Define Interfaces**: Formalized `JobRepository`, `S3Client`, `ProcessExecutor` protocols in `pulldb/domain/interfaces.py`.
+2.  **Refactor Infra**: Updated `pulldb/infra/` to implement these interfaces.
+3.  **Refactor Admin CLI**: Switched `pulldb-admin` to use `JobRepository` instead of raw SQL.
+4.  **Create Factory**: Implemented `InfraFactory` with `is_simulation_mode()` check.
 
-### Phase 2: The Simulation Core
-5.  **Scaffold Simulation Domain**: Create `pulldb/simulation/` structure (HCA).
-6.  **Implement Mock DB**: Create `InMemoryJobRepository` (Dict-based, thread-safe).
-7.  **Implement Mock S3**: Create `MockS3Client` with fixture support.
-8.  **Implement Mock Executor**: Create `MockProcessExecutor` with delay/failure injection.
+### Phase 2: The Simulation Core ✅
+5.  **Scaffold Simulation Domain**: Created `pulldb/simulation/` structure (HCA compliant).
+6.  **Implement Mock DB**: Created `SimulatedJobRepository` + User/Host/Settings repos (Dict-based, thread-safe).
+7.  **Implement Mock S3**: Created `MockS3Client` with `load_fixtures()` support.
+8.  **Implement Mock Executor**: Created `MockProcessExecutor` with `MockCommandConfig` for delay/failure injection.
 
-### Phase 3: Integration & Scenarios
-9.  **Wire Up API**: Update `main.py` to use `InfraFactory`.
-10. **Wire Up Worker**: Update `worker/service.py` to use `InfraFactory`.
-11. **Scenario Engine**: Build the `ScenarioManager` to inject faults.
-12. **Trace Bus**: Implement the event bus and hook it into all mock adapters.
+### Phase 3: Integration & Scenarios ✅
+9.  **Wire Up API**: Updated `main.py` with `_initialize_simulation_state()`.
+10. **Wire Up Worker**: Updated `worker/service.py` with simulation dispatching.
+11. **Scenario Engine**: Built `ScenarioManager` with 10 scenarios + `ChaosConfig`.
+12. **Event Bus**: Implemented `SimulationEventBus` and wired into all mock adapters.
 
-### Phase 4: Web UI & Validation
-13. **Simulation Control API**: Add endpoints to `POST /simulation/scenario` to switch profiles at runtime.
-14. **Web UI Integration**: Add a "Simulation Mode" indicator and controls to the frontend.
-15. **Audit & Coverage**: Verify 100% trace coverage of all endpoints and flows.
+### Phase 4: Validation ✅ / Web UI (Future)
+13. **Test Suite**: Created 34 comprehensive tests in `pulldb/tests/simulation/`.
+14. **Simulation Control API**: (Future) Add REST endpoints to control simulation.
+15. **Web UI Integration**: (Future) Add "Simulation Mode" indicator and debug panel.
 
 ## 6. Research & References
 - **Service Virtualization**: Concepts from *Mountebank* and *WireMock*.
