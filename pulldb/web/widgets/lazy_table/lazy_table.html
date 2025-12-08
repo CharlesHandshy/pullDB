@@ -1,0 +1,68 @@
+{#
+    HCA Layer 3: LazyTable Widget
+    ==============================
+    Purpose: Server-side lazy loading table with cache windowing, sort/filter, selection, and action columns.
+    
+    Contract:
+    - Requires: table_id, columns (JSON array), fetch_url
+    - Optional: row_height, selectable, selection_mode, empty_message, row_id_key
+    
+    Usage:
+        {% set columns = [
+            {'key': 'id', 'label': 'ID', 'sortable': true, 'width': '80px'},
+            {'key': 'name', 'label': 'Name', 'sortable': true, 'filterable': true},
+            {'key': 'status', 'label': 'Status', 'sortable': true, 'filterable': true},
+            {'type': 'actions', 'label': 'Actions', 'width': '120px', 'actions': [
+                {'icon': 'view', 'label': 'View', 'className': 'primary'},
+                {'icon': 'delete', 'label': 'Delete', 'className': 'danger'}
+            ]}
+        ] %}
+        {% set table_id = 'my-table' %}
+        {% set fetch_url = '/api/data' %}
+        {% include "widgets/lazy_table/lazy_table.html" %}
+    
+    Then initialize with JavaScript:
+        const table = new LazyTable({
+            container: document.getElementById('{{ table_id }}-container'),
+            columns: {{ columns | tojson }},
+            fetchUrl: '{{ fetch_url }}',
+            tableId: '{{ table_id }}',
+            selectable: {{ selectable | default(false) | tojson }},
+            selectionMode: '{{ selection_mode | default("multiple") }}'
+        });
+    
+    Size: ~50 lines (HCA compliant)
+#}
+
+{# Container element - JS will build the table inside #}
+<div id="{{ table_id }}-container" class="lazy-table-container" style="height: 100%;">
+    {# Table structure will be built by LazyTable JS class #}
+</div>
+
+{# Include required assets if not already included #}
+{% if not lazy_table_assets_included %}
+<link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
+<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}"></script>
+{% set lazy_table_assets_included = true %}
+{% endif %}
+
+{# Auto-initialize if fetch_url is provided #}
+{% if auto_init and fetch_url %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    window['{{ table_id }}Table'] = new LazyTable({
+        container: document.getElementById('{{ table_id }}-container'),
+        columns: {{ columns | tojson }},
+        fetchUrl: '{{ fetch_url }}',
+        tableId: '{{ table_id }}',
+        {% if selectable %}selectable: true,{% endif %}
+        {% if selection_mode %}selectionMode: '{{ selection_mode }}',{% endif %}
+        {% if row_height %}rowHeight: {{ row_height }},{% endif %}
+        {% if row_id_key %}rowIdKey: '{{ row_id_key }}',{% endif %}
+        {% if empty_message %}emptyMessage: '{{ empty_message }}',{% endif %}
+        {% if on_selection_change %}onSelectionChange: {{ on_selection_change }},{% endif %}
+        {% if on_row_click %}onRowClick: {{ on_row_click }}{% endif %}
+    });
+});
+</script>
+{% endif %}

@@ -1,0 +1,718 @@
+/**
+ * LazyTable Widget Styles
+ * =======================
+ * HCA Layer: widgets (Layer 3)
+ * 
+ * Modular CSS for the LazyTable widget.
+ * Uses CSS custom properties from the design system.
+ */
+
+/* =========================================================================
+   Container & Layout (Flex-based for fixed header/footer)
+   ========================================================================= */
+
+.lazy-table-widget {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--surface-primary, #fff);
+    border-radius: var(--radius-lg, 8px);
+    overflow: hidden;
+    position: relative;
+}
+
+.lazy-table-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* =========================================================================
+   Selection Bar
+   ========================================================================= */
+
+.lazy-table-selection-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 12px);
+    padding: var(--space-2, 8px) var(--space-4, 16px);
+    background: var(--primary-50, #eff6ff);
+    border-bottom: 1px solid var(--primary-200, #bfdbfe);
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+}
+
+.lazy-table-selection-bar.hidden {
+    display: none;
+}
+
+.lazy-table-selection-bar .selection-count {
+    font-weight: 500;
+    color: var(--primary-700, #1d4ed8);
+}
+
+.lazy-table-selection-bar button {
+    padding: var(--space-1, 4px) var(--space-2, 8px);
+    border: 1px solid var(--primary-300, #93c5fd);
+    border-radius: var(--radius-md, 6px);
+    background: var(--surface-primary, #fff);
+    color: var(--primary-600, #2563eb);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.lazy-table-selection-bar button:hover {
+    background: var(--primary-100, #dbeafe);
+}
+
+/* =========================================================================
+   Header Container (Fixed)
+   ========================================================================= */
+
+.lazy-table-header-container {
+    flex-shrink: 0;
+    background: var(--surface-secondary, #f9fafb);
+    border-bottom: 2px solid var(--border-primary, #e5e7eb);
+    overflow: hidden;
+}
+
+.lazy-table-header {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.lazy-table-th {
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary, #6b7280);
+    background: var(--surface-secondary, #f9fafb);
+    white-space: nowrap;
+    position: relative;
+}
+
+.lazy-table-th-select {
+    width: 48px;
+    text-align: center;
+}
+
+.lazy-table-th-actions {
+    text-align: right;
+}
+
+/* Header content with sort/filter controls */
+.th-content {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+}
+
+.th-label {
+    flex: 1;
+}
+
+.th-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1, 4px);
+}
+
+/* Sort button - stacked arrows */
+.sort-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm, 4px);
+    background: transparent;
+    color: var(--text-muted, #9ca3af);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.sort-btn:hover {
+    background: var(--surface-hover, #e5e7eb);
+    color: var(--text-primary, #111827);
+}
+
+/* Both arrows visible by default, stacked */
+.sort-btn .sort-icon-asc,
+.sort-btn .sort-icon-desc {
+    display: block;
+    width: 12px;
+    height: 12px;
+    margin: -3px 0;
+}
+
+/* Sorted ascending - top arrow blue */
+.sort-btn.sort-asc {
+    background: var(--primary-50, #eff6ff);
+}
+
+.sort-btn.sort-asc .sort-icon-asc {
+    color: var(--primary-600, #2563eb);
+}
+
+.sort-btn.sort-asc .sort-icon-desc {
+    color: var(--text-muted, #9ca3af);
+}
+
+/* Sorted descending - bottom arrow blue */
+.sort-btn.sort-desc {
+    background: var(--primary-50, #eff6ff);
+}
+
+.sort-btn.sort-desc .sort-icon-asc {
+    color: var(--text-muted, #9ca3af);
+}
+
+.sort-btn.sort-desc .sort-icon-desc {
+    color: var(--primary-600, #2563eb);
+}
+
+/* Filter button */
+.filter-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm, 4px);
+    background: transparent;
+    color: var(--text-muted, #9ca3af);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.filter-btn:hover {
+    background: var(--surface-hover, #e5e7eb);
+    color: var(--text-primary, #111827);
+}
+
+.filter-btn.filter-active {
+    color: var(--primary-600, #2563eb);
+    background: var(--primary-50, #eff6ff);
+}
+
+.filter-btn:not(.filter-active)::after {
+    content: none;
+}
+
+.filter-btn.filter-active::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--primary-500, #3b82f6);
+}
+
+/* =========================================================================
+   Body Container (Flex: 1, Scrollable)
+   ========================================================================= */
+
+.lazy-table-body-container {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+}
+
+.lazy-table-spacer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    pointer-events: none;
+}
+
+.lazy-table-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+}
+
+.lazy-table-body {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+/* =========================================================================
+   Table Rows & Cells
+   ========================================================================= */
+
+.lazy-table-row {
+    border-bottom: 1px solid var(--border-secondary, #f3f4f6);
+    transition: background 0.15s ease;
+}
+
+.lazy-table-row:hover {
+    background: var(--surface-hover, #f9fafb);
+}
+
+.lazy-table-row.selected {
+    background: var(--primary-50, #eff6ff);
+}
+
+.lazy-table-row.selected:hover {
+    background: var(--primary-100, #dbeafe);
+}
+
+.lazy-table-td {
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    font-size: 0.875rem;
+    color: var(--text-primary, #111827);
+    vertical-align: middle;
+}
+
+.lazy-table-td-select {
+    width: 48px;
+    text-align: center;
+}
+
+.lazy-table-td-actions {
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* Placeholder row (loading) */
+.lazy-table-row-placeholder .lazy-table-td {
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+}
+
+.placeholder-shimmer {
+    height: 1em;
+    background: linear-gradient(90deg, 
+        var(--gray-100, #f3f4f6) 25%, 
+        var(--gray-200, #e5e7eb) 50%, 
+        var(--gray-100, #f3f4f6) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: var(--radius-sm, 4px);
+}
+
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* =========================================================================
+   Checkbox Styles
+   ========================================================================= */
+
+.lazy-table-checkbox {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.lazy-table-checkbox input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.lazy-table-checkbox .checkmark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--gray-300, #d1d5db);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--surface-primary, #fff);
+    transition: all 0.15s ease;
+}
+
+.lazy-table-checkbox input:checked + .checkmark {
+    background: var(--primary-600, #2563eb);
+    border-color: var(--primary-600, #2563eb);
+}
+
+.lazy-table-checkbox input:checked + .checkmark::after {
+    content: '';
+    width: 5px;
+    height: 9px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    margin-bottom: 2px;
+}
+
+.lazy-table-checkbox input:indeterminate + .checkmark {
+    background: var(--primary-600, #2563eb);
+    border-color: var(--primary-600, #2563eb);
+}
+
+.lazy-table-checkbox input:indeterminate + .checkmark::after {
+    content: '';
+    width: 10px;
+    height: 2px;
+    background: white;
+}
+
+.lazy-table-checkbox:hover .checkmark {
+    border-color: var(--primary-400, #60a5fa);
+}
+
+/* =========================================================================
+   Action Buttons
+   ========================================================================= */
+
+.action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1, 4px);
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-md, 6px);
+    background: transparent;
+    color: var(--text-secondary, #6b7280);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.action-btn:hover {
+    background: var(--surface-hover, #f3f4f6);
+    color: var(--text-primary, #111827);
+}
+
+.action-btn-primary {
+    color: var(--primary-600, #2563eb);
+}
+
+.action-btn-primary:hover {
+    background: var(--primary-50, #eff6ff);
+    color: var(--primary-700, #1d4ed8);
+}
+
+.action-btn-danger {
+    color: var(--danger-600, #dc2626);
+}
+
+.action-btn-danger:hover {
+    background: var(--danger-50, #fef2f2);
+    color: var(--danger-700, #b91c1c);
+}
+
+.action-btn-success {
+    color: var(--success-600, #16a34a);
+}
+
+.action-btn-success:hover {
+    background: var(--success-50, #f0fdf4);
+    color: var(--success-700, #15803d);
+}
+
+.action-btn-warning {
+    color: var(--warning-600, #d97706);
+}
+
+.action-btn-warning:hover {
+    background: var(--warning-50, #fffbeb);
+    color: var(--warning-700, #b45309);
+}
+
+.action-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* =========================================================================
+   Footer Container (Fixed)
+   ========================================================================= */
+
+.lazy-table-footer-container {
+    flex-shrink: 0;
+    border-top: 1px solid var(--border-primary, #e5e7eb);
+    background: var(--surface-secondary, #f9fafb);
+}
+
+.lazy-table-footer {
+    display: flex;
+    align-items: center;
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+}
+
+.footer-info {
+    font-size: 0.8125rem;
+    color: var(--text-secondary, #6b7280);
+}
+
+.footer-spacer {
+    flex: 1;
+}
+
+/* =========================================================================
+   Loading Overlay
+   ========================================================================= */
+
+.lazy-table-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3, 12px);
+    background: rgba(255, 255, 255, 0.9);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    z-index: 10;
+}
+
+.lazy-table-loading.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.lazy-table-loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--gray-200, #e5e7eb);
+    border-top-color: var(--primary-600, #2563eb);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.lazy-table-loading span {
+    font-size: 0.875rem;
+    color: var(--text-secondary, #6b7280);
+}
+
+/* =========================================================================
+   Error Overlay
+   ========================================================================= */
+
+.lazy-table-error {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4, 16px);
+    background: rgba(255, 255, 255, 0.95);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    z-index: 10;
+}
+
+.lazy-table-error.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.lazy-table-error .error-icon {
+    color: var(--danger-500, #ef4444);
+}
+
+.lazy-table-error .error-message {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--text-primary, #111827);
+}
+
+.lazy-table-error .error-retry-btn {
+    padding: var(--space-2, 8px) var(--space-4, 16px);
+    border: none;
+    border-radius: var(--radius-md, 6px);
+    background: var(--primary-600, #2563eb);
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.lazy-table-error .error-retry-btn:hover {
+    background: var(--primary-700, #1d4ed8);
+}
+
+.lazy-table-error .error-retry-btn:active {
+    background: var(--primary-800, #1e40af);
+}
+
+/* =========================================================================
+   Filter Dropdown
+   ========================================================================= */
+
+.lazy-table-filter-dropdown {
+    min-width: 220px;
+    max-width: 300px;
+    background: var(--surface-primary, #fff);
+    border: 1px solid var(--border-primary, #e5e7eb);
+    border-radius: var(--radius-lg, 8px);
+    box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1));
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.filter-dropdown-search {
+    padding: var(--space-3, 12px);
+    border-bottom: 1px solid var(--border-secondary, #f3f4f6);
+}
+
+.filter-search-input {
+    width: 100%;
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+    border: 1px solid var(--border-primary, #e5e7eb);
+    border-radius: var(--radius-md, 6px);
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.filter-search-input:focus {
+    border-color: var(--primary-500, #3b82f6);
+    box-shadow: 0 0 0 3px var(--primary-100, #dbeafe);
+}
+
+.filter-dropdown-options {
+    max-height: 240px;
+    overflow-y: auto;
+    padding: var(--space-2, 8px) 0;
+}
+
+.filter-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.filter-option:hover {
+    background: var(--surface-hover, #f9fafb);
+}
+
+.filter-option input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary-600, #2563eb);
+}
+
+.filter-option span {
+    font-size: 0.875rem;
+    color: var(--text-primary, #111827);
+}
+
+.filter-dropdown-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2, 8px);
+    padding: var(--space-3, 12px);
+    border-top: 1px solid var(--border-secondary, #f3f4f6);
+    background: var(--surface-secondary, #f9fafb);
+}
+
+.filter-clear-btn,
+.filter-apply-btn {
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+    border-radius: var(--radius-md, 6px);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.filter-clear-btn {
+    border: 1px solid var(--border-primary, #e5e7eb);
+    background: var(--surface-primary, #fff);
+    color: var(--text-secondary, #6b7280);
+}
+
+.filter-clear-btn:hover {
+    background: var(--surface-hover, #f3f4f6);
+}
+
+.filter-apply-btn {
+    border: none;
+    background: var(--primary-600, #2563eb);
+    color: white;
+}
+
+.filter-apply-btn:hover {
+    background: var(--primary-700, #1d4ed8);
+}
+
+/* =========================================================================
+   Empty State
+   ========================================================================= */
+
+.lazy-table-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-12, 48px);
+    text-align: center;
+    color: var(--text-muted, #9ca3af);
+}
+
+.lazy-table-empty svg {
+    width: 48px;
+    height: 48px;
+    margin-bottom: var(--space-4, 16px);
+    opacity: 0.5;
+}
+
+.lazy-table-empty-message {
+    font-size: 0.875rem;
+}
+
+/* =========================================================================
+   Responsive Adjustments
+   ========================================================================= */
+
+@media (max-width: 640px) {
+    .lazy-table-th,
+    .lazy-table-td {
+        padding: var(--space-2, 8px) var(--space-3, 12px);
+    }
+    
+    .th-controls {
+        flex-wrap: wrap;
+    }
+    
+    .action-btn {
+        width: 28px;
+        height: 28px;
+    }
+    
+    .action-btn svg {
+        width: 14px;
+        height: 14px;
+    }
+}
