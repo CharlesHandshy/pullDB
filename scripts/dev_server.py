@@ -11,6 +11,7 @@ import secrets
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import uvicorn
@@ -19,7 +20,7 @@ from fastapi import FastAPI, Request
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pulldb.domain.models import UserRole
+from pulldb.domain.models import UserRole, JobStatus, User, Job, JobEvent
 
 
 # =============================================================================
@@ -28,34 +29,42 @@ from pulldb.domain.models import UserRole
 
 
 def create_mock_user(
-    user_id: int = 1,
+    user_id: str = "usr-001",
     username: str = "testuser",
     role: UserRole = UserRole.USER,
     disabled: bool = False,
     user_code: str | None = None,
     created_at: datetime | None = None,
-) -> MagicMock:
-    """Create a mock User object."""
-    user = MagicMock()
-    user.user_id = user_id
-    user.username = username
-    user.role = role  # Now a proper UserRole enum with .value
-    user.is_admin = role == UserRole.ADMIN
-    user.disabled_at = datetime(2024, 1, 1, tzinfo=UTC) if disabled else None
-    user.disabled = disabled
-    user.user_code = user_code or f"u{user_id:03d}"
-    user.created_at = created_at or datetime(2024, 1, 1, tzinfo=UTC)
-    user.last_login = datetime.now(UTC) if not disabled else None
-    user.active_jobs = 0
-    user.total_jobs = 0
-    return user
+    manager_id: str | None = None,
+    allowed_hosts: list[str] | None = None,
+    default_host: str | None = None,
+) -> User:
+    """Create a User dataclass instance for dev/testing.
+    
+    Returns a real User dataclass (frozen) to match production behavior.
+    Uses short string IDs (e.g., 'usr-001') for readability.
+    """
+    return User(
+        user_id=user_id,
+        username=username,
+        user_code=user_code or f"u{user_id[-3:]}",
+        is_admin=role == UserRole.ADMIN,
+        role=role,
+        created_at=created_at or datetime(2024, 1, 1, tzinfo=UTC),
+        manager_id=manager_id,
+        disabled_at=datetime(2024, 1, 1, tzinfo=UTC) if disabled else None,
+        allowed_hosts=allowed_hosts,
+        default_host=default_host,
+    )
 
 
 def create_mock_job(
     job_id: str = "job-001",
     source_customer: str = "acmehvac",
-    status: str = "queued",  # Valid enum: queued, running, failed, complete, canceled
-    owner_user_id: int = 1,
+    status: str = "queued",
+    owner_user_id: str = "usr-001",
+    owner_username: str = "devuser",
+    owner_user_code: str = "devusr",
     created_at: datetime | None = None,
     started_at: datetime | None = None,
     finished_at: datetime | None = None,
@@ -63,78 +72,46 @@ def create_mock_job(
     worker_id: str | None = None,
     backup_env: str = "prd",
     is_qatemplate: bool = False,
-) -> MagicMock:
-    """Create a mock Job object.
+    dbhost: str = "mysql-staging-01.example.com",
+) -> Job:
+    """Create a Job dataclass instance for dev/testing.
     
-    The naming convention follows the real pullDB flow:
-    
-    For customer restores:
-    - source_customer: Customer whose backup we're restoring (e.g., 'acmehvac')
-    - target: {user_code}{customer} - final database name (e.g., 'devusracmehvac')
-    - staging_name: {target}_{job_id_hex[:12]} - temp staging db
-    - backup_file: {customer}/{env}/{date}/backup.tar.gz
-    
-    For QA template restores:
-    - source_customer: "QA Template" (display only)
-    - target: {user_code}qatemplate (e.g., 'devusrqatemplate')
-    - staging_name: {target}_{job_id_hex[:12]}
-    - backup_file: qatemplate/{date}/backup.tar.gz
-    
-    Note: user_code and target must be lowercase letters only (a-z).
+    Returns a real Job dataclass (frozen) to match production behavior.
+    Uses short string IDs (e.g., 'job-001', 'usr-001') for readability.
     """
-    job = MagicMock()
-    job.id = job_id
-    job.job_id = job_id
     
-    # User info based on owner (user_code is 6 lowercase letters only)
-    job.owner_user_id = owner_user_id
-    job.username = "devuser" if owner_user_id == 1 else "devadmin"
-    job.owner_username = job.username
-    job.user_code = "devusr" if owner_user_id == 1 else "devadm"
-    job.owner_user_code = job.user_code
-    
-    job.created_at = created_at or datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
-    backup_date = job.created_at.strftime('%Y-%m-%d')
+    ts = created_at or datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
     
     if is_qatemplate:
-        # QA Template job
-        job.source_customer = "QA Template"
-        job.target = f"{job.user_code}qatemplate"
-        job.backup_file = f"qatemplate/{backup_date}/backup.tar.gz"
+        target = f"{owner_user_code}qatemplate"
     else:
-        # Customer restore job
-        job.source_customer = source_customer
-        job.target = f"{job.user_code}{source_customer}"
-        job.backup_file = f"{source_customer}/{backup_env}/{backup_date}/backup.tar.gz"
+        target = f"{owner_user_code}{source_customer}"
     
-    job.source_database = job.target  # Alias for templates
-    
-    # Staging name: {target}_{job_id_hex[:12]} - simulate UUID hex prefix
-    # Use a deterministic "hex" based on job_id for consistency
+    # Staging name: {target}_{job_id_hex[:12]}
     job_hex = job_id.replace("job-", "").replace("-", "")[:12].ljust(12, "0")
-    job.staging_name = f"{job.target}_{job_hex}"
+    staging_name = f"{target}_{job_hex}"
     
-    job.dbhost = "mysql-staging-01.example.com"
-    job.status = status
-    job.started_at = started_at
-    job.completed_at = finished_at
-    job.submitted_at = job.created_at
-    job.error_detail = error_detail
-    job.worker_id = worker_id
-    job.progress = 45 if status == "running" else None
-    job.duration = "45m 30s" if job.completed_at else None
-    job.duration_display = job.duration or "-"
+    # Convert string status to JobStatus enum
+    status_enum = JobStatus(status)
     
-    # Operation status based on job status
-    status_operations = {
-        "queued": "Waiting in queue",
-        "running": "Restoring database",
-        "complete": None,
-        "failed": None,
-        "canceled": None,
-    }
-    job.current_operation = status_operations.get(status)
-    return job
+    return Job(
+        id=job_id,
+        owner_user_id=owner_user_id,
+        owner_username=owner_username,
+        owner_user_code=owner_user_code,
+        target=target,
+        staging_name=staging_name,
+        dbhost=dbhost,
+        status=status_enum,
+        submitted_at=ts,
+        started_at=started_at,
+        completed_at=finished_at,
+        options_json={"customer": source_customer} if not is_qatemplate else {"qatemplate": "true"},
+        retry_count=0,
+        error_detail=error_detail,
+        worker_id=worker_id,
+        current_operation="Waiting in queue" if status_enum == JobStatus.QUEUED else None,
+    )
 
 
 def create_mock_event(
@@ -143,15 +120,19 @@ def create_mock_event(
     event_type: str = "created",
     message: str = "Job created",
     created_at: datetime | None = None,
-) -> MagicMock:
-    """Create a mock JobEvent object."""
-    event = MagicMock()
-    event.event_id = event_id
-    event.job_id = job_id
-    event.event_type = event_type
-    event.message = message
-    event.created_at = created_at or datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
-    return event
+) -> JobEvent:
+    """Create a JobEvent dataclass instance for dev/testing.
+    
+    Returns a real JobEvent dataclass (frozen) to match production behavior.
+    Field names match the real model: id, job_id, event_type, detail, logged_at.
+    """
+    return JobEvent(
+        id=event_id,
+        job_id=job_id,
+        event_type=event_type,
+        detail=message,
+        logged_at=created_at or datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC),
+    )
 
 
 # =============================================================================
@@ -164,83 +145,146 @@ class MockUserRepo:
 
     def __init__(self) -> None:
         # user_code must be 6 lowercase letters only (a-z)
-        self.users = {
-            "devuser": create_mock_user(1, "devuser", UserRole.USER, user_code="devusr"),
-            "devadmin": create_mock_user(2, "devadmin", UserRole.ADMIN, user_code="devadm"),
-            "devmanager": create_mock_user(3, "devmanager", UserRole.MANAGER, user_code="devmgr"),
-            "alice": create_mock_user(4, "alice", UserRole.USER, user_code="aliceu", created_at=datetime(2023, 6, 15, tzinfo=UTC)),
-            "bob": create_mock_user(5, "bob", UserRole.USER, disabled=True, user_code="bobuse", created_at=datetime(2023, 3, 10, tzinfo=UTC)),
+        # Manager relationships: devmanager (user_id="usr-003") manages devuser and alice
+        # Host assignments:
+        # - ADMIN: all hosts
+        # - MANAGER: subset of hosts (staging-01, staging-02)
+        # - USER: random subset of manager's hosts
+        all_hosts = [
+            "mysql-staging-01.example.com",
+            "mysql-staging-02.example.com",
+            "mysql-staging-03.example.com",
+            "mysql-prod-01.example.com",
+        ]
+        manager_hosts = ["mysql-staging-01.example.com", "mysql-staging-02.example.com"]
+        
+        # Create base User objects (frozen)
+        self._users = {
+            "devuser": create_mock_user(
+                user_id="usr-001", username="devuser", role=UserRole.USER,
+                user_code="devusr", manager_id="usr-003",
+                allowed_hosts=["mysql-staging-01.example.com"],
+                default_host="mysql-staging-01.example.com"
+            ),
+            "devadmin": create_mock_user(
+                user_id="usr-002", username="devadmin", role=UserRole.ADMIN,
+                user_code="devadm", allowed_hosts=all_hosts,
+                default_host="mysql-staging-01.example.com"
+            ),
+            "devmanager": create_mock_user(
+                user_id="usr-003", username="devmanager", role=UserRole.MANAGER,
+                user_code="devmgr", allowed_hosts=manager_hosts,
+                default_host="mysql-staging-01.example.com"
+            ),
+            "alice": create_mock_user(
+                user_id="usr-004", username="alice", role=UserRole.USER,
+                user_code="aliceu", created_at=datetime(2023, 6, 15, tzinfo=UTC),
+                manager_id="usr-003", allowed_hosts=["mysql-staging-02.example.com"],
+                default_host="mysql-staging-02.example.com"
+            ),
+            "bob": create_mock_user(
+                user_id="usr-005", username="bob", role=UserRole.USER,
+                disabled=True, user_code="bobuse",
+                created_at=datetime(2023, 3, 10, tzinfo=UTC),
+                allowed_hosts=[],  # Disabled user has no hosts
+                default_host=None
+            ),
         }
-        # Set job counts
-        self.users["devuser"].active_jobs = 2
-        self.users["devuser"].total_jobs = 15
-        self.users["devadmin"].active_jobs = 1
-        self.users["devadmin"].total_jobs = 8
-        self.users["devmanager"].active_jobs = 0
-        self.users["devmanager"].total_jobs = 3
+        # Job stats stored separately (User is frozen)
+        self._user_stats: dict[str, dict[str, int]] = {
+            "usr-001": {"active_jobs": 2, "total_jobs": 15},
+            "usr-002": {"active_jobs": 1, "total_jobs": 8},
+            "usr-003": {"active_jobs": 0, "total_jobs": 3},
+            "usr-004": {"active_jobs": 0, "total_jobs": 0},
+            "usr-005": {"active_jobs": 0, "total_jobs": 0},
+        }
+    
+    @property
+    def users(self) -> dict[str, User]:
+        """Access users dict for backward compatibility."""
+        return self._users
 
-    def get_user_by_username(self, username: str) -> MagicMock | None:
+    def get_user_by_username(self, username: str) -> User | None:
         # Case-insensitive lookup
-        for u in self.users.values():
+        for u in self._users.values():
             if u.username.lower() == username.lower():
                 return u
         return None
 
-    def get_user_by_id(self, user_id: int) -> MagicMock | None:
-        for user in self.users.values():
+    def get_user_by_id(self, user_id: str) -> User | None:
+        for user in self._users.values():
             if user.user_id == user_id:
                 return user
         return None
 
-    def list_users(self) -> list[MagicMock]:
+    def list_users(self) -> list[User]:
         """Return all users."""
-        return list(self.users.values())
+        return list(self._users.values())
 
-    def enable_user(self, user_id: int) -> None:
+    def enable_user(self, user_id: str) -> None:
         """Enable a user account."""
-        for user in self.users.values():
+        from dataclasses import replace
+        for username, user in self._users.items():
             if user.user_id == user_id:
-                user.disabled = False
-                user.disabled_at = None
+                self._users[username] = replace(user, disabled_at=None)
                 break
 
-    def disable_user(self, user_id: int) -> None:
+    def disable_user(self, user_id: str) -> None:
         """Disable a user account."""
-        for user in self.users.values():
+        from dataclasses import replace
+        for username, user in self._users.items():
             if user.user_id == user_id:
-                user.disabled = True
-                user.disabled_at = datetime.now(UTC)
+                self._users[username] = replace(user, disabled_at=datetime.now(UTC))
                 break
+
+    def update_default_host(self, user_id: str, host: str | None) -> None:
+        """Update user's default host."""
+        from dataclasses import replace
+        for username, user in self._users.items():
+            if user.user_id == user_id:
+                self._users[username] = replace(user, default_host=host)
+                break
+
+    def get_or_create_user(self, username: str) -> User:
+        """Get existing user by username.
+        
+        For the dev server, we only return existing mock users.
+        In production, this would create a new user if not found.
+        """
+        user = self.get_user_by_username(username)
+        if user:
+            return user
+        raise ValueError(
+            f"User '{username}' not found. Use a predefined dev account: "
+            "devuser, devadmin, devmanager, alice, bob"
+        )
 
 
 class MockAuthRepo:
     """Mock auth repository."""
 
     def __init__(self) -> None:
-        self.sessions: dict[str, int] = {}
+        self.sessions: dict[str, str] = {}  # token -> user_id (str)
         # Password: "PullDB_Dev2025!" for all dev users (bcrypt hash)
         # Generated with: from pulldb.auth.password import hash_password; hash_password("PullDB_Dev2025!")
         test_hash = "$2b$12$XnisilncYSnbIvEinwVYTePMF/DMiVUwpUSv8BuOWSlPH5sRam.zG"
         self.password_hashes = {
-            1: test_hash,  # devuser
-            2: test_hash,  # devadmin
-            3: test_hash,  # devmanager
-            4: test_hash,  # alice
-            5: test_hash,  # bob
+            "usr-001": test_hash,  # devuser
+            "usr-002": test_hash,  # devadmin
+            "usr-003": test_hash,  # devmanager
+            "usr-004": test_hash,  # alice
+            "usr-005": test_hash,  # bob
         }
 
-    def get_password_hash(self, user_id: int | str) -> str | None:
-        # Handle both int and str IDs
-        if isinstance(user_id, str) and user_id.isdigit():
-            user_id = int(user_id)
+    def get_password_hash(self, user_id: str) -> str | None:
         return self.password_hashes.get(user_id)
 
-    def validate_session(self, token: str) -> int | None:
+    def validate_session(self, token: str) -> str | None:
         return self.sessions.get(token)
 
     def create_session(
         self,
-        user_id: int,
+        user_id: str,
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> tuple[int, str]:
@@ -259,6 +303,9 @@ class MockJobRepo:
     """Mock job repository with sample data."""
 
     def __init__(self, active_count: int | None = None, history_count: int | None = None) -> None:
+        # Track cancellation requests separately (Job is frozen, can't add field)
+        self._cancel_requested: dict[str, datetime] = {}
+        
         # If counts specified, generate that many jobs
         if active_count is not None or history_count is not None:
             self.active_jobs = self._generate_active_jobs(active_count or 0)
@@ -276,7 +323,7 @@ class MockJobRepo:
         # Mock events for jobs
         self.events = self._generate_events()
     
-    def _generate_active_jobs(self, count: int) -> list[MagicMock]:
+    def _generate_active_jobs(self, count: int) -> list[Job]:
         """Generate active jobs (queued/running)."""
         import random
         
@@ -295,8 +342,14 @@ class MockJobRepo:
             "mysql-staging-03.example.com",
             "mysql-prod-01.example.com",
         ]
-        owners = [1, 1, 1, 2, 3]  # Mix of users
-        user_codes = ["devusr", "devusr", "devusr", "devadm", "devmgr"]
+        # Use string IDs to match User dataclass
+        owners = [
+            ("usr-001", "devuser", "devusr"),
+            ("usr-001", "devuser", "devusr"),
+            ("usr-001", "devuser", "devusr"),
+            ("usr-002", "devadmin", "devadm"),
+            ("usr-003", "devmanager", "devmgr"),
+        ]
         envs = ["prd", "stg"]
         
         jobs = []
@@ -306,8 +359,7 @@ class MockJobRepo:
             job_id = f"job-{i + 1:04d}"
             # Mix of statuses: ~30% queued, ~70% running
             status = "queued" if random.random() < 0.3 else "running"
-            owner_idx = random.randint(0, len(owners) - 1)
-            owner_id = owners[owner_idx]
+            owner_id, owner_username, owner_user_code = random.choice(owners)
             customer = random.choice(customers)
             db_host = random.choice(db_hosts)
             env = random.choice(envs)
@@ -321,18 +373,19 @@ class MockJobRepo:
                 source_customer=customer,
                 status=status,
                 owner_user_id=owner_id,
+                owner_username=owner_username,
+                owner_user_code=owner_user_code,
                 created_at=created_at,
                 started_at=created_at + timedelta(minutes=random.randint(1, 5)) if status == "running" else None,
                 worker_id=random.choice(workers) if status == "running" else None,
                 backup_env=env,
+                dbhost=db_host,
             )
-            # Override dbhost for variety
-            job.dbhost = db_host
             jobs.append(job)
         
         return jobs
 
-    def _generate_history_jobs(self, count: int) -> list[MagicMock]:
+    def _generate_history_jobs(self, count: int) -> list[Job]:
         """Generate fake historical job entries."""
         import random
         
@@ -344,7 +397,13 @@ class MockJobRepo:
         ]
         statuses = ["complete", "complete", "complete", "complete", "failed"]  # 80% complete, 20% failed
         workers = ["worker-alpha", "worker-beta", "worker-gamma", "worker-delta"]
-        owners = [1, 1, 1, 2]  # 75% demo, 25% admin
+        # Use string IDs with (user_id, username, user_code) tuples
+        owners = [
+            ("usr-001", "devuser", "devusr"),
+            ("usr-001", "devuser", "devusr"),
+            ("usr-001", "devuser", "devusr"),
+            ("usr-002", "devadmin", "devadm"),
+        ]
         error_messages = [
             "S3 download timeout after 300s",
             "MySQL connection refused",
@@ -360,7 +419,7 @@ class MockJobRepo:
         for i in range(count):
             job_id = f"job-{i + 100:04d}"
             status = random.choice(statuses)
-            owner_id = random.choice(owners)
+            owner_id, owner_username, owner_user_code = random.choice(owners)
             worker = random.choice(workers)
             
             # 10% chance of being a QA template job
@@ -382,6 +441,8 @@ class MockJobRepo:
                     job_id=job_id,
                     status=status,
                     owner_user_id=owner_id,
+                    owner_username=owner_username,
+                    owner_user_code=owner_user_code,
                     created_at=created_at,
                     started_at=started_at,
                     finished_at=finished_at,
@@ -397,6 +458,8 @@ class MockJobRepo:
                     source_customer=source_customer,
                     status=status,
                     owner_user_id=owner_id,
+                    owner_username=owner_username,
+                    owner_user_code=owner_user_code,
                     created_at=created_at,
                     started_at=started_at,
                     finished_at=finished_at,
@@ -408,11 +471,11 @@ class MockJobRepo:
         
         return jobs
 
-    def _generate_events(self) -> dict[str, list[MagicMock]]:
+    def _generate_events(self) -> dict[str, list[JobEvent]]:
         """Generate mock events for all jobs."""
         import random
         
-        events: dict[str, list[MagicMock]] = {}
+        events: dict[str, list[JobEvent]] = {}
         event_id = 1
         
         workers = ["worker-alpha", "worker-beta", "worker-gamma", "worker-delta"]
@@ -420,21 +483,21 @@ class MockJobRepo:
         # Events for active jobs
         for job in self.active_jobs:
             job_events = []
-            base_time = job.created_at
+            base_time = job.submitted_at
             
             # Created event
             job_events.append(create_mock_event(
-                event_id, job.job_id, "created", "Job queued",
+                event_id, job.id, "created", "Job queued",
                 created_at=base_time
             ))
             event_id += 1
             
-            if job.status in ("running", "complete", "failed"):
+            if job.status in (JobStatus.RUNNING, JobStatus.COMPLETE, JobStatus.FAILED):
                 # Claimed event
                 claim_time = base_time + timedelta(seconds=random.randint(5, 30))
                 worker = job.worker_id or random.choice(workers)
                 job_events.append(create_mock_event(
-                    event_id, job.job_id, "claimed", f"Claimed by {worker}",
+                    event_id, job.id, "claimed", f"Claimed by {worker}",
                     created_at=claim_time
                 ))
                 event_id += 1
@@ -442,30 +505,30 @@ class MockJobRepo:
                 # Downloading event
                 dl_time = claim_time + timedelta(seconds=random.randint(2, 10))
                 job_events.append(create_mock_event(
-                    event_id, job.job_id, "downloading", "Downloading backup from S3...",
+                    event_id, job.id, "downloading", "Downloading backup from S3...",
                     created_at=dl_time
                 ))
                 event_id += 1
                 
-                if job.status == "running":
+                if job.status == JobStatus.RUNNING:
                     # Restoring event for running jobs
                     restore_time = dl_time + timedelta(minutes=random.randint(5, 20))
                     job_events.append(create_mock_event(
-                        event_id, job.job_id, "restoring", "Running myloader restore...",
+                        event_id, job.id, "restoring", "Running myloader restore...",
                         created_at=restore_time
                     ))
                     event_id += 1
             
-            events[job.job_id] = job_events
+            events[job.id] = job_events
         
         # Events for history jobs (first 50 for performance)
         for job in self.history_jobs[:50]:
             job_events = []
-            base_time = job.created_at
+            base_time = job.submitted_at
             
             # Created event
             job_events.append(create_mock_event(
-                event_id, job.job_id, "created", "Job queued",
+                event_id, job.id, "created", "Job queued",
                 created_at=base_time
             ))
             event_id += 1
@@ -474,7 +537,7 @@ class MockJobRepo:
             claim_time = base_time + timedelta(seconds=random.randint(5, 60))
             worker = job.worker_id or random.choice(workers)
             job_events.append(create_mock_event(
-                event_id, job.job_id, "claimed", f"Claimed by {worker}",
+                event_id, job.id, "claimed", f"Claimed by {worker}",
                 created_at=claim_time
             ))
             event_id += 1
@@ -484,7 +547,7 @@ class MockJobRepo:
             sizes = ["256MB", "512MB", "1.2GB", "2.4GB", "4.8GB"]
             size = random.choice(sizes)
             job_events.append(create_mock_event(
-                event_id, job.job_id, "downloading", f"Downloading backup from S3... ({size})",
+                event_id, job.id, "downloading", f"Downloading backup from S3... ({size})",
                 created_at=dl_time
             ))
             event_id += 1
@@ -492,7 +555,7 @@ class MockJobRepo:
             # Downloaded event
             dl_complete = dl_time + timedelta(minutes=random.randint(2, 15))
             job_events.append(create_mock_event(
-                event_id, job.job_id, "downloaded", f"Download complete: {size}",
+                event_id, job.id, "downloaded", f"Download complete: {size}",
                 created_at=dl_complete
             ))
             event_id += 1
@@ -500,16 +563,16 @@ class MockJobRepo:
             # Restoring event
             restore_start = dl_complete + timedelta(seconds=random.randint(5, 30))
             job_events.append(create_mock_event(
-                event_id, job.job_id, "restoring", "Running myloader restore...",
+                event_id, job.id, "restoring", "Running myloader restore...",
                 created_at=restore_start
             ))
             event_id += 1
             
-            if job.status == "complete":
+            if job.status == JobStatus.COMPLETE:
                 # Post-restore event
                 post_time = restore_start + timedelta(minutes=random.randint(10, 45))
                 job_events.append(create_mock_event(
-                    event_id, job.job_id, "post_sql", "Applying post-restore scripts...",
+                    event_id, job.id, "post_sql", "Applying post-restore scripts...",
                     created_at=post_time
                 ))
                 event_id += 1
@@ -517,7 +580,7 @@ class MockJobRepo:
                 # Rename event
                 rename_time = post_time + timedelta(minutes=random.randint(1, 5))
                 job_events.append(create_mock_event(
-                    event_id, job.job_id, "renaming", f"Renaming database to {job.target}",
+                    event_id, job.id, "renaming", f"Renaming database to {job.target}",
                     created_at=rename_time
                 ))
                 event_id += 1
@@ -526,7 +589,7 @@ class MockJobRepo:
                 complete_time = rename_time + timedelta(seconds=random.randint(5, 30))
                 duration = random.randint(15, 90)
                 job_events.append(create_mock_event(
-                    event_id, job.job_id, "complete", f"Restore complete: {size} in {duration}m",
+                    event_id, job.id, "complete", f"Restore complete: {size} in {duration}m",
                     created_at=complete_time
                 ))
                 event_id += 1
@@ -543,24 +606,24 @@ class MockJobRepo:
                     "Backup file corrupted or incomplete",
                 ]
                 job_events.append(create_mock_event(
-                    event_id, job.job_id, "failed", random.choice(errors),
+                    event_id, job.id, "failed", random.choice(errors),
                     created_at=fail_time
                 ))
                 event_id += 1
             
-            events[job.job_id] = job_events
+            events[job.id] = job_events
         
         return events
 
-    def get_job_by_id(self, job_id: str) -> MagicMock | None:
+    def get_job_by_id(self, job_id: str) -> Job | None:
         # Search all jobs including active and full history
         all_jobs = self.active_jobs + self.history_jobs
         for job in all_jobs:
-            if job.job_id == job_id:
+            if job.id == job_id:
                 return job
         return None
 
-    def get_active_jobs(self) -> list[MagicMock]:
+    def get_active_jobs(self) -> list[Job]:
         return self.active_jobs
 
     def get_recent_jobs(
@@ -568,56 +631,157 @@ class MockJobRepo:
         limit: int = 50,
         offset: int = 0,
         statuses: list[str] | None = None,
-    ) -> list[MagicMock]:
-        # History jobs only (completed/failed)
+    ) -> list[Job]:
+        """Get recent jobs, optionally filtered by status."""
         jobs = self.history_jobs
         if statuses:
-            jobs = [j for j in jobs if j.status in statuses]
+            # Compare enum value (string) against status list
+            jobs = [j for j in jobs if j.status.value in statuses]
         return jobs[offset : offset + limit]
 
     def get_job_events(
         self,
         job_id: str,
         since_id: int | None = None,
-    ) -> list[MagicMock]:
+    ) -> list[JobEvent]:
         events = self.events.get(job_id, [])
         if since_id:
-            events = [e for e in events if e.event_id > since_id]
+            events = [e for e in events if e.id > since_id]  # Use .id not .event_id
         return events
 
     def get_user_recent_jobs(
         self,
-        user_id: int,
+        user_id: str,
         limit: int = 5,
-    ) -> list[MagicMock]:
+    ) -> list[Job]:
         """Get recent jobs for a specific user."""
         user_jobs = [j for j in self.history_jobs if j.owner_user_id == user_id]
         return user_jobs[:limit]
 
-    def enqueue_job(self, job: MagicMock) -> None:
+    def enqueue_job(self, job: Job) -> None:
         """Add a new job to the queue (mock implementation)."""
+        # Use job.id (standard attribute for Job dataclass)
+        job_id = job.id
+        created_at = getattr(job, 'submitted_at', None)
+        
         # Simply add to active jobs list
         self.active_jobs.insert(0, job)
         self.jobs.insert(0, job)
         
         # Generate initial event for the job
-        self.events[job.job_id] = [
-            create_mock_event(
-                event_id=len(self.events) * 10 + 1,
-                job_id=job.job_id,
-                event_type="created",
-                message="Job queued for processing",
-                created_at=job.created_at,
-            )
-        ]
+        if job_id:
+            self.events[job_id] = [
+                create_mock_event(
+                    event_id=len(self.events) * 10 + 1,
+                    job_id=job_id,
+                    event_type="created",
+                    message="Job queued for processing",
+                    created_at=created_at or datetime.now(UTC),
+                )
+            ]
 
-    def get_user_last_job(self, user_code: str) -> MagicMock | None:
+    def get_user_last_job(self, user_code: str) -> Job | None:
         """Get the most recent job for a user by user_code."""
         all_jobs = self.active_jobs + self.history_jobs
-        user_jobs = [j for j in all_jobs if j.user_code == user_code]
+        user_jobs = [j for j in all_jobs if j.owner_user_code == user_code]
         if user_jobs:
-            return sorted(user_jobs, key=lambda j: j.created_at, reverse=True)[0]
+            return sorted(user_jobs, key=lambda j: j.submitted_at, reverse=True)[0]
         return None
+
+    def request_cancellation(self, job_id: str) -> bool:
+        """Request cancellation of a job. Returns True if cancellation was requested.
+        
+        Note: Job is a frozen dataclass, so we use dataclasses.replace() to create
+        a new Job with updated fields and replace it in the list.
+        """
+        from dataclasses import replace
+        
+        job = self.get_job_by_id(job_id)
+        if not job:
+            return False
+        
+        # Can only cancel queued or running jobs
+        if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
+            return False
+        
+        # Check if already requested (Job doesn't have cancel_requested_at - track separately)
+        if job_id in self._cancel_requested:
+            return False
+        
+        # Track cancellation request separately (Job frozen, can't add field)
+        self._cancel_requested[job_id] = datetime.now(UTC)
+        return True
+
+    def is_cancellation_requested(self, job_id: str) -> bool:
+        """Check if cancellation has been requested for a job."""
+        return job_id in self._cancel_requested
+
+    def mark_job_canceled(self, job_id: str, reason: str | None = None) -> None:
+        """Mark a job as canceled.
+        
+        Since Job is a frozen dataclass, we create a new Job with updated fields
+        and replace it in the appropriate list.
+        """
+        from dataclasses import replace
+        
+        job = self.get_job_by_id(job_id)
+        if not job:
+            return
+        
+        # Create new job with updated status
+        canceled_job = replace(
+            job,
+            status=JobStatus.CANCELED,
+            completed_at=datetime.now(UTC),
+            error_detail=reason or "Canceled by user",
+        )
+        
+        # Replace in active_jobs and move to history
+        if job in self.active_jobs:
+            idx = self.active_jobs.index(job)
+            self.active_jobs.pop(idx)
+            self.history_jobs.insert(0, canceled_job)
+        elif job in self.history_jobs:
+            # Already in history, just update
+            idx = self.history_jobs.index(job)
+            self.history_jobs[idx] = canceled_job
+        
+        # Update jobs list for backward compatibility
+        if job in self.jobs:
+            idx = self.jobs.index(job)
+            self.jobs[idx] = canceled_job
+        
+        # Add canceled event
+        event_id = len(self.events.get(job_id, [])) + 1
+        cancel_event = create_mock_event(
+            event_id=event_id,
+            job_id=job_id,
+            event_type="canceled",
+            message=reason or "Job canceled by user",
+            created_at=datetime.now(UTC),
+        )
+        if job_id not in self.events:
+            self.events[job_id] = []
+        self.events[job_id].append(cancel_event)
+
+    def append_job_event(
+        self,
+        job_id: str,
+        event_type: str,
+        detail: str | None = None,
+    ) -> None:
+        """Append an event to a job's event log."""
+        event_id = len(self.events.get(job_id, [])) + 1
+        event = create_mock_event(
+            event_id=event_id,
+            job_id=job_id,
+            event_type=event_type,
+            message=detail or event_type,
+            created_at=datetime.now(UTC),
+        )
+        if job_id not in self.events:
+            self.events[job_id] = []
+        self.events[job_id].append(event)
 
 
 class MockHostRepo:
@@ -657,6 +821,26 @@ class MockHostRepo:
         return [h for h in self.hosts if not h.disabled]
 
 
+class MockSettingsRepo:
+    """Mock settings repository for dev server."""
+
+    def get_max_active_jobs_global(self) -> int:
+        """Return global active job limit (0 = unlimited)."""
+        return 0  # No limit in dev mode
+
+    def get_max_active_jobs_per_user(self) -> int:
+        """Return per-user active job limit (0 = unlimited)."""
+        return 0  # No limit in dev mode
+
+
+class MockConfig:
+    """Mock configuration for dev server."""
+
+    def __init__(self) -> None:
+        self.default_dbhost: str | None = None
+        self.mysql_host: str = "mysql-staging-01.example.com"
+
+
 class MockAPIState:
     """Mock API state with all repositories and scenario support."""
 
@@ -686,39 +870,45 @@ class MockAPIState:
 
     def __init__(self, scenario: str = "dev_mocks") -> None:
         self.current_scenario = scenario
+        self.config = MockConfig()
         self.user_repo = MockUserRepo()
         self.auth_repo = MockAuthRepo()
         self.host_repo = MockHostRepo()
+        self.settings_repo = MockSettingsRepo()
         self._load_scenario(scenario)
     
     def _load_scenario(self, scenario: str) -> None:
         """Load job data based on scenario."""
+        from dataclasses import replace
+        
         self.current_scenario = scenario
         
         if scenario == "empty":
             self.job_repo = MockJobRepo(active_count=0, history_count=0)
         elif scenario == "busy":
             self.job_repo = MockJobRepo(active_count=15, history_count=100)
-            # Override to make most jobs running
-            for job in self.job_repo.active_jobs:
-                job.status = "running"
-                job.current_operation = "Restoring database"
+            # Override to make most jobs running (Job is frozen, use replace)
+            self.job_repo.active_jobs = [
+                replace(job, status=JobStatus.RUNNING, current_operation="Restoring database")
+                for job in self.job_repo.active_jobs
+            ]
         elif scenario == "all_failed":
             self.job_repo = MockJobRepo(active_count=0, history_count=20)
-            # Make all history jobs failed
-            for job in self.job_repo.history_jobs:
-                job.status = "failed"
-                job.error_detail = "Connection timeout during restore"
+            # Make all history jobs failed (Job is frozen, use replace)
+            self.job_repo.history_jobs = [
+                replace(job, status=JobStatus.FAILED, error_detail="Connection timeout during restore")
+                for job in self.job_repo.history_jobs
+            ]
         elif scenario == "queue_backlog":
             self.job_repo = MockJobRepo(active_count=25, history_count=50)
-            # Make most jobs queued
+            # Make most jobs queued (Job is frozen, use replace)
+            updated_jobs = []
             for i, job in enumerate(self.job_repo.active_jobs):
                 if i < 20:
-                    job.status = "queued"
-                    job.current_operation = "Waiting in queue"
+                    updated_jobs.append(replace(job, status=JobStatus.QUEUED, current_operation="Waiting in queue"))
                 else:
-                    job.status = "running"
-                    job.current_operation = "Restoring database"
+                    updated_jobs.append(replace(job, status=JobStatus.RUNNING, current_operation="Restoring database"))
+            self.job_repo.active_jobs = updated_jobs
         else:
             # Default: dev_mocks
             self.job_repo = MockJobRepo()
@@ -770,6 +960,136 @@ def create_dev_app() -> FastAPI:
     static_dir = Path(__file__).parent.parent / "pulldb" / "web" / "static"
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    # === DEV MOCK ENDPOINTS ===
+    # These override real endpoints for dev server mock data
+    
+    @app.get("/web/restore/search-customers")
+    async def mock_search_customers(q: str = "", limit: int = 100):
+        """Mock customer search for dev server.
+        
+        Returns mock customers matching the query.
+        Supports prefix-based caching: fetch once per 3-char prefix.
+        """
+        if len(q) < 3:
+            return {"results": [], "total": 0, "prefix": q}
+        
+        # Mock customers - match the simulation list
+        mock_customers = [
+            "actionpest",
+            "actionplumbing", 
+            "acmehvac",
+            "bigcorp",
+            "cleanpro",
+            "deltaplumbing",
+            "eliteelectric",
+            "fastfix",
+            "greenscapes",
+            "homeservices",
+            "techcorp",
+            "globalretail",
+            "healthnet",
+            "autoparts",
+            "buildpro",
+            "foodmart",
+            "energyco",
+            "finserve",
+            "edulearn",
+            "medisys",
+        ]
+        
+        q_lower = q.lower()
+        matches = [c for c in mock_customers if q_lower in c.lower()]
+        matches = sorted(matches)[:limit]
+        
+        return {
+            "results": [{"value": c, "label": c} for c in matches],
+            "total": len(matches),
+            "prefix": q[:3] if len(q) >= 3 else q,
+        }
+    
+    @app.get("/web/restore/search-backups")
+    async def mock_search_backups(request: Request, customer: str = "", env: str = "both"):
+        """Mock backup search for dev server."""
+        from datetime import datetime, timedelta
+        from fastapi.responses import HTMLResponse as HTMLResp
+        import random
+        
+        if not customer:
+            return HTMLResp(
+                '<div class="alert alert-warning">Please select a customer first.</div>'
+            )
+        
+        # Generate mock backups for the customer
+        backups = []
+        now = datetime.now()
+        
+        for i in range(random.randint(3, 8)):
+            days_ago = random.randint(1, 90)
+            timestamp = now - timedelta(days=days_ago, hours=random.randint(0, 23))
+            backup_env = random.choice(["staging", "prod"]) if env == "both" else env
+            
+            # Skip if env filter doesn't match
+            if env != "both" and backup_env != env:
+                continue
+                
+            backups.append({
+                "customer": customer,
+                "timestamp": timestamp,
+                "date": timestamp.strftime("%Y%m%d"),
+                "size_mb": round(random.uniform(50, 2000), 1),
+                "environment": backup_env,
+                "key": f"s3://backups/{backup_env}/{customer}/{timestamp.strftime('%Y%m%d_%H%M%S')}.sql.gz",
+                "bucket": f"pulldb-backups-{backup_env}",
+            })
+        
+        # Sort by timestamp (most recent first)
+        backups.sort(key=lambda x: x["timestamp"], reverse=True)
+        
+        # Generate HTML directly
+        if not backups:
+            return HTMLResp('''
+                <div class="alert alert-warning" style="margin-top: 1rem; padding: 1rem; background: var(--warning-50); border: 1px solid var(--warning-200); border-radius: var(--radius-md); color: var(--warning-700);">
+                    <strong>No backups found.</strong>
+                    <p style="margin: 0.5rem 0 0 0;">No backups are available for this customer in the selected environment.</p>
+                </div>
+            ''')
+        
+        rows_html = ""
+        for i, backup in enumerate(backups):
+            badge_class = "badge-primary" if backup["environment"] == "prod" else "badge-neutral"
+            timestamp_str = backup["timestamp"].strftime('%Y-%m-%d %H:%M')
+            size_str = f"{backup['size_mb']:.1f} MB"
+            
+            rows_html += f'''
+            <tr data-backup-key="{backup["key"]}" 
+                onclick="selectBackup('{backup["key"]}', '{backup["environment"]}', '{timestamp_str}', '{size_str}')">
+                <td>{timestamp_str}</td>
+                <td>
+                    <span class="badge {badge_class}">
+                        {backup["environment"]}
+                    </span>
+                </td>
+                <td>{size_str}</td>
+            </tr>
+            '''
+        
+        html = f'''
+        <table class="backup-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Environment</th>
+                    <th>Size</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html}
+            </tbody>
+        </table>
+        '''
+        
+        return HTMLResp(html)
 
     # Include unified web router
     try:
@@ -857,6 +1177,17 @@ def create_dev_app() -> FastAPI:
     def _get_status_value(job):
         return job.status.value if hasattr(job.status, 'value') else job.status
 
+    def _wildcard_match(pattern: str, value: str) -> bool:
+        """Match value against pattern with * wildcards.
+        
+        Examples:
+            _wildcard_match("job-01*", "job-0100") -> True
+            _wildcard_match("*0100", "job-0100") -> True
+            _wildcard_match("12/*/2024", "12/08/2024") -> True
+        """
+        import fnmatch
+        return fnmatch.fnmatch(value.lower(), pattern.lower())
+
     # Paginated jobs endpoint for LazyTable widget
     @app.get("/api/jobs/paginated")
     async def paginated_jobs(
@@ -870,6 +1201,8 @@ def create_dev_app() -> FastAPI:
         filter_dbhost: str | None = None,
         filter_user_code: str | None = None,
         filter_target: str | None = None,
+        filter_id: str | None = None,
+        filter_submitted_at: str | None = None,
     ):
         """Get paginated jobs for LazyTable widget."""
         state: MockAPIState = request.app.state.api_state
@@ -894,6 +1227,20 @@ def create_dev_app() -> FastAPI:
         if filter_target:
             target_values = set(v.lower() for v in filter_target.split(','))
             filtered = [j for j in filtered if any(tv in (j.target or "").lower() for tv in target_values)]
+        
+        # Text-based wildcard filters for Job ID
+        if filter_id:
+            filtered = [j for j in filtered if j.id and _wildcard_match(filter_id, j.id)]
+        
+        # Text-based wildcard filters for submitted_at (matches formatted date MM/DD/YYYY)
+        if filter_submitted_at:
+            def match_submitted(job):
+                if not job.submitted_at:
+                    return False
+                # Format date as MM/DD/YYYY for pattern matching
+                formatted = job.submitted_at.strftime("%m/%d/%Y")
+                return _wildcard_match(filter_submitted_at, formatted)
+            filtered = [j for j in filtered if match_submitted(j)]
         
         # Sort
         if sortColumn and sortDirection:
@@ -1035,11 +1382,11 @@ def create_dev_app() -> FastAPI:
             all_events.extend(job_events)
         
         # Sort by timestamp descending and take limit
-        all_events.sort(key=lambda e: e.created_at, reverse=True)
+        all_events.sort(key=lambda e: e.logged_at, reverse=True)
         
         for event in all_events[:limit]:
             events.append({
-                "timestamp": event.created_at.isoformat(),
+                "timestamp": event.logged_at.isoformat(),
                 "event_type": event.event_type,
                 "source": "dev_server",
                 "job_id": event.job_id,

@@ -70,8 +70,11 @@ class User:
         user_code: 6-character code derived from username.
         is_admin: Whether user has admin privileges (legacy, kept for compatibility).
         role: RBAC role (user/manager/admin) - Phase 4.
+        manager_id: User ID of the manager who manages this user (NULL if unmanaged).
         created_at: Timestamp when user was created.
         disabled_at: Timestamp when user was disabled (soft delete).
+        allowed_hosts: List of database hostnames this user can restore to.
+        default_host: User's default database host for restores.
     """
 
     user_id: str
@@ -80,7 +83,10 @@ class User:
     is_admin: bool
     role: UserRole
     created_at: datetime
+    manager_id: str | None = None
     disabled_at: datetime | None = None
+    allowed_hosts: list[str] | None = None
+    default_host: str | None = None
 
     @property
     def is_manager_or_above(self) -> bool:
@@ -93,9 +99,39 @@ class User:
         return self.role in (UserRole.MANAGER, UserRole.ADMIN)
 
     @property
-    def can_manage_users(self) -> bool:
-        """Check if user can manage other users (admin only)."""
-        return self.role == UserRole.ADMIN
+    def can_create_users(self) -> bool:
+        """Check if user can create new users (manager and admin)."""
+        return self.role in (UserRole.MANAGER, UserRole.ADMIN)
+
+    @property
+    def is_managed(self) -> bool:
+        """Check if this user is managed by someone."""
+        return self.manager_id is not None
+
+    @property
+    def disabled(self) -> bool:
+        """Check if user account is disabled."""
+        return self.disabled_at is not None
+
+    @property
+    def has_any_hosts(self) -> bool:
+        """Check if user has any allowed database hosts.
+        
+        Admins implicitly have access to all hosts, so always return True.
+        """
+        if self.role == UserRole.ADMIN:
+            return True
+        return bool(self.allowed_hosts)
+
+    def can_use_host(self, hostname: str) -> bool:
+        """Check if user is authorized to use a specific database host.
+        
+        Admins can use any host. Other users must have the host in their
+        allowed_hosts list.
+        """
+        if self.role == UserRole.ADMIN:
+            return True
+        return hostname in (self.allowed_hosts or [])
 
 
 @dataclass(frozen=True)
