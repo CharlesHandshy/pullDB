@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block title %}Cleanup Staging Preview - Admin - pullDB{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
+<style>
+.preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--gray-200);
+}
+.preview-stats {
+    display: flex;
+    gap: var(--space-6);
+}
+.preview-stat {
+    text-align: center;
+}
+.preview-stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--danger-600);
+}
+.preview-stat-label {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    text-transform: uppercase;
+}
+.selection-controls {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    margin-bottom: var(--space-3);
+}
+.checkbox-cell {
+    width: 40px;
+    text-align: center;
+}
+.checkbox-cell input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+.excluded-row {
+    opacity: 0.5;
+    background: var(--gray-50);
+}
+.warning-box {
+    background: var(--danger-50);
+    border: 1px solid var(--danger-200);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+}
+.warning-box svg {
+    flex-shrink: 0;
+    color: var(--danger-600);
+}
+.db-name {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    background: var(--gray-100);
+    padding: 0.1em 0.4em;
+    border-radius: 3px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display: flex; align-items: center; gap: var(--space-4);">
+        <a href="/web/admin/" class="btn btn-ghost" style="padding: 0.5rem;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+        </a>
+        <h1 class="page-title">Cleanup Staging Databases</h1>
+    </div>
+</div>
+
+<!-- Warning Box -->
+<div class="warning-box">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+    <div>
+        <div style="font-weight: 600; color: var(--danger-700); margin-bottom: 0.25rem;">Destructive Operation</div>
+        <div style="color: var(--danger-600); font-size: 0.875rem;">
+            This will permanently DROP staging databases from MySQL servers. Dropped databases cannot be recovered.
+            Review the items below and uncheck any you want to exclude.
+        </div>
+    </div>
+</div>
+
+<!-- Config Panel -->
+<div class="card card-padding" style="margin-bottom: var(--space-4);">
+    <form id="config-form" style="display: flex; gap: var(--space-4); align-items: flex-end;">
+        <div>
+            <label class="form-label">Delete databases from jobs completed more than</label>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <input type="number" id="days-input" name="days" value="{{ days }}" 
+                       class="form-input" style="width: 100px;" min="1" max="365">
+                <span style="color: var(--gray-600);">days ago</span>
+            </div>
+        </div>
+        <button type="button" id="refresh-preview" class="btn btn-secondary">
+            Refresh Preview
+        </button>
+    </form>
+</div>
+
+<!-- Preview Header with Stats -->
+<div class="card card-padding">
+    <div class="preview-header">
+        <div class="preview-stats">
+            <div class="preview-stat">
+                <div class="preview-stat-value" id="total-databases">-</div>
+                <div class="preview-stat-label">Databases to Delete</div>
+            </div>
+            <div class="preview-stat">
+                <div class="preview-stat-value" id="selected-count">-</div>
+                <div class="preview-stat-label">Selected</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Selection Controls -->
+    <div class="selection-controls">
+        <button type="button" id="select-all" class="btn btn-sm btn-secondary">Select All</button>
+        <button type="button" id="deselect-all" class="btn btn-sm btn-secondary">Deselect All</button>
+        <span style="color: var(--gray-500); font-size: 0.875rem;">
+            Uncheck items to exclude them from deletion
+        </span>
+    </div>
+
+    <!-- LazyTable Container -->
+    <div id="cleanup-table-container" style="height: 400px;"></div>
+</div>
+
+<!-- Execute Form -->
+<form id="execute-form" method="POST" action="/web/admin/cleanup-staging/execute" style="margin-top: var(--space-4);">
+    <input type="hidden" name="days" id="form-days" value="{{ days }}">
+    <input type="hidden" name="exclude_ids" id="exclude-ids" value="">
+    <div style="display: flex; gap: var(--space-3); justify-content: flex-end;">
+        <a href="/web/admin/" class="btn btn-secondary">Cancel</a>
+        <button type="submit" id="execute-btn" class="btn btn-danger" disabled>
+            Drop Selected Databases
+        </button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=3"></script>
+<script>
+(function() {
+    // Track excluded database names
+    const excludedIds = new Set();
+    let totalCount = 0;
+    let lazyTable = null;
+
+    const columns = [
+        {
+            key: '_checkbox',
+            label: '<input type="checkbox" id="header-checkbox" checked title="Toggle all visible">',
+            width: '40px',
+            sortable: false,
+            filterable: false,
+            render: (val, row) => {
+                const checked = !excludedIds.has(row.database_name) ? 'checked' : '';
+                return '<input type="checkbox" class="row-checkbox" data-db-name="' + row.database_name + '" ' + checked + '>';
+            }
+        },
+        { key: 'database_name', label: 'Database Name', width: '250px', sortable: true,
+          render: (val) => '<span class="db-name">' + val + '</span>' },
+        { key: 'target', label: 'Original Target', width: '150px', sortable: true },
+        { key: 'dbhost', label: 'Host', width: '200px', sortable: true,
+          render: (val) => '<span style="font-size: 0.85em;">' + (val || '-') + '</span>' },
+        { key: 'user_code', label: 'User', width: '80px', sortable: true,
+          render: (val) => '<span class="font-mono" style="font-size: 0.85em;">' + (val || '-') + '</span>' },
+        { key: 'job_status', label: 'Job Status', width: '90px', sortable: true,
+          render: (val) => {
+            const cls = val === 'complete' ? 'badge-success' : val === 'failed' ? 'badge-danger' : 'badge-neutral';
+            return '<span class="badge ' + cls + '" style="font-size: 0.75rem;">' + val + '</span>';
+          }
+        },
+        { key: 'completed_at', label: 'Completed', width: '120px', sortable: true,
+          render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
+    ];
+
+    function updateStats() {
+        const selectedCount = totalCount - excludedIds.size;
+        document.getElementById('total-databases').textContent = totalCount;
+        document.getElementById('selected-count').textContent = selectedCount;
+        
+        // Update execute button
+        const btn = document.getElementById('execute-btn');
+        btn.disabled = selectedCount === 0;
+        btn.textContent = selectedCount > 0 
+            ? `Drop ${selectedCount} Database${selectedCount !== 1 ? 's' : ''}` 
+            : 'No Items Selected';
+        
+        // Update hidden form field
+        document.getElementById('exclude-ids').value = Array.from(excludedIds).join(',');
+    }
+
+    function initTable() {
+        const days = document.getElementById('days-input').value;
+        document.getElementById('form-days').value = days;
+        
+        if (lazyTable) {
+            lazyTable.destroy();
+        }
+
+        lazyTable = new LazyTable({
+            container: document.getElementById('cleanup-table-container'),
+            columns: columns,
+            fetchUrl: `/web/admin/api/cleanup-candidates?days=${days}`,
+            rowHeight: 40,
+            pageSize: 50,
+            onDataLoaded: (data) => {
+                totalCount = data.totalCount || 0;
+                updateStats();
+            },
+            onRowRendered: (row, data) => {
+                if (excludedIds.has(data.database_name)) {
+                    row.classList.add('excluded-row');
+                }
+            }
+        });
+    }
+
+    // Event delegation for checkboxes
+    document.getElementById('cleanup-table-container').addEventListener('change', (e) => {
+        if (e.target.classList.contains('row-checkbox')) {
+            const dbName = e.target.dataset.dbName;
+            if (e.target.checked) {
+                excludedIds.delete(dbName);
+                e.target.closest('tr')?.classList.remove('excluded-row');
+            } else {
+                excludedIds.add(dbName);
+                e.target.closest('tr')?.classList.add('excluded-row');
+            }
+            updateStats();
+        }
+    });
+
+    // Header checkbox for visible rows
+    document.getElementById('cleanup-table-container').addEventListener('change', (e) => {
+        if (e.target.id === 'header-checkbox') {
+            const checkboxes = document.querySelectorAll('.row-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = e.target.checked;
+                const dbName = cb.dataset.dbName;
+                if (e.target.checked) {
+                    excludedIds.delete(dbName);
+                    cb.closest('tr')?.classList.remove('excluded-row');
+                } else {
+                    excludedIds.add(dbName);
+                    cb.closest('tr')?.classList.add('excluded-row');
+                }
+            });
+            updateStats();
+        }
+    });
+
+    // Select/Deselect all buttons
+    document.getElementById('select-all').addEventListener('click', () => {
+        excludedIds.clear();
+        document.querySelectorAll('.row-checkbox').forEach(cb => {
+            cb.checked = true;
+            cb.closest('tr')?.classList.remove('excluded-row');
+        });
+        updateStats();
+    });
+
+    document.getElementById('deselect-all').addEventListener('click', () => {
+        document.querySelectorAll('.row-checkbox').forEach(cb => {
+            cb.checked = false;
+            excludedIds.add(cb.dataset.dbName);
+            cb.closest('tr')?.classList.add('excluded-row');
+        });
+        updateStats();
+    });
+
+    // Refresh preview
+    document.getElementById('refresh-preview').addEventListener('click', () => {
+        excludedIds.clear();
+        initTable();
+    });
+
+    // Form submission confirmation
+    document.getElementById('execute-form').addEventListener('submit', (e) => {
+        const selectedCount = totalCount - excludedIds.size;
+        if (!confirm(`Are you sure you want to DROP ${selectedCount} staging database(s)?\n\nThis action cannot be undone.`)) {
+            e.preventDefault();
+        }
+    });
+
+    // Initialize
+    initTable();
+})();
+</script>
+{% endblock %}

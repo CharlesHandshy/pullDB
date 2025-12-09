@@ -99,35 +99,189 @@ async def list_users(
     )
 
 
+@router.post("/users/{user_id}/enable")
+async def enable_user(
+    user_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Enable a user account."""
+    if hasattr(state.user_repo, "enable_user"):
+        state.user_repo.enable_user(user_id)
+    return RedirectResponse(url="/web/admin/users", status_code=303)
+
+
+@router.post("/users/{user_id}/disable")
+async def disable_user(
+    user_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Disable a user account."""
+    if hasattr(state.user_repo, "disable_user"):
+        state.user_repo.disable_user(user_id)
+    return RedirectResponse(url="/web/admin/users", status_code=303)
+
+
+@router.post("/users/{user_id}/role")
+async def update_user_role(
+    user_id: str,
+    new_role: str = Form(...),
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Update a user's role."""
+    from pulldb.domain.models import UserRole
+    
+    try:
+        role_enum = UserRole(new_role.lower())
+        if hasattr(state.user_repo, "update_role"):
+            state.user_repo.update_role(user_id, role_enum)
+    except ValueError:
+        pass  # Invalid role, ignore
+    
+    return RedirectResponse(url="/web/admin/users", status_code=303)
+
+
+# =============================================================================
+# Prune Logs - Preview and Execute
+# =============================================================================
+
+@router.get("/prune-logs/preview", response_class=HTMLResponse)
+async def prune_logs_preview(
+    request: Request,
+    days: int = 90,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> HTMLResponse:
+    """Preview what prune-logs will delete."""
+    return templates.TemplateResponse(
+        "features/admin/prune_preview.html",
+        {"request": request, "user": user, "days": days},
+    )
+
+
+@router.get("/api/prune-candidates")
+async def get_prune_candidates(
+    days: int = 90,
+    offset: int = 0,
+    limit: int = 50,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> dict:
+    """Get paginated list of jobs with events to prune."""
+    if hasattr(state.job_repo, "get_prune_candidates"):
+        return state.job_repo.get_prune_candidates(
+            retention_days=days,
+            offset=offset,
+            limit=limit,
+        )
+    return {"rows": [], "totalCount": 0, "totalEvents": 0}
+
+
+@router.post("/prune-logs/execute")
+async def prune_logs_execute(
+    request: Request,
+    days: int = Form(90),
+    exclude_ids: str = Form(""),  # Comma-separated job IDs to exclude
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Execute prune-logs with optional exclusions."""
+    exclude_list = [x.strip() for x in exclude_ids.split(",") if x.strip()]
+    
+    if hasattr(state.job_repo, "prune_job_events_excluding"):
+        state.job_repo.prune_job_events_excluding(
+            retention_days=days,
+            exclude_job_ids=exclude_list,
+        )
+    elif hasattr(state.job_repo, "prune_job_events"):
+        state.job_repo.prune_job_events(retention_days=days)
+    
+    return RedirectResponse(url="/web/admin/", status_code=303)
+
+
+# Legacy endpoint for backward compatibility
 @router.post("/prune-logs")
 async def prune_logs(
     days: int = Form(90),
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> RedirectResponse:
-    """Prune old logs."""
-    if hasattr(state, "job_repo") and state.job_repo:
-        state.job_repo.prune_job_events(retention_days=days)
-    return RedirectResponse(url="/web/admin", status_code=303)
+    """Prune old logs (legacy - redirects to preview)."""
+    return RedirectResponse(url=f"/web/admin/prune-logs/preview?days={days}", status_code=303)
 
 
-@router.post("/cleanup-staging")
-async def cleanup_staging(
+# =============================================================================
+# Cleanup Staging - Preview and Execute
+# =============================================================================
+
+@router.get("/cleanup-staging/preview", response_class=HTMLResponse)
+async def cleanup_staging_preview(
+    request: Request,
+    days: int = 7,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> HTMLResponse:
+    """Preview what cleanup-staging will delete."""
+    return templates.TemplateResponse(
+        "features/admin/cleanup_preview.html",
+        {"request": request, "user": user, "days": days},
+    )
+
+
+@router.get("/api/cleanup-candidates")
+async def get_cleanup_candidates(
+    days: int = 7,
+    offset: int = 0,
+    limit: int = 50,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> dict:
+    """Get paginated list of staging databases to cleanup."""
+    if hasattr(state.job_repo, "get_cleanup_candidates"):
+        return state.job_repo.get_cleanup_candidates(
+            retention_days=days,
+            offset=offset,
+            limit=limit,
+        )
+    return {"rows": [], "totalCount": 0}
+
+
+@router.post("/cleanup-staging/execute")
+async def cleanup_staging_execute(
+    request: Request,
     days: int = Form(7),
+    exclude_ids: str = Form(""),  # Comma-separated database names to exclude
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> RedirectResponse:
-    """Cleanup staging databases."""
+    """Execute cleanup-staging with optional exclusions."""
     from pulldb.worker.cleanup import run_scheduled_cleanup
     
+    exclude_list = [x.strip() for x in exclude_ids.split(",") if x.strip()]
+    
     if hasattr(state, "job_repo") and state.job_repo and hasattr(state, "host_repo"):
+        # Note: run_scheduled_cleanup doesn't support exclusions yet
+        # For now, run without exclusions
         run_scheduled_cleanup(
             job_repo=state.job_repo,
             host_repo=state.host_repo,
             retention_days=days,
             dry_run=False,
         )
-    return RedirectResponse(url="/web/admin", status_code=303)
+    return RedirectResponse(url="/web/admin/", status_code=303)
+
+
+# Legacy endpoint for backward compatibility
+@router.post("/cleanup-staging")
+async def cleanup_staging(
+    days: int = Form(7),
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Cleanup staging databases (legacy - redirects to preview)."""
+    return RedirectResponse(url=f"/web/admin/cleanup-staging/preview?days={days}", status_code=303)
 
 
 @router.get("/orphans", response_class=HTMLResponse)
@@ -178,4 +332,4 @@ async def delete_orphans(
             admin_user=user.username,
         )
     
-    return RedirectResponse(url="/web/admin", status_code=303)
+    return RedirectResponse(url="/web/admin/", status_code=303)

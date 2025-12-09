@@ -46,6 +46,7 @@
                     <th>Role</th>
                     <th>Status</th>
                     <th>Created At</th>
+                    <th style="text-align: right;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -54,11 +55,16 @@
                     <td class="font-medium">{{ u.username }}</td>
                     <td class="font-mono">{{ u.user_code }}</td>
                     <td>
-                        <span class="badge 
-                            {% if u.role.value == 'admin' %}badge-danger
-                            {% elif u.role.value == 'manager' %}badge-primary
-                            {% else %}badge-neutral{% endif %}
-                        ">{{ u.role.value }}</span>
+                        <!-- Role dropdown -->
+                        <form method="POST" action="/web/admin/users/{{ u.user_id }}/role" style="display: inline;" 
+                              onsubmit="return confirm('Change {{ u.username }} role to ' + this.new_role.value + '?');">
+                            <select name="new_role" class="form-select" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
+                                    onchange="this.form.submit()">
+                                <option value="user" {% if u.role.value == 'user' %}selected{% endif %}>user</option>
+                                <option value="manager" {% if u.role.value == 'manager' %}selected{% endif %}>manager</option>
+                                <option value="admin" {% if u.role.value == 'admin' %}selected{% endif %}>admin</option>
+                            </select>
+                        </form>
                     </td>
                     <td>
                         {% if u.disabled_at %}
@@ -68,10 +74,23 @@
                         {% endif %}
                     </td>
                     <td>{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '-' }}</td>
+                    <td style="text-align: right;">
+                        {% if u.disabled_at %}
+                        <form method="POST" action="/web/admin/users/{{ u.user_id }}/enable" style="display: inline;"
+                              onsubmit="return confirm('Enable user {{ u.username }}?');">
+                            <button type="submit" class="btn btn-sm btn-success" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Enable</button>
+                        </form>
+                        {% else %}
+                        <form method="POST" action="/web/admin/users/{{ u.user_id }}/disable" style="display: inline;"
+                              onsubmit="return confirm('Disable user {{ u.username }}? They will not be able to log in.');">
+                            <button type="submit" class="btn btn-sm btn-danger" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Disable</button>
+                        </form>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="5" class="empty-state">No users found.</td>
+                    <td colspan="6" class="empty-state">No users found.</td>
                 </tr>
                 {% endfor %}
             </tbody>

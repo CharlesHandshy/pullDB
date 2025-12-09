@@ -74,21 +74,33 @@
         <div class="card card-padding">
             <h3 class="card-header">Operations</h3>
             
-            <form method="POST" action="/web/admin/prune-logs" style="margin-bottom: 1.5rem;">
+            <div style="margin-bottom: 1.5rem;">
                 <label class="form-label">Prune Logs</label>
-                <div style="display: flex; gap: 0.5rem;">
-                    <input type="number" name="days" value="90" class="form-input" style="width: 100px;" min="1">
-                    <button type="submit" class="btn btn-secondary">Prune (> N days)</button>
-                </div>
-            </form>
+                <p style="font-size: 0.875rem; color: var(--gray-600); margin-bottom: 0.75rem;">
+                    Delete old job event logs to free up database space.
+                </p>
+                <a href="/web/admin/prune-logs/preview" class="btn btn-secondary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    Preview &amp; Prune Logs
+                </a>
+            </div>
 
-            <form method="POST" action="/web/admin/cleanup-staging">
+            <div>
                 <label class="form-label">Cleanup Staging</label>
-                <div style="display: flex; gap: 0.5rem;">
-                    <input type="number" name="days" value="7" class="form-input" style="width: 100px;" min="1">
-                    <button type="submit" class="btn btn-secondary">Cleanup (> N days)</button>
-                </div>
-            </form>
+                <p style="font-size: 0.875rem; color: var(--gray-600); margin-bottom: 0.75rem;">
+                    Drop orphaned staging databases from completed jobs.
+                </p>
+                <a href="/web/admin/cleanup-staging/preview" class="btn btn-secondary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    Preview &amp; Cleanup Staging
+                </a>
+            </div>
         </div>
 
         <!-- Orphan Databases -->

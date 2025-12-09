@@ -163,16 +163,28 @@ def _build_admin_context(state: Any, user: User) -> dict:
     system_completed = len([j for j in all_history if str(j.status.value).lower() in ("complete", "completed")])
     system_failed = len([j for j in all_history if str(j.status.value).lower() == "failed"])
     
-    # Host health - count active restores per host
+    # Host health - count active restores per host with queue warnings
     host_health = []
     for host in all_hosts:
-        host_name = getattr(host, "name", None) or getattr(host, "hostname", None) or getattr(host, "host_alias", None)
-        active_on_host = len([j for j in all_active if getattr(j, "dbhost", None) == host_name])
+        # Use host_alias if available, else hostname (real DBHost attributes only)
+        host_name = getattr(host, "host_alias", None) or getattr(host, "hostname", "unknown")
+        hostname_fqdn = getattr(host, "hostname", "")
+        
+        # Count jobs targeting this host (match on hostname or alias)
+        jobs_on_host = [j for j in all_active 
+                        if getattr(j, "dbhost", None) in (host_name, hostname_fqdn)]
+        queued_count = len([j for j in jobs_on_host if j.status == JobStatus.QUEUED])
+        running_count = len([j for j in jobs_on_host if j.status == JobStatus.RUNNING])
+        
         host_health.append({
             "host": host,
             "name": host_name,
-            "active_restores": active_on_host,
-            "capacity": getattr(host, "max_concurrent_restores", None) or getattr(host, "max_concurrent", 5),
+            "hostname": hostname_fqdn,
+            "active_restores": len(jobs_on_host),
+            "queued_count": queued_count,
+            "running_count": running_count,
+            "capacity": getattr(host, "max_concurrent_restores", 5),
+            "enabled": getattr(host, "enabled", True),  # Pre-computed for template
         })
     
     # System recent jobs (last 10)
@@ -191,8 +203,8 @@ def _build_admin_context(state: Any, user: User) -> dict:
             "active_users": len([u for u in all_users if not getattr(u, "disabled_at", None)]),
             "disabled_users": len([u for u in all_users if getattr(u, "disabled_at", None)]),
             "total_hosts": len(all_hosts),
-            "enabled_hosts": len([h for h in all_hosts if not getattr(h, "disabled_at", None)]),
-            "disabled_hosts": len([h for h in all_hosts if getattr(h, "disabled_at", None)]),
+            "enabled_hosts": len([h for h in all_hosts if getattr(h, "enabled", True)]),
+            "disabled_hosts": len([h for h in all_hosts if not getattr(h, "enabled", True)]),
             "queued_jobs": system_queued,
             "running_jobs": system_running,
             "completed_jobs": system_completed,

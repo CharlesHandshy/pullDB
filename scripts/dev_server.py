@@ -245,6 +245,18 @@ class MockUserRepo:
                 self._users[username] = replace(user, default_host=host)
                 break
 
+    def update_role(self, user_id: str, new_role: UserRole) -> None:
+        """Update a user's role."""
+        from dataclasses import replace
+        for username, user in self._users.items():
+            if user.user_id == user_id:
+                self._users[username] = replace(
+                    user, 
+                    role=new_role,
+                    is_admin=(new_role == UserRole.ADMIN),
+                )
+                break
+
     def get_or_create_user(self, username: str) -> User:
         """Get existing user by username.
         
@@ -783,33 +795,208 @@ class MockJobRepo:
             self.events[job_id] = []
         self.events[job_id].append(event)
 
+    def prune_job_events(self, retention_days: int = 90) -> int:
+        """Prune old job events. Returns count of deleted events."""
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        
+        deleted = 0
+        for job_id, events in list(self.events.items()):
+            original_count = len(events)
+            self.events[job_id] = [e for e in events if e.logged_at >= cutoff]
+            deleted += original_count - len(self.events[job_id])
+        
+        return deleted
+
+    def get_prune_candidates(
+        self, 
+        retention_days: int = 90, 
+        offset: int = 0, 
+        limit: int = 50
+    ) -> dict:
+        """Get paginated list of jobs with events that would be pruned.
+        
+        Returns dict with:
+        - rows: list of job summaries with event counts
+        - totalCount: total jobs affected
+        - totalEvents: total events that would be deleted
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        
+        # Build a lookup of terminal jobs from history_jobs
+        # (In real system, a job moves from active to history when terminal)
+        terminal_jobs = {j.id: j for j in self.history_jobs 
+                        if j.status in (JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED)}
+        
+        # Find all jobs with events older than cutoff (only terminal jobs)
+        candidates = []
+        total_events = 0
+        
+        for job_id, events in self.events.items():
+            # Only consider terminal jobs (from history)
+            job = terminal_jobs.get(job_id)
+            if not job:
+                continue
+                
+            old_events = [e for e in events if e.logged_at < cutoff]
+            if old_events:
+                oldest = min(e.logged_at for e in old_events)
+                newest = max(e.logged_at for e in old_events)
+                candidates.append({
+                    "job_id": job_id,
+                    "target": job.target,
+                    "user_code": job.owner_user_code,
+                    "status": job.status.value,
+                    "event_count": len(old_events),
+                    "oldest_event": oldest.isoformat(),
+                    "newest_event": newest.isoformat(),
+                })
+                total_events += len(old_events)
+        
+        # Sort by oldest event (oldest first)
+        candidates.sort(key=lambda x: x["oldest_event"])
+        
+        return {
+            "rows": candidates[offset:offset + limit],
+            "totalCount": len(candidates),
+            "totalEvents": total_events,
+        }
+
+    def prune_job_events_excluding(
+        self, 
+        retention_days: int = 90, 
+        exclude_job_ids: list[str] | None = None
+    ) -> int:
+        """Prune old job events, excluding specified job IDs. Returns count deleted."""
+        exclude_job_ids = exclude_job_ids or []
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        
+        # Build a lookup of terminal jobs from history_jobs
+        terminal_jobs = {j.id: j for j in self.history_jobs 
+                        if j.status in (JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED)}
+        
+        deleted = 0
+        for job_id, events in list(self.events.items()):
+            if job_id in exclude_job_ids:
+                continue
+            # Only prune events for terminal jobs (from history)
+            if job_id not in terminal_jobs:
+                continue
+                
+            original_count = len(events)
+            self.events[job_id] = [e for e in events if e.logged_at >= cutoff]
+            deleted += original_count - len(self.events[job_id])
+        
+        return deleted
+
+    def get_cleanup_candidates(
+        self,
+        retention_days: int = 7,
+        offset: int = 0,
+        limit: int = 50
+    ) -> dict:
+        """Get paginated list of staging databases that would be cleaned up.
+        
+        Returns dict with:
+        - rows: list of staging database candidates
+        - totalCount: total databases that would be deleted
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        
+        candidates = []
+        # Only terminal jobs with staging_name that completed before cutoff
+        all_jobs = self.history_jobs + self.active_jobs
+        for job in all_jobs:
+            # Must be terminal status
+            if job.status not in (JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED):
+                continue
+            # Must have a staging name
+            staging_name = getattr(job, "staging_name", None)
+            if not staging_name:
+                continue
+            # Must have completed before cutoff
+            completed_at = getattr(job, "completed_at", None)
+            if not completed_at or completed_at >= cutoff:
+                continue
+            # Check if already cleaned (mock: assume not cleaned)
+            staging_cleaned_at = getattr(job, "staging_cleaned_at", None)
+            if staging_cleaned_at:
+                continue
+                
+            candidates.append({
+                "database_name": staging_name,
+                "target": job.target,
+                "dbhost": job.dbhost,
+                "job_id": job.id,
+                "job_status": job.status.value,
+                "completed_at": completed_at.isoformat() if completed_at else None,
+                "user_code": job.owner_user_code,
+            })
+        
+        # Sort by completed_at (oldest first)
+        candidates.sort(key=lambda x: x["completed_at"] or "")
+        
+        return {
+            "rows": candidates[offset:offset + limit],
+            "totalCount": len(candidates),
+        }
+
 
 class MockHostRepo:
-    """Mock host repository with sample database hosts."""
+    """Mock host repository with sample database hosts.
+    
+    Mock hosts match exact DBHost model structure:
+    - id: int (auto-increment PK)
+    - hostname: str (FQDN)
+    - host_alias: str | None (short name)
+    - credential_ref: str (AWS Secrets Manager path)
+    - max_concurrent_restores: int
+    - enabled: bool
+    - created_at: datetime
+    """
 
     def __init__(self) -> None:
         self.hosts = [
-            self._create_host("mysql-staging-01.example.com", port=3306, disabled=False),
-            self._create_host("mysql-staging-02.example.com", port=3306, disabled=False),
-            self._create_host("mysql-dev.example.com", port=3306, disabled=True),
+            self._create_host(
+                id=1,
+                hostname="mysql-staging-01.example.com",
+                host_alias="staging-01",
+                max_concurrent_restores=3,
+                enabled=True,
+            ),
+            self._create_host(
+                id=2,
+                hostname="mysql-staging-02.example.com",
+                host_alias="staging-02",
+                max_concurrent_restores=2,
+                enabled=True,
+            ),
+            self._create_host(
+                id=3,
+                hostname="mysql-dev.example.com",
+                host_alias="dev",
+                max_concurrent_restores=1,
+                enabled=False,  # Disabled host
+            ),
         ]
 
     def _create_host(
         self,
+        id: int,
         hostname: str,
-        port: int = 3306,
-        disabled: bool = False,
+        host_alias: str | None = None,
+        max_concurrent_restores: int = 2,
+        enabled: bool = True,
     ) -> MagicMock:
+        """Create mock host matching exact DBHost model structure."""
         host = MagicMock()
-        host.id = hostname  # Use hostname as ID for mocks
-        host.name = hostname  # Use hostname as display name
+        # Exact DBHost model attributes
+        host.id = id
         host.hostname = hostname
-        host.port = port
-        host.disabled = disabled
-        host.description = f"MySQL host at {hostname}"
+        host.host_alias = host_alias
+        host.credential_ref = f"mock/mysql/{host_alias or hostname}"
+        host.max_concurrent_restores = max_concurrent_restores
+        host.enabled = enabled
         host.created_at = datetime(2024, 1, 1, tzinfo=UTC)
-        host.active_restores = 0
-        host.total_restores = 15
         return host
 
     def list_hosts(self) -> list[MagicMock]:
@@ -818,7 +1005,21 @@ class MockHostRepo:
 
     def get_enabled_hosts(self) -> list[MagicMock]:
         """Return only enabled hosts."""
-        return [h for h in self.hosts if not h.disabled]
+        return [h for h in self.hosts if h.enabled]
+
+    def get_host_credentials(self, hostname: str) -> Any:
+        """Return mock credentials for host.
+        
+        In production, this resolves credential_ref via AWS Secrets Manager.
+        For dev server, returns mock credentials.
+        """
+        # Return a mock credentials object
+        creds = MagicMock()
+        creds.username = "mock_mysql_user"
+        creds.password = "mock_mysql_password"
+        creds.host = hostname
+        creds.port = 3306
+        return creds
 
 
 class MockSettingsRepo:

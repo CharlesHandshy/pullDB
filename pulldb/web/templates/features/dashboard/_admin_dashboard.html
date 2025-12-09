@@ -99,13 +99,20 @@
                 <tr style="border-bottom: 1px solid var(--gray-100);">
                     <td style="padding: var(--space-2) 0;">
                         <div style="font-weight: 500; color: var(--gray-900);">{{ item.name }}</div>
-                        {% if item.host.disabled_at %}
+                        {% if not item.enabled %}
                         <span class="badge badge-neutral" style="font-size: 0.625rem;">disabled</span>
                         {% endif %}
                     </td>
                     <td style="padding: var(--space-2) 0; text-align: right;">
-                        <span style="font-weight: 600; color: {% if item.active_restores >= item.capacity %}var(--danger-600){% elif item.active_restores > 0 %}var(--primary-600){% else %}var(--gray-400){% endif %};">
-                            {{ item.active_restores }}
+                        <!-- Queue depth warnings -->
+                        {% if item.queued_count > 10 %}
+                        <span class="badge badge-danger" style="font-size: 0.625rem; margin-right: 0.5rem;">{{ item.queued_count }} queued</span>
+                        {% elif item.queued_count > 5 %}
+                        <span class="badge badge-warning" style="font-size: 0.625rem; margin-right: 0.5rem;">{{ item.queued_count }} queued</span>
+                        {% endif %}
+                        <!-- Active/Capacity display -->
+                        <span style="font-weight: 600; color: {% if item.running_count >= item.capacity %}var(--danger-600){% elif item.running_count > 0 %}var(--primary-600){% else %}var(--gray-400){% endif %};">
+                            {{ item.running_count }}
                         </span>
                         <span style="color: var(--gray-400);">/</span>
                         <span style="color: var(--gray-500);">{{ item.capacity }}</span>
