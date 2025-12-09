@@ -1,0 +1,41 @@
+{#
+    HCA Layer 3: Header Logo Widget (Partial)
+    ==========================================
+    Purpose: Displays the configured logo from logo management settings.
+    Included by: app_layout.html, base.html
+    
+    Uses global function: get_logo_config() to load current logo settings.
+    
+    Size: ~50 lines (HCA compliant)
+#}
+{% set logo = get_logo_config() %}
+<div class="page-header-logo">
+    <div class="header-logo-wrapper">
+        {% if logo.type == 'video' %}
+        <video autoplay loop muted playsinline class="header-logo-media">
+            <source src="{{ logo.path }}" type="video/mp4">
+            {# Fallback SVG if video doesn't load #}
+            <svg viewBox="0 0 40 40" width="32" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <ellipse cx="20" cy="10" rx="14" ry="5" stroke="#818cf8" stroke-width="2" fill="none"/>
+                <path d="M6 10v20c0 2.76 6.27 5 14 5s14-2.24 14-5V10" stroke="#818cf8" stroke-width="2" fill="none"/>
+                <ellipse cx="20" cy="20" rx="14" ry="5" stroke="#818cf8" stroke-width="2" fill="none"/>
+                <path d="M20 2v12M15 10l5 5 5-5" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </video>
+        {% else %}
+        <img src="{{ logo.path }}" alt="Logo" class="header-logo-media">
+        {% endif %}
+        {% if logo.label %}
+        <span class="header-logo-label" style="
+            font-family: {{ logo.label_style.font }};
+            font-size: {{ logo.label_style.size }}px;
+            font-weight: {{ logo.label_style.weight }};
+            font-style: {{ logo.label_style.style }};
+            color: {{ logo.label_style.color }};
+            letter-spacing: {{ logo.label_style.spacing }}px;
+            text-transform: {{ logo.label_style.transform }};
+            {% if logo.label_style.rotation != 0 %}transform: rotate({{ logo.label_style.rotation }}deg); transform-origin: left center;{% endif %}
+        ">{{ logo.label }}</span>
+        {% endif %}
+    </div>
+</div>

@@ -522,95 +522,83 @@ class SimulatedJobRepository:
 
 
 class SimulatedUserRepository:
-    """In-memory implementation of UserRepository."""
+    """In-memory implementation of UserRepository.
+    
+    Thread-safe using RLock (reentrant lock) from SimulationState.
+    All public methods acquire the lock, and since RLock allows the same
+    thread to re-acquire, methods can safely call each other without deadlock.
+    """
 
     def __init__(self) -> None:
         """Initialize the repository with shared simulation state."""
         self.state = get_simulation_state()
-
-    # ==================== Internal unlocked helpers ====================
-    # These methods assume the caller already holds self.state.lock.
-    # They exist to avoid nested lock acquisition and race conditions.
-
-    def _get_user_by_username_unlocked(self, username: str) -> User | None:
-        """Get user by username (caller must hold lock)."""
-        for user in self.state.users.values():
-            if user.username == username:
-                return user
-        return None
-
-    def _generate_user_code_unlocked(self, username: str) -> str:
-        """Generate unique user code (caller must hold lock)."""
-        import random
-        
-        base = "".join(c for c in username if c.isalnum()).lower()[:6]
-        while len(base) < 6:
-            base += "x"
-        
-        # Check collision with retry logic (max 100 attempts)
-        candidate = base
-        for _ in range(100):
-            if candidate not in self.state.users_by_code:
-                return candidate
-            # Generate new candidate: base[:5] + random alphanumeric
-            suffix = random.choice('0123456789abcdefghijklmnopqrstuvwxyz')
-            candidate = base[:5] + suffix
-        
-        # Final fallback: use UUID suffix
-        return str(uuid.uuid4())[:6]
-
-    def _create_user_unlocked(self, username: str, user_code: str) -> User:
-        """Create a new user (caller must hold lock)."""
-        user_id = str(uuid.uuid4())
-        user = User(
-            user_id=user_id,
-            username=username,
-            user_code=user_code,
-            is_admin=False,
-            role=UserRole.USER,
-            created_at=datetime.now(UTC),
-            disabled_at=None
-        )
-        self.state.users[user_id] = user
-        self.state.users_by_code[user_code] = user
-        return user
 
     # ==================== Public API ====================
 
     def get_user_by_username(self, username: str) -> User | None:
         """Get user by username."""
         with self.state.lock:
-            return self._get_user_by_username_unlocked(username)
+            for user in self.state.users.values():
+                if user.username == username:
+                    return user
+            return None
 
     def get_user_by_id(self, user_id: str) -> User | None:
         """Get user by ID."""
         with self.state.lock:
             return self.state.users.get(user_id)
 
-    def create_user(self, username: str, user_code: str) -> User:
+    def generate_user_code(self, username: str) -> str:
+        """Generate a unique user code with collision handling."""
+        import random
+        
+        with self.state.lock:
+            base = "".join(c for c in username if c.isalnum()).lower()[:6]
+            while len(base) < 6:
+                base += "x"
+            
+            # Check collision with retry logic (max 100 attempts)
+            candidate = base
+            for _ in range(100):
+                if candidate not in self.state.users_by_code:
+                    return candidate
+                # Generate new candidate: base[:5] + random alphanumeric
+                suffix = random.choice('0123456789abcdefghijklmnopqrstuvwxyz')
+                candidate = base[:5] + suffix
+            
+            # Final fallback: use UUID suffix
+            return str(uuid.uuid4())[:6]
+
+    def create_user(self, username: str, user_code: str, manager_id: str | None = None) -> User:
         """Create a new user."""
         with self.state.lock:
-            return self._create_user_unlocked(username, user_code)
+            user_id = str(uuid.uuid4())
+            user = User(
+                user_id=user_id,
+                username=username,
+                user_code=user_code,
+                is_admin=False,
+                role=UserRole.USER,
+                created_at=datetime.now(UTC),
+                disabled_at=None,
+                manager_id=manager_id
+            )
+            self.state.users[user_id] = user
+            self.state.users_by_code[user_code] = user
+            return user
 
     def get_or_create_user(self, username: str) -> User:
         """Get existing user or create new one.
         
-        Uses internal methods that don't re-acquire lock to avoid race conditions.
+        Safe to call other public methods since we use RLock (reentrant).
         """
         with self.state.lock:
-            # Check existing without re-acquiring lock
-            existing = self._get_user_by_username_unlocked(username)
+            existing = self.get_user_by_username(username)
             if existing:
                 return existing
             
-            # Generate code and create user without releasing lock
-            code = self._generate_user_code_unlocked(username)
-            return self._create_user_unlocked(username, code)
-
-    def generate_user_code(self, username: str) -> str:
-        """Generate a unique user code with collision handling."""
-        with self.state.lock:
-            return self._generate_user_code_unlocked(username)
+            code = self.generate_user_code(username)
+            return self.create_user(username, code)
 
     def check_user_code_exists(self, user_code: str) -> bool:
         """Check if user code already exists."""
@@ -633,33 +621,31 @@ class SimulatedUserRepository:
     def enable_user(self, username: str) -> None:
         """Enable a user."""
         with self.state.lock:
-            user = self._get_user_by_username_unlocked(username)
+            user = self.get_user_by_username(username)
             if not user:
                 raise ValueError(f"User not found: {username}")
             
             updated = replace(user, disabled_at=None)
             self.state.users[user.user_id] = updated
-            # Keep users_by_code index in sync
             if user.user_code in self.state.users_by_code:
                 self.state.users_by_code[user.user_code] = updated
 
     def disable_user(self, username: str) -> None:
         """Disable a user."""
         with self.state.lock:
-            user = self._get_user_by_username_unlocked(username)
+            user = self.get_user_by_username(username)
             if not user:
                 raise ValueError(f"User not found: {username}")
             
             updated = replace(user, disabled_at=datetime.now(UTC))
             self.state.users[user.user_id] = updated
-            # Keep users_by_code index in sync
             if user.user_code in self.state.users_by_code:
                 self.state.users_by_code[user.user_code] = updated
 
     def get_user_detail(self, username: str) -> UserDetail | None:
         """Get detailed user info including job stats."""
         with self.state.lock:
-            user = self._get_user_by_username_unlocked(username)
+            user = self.get_user_by_username(username)
             if not user:
                 return None
             
@@ -676,6 +662,121 @@ class SimulatedUserRepository:
         """Get all users."""
         with self.state.lock:
             return sorted(self.state.users.values(), key=lambda u: u.username)
+
+    def get_users_managed_by(self, manager_id: str) -> list[User]:
+        """Get all users managed by a specific manager."""
+        with self.state.lock:
+            managed = [
+                user for user in self.state.users.values()
+                if user.manager_id == manager_id
+            ]
+            return sorted(managed, key=lambda u: u.username)
+
+    def set_user_manager(self, user_id: str, manager_id: str | None) -> None:
+        """Set or clear the manager for a user."""
+        with self.state.lock:
+            user = self.state.users.get(user_id)
+            if not user:
+                raise ValueError(f"User not found: {user_id}")
+            
+            updated = replace(user, manager_id=manager_id)
+            self.state.users[user_id] = updated
+            if user.user_code in self.state.users_by_code:
+                self.state.users_by_code[user.user_code] = updated
+
+    def update_user_role(self, user_id: str, role: UserRole) -> None:
+        """Update a user's role."""
+        with self.state.lock:
+            user = self.state.users.get(user_id)
+            if not user:
+                raise ValueError(f"User not found: {user_id}")
+            
+            updated = replace(user, role=role)
+            self.state.users[user_id] = updated
+            if user.user_code in self.state.users_by_code:
+                self.state.users_by_code[user.user_code] = updated
+
+    # =========================================================================
+    # Bulk Operations (Admin only)
+    # =========================================================================
+
+    def bulk_disable_users(self, user_ids: list[str]) -> int:
+        """Disable multiple users at once."""
+        if not user_ids:
+            return 0
+        count = 0
+        with self.state.lock:
+            for user_id in user_ids:
+                user = self.state.users.get(user_id)
+                if user and user.disabled_at is None:
+                    updated = replace(user, disabled_at=datetime.now(UTC))
+                    self.state.users[user_id] = updated
+                    if user.user_code in self.state.users_by_code:
+                        self.state.users_by_code[user.user_code] = updated
+                    count += 1
+        return count
+
+    def bulk_enable_users(self, user_ids: list[str]) -> int:
+        """Enable multiple users at once."""
+        if not user_ids:
+            return 0
+        count = 0
+        with self.state.lock:
+            for user_id in user_ids:
+                user = self.state.users.get(user_id)
+                if user and user.disabled_at is not None:
+                    updated = replace(user, disabled_at=None)
+                    self.state.users[user_id] = updated
+                    if user.user_code in self.state.users_by_code:
+                        self.state.users_by_code[user.user_code] = updated
+                    count += 1
+        return count
+
+    def bulk_reassign_users(self, user_ids: list[str], new_manager_id: str | None) -> int:
+        """Reassign multiple users to a new manager."""
+        if not user_ids:
+            return 0
+        count = 0
+        with self.state.lock:
+            for user_id in user_ids:
+                user = self.state.users.get(user_id)
+                if user:
+                    updated = replace(user, manager_id=new_manager_id)
+                    self.state.users[user_id] = updated
+                    if user.user_code in self.state.users_by_code:
+                        self.state.users_by_code[user.user_code] = updated
+                    count += 1
+        return count
+
+    def get_all_managers(self) -> list[User]:
+        """Get all users with manager or admin role."""
+        with self.state.lock:
+            managers = [
+                user for user in self.state.users.values()
+                if user.role in (UserRole.MANAGER, UserRole.ADMIN)
+                and user.disabled_at is None
+            ]
+            return sorted(managers, key=lambda u: u.username)
+
+    def search_users(self, query: str, limit: int = 15) -> list[User]:
+        """Search for users by username or user_code.
+        
+        Used by searchable dropdown components.
+        """
+        with self.state.lock:
+            query_lower = query.lower()
+            matches = [
+                user for user in self.state.users.values()
+                if (query_lower in user.username.lower() 
+                    or query_lower in user.user_code.lower())
+                and user.disabled_at is None
+            ]
+            # Sort: prefix matches first, then alphabetically
+            matches.sort(key=lambda u: (
+                not u.username.lower().startswith(query_lower),
+                u.username.lower()
+            ))
+            return matches[:limit]
 
 
 class SimulatedHostRepository:
@@ -776,6 +877,25 @@ class SimulatedHostRepository:
                 raise ValueError(f"Host not found: {hostname}")
             
             self.state.hosts[hostname] = replace(host, enabled=False)
+
+    def search_hosts(self, query: str, limit: int = 10) -> list[DBHost]:
+        """Search for hosts by hostname or alias.
+        
+        Used by searchable dropdown components.
+        """
+        with self.state.lock:
+            query_lower = query.lower()
+            matches = [
+                host for host in self.state.hosts.values()
+                if (query_lower in host.hostname.lower() 
+                    or (host.host_alias and query_lower in host.host_alias.lower()))
+            ]
+            # Sort: prefix matches first, then alphabetically
+            matches.sort(key=lambda h: (
+                not h.hostname.lower().startswith(query_lower),
+                h.hostname.lower()
+            ))
+            return matches[:limit]
 
     def list_hosts(self) -> list[DBHost]:
         """Get all hosts (alias for get_all_hosts)."""
@@ -903,6 +1023,41 @@ class SimulatedAuthRepository:
     def has_password(self, user_id: str) -> bool:
         """Check if user has a password set."""
         return self.get_password_hash(user_id) is not None
+
+    # =========================================================================
+    # Password Reset Methods
+    # =========================================================================
+
+    def mark_password_reset(self, user_id: str) -> None:
+        """Mark a user's password for reset."""
+        with self.state.lock:
+            if user_id not in self.state.auth_credentials:
+                self.state.auth_credentials[user_id] = {}
+            self.state.auth_credentials[user_id]['password_reset_at'] = datetime.now(UTC)
+            self.state.auth_credentials[user_id]['updated_at'] = datetime.now(UTC)
+
+    def clear_password_reset(self, user_id: str) -> None:
+        """Clear the password reset flag after user sets new password."""
+        with self.state.lock:
+            if user_id in self.state.auth_credentials:
+                self.state.auth_credentials[user_id]['password_reset_at'] = None
+                self.state.auth_credentials[user_id]['updated_at'] = datetime.now(UTC)
+
+    def is_password_reset_required(self, user_id: str) -> bool:
+        """Check if user must reset their password."""
+        with self.state.lock:
+            if user_id in self.state.auth_credentials:
+                return self.state.auth_credentials[user_id].get('password_reset_at') is not None
+            return False
+
+    def get_password_reset_at(self, user_id: str) -> datetime | None:
+        """Get timestamp when password reset was requested."""
+        with self.state.lock:
+            if user_id in self.state.auth_credentials:
+                reset_at = self.state.auth_credentials[user_id].get('password_reset_at')
+                if isinstance(reset_at, datetime):
+                    return reset_at
+            return None
 
     def create_session(
         self,
@@ -1071,3 +1226,99 @@ class SimulatedAuthRepository:
     def invalidate_all_user_sessions(self, user_id: str) -> int:
         """Invalidate all sessions for user. Alias for delete_user_sessions."""
         return self.delete_user_sessions(user_id)
+
+
+class SimulatedAuditRepository:
+    """In-memory implementation of AuditRepository for simulation mode.
+    
+    Thread-safe using RLock from SimulationState.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the repository with shared simulation state."""
+        self.state = get_simulation_state()
+
+    def log_action(
+        self,
+        actor_user_id: str,
+        action: str,
+        target_user_id: str | None = None,
+        detail: str | None = None,
+        context: dict[str, t.Any] | None = None,
+    ) -> str:
+        """Record an audit log entry."""
+        import json
+
+        with self.state.lock:
+            audit_id = str(uuid.uuid4())
+            entry = {
+                "audit_id": audit_id,
+                "actor_user_id": actor_user_id,
+                "target_user_id": target_user_id,
+                "action": action,
+                "detail": detail,
+                "context_json": json.dumps(context) if context else None,
+                "created_at": datetime.now(UTC),
+            }
+            self.state.audit_logs.append(entry)
+            return audit_id
+
+    def get_audit_logs(
+        self,
+        actor_user_id: str | None = None,
+        target_user_id: str | None = None,
+        action: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, t.Any]]:
+        """Retrieve audit log entries with optional filtering."""
+        import json
+
+        with self.state.lock:
+            filtered = self.state.audit_logs[:]
+            
+            if actor_user_id:
+                filtered = [e for e in filtered if e["actor_user_id"] == actor_user_id]
+            if target_user_id:
+                filtered = [e for e in filtered if e["target_user_id"] == target_user_id]
+            if action:
+                filtered = [e for e in filtered if e["action"] == action]
+            
+            # Sort by created_at descending (most recent first)
+            filtered.sort(key=lambda x: x["created_at"], reverse=True)
+            
+            # Apply pagination
+            paginated = filtered[offset : offset + limit]
+            
+            # Transform to match expected format
+            results = []
+            for entry in paginated:
+                results.append({
+                    "audit_id": entry["audit_id"],
+                    "actor_user_id": entry["actor_user_id"],
+                    "target_user_id": entry["target_user_id"],
+                    "action": entry["action"],
+                    "detail": entry["detail"],
+                    "context": json.loads(entry["context_json"]) if entry["context_json"] else None,
+                    "created_at": entry["created_at"],
+                })
+            return results
+
+    def get_audit_logs_count(
+        self,
+        actor_user_id: str | None = None,
+        target_user_id: str | None = None,
+        action: str | None = None,
+    ) -> int:
+        """Get count of audit logs matching filters."""
+        with self.state.lock:
+            filtered = self.state.audit_logs[:]
+            
+            if actor_user_id:
+                filtered = [e for e in filtered if e["actor_user_id"] == actor_user_id]
+            if target_user_id:
+                filtered = [e for e in filtered if e["target_user_id"] == target_user_id]
+            if action:
+                filtered = [e for e in filtered if e["action"] == action]
+            
+            return len(filtered)

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Manager Dashboard - pullDB{% endblock %}
+
+{% block content %}
+<div class="manager-container">
+    <h1 style="font-size: 1.5rem; font-weight: 600; color: var(--gray-900); margin-bottom: var(--space-6);">Manager Dashboard</h1>
+
+    <!-- Stats Grid -->
+    <div class="card-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--space-6); margin-bottom: var(--space-8);">
+        <!-- Team Size -->
+        <div class="card" style="background: white; padding: var(--space-6); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4);">
+                <h3 style="font-size: 0.875rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em;">My Team</h3>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--primary-500);">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: var(--space-2);">
+                <span style="font-size: 2rem; font-weight: 700; color: var(--gray-900);">{{ stats.managed_users }}</span>
+                <span style="font-size: 0.875rem; color: var(--gray-500);">members</span>
+            </div>
+            <div style="margin-top: var(--space-2); font-size: 0.875rem; color: var(--gray-600);">
+                {{ stats.active_users }} active
+            </div>
+        </div>
+
+        <!-- Team Active Jobs -->
+        <div class="card" style="background: white; padding: var(--space-6); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4);">
+                <h3 style="font-size: 0.875rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em;">Team Jobs</h3>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--warning-500);">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                </svg>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: var(--space-2);">
+                <span style="font-size: 2rem; font-weight: 700; color: var(--gray-900);">{{ stats.my_team_active_jobs }}</span>
+                <span style="font-size: 0.875rem; color: var(--gray-500);">running</span>
+            </div>
+            <div style="margin-top: var(--space-2); font-size: 0.875rem; color: var(--gray-600);">
+                Across all team members
+            </div>
+        </div>
+    </div>
+
+    <!-- Managed Users Table -->
+    <div class="card" style="background: white; border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200); overflow: hidden; margin-bottom: var(--space-8);">
+        <div class="card-header" style="padding: var(--space-4) var(--space-6); border-bottom: 1px solid var(--gray-200); display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="font-size: 1rem; font-weight: 600; color: var(--gray-900);">My Team</h3>
+            <a href="#" onclick="showToast('Add User coming soon', 'info'); return false;" style="font-size: 0.875rem; font-weight: 500; color: var(--primary-600); text-decoration: none;">Add User</a>
+        </div>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                <thead>
+                    <tr style="background: var(--gray-50); border-bottom: 1px solid var(--gray-200);">
+                        <th style="padding: var(--space-3) var(--space-6); font-size: 0.75rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em;">User</th>
+                        <th style="padding: var(--space-3) var(--space-6); font-size: 0.75rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em;">Role</th>
+                        <th style="padding: var(--space-3) var(--space-6); font-size: 0.75rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em;">Status</th>
+                        <th style="padding: var(--space-3) var(--space-6); font-size: 0.75rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for managed_user in managed_users %}
+                    <tr style="border-bottom: 1px solid var(--gray-100);">
+                        <td style="padding: var(--space-4) var(--space-6);">
+                            <div style="font-weight: 500; color: var(--gray-900);">{{ managed_user.username }}</div>
+                            <div style="font-size: 0.75rem; color: var(--gray-500);">{{ managed_user.email }}</div>
+                        </td>
+                        <td style="padding: var(--space-4) var(--space-6); font-size: 0.875rem; color: var(--gray-600);">{{ managed_user.role.value }}</td>
+                        <td style="padding: var(--space-4) var(--space-6);">
+                            {% if managed_user.disabled_at %}
+                            <span style="display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-full); font-size: 0.75rem; font-weight: 500; background: var(--gray-100); color: var(--gray-600);">Disabled</span>
+                            {% else %}
+                            <span style="display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-full); font-size: 0.75rem; font-weight: 500; background: var(--success-50); color: var(--success-700);">Active</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: var(--space-4) var(--space-6);">
+                            <a href="#" onclick="showToast('Edit User coming soon', 'info'); return false;" style="color: var(--primary-600); text-decoration: none; font-size: 0.875rem; font-weight: 500; margin-right: var(--space-3);">Edit</a>
+                            <a href="#" onclick="showToast('Submit Job for User coming soon', 'info'); return false;" style="color: var(--primary-600); text-decoration: none; font-size: 0.875rem; font-weight: 500;">Submit Job</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" style="padding: var(--space-8); text-align: center; color: var(--gray-500);">You are not managing any users.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

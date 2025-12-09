@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}New Restore - pullDB{% endblock %}
+
+{% block content %}
+<div class="restore-container">
+    <div class="page-header">
+        <h1 class="page-title">New Restore Job</h1>
+    </div>
+    
+    {% if error %}
+    <div class="card card-padding" style="background-color: var(--danger-50); border-color: var(--danger-200); color: var(--danger-700); margin-bottom: var(--space-6);">
+        <strong>Error:</strong> {{ error }}
+    </div>
+    {% endif %}
+    
+    <form method="POST" action="/web/restore" class="form-container">
+        <!-- Step 1: Source -->
+        <div class="card card-padding">
+            <h3 class="card-header">1. Restore Source</h3>
+            
+            <div class="form-group">
+                <label for="customer-search" class="form-label">Customer Name</label>
+                <div style="position: relative;">
+                    <input type="text" 
+                           id="customer-search" 
+                           class="form-input" 
+                           placeholder="Type to search customers..." 
+                           hx-get="/web/restore/search-customers"
+                           hx-trigger="keyup changed delay:500ms"
+                           hx-target="#customer-results"
+                           autocomplete="off">
+                    <input type="hidden" id="customer" name="customer" value="{{ form.customer if form else '' }}" required>
+                </div>
+                <div id="customer-results"></div>
+            </div>
+            
+            <div class="form-group">
+                <label for="s3env" class="form-label">Environment</label>
+                <select id="s3env" name="s3env" class="form-select" 
+                        hx-get="/web/restore/search-backups" 
+                        hx-include="[name='customer']"
+                        hx-target="#backup-results"
+                        hx-trigger="change">
+                    <option value="both" {% if form and form.s3env == 'both' %}selected{% endif %}>Both (Staging & Prod)</option>
+                    <option value="staging" {% if form and form.s3env == 'staging' %}selected{% endif %}>Staging Only</option>
+                    <option value="prod" {% if form and form.s3env == 'prod' %}selected{% endif %}>Production Only</option>
+                </select>
+            </div>
+
+            <div id="backup-results">
+                <!-- Backups will be loaded here -->
+            </div>
+        </div>
+
+        <script>
+            function selectCustomer(value) {
+                document.getElementById('customer').value = value;
+                document.getElementById('customer-search').value = value;
+                document.getElementById('customer-results').innerHTML = '';
+                
+                // Trigger backup search
+                htmx.ajax('GET', '/web/restore/search-backups', {
+                    target: '#backup-results',
+                    values: {
+                        customer: value,
+                        env: document.getElementById('s3env').value
+                    }
+                });
+            }
+
+            function selectBackup(env) {
+                // Auto-select environment based on backup choice
+                const select = document.getElementById('s3env');
+                select.value = env;
+                
+                // Visual feedback
+                showToast('Backup selected. Environment set to ' + env, 'success');
+            }
+        </script>
+
+        <!-- Step 2: Target -->
+        <div class="card card-padding">
+            <h3 class="card-header">2. Target Database</h3>
+            
+            <div class="form-group">
+                <label for="dbhost" class="form-label">Database Host</label>
+                <select id="dbhost" name="dbhost" class="form-select">
+                    <option value="">-- Auto Select --</option>
+                    {% for host in hosts %}
+                    <option value="{{ host.id }}" {% if form and form.dbhost == host.id|string %}selected{% endif %}>{{ host.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg">Start Restore</button>
+    </form>
+</div>
+{% endblock %}

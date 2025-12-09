@@ -69,6 +69,41 @@ TIER 4: Session (Task-specific)
 2. **KNOWLEDGE-POOL FIRST**: Query before solving—don't rediscover
 3. **CONTINUOUS LEARNING**: Add discoveries to KNOWLEDGE-POOL.md immediately
 4. **FAIL HARD**: Never silently degrade. Fail with: (1) what attempted, (2) why failed, (3) solutions
+5. **SESSION LOGGING**: Automatically log work to `.pulldb/SESSION-LOG.md` (see below)
+
+## Session Logging (AUTOMATIC)
+
+**Like HCA, this is mandatory and ongoing without user prompting.**
+
+### When to Log
+- **Session start**: Note the topic/goal when context becomes clear
+- **After significant work**: Major fixes, audits, refactors, new features
+- **Before session end**: Summarize if substantial work was done
+
+### Log Format (append to `.pulldb/SESSION-LOG.md`)
+```markdown
+## YYYY-MM-DD | Brief Topic
+
+### Context
+What prompted this work (user request, bug found, etc.)
+
+### What Was Done
+- Concrete action 1
+- Concrete action 2
+
+### Rationale
+WHY these decisions were made (reference principles, laws, standards)
+
+### Files Modified
+- `path/to/file.py` (what changed)
+```
+
+### Guidelines
+- **Be concise** but capture the WHY
+- **Reference principles** (FAIL HARD, HCA, Laws of UX, etc.)
+- **Include findings** from audits
+- **Newest entries first** (reverse chronological)
+- **Don't duplicate** - one entry per topic per day
 
 ## Architecture (Mental Model)
 

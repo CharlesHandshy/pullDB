@@ -107,6 +107,7 @@ class MockUserRepo:
         self.users = {
             "testuser": create_mock_user(1, "testuser", "developer"),
             "admin": create_mock_user(2, "admin", "admin"),
+            "devadmin": create_mock_user(4, "devadmin", "admin"),
             "disabled": create_mock_user(3, "disabled", "developer", disabled=True),
         }
 
@@ -130,6 +131,7 @@ class MockAuthRepo:
             1: "$2b$12$mfPL.PHDhJKCXPV4OZawlO8lNwTjarJ8CGzR8s4A9K9vuAR2csbTe",
             2: "$2b$12$mfPL.PHDhJKCXPV4OZawlO8lNwTjarJ8CGzR8s4A9K9vuAR2csbTe",
             3: "$2b$12$mfPL.PHDhJKCXPV4OZawlO8lNwTjarJ8CGzR8s4A9K9vuAR2csbTe",
+            4: "$2b$12$mfPL.PHDhJKCXPV4OZawlO8lNwTjarJ8CGzR8s4A9K9vuAR2csbTe",
         }
 
     def get_password_hash(self, user_id: int) -> str | None:
@@ -199,6 +201,31 @@ class MockJobRepo:
             ],
         }
 
+    def list_jobs(
+        self,
+        limit: int = 20,
+        active_only: bool = False,
+        user_filter: str | None = None,
+        dbhost: str | None = None,
+        status_filter: str | None = None,
+    ) -> list[MagicMock]:
+        jobs = self.jobs
+        if active_only:
+            jobs = [j for j in jobs if j.status in ("pending", "running")]
+        if dbhost:
+            jobs = [j for j in jobs if j.target == dbhost]
+        if status_filter:
+            jobs = [j for j in jobs if j.status == status_filter]
+        return jobs[:limit]
+
+    @property
+    def active_jobs(self) -> list[MagicMock]:
+        return [j for j in self.jobs if j.status in ("pending", "running")]
+
+    @property
+    def history_jobs(self) -> list[MagicMock]:
+        return [j for j in self.jobs if j.status not in ("pending", "running")]
+
     def get_job_by_id(self, job_id: str) -> MagicMock | None:
         for job in self.jobs:
             if job.job_id == job_id:
@@ -229,6 +256,24 @@ class MockJobRepo:
         return events
 
 
+class MockHostRepo:
+    """Mock host repository for testing."""
+
+    def get_enabled_hosts(self) -> list[MagicMock]:
+        host1 = MagicMock()
+        host1.hostname = "db-prod-01"
+        host1.is_active = True
+
+        host2 = MagicMock()
+        host2.hostname = "db-staging-01"
+        host2.is_active = True
+
+        return [host1, host2]
+
+    def search_hosts(self, query: str, limit: int = 10) -> list[MagicMock]:
+        return self.get_enabled_hosts()
+
+
 # =============================================================================
 # Mock API State
 # =============================================================================
@@ -241,6 +286,7 @@ class MockAPIState:
         self.user_repo = MockUserRepo()
         self.auth_repo = MockAuthRepo()
         self.job_repo = MockJobRepo()
+        self.host_repo = MockHostRepo()
 
 
 # =============================================================================
@@ -251,14 +297,27 @@ class MockAPIState:
 def create_test_app() -> FastAPI:
     """Create a FastAPI app configured for testing."""
     from pulldb.web import router as web_router
+    from pulldb.web import router as web_router
+    from fastapi.staticfiles import StaticFiles
+    from pathlib import Path
 
     app = FastAPI(title="pullDB Test")
 
     # Store mock state
     app.state.api_state = MockAPIState()
 
-    # Include web router
+    # Include web routers
     app.include_router(web_router)
+    app.include_router(web_router)
+
+    # Mount static files
+    web_static_dir = Path("pulldb/web/static")
+    if web_static_dir.exists():
+        app.mount(
+            "/static/web",
+            StaticFiles(directory=str(web_static_dir)),
+            name="static_web",
+        )
 
     return app
 
@@ -273,6 +332,17 @@ def _mock_get_api_state() -> MockAPIState:
 # =============================================================================
 # Fixtures
 # =============================================================================
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_simulation_mode() -> Generator[None, None, None]:
+    """Ensure tests run in simulation mode."""
+    import os
+
+    os.environ["PULLDB_MODE"] = "SIMULATION"
+    yield
+    if "PULLDB_MODE" in os.environ:
+        del os.environ["PULLDB_MODE"]
 
 
 @pytest.fixture(scope="session")

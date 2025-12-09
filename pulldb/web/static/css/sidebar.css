@@ -2,209 +2,131 @@
    pullDB Sidebar Styles
    HCA Layer 3: Widget Styles
    
-   Purpose: Hover-reveal sidebar navigation component
-   Depends: design-system.css, app-layout.css
-   
-   Size: ~180 lines (HCA compliant)
+   Purpose: Slide-out overlay sidebar with trigger strip
+   Depends: design-system.css, layout.css
    ================================================================= */
 
-.sidebar {
-    width: 12px;
-    background: transparent;
-    color: white;
-    display: flex;
-    flex-direction: column;
+/* =================================================================
+   SIDEBAR TRIGGER STRIP
+   - Fixed 5px strip on left edge
+   - Rotating gradient animation to draw attention
+   - Triggers sidebar reveal on hover/touch
+   ================================================================= */
+@keyframes gradient-rotate {
+    0% {
+        background-position: 0% 0%;
+    }
+    50% {
+        background-position: 0% 100%;
+    }
+    100% {
+        background-position: 0% 0%;
+    }
+}
+
+.sidebar-trigger {
     position: fixed;
-    top: var(--page-header-height);
-    left: 3px;
-    bottom: 0;
-    z-index: 200;
-    overflow: hidden;
-    transition: width var(--transition-base), background var(--transition-base), box-shadow var(--transition-base);
+    left: 0;
+    top: var(--header-height);
+    bottom: var(--footer-height);
+    width: 5px;
+    z-index: 150;
+    cursor: pointer;
+    
+    /* Rotating gradient */
+    background: linear-gradient(
+        180deg,
+        var(--primary-400) 0%,
+        var(--primary-600) 25%,
+        var(--primary-300) 50%,
+        var(--primary-600) 75%,
+        var(--primary-400) 100%
+    );
+    background-size: 100% 200%;
+    animation: gradient-rotate 3s ease-in-out infinite;
+    
+    /* Subtle glow effect */
+    box-shadow: 0 0 8px var(--primary-400);
+    transition: opacity 0.2s ease;
 }
 
-.sidebar:hover {
-    width: var(--sidebar-width);
-    background: var(--gray-900);
-    box-shadow: var(--shadow-xl);
-}
-
-.sidebar-inner {
-    width: var(--sidebar-width);
-    min-width: var(--sidebar-width);
-    display: flex;
-    flex-direction: column;
-    height: 100%;
+/* Hide trigger when sidebar is open */
+.sidebar-trigger.hidden {
     opacity: 0;
-    transition: opacity var(--transition-fast);
-    transition-delay: 0.05s;
+    pointer-events: none;
 }
 
-.sidebar:hover .sidebar-inner {
-    opacity: 1;
-}
-
-.sidebar-header {
-    padding: var(--space-3);
-    border-bottom: 1px solid var(--gray-800);
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-}
-
-.sidebar-logo {
-    display: flex;
-    align-items: center;
-    text-decoration: none;
-    flex: 1;
-    min-width: 0;
-}
-
-.sidebar-logo .logo-svg {
-    width: 140px;
-    height: auto;
-}
-
-.sidebar-nav {
-    flex: 1;
-    padding: var(--space-2) 0;
+/* =================================================================
+   SIDEBAR PANEL
+   - Starts off-screen (left: -240px)
+   - Slides in when .sidebar-open is added
+   - Solid background, no gradient
+   ================================================================= */
+.app-sidebar {
+    position: fixed;
+    left: calc(-1 * var(--sidebar-width-expanded));
+    top: var(--header-height);
+    bottom: var(--footer-height);
+    width: var(--sidebar-width-expanded);
+    background-color: var(--gray-900);
+    color: white;
+    z-index: 140;
     overflow-y: auto;
     overflow-x: hidden;
-}
-
-.nav-section {
-    padding: 0 var(--space-2);
-    margin-bottom: var(--space-3);
-}
-
-.nav-section-title {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--gray-500);
-    padding: 0 var(--space-2);
-    margin-bottom: var(--space-2);
-}
-
-.nav-link {
     display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-2);
-    border-radius: var(--radius-md);
-    color: var(--gray-400);
-    text-decoration: none;
-    font-weight: 500;
-    transition: all var(--transition-fast);
+    flex-direction: column;
+    box-shadow: none;
+    transition: left 0.3s ease, box-shadow 0.3s ease;
 }
 
-.nav-link:hover {
-    background: var(--gray-800);
-    color: white;
+/* Sidebar open state */
+.app-sidebar.sidebar-open {
+    left: 0;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
 }
 
-.nav-link.active {
-    background: var(--primary-600);
-    color: white;
-}
-
-.nav-link svg {
-    width: 20px;
-    height: 20px;
-    flex-shrink: 0;
-}
-
-.nav-badge {
-    margin-left: auto;
-    background: var(--primary-500);
-    color: white;
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 0.125rem 0.5rem;
-    border-radius: var(--radius-full);
-    min-width: 1.5rem;
-    text-align: center;
-}
-
-/* Sidebar Footer / User Section */
-.sidebar-footer {
-    padding: var(--space-2);
-    border-top: 1px solid var(--gray-800);
-    margin-top: auto;
-}
-
-.user-menu {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    border-radius: var(--radius-md);
-    transition: background var(--transition-fast);
-}
-
-.user-menu:hover {
-    background: var(--gray-800);
-}
-
-.user-avatar-link {
-    text-decoration: none;
-    border-radius: var(--radius-full);
-    transition: all var(--transition-fast);
-}
-
-.user-avatar-link:hover .user-avatar {
-    background: linear-gradient(135deg, var(--danger-500), var(--danger-600));
-    transform: scale(1.05);
-}
-
-.user-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-full);
-    background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-    font-size: 1rem;
-    color: white;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.user-info {
-    flex: 1;
-    min-width: 0;
-}
-
-.user-name {
-    font-weight: 600;
-    font-size: 0.875rem;
-    color: white;
+/* =================================================================
+   SIDEBAR CONTENT
+   ================================================================= */
+.app-sidebar .sidebar-item {
+    opacity: 1;
+    visibility: visible;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-.user-role {
-    font-size: 0.75rem;
-    color: var(--gray-400);
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
+.app-sidebar .sidebar-label {
+    opacity: 1;
+    visibility: visible;
+    margin-left: var(--space-3);
 }
 
-.logout-link {
-    color: var(--gray-400);
-    text-decoration: none;
-    padding: var(--space-2);
-    border-radius: var(--radius-md);
-    transition: all var(--transition-fast);
+/* =================================================================
+   MOBILE STYLES
+   ================================================================= */
+@media (max-width: 768px) {
+    .app-sidebar {
+        width: var(--sidebar-width-icons);
+        left: calc(-1 * var(--sidebar-width-icons));
+    }
+    
+    .app-sidebar.sidebar-open {
+        left: 0;
+    }
+    
+    .app-sidebar .sidebar-label {
+        display: none;
+    }
+    
+    .app-sidebar .sidebar-item {
+        justify-content: center;
+        padding: var(--space-3);
+    }
 }
 
-.logout-link:hover {
-    color: var(--danger-400);
-    background: rgba(239, 68, 68, 0.1);
+/* =================================================================
+   NO-SIDEBAR MODE (login page)
+   ================================================================= */
+body.no-sidebar .sidebar-trigger,
+body.no-sidebar .app-sidebar {
+    display: none;
 }

@@ -1,0 +1,205 @@
+<!-- Admin Dashboard - System health + administration -->
+
+<!-- System Overview Stats -->
+<div style="display: flex; gap: 1rem; margin-top: 1.5rem; flex-wrap: wrap;">
+    <!-- Users Card -->
+    <div style="background: white; border: 1px solid var(--gray-200); border-radius: 0.5rem; padding: 1rem 1.25rem; min-width: 160px;">
+        <div style="font-size: 0.75rem; font-weight: 500; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Users</div>
+        <div style="display: flex; gap: 1rem; align-items: baseline;">
+            <div>
+                <span style="font-size: 1.75rem; font-weight: 700; color: var(--primary-600);">{{ system_stats.active_users }}</span>
+                <span style="font-size: 0.875rem; color: var(--gray-500); margin-left: 0.25rem;">active</span>
+            </div>
+            {% if system_stats.disabled_users > 0 %}
+            <div style="font-size: 0.875rem; color: var(--gray-400);">
+                {{ system_stats.disabled_users }} disabled
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Hosts Card -->
+    <div style="background: white; border: 1px solid var(--gray-200); border-radius: 0.5rem; padding: 1rem 1.25rem; min-width: 160px;">
+        <div style="font-size: 0.75rem; font-weight: 500; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Hosts</div>
+        <div style="display: flex; gap: 1rem; align-items: baseline;">
+            <div>
+                <span style="font-size: 1.75rem; font-weight: 700; color: var(--success-600);">{{ system_stats.enabled_hosts }}</span>
+                <span style="font-size: 0.875rem; color: var(--gray-500); margin-left: 0.25rem;">enabled</span>
+            </div>
+            {% if system_stats.disabled_hosts > 0 %}
+            <div style="font-size: 0.875rem; color: var(--gray-400);">
+                {{ system_stats.disabled_hosts }} disabled
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- System Jobs Card -->
+    <div style="background: white; border: 1px solid var(--gray-200); border-radius: 0.5rem; padding: 1rem 1.25rem; flex: 1; min-width: 300px;">
+        <div style="font-size: 0.75rem; font-weight: 500; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">System Jobs</div>
+        <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+            <div>
+                <span style="font-size: 1.5rem; font-weight: 700; color: var(--warning-600);">{{ system_stats.queued_jobs }}</span>
+                <span style="font-size: 0.875rem; color: var(--gray-500); margin-left: 0.25rem;">queued</span>
+            </div>
+            <div>
+                <span style="font-size: 1.5rem; font-weight: 700; color: var(--primary-600);">{{ system_stats.running_jobs }}</span>
+                <span style="font-size: 0.875rem; color: var(--gray-500); margin-left: 0.25rem;">running</span>
+            </div>
+            <div>
+                <span style="font-size: 1.5rem; font-weight: 700; color: var(--success-600);">{{ system_stats.completed_jobs }}</span>
+                <span style="font-size: 0.875rem; color: var(--gray-500); margin-left: 0.25rem;">completed</span>
+            </div>
+            <div>
+                <span style="font-size: 1.5rem; font-weight: 700; color: var(--danger-600);">{{ system_stats.failed_jobs }}</span>
+                <span style="font-size: 0.875rem; color: var(--gray-500); margin-left: 0.25rem;">failed</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- My Active Jobs -->
+    <div style="background: white; border: 1px solid var(--gray-200); border-radius: 0.5rem; padding: 1rem 1.25rem;">
+        <div style="font-size: 0.75rem; font-weight: 500; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">My Active</div>
+        <span style="font-size: 1.75rem; font-weight: 700; color: var(--primary-600);">{{ my_active_count }}</span>
+    </div>
+</div>
+
+<!-- Alerts Section (if failed jobs) -->
+{% if system_stats.failed_jobs > 0 %}
+<div style="background: var(--danger-50); border: 1px solid var(--danger-200); border-radius: 0.5rem; padding: 1rem 1.25rem; margin-top: var(--space-5); display: flex; align-items: center; justify-content: space-between;">
+    <div style="display: flex; align-items: center; gap: var(--space-3);">
+        <svg style="width: 20px; height: 20px; color: var(--danger-600);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <span style="font-weight: 500; color: var(--danger-700);">{{ system_stats.failed_jobs }} failed job{% if system_stats.failed_jobs > 1 %}s{% endif %} require attention</span>
+    </div>
+    <a href="/web/jobs?view=history&filter_status=failed" class="btn btn-danger" style="font-size: 0.875rem;">View Failed Jobs</a>
+</div>
+{% endif %}
+
+<!-- Two Column Layout: Host Health + System Activity -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); margin-top: var(--space-6);">
+    
+    <!-- Host Health -->
+    <div class="card card-padding">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+            <h3 style="margin: 0; font-size: 1rem; color: var(--gray-700);">Host Health</h3>
+            <a href="/web/admin/hosts" class="link-primary" style="font-size: 0.875rem;">Manage →</a>
+        </div>
+        {% if host_health %}
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--gray-200);">
+                    <th style="text-align: left; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">Host</th>
+                    <th style="text-align: right; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">Active / Capacity</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in host_health %}
+                <tr style="border-bottom: 1px solid var(--gray-100);">
+                    <td style="padding: var(--space-2) 0;">
+                        <div style="font-weight: 500; color: var(--gray-900);">{{ item.name }}</div>
+                        {% if item.host.disabled_at %}
+                        <span class="badge badge-neutral" style="font-size: 0.625rem;">disabled</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: var(--space-2) 0; text-align: right;">
+                        <span style="font-weight: 600; color: {% if item.active_restores >= item.capacity %}var(--danger-600){% elif item.active_restores > 0 %}var(--primary-600){% else %}var(--gray-400){% endif %};">
+                            {{ item.active_restores }}
+                        </span>
+                        <span style="color: var(--gray-400);">/</span>
+                        <span style="color: var(--gray-500);">{{ item.capacity }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--gray-500); margin: 0;">No hosts configured.</p>
+        {% endif %}
+    </div>
+    
+    <!-- System Recent Activity -->
+    <div class="card card-padding">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+            <h3 style="margin: 0; font-size: 1rem; color: var(--gray-700);">Recent Activity</h3>
+            <a href="/web/jobs" class="link-primary" style="font-size: 0.875rem;">View All →</a>
+        </div>
+        {% if system_recent %}
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--gray-200);">
+                    <th style="text-align: left; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">Job</th>
+                    <th style="text-align: left; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">User</th>
+                    <th style="text-align: left; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in system_recent %}
+                <tr style="border-bottom: 1px solid var(--gray-100);">
+                    <td style="padding: var(--space-2) 0;">
+                        <a href="/web/jobs/{{ job.id }}" class="link-primary" style="font-weight: 500;">{{ job.target[:18] }}{% if job.target|length > 18 %}...{% endif %}</a>
+                    </td>
+                    <td style="padding: var(--space-2) 0; font-size: 0.875rem; color: var(--gray-600);">
+                        {{ job.owner_user_code }}
+                    </td>
+                    <td style="padding: var(--space-2) 0;">
+                        <span class="badge 
+                            {% if job.status.value == 'complete' %}badge-success
+                            {% elif job.status.value == 'failed' %}badge-danger
+                            {% elif job.status.value == 'running' %}badge-primary
+                            {% elif job.status.value == 'queued' %}badge-neutral
+                            {% else %}badge-neutral{% endif %}
+                        " style="font-size: 0.75rem;">
+                            {{ job.status.value }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--gray-500); margin: 0;">No recent activity.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- My Last Job -->
+<div class="card card-padding" style="margin-top: var(--space-6);">
+    <h3 style="margin-top: 0; margin-bottom: var(--space-4); font-size: 1rem; color: var(--gray-700);">My Last Job</h3>
+    {% if last_job %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <div style="font-weight: 600; color: var(--gray-900);">{{ last_job.target }}</div>
+            <div style="font-size: 0.875rem; color: var(--gray-500); margin-top: 0.25rem;">
+                <span class="font-mono">{{ last_job.id[:8] }}</span>
+                · {{ last_job.submitted_at.strftime('%Y-%m-%d %H:%M') if last_job.submitted_at else '-' }}
+            </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: var(--space-3);">
+            <span class="badge 
+                {% if last_job.status.value == 'complete' %}badge-success
+                {% elif last_job.status.value == 'failed' %}badge-danger
+                {% elif last_job.status.value == 'running' %}badge-primary
+                {% elif last_job.status.value == 'queued' %}badge-neutral
+                {% elif last_job.status.value == 'canceled' %}badge-neutral
+                {% else %}badge-neutral{% endif %}
+            ">
+                {{ last_job.status.value }}
+            </span>
+            <a href="/web/jobs/{{ last_job.id }}" class="btn btn-secondary" style="font-size: 0.875rem;">View Details</a>
+        </div>
+    </div>
+    {% else %}
+    <p style="color: var(--gray-500); margin: 0;">No jobs submitted yet. <a href="/web/restore" class="link-primary">Start a restore</a></p>
+    {% endif %}
+</div>
+
+<!-- Quick Actions -->
+<div style="margin-top: var(--space-6); display: flex; gap: var(--space-3); flex-wrap: wrap;">
+    <a href="/web/restore" class="btn btn-primary">New Restore Job</a>
+    <a href="/web/admin/users" class="btn btn-secondary">Manage Users</a>
+    <a href="/web/admin/hosts" class="btn btn-secondary">Manage Hosts</a>
+    <a href="/web/jobs" class="btn btn-secondary">View All Jobs</a>
+    <a href="/web/admin/settings" class="btn btn-secondary">System Settings</a>
+</div>

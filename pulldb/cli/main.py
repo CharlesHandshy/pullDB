@@ -1558,6 +1558,76 @@ def _format_bytes(num_bytes: int) -> str:
 # See docs/KNOWLEDGE-POOL.md "CLI Architecture & Scope" for rationale.
 
 
+@cli.command("setpass", help="Set a new password (required after password reset)")
+@click.option(
+    "--current-password",
+    prompt=True,
+    hide_input=True,
+    help="Current password (or temporary password if first-time setup)",
+)
+@click.option(
+    "--new-password",
+    prompt=True,
+    hide_input=True,
+    confirmation_prompt=True,
+    help="New password",
+)
+def setpass_cmd(current_password: str, new_password: str) -> None:
+    """Set a new password for the current user.
+
+    This command is used to:
+    - Set initial password for new accounts
+    - Change password after an admin/manager issued a password reset
+    - Voluntarily change your password
+
+    When your password has been reset by a manager or admin, you must
+    use this command to set a new password before you can log in again.
+
+    Example:
+        pulldb setpass
+    """
+    username = _get_calling_username()
+    base_url, timeout = _load_api_config()
+
+    # Validate new password minimum requirements
+    if len(new_password) < 8:
+        raise click.ClickException("New password must be at least 8 characters")
+
+    # Call API to change password
+    url = f"{base_url}/api/auth/change-password"
+    payload = {
+        "username": username,
+        "current_password": current_password,
+        "new_password": new_password,
+    }
+
+    try:
+        response = requests_module.post(url, json=payload, timeout=timeout)
+
+        if response.status_code == 200:
+            click.echo("✓ Password changed successfully")
+            click.echo("You can now log in with your new password.")
+        elif response.status_code == 401:
+            raise click.ClickException(
+                "Current password is incorrect. "
+                "If this is a new account, use the temporary password provided."
+            )
+        elif response.status_code == 403:
+            raise click.ClickException(
+                "Password change not allowed. Contact your administrator."
+            )
+        elif response.status_code == 404:
+            raise click.ClickException(
+                f"User '{username}' not found in the system."
+            )
+        else:
+            error_msg = _format_api_error(response)
+            raise click.ClickException(f"Password change failed: {error_msg}")
+
+    except RequestException as exc:
+        raise click.ClickException(f"Cannot connect to API: {exc}") from exc
+
+
 def main(argv: t.Sequence[str] | None = None) -> int:
     """Main entry point for pullDB CLI.
 

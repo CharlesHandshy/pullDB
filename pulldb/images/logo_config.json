@@ -1,0 +1,24 @@
+{
+  "path": "/static/images/pullDB_logo.mp4",
+  "type": "video",
+  "label": "",
+  "logoScale": 100,
+  "crop": {
+    "top": 175,
+    "bottom": 250,
+    "left": 62,
+    "right": 64
+  },
+  "labelStyle": {
+    "x": 0,
+    "y": 0,
+    "font": "'Roboto', sans-serif",
+    "size": 14,
+    "weight": "700",
+    "style": "normal",
+    "color": "#1f2937",
+    "rotation": 1,
+    "spacing": 0,
+    "transform": "none"
+  }
+}

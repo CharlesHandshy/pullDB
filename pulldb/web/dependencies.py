@@ -6,6 +6,7 @@ Purpose: Common dependencies used by all route modules.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
@@ -26,6 +27,8 @@ WEB_DIR = Path(__file__).parent
 TEMPLATES_DIR = WEB_DIR / "templates"  # Legacy templates (backward compat)
 FEATURES_DIR = WEB_DIR / "features"
 SHARED_DIR = WEB_DIR / "shared"
+IMAGES_DIR = WEB_DIR.parent / "images"
+LOGO_CONFIG_PATH = IMAGES_DIR / "logo_config.json"
 
 # Create loader that searches multiple directories
 _loader = ChoiceLoader([
@@ -36,6 +39,8 @@ _loader = ChoiceLoader([
     FileSystemLoader(str(FEATURES_DIR / "restore" / "pages")),
     FileSystemLoader(str(FEATURES_DIR / "search" / "pages")),
     FileSystemLoader(str(FEATURES_DIR / "admin" / "pages")),
+    # Widgets
+    FileSystemLoader(str(WEB_DIR / "widgets")),
     # Shared layouts
     FileSystemLoader(str(SHARED_DIR / "layouts")),
     # Legacy templates (fallback)
@@ -59,10 +64,73 @@ def _get_active_scenario_name() -> str | None:
     return None
 
 
+def _get_logo_config() -> dict:
+    """Load logo configuration from JSON file for use in templates."""
+    default_label_style = {
+        "x": 0,
+        "y": 0,
+        "font": "system-ui, -apple-system, sans-serif",
+        "size": 20,
+        "weight": "700",
+        "style": "normal",
+        "color": "#1f2937",
+        "rotation": 0,
+        "spacing": 0,
+        "transform": "none",
+    }
+
+    default_config = {
+        "path": "/static/images/pullDB_logo.mp4",
+        "type": "video",
+        "label": "",
+        "logo_scale": 100,
+        "crop_top": 13,
+        "crop_bottom": 17,
+        "crop_left": 0,
+        "crop_right": 0,
+        "label_style": default_label_style,
+    }
+
+    if LOGO_CONFIG_PATH.exists():
+        try:
+            with open(LOGO_CONFIG_PATH) as f:
+                config = json.load(f)
+                label_style = config.get("labelStyle", {})
+                return {
+                    "path": config.get("path", default_config["path"]),
+                    "type": config.get("type", default_config["type"]),
+                    "label": config.get("label", default_config["label"]),
+                    "logo_scale": config.get("logoScale", default_config["logo_scale"]),
+                    "crop_top": config.get("crop", {}).get("top", default_config["crop_top"]),
+                    "crop_bottom": config.get("crop", {}).get("bottom", default_config["crop_bottom"]),
+                    "crop_left": config.get("crop", {}).get("left", default_config["crop_left"]),
+                    "crop_right": config.get("crop", {}).get("right", default_config["crop_right"]),
+                    "label_style": {
+                        "x": label_style.get("x", default_label_style["x"]),
+                        "y": label_style.get("y", default_label_style["y"]),
+                        "font": label_style.get("font", default_label_style["font"]),
+                        "size": label_style.get("size", default_label_style["size"]),
+                        "weight": label_style.get("weight", default_label_style["weight"]),
+                        "style": label_style.get("style", default_label_style["style"]),
+                        "color": label_style.get("color", default_label_style["color"]),
+                        "rotation": label_style.get("rotation", default_label_style["rotation"]),
+                        "spacing": label_style.get("spacing", default_label_style["spacing"]),
+                        "transform": label_style.get("transform", default_label_style["transform"]),
+                    },
+                }
+        except Exception:
+            pass
+
+    return default_config
+
+
 # Add simulation mode globals to Jinja2 environment
 # These are evaluated at template render time via callable
 templates.env.globals["simulation_mode"] = is_simulation_mode
 templates.env.globals["simulation_scenario_name"] = _get_active_scenario_name
+templates.env.globals["get_logo_config"] = _get_logo_config
+# Explicitly disable dev toolbar in production (defense in depth)
+templates.env.globals["dev_mode"] = False
 
 
 def get_api_state(request: Request) -> "APIState":
@@ -153,10 +221,36 @@ def require_admin(
     return user
 
 
+def require_manager_or_above(
+    user: Annotated[User, Depends(require_login)],
+) -> User:
+    """Require authenticated manager or admin user.
+    
+    Args:
+        user: The authenticated user (injected)
+        
+    Returns:
+        The authenticated manager/admin User
+        
+    Raises:
+        HTTPException: 403 if user is not a manager or admin
+    """
+    from fastapi import HTTPException, status
+    from pulldb.domain.models import UserRole
+    
+    if user.role not in (UserRole.MANAGER, UserRole.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Manager or admin access required",
+        )
+    return user
+
+
 # Type aliases for cleaner route signatures
 # Note: Using Annotated with non-forward-reference types works correctly
 SessionUser = Annotated[User | None, Depends(get_session_user)]
 AuthenticatedUser = Annotated[User, Depends(require_login)]
 AdminUser = Annotated[User, Depends(require_admin)]
+ManagerUser = Annotated[User, Depends(require_manager_or_above)]
 # Note: APIState as string forward-reference doesn't work with Annotated due to
 # FastAPI parsing it as a query param. Use the pattern: state: "APIState" = Depends(...)

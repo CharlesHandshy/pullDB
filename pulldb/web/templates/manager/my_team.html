@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+
+{% block title %}My Team - pullDB{% endblock %}
+
+{% block page_id %}manager-my-team{% endblock %}
+
+{% block header_title %}My Team{% endblock %}
+{% block header_subtitle %}Manage users assigned to you{% endblock %}
+
+{% block header_actions %}
+<a href="/web/manager/create-user" class="btn btn-primary">
+    <svg xmlns="http://www.w3.org/2000/svg" class="me-2" style="width: 18px; height: 18px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+    Create User
+</a>
+{% endblock %}
+
+{% block content %}
+<style>
+    /* Team Table Styles */
+    .team-card {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-xl);
+        overflow: hidden;
+    }
+
+    .team-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .team-table th {
+        text-align: left;
+        padding: var(--space-3) var(--space-4);
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--gray-500);
+        background: var(--gray-50);
+        border-bottom: 1px solid var(--gray-200);
+    }
+
+    .team-table td {
+        padding: var(--space-3) var(--space-4);
+        border-bottom: 1px solid var(--gray-100);
+        vertical-align: middle;
+    }
+
+    .team-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .team-table tr:hover {
+        background: var(--gray-50);
+    }
+
+    .user-info {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+    }
+
+    .user-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: var(--radius-full);
+        background: var(--primary-100);
+        color: var(--primary-600);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.875rem;
+    }
+
+    .user-avatar.disabled {
+        background: var(--gray-100);
+        color: var(--gray-400);
+    }
+
+    .user-name {
+        font-weight: 500;
+        color: var(--gray-900);
+    }
+
+    .user-link {
+        text-decoration: none;
+        color: inherit;
+    }
+
+    .user-link:hover .user-name {
+        color: var(--primary-600);
+    }
+
+    .job-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        padding: 2px 8px;
+        border-radius: var(--radius-full);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .job-count.active {
+        background: var(--warning-100);
+        color: var(--warning-700);
+    }
+
+    .job-count.total {
+        background: var(--gray-100);
+        color: var(--gray-600);
+    }
+
+    .action-btns {
+        display: flex;
+        gap: var(--space-2);
+    }
+
+    .btn-action {
+        padding: var(--space-1) var(--space-2);
+        font-size: 0.8125rem;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--gray-200);
+        background: white;
+        color: var(--gray-700);
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+        transition: all var(--transition-fast);
+        cursor: pointer;
+    }
+
+    .btn-action:hover {
+        border-color: var(--primary-300);
+        background: var(--primary-50);
+        color: var(--primary-700);
+    }
+
+    .btn-action.danger:hover {
+        border-color: var(--danger-300);
+        background: var(--danger-50);
+        color: var(--danger-700);
+    }
+
+    .btn-action.success:hover {
+        border-color: var(--success-300);
+        background: var(--success-50);
+        color: var(--success-700);
+    }
+
+    .btn-action svg {
+        width: 14px;
+        height: 14px;
+    }
+</style>
+
+<div class="content-body">
+    <!-- Stats -->
+    <div class="stats-grid mb-4">
+        <div class="stat-card">
+            <div class="stat-icon stat-icon-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ stats.total }}</div>
+                <div class="stat-label">Total Users</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon stat-icon-success">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ stats.active }}</div>
+                <div class="stat-label">Active</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon stat-icon-danger">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ stats.disabled }}</div>
+                <div class="stat-label">Disabled</div>
+            </div>
+        </div>
+    </div>
+    
+    {% if managed_users %}
+    <div class="team-card">
+        <table class="team-table">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>User Code</th>
+                    <th>Status</th>
+                    <th>Jobs</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in managed_users %}
+                <tr>
+                    <td>
+                        <a href="/web/manager/my-team/{{ u.username }}" class="user-link">
+                            <div class="user-info">
+                                <div class="user-avatar {{ 'disabled' if u.disabled_at else '' }}">
+                                    {{ u.username[0].upper() }}
+                                </div>
+                                <span class="user-name">{{ u.username }}</span>
+                            </div>
+                        </a>
+                    </td>
+                    <td><code class="text-muted">{{ u.user_code }}</code></td>
+                    <td>
+                        {% if u.disabled_at %}
+                        <span class="badge bg-danger">Disabled</span>
+                        {% else %}
+                        <span class="badge bg-success">Active</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% set job_info = user_job_counts.get(u.user_id, {}) %}
+                        {% if job_info.get('active', 0) > 0 %}
+                        <span class="job-count active">{{ job_info.get('active', 0) }} active</span>
+                        {% endif %}
+                        <span class="job-count total">{{ job_info.get('total', 0) }} total</span>
+                    </td>
+                    <td>
+                        <span class="text-muted">{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '-' }}</span>
+                    </td>
+                    <td>
+                        <div class="action-btns">
+                            <a href="/web/manager/my-team/{{ u.username }}" class="btn-action">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                                View
+                            </a>
+                            {% if u.disabled_at %}
+                            <form method="POST" action="/web/manager/my-team/{{ u.username }}/enable" class="d-inline">
+                                <button type="submit" class="btn-action success">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                                        <polyline points="22 4 12 14.01 9 11.01"/>
+                                    </svg>
+                                    Enable
+                                </button>
+                            </form>
+                            {% else %}
+                            <form method="POST" action="/web/manager/my-team/{{ u.username }}/disable" class="d-inline">
+                                <button type="submit" class="btn-action danger">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"/>
+                                        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                                    </svg>
+                                    Disable
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <div class="mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" style="width: 64px; height: 64px; color: var(--gray-300);" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+            </div>
+            <h5 class="text-gray-700 mb-2">No team members yet</h5>
+            <p class="text-gray-500 mb-4">Create users to build your team.</p>
+            <a href="/web/manager/create-user" class="btn btn-primary">Create First User</a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,728 @@
+{% extends "base.html" %}
+{% from "partials/searchable_dropdown.html" import searchable_dropdown, searchable_dropdown_styles, searchable_dropdown_scripts %}
+
+{% block title %}Job Search - pullDB{% endblock %}
+
+{% block header_title %}Job Search{% endblock %}
+{% block header_subtitle %}Find jobs by ID, target, username, or user code{% endblock %}
+
+{% block content %}
+{{ searchable_dropdown_styles() }}
+<style>
+    /* Search Box */
+    .search-card {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-xl);
+        padding: var(--space-6);
+        margin-bottom: var(--space-6);
+    }
+
+    .search-form {
+        display: flex;
+        gap: var(--space-3);
+        align-items: flex-end;
+    }
+
+    .search-input-group {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+    }
+
+    .search-label {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--gray-600);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .search-input-wrapper {
+        position: relative;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: var(--space-4) var(--space-4) var(--space-4) 44px;
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-lg);
+        font-size: 1rem;
+        color: var(--gray-700);
+        background: white;
+        transition: all var(--transition-fast);
+    }
+
+    .search-input:focus {
+        outline: none;
+        border-color: var(--primary-500);
+        box-shadow: 0 0 0 3px var(--primary-100);
+    }
+
+    .search-input::placeholder {
+        color: var(--gray-400);
+    }
+
+    .search-input-icon {
+        position: absolute;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 20px;
+        color: var(--gray-400);
+    }
+
+    .search-btn {
+        padding: var(--space-4) var(--space-6);
+        background: var(--primary-600);
+        color: white;
+        border: none;
+        border-radius: var(--radius-lg);
+        font-size: 0.9375rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+    }
+
+    .search-btn:hover {
+        background: var(--primary-700);
+    }
+
+    .search-btn svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    /* Search Tips */
+    .search-tips {
+        margin-top: var(--space-4);
+        padding: var(--space-4);
+        background: var(--gray-50);
+        border-radius: var(--radius-md);
+    }
+
+    .search-tips-title {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--gray-700);
+        margin-bottom: var(--space-2);
+    }
+
+    .search-tips-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: var(--space-2);
+    }
+
+    .search-tip {
+        font-size: 0.8125rem;
+        color: var(--gray-600);
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+    }
+
+    /* Optional Filters Section */
+    .filters-section {
+        margin-top: var(--space-4);
+        padding-top: var(--space-4);
+        border-top: 1px solid var(--gray-200);
+    }
+
+    .filters-toggle {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--gray-600);
+        cursor: pointer;
+        background: none;
+        border: none;
+        padding: 0;
+    }
+
+    .filters-toggle:hover {
+        color: var(--gray-800);
+    }
+
+    .filters-toggle svg {
+        width: 16px;
+        height: 16px;
+        transition: transform var(--transition-fast);
+    }
+
+    .filters-toggle.expanded svg {
+        transform: rotate(180deg);
+    }
+
+    .filters-content {
+        display: none;
+        margin-top: var(--space-4);
+    }
+
+    .filters-content.visible {
+        display: block;
+    }
+
+    .filters-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: var(--space-4);
+    }
+
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+    }
+
+    .filter-label {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--gray-600);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .filter-select {
+        padding: var(--space-3) var(--space-4);
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-md);
+        font-size: 0.875rem;
+        color: var(--gray-700);
+        background: white;
+        cursor: pointer;
+    }
+
+    .filter-select:focus {
+        outline: none;
+        border-color: var(--primary-500);
+        box-shadow: 0 0 0 3px var(--primary-100);
+    }
+
+    /* Searchable dropdown in filter */
+    .filter-group .searchable-dropdown {
+        min-width: 180px;
+    }
+
+    .filter-group .searchable-dropdown .dropdown-input {
+        padding: var(--space-3) var(--space-4);
+        padding-right: 36px;
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-md);
+        font-size: 0.875rem;
+    }
+
+    .search-tip-key {
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+        padding: 2px 6px;
+        background: var(--gray-200);
+        border-radius: var(--radius-sm);
+        color: var(--gray-700);
+    }
+
+    /* Results */
+    .results-card {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-xl);
+        overflow: hidden;
+    }
+
+    .results-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-4) var(--space-6);
+        border-bottom: 1px solid var(--gray-200);
+        background: var(--gray-50);
+    }
+
+    .results-title {
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--gray-700);
+    }
+
+    .results-count {
+        font-size: 0.8125rem;
+        color: var(--gray-500);
+    }
+
+    .results-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .results-table th {
+        background: var(--gray-25);
+        padding: var(--space-3) var(--space-4);
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--gray-600);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        text-align: left;
+        border-bottom: 1px solid var(--gray-200);
+    }
+
+    .results-table td {
+        padding: var(--space-3) var(--space-4);
+        font-size: 0.875rem;
+        color: var(--gray-700);
+        border-bottom: 1px solid var(--gray-100);
+    }
+
+    .results-table tr:hover {
+        background: var(--gray-25);
+    }
+
+    .results-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    /* Job link */
+    .job-link {
+        color: var(--primary-600);
+        text-decoration: none;
+        font-family: var(--font-mono);
+        font-size: 0.8125rem;
+    }
+
+    .job-link:hover {
+        text-decoration: underline;
+    }
+
+    /* Status badges */
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: var(--radius-full);
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .status-badge.complete,
+    .status-badge.completed {
+        background: var(--success-100);
+        color: var(--success-700);
+    }
+
+    .status-badge.running {
+        background: var(--primary-100);
+        color: var(--primary-700);
+    }
+
+    .status-badge.queued {
+        background: var(--gray-100);
+        color: var(--gray-700);
+    }
+
+    .status-badge.failed {
+        background: var(--danger-100);
+        color: var(--danger-700);
+    }
+
+    .status-badge.canceled {
+        background: var(--warning-100);
+        color: var(--warning-600);
+    }
+
+    /* DateTime */
+    .datetime {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .datetime-date {
+        color: var(--gray-700);
+    }
+
+    .datetime-time {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+    }
+
+    /* Empty state */
+    .empty-state {
+        padding: var(--space-16);
+        text-align: center;
+    }
+
+    .empty-state-icon {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto var(--space-4);
+        color: var(--gray-300);
+    }
+
+    .empty-state-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--gray-700);
+        margin-bottom: var(--space-2);
+    }
+
+    .empty-state-message {
+        font-size: 0.875rem;
+        color: var(--gray-500);
+    }
+
+    /* Initial state (no search yet) */
+    .initial-state {
+        padding: var(--space-12);
+        text-align: center;
+    }
+
+    .initial-state-icon {
+        width: 80px;
+        height: 80px;
+        margin: 0 auto var(--space-4);
+        color: var(--primary-200);
+    }
+
+    .initial-state-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--gray-700);
+        margin-bottom: var(--space-2);
+    }
+
+    .initial-state-message {
+        font-size: 0.9375rem;
+        color: var(--gray-500);
+    }
+
+    /* Query info */
+    .query-info {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: 0.8125rem;
+        color: var(--gray-600);
+    }
+
+    .query-info-term {
+        font-family: var(--font-mono);
+        background: var(--primary-100);
+        color: var(--primary-700);
+        padding: 2px 8px;
+        border-radius: var(--radius-sm);
+    }
+
+    .match-type {
+        font-size: 0.75rem;
+        padding: 2px 6px;
+        border-radius: var(--radius-sm);
+        background: var(--gray-100);
+        color: var(--gray-600);
+    }
+
+    /* Multiple matches card */
+    .resolve-card {
+        background: var(--warning-50);
+        border: 1px solid var(--warning-500);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        margin-bottom: var(--space-4);
+        display: flex;
+        align-items: flex-start;
+        gap: var(--space-3);
+    }
+
+    .resolve-icon {
+        width: 24px;
+        height: 24px;
+        color: var(--warning-600);
+        flex-shrink: 0;
+    }
+
+    .resolve-content {
+        flex: 1;
+    }
+
+    .resolve-title {
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--warning-700);
+        margin-bottom: var(--space-1);
+    }
+
+    .resolve-message {
+        font-size: 0.8125rem;
+        color: var(--warning-600);
+    }
+</style>
+
+<div class="search-card">
+    <form class="search-form" id="search-form" method="GET" action="/web/jobs/search">
+        <div class="search-input-group">
+            <label class="search-label" for="q">Search Jobs</label>
+            <div class="search-input-wrapper">
+                <svg class="search-input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                </svg>
+                <input type="text" class="search-input" name="q" id="q" 
+                       placeholder="Enter job ID, target, username, or user code..." 
+                       value="{{ query or '' }}" minlength="4" required>
+            </div>
+        </div>
+        <button type="submit" class="search-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+            Search
+        </button>
+    </form>
+    
+    <div class="search-tips">
+        <div class="search-tips-title">Search Tips</div>
+        <div class="search-tips-list">
+            <div class="search-tip">
+                <span class="search-tip-key">8b4c4a3a</span>
+                <span>Job ID prefix (min 4 chars)</span>
+            </div>
+            <div class="search-tip">
+                <span class="search-tip-key">charleacme</span>
+                <span>Target database name</span>
+            </div>
+            <div class="search-tip">
+                <span class="search-tip-key">charle</span>
+                <span>User code (6 chars)</span>
+            </div>
+            <div class="search-tip">
+                <span class="search-tip-key">charles</span>
+                <span>Username</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Optional Filters -->
+    <div class="filters-section">
+        <button type="button" class="filters-toggle" onclick="toggleFilters(this)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+            </svg>
+            Optional Filters
+        </button>
+        <div class="filters-content" id="filters-content">
+            <div class="filters-row">
+                <div class="filter-group">
+                    <label class="filter-label">Status</label>
+                    <select id="filter-status" class="filter-select" name="status" form="search-form">
+                        <option value="">All Statuses</option>
+                        <option value="queued"{% if request.query_params.get('status') == 'queued' %} selected{% endif %}>Queued</option>
+                        <option value="running"{% if request.query_params.get('status') == 'running' %} selected{% endif %}>Running</option>
+                        <option value="complete"{% if request.query_params.get('status') == 'complete' %} selected{% endif %}>Complete</option>
+                        <option value="failed"{% if request.query_params.get('status') == 'failed' %} selected{% endif %}>Failed</option>
+                        <option value="canceled"{% if request.query_params.get('status') == 'canceled' %} selected{% endif %}>Canceled</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label class="filter-label">User</label>
+                    <div class="searchable-dropdown searchable-dropdown-filter" 
+                         id="filter-user-container"
+                         data-min-chars="2"
+                         data-debounce="200"
+                         data-api="/api/dropdown/users"
+                         data-max-results="15"
+                         data-no-results="No users found"
+                         data-loading="Searching..."
+                         data-allow-custom="false">
+                        <input type="hidden" id="filter-user-value" name="user" value="{{ request.query_params.get('user', '') }}" form="search-form">
+                        <input type="text" 
+                               id="filter-user" 
+                               class="filter-select searchable-dropdown-input" 
+                               placeholder="All Users"
+                               autocomplete="off"
+                               value="{{ request.query_params.get('user', '') }}">
+                        <div class="searchable-dropdown-icon">
+                            <svg class="icon-search" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                            </svg>
+                            <svg class="icon-loading" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                            </svg>
+                            <svg class="icon-clear" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </div>
+                        <div class="searchable-dropdown-list" id="filter-user-listbox" role="listbox"></div>
+                    </div>
+                </div>
+                
+                <div class="filter-group">
+                    <label class="filter-label">Host</label>
+                    <div class="searchable-dropdown searchable-dropdown-filter" 
+                         id="filter-host-container"
+                         data-min-chars="2"
+                         data-debounce="200"
+                         data-api="/api/dropdown/hosts"
+                         data-max-results="10"
+                         data-no-results="No hosts found"
+                         data-loading="Searching..."
+                         data-allow-custom="false">
+                        <input type="hidden" id="filter-host-value" name="host" value="{{ request.query_params.get('host', '') }}" form="search-form">
+                        <input type="text" 
+                               id="filter-host" 
+                               class="filter-select searchable-dropdown-input" 
+                               placeholder="All Hosts"
+                               autocomplete="off"
+                               value="{{ request.query_params.get('host', '') }}">
+                        <div class="searchable-dropdown-icon">
+                            <svg class="icon-search" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                            </svg>
+                            <svg class="icon-loading" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                            </svg>
+                            <svg class="icon-clear" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </div>
+                        <div class="searchable-dropdown-list" id="filter-host-listbox" role="listbox"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="results-card" id="results">
+    {% if searched %}
+        {% if resolve_info %}
+        <div class="resolve-card">
+            <svg class="resolve-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <div class="resolve-content">
+                <div class="resolve-title">Multiple Matches Found</div>
+                <div class="resolve-message">
+                    The search prefix "<span class="query-info-term">{{ query }}</span>" matches {{ resolve_info.count }} jobs. 
+                    Please select a specific job from the list below or use a longer prefix.
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="results-header">
+            <div class="query-info">
+                Results for <span class="query-info-term">{{ query }}</span>
+                {% if exact_match %}
+                <span class="match-type">Exact match</span>
+                {% else %}
+                <span class="match-type">Prefix match</span>
+                {% endif %}
+            </div>
+            <span class="results-count">{{ jobs|length }} job{{ 's' if jobs|length != 1 else '' }} found</span>
+        </div>
+        
+        {% if jobs %}
+        <table class="results-table">
+            <thead>
+                <tr>
+                    <th>Job ID</th>
+                    <th>Target</th>
+                    <th>Status</th>
+                    <th>User</th>
+                    <th>Host</th>
+                    <th>Submitted</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in jobs %}
+                <tr>
+                    <td>
+                        <a href="/web/jobs/{{ job.id }}" class="job-link" title="{{ job.id }}">
+                            {{ job.id[:8] }}...
+                        </a>
+                    </td>
+                    <td>{{ job.target }}</td>
+                    <td>
+                        <span class="status-badge {{ job.status.value }}">
+                            {{ job.status.value }}
+                        </span>
+                    </td>
+                    <td>
+                        <span title="{{ job.owner_username or 'Unknown' }}">{{ job.user_code or '-' }}</span>
+                    </td>
+                    <td>{{ job.dbhost or '-' }}</td>
+                    <td>
+                        <div class="datetime">
+                            <span class="datetime-date">{{ job.submitted_at.strftime('%Y-%m-%d') if job.submitted_at else '-' }}</span>
+                            <span class="datetime-time">{{ job.submitted_at.strftime('%H:%M') if job.submitted_at else '' }}</span>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+            <h3 class="empty-state-title">No Jobs Found</h3>
+            <p class="empty-state-message">
+                No jobs match your search query "<strong>{{ query }}</strong>". 
+                Try a different search term or check the spelling.
+            </p>
+        </div>
+        {% endif %}
+    {% else %}
+    <div class="initial-state">
+        <svg class="initial-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+        </svg>
+        <h3 class="initial-state-title">Search for Jobs</h3>
+        <p class="initial-state-message">
+            Enter a search term above to find jobs by ID, target database, username, or user code.
+            <br>Minimum 4 characters required.
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+{{ searchable_dropdown_scripts() }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Focus search input on page load
+    const searchInput = document.getElementById('q');
+    if (searchInput && !searchInput.value) {
+        searchInput.focus();
+    }
+    
+    // Expand filters if any filter is active
+    const hasActiveFilters = new URLSearchParams(window.location.search).has('status') ||
+                             new URLSearchParams(window.location.search).has('user') ||
+                             new URLSearchParams(window.location.search).has('host');
+    if (hasActiveFilters) {
+        const filtersContent = document.getElementById('filters-content');
+        const filtersToggle = document.querySelector('.filters-toggle');
+        if (filtersContent && filtersToggle) {
+            filtersContent.classList.add('visible');
+            filtersToggle.classList.add('expanded');
+        }
+    }
+});
+
+function toggleFilters(button) {
+    const filtersContent = document.getElementById('filters-content');
+    if (filtersContent) {
+        filtersContent.classList.toggle('visible');
+        button.classList.toggle('expanded');
+    }
+}
+</script>
+{% endblock %}

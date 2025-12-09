@@ -1,0 +1,35 @@
+{% if reports %}
+    {% for report in reports %}
+    <div class="card card-padding" style="margin-bottom: 1rem;">
+        <h3 class="card-header">Host: {{ report.host }}</h3>
+        <table class="table" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th>Database</th>
+                    <th>Target</th>
+                    <th>Job Prefix</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for orphan in report.orphans %}
+                <tr>
+                    <td>{{ orphan.database_name }}</td>
+                    <td>{{ orphan.target_name }}</td>
+                    <td>{{ orphan.job_id_prefix }}</td>
+                    <td>
+                        <form method="POST" action="/web/admin/orphans/delete" onsubmit="return confirm('Delete {{ orphan.database_name }}? This cannot be undone.');">
+                            <input type="hidden" name="dbhost" value="{{ report.host }}">
+                            <input type="hidden" name="database_name" value="{{ orphan.database_name }}">
+                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="alert alert-success">No orphan databases found.</div>
+{% endif %}

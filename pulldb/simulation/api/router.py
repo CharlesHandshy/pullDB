@@ -445,6 +445,8 @@ class SeedUserRequest(BaseModel):
     password: str = Field(..., description="Password for the test user")
     user_code: str = Field(default="test", description="User code")
     is_admin: bool = Field(default=False, description="Whether user is admin")
+    role: str = Field(default="user", description="User role: user, manager, or admin")
+    manager_id: str | None = Field(default=None, description="ID of the user's manager")
 
 
 class SeedUserResponse(BaseModel):
@@ -476,7 +478,11 @@ async def seed_user(request: SeedUserRequest) -> SeedUserResponse:
         )
 
     # Create the user
-    user = user_repo.create_user(request.username, request.user_code)
+    user = user_repo.create_user(
+        username=request.username, 
+        user_code=request.user_code,
+        manager_id=request.manager_id,
+    )
 
     # Set password
     password_hash = hash_password(request.password)
@@ -486,10 +492,32 @@ async def seed_user(request: SeedUserRequest) -> SeedUserResponse:
     if request.is_admin:
         state = get_simulation_state()
         with state.lock:
-            state.users[user.user_id] = replace(user, is_admin=True)
+            from pulldb.domain.models import UserRole
+            # Determine role - admin flag or explicit role
+            if request.role == "admin" or request.is_admin:
+                role = UserRole.ADMIN
+            elif request.role == "manager":
+                role = UserRole.MANAGER
+            else:
+                role = UserRole.USER
+            state.users[user.user_id] = replace(user, is_admin=True, role=role)
             # Also update users_by_code index
             if user.user_code in state.users_by_code:
-                state.users_by_code[user.user_code] = replace(user, is_admin=True)
+                state.users_by_code[user.user_code] = replace(user, is_admin=True, role=role)
+    elif request.role and request.role != "user":
+        # Set role even if not admin
+        state = get_simulation_state()
+        with state.lock:
+            from pulldb.domain.models import UserRole
+            if request.role == "manager":
+                role = UserRole.MANAGER
+            elif request.role == "admin":
+                role = UserRole.ADMIN
+            else:
+                role = UserRole.USER
+            state.users[user.user_id] = replace(user, role=role)
+            if user.user_code in state.users_by_code:
+                state.users_by_code[user.user_code] = replace(user, role=role)
 
     return SeedUserResponse(
         success=True,

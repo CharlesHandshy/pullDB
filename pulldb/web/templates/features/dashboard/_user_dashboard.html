@@ -1,0 +1,86 @@
+<!-- User Dashboard - Personal productivity focus -->
+
+<!-- My Stats - Compact badges -->
+<div style="display: flex; gap: 1rem; margin-top: 1.5rem; flex-wrap: wrap; align-items: center;">
+    <div style="background: white; border: 1px solid var(--gray-200); border-radius: 0.5rem; padding: 0.75rem 1rem; display: inline-flex; align-items: center; gap: 0.75rem;">
+        <span style="font-size: 0.75rem; font-weight: 500; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em;">My Active Jobs</span>
+        <span style="font-size: 1.5rem; font-weight: 700; color: var(--primary-600);">{{ my_active_count }}</span>
+    </div>
+</div>
+
+<!-- My Last Job -->
+<div class="card card-padding" style="margin-top: var(--space-6);">
+    <h3 style="margin-top: 0; margin-bottom: var(--space-4); font-size: 1rem; color: var(--gray-700);">My Last Job</h3>
+    {% if last_job %}
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <div style="font-weight: 600; color: var(--gray-900);">{{ last_job.target }}</div>
+            <div style="font-size: 0.875rem; color: var(--gray-500); margin-top: 0.25rem;">
+                <span class="font-mono">{{ last_job.id[:8] }}</span>
+                · {{ last_job.submitted_at.strftime('%Y-%m-%d %H:%M') if last_job.submitted_at else '-' }}
+            </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: var(--space-3);">
+            <span class="badge 
+                {% if last_job.status.value == 'complete' %}badge-success
+                {% elif last_job.status.value == 'failed' %}badge-danger
+                {% elif last_job.status.value == 'running' %}badge-primary
+                {% elif last_job.status.value == 'queued' %}badge-neutral
+                {% elif last_job.status.value == 'canceled' %}badge-neutral
+                {% else %}badge-neutral{% endif %}
+            ">
+                {{ last_job.status.value }}
+            </span>
+            <a href="/web/jobs/{{ last_job.id }}" class="btn btn-secondary" style="font-size: 0.875rem;">View Details</a>
+        </div>
+    </div>
+    {% else %}
+    <p style="color: var(--gray-500); margin: 0;">No jobs submitted yet. <a href="/web/restore" class="link-primary">Start a restore</a></p>
+    {% endif %}
+</div>
+
+<!-- My Recent Jobs -->
+{% if recent_jobs %}
+<div class="card card-padding" style="margin-top: var(--space-6);">
+    <h3 style="margin-top: 0; margin-bottom: var(--space-4); font-size: 1rem; color: var(--gray-700);">My Recent Jobs</h3>
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr style="border-bottom: 1px solid var(--gray-200);">
+                <th style="text-align: left; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">Target</th>
+                <th style="text-align: left; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">Status</th>
+                <th style="text-align: left; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">Submitted</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in recent_jobs %}
+            <tr style="border-bottom: 1px solid var(--gray-100);">
+                <td style="padding: var(--space-2) 0;">
+                    <a href="/web/jobs/{{ job.id }}" class="link-primary" style="font-weight: 500;">{{ job.target }}</a>
+                </td>
+                <td style="padding: var(--space-2) 0;">
+                    <span class="badge 
+                        {% if job.status.value == 'complete' %}badge-success
+                        {% elif job.status.value == 'failed' %}badge-danger
+                        {% elif job.status.value == 'running' %}badge-primary
+                        {% elif job.status.value == 'queued' %}badge-neutral
+                        {% else %}badge-neutral{% endif %}
+                    " style="font-size: 0.75rem;">
+                        {{ job.status.value }}
+                    </span>
+                </td>
+                <td style="padding: var(--space-2) 0; font-size: 0.875rem; color: var(--gray-500);">
+                    {{ job.submitted_at.strftime('%m/%d %H:%M') if job.submitted_at else '-' }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Quick Actions -->
+<div style="margin-top: var(--space-6); display: flex; gap: var(--space-3);">
+    <a href="/web/restore" class="btn btn-primary">New Restore Job</a>
+    <a href="/web/jobs" class="btn btn-secondary">View My Jobs</a>
+    <a href="/web/jobs?view=history" class="btn btn-secondary">View History</a>
+</div>

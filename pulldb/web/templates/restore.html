@@ -291,9 +291,9 @@
                     <ul class="recent-list">
                         {% for job in recent_jobs[:5] %}
                         <li class="recent-item">
-                            <a href="/web/jobs/{{ job.job_id }}">
+                            <a href="/web/jobs/{{ job.id }}">
                                 <span class="recent-target">{{ job.target }}</span>
-                                <span class="recent-status status-{{ job.status }}">{{ job.status }}</span>
+                                <span class="recent-status status-{{ job.status.value }}">{{ job.status.value }}</span>
                             </a>
                         </li>
                         {% endfor %}

@@ -15,6 +15,7 @@ Phases complete: 0-4
 ## Index (categories)
 - CLI Architecture & Scope
 - Web UI Layout Architecture
+- Web UI Style Guide (NEW)
 - S3 Multi-Location Configuration (v0.0.7)
 - Accounts & ARNs
 - S3 buckets & paths
@@ -112,6 +113,60 @@ The Worker performs all actual operations (database drops, S3 downloads, restore
 ### Static Assets
 - Logo video: `pulldb/images/pullDB_logo.mp4` → `/static/images/pullDB_logo.mp4`
 - Brand logos: `servicetitan-logo.svg`, `fieldroutes-logo.svg`
+
+---
+
+## Web UI Style Guide (NEW)
+
+**Full documentation**: [STYLE-GUIDE.md](STYLE-GUIDE.md)
+
+### Design Philosophy
+pullDB is an **internal operations tool**. UI priorities:
+1. **Clarity over Cleverness** - Fast, accurate information
+2. **Efficiency over Aesthetics** - Minimal clicks for power users
+3. **Consistency over Creativity** - Same patterns everywhere
+
+### UX Laws Applied
+- **Doherty Threshold**: All transitions < 400ms
+- **Hick's Law**: Max 4 stat cards, 7±2 nav items per section
+- **Fitts's Law**: Minimum 32px button targets
+- **Von Restorff Effect**: Status badges use distinct colors
+
+### Color Quick Reference
+| Status | Background | Text |
+|--------|------------|------|
+| Queued | `gray-100` | `gray-700` |
+| Running | `primary-100` | `primary-700` |
+| Complete | `success-100` | `success-700` |
+| Failed | `danger-100` | `danger-700` |
+| Canceled | `warning-100` | `warning-700` |
+
+### Key CSS Tokens
+```css
+/* Primary brand */
+--primary-500: #3b82f6;
+--primary-600: #2563eb;
+
+/* Spacing (4px scale) */
+--space-4: 1rem;     /* Standard padding */
+--space-6: 1.5rem;   /* Card padding */
+
+/* Border radius */
+--radius-md: 0.5rem; /* Buttons */
+--radius-xl: 1rem;   /* Cards */
+```
+
+### Canonical Component Patterns
+1. **Stat Card**: Icon (48px) + value + label
+2. **Form Card**: Gradient header + icon + form body
+3. **Status Badge**: Dot (animated for running) + label
+4. **Table**: Uppercase headers, hover rows
+5. **Empty State**: Icon + title + description + action
+
+### File Locations
+- Base styles: `pulldb/web/templates/base.html` (2100+ lines)
+- Component styles: Inline per template (refactor planned)
+- Static assets: `pulldb/images/` → `/static/images/`
 
 ---
 

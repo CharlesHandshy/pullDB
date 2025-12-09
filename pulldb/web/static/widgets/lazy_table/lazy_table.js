@@ -105,6 +105,13 @@ class LazyTable {
         this.sortDirection = null;  // 'asc' | 'desc' | null
         this.columnFilters = {};    // { columnKey: Set<values> }
         
+        // Apply initial filters if provided (only on first load)
+        if (this.config.initialFilters) {
+            Object.entries(this.config.initialFilters).forEach(([key, values]) => {
+                this.columnFilters[key] = new Set(Array.isArray(values) ? values : [values]);
+            });
+        }
+        
         // Selection state (persists across cache clears)
         this.selection = {
             mode: 'partial',  // 'all' | 'partial'
@@ -124,6 +131,12 @@ class LazyTable {
         this.buildDOM();
         this.bindEvents();
         this.calculateViewport();
+        
+        // Update filter indicators for initial filters (after DOM is built)
+        if (this.config.initialFilters) {
+            this.updateFilterIndicators();
+        }
+        
         this.fetchInitialData();
     }
 
@@ -671,7 +684,18 @@ class LazyTable {
         const showing = this.elements.footerContent.querySelector('.footer-showing');
         const selectedCount = this.getSelectedCount();
         
-        let text = `${this.config.i18n.showing} ${this.filteredCount} ${this.config.i18n.of} ${this.totalCount} ${this.config.i18n.items}`;
+        // Calculate visible row range based on scroll position
+        const startRow = Math.floor(this.scrollTop / this.rowHeight);
+        const visibleStart = Math.min(startRow + 1, this.filteredCount); // 1-indexed for display
+        const visibleEnd = Math.min(startRow + this.visibleRowCount, this.filteredCount);
+        
+        let text;
+        if (this.filteredCount === 0) {
+            text = `${this.config.i18n.showing} 0 ${this.config.i18n.items}`;
+        } else {
+            // Show range of current result set (filtered or total)
+            text = `${this.config.i18n.showing} ${visibleStart}-${visibleEnd} ${this.config.i18n.of} ${this.filteredCount} ${this.config.i18n.items}`;
+        }
         
         if (selectedCount > 0) {
             text += ` · ${selectedCount} ${this.config.i18n.selected}`;
@@ -847,9 +871,25 @@ class LazyTable {
     // Filtering
     // =========================================================================
 
+    /**
+     * Get column definition by key
+     * @param {string} key - Column key
+     * @returns {Object|undefined}
+     */
+    getColumnDef(key) {
+        return this.config.columns.find(c => c.key === key);
+    }
+
     async showFilterDropdown(column, anchorElement) {
         // Remove any existing dropdown
         this.closeFilterDropdown();
+        
+        // Check if this column uses text filter
+        const colDef = this.getColumnDef(column);
+        if (colDef && colDef.filterType === 'text') {
+            this.showTextFilterDropdown(column, anchorElement, colDef.filterPlaceholder);
+            return;
+        }
         
         // Fetch distinct values if not cached
         if (!this.distinctValues[column]) {
@@ -900,7 +940,8 @@ class LazyTable {
         });
         
         dropdown.querySelector('.filter-clear-btn').addEventListener('click', () => {
-            dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+            this.applyFilter(column, new Set());
+            this.closeFilterDropdown();
         });
         
         dropdown.querySelector('.filter-apply-btn').addEventListener('click', () => {
@@ -935,6 +976,85 @@ class LazyTable {
         }
     }
 
+    /**
+     * Show a text-input filter dropdown for pattern-based filtering.
+     * Supports wildcards: * matches any characters.
+     * @param {string} column - Column key
+     * @param {HTMLElement} anchorElement - Button to anchor dropdown to
+     * @param {string} [placeholder] - Placeholder text for input
+     */
+    showTextFilterDropdown(column, anchorElement, placeholder) {
+        // Get current filter value (stored as Set with single value for text filters)
+        const currentFilter = this.columnFilters[column];
+        const currentValue = currentFilter && currentFilter.size > 0 ? Array.from(currentFilter)[0] : '';
+        
+        // Create dropdown
+        const dropdown = document.createElement('div');
+        dropdown.className = 'lazy-table-filter-dropdown lazy-table-filter-text';
+        dropdown.innerHTML = `
+            <div class="filter-text-input-wrapper">
+                <input type="text" class="filter-text-input" 
+                       placeholder="${placeholder || 'Filter...'}" 
+                       value="${currentValue}">
+                <span class="filter-text-hint">Use * as wildcard</span>
+            </div>
+            <div class="filter-dropdown-actions">
+                <button type="button" class="filter-clear-btn">${this.config.i18n.clear}</button>
+                <button type="button" class="filter-apply-btn">${this.config.i18n.apply}</button>
+            </div>
+        `;
+        
+        // Position dropdown
+        const rect = anchorElement.getBoundingClientRect();
+        dropdown.style.position = 'fixed';
+        dropdown.style.top = `${rect.bottom + 4}px`;
+        dropdown.style.left = `${rect.left}px`;
+        
+        document.body.appendChild(dropdown);
+        this.activeFilterDropdown = { element: dropdown, column };
+        
+        const textInput = dropdown.querySelector('.filter-text-input');
+        
+        // Clear button - immediately clears and applies
+        dropdown.querySelector('.filter-clear-btn').addEventListener('click', () => {
+            this.applyFilter(column, new Set());
+            this.closeFilterDropdown();
+        });
+        
+        // Apply button
+        dropdown.querySelector('.filter-apply-btn').addEventListener('click', () => {
+            const value = textInput.value.trim();
+            if (value) {
+                // Store as Set with single value for consistency with checkbox filters
+                this.applyFilter(column, new Set([value]));
+            } else {
+                this.applyFilter(column, new Set());
+            }
+            this.closeFilterDropdown();
+        });
+        
+        // Apply on Enter key
+        textInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                dropdown.querySelector('.filter-apply-btn').click();
+            } else if (e.key === 'Escape') {
+                this.closeFilterDropdown();
+            }
+        });
+        
+        // Close on outside click
+        setTimeout(() => {
+            document.addEventListener('click', this.handleOutsideClick = (e) => {
+                if (!dropdown.contains(e.target) && !anchorElement.contains(e.target)) {
+                    this.closeFilterDropdown();
+                }
+            });
+        }, 0);
+        
+        textInput.focus();
+        textInput.select();
+    }
+
     async fetchDistinctValues(column) {
         try {
             // Build URL for distinct values endpoint
@@ -962,6 +1082,10 @@ class LazyTable {
         } else {
             this.columnFilters[column] = values;
         }
+        
+        // Reset scroll position when filter changes
+        this.scrollTop = 0;
+        this.elements.bodyContainer.scrollTop = 0;
         
         this.updateFilterIndicators();
         this.refresh();
@@ -1108,6 +1232,65 @@ class LazyTable {
     setFetchUrl(url) {
         this.config.fetchUrl = url;
         this.refresh();
+    }
+
+    /**
+     * Get current table state for persistence (sort, filters).
+     * Selection and distinctValues are NOT included - they are cleared on state restore.
+     * @returns {{ sortColumn: string|null, sortDirection: string|null, columnFilters: Object }}
+     */
+    getState() {
+        const filters = {};
+        Object.entries(this.columnFilters).forEach(([key, values]) => {
+            filters[key] = Array.from(values);
+        });
+        return {
+            sortColumn: this.sortColumn,
+            sortDirection: this.sortDirection,
+            columnFilters: filters
+        };
+    }
+
+    /**
+     * Restore table state from a saved state object.
+     * Clears selection and distinctValues cache. Does NOT trigger refresh.
+     * @param {Object|null} state - State object from getState(), or null to reset
+     */
+    setState(state) {
+        if (state) {
+            this.sortColumn = state.sortColumn || null;
+            this.sortDirection = state.sortDirection || null;
+            this.columnFilters = {};
+            if (state.columnFilters) {
+                Object.entries(state.columnFilters).forEach(([key, values]) => {
+                    this.columnFilters[key] = new Set(values);
+                });
+            }
+        } else {
+            this.sortColumn = null;
+            this.sortDirection = null;
+            this.columnFilters = {};
+        }
+        
+        // Clear selection and distinct values cache on state change
+        this.selection = {
+            mode: 'partial',
+            includeIds: new Set(),
+            excludeIds: new Set()
+        };
+        this.distinctValues = {};
+        
+        // Update visual indicators
+        this.updateSortIndicators();
+        this.updateFilterIndicators();
+    }
+
+    /**
+     * Reset all table state (sort, filters, selection, distinctValues cache).
+     * Does NOT trigger refresh - caller should call refresh() or setFetchUrl() after.
+     */
+    resetState() {
+        this.setState(null);
     }
 
     /**

@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}Jobs - pullDB{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
+<style>
+.tabs {
+    display: flex;
+    border-bottom: 1px solid var(--gray-200);
+}
+.tab {
+    padding: 0.75rem 1.5rem;
+    background: none;
+    border: none;
+    color: var(--gray-600);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: inherit;
+    font-family: inherit;
+}
+.tab:hover {
+    color: var(--gray-900);
+}
+.tab-active {
+    color: var(--primary-600);
+    border-bottom-color: var(--primary-600);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="jobs-page">
+    <div class="page-header">
+        <h1 class="page-title">Jobs</h1>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <a href="/web/restore" class="btn btn-primary">New Restore Job</a>
+        </div>
+    </div>
+
+    <!-- View Toggle Tabs -->
+    <div class="tabs" style="margin-bottom: var(--space-4);">
+        <button type="button" class="tab {% if view != 'history' %}tab-active{% endif %}" data-view="active" id="tab-active">
+            Active Jobs
+        </button>
+        <button type="button" class="tab {% if view == 'history' %}tab-active{% endif %}" data-view="history" id="tab-history">
+            History
+        </button>
+    </div>
+
+    <!-- LazyTable Container -->
+    <div class="card" style="height: calc(100vh - 280px); min-height: 400px;">
+        <div id="jobs-table-container" style="height: 100%;"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=3"></script>
+<script>
+(function() {
+    let currentView = '{{ view or "active" }}';
+    
+    const columns = [
+        { 
+            key: 'id', 
+            label: 'Job ID', 
+            sortable: true, 
+            filterable: true,
+            filterType: 'text',
+            filterPlaceholder: 'job-01* or *0100',
+            width: '120px',
+            render: (val) => '<a href="/web/jobs/' + val + '" class="font-mono" style="color: var(--primary-600);">' + (val || '').substring(0, 8) + '</a>'
+        },
+        { 
+            key: 'target', 
+            label: 'Target', 
+            sortable: true, 
+            filterable: true,
+            width: '200px'
+        },
+        { 
+            key: 'user_code', 
+            label: 'User', 
+            sortable: true, 
+            filterable: true, 
+            width: '100px',
+            render: (val) => '<span class="font-mono" style="font-size: 0.85em;">' + (val || '-') + '</span>'
+        },
+        { 
+            key: 'status', 
+            label: 'Status', 
+            sortable: true, 
+            filterable: true, 
+            width: '110px',
+            render: (val, row) => {
+                const classes = {
+                    'complete': 'badge-success',
+                    'completed': 'badge-success',
+                    'failed': 'badge-danger',
+                    'running': 'badge-primary',
+                    'queued': 'badge-neutral',
+                    'canceled': 'badge-neutral'
+                };
+                let cls = classes[val] || 'badge-neutral';
+                let style = '';
+                
+                // If running with cancel requested, show strikethrough + red
+                if (val === 'running' && row.cancel_requested_at) {
+                    style = 'text-decoration: line-through; background-color: var(--danger-100); color: var(--danger-700); border-color: var(--danger-200);';
+                }
+                
+                return '<span class="badge ' + cls + '" style="' + style + '">' + val + '</span>';
+            }
+        },
+        { 
+            key: 'submitted_at', 
+            label: 'Submitted', 
+            sortable: true, 
+            filterable: true,
+            filterType: 'text',
+            filterPlaceholder: '12/08/2024 or 12/*/2024',
+            width: '150px',
+            render: (val) => {
+                if (!val) return '-';
+                const d = new Date(val);
+                return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            }
+        },
+        { 
+            key: 'dbhost', 
+            label: 'Host', 
+            sortable: true, 
+            filterable: true, 
+            width: '140px' 
+        },
+        { 
+            type: 'actions', 
+            label: '', 
+            width: '140px',
+            actions: [
+                { 
+                    icon: 'view', 
+                    label: 'View', 
+                    className: 'primary',
+                    onClick: (row) => { window.location.href = '/web/jobs/' + row.id; }
+                },
+                {
+                    icon: 'x',
+                    label: 'Cancel',
+                    className: 'danger',
+                    onClick: (row) => {
+                        if (confirm('Are you sure you want to cancel this job?')) {
+                            fetch('/web/jobs/' + row.id + '/cancel', { method: 'POST' })
+                                .then(() => window.jobsTable.refresh());
+                        }
+                    },
+                    visible: (row) => row.can_cancel && ['queued', 'running'].includes(row.status) && !row.cancel_requested_at
+                }
+            ]
+        }
+    ];
+    
+    // Compute role-based default filters
+    const userRole = '{{ user.role.value }}';
+    const userCode = '{{ user.user_code }}';
+    const managedUserCodes = {{ managed_user_codes | tojson }};
+    const threeDaysAgoIso = '{{ three_days_ago_iso }}';
+    
+    // Default filters based on role:
+    // - Admin: no user filter, but submitted_after filter (clearable)
+    // - Manager: filter to their users + self
+    // - User: filter to only self
+    let defaultFilters = {};
+    if (userRole === 'admin') {
+        defaultFilters = { submitted_after: [threeDaysAgoIso] };
+    } else if (userRole === 'manager' && managedUserCodes.length > 0) {
+        defaultFilters = { user_code: managedUserCodes };
+    } else {
+        defaultFilters = { user_code: [userCode] };
+    }
+    
+    const table = new LazyTable({
+        container: document.getElementById('jobs-table-container'),
+        columns: columns,
+        fetchUrl: '/api/jobs/paginated?view=' + currentView,
+        rowHeight: 52,
+        rowIdKey: 'id',
+        emptyMessage: 'No jobs found.',
+        initialFilters: defaultFilters
+    });
+    
+    // Store reference globally for debugging
+    window.jobsTable = table;
+    
+    // Per-tab state persistence (in-memory)
+    const viewStates = {};
+    
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            // Save current tab's state before switching
+            viewStates[currentView] = table.getState();
+            
+            // Update tab styles
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('tab-active'));
+            this.classList.add('tab-active');
+            
+            // Update view
+            currentView = this.dataset.view;
+            
+            // Restore saved state for new tab, or apply defaults if first visit
+            if (viewStates[currentView]) {
+                table.setState(viewStates[currentView]);
+            } else {
+                // First visit to this tab - apply default filters
+                table.setState({ 
+                    columnFilters: defaultFilters, 
+                    sortColumn: null, 
+                    sortDirection: null 
+                });
+            }
+            
+            // Refresh with new URL
+            table.setFetchUrl('/api/jobs/paginated?view=' + currentView);
+            
+            // Update URL without reload
+            const url = new URL(window.location);
+            url.searchParams.set('view', currentView);
+            history.pushState({}, '', url);
+        });
+    });
+})();
+</script>
+{% endblock %}

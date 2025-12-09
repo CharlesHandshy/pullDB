@@ -642,7 +642,7 @@ class JobRepository:
             return [self._row_to_active_job(row) for row in rows]
 
     def get_recent_jobs(
-        self, limit: int = 100, statuses: list[str] | None = None
+        self, limit: int = 100, offset: int = 0, statuses: list[str] | None = None
     ) -> list[Job]:
         """Get recent jobs (active + completed) with operation status.
 
@@ -651,6 +651,7 @@ class JobRepository:
 
         Args:
             limit: Maximum number of jobs to return.
+            offset: Number of jobs to skip.
             statuses: Optional list of status strings to filter by.
 
         Returns:
@@ -681,8 +682,9 @@ class JobRepository:
                 query += f" WHERE j.status IN ({placeholders})"
                 params.extend(statuses)
 
-            query += " ORDER BY j.submitted_at DESC LIMIT %s"
+            query += " ORDER BY j.submitted_at DESC LIMIT %s OFFSET %s"
             params.append(limit)
+            params.append(offset)
 
             cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
@@ -1455,7 +1457,7 @@ class UserRepository:
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
-                       disabled_at
+                       disabled_at, manager_id
                 FROM auth_users
                 WHERE username = %s
                 """,
@@ -1478,7 +1480,7 @@ class UserRepository:
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
-                       disabled_at
+                       disabled_at, manager_id
                 FROM auth_users
                 WHERE user_id = %s
                 """,
@@ -1487,12 +1489,13 @@ class UserRepository:
             row = cursor.fetchone()
             return self._row_to_user(row) if row else None
 
-    def create_user(self, username: str, user_code: str) -> User:
+    def create_user(self, username: str, user_code: str, manager_id: str | None = None) -> User:
         """Create new user with generated UUID.
 
         Args:
             username: Username for new user.
             user_code: Generated user code (6 characters).
+            manager_id: Optional user_id of the manager who manages this user.
 
         Returns:
             Newly created User instance.
@@ -1508,10 +1511,10 @@ class UserRepository:
                 cursor.execute(
                     """
                     INSERT INTO auth_users
-                        (user_id, username, user_code, is_admin, role, created_at)
-                    VALUES (%s, %s, %s, FALSE, 'user', UTC_TIMESTAMP(6))
+                        (user_id, username, user_code, is_admin, role, created_at, manager_id)
+                    VALUES (%s, %s, %s, FALSE, 'user', UTC_TIMESTAMP(6), %s)
                     """,
-                    (user_id, username, user_code),
+                    (user_id, username, user_code, manager_id),
                 )
                 conn.commit()
 
@@ -1519,7 +1522,7 @@ class UserRepository:
                 cursor.execute(
                     """
                     SELECT user_id, username, user_code, is_admin, role,
-                           created_at, disabled_at
+                           created_at, disabled_at, manager_id
                     FROM auth_users
                     WHERE user_id = %s
                     """,
@@ -1661,7 +1664,7 @@ class UserRepository:
                 """
                 SELECT
                     u.user_id, u.username, u.user_code, u.is_admin, u.role,
-                    u.created_at, u.disabled_at,
+                    u.created_at, u.disabled_at, u.manager_id,
                     (SELECT COUNT(*) FROM jobs j WHERE j.owner_user_id = u.user_id AND j.status IN ('queued', 'running')) as active_jobs
                 FROM auth_users u
                 ORDER BY u.username
@@ -1728,7 +1731,7 @@ class UserRepository:
                 """
                 SELECT
                     u.user_id, u.username, u.user_code, u.is_admin, u.role,
-                    u.created_at, u.disabled_at,
+                    u.created_at, u.disabled_at, u.manager_id,
                     (SELECT COUNT(*) FROM jobs j WHERE j.owner_user_id = u.user_id) as total_jobs,
                     (SELECT COUNT(*) FROM jobs j WHERE j.owner_user_id = u.user_id AND j.status = 'complete') as complete_jobs,
                     (SELECT COUNT(*) FROM jobs j WHERE j.owner_user_id = u.user_id AND j.status = 'failed') as failed_jobs,
@@ -1777,8 +1780,372 @@ class UserRepository:
             is_admin=bool(row["is_admin"]),
             role=role,
             created_at=row["created_at"],
+            manager_id=row.get("manager_id"),
             disabled_at=row.get("disabled_at"),
         )
+
+    def get_users_managed_by(self, manager_id: str) -> list[User]:
+        """Get all users managed by a specific manager.
+
+        Args:
+            manager_id: User ID of the manager.
+
+        Returns:
+            List of User instances managed by this manager.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT user_id, username, user_code, is_admin, role, created_at,
+                       disabled_at, manager_id
+                FROM auth_users
+                WHERE manager_id = %s
+                ORDER BY username
+                """,
+                (manager_id,),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_user(row) for row in rows]
+
+    def set_user_manager(self, user_id: str, manager_id: str | None) -> None:
+        """Set or remove the manager for a user.
+
+        Args:
+            user_id: User ID of the user to update.
+            manager_id: User ID of the new manager, or None to remove.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE auth_users SET manager_id = %s WHERE user_id = %s",
+                (manager_id, user_id),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"User not found: {user_id}")
+
+    def update_user_role(self, user_id: str, role: UserRole) -> None:
+        """Update a user's role.
+
+        Args:
+            user_id: User ID to update.
+            role: New role for the user.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE auth_users SET role = %s, is_admin = %s WHERE user_id = %s",
+                (role.value, role == UserRole.ADMIN, user_id),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"User not found: {user_id}")
+
+    def search_users(self, query: str, limit: int = 15) -> list[User]:
+        """Search for users by username, user_code, or role.
+
+        Searches for partial matches in username and user_code.
+        Used by searchable dropdown components.
+
+        Args:
+            query: Search string (minimum 3 characters recommended).
+            limit: Maximum number of results to return.
+
+        Returns:
+            List of matching User instances, ordered by username.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            search_pattern = f"%{query}%"
+            cursor.execute(
+                """
+                SELECT user_id, username, user_code, is_admin, role, created_at,
+                       disabled_at, manager_id
+                FROM auth_users
+                WHERE (username LIKE %s OR user_code LIKE %s)
+                AND disabled_at IS NULL
+                ORDER BY
+                    CASE WHEN username LIKE %s THEN 0 ELSE 1 END,
+                    username
+                LIMIT %s
+                """,
+                (search_pattern, search_pattern, f"{query}%", limit),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_user(row) for row in rows]
+
+    # =========================================================================
+    # Bulk Operations (Admin only)
+    # =========================================================================
+
+    def bulk_disable_users(self, user_ids: list[str]) -> int:
+        """Disable multiple users at once.
+
+        Args:
+            user_ids: List of user IDs to disable.
+
+        Returns:
+            Number of users actually disabled.
+        """
+        if not user_ids:
+            return 0
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ", ".join(["%s"] * len(user_ids))
+            cursor.execute(
+                f"""
+                UPDATE auth_users
+                SET disabled_at = UTC_TIMESTAMP(6)
+                WHERE user_id IN ({placeholders})
+                AND disabled_at IS NULL
+                """,
+                tuple(user_ids),
+            )
+            conn.commit()
+            return int(cursor.rowcount)
+
+    def bulk_enable_users(self, user_ids: list[str]) -> int:
+        """Enable multiple users at once.
+
+        Args:
+            user_ids: List of user IDs to enable.
+
+        Returns:
+            Number of users actually enabled.
+        """
+        if not user_ids:
+            return 0
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ", ".join(["%s"] * len(user_ids))
+            cursor.execute(
+                f"""
+                UPDATE auth_users
+                SET disabled_at = NULL
+                WHERE user_id IN ({placeholders})
+                AND disabled_at IS NOT NULL
+                """,
+                tuple(user_ids),
+            )
+            conn.commit()
+            return int(cursor.rowcount)
+
+    def bulk_reassign_users(self, user_ids: list[str], new_manager_id: str | None) -> int:
+        """Reassign multiple users to a new manager.
+
+        Args:
+            user_ids: List of user IDs to reassign.
+            new_manager_id: User ID of the new manager, or None for unmanaged.
+
+        Returns:
+            Number of users actually reassigned.
+        """
+        if not user_ids:
+            return 0
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ", ".join(["%s"] * len(user_ids))
+            cursor.execute(
+                f"""
+                UPDATE auth_users
+                SET manager_id = %s
+                WHERE user_id IN ({placeholders})
+                """,
+                (new_manager_id, *user_ids),
+            )
+            conn.commit()
+            return int(cursor.rowcount)
+
+    def get_all_managers(self) -> list[User]:
+        """Get all users with manager or admin role.
+
+        Returns:
+            List of users who can manage other users.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT user_id, username, user_code, is_admin, role, created_at,
+                       disabled_at, manager_id
+                FROM auth_users
+                WHERE role IN ('manager', 'admin')
+                AND disabled_at IS NULL
+                ORDER BY username
+                """
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_user(row) for row in rows]
+
+
+class AuditRepository:
+    """Repository for audit log operations.
+
+    Records manager/admin actions for transparency and compliance.
+    All users can view audit logs.
+    """
+
+    def __init__(self, pool: MySQLPool) -> None:
+        """Initialize audit repository.
+
+        Args:
+            pool: MySQL connection pool.
+        """
+        self.pool = pool
+
+    def log_action(
+        self,
+        actor_user_id: str,
+        action: str,
+        target_user_id: str | None = None,
+        detail: str | None = None,
+        context: dict[str, t.Any] | None = None,
+    ) -> str:
+        """Record an audit log entry.
+
+        Args:
+            actor_user_id: User ID of who performed the action.
+            action: Action type (e.g., 'submit_for_user', 'create_user', 'cancel_job').
+            target_user_id: User ID of the user affected (if applicable).
+            detail: Human-readable detail of the action.
+            context: Additional JSON context data.
+
+        Returns:
+            Audit log ID.
+        """
+        import json
+
+        audit_id = str(uuid.uuid4())
+        context_json = json.dumps(context) if context else None
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO audit_logs
+                    (audit_id, actor_user_id, target_user_id, action, detail, context_json, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(6))
+                """,
+                (audit_id, actor_user_id, target_user_id, action, detail, context_json),
+            )
+            conn.commit()
+        return audit_id
+
+    def get_audit_logs(
+        self,
+        actor_user_id: str | None = None,
+        target_user_id: str | None = None,
+        action: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, t.Any]]:
+        """Retrieve audit log entries with optional filtering.
+
+        Args:
+            actor_user_id: Filter by actor (who did the action).
+            target_user_id: Filter by target user (who was affected).
+            action: Filter by action type.
+            limit: Maximum number of results.
+            offset: Offset for pagination.
+
+        Returns:
+            List of audit log dictionaries with user details.
+        """
+        import json
+
+        conditions = []
+        params: list[t.Any] = []
+
+        if actor_user_id:
+            conditions.append("a.actor_user_id = %s")
+            params.append(actor_user_id)
+        if target_user_id:
+            conditions.append("a.target_user_id = %s")
+            params.append(target_user_id)
+        if action:
+            conditions.append("a.action = %s")
+            params.append(action)
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                f"""
+                SELECT 
+                    a.audit_id, a.actor_user_id, a.target_user_id, a.action,
+                    a.detail, a.context_json, a.created_at,
+                    actor.username as actor_username,
+                    target.username as target_username
+                FROM audit_logs a
+                LEFT JOIN auth_users actor ON a.actor_user_id = actor.user_id
+                LEFT JOIN auth_users target ON a.target_user_id = target.user_id
+                WHERE {where_clause}
+                ORDER BY a.created_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
+            )
+            rows = cursor.fetchall()
+
+            # Parse context_json for each row
+            results = []
+            for row in rows:
+                result = dict(row)
+                if result.get("context_json"):
+                    result["context"] = json.loads(result["context_json"])
+                else:
+                    result["context"] = {}
+                del result["context_json"]
+                results.append(result)
+            return results
+
+    def get_audit_logs_count(
+        self,
+        actor_user_id: str | None = None,
+        target_user_id: str | None = None,
+        action: str | None = None,
+    ) -> int:
+        """Count audit log entries with optional filtering.
+
+        Args:
+            actor_user_id: Filter by actor (who did the action).
+            target_user_id: Filter by target user (who was affected).
+            action: Filter by action type.
+
+        Returns:
+            Count of matching audit log entries.
+        """
+        conditions = []
+        params: list[t.Any] = []
+
+        if actor_user_id:
+            conditions.append("actor_user_id = %s")
+            params.append(actor_user_id)
+        if target_user_id:
+            conditions.append("target_user_id = %s")
+            params.append(target_user_id)
+        if action:
+            conditions.append("action = %s")
+            params.append(action)
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"SELECT COUNT(*) FROM audit_logs WHERE {where_clause}",
+                params,
+            )
+            result = cursor.fetchone()
+            return int(result[0]) if result else 0
 
 
 class HostRepository:
@@ -2047,6 +2414,37 @@ class HostRepository:
             conn.commit()
             if cursor.rowcount == 0:
                 raise ValueError(f"Host not found: {hostname}")
+
+    def search_hosts(self, query: str, limit: int = 10) -> list[DBHost]:
+        """Search for hosts by hostname or alias.
+
+        Used by searchable dropdown components.
+
+        Args:
+            query: Search string (minimum 3 characters recommended).
+            limit: Maximum number of results to return.
+
+        Returns:
+            List of matching DBHost instances, ordered by hostname.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            search_pattern = f"%{query}%"
+            cursor.execute(
+                """
+                SELECT id, hostname, host_alias, credential_ref, max_concurrent_restores,
+                       enabled, created_at
+                FROM db_hosts
+                WHERE hostname LIKE %s OR host_alias LIKE %s
+                ORDER BY
+                    CASE WHEN hostname LIKE %s THEN 0 ELSE 1 END,
+                    hostname
+                LIMIT %s
+                """,
+                (search_pattern, search_pattern, f"{query}%", limit),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_dbhost(row) for row in rows]
 
     def _row_to_dbhost(self, row: dict[str, t.Any]) -> DBHost:
         """Convert database row to DBHost dataclass.

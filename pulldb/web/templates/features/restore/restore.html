@@ -1,0 +1,1288 @@
+{% extends "base.html" %}
+
+{% block title %}New Restore - pullDB{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Page container with max-width */
+    .restore-page {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    
+    /* Section cards */
+    .restore-section {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-lg);
+        margin-bottom: var(--space-5);
+    }
+    
+    .restore-section-header {
+        padding: var(--space-4) var(--space-5);
+        border-bottom: 1px solid var(--gray-200);
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+    }
+    
+    .restore-section-number {
+        width: 28px;
+        height: 28px;
+        background: var(--primary-500);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.875rem;
+        flex-shrink: 0;
+    }
+    
+    .restore-section-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--gray-900);
+        margin: 0;
+    }
+    
+    .restore-section-body {
+        padding: var(--space-5);
+    }
+    
+    /* Environment selector as pill group */
+    .env-selector {
+        display: flex;
+        gap: var(--space-2);
+        margin-bottom: var(--space-5);
+    }
+    
+    .env-option {
+        flex: 1;
+        padding: var(--space-3) var(--space-4);
+        border: 2px solid var(--gray-200);
+        border-radius: var(--radius-md);
+        background: white;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.15s ease;
+    }
+    
+    .env-option:hover {
+        border-color: var(--primary-300);
+        background: var(--primary-50);
+    }
+    
+    .env-option.is-selected {
+        border-color: var(--primary-500);
+        background: var(--primary-50);
+    }
+    
+    .env-option input {
+        display: none;
+    }
+    
+    .env-option-label {
+        font-weight: 500;
+        color: var(--gray-700);
+    }
+    
+    .env-option.is-selected .env-option-label {
+        color: var(--primary-700);
+    }
+    
+    /* Customer search widget */
+    .customer-search-widget {
+        position: relative;
+    }
+    
+    .customer-search-input-wrapper {
+        position: relative;
+    }
+    
+    .customer-search-input {
+        width: 100%;
+        padding: var(--space-3) var(--space-4);
+        padding-right: 3rem;
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-md);
+        font-size: 1rem;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    
+    .customer-search-input:focus {
+        outline: none;
+        border-color: var(--primary-500);
+        box-shadow: 0 0 0 3px var(--primary-100);
+    }
+    
+    .customer-search-icon {
+        position: absolute;
+        right: var(--space-3);
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 20px;
+        color: var(--gray-400);
+        pointer-events: none;
+    }
+    
+    .customer-search-hint {
+        font-size: 0.875rem;
+        color: var(--gray-500);
+        margin-top: var(--space-2);
+    }
+    
+    /* Customer results container with header */
+    .customer-results-container {
+        margin-top: var(--space-3);
+        display: none;
+    }
+    
+    .customer-results-container.is-open {
+        display: block;
+    }
+    
+    .customer-results-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: var(--space-3);
+    }
+    
+    .customer-results-title {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--gray-700);
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+    }
+    
+    .customer-results-count {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+        background: var(--gray-100);
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-sm);
+    }
+
+    /* Customer results scrollbox - now inline like backup list */
+    .customer-results-box {
+        max-height: 280px;
+        overflow-y: auto;
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-md);
+    }
+    
+    .customer-result-item {
+        padding: var(--space-3) var(--space-4);
+        cursor: pointer;
+        border-bottom: 1px solid var(--gray-100);
+        transition: background 0.1s;
+    }
+    
+    .customer-result-item:last-child {
+        border-bottom: none;
+    }
+    
+    .customer-result-item:hover,
+    .customer-result-item.is-highlighted {
+        background: var(--primary-50);
+    }
+    
+    .customer-result-item mark {
+        background: var(--warning-200);
+        padding: 0;
+        border-radius: 2px;
+    }
+    
+    .customer-results-message {
+        padding: var(--space-4);
+        color: var(--gray-500);
+        text-align: center;
+        font-size: 0.875rem;
+    }
+    
+    /* Shared selected display styles (used for both customer and backup) */
+    .selected-display {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        background: var(--success-50);
+        border: 1px solid var(--success-300);
+        border-radius: var(--radius-md);
+        margin-bottom: var(--space-3);
+    }
+
+    .selected-display-icon {
+        width: 20px;
+        height: 20px;
+        color: var(--success-600);
+        flex-shrink: 0;
+    }
+
+    .selected-display-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .selected-display-name {
+        font-weight: 600;
+        color: var(--success-700);
+    }
+
+    .selected-display-meta {
+        font-size: 0.875rem;
+        color: var(--success-600);
+        margin-top: 2px;
+    }
+
+    .selected-display-clear {
+        padding: var(--space-1) var(--space-2);
+        font-size: 0.75rem;
+        color: var(--gray-600);
+        background: white;
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all 0.15s;
+        flex-shrink: 0;
+    }
+
+    .selected-display-clear:hover {
+        background: var(--gray-100);
+        border-color: var(--gray-400);
+    }    /* Backup list section */
+    .backup-list-container {
+        margin-top: var(--space-5);
+        padding-top: var(--space-5);
+        border-top: 1px solid var(--gray-200);
+        display: none;
+    }
+    
+    .backup-list-container.is-visible {
+        display: block;
+    }
+
+    .backup-list-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: var(--space-3);
+    }
+    
+    .backup-list-title {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--gray-700);
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+    }
+    
+    .backup-list-count {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+        background: var(--gray-100);
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-sm);
+    }
+    
+    .backup-list-scroll {
+        max-height: 280px;
+        overflow-y: auto;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-md);
+    }
+    
+    .backup-list-empty {
+        padding: var(--space-8) var(--space-4);
+        text-align: center;
+        color: var(--gray-500);
+    }
+    
+    .backup-list-empty-icon {
+        width: 48px;
+        height: 48px;
+        margin: 0 auto var(--space-3);
+        color: var(--gray-300);
+    }
+    
+    /* Backup table */
+    .backup-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .backup-table th {
+        text-align: left;
+        padding: var(--space-3);
+        background: var(--gray-50);
+        border-bottom: 1px solid var(--gray-200);
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--gray-600);
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+        position: sticky;
+        top: 0;
+    }
+    
+    .backup-table td {
+        padding: var(--space-3);
+        border-bottom: 1px solid var(--gray-100);
+        font-size: 0.875rem;
+    }
+    
+    .backup-table tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .backup-table tbody tr {
+        cursor: pointer;
+        transition: background 0.1s;
+    }
+    
+    .backup-table tbody tr:hover {
+        background: var(--gray-50);
+    }
+    
+    .backup-table tbody tr.is-selected {
+        background: var(--primary-50);
+    }
+    
+    .backup-table tbody tr.is-selected td {
+        border-bottom-color: var(--primary-100);
+    }
+    
+    .backup-radio {
+        accent-color: var(--primary-500);
+        width: 1rem;
+        height: 1rem;
+    }
+    
+    /* Target config section */
+    .target-config-grid {
+        display: grid;
+        grid-template-columns: 1fr 120px;
+        gap: var(--space-4);
+    }
+    
+    @media (max-width: 600px) {
+        .target-config-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    /* Overwrite option */
+    .overwrite-option {
+        margin-top: var(--space-5);
+        padding-top: var(--space-5);
+        border-top: 1px solid var(--gray-200);
+    }
+    
+    .overwrite-checkbox-wrapper {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--space-3);
+    }
+    
+    .overwrite-checkbox {
+        width: 1.25rem;
+        height: 1.25rem;
+        accent-color: var(--warning-500);
+        margin-top: 2px;
+        flex-shrink: 0;
+        cursor: pointer;
+    }
+    
+    .overwrite-label {
+        font-weight: 500;
+        color: var(--gray-700);
+        cursor: pointer;
+    }
+    
+    .overwrite-description {
+        font-size: 0.875rem;
+        color: var(--gray-500);
+        margin-top: var(--space-1);
+    }
+    
+    .overwrite-warning {
+        display: none;
+        margin-top: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        background: var(--warning-50);
+        border: 1px solid var(--warning-300);
+        border-radius: var(--radius-md);
+        color: var(--warning-800);
+        font-size: 0.875rem;
+    }
+    
+    .overwrite-warning.is-visible {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+    }
+    
+    .overwrite-warning-icon {
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+        color: var(--warning-600);
+    }
+    
+    /* Target preview */
+    .target-preview {
+        margin-top: var(--space-5);
+        padding: var(--space-4);
+        background: var(--gray-50);
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-md);
+    }
+    
+    .target-preview-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--gray-500);
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+        margin-bottom: var(--space-2);
+    }
+    
+    .target-preview-value {
+        font-family: var(--font-mono);
+        font-size: 1.125rem;
+        font-weight: 500;
+        color: var(--gray-900);
+    }
+    
+    .target-preview-value .preview-customer {
+        color: var(--primary-600);
+    }
+    
+    .target-preview-value .preview-suffix {
+        color: var(--success-600);
+    }
+    
+    /* Submit section */
+    .submit-section {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-4);
+        padding: var(--space-5);
+        background: var(--gray-50);
+        border-radius: var(--radius-lg);
+    }
+    
+    .submit-summary {
+        font-size: 0.875rem;
+        color: var(--gray-600);
+    }
+    
+    .submit-summary strong {
+        color: var(--gray-900);
+    }
+    
+    .btn-queue {
+        padding: var(--space-3) var(--space-6);
+        font-size: 1rem;
+        font-weight: 600;
+    }
+    
+    /* No hosts warning */
+    .no-hosts-banner {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-4);
+        background: var(--warning-50);
+        border: 1px solid var(--warning-300);
+        border-radius: var(--radius-md);
+        color: var(--warning-800);
+        margin-bottom: var(--space-5);
+    }
+    
+    .no-hosts-banner-icon {
+        width: 24px;
+        height: 24px;
+        flex-shrink: 0;
+        color: var(--warning-600);
+    }
+    
+    /* Error banner */
+    .error-banner {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-4);
+        background: var(--danger-50);
+        border: 1px solid var(--danger-300);
+        border-radius: var(--radius-md);
+        color: var(--danger-800);
+        margin-bottom: var(--space-5);
+    }
+    
+    .error-banner-icon {
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+        color: var(--danger-600);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="restore-page">
+    <div class="page-header">
+        <h1 class="page-title">New Restore Job</h1>
+    </div>
+    
+    {% if error %}
+    <div class="error-banner">
+        <svg class="error-banner-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <div><strong>Error:</strong> {{ error }}</div>
+    </div>
+    {% endif %}
+    
+    {% if not user.has_any_hosts %}
+    <div class="no-hosts-banner">
+        <svg class="no-hosts-banner-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <div>
+            <strong>No database hosts available.</strong>
+            <span>Contact your manager to get access to database hosts.</span>
+        </div>
+    </div>
+    {% endif %}
+    
+    <form method="POST" action="/web/restore" class="restore-form" id="restore-form">
+        <!-- Section 1: Source Selection -->
+        <div class="restore-section">
+            <div class="restore-section-header">
+                <span class="restore-section-number">1</span>
+                <h2 class="restore-section-title">Source Selection</h2>
+            </div>
+            <div class="restore-section-body">
+                <!-- Environment selector -->
+                <div class="env-selector" role="radiogroup" aria-label="Environment">
+                    <label class="env-option {% if not form or form.s3env == 'both' %}is-selected{% endif %}">
+                        <input type="radio" name="s3env" value="both" {% if not form or form.s3env == 'both' %}checked{% endif %}>
+                        <span class="env-option-label">All Backups</span>
+                    </label>
+                    <label class="env-option {% if form and form.s3env == 'staging' %}is-selected{% endif %}">
+                        <input type="radio" name="s3env" value="staging" {% if form and form.s3env == 'staging' %}checked{% endif %}>
+                        <span class="env-option-label">Staging Only</span>
+                    </label>
+                    <label class="env-option {% if form and form.s3env == 'prod' %}is-selected{% endif %}">
+                        <input type="radio" name="s3env" value="prod" {% if form and form.s3env == 'prod' %}checked{% endif %}>
+                        <span class="env-option-label">Production Only</span>
+                    </label>
+                </div>
+                
+                <!-- Customer search widget -->
+                <div class="customer-search-widget" id="customer-widget">
+                    <!-- Selected customer display (shown when customer is selected) -->
+                    <div class="selected-display" id="selected-customer-display" style="display: none;">
+                        <svg class="selected-display-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                            <polyline points="22 4 12 14.01 9 11.01"/>
+                        </svg>
+                        <div class="selected-display-content">
+                            <div class="selected-display-name" id="selected-customer-name"></div>
+                        </div>
+                        <button type="button" class="selected-display-clear" id="clear-customer-btn">Change</button>
+                    </div>
+                    
+                    <!-- Search input (hidden when customer is selected) -->
+                    <div id="customer-search-container">
+                        <div class="customer-search-input-wrapper">
+                            <input type="text" 
+                                   id="customer-search" 
+                                   class="customer-search-input" 
+                                   placeholder="Search for customer..." 
+                                   autocomplete="off">
+                            <svg class="customer-search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                        </div>
+                        <p class="customer-search-hint" id="customer-hint">Type at least 3 characters to search</p>
+                        
+                        <!-- Results container with header (inline like backup list) -->
+                        <div class="customer-results-container" id="customer-results-container">
+                            <div class="customer-results-header">
+                                <span class="customer-results-title">Matching Customers</span>
+                                <span class="customer-results-count" id="customer-results-count">0 found</span>
+                            </div>
+                            <div class="customer-results-box" id="customer-results" role="listbox"></div>
+                        </div>
+                    </div>
+                    
+                    <input type="hidden" id="customer" name="customer" value="{{ form.customer if form else '' }}" required>
+                </div>
+                
+                <!-- Backup list (shown after customer selection) -->
+                <div class="backup-list-container" id="backup-list-container">
+                    <!-- Selected backup display (shown when backup is selected) -->
+                    <div class="selected-display" id="selected-backup-display" style="display: none;">
+                        <svg class="selected-display-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                            <polyline points="22 4 12 14.01 9 11.01"/>
+                        </svg>
+                        <div class="selected-display-content">
+                            <div class="selected-display-name" id="selected-backup-name"></div>
+                            <div class="selected-display-meta" id="selected-backup-meta"></div>
+                        </div>
+                        <button type="button" class="selected-display-clear" id="clear-backup-btn">Change</button>
+                    </div>
+                    
+                    <!-- Backup search container (hidden when backup is selected) -->
+                    <div id="backup-search-container">
+                        <div class="backup-list-header">
+                            <span class="backup-list-title">Available Backups</span>
+                            <span class="backup-list-count" id="backup-count">0 found</span>
+                        </div>
+                        <div class="backup-list-scroll" id="backup-list">
+                            <div class="backup-list-empty">
+                                <svg class="backup-list-empty-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                                    <line x1="12" y1="22.08" x2="12" y2="12"/>
+                                </svg>
+                                <div>Select a customer to view available backups</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if show_user_selector and managed_users %}
+        <!-- User Selector (Manager/Admin submitting for user) -->
+        <div class="restore-section" style="background: var(--primary-50); border-color: var(--primary-200);">
+            <div class="restore-section-header" style="border-bottom-color: var(--primary-200);">
+                <svg style="width: 20px; height: 20px; color: var(--primary-600);" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                <h2 class="restore-section-title" style="color: var(--primary-700);">Submit as User</h2>
+            </div>
+            <div class="restore-section-body">
+                <div class="form-group" style="margin: 0;">
+                    <label for="submit_as_user" class="form-label">Select User</label>
+                    <select id="submit_as_user" name="submit_as_user" class="form-select">
+                        <option value="{{ user.username }}">{{ user.username }} (myself)</option>
+                        {% for managed_user in managed_users %}
+                        {% if managed_user.username != user.username %}
+                        <option value="{{ managed_user.username }}">{{ managed_user.username }} ({{ managed_user.user_code }})</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                    <p style="font-size: 0.875rem; color: var(--gray-500); margin-top: var(--space-2);">
+                        The job will be submitted on behalf of this user and appear in their job list.
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Section 2: Target Configuration -->
+        <div class="restore-section">
+            <div class="restore-section-header">
+                <span class="restore-section-number">2</span>
+                <h2 class="restore-section-title">Target Configuration</h2>
+            </div>
+            <div class="restore-section-body">
+                <div class="target-config-grid">
+                    <!-- Database Host -->
+                    <div class="form-group" style="margin: 0;">
+                        <label for="dbhost" class="form-label">Database Host</label>
+                        {% if user.has_any_hosts %}
+                        <select id="dbhost" name="dbhost" class="form-select" required>
+                            <option value="">Select a host...</option>
+                            {% for host in allowed_hosts %}
+                            <option value="{{ host.id }}" 
+                                    {% if (form and form.dbhost == host.id|string) or (default_host and host.name == default_host) %}selected{% endif %}>
+                                {{ host.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        <select id="dbhost" name="dbhost" class="form-select" disabled>
+                            <option value="">No hosts available</option>
+                        </select>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Suffix -->
+                    <div class="form-group" style="margin: 0;">
+                        <label for="suffix" class="form-label">Suffix <span style="color: var(--gray-400); font-weight: normal;">(optional)</span></label>
+                        <input type="text" 
+                               id="suffix" 
+                               name="suffix" 
+                               class="form-input" 
+                               placeholder="abc"
+                               pattern="[a-z]{0,3}"
+                               maxlength="3"
+                               style="text-transform: lowercase;"
+                               value="{{ form.suffix if form else '' }}">
+                    </div>
+                </div>
+                
+                <!-- Overwrite option -->
+                <div class="overwrite-option">
+                    <div class="overwrite-checkbox-wrapper">
+                        <input type="checkbox" 
+                               id="overwrite" 
+                               name="overwrite" 
+                               value="true" 
+                               class="overwrite-checkbox"
+                               {% if form and form.overwrite %}checked{% endif %}>
+                        <div>
+                            <label for="overwrite" class="overwrite-label">Overwrite existing database</label>
+                            <p class="overwrite-description">If the target database already exists, delete it and restore fresh.</p>
+                        </div>
+                    </div>
+                    <div class="overwrite-warning" id="overwrite-warning">
+                        <svg class="overwrite-warning-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        <span><strong>Warning:</strong> Existing data in the target database will be permanently deleted.</span>
+                    </div>
+                </div>
+                
+                <!-- Target preview -->
+                <div class="target-preview" id="target-preview" style="display: none;">
+                    <div class="target-preview-label">Target Database Name</div>
+                    <div class="target-preview-value">
+                        <span id="preview-user-code">{{ user.user_code }}</span><span id="preview-customer" class="preview-customer"></span><span id="preview-suffix" class="preview-suffix"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Submit section -->
+        <div class="submit-section">
+            <div class="submit-summary" id="submit-summary">
+                Select a customer and backup to queue restore
+            </div>
+            <button type="submit" class="btn btn-primary btn-queue" id="submit-btn" {% if not user.has_any_hosts %}disabled{% endif %}>
+                Queue Restore
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+(function() {
+    // DOM elements - Customer
+    const customerSearch = document.getElementById('customer-search');
+    const customerResultsContainer = document.getElementById('customer-results-container');
+    const customerResults = document.getElementById('customer-results');
+    const customerResultsCount = document.getElementById('customer-results-count');
+    const customerWidget = document.getElementById('customer-widget');
+    const customerHint = document.getElementById('customer-hint');
+    const customerHidden = document.getElementById('customer');
+    const searchContainer = document.getElementById('customer-search-container');
+    const selectedCustomerDisplay = document.getElementById('selected-customer-display');
+    const selectedCustomerName = document.getElementById('selected-customer-name');
+    const clearCustomerBtn = document.getElementById('clear-customer-btn');
+    
+    // DOM elements - Backup
+    const backupContainer = document.getElementById('backup-list-container');
+    const backupSearchContainer = document.getElementById('backup-search-container');
+    const backupList = document.getElementById('backup-list');
+    const backupCount = document.getElementById('backup-count');
+    const selectedBackupDisplay = document.getElementById('selected-backup-display');
+    const selectedBackupName = document.getElementById('selected-backup-name');
+    const selectedBackupMeta = document.getElementById('selected-backup-meta');
+    const clearBackupBtn = document.getElementById('clear-backup-btn');
+    
+    const envOptions = document.querySelectorAll('.env-option input');
+    const suffixInput = document.getElementById('suffix');
+    const overwriteCheckbox = document.getElementById('overwrite');
+    const overwriteWarning = document.getElementById('overwrite-warning');
+    
+    const targetPreview = document.getElementById('target-preview');
+    const previewUserCode = document.getElementById('preview-user-code');
+    const previewCustomer = document.getElementById('preview-customer');
+    const previewSuffix = document.getElementById('preview-suffix');
+    const submitSummary = document.getElementById('submit-summary');
+    const submitBtn = document.getElementById('submit-btn');
+    
+    // User selector (if present)
+    const userSelector = document.getElementById('submit_as_user');
+    {% if show_user_selector and managed_users %}
+    const userCodeMap = {
+        '{{ user.username }}': '{{ user.user_code }}',
+        {% for managed_user in managed_users %}
+        '{{ managed_user.username }}': '{{ managed_user.user_code }}',
+        {% endfor %}
+    };
+    {% else %}
+    const userCodeMap = { '{{ user.username }}': '{{ user.user_code }}' };
+    {% endif %}
+    
+    // State
+    const customerCache = new Map();
+    const MIN_CHARS = 3;
+    const DEBOUNCE_MS = 300;
+    let debounceTimer = null;
+    let highlightedIndex = -1;
+    let currentOptions = [];
+    let selectedCustomer = '{{ form.customer if form else '' }}';
+    let selectedBackup = null;
+    let abortController = null;
+    
+    // Initialize with pre-filled values
+    if (selectedCustomer) {
+        showSelectedCustomer(selectedCustomer);
+        loadBackups();
+    }
+    
+    // Environment selector styling
+    envOptions.forEach(radio => {
+        radio.addEventListener('change', function() {
+            document.querySelectorAll('.env-option').forEach(opt => {
+                opt.classList.toggle('is-selected', opt.querySelector('input').checked);
+            });
+            if (selectedCustomer) {
+                clearBackupSelection();
+                loadBackups();
+            }
+        });
+    });
+    
+    // User selector change event (update target preview)
+    if (userSelector) {
+        userSelector.addEventListener('change', updatePreview);
+    }
+    
+    // Customer search input
+    customerSearch.addEventListener('input', function(e) {
+        const query = e.target.value.trim();
+        
+        if (debounceTimer) clearTimeout(debounceTimer);
+        
+        if (query.length < MIN_CHARS) {
+            showTypeHint(query.length);
+            return;
+        }
+        
+        debounceTimer = setTimeout(() => {
+            searchCustomers(query);
+        }, DEBOUNCE_MS);
+    });
+    
+    customerSearch.addEventListener('focus', function() {
+        const query = customerSearch.value.trim();
+        if (query.length >= MIN_CHARS && currentOptions.length > 0) {
+            openResults();
+        }
+    });
+    
+    // Keyboard navigation
+    customerSearch.addEventListener('keydown', function(e) {
+        switch(e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                highlightNext();
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                highlightPrevious();
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (highlightedIndex >= 0 && currentOptions[highlightedIndex]) {
+                    selectCustomer(currentOptions[highlightedIndex]);
+                }
+                break;
+            case 'Escape':
+                hideResults();
+                break;
+        }
+    });
+    
+    // Click outside to close
+    document.addEventListener('click', function(e) {
+        if (!customerWidget.contains(e.target)) {
+            hideResults();
+        }
+    });
+    
+    // Clear customer button
+    clearCustomerBtn.addEventListener('click', function() {
+        clearCustomerSelection();
+        customerSearch.focus();
+    });
+    
+    // Clear backup button
+    clearBackupBtn.addEventListener('click', function() {
+        clearBackupSelection();
+    });
+    
+    // Suffix input
+    suffixInput.addEventListener('input', function(e) {
+        e.target.value = e.target.value.toLowerCase().replace(/[^a-z]/g, '');
+        updatePreview();
+    });
+    
+    // Overwrite checkbox
+    overwriteCheckbox.addEventListener('change', function() {
+        overwriteWarning.classList.toggle('is-visible', this.checked);
+    });
+    
+    // Initialize overwrite warning visibility
+    if (overwriteCheckbox.checked) {
+        overwriteWarning.classList.add('is-visible');
+    }
+    
+    // Customer search functions
+    async function searchCustomers(query) {
+        const prefix = query.substring(0, MIN_CHARS).toLowerCase();
+        
+        if (customerCache.has(prefix)) {
+            currentOptions = filterOptions(customerCache.get(prefix), query);
+            renderOptions(query);
+            return;
+        }
+        
+        setLoading(true);
+        
+        if (abortController) abortController.abort();
+        abortController = new AbortController();
+        
+        try {
+            const url = '/web/restore/search-customers?q=' + encodeURIComponent(prefix) + '&limit=100';
+            const response = await fetch(url, {
+                signal: abortController.signal,
+                headers: { 'Accept': 'application/json' }
+            });
+            
+            if (!response.ok) throw new Error('Search failed');
+            
+            const data = await response.json();
+            const results = data.results || [];
+            
+            customerCache.set(prefix, results);
+            currentOptions = filterOptions(results, query);
+            renderOptions(query);
+            
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                console.error('Search error:', err);
+                showError('Search failed. Please try again.');
+            }
+        } finally {
+            setLoading(false);
+        }
+    }
+    
+    function filterOptions(options, query) {
+        const q = query.toLowerCase();
+        return options.filter(opt => {
+            const label = (opt.label || opt.value || opt).toLowerCase();
+            return label.includes(q);
+        }).slice(0, 20);
+    }
+    
+    function renderOptions(query) {
+        customerResults.innerHTML = '';
+        highlightedIndex = -1;
+        
+        if (currentOptions.length === 0) {
+            customerResults.innerHTML = '<div class="customer-results-message">No customers found matching "' + escapeHtml(query) + '"</div>';
+            customerResultsCount.textContent = '0 found';
+            openResults();
+            return;
+        }
+        
+        currentOptions.forEach((opt, index) => {
+            const value = opt.value || opt.label || opt;
+            const label = opt.label || opt.value || opt;
+            
+            const div = document.createElement('div');
+            div.className = 'customer-result-item';
+            div.setAttribute('role', 'option');
+            div.setAttribute('data-index', index);
+            div.innerHTML = highlightMatch(label, query);
+            
+            div.addEventListener('click', () => selectCustomer(opt));
+            div.addEventListener('mouseenter', () => highlight(index));
+            
+            customerResults.appendChild(div);
+        });
+        
+        customerResultsCount.textContent = currentOptions.length + ' found';
+        customerHint.textContent = 'Click to select a customer';
+        openResults();
+    }
+    
+    function highlightMatch(text, query) {
+        const escaped = escapeHtml(text);
+        const q = query.toLowerCase();
+        const idx = text.toLowerCase().indexOf(q);
+        if (idx === -1) return escaped;
+        
+        const before = escapeHtml(text.substring(0, idx));
+        const match = escapeHtml(text.substring(idx, idx + query.length));
+        const after = escapeHtml(text.substring(idx + query.length));
+        return before + '<mark>' + match + '</mark>' + after;
+    }
+    
+    function highlight(index) {
+        const items = customerResults.querySelectorAll('.customer-result-item');
+        items.forEach((item, i) => {
+            item.classList.toggle('is-highlighted', i === index);
+        });
+        highlightedIndex = index;
+        if (items[index]) {
+            items[index].scrollIntoView({ block: 'nearest' });
+        }
+    }
+    
+    function highlightNext() {
+        if (!isResultsOpen()) return;
+        const newIndex = Math.min(highlightedIndex + 1, currentOptions.length - 1);
+        highlight(newIndex);
+    }
+    
+    function highlightPrevious() {
+        if (!isResultsOpen()) return;
+        const newIndex = Math.max(highlightedIndex - 1, 0);
+        highlight(newIndex);
+    }
+    
+    function selectCustomer(opt) {
+        const value = opt.value || opt.label || opt;
+        selectedCustomer = value;
+        customerHidden.value = value;
+        
+        hideResults();
+        showSelectedCustomer(value);
+        loadBackups();
+        updatePreview();
+    }
+    
+    function showSelectedCustomer(name) {
+        selectedCustomerName.textContent = name;
+        searchContainer.style.display = 'none';
+        selectedCustomerDisplay.style.display = 'flex';
+    }
+
+    function clearCustomerSelection() {
+        selectedCustomer = '';
+        customerHidden.value = '';
+        customerSearch.value = '';
+        currentOptions = [];
+        
+        searchContainer.style.display = 'block';
+        selectedCustomerDisplay.style.display = 'none';
+        hideResults();
+        
+        // Also clear backup selection
+        clearBackupSelection();
+        backupContainer.classList.remove('is-visible');
+        targetPreview.style.display = 'none';
+        
+        customerHint.textContent = 'Type at least 3 characters to search';
+        
+        updateSummary();
+    }
+    
+    function showSelectedBackup(key, env, date, size) {
+        selectedBackup = key;
+        selectedBackupName.textContent = date;
+        selectedBackupMeta.textContent = env + ' • ' + size;
+        
+        backupSearchContainer.style.display = 'none';
+        selectedBackupDisplay.style.display = 'flex';
+        
+        // Set hidden field
+        let backupInput = document.getElementById('backup_key');
+        if (!backupInput) {
+            backupInput = document.createElement('input');
+            backupInput.type = 'hidden';
+            backupInput.id = 'backup_key';
+            backupInput.name = 'backup_key';
+            document.getElementById('restore-form').appendChild(backupInput);
+        }
+        backupInput.value = key;
+        
+        updateSummary();
+    }
+    
+    function clearBackupSelection() {
+        selectedBackup = null;
+        
+        backupSearchContainer.style.display = 'block';
+        selectedBackupDisplay.style.display = 'none';
+        
+        // Clear hidden field
+        const backupInput = document.getElementById('backup_key');
+        if (backupInput) backupInput.value = '';
+        
+        // Clear row selection
+        document.querySelectorAll('.backup-table tbody tr').forEach(tr => {
+            tr.classList.remove('is-selected');
+        });
+        
+        updateSummary();
+    }    function showTypeHint(currentLength) {
+        const remaining = MIN_CHARS - currentLength;
+        customerHint.textContent = 'Type ' + remaining + ' more character' + (remaining !== 1 ? 's' : '') + ' to search';
+        hideResults();
+    }
+
+    function showError(message) {
+        customerResults.innerHTML = '<div class="customer-results-message" style="color: var(--danger-600);">' + escapeHtml(message) + '</div>';
+        customerResultsCount.textContent = 'Error';
+        openResults();
+    }
+
+    function setLoading(loading) {
+        if (loading) {
+            customerResults.innerHTML = '<div class="customer-results-message">Searching...</div>';
+            customerResultsCount.textContent = 'Loading...';
+            openResults();
+        }
+    }
+
+    function openResults() {
+        customerResultsContainer.classList.add('is-open');
+    }
+
+    function hideResults() {
+        customerResultsContainer.classList.remove('is-open');
+    }
+
+    function isResultsOpen() {
+        return customerResultsContainer.classList.contains('is-open');
+    }    // Backup loading
+    function loadBackups() {
+        if (!selectedCustomer) return;
+        
+        backupContainer.classList.add('is-visible');
+        backupSearchContainer.style.display = 'block';
+        selectedBackupDisplay.style.display = 'none';
+        backupList.innerHTML = '<div class="customer-results-message">Loading backups...</div>';
+        backupCount.textContent = 'Loading...';
+        
+        const env = document.querySelector('.env-option input:checked').value;
+        
+        htmx.ajax('GET', '/web/restore/search-backups?customer=' + encodeURIComponent(selectedCustomer) + '&env=' + env, {
+            target: '#backup-list'
+        }).then(() => {
+            // Count backups after load - no auto-select, user must click
+            const rows = backupList.querySelectorAll('tbody tr');
+            backupCount.textContent = rows.length + ' found';
+            updateSummary();
+        });
+    }
+    
+    function updatePreview() {
+        if (!selectedCustomer) {
+            targetPreview.style.display = 'none';
+            return;
+        }
+        
+        // Update user code if user selector is present
+        if (userSelector) {
+            const selectedUser = userSelector.value;
+            previewUserCode.textContent = userCodeMap[selectedUser] || '{{ user.user_code }}';
+        }
+        
+        previewCustomer.textContent = selectedCustomer;
+        previewSuffix.textContent = suffixInput.value || '';
+        targetPreview.style.display = 'block';
+        updateSummary();
+    }
+    
+    function updateSummary() {
+        if (selectedCustomer && selectedBackup) {
+            submitSummary.innerHTML = 'Ready to restore <strong>' + escapeHtml(selectedCustomer) + '</strong>';
+        } else if (selectedCustomer) {
+            submitSummary.textContent = 'Select a backup to continue';
+        } else {
+            submitSummary.textContent = 'Select a customer and backup to queue restore';
+        }
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Global function for backup selection (called from partial)
+    window.selectBackup = function(backupKey, env, date, size) {
+        showSelectedBackup(backupKey, env, date, size || 'Unknown size');
+        
+        if (typeof showToast === 'function') {
+            showToast('Backup selected: ' + date, 'success');
+        }
+    };
+    
+    // Form validation
+    document.getElementById('restore-form').addEventListener('submit', function(e) {
+        const hasHost = document.getElementById('dbhost').value;
+        const isOverwrite = overwriteCheckbox.checked;
+        
+        if (!hasHost) {
+            e.preventDefault();
+            alertUser('Please select a database host');
+            return false;
+        }
+        
+        if (!selectedCustomer) {
+            e.preventDefault();
+            alertUser('Please select a customer');
+            return false;
+        }
+        
+        if (!selectedBackup) {
+            e.preventDefault();
+            alertUser('Please select a backup');
+            return false;
+        }
+        
+        // Confirm overwrite
+        if (isOverwrite) {
+            const confirmed = confirm(
+                'WARNING: Overwrite is enabled!\n\n' +
+                'Any existing data in the target database will be PERMANENTLY DELETED.\n\n' +
+                'Are you sure you want to continue?'
+            );
+            if (!confirmed) {
+                e.preventDefault();
+                return false;
+            }
+        }
+    });
+    
+    function alertUser(message) {
+        if (typeof showToast === 'function') {
+            showToast(message, 'error');
+        } else {
+            alert(message);
+        }
+    }
+})();
+</script>
+{% endblock %}

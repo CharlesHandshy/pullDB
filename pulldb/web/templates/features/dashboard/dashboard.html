@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - pullDB{% endblock %}
+
+{% block content %}
+<div class="dashboard-container" hx-get="{{ request.url }}" hx-trigger="every {{ refresh_interval }}s" hx-select=".dashboard-container" hx-swap="outerHTML">
+    <h1 class="page-title">Dashboard</h1>
+    <p style="color: var(--gray-500);">Welcome back, {{ user.username }}.</p>
+    
+    <!-- Role-specific dashboard content -->
+    <div style="display: inline-block; width: 100%;">
+    {% if dashboard_type == 'admin' %}
+        {% include "features/dashboard/_admin_dashboard.html" %}
+    {% elif dashboard_type == 'manager' %}
+        {% include "features/dashboard/_manager_dashboard.html" %}
+    {% else %}
+        {% include "features/dashboard/_user_dashboard.html" %}
+    {% endif %}
+    </div>
+</div>
+{% endblock %}

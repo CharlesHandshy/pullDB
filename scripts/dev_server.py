@@ -1203,6 +1203,7 @@ def create_dev_app() -> FastAPI:
         filter_target: str | None = None,
         filter_id: str | None = None,
         filter_submitted_at: str | None = None,
+        filter_submitted_after: str | None = None,
     ):
         """Get paginated jobs for LazyTable widget."""
         state: MockAPIState = request.app.state.api_state
@@ -1241,6 +1242,14 @@ def create_dev_app() -> FastAPI:
                 formatted = job.submitted_at.strftime("%m/%d/%Y")
                 return _wildcard_match(filter_submitted_at, formatted)
             filtered = [j for j in filtered if match_submitted(j)]
+        
+        # Date range filter for submitted_after (ISO datetime string)
+        if filter_submitted_after:
+            try:
+                cutoff = datetime.fromisoformat(filter_submitted_after.replace('Z', '+00:00'))
+                filtered = [j for j in filtered if j.submitted_at and j.submitted_at >= cutoff]
+            except ValueError:
+                pass  # Invalid date format, skip filter
         
         # Sort
         if sortColumn and sortDirection:

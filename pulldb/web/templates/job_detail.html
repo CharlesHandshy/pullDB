@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}Job {{ job.job_id[:8] }} - pullDB{% endblock %}
+{% block title %}Job {{ job.id[:8] }} - pullDB{% endblock %}
 
 {% block header_title %}{{ job.target }}{% endblock %}
-{% block header_subtitle %}{{ job.job_id }}{% endblock %}
+{% block header_subtitle %}{{ job.id }}{% endblock %}
 
 {% block header_actions %}
 <a href="/web/dashboard{% if back_tab %}?tab={{ back_tab }}{% endif %}" class="btn btn-secondary btn-sm">
@@ -12,12 +12,12 @@
     </svg>
     Back
 </a>
-<span class="badge badge-{{ job.status }} text-xs">
+<span class="badge badge-{{ job.status.value }} text-xs">
     <span class="badge-dot"></span>
-    {{ job.status }}
+    {{ job.status.value }}
 </span>
-{% if can_cancel and job.status in ['queued', 'running'] %}
-<form action="/api/jobs/{{ job.job_id }}/cancel" method="POST" class="d-inline">
+{% if can_cancel and job.status.value in ['queued', 'running'] %}
+<form action="/api/jobs/{{ job.id }}/cancel" method="POST" class="d-inline">
     <button type="submit" class="btn btn-danger btn-sm">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="icon-sm">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -46,7 +46,7 @@
                     <tbody>
                         <tr>
                             <td class="font-semibold text-muted col-w-20">Job ID</td>
-                            <td class="font-mono">{{ job.job_id }}</td>
+                            <td class="font-mono">{{ job.id }}</td>
                         </tr>
                         <tr>
                             <td class="font-semibold text-muted">Target Database</td>
@@ -137,7 +137,7 @@
                 Event Log
             </h2>
             <div class="flex items-center gap-3">
-                {% if job.status in ['queued', 'running'] %}
+                {% if job.status.value in ['queued', 'running'] %}
                 <div class="live-indicator">
                     <span class="live-dot"></span>
                     <span>Live</span>
@@ -149,8 +149,8 @@
             </div>
         </div>
         <div class="card-body"
-             {% if job.status in ['queued', 'running'] %}
-             hx-get="/web/partials/job-events/{{ job.job_id }}"
+             {% if job.status.value in ['queued', 'running'] %}
+             hx-get="/web/partials/job-events/{{ job.id }}"
              hx-trigger="every 3s"
              hx-indicator=".htmx-indicator"
              {% endif %}>

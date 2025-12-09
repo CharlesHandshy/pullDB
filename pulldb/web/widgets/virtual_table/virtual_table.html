@@ -1,0 +1,59 @@
+{#
+    HCA Layer 3: VirtualTable Widget
+    =================================
+    Purpose: Reusable virtual scrolling table with filter/sort capabilities.
+    
+    Contract:
+    - Requires: table_id, columns, data (JSON array)
+    - Optional: status_filters, row_height, empty_message
+    
+    Usage:
+        {% set columns = [
+            {'key': 'name', 'label': 'Name', 'sortable': true, 'filterable': true},
+            {'key': 'status', 'label': 'Status', 'sortable': true},
+            {'key': 'date', 'label': 'Date', 'sortable': true, 'type': 'date'}
+        ] %}
+        {% set status_filters = ['queued', 'running', 'complete', 'failed'] %}
+        {% include "widgets/virtual_table/virtual_table.html" %}
+    
+    Then initialize with JavaScript:
+        const table = new VirtualTable({
+            container: document.getElementById('{{ table_id }}-container'),
+            data: {{ data | tojson }},
+            columns: {{ columns | tojson }},
+            statusFilters: {{ status_filters | tojson if status_filters else '[]' }},
+            tableId: '{{ table_id }}'
+        });
+    
+    Size: ~40 lines (HCA compliant)
+#}
+
+{# Container element - JS will build the table inside #}
+<div id="{{ table_id }}-container" class="virtual-table-container">
+    {# Table structure will be built by VirtualTable JS class #}
+</div>
+
+{# Include required assets if not already included #}
+{% if not virtual_table_assets_included %}
+<link rel="stylesheet" href="{{ url_for('static', path='widgets/virtual_table/virtual_table.css') }}">
+<script src="{{ url_for('static', path='widgets/virtual_table/virtual_table.js') }}"></script>
+{% set virtual_table_assets_included = true %}
+{% endif %}
+
+{# Auto-initialize if data is provided #}
+{% if auto_init and data %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    window['{{ table_id }}Table'] = new VirtualTable({
+        container: document.getElementById('{{ table_id }}-container'),
+        data: {{ data | tojson }},
+        columns: {{ columns | tojson }},
+        {% if status_filters %}statusFilters: {{ status_filters | tojson }},{% endif %}
+        {% if status_field %}statusField: '{{ status_field }}',{% endif %}
+        {% if row_height %}rowHeight: {{ row_height }},{% endif %}
+        {% if empty_message %}emptyMessage: '{{ empty_message }}',{% endif %}
+        tableId: '{{ table_id }}'
+    });
+});
+</script>
+{% endif %}

@@ -24,6 +24,7 @@ class SimulationState:
     settings: dict[str, str] = field(default_factory=dict)
     settings_metadata: dict[str, dict[str, t.Any]] = field(default_factory=dict)
     job_events: list[JobEvent] = field(default_factory=list)
+    audit_logs: list[dict[str, t.Any]] = field(default_factory=list)
     
     # S3 State
     # bucket_name -> list of keys
@@ -54,6 +55,7 @@ class SimulationState:
             self.settings.clear()
             self.settings_metadata.clear()
             self.job_events.clear()
+            self.audit_logs.clear()
             self.s3_buckets.clear()
             self.users_by_code.clear()
             self.auth_credentials.clear()

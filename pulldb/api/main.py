@@ -15,9 +15,22 @@ import uvicorn
 from fastapi import Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 
+from pulldb.api.logic import enqueue_job, validate_job_request
+from pulldb.api.schemas import (
+    JobEventResponse,
+    JobHistoryItem,
+    JobMatch,
+    JobRequest,
+    JobResolveResponse,
+    JobResponse,
+    JobSummary,
+    UserLastJobResponse,
+)
+from pulldb.api.types import APIState
 from pulldb.domain.config import Config
 from pulldb.domain.errors import StagingError
 from pulldb.domain.models import Job, JobStatus, User
+from pulldb.domain.services.discovery import DiscoveryService
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
 from pulldb.infra.mysql import (
@@ -38,16 +51,12 @@ DEFAULT_STATUS_LIMIT = 100
 MAX_STATUS_LIMIT = 1000
 
 
-def _letters_only(value: str) -> str:
-    """Return lowercase letters-only subset of *value*."""
-    return "".join(ch for ch in value.lower() if ch.isalpha())
-
-
 app = fastapi.FastAPI(title="pullDB API Service", version="0.0.1.dev0")
 
-# Phase 4: Mount web UI router if templates available
+# Mount unified web UI router
 try:
     from pulldb.web import router as web_router, SessionExpiredError, create_session_expired_handler
+    
     app.include_router(web_router)
     app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
 except ImportError:
@@ -57,86 +66,6 @@ except ImportError:
 if is_simulation_mode():
     from pulldb.simulation.api import router as simulation_router
     app.include_router(simulation_router)
-
-
-class JobRequest(pydantic.BaseModel):
-    """Incoming job submission payload."""
-
-    user: str = pydantic.Field(min_length=1)
-    customer: str | None = None
-    qatemplate: bool = False
-    dbhost: str | None = None
-    date: str | None = None  # Specific backup date in YYYY-MM-DD format
-    env: str | None = None  # S3 environment: "staging" or "prod"
-    overwrite: bool = False
-
-
-class JobResponse(pydantic.BaseModel):
-    """Response payload for successful job submission."""
-
-    job_id: str
-    target: str
-    staging_name: str
-    status: str
-    owner_username: str
-    owner_user_code: str
-    submitted_at: datetime | None = None
-
-
-class JobSummary(pydantic.BaseModel):
-    """Summary view of a job for status listing."""
-
-    id: str
-    target: str
-    status: str
-    user_code: str
-    submitted_at: datetime | None = None
-    started_at: datetime | None = None
-    staging_name: str | None = None
-    current_operation: str | None = None
-    dbhost: str | None = None
-    source: str | None = None
-
-
-class JobHistoryItem(pydantic.BaseModel):
-    """Detailed history item for completed/failed/canceled jobs."""
-
-    id: str
-    target: str
-    status: str
-    user_code: str
-    owner_username: str
-    submitted_at: datetime | None = None
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    duration_seconds: float | None = None
-    staging_name: str | None = None
-    dbhost: str | None = None
-    source: str | None = None
-    error_detail: str | None = None
-    retry_count: int = 0
-
-
-class JobEventResponse(pydantic.BaseModel):
-    """Job event payload."""
-
-    id: int
-    job_id: str
-    event_type: str
-    detail: str | None
-    logged_at: datetime
-
-
-class APIState(t.NamedTuple):
-    """Cached application state shared across requests."""
-
-    config: Config
-    pool: t.Any  # MySQLPool in REAL mode, None in SIMULATION mode
-    user_repo: t.Any  # UserRepository protocol
-    job_repo: t.Any  # JobRepository protocol
-    settings_repo: t.Any  # SettingsRepository protocol
-    host_repo: t.Any  # HostRepository protocol
-    auth_repo: "AuthRepository | None" = None  # Phase 4: Optional auth repository
 
 
 # Forward reference for type checking
@@ -159,6 +88,7 @@ def _initialize_state() -> APIState:
 def _initialize_simulation_state() -> APIState:
     """Initialize API state with simulation components."""
     from pulldb.simulation import (
+        SimulatedAuditRepository,
         SimulatedAuthRepository,
         SimulatedHostRepository,
         SimulatedJobRepository,
@@ -176,6 +106,7 @@ def _initialize_simulation_state() -> APIState:
         settings_repo=SimulatedSettingsRepository(),
         host_repo=SimulatedHostRepository(),
         auth_repo=SimulatedAuthRepository(),
+        audit_repo=SimulatedAuditRepository(),
     )
 
 
@@ -235,9 +166,12 @@ def _initialize_real_state() -> APIState:
 
     # Phase 4: Create auth repository if web UI is enabled
     auth_repo = None
+    audit_repo = None
     if os.getenv("PULLDB_ENABLE_WEB_UI", "false").lower() == "true":
         from pulldb.auth import AuthRepository
+        from pulldb.infra.mysql import AuditRepository
         auth_repo = AuthRepository(pool)
+        audit_repo = AuditRepository(pool)
 
     return APIState(
         config=config,
@@ -247,6 +181,7 @@ def _initialize_real_state() -> APIState:
         settings_repo=SettingsRepository(pool),
         host_repo=HostRepository(pool, credential_resolver),
         auth_repo=auth_repo,
+        audit_repo=audit_repo,
     )
 
 
@@ -265,200 +200,7 @@ def get_api_state() -> APIState:
     return state
 
 
-def _select_dbhost(state: APIState, req: JobRequest) -> str:
-    if req.dbhost:
-        return req.dbhost
-    if state.config.default_dbhost:
-        return state.config.default_dbhost
-    return state.config.mysql_host
 
-
-def _construct_target(user: User, req: JobRequest) -> str:
-    """Construct target database name from user code and customer/qatemplate.
-    
-    Target names MUST be lowercase letters only (a-z). No numbers, no special
-    characters, no underscores. This is a hard requirement enforced at:
-    - API level (this function)
-    - CLI level (parse.py validation)
-    - Web UI level (JavaScript validation + input filtering)
-    """
-    if req.qatemplate:
-        return f"{user.user_code}qatemplate"
-
-    customer_value = req.customer or ""
-    sanitized = _letters_only(customer_value)
-    if not sanitized:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Customer identifier must include at least one alphabetic character. "
-                f"Received '{customer_value}'."
-            ),
-        )
-    target = f"{user.user_code}{sanitized}"
-    
-    # Final validation: target must be lowercase letters only
-    if not target.isalpha() or not target.islower():
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Target database name must contain only lowercase letters (a-z). "
-                f"Generated target '{target}' contains invalid characters."
-            ),
-        )
-    return target
-
-
-def _options_snapshot(req: JobRequest) -> dict[str, str]:
-    opts: dict[str, str] = {
-        "customer_id": req.customer or "",
-        "is_qatemplate": str(req.qatemplate).lower(),
-        "overwrite": str(req.overwrite).lower(),
-        "api_version": "v1",
-    }
-    if req.date:
-        opts["date"] = req.date
-    if req.env:
-        opts["env"] = req.env
-    return opts
-
-
-def _validate_job_request(req: JobRequest) -> None:
-    if bool(req.customer) == bool(req.qatemplate):
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail="Must specify exactly one of customer or qatemplate for restore request.",
-        )
-
-
-def _check_concurrency_limits(state: APIState, user: User) -> None:
-    """Check concurrency limits before enqueueing a job.
-
-    Enforces per-user and global active job limits. A limit of 0 means unlimited.
-
-    Args:
-        state: API state with repositories.
-        user: User attempting to enqueue a job.
-
-    Raises:
-        HTTPException: 429 Too Many Requests if limit exceeded.
-    """
-    # Check global limit first (higher priority)
-    global_limit = state.settings_repo.get_max_active_jobs_global()
-    if global_limit > 0:
-        global_active = state.job_repo.count_all_active_jobs()
-        if global_active >= global_limit:
-            emit_event(
-                "job_enqueue_rejected",
-                f"Global limit reached: {global_active}/{global_limit} active jobs",
-                labels=MetricLabels(
-                    target="",
-                    phase="enqueue",
-                    status="rate_limited",
-                ),
-            )
-            raise HTTPException(
-                status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=(
-                    f"System at capacity: {global_active} active jobs "
-                    f"(limit: {global_limit}). Please try again later."
-                ),
-            )
-
-    # Check per-user limit
-    per_user_limit = state.settings_repo.get_max_active_jobs_per_user()
-    if per_user_limit > 0:
-        user_active = state.job_repo.count_active_jobs_for_user(user.user_id)
-        if user_active >= per_user_limit:
-            emit_event(
-                "job_enqueue_rejected",
-                f"User limit reached for {user.username}: {user_active}/{per_user_limit}",
-                labels=MetricLabels(
-                    target="",
-                    phase="enqueue",
-                    status="rate_limited",
-                ),
-            )
-            raise HTTPException(
-                status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=(
-                    f"User limit reached: you have {user_active} active jobs "
-                    f"(limit: {per_user_limit}). Wait for jobs to complete or cancel one."
-                ),
-            )
-
-
-def _enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
-    user = state.user_repo.get_or_create_user(username=req.user)
-    target = _construct_target(user, req)
-    dbhost = _select_dbhost(state, req)
-
-    # Phase 2: Concurrency controls - check limits before job creation
-    _check_concurrency_limits(state, user)
-
-    job_id = str(uuid.uuid4())
-    staging_name = generate_staging_name(target, job_id)
-
-    job = Job(
-        id=job_id,
-        owner_user_id=user.user_id,
-        owner_username=user.username,
-        owner_user_code=user.user_code,
-        target=target,
-        staging_name=staging_name,
-        dbhost=dbhost,
-        status=JobStatus.QUEUED,
-        submitted_at=datetime.now(UTC),
-        options_json=_options_snapshot(req),
-        retry_count=0,
-    )
-
-    try:
-        state.job_repo.enqueue_job(job)
-    except ValueError as exc:
-        message = str(exc)
-        if "already has an active job" in message:
-            emit_event(
-                "job_enqueue_conflict",
-                message,
-                labels=MetricLabels(
-                    job_id=job_id,
-                    target=target,
-                    phase="enqueue",
-                    status="conflict",
-                ),
-            )
-            raise HTTPException(status.HTTP_409_CONFLICT, detail=message) from exc
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=message) from exc
-    except StagingError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except Exception as exc:  # pragma: no cover - MySQL errors surfaced as 500
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to enqueue job due to unexpected error: {exc}",
-        ) from exc
-
-    stored = state.job_repo.get_job_by_id(job_id) or job
-
-    emit_counter(
-        "jobs_enqueued_total",
-        labels=MetricLabels(
-            job_id=job_id,
-            target=target,
-            phase="enqueue",
-            status="queued",
-        ),
-    )
-
-    return JobResponse(
-        job_id=job_id,
-        target=target,
-        staging_name=stored.staging_name,
-        status=stored.status.value,
-        owner_username=stored.owner_username,
-        owner_user_code=stored.owner_user_code,
-        submitted_at=stored.submitted_at,
-    )
 
 
 def _active_jobs(state: APIState, limit: int) -> list[JobSummary]:
@@ -615,6 +357,99 @@ async def get_user_info(
     )
 
 
+class ChangePasswordRequest(pydantic.BaseModel):
+    """Request body for password change."""
+
+    username: str
+    current_password: str
+    new_password: str
+
+
+@app.post("/api/auth/change-password")
+async def change_password(
+    request: ChangePasswordRequest,
+    state: APIState = Depends(get_api_state),
+) -> dict[str, str]:
+    """Change user password.
+
+    Used by CLI's `pulldb setpass` command.
+
+    - If user has no password set (new account), current_password is ignored
+    - If user has password_reset_at set, any current_password is accepted
+    - Otherwise, current_password must match existing password
+    """
+    from pulldb.auth.password import hash_password, verify_password
+
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Verify user exists
+    user = await run_in_threadpool(
+        state.user_repo.get_user_by_username, request.username
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User '{request.username}' not found",
+        )
+
+    if user.disabled_at:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is disabled",
+        )
+
+    # Check if password reset is required
+    reset_required = await run_in_threadpool(
+        state.auth_repo.is_password_reset_required, user.user_id
+    )
+
+    # Check if user has existing password
+    has_password = await run_in_threadpool(
+        state.auth_repo.has_password, user.user_id
+    )
+
+    # Validate current password (unless reset required or no password set)
+    if has_password and not reset_required:
+        existing_hash = await run_in_threadpool(
+            state.auth_repo.get_password_hash, user.user_id
+        )
+        if existing_hash and not verify_password(request.current_password, existing_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Current password is incorrect",
+            )
+
+    # Hash and set new password
+    new_hash = hash_password(request.new_password)
+    await run_in_threadpool(
+        state.auth_repo.set_password_hash,
+        user.user_id,
+        new_hash,
+    )
+
+    # Clear password reset flag if it was set
+    if reset_required:
+        await run_in_threadpool(
+            state.auth_repo.clear_password_reset, user.user_id
+        )
+
+    # Log audit event
+    if state.audit_repo:
+        await run_in_threadpool(
+            state.audit_repo.log_action,
+            actor_user_id=user.user_id,
+            action="password_change",
+            target_user_id=user.user_id,
+            detail=f"User {user.username} changed their password",
+        )
+
+    return {"message": "Password changed successfully"}
+
+
 @app.get("/api/status")
 async def status_endpoint(state: APIState = Depends(get_api_state)) -> dict[str, t.Any]:
     def _collect() -> dict[str, t.Any]:
@@ -633,8 +468,8 @@ async def status_endpoint(state: APIState = Depends(get_api_state)) -> dict[str,
 async def submit_job(
     req: JobRequest, state: APIState = Depends(get_api_state)
 ) -> JobResponse:
-    _validate_job_request(req)
-    return await run_in_threadpool(_enqueue_job, state, req)
+    validate_job_request(req)
+    return await run_in_threadpool(enqueue_job, state, req)
 
 
 @app.get(
@@ -888,6 +723,241 @@ def _search_jobs(
     return JobSearchResponse(
         query=query, count=len(results), exact_match=exact, jobs=results
     )
+
+
+# --- Paginated Jobs Endpoint for LazyTable ---
+
+
+class PaginatedJobsResponse(pydantic.BaseModel):
+    """Paginated response for LazyTable widget."""
+
+    rows: list[JobSummary]
+    totalCount: int
+    filteredCount: int
+    page: int
+    pageSize: int
+
+
+def _wildcard_match(pattern: str, value: str) -> bool:
+    """Match value against pattern with * wildcards.
+    
+    Examples:
+        _wildcard_match("job-01*", "job-0100") -> True
+        _wildcard_match("*0100", "job-0100") -> True
+        _wildcard_match("12/*/2024", "12/08/2024") -> True
+    """
+    import fnmatch
+    return fnmatch.fnmatch(value.lower(), pattern.lower())
+
+
+def _get_paginated_jobs(
+    state: APIState,
+    page: int,
+    page_size: int,
+    view: str,
+    sort_column: str | None,
+    sort_direction: str | None,
+    status_filter: str | None,
+    host_filter: str | None,
+    user_filter: str | None,
+    target_filter: str | None,
+    id_filter: str | None,
+    submitted_at_filter: str | None,
+    days: int,
+    user: User | None = None,
+) -> PaginatedJobsResponse:
+    """Get paginated jobs for LazyTable."""
+    from pulldb.domain.permissions import can_cancel_job
+
+    # Determine statuses based on view
+    if view == "history":
+        statuses = [JobStatus.COMPLETE.value, JobStatus.FAILED.value, JobStatus.CANCELED.value]
+    else:
+        statuses = [JobStatus.QUEUED.value, JobStatus.RUNNING.value]
+
+    # Apply status filter
+    if status_filter and status_filter in [s.value for s in JobStatus]:
+        statuses = [status_filter]
+
+    # Get jobs
+    all_jobs = state.job_repo.get_recent_jobs(limit=1000, statuses=statuses)
+
+    # Apply filters in memory (for simulation mode compatibility)
+    filtered_jobs = list(all_jobs)
+    if host_filter:
+        filtered_jobs = [j for j in filtered_jobs if j.dbhost == host_filter]
+    if user_filter:
+        filtered_jobs = [j for j in filtered_jobs if j.owner_user_code == user_filter]
+    if target_filter:
+        filtered_jobs = [j for j in filtered_jobs if target_filter.lower() in (j.target or "").lower()]
+    
+    # Text-based wildcard filter for Job ID
+    if id_filter:
+        filtered_jobs = [j for j in filtered_jobs if j.id and _wildcard_match(id_filter, j.id)]
+    
+    # Text-based wildcard filter for submitted_at (matches formatted date MM/DD/YYYY)
+    if submitted_at_filter:
+        def match_submitted(job):
+            if not job.submitted_at:
+                return False
+            # Format date as MM/DD/YYYY for pattern matching
+            formatted = job.submitted_at.strftime("%m/%d/%Y")
+            return _wildcard_match(submitted_at_filter, formatted)
+        filtered_jobs = [j for j in filtered_jobs if match_submitted(j)]
+
+    # Sort if requested
+    if sort_column and sort_direction:
+        reverse = sort_direction == "desc"
+        if sort_column == "submitted_at":
+            filtered_jobs = sorted(filtered_jobs, key=lambda j: j.submitted_at or datetime.min.replace(tzinfo=UTC), reverse=reverse)
+        elif sort_column == "status":
+            filtered_jobs = sorted(filtered_jobs, key=lambda j: j.status.value, reverse=reverse)
+        elif sort_column == "target":
+            filtered_jobs = sorted(filtered_jobs, key=lambda j: j.target or "", reverse=reverse)
+        elif sort_column == "user_code":
+            filtered_jobs = sorted(filtered_jobs, key=lambda j: j.owner_user_code or "", reverse=reverse)
+        elif sort_column == "dbhost":
+            filtered_jobs = sorted(filtered_jobs, key=lambda j: j.dbhost or "", reverse=reverse)
+
+    total_count = len(all_jobs)
+    filtered_count = len(filtered_jobs)
+
+    # Paginate
+    offset = page * page_size
+    page_jobs = filtered_jobs[offset:offset + page_size]
+
+    # Build cache of job owner manager_ids for permission checks
+    owner_manager_cache: dict[str, str | None] = {}
+
+    # Convert to JobSummary
+    rows = []
+    for job in page_jobs:
+        source = None
+        if job.options_json:
+            if job.options_json.get("is_qatemplate") == "true":
+                source = "qatemplate"
+            else:
+                source = job.options_json.get("customer_id")
+
+        # Compute can_cancel for this user
+        job_can_cancel = False
+        if user:
+            if job.owner_user_id not in owner_manager_cache:
+                job_owner = state.user_repo.get_user_by_id(job.owner_user_id)
+                owner_manager_cache[job.owner_user_id] = job_owner.manager_id if job_owner else None
+            job_owner_manager_id = owner_manager_cache[job.owner_user_id]
+            job_can_cancel = (
+                job.status in (JobStatus.QUEUED, JobStatus.RUNNING) and
+                can_cancel_job(user, job.owner_user_id, job_owner_manager_id)
+            )
+
+        rows.append(JobSummary(
+            id=job.id,
+            target=job.target,
+            status=job.status.value,
+            user_code=job.owner_user_code,
+            owner_user_id=job.owner_user_id,
+            submitted_at=job.submitted_at,
+            started_at=job.started_at,
+            staging_name=job.staging_name,
+            current_operation=job.current_operation,
+            dbhost=job.dbhost,
+            source=source,
+            cancel_requested_at=getattr(job, 'cancel_requested_at', None),
+            can_cancel=job_can_cancel,
+        ))
+
+    return PaginatedJobsResponse(
+        rows=rows,
+        totalCount=total_count,
+        filteredCount=filtered_count,
+        page=page,
+        pageSize=page_size,
+    )
+
+
+@app.get("/api/jobs/paginated", response_model=PaginatedJobsResponse)
+async def get_paginated_jobs(
+    page: int = fastapi.Query(0, ge=0, description="Page number (0-indexed)"),
+    pageSize: int = fastapi.Query(50, ge=10, le=200, description="Page size"),
+    view: str = fastapi.Query("active", description="View: 'active' or 'history'"),
+    sortColumn: str | None = fastapi.Query(None, description="Column to sort by"),
+    sortDirection: str | None = fastapi.Query(None, description="Sort direction: 'asc' or 'desc'"),
+    filter_status: str | None = fastapi.Query(None, alias="filter_status", description="Filter by status"),
+    filter_dbhost: str | None = fastapi.Query(None, alias="filter_dbhost", description="Filter by host"),
+    filter_user_code: str | None = fastapi.Query(None, alias="filter_user_code", description="Filter by user"),
+    filter_target: str | None = fastapi.Query(None, alias="filter_target", description="Filter by target"),
+    filter_id: str | None = fastapi.Query(None, alias="filter_id", description="Filter by job ID (wildcards: *)"),
+    filter_submitted_at: str | None = fastapi.Query(None, alias="filter_submitted_at", description="Filter by date (MM/DD/YYYY, wildcards: *)"),
+    days: int = fastapi.Query(30, ge=1, le=365, description="History retention days"),
+    state: APIState = fastapi.Depends(get_api_state),
+    x_trusted_user: str | None = fastapi.Header(None, alias="X-Trusted-User"),
+    x_session_token: str | None = fastapi.Header(None, alias="X-Session-Token"),
+) -> PaginatedJobsResponse:
+    """Get paginated jobs for LazyTable widget.
+
+    Supports server-side pagination, sorting, and filtering.
+    Used by the LazyTable widget on the jobs page.
+
+    If authenticated, includes can_cancel permission for each job.
+    """
+    from pulldb.api.auth import authenticate_user
+
+    # Try to authenticate user (optional - for can_cancel computation)
+    user = None
+    try:
+        user = await authenticate_user(state, x_trusted_user, x_session_token)
+    except Exception:
+        pass  # Continue without user for unauthenticated requests
+
+    return await run_in_threadpool(
+        _get_paginated_jobs,
+        state,
+        page,
+        pageSize,
+        view,
+        sortColumn,
+        sortDirection,
+        filter_status,
+        filter_dbhost,
+        filter_user_code,
+        filter_target,
+        filter_id,
+        filter_submitted_at,
+        days,
+        user,
+    )
+
+
+@app.get("/api/jobs/paginated/distinct")
+async def get_distinct_values(
+    column: str = fastapi.Query(..., description="Column to get distinct values for"),
+    view: str = fastapi.Query("active", description="View: 'active' or 'history'"),
+    state: APIState = fastapi.Depends(get_api_state),
+) -> list[str]:
+    """Get distinct values for a column (for filter dropdowns)."""
+    if view == "history":
+        statuses = [JobStatus.COMPLETE.value, JobStatus.FAILED.value, JobStatus.CANCELED.value]
+    else:
+        statuses = [JobStatus.QUEUED.value, JobStatus.RUNNING.value]
+
+    jobs = state.job_repo.get_recent_jobs(limit=1000, statuses=statuses)
+
+    values: set[str] = set()
+    for job in jobs:
+        if column == "status":
+            values.add(job.status.value)
+        elif column == "dbhost":
+            if job.dbhost:
+                values.add(job.dbhost)
+        elif column == "user_code":
+            if job.owner_user_code:
+                values.add(job.owner_user_code)
+        elif column == "target":
+            if job.target:
+                values.add(job.target)
+
+    return sorted(values)
 
 
 @app.get("/api/jobs/search")
@@ -1226,25 +1296,38 @@ class CancelResponse(pydantic.BaseModel):
     message: str
 
 
-def _cancel_job(state: APIState, job_id: str) -> CancelResponse:
+def _cancel_job(state: APIState, job_id: str, user: User) -> CancelResponse:
     """Request cancellation of a job.
 
     Args:
         state: API state with repositories.
         job_id: UUID of job to cancel.
+        user: The user requesting cancellation.
 
     Returns:
         CancelResponse with result.
 
     Raises:
-        HTTPException: If job not found or not cancelable.
+        HTTPException: If job not found, not cancelable, or unauthorized.
     """
+    from pulldb.domain.permissions import can_cancel_job
+
     # Verify job exists
     job = state.job_repo.get_job_by_id(job_id)
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job {job_id} not found",
+        )
+
+    # Authorization check: lookup job owner to get their manager_id
+    job_owner = state.user_repo.get_user_by_id(job.owner_user_id)
+    job_owner_manager_id = job_owner.manager_id if job_owner else None
+
+    if not can_cancel_job(user, job.owner_user_id, job_owner_manager_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to cancel this job",
         )
 
     # Check if job is in cancelable state
@@ -1317,13 +1400,21 @@ def _cancel_job(state: APIState, job_id: str) -> CancelResponse:
 async def cancel_job(
     job_id: str,
     state: APIState = Depends(get_api_state),
+    x_trusted_user: str | None = fastapi.Header(None, alias="X-Trusted-User"),
+    x_session_token: str | None = fastapi.Header(None, alias="X-Session-Token"),
 ) -> CancelResponse:
     """Request cancellation of a job.
 
     For queued jobs, cancellation is immediate.
     For running jobs, the worker will stop at the next checkpoint.
+
+    Requires authentication. Users can only cancel their own jobs.
+    Managers can cancel jobs for users they manage. Admins can cancel any job.
     """
-    return await run_in_threadpool(_cancel_job, state, job_id)
+    from pulldb.api.auth import authenticate_user
+
+    user = await authenticate_user(state, x_trusted_user, x_session_token)
+    return await run_in_threadpool(_cancel_job, state, job_id, user)
 
 
 # --- Admin Endpoints ---
@@ -1687,6 +1778,149 @@ def create_app() -> fastapi.FastAPI:
 
 
 # ---------------------------------------------------------------------------
+# Searchable Dropdown API - Standard type-ahead search endpoints
+# ---------------------------------------------------------------------------
+
+
+class DropdownOption(pydantic.BaseModel):
+    """Single option for searchable dropdown."""
+
+    value: str
+    label: str
+    sublabel: str | None = None
+
+
+class DropdownSearchResponse(pydantic.BaseModel):
+    """Response format for searchable dropdown endpoints."""
+
+    results: list[DropdownOption]
+    total: int
+
+
+def _search_customers_dropdown(
+    state: APIState, query: str, limit: int
+) -> DropdownSearchResponse:
+    """Search for customers for dropdown selection.
+
+    In REAL mode, this queries S3 for unique customer directories.
+    In SIMULATION mode, returns mock data.
+    """
+    service = DiscoveryService()
+    matches = service.search_customers(query, limit)
+
+    results = [DropdownOption(value=c, label=c, sublabel=None) for c in matches]
+
+    return DropdownSearchResponse(results=results, total=len(matches))
+
+
+@app.get("/api/dropdown/customers", response_model=DropdownSearchResponse)
+async def search_customers_dropdown(
+    q: str = fastapi.Query(
+        ..., min_length=5, description="Search query (min 5 chars)"
+    ),
+    limit: int = fastapi.Query(10, ge=1, le=50, description="Max results"),
+    state: APIState = fastapi.Depends(get_api_state),
+) -> DropdownSearchResponse:
+    """Search for customers for dropdown selection.
+
+    Returns customer names matching the query for use in searchable dropdowns.
+    Requires minimum 5 characters to avoid too many results.
+
+    Response format:
+        {
+            "results": [
+                {"value": "acmecorp", "label": "acmecorp", "sublabel": "12 backups"}
+            ],
+            "total": 1
+        }
+    """
+    return await run_in_threadpool(_search_customers_dropdown, state, q, limit)
+
+
+def _search_users_dropdown(
+    state: APIState, query: str, limit: int
+) -> DropdownSearchResponse:
+    """Search for users for dropdown selection."""
+    # Search users by username, user_code, or name
+    users = state.user_repo.search_users(query, limit=limit)
+
+    results = [
+        DropdownOption(
+            value=user.username,
+            label=user.username,
+            sublabel=f"{user.role.value} · {user.user_code}",
+        )
+        for user in users
+    ]
+
+    return DropdownSearchResponse(results=results, total=len(results))
+
+
+@app.get("/api/dropdown/users", response_model=DropdownSearchResponse)
+async def search_users_dropdown(
+    q: str = fastapi.Query(
+        ..., min_length=3, description="Search query (min 3 chars)"
+    ),
+    limit: int = fastapi.Query(15, ge=1, le=50, description="Max results"),
+    state: APIState = fastapi.Depends(get_api_state),
+) -> DropdownSearchResponse:
+    """Search for users for dropdown selection.
+
+    Returns usernames matching the query for use in searchable dropdowns.
+
+    Response format:
+        {
+            "results": [
+                {"value": "jdoe", "label": "jdoe", "sublabel": "admin · jdoejd"}
+            ],
+            "total": 1
+        }
+    """
+    return await run_in_threadpool(_search_users_dropdown, state, q, limit)
+
+
+def _search_hosts_dropdown(
+    state: APIState, query: str, limit: int
+) -> DropdownSearchResponse:
+    """Search for database hosts for dropdown selection."""
+    hosts = state.host_repo.search_hosts(query, limit=limit)
+
+    results = [
+        DropdownOption(
+            value=host.hostname,
+            label=host.hostname,
+            sublabel="active" if host.is_active else "inactive",
+        )
+        for host in hosts
+    ]
+
+    return DropdownSearchResponse(results=results, total=len(results))
+
+
+@app.get("/api/dropdown/hosts", response_model=DropdownSearchResponse)
+async def search_hosts_dropdown(
+    q: str = fastapi.Query(
+        ..., min_length=3, description="Search query (min 3 chars)"
+    ),
+    limit: int = fastapi.Query(10, ge=1, le=50, description="Max results"),
+    state: APIState = fastapi.Depends(get_api_state),
+) -> DropdownSearchResponse:
+    """Search for database hosts for dropdown selection.
+
+    Returns hostnames matching the query for use in searchable dropdowns.
+
+    Response format:
+        {
+            "results": [
+                {"value": "db-prod-01", "label": "db-prod-01", "sublabel": "active"}
+            ],
+            "total": 1
+        }
+    """
+    return await run_in_threadpool(_search_hosts_dropdown, state, q, limit)
+
+
+# ---------------------------------------------------------------------------
 # Backup Search API - S3 backup discovery for CLI
 # ---------------------------------------------------------------------------
 
@@ -1719,182 +1953,35 @@ def _search_backups(
     limit: int,
 ) -> BackupSearchResponse:
     """Search S3 for backups matching customer pattern.
-    
+
     This runs on the API server which has AWS credentials.
     """
-    import fnmatch
-    import json as json_module
-    
-    from pulldb.infra.s3 import S3Client
-    
-    # Load configured backup locations from environment
-    raw_locations = os.getenv("PULLDB_S3_BACKUP_LOCATIONS")
-    all_locations: list[tuple[str, str, str, str | None]] = []
-    
-    if raw_locations:
-        try:
-            payload = json_module.loads(raw_locations)
-            if isinstance(payload, list):
-                for entry in payload:
-                    if isinstance(entry, dict):
-                        bucket_path = entry.get("bucket_path", "")
-                        name = entry.get("name", "unknown")
-                        profile = entry.get("profile")
-                        if bucket_path.startswith("s3://"):
-                            path = bucket_path[5:]
-                            if "/" in path:
-                                bucket = path.split("/")[0]
-                                prefix = "/".join(path.split("/")[1:])
-                                if not prefix.endswith("/"):
-                                    prefix += "/"
-                            else:
-                                bucket = path
-                                prefix = ""
-                            all_locations.append((name, bucket, prefix, profile))
-        except json_module.JSONDecodeError:
-            pass
-    
-    # Fallback to hardcoded defaults
-    if not all_locations:
-        all_locations = [
-            ("staging", "pestroutesrdsdbs", "daily/stg/",
-             os.getenv("PULLDB_S3_STAGING_PROFILE", "pr-staging")),
-            ("prod", "pestroutes-rds-backup-prod-vpc-us-east-1-s3", "daily/prod/",
-             os.getenv("PULLDB_S3_PROD_PROFILE", "pr-prod")),
-        ]
-    
-    # Filter by environment
-    buckets: list[tuple[str, str, str, str | None]] = []
-    for loc_name, bucket, prefix, profile in all_locations:
-        if environment == "both":
-            buckets.append((loc_name, bucket, prefix, profile))
-        elif loc_name.lower() == environment.lower():
-            buckets.append((loc_name, bucket, prefix, profile))
-        elif environment.lower() in loc_name.lower():
-            buckets.append((loc_name, bucket, prefix, profile))
-    
-    if not buckets:
-        return BackupSearchResponse(
-            backups=[],
-            total=0,
-            query=customer,
-            environment=environment,
+    service = DiscoveryService()
+    domain_backups = service.search_backups(customer, environment, date_from, limit)
+
+    # Convert domain dataclasses to Pydantic models
+    backups = [
+        BackupInfo(
+            customer=b.customer,
+            timestamp=b.timestamp,
+            date=b.date,
+            size_mb=b.size_mb,
+            environment=b.environment,
+            key=b.key,
+            bucket=b.bucket,
         )
-    
-    # Parse date filter
-    filter_date: datetime | None = None
-    if date_from:
-        try:
-            filter_date = datetime.strptime(date_from, "%Y%m%d")
-        except ValueError:
-            pass
-    
-    s3_profile = os.getenv("PULLDB_S3_AWS_PROFILE") or os.getenv("PULLDB_AWS_PROFILE")
-    s3 = S3Client(profile=s3_profile)
-    
-    all_backups: list[BackupInfo] = []
-    has_wildcard = "*" in customer or "?" in customer
-    
-    for env_name, bucket, prefix, profile in buckets:
-        try:
-            if has_wildcard:
-                # Extract prefix before wildcard
-                wildcard_pos = min(
-                    (customer.find(c) for c in "*?" if c in customer),
-                    default=len(customer)
-                )
-                search_prefix = customer[:wildcard_pos]
-                s3_prefix = f"{prefix}{search_prefix}"
-                keys = s3.list_keys(bucket, s3_prefix, profile=profile)
-                
-                # Extract unique customer dirs
-                customer_dirs: set[str] = set()
-                for key in keys:
-                    parts = key[len(prefix):].split("/")
-                    if parts:
-                        customer_dirs.add(parts[0])
-                
-                # Filter by wildcard
-                matching = [c for c in customer_dirs 
-                           if fnmatch.fnmatch(c.lower(), customer.lower())]
-                
-                for cust in matching[:20]:
-                    _collect_customer_backups(
-                        s3, bucket, prefix, cust, profile, env_name,
-                        filter_date, all_backups
-                    )
-            else:
-                _collect_customer_backups(
-                    s3, bucket, prefix, customer, profile, env_name,
-                    filter_date, all_backups
-                )
-        except Exception:
-            continue
-    
-    # Sort by timestamp descending
-    all_backups.sort(key=lambda x: x.timestamp, reverse=True)
-    
-    # Apply limit
-    all_backups = all_backups[:limit]
-    
+        for b in domain_backups
+    ]
+
     return BackupSearchResponse(
-        backups=all_backups,
-        total=len(all_backups),
+        backups=backups,
+        total=len(backups),
         query=customer,
         environment=environment,
     )
 
 
-def _collect_customer_backups(
-    s3: t.Any,
-    bucket: str,
-    prefix: str,
-    customer: str,
-    profile: str | None,
-    env_name: str,
-    filter_date: datetime | None,
-    results: list[BackupInfo],
-) -> None:
-    """Collect backups for a specific customer."""
-    from pulldb.infra.s3 import BACKUP_FILENAME_REGEX
-    
-    search_prefix = f"{prefix}{customer}/daily_mydumper_{customer}_"
-    
-    try:
-        keys = s3.list_keys(bucket, search_prefix, profile=profile)
-    except Exception:
-        return
-    
-    for key in keys:
-        filename = key.rsplit("/", 1)[-1]
-        match = BACKUP_FILENAME_REGEX.match(filename)
-        if not match:
-            continue
-        
-        ts_str = match.group("ts")
-        try:
-            ts = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%SZ")
-        except ValueError:
-            continue
-        
-        if filter_date and ts < filter_date:
-            continue
-        
-        try:
-            head = s3.head_object(bucket, key, profile=profile)
-            size_bytes = int(head.get("ContentLength", 0))
-        except Exception:
-            size_bytes = 0
-        
-        results.append(BackupInfo(
-            customer=customer,
-            timestamp=ts,
-            date=ts.strftime("%Y%m%d"),
-            size_mb=round(size_bytes / (1024 * 1024), 1),
-            environment=env_name,
-            key=key,
-            bucket=bucket,
-        ))
+
 
 
 @app.get("/api/backups/search", response_model=BackupSearchResponse)

@@ -99,6 +99,95 @@ class AuthRepository:
         """
         return self.get_password_hash(user_id) is not None
 
+    # =========================================================================
+    # Password Reset Methods
+    # =========================================================================
+
+    def mark_password_reset(self, user_id: str) -> None:
+        """Mark a user's password for reset.
+
+        When marked, the user must reset their password via CLI
+        (pulldb --setpass) before they can log in again.
+
+        Args:
+            user_id: UUID of the user.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO auth_credentials
+                    (user_id, password_reset_at, created_at, updated_at)
+                VALUES (%s, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+                ON DUPLICATE KEY UPDATE
+                    password_reset_at = UTC_TIMESTAMP(6),
+                    updated_at = UTC_TIMESTAMP(6)
+                """,
+                (user_id,),
+            )
+            conn.commit()
+
+    def clear_password_reset(self, user_id: str) -> None:
+        """Clear the password reset flag after user sets new password.
+
+        Called after successful password change via CLI.
+
+        Args:
+            user_id: UUID of the user.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE auth_credentials
+                SET password_reset_at = NULL,
+                    updated_at = UTC_TIMESTAMP(6)
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            conn.commit()
+
+    def is_password_reset_required(self, user_id: str) -> bool:
+        """Check if user must reset their password.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            True if password reset is required, False otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT password_reset_at FROM auth_credentials WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            return bool(row and row.get("password_reset_at"))
+
+    def get_password_reset_at(self, user_id: str) -> datetime | None:
+        """Get timestamp when password reset was requested.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Datetime when reset was requested, None if not required.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT password_reset_at FROM auth_credentials WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            if row and row.get("password_reset_at"):
+                reset_at = row["password_reset_at"]
+                if isinstance(reset_at, datetime):
+                    return reset_at
+            return None
+
     def get_totp_secret(self, user_id: str) -> str | None:
         """Get TOTP secret for user.
 

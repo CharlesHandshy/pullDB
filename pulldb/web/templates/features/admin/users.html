@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Users - Admin - pullDB{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display: flex; align-items: center; gap: var(--space-4);">
+        <a href="/web/admin" class="btn btn-ghost" style="padding: 0.5rem;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+        </a>
+        <h1 class="page-title">Manage Users</h1>
+    </div>
+</div>
+
+<!-- User Search -->
+<form method="GET" action="/web/admin/users" class="card card-padding" style="margin-bottom: var(--space-4);">
+    <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+        <input type="text" name="q" value="{{ q or '' }}" placeholder="Search by username, user code, or role..." class="form-input" style="width: 300px;">
+        <select name="role" class="form-select" style="width: 140px;" onchange="this.form.submit()">
+            <option value="">All Roles</option>
+            <option value="user" {% if role == 'user' %}selected{% endif %}>User</option>
+            <option value="manager" {% if role == 'manager' %}selected{% endif %}>Manager</option>
+            <option value="admin" {% if role == 'admin' %}selected{% endif %}>Admin</option>
+        </select>
+        <select name="status" class="form-select" style="width: 130px;" onchange="this.form.submit()">
+            <option value="">All Status</option>
+            <option value="active" {% if status == 'active' %}selected{% endif %}>Active</option>
+            <option value="disabled" {% if status == 'disabled' %}selected{% endif %}>Disabled</option>
+        </select>
+        <button type="submit" class="btn btn-secondary">Search</button>
+        {% if q or role or status %}
+        <a href="/web/admin/users" class="btn btn-ghost">Clear</a>
+        {% endif %}
+    </div>
+</form>
+
+<div class="card">
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>User Code</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Created At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td class="font-medium">{{ u.username }}</td>
+                    <td class="font-mono">{{ u.user_code }}</td>
+                    <td>
+                        <span class="badge 
+                            {% if u.role.value == 'admin' %}badge-danger
+                            {% elif u.role.value == 'manager' %}badge-primary
+                            {% else %}badge-neutral{% endif %}
+                        ">{{ u.role.value }}</span>
+                    </td>
+                    <td>
+                        {% if u.disabled_at %}
+                        <span class="badge badge-danger">Disabled</span>
+                        {% else %}
+                        <span class="badge badge-success">Active</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '-' }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="empty-state">No users found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div style="margin-top: var(--space-4); color: var(--gray-500); font-size: 0.875rem;">
+    Showing {{ users|length }} user(s)
+</div>
+{% endblock %}

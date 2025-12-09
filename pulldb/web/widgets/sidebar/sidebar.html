@@ -1,0 +1,82 @@
+{#
+    HCA Layer 3: Sidebar Widget (Partial)
+    =====================================
+    Purpose: Navigation sidebar with hover-reveal behavior.
+    Included by: shared/layouts/app_layout.html
+    
+    Contract:
+    - Requires: user object in context
+    - Requires: request object for active state detection
+    - Provides: Navigation menu with admin section if user.is_admin
+    
+    Size: ~100 lines (HCA compliant)
+#}
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-inner">
+        <nav class="sidebar-nav">
+            {# Main Navigation #}
+            <div class="nav-section">
+                <div class="nav-section-title">Main</div>
+                <a href="/web/dashboard" class="nav-link {% if request.url.path == '/web/dashboard' %}active{% endif %}">
+                    {% include "shared/ui/icons/dashboard.svg" %}
+                    <span>Dashboard</span>
+                </a>
+                <a href="/web/restore" class="nav-link {% if request.url.path == '/web/restore' %}active{% endif %}">
+                    {% include "shared/ui/icons/restore.svg" %}
+                    <span>New Restore</span>
+                </a>
+                <a href="/web/search" class="nav-link {% if request.url.path == '/web/search' %}active{% endif %}">
+                    {% include "shared/ui/icons/search.svg" %}
+                    <span>Search Backups</span>
+                </a>
+            </div>
+            
+            {# Admin Navigation (conditional) #}
+            {% if user.is_admin %}
+            <div class="nav-section">
+                <div class="nav-section-title">Administration</div>
+                <a href="/web/admin/jobs" class="nav-link {% if request.url.path == '/web/admin/jobs' %}active{% endif %}">
+                    {% include "shared/ui/icons/jobs.svg" %}
+                    <span>All Jobs</span>
+                </a>
+                <a href="/web/admin/users" class="nav-link {% if '/web/admin/users' in request.url.path %}active{% endif %}">
+                    {% include "shared/ui/icons/users.svg" %}
+                    <span>Users</span>
+                </a>
+                <a href="/web/admin/hosts" class="nav-link {% if request.url.path == '/web/admin/hosts' %}active{% endif %}">
+                    {% include "shared/ui/icons/hosts.svg" %}
+                    <span>Hosts</span>
+                </a>
+                <a href="/web/admin/settings" class="nav-link {% if request.url.path == '/web/admin/settings' %}active{% endif %}">
+                    {% include "shared/ui/icons/settings.svg" %}
+                    <span>Settings</span>
+                </a>
+                <a href="/web/admin/logo" class="nav-link {% if request.url.path == '/web/admin/logo' %}active{% endif %}">
+                    {% include "shared/ui/icons/image.svg" %}
+                    <span>Logo</span>
+                </a>
+                <a href="/web/admin/cleanup" class="nav-link {% if request.url.path == '/web/admin/cleanup' %}active{% endif %}">
+                    {% include "shared/ui/icons/trash.svg" %}
+                    <span>Cleanup</span>
+                </a>
+            </div>
+            {% endif %}
+        </nav>
+        
+        {# Sidebar Footer - Always visible user info #}
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <div class="sidebar-user-avatar">{{ user.username[0] }}</div>
+                <div class="sidebar-user-info">
+                    <div class="sidebar-user-name">{{ user.username }}</div>
+                    <div class="sidebar-user-role">{{ user.role.value }}</div>
+                </div>
+                <a href="/web/logout" class="sidebar-logout" title="Sign out">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </div>
+</aside>

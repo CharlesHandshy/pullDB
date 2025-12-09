@@ -71,10 +71,29 @@
     height: var(--page-header-height);
 }
 
+.header-logo-wrapper {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 40px;
+    overflow: hidden;
+}
+
+.header-logo-media {
+    height: 100%;
+    width: auto;
+    object-fit: contain;
+}
+
 .page-header-logo video {
     height: calc(var(--page-header-height) + 30px);
     width: auto;
     margin: -13px 0 -17px 0;
+}
+
+.header-logo-label {
+    white-space: nowrap;
+    line-height: 1;
 }
 
 .page-header-divider {

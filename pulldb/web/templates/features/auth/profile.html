@@ -1,0 +1,553 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - pullDB{% endblock %}
+
+{% block content %}
+<style>
+    /* Page Container */
+    .profile-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    /* Profile Header */
+    .profile-header {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-xl);
+        padding: var(--space-6);
+        margin-bottom: var(--space-6);
+        display: flex;
+        align-items: center;
+        gap: var(--space-6);
+        flex-wrap: wrap;
+    }
+
+    .profile-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: var(--radius-xl);
+        background: linear-gradient(135deg, var(--primary-500), var(--primary-700));
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        flex-shrink: 0;
+    }
+
+    .profile-info {
+        flex: 1;
+        min-width: 200px;
+    }
+
+    .profile-name {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--gray-900);
+        margin-bottom: var(--space-1);
+    }
+
+    .profile-code {
+        font-family: var(--font-mono);
+        font-size: 0.875rem;
+        color: var(--gray-500);
+        margin-bottom: var(--space-2);
+    }
+
+    .profile-role {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+        padding: 4px 10px;
+        border-radius: var(--radius-full);
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .profile-role.admin {
+        background: var(--primary-100);
+        color: var(--primary-700);
+    }
+
+    .profile-role.manager {
+        background: var(--warning-100, #fef3c7);
+        color: var(--warning-700, #b45309);
+    }
+
+    .profile-role.user {
+        background: var(--gray-100);
+        color: var(--gray-700);
+    }
+
+    .profile-stats {
+        display: flex;
+        gap: var(--space-8);
+        flex-wrap: wrap;
+    }
+
+    .profile-stat {
+        text-align: center;
+        min-width: 80px;
+    }
+
+    .profile-stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--gray-900);
+    }
+
+    .profile-stat-label {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    /* Info Grid for Account Details */
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: var(--space-5);
+    }
+
+    .info-item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+    }
+
+    .info-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--gray-500);
+    }
+
+    .info-value {
+        font-size: 0.9375rem;
+        color: var(--gray-900);
+    }
+
+    .info-value code {
+        font-size: 0.8125rem;
+        padding: 2px 6px;
+        background: var(--gray-100);
+        border-radius: var(--radius-sm);
+        font-family: var(--font-mono);
+    }
+
+    /* Default Host Selector */
+    .default-host-section {
+        margin-top: var(--space-5);
+        padding-top: var(--space-5);
+        border-top: 1px solid var(--gray-200);
+    }
+
+    .default-host-select {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        margin-top: var(--space-2);
+    }
+
+    .default-host-select select {
+        min-width: 280px;
+        padding: var(--space-2) var(--space-8) var(--space-2) var(--space-3);
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-md);
+        font-family: var(--font-mono);
+        font-size: 0.875rem;
+        color: var(--gray-900);
+        background-color: white;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        background-size: 16px;
+        appearance: none;
+        cursor: pointer;
+        transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+
+    .default-host-select select:focus {
+        outline: none;
+        border-color: var(--primary-500);
+        box-shadow: 0 0 0 3px var(--primary-100);
+    }
+
+    .default-host-select select:hover {
+        border-color: var(--gray-400);
+    }
+
+    .default-star {
+        color: var(--primary-500);
+        font-size: 1.25rem;
+    }
+
+    .default-host-hint {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+        margin-top: var(--space-2);
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+    }
+
+    .default-host-hint svg {
+        width: 14px;
+        height: 14px;
+        color: var(--primary-500);
+    }
+
+    /* Password Form Improvements */
+    .password-wrapper {
+        position: relative;
+    }
+
+    .password-wrapper .form-input {
+        padding-right: 44px;
+    }
+
+    .password-toggle {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        padding: 4px;
+        cursor: pointer;
+        color: var(--gray-400);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-sm);
+        transition: color var(--transition-fast);
+    }
+
+    .password-toggle:hover {
+        color: var(--gray-600);
+    }
+
+    .password-toggle svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    /* Alert Styling */
+    .alert {
+        padding: var(--space-3) var(--space-4);
+        border-radius: var(--radius-md);
+        font-size: 0.875rem;
+        margin-bottom: var(--space-4);
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+    }
+
+    .alert-danger {
+        background: var(--danger-50, #fef2f2);
+        color: var(--danger-700, #b91c1c);
+        border: 1px solid var(--danger-200, #fecaca);
+    }
+
+    .alert-success {
+        background: var(--success-50, #f0fdf4);
+        color: var(--success-700, #15803d);
+        border: 1px solid var(--success-200, #bbf7d0);
+    }
+
+    .alert svg {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+    }
+
+    /* Card Enhancements */
+    .profile-card {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-xl);
+        overflow: hidden;
+        margin-bottom: var(--space-6);
+    }
+
+    .profile-card-header {
+        padding: var(--space-4) var(--space-5);
+        border-bottom: 1px solid var(--gray-200);
+        background: var(--gray-50);
+    }
+
+    .profile-card-header h2 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--gray-900);
+        margin: 0;
+    }
+
+    .profile-card-body {
+        padding: var(--space-5);
+    }
+
+    /* Form Helper Text */
+    .form-hint {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+        margin-top: var(--space-1);
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 640px) {
+        .profile-header {
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .profile-stats {
+            justify-content: center;
+            width: 100%;
+        }
+
+        .profile-info {
+            text-align: center;
+        }
+
+        .default-host-select {
+            flex-direction: column;
+            align-items: flex-start;
+            width: 100%;
+        }
+
+        .default-host-select select {
+            min-width: 100%;
+            width: 100%;
+        }
+    }
+</style>
+
+{% include "partials/breadcrumbs.html" %}
+
+<div class="profile-container">
+<!-- Profile Header -->
+<div class="profile-header">
+    <div class="profile-avatar">{{ user.username[0] }}</div>
+    <div class="profile-info">
+        <h1 class="profile-name">{{ user.username }}</h1>
+        <div class="profile-code">User Code: {{ user.user_code }}</div>
+        <span class="profile-role {{ user.role.value }}">
+            {% if user.role.value == 'admin' %}
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width: 14px; height: 14px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+            </svg>
+            Administrator
+            {% elif user.role.value == 'manager' %}
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width: 14px; height: 14px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+            </svg>
+            Manager
+            {% else %}
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width: 14px; height: 14px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+            </svg>
+            User
+            {% endif %}
+        </span>
+    </div>
+    <div class="profile-stats">
+        <div class="profile-stat">
+            <div class="profile-stat-value">{{ (user.allowed_hosts or [])|length }}</div>
+            <div class="profile-stat-label">Allowed Hosts</div>
+        </div>
+        <div class="profile-stat">
+            <div class="profile-stat-value">{{ member_since }}</div>
+            <div class="profile-stat-label">Member Since</div>
+        </div>
+    </div>
+</div>
+
+<!-- Account Details Card -->
+<div class="profile-card">
+    <div class="profile-card-header">
+        <h2>Account Details</h2>
+    </div>
+    <div class="profile-card-body">
+        <div class="info-grid">
+            <div class="info-item">
+                <span class="info-label">User Code</span>
+                <span class="info-value"><code>{{ user.user_code }}</code></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Role</span>
+                <span class="info-value" style="text-transform: capitalize;">{{ user.role.value }}</span>
+            </div>
+            {% if manager_username %}
+            <div class="info-item">
+                <span class="info-label">Manager</span>
+                <span class="info-value">{{ manager_username }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if user.allowed_hosts %}
+        <div class="default-host-section">
+            <div class="info-item">
+                <span class="info-label">Default Database Host</span>
+                <div class="default-host-select">
+                    <span class="default-star">★</span>
+                    <select id="default_host" name="default_host" onchange="updateDefaultHost(this.value)">
+                        {% for host in user.allowed_hosts %}
+                        <option value="{{ host }}" {{ 'selected' if host == user.default_host else '' }}>
+                            {{ host }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="default-host-hint">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                    This host will be pre-selected when creating new restore jobs
+                </div>
+            </div>
+        </div>
+        {% elif user.role.value == 'admin' %}
+        <div class="default-host-section">
+            <div class="info-item">
+                <span class="info-label">Database Host Access</span>
+                <div class="info-value" style="color: var(--gray-500); font-style: italic; margin-top: var(--space-2);">
+                    All hosts (administrator access)
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Change Password Card -->
+<div class="profile-card">
+    <div class="profile-card-header">
+        <h2>Change Password</h2>
+    </div>
+    <div class="profile-card-body">
+        {% if error %}
+        <div class="alert alert-danger">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            {{ error }}
+        </div>
+        {% endif %}
+        {% if success %}
+        <div class="alert alert-success">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {{ success }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/web/auth/change-password" style="max-width: 400px;">
+            <div class="form-group">
+                <label for="current_password" class="form-label">Current Password</label>
+                <div class="password-wrapper">
+                    <input type="password" id="current_password" name="current_password" class="form-input" required autocomplete="current-password">
+                    <button type="button" class="password-toggle" onclick="togglePassword('current_password', this)" aria-label="Toggle password visibility">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="eye-open">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="eye-closed" style="display: none;">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="new_password" class="form-label">New Password</label>
+                <div class="password-wrapper">
+                    <input type="password" id="new_password" name="new_password" class="form-input" required minlength="8" autocomplete="new-password">
+                    <button type="button" class="password-toggle" onclick="togglePassword('new_password', this)" aria-label="Toggle password visibility">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="eye-open">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="eye-closed" style="display: none;">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="form-hint">Must be at least 8 characters long</div>
+            </div>
+
+            <div class="form-group">
+                <label for="confirm_password" class="form-label">Confirm New Password</label>
+                <div class="password-wrapper">
+                    <input type="password" id="confirm_password" name="confirm_password" class="form-input" required autocomplete="new-password">
+                    <button type="button" class="password-toggle" onclick="togglePassword('confirm_password', this)" aria-label="Toggle password visibility">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="eye-open">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="eye-closed" style="display: none;">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-actions" style="margin-top: var(--space-6);">
+                <button type="submit" class="btn btn-primary">Save New Password</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+</div><!-- end profile-container -->
+
+<script>
+function togglePassword(inputId, button) {
+    const input = document.getElementById(inputId);
+    const eyeOpen = button.querySelector('.eye-open');
+    const eyeClosed = button.querySelector('.eye-closed');
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        eyeOpen.style.display = 'none';
+        eyeClosed.style.display = 'block';
+    } else {
+        input.type = 'password';
+        eyeOpen.style.display = 'block';
+        eyeClosed.style.display = 'none';
+    }
+}
+
+function updateDefaultHost(newHost) {
+    fetch('/web/auth/set-default-host', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ host: newHost })
+    })
+    .then(response => {
+        if (response.ok) {
+            // Show brief success feedback
+            const select = document.getElementById('default_host');
+            select.style.borderColor = 'var(--success-500, #22c55e)';
+            setTimeout(() => {
+                select.style.borderColor = '';
+            }, 1500);
+        }
+    })
+    .catch(err => {
+        console.error('Failed to update default host:', err);
+    });
+}
+</script>
+{% endblock %}

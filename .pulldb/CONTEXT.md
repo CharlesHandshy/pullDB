@@ -124,6 +124,36 @@ shared/   → pulldb/infra/             Infrastructure
 4. Check .github/copilot-instructions.md for task-specific guidance
 ```
 
+### Ongoing Behaviors (AUTOMATIC)
+
+These happen continuously without user prompting:
+
+| Behavior | Trigger | Action |
+|----------|---------|--------|
+| **HCA Enforcement** | Creating/modifying files | Place in correct layer, validate imports |
+| **Session Logging** | Significant work completed | Append to `.pulldb/SESSION-LOG.md` |
+| **Knowledge Pool Updates** | New facts discovered | Add to `docs/KNOWLEDGE-POOL.md` |
+
+### Session Logging
+
+**Mandatory**: Log significant work to `.pulldb/SESSION-LOG.md`
+
+```markdown
+## YYYY-MM-DD | Brief Topic
+
+### Context
+What prompted this work
+
+### What Was Done
+- Concrete actions
+
+### Rationale
+WHY decisions were made (reference principles)
+
+### Files Modified
+- `path/to/file.py`
+```
+
 ### When Discovering New Patterns
 
 | Discovery Type | Record In |

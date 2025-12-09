@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Jobs - pullDB{% endblock %}
+
+{% block content %}
+<div class="jobs-container" hx-get="{{ request.url }}" hx-trigger="every 10s" hx-select=".jobs-container" hx-swap="outerHTML">
+    <div class="page-header">
+        <h1 class="page-title">Jobs</h1>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <form method="GET" action="/web/jobs" style="display: flex; gap: 0.5rem; align-items: center;">
+                <!-- Filters -->
+                <select name="status" class="form-select" style="width: 120px;" onchange="this.form.submit()">
+                    <option value="">All Status</option>
+                    <option value="queued" {% if status == 'queued' %}selected{% endif %}>Queued</option>
+                    <option value="running" {% if status == 'running' %}selected{% endif %}>Running</option>
+                    <option value="complete" {% if status == 'complete' %}selected{% endif %}>Complete</option>
+                    <option value="failed" {% if status == 'failed' %}selected{% endif %}>Failed</option>
+                    <option value="canceled" {% if status == 'canceled' %}selected{% endif %}>Canceled</option>
+                </select>
+
+                <select name="host" class="form-select" style="width: 150px;" onchange="this.form.submit()">
+                    <option value="">All Hosts</option>
+                    {% for h in hosts %}
+                    <option value="{{ h.hostname }}" {% if host == h.hostname %}selected{% endif %}>{{ h.hostname }}</option>
+                    {% endfor %}
+                </select>
+
+                <input type="text" name="q" value="{{ q or '' }}" placeholder="Search jobs..." class="form-input" style="width: 200px;">
+                <button type="submit" class="btn btn-secondary">Search</button>
+                {% if q or status or host %}
+                <a href="/web/jobs" class="btn btn-ghost">Clear</a>
+                {% endif %}
+            </form>
+            <a href="/web/restore" class="btn btn-primary">New Restore Job</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Job ID</th>
+                        <th>Target</th>
+                        <th>Status</th>
+                        <th>Submitted</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs %}
+                    <tr>
+                        <td class="font-mono">{{ job.job_id[:8] }}</td>
+                        <td class="text-dark">{{ job.target }}</td>
+                        <td>
+                            <span class="badge 
+                                {% if job.status|string == 'completed' %}badge-success
+                                {% elif job.status|string == 'failed' %}badge-danger
+                                {% elif job.status|string == 'running' %}badge-primary
+                                {% else %}badge-neutral{% endif %}
+                            ">
+                                {{ job.status }}
+                            </span>
+                        </td>
+                        <td>{{ job.submitted_at.strftime('%Y-%m-%d %H:%M') if job.submitted_at else '-' }}</td>
+                        <td>
+                            <a href="/web/jobs/{{ job.job_id }}" class="link-primary">View</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="empty-state">No jobs found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination-controls" style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4);">
+        <div>
+            {% if has_prev %}
+            <a href="?page={{ page - 1 }}" class="btn btn-secondary">Previous</a>
+            {% else %}
+            <button class="btn btn-secondary" disabled style="opacity: 0.5; cursor: not-allowed;">Previous</button>
+            {% endif %}
+        </div>
+        <span style="color: var(--gray-600);">Page {{ page }}</span>
+        <div>
+            {% if has_next %}
+            <a href="?page={{ page + 1 }}" class="btn btn-secondary">Next</a>
+            {% else %}
+            <button class="btn btn-secondary" disabled style="opacity: 0.5; cursor: not-allowed;">Next</button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

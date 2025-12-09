@@ -10,6 +10,7 @@ This package contains the Mock System implementation, including:
 
 from pulldb.simulation.adapters.mock_exec import MockCommandConfig, MockProcessExecutor
 from pulldb.simulation.adapters.mock_mysql import (
+    SimulatedAuditRepository,
     SimulatedAuthRepository,
     SimulatedHostRepository,
     SimulatedJobRepository,
@@ -42,6 +43,7 @@ __all__ = [
     "MockCommandConfig",
     "MockProcessExecutor",
     "MockS3Client",
+    "SimulatedAuditRepository",
     "SimulatedAuthRepository",
     "SimulatedHostRepository",
     "SimulatedJobRepository",

@@ -1,0 +1,988 @@
+<!--
+    Dev Extensions for pullDB
+    
+    This file contains ALL development-only UI components:
+    - Dev toolbar (viewport testing, grid overlay, color palette)  
+    - Simulation debug panel (scenarios, event history, state)
+    
+    This file is ONLY included by dev_server.py and is NOT part of
+    the production deployment. It gets injected via template globals.
+    
+    HCA Layer: plugins (development tooling)
+-->
+
+<!-- ============================================================
+     IFRAME DETECTION - Hide dev toolbar when inside viewport preview
+     The CSS hides by default, script removes it if NOT in iframe
+     ============================================================ -->
+<style id="dev-iframe-hide">
+    /* Initially hide all dev elements - script below will remove this if not in iframe */
+    .dev-toolbar, .dev-grid-overlay, .dev-palette-popup, .simulation-panel,
+    .dev-viewport-preview { display: none !important; }
+</style>
+<script>
+    // If NOT in iframe preview, remove the hiding CSS to show toolbar
+    // Run immediately since we're after the style element
+    (function() {
+        if (!window.location.search.includes('_dev_iframe=1')) {
+            // Not in iframe - remove the hiding style to show toolbar
+            var hideStyle = document.getElementById('dev-iframe-hide');
+            if (hideStyle) {
+                hideStyle.parentNode.removeChild(hideStyle);
+            }
+        }
+        // If in iframe, style stays and toolbar remains hidden
+    })();
+</script>
+
+<!-- ============================================================
+     DEV TOOLBAR STYLES
+     ============================================================ -->
+<style id="dev-toolbar-styles">
+    /* Toolbar positioning and layout */
+    .dev-toolbar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 10001;
+        font-family: 'Inter', -apple-system, sans-serif;
+        font-size: 11px;
+        background: #1a1a2e;
+        border-top: 1px solid #2a2a4a;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+    }
+    
+    .dev-toolbar-inner {
+        display: flex;
+        align-items: center;
+        height: 32px;
+        padding: 0 12px;
+        gap: 16px;
+    }
+    
+    /* Section groups */
+    .dev-section {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        border-right: 1px solid #2a2a4a;
+    }
+    
+    .dev-section:last-child {
+        border-right: none;
+        margin-left: auto;
+    }
+    
+    .dev-section-label {
+        color: #6b7280;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-right: 4px;
+    }
+    
+    /* Viewport info */
+    .dev-viewport {
+        color: #60a5fa;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        background: rgba(96, 165, 250, 0.1);
+        padding: 2px 8px;
+        border-radius: 4px;
+    }
+    
+    /* Control buttons */
+    .dev-btn {
+        background: #2a2a4a;
+        border: none;
+        color: #9ca3af;
+        padding: 4px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 10px;
+        font-family: inherit;
+        transition: all 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    
+    .dev-btn:hover {
+        background: #3a3a5a;
+        color: #e5e7eb;
+    }
+    
+    .dev-btn.active {
+        background: #3b82f6;
+        color: white;
+    }
+    
+    .dev-btn svg {
+        width: 12px;
+        height: 12px;
+    }
+    
+    /* Viewport selector dropdown */
+    .dev-viewport-selector {
+        position: relative;
+    }
+    
+    .dev-viewport-dropdown {
+        position: absolute;
+        bottom: 100%;
+        left: 0;
+        background: #1a1a2e;
+        border: 1px solid #2a2a4a;
+        border-radius: 6px;
+        padding: 6px;
+        margin-bottom: 4px;
+        min-width: 180px;
+        display: none;
+        z-index: 10002;
+        box-shadow: 0 -4px 12px rgba(0,0,0,0.3);
+    }
+    
+    .dev-viewport-dropdown.open {
+        display: block;
+    }
+    
+    .dev-viewport-option {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 10px;
+        color: #9ca3af;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 10px;
+    }
+    
+    .dev-viewport-option:hover {
+        background: #2a2a4a;
+        color: #e5e7eb;
+    }
+    
+    .dev-viewport-option.active {
+        background: rgba(59, 130, 246, 0.2);
+        color: #60a5fa;
+    }
+    
+    .dev-viewport-size {
+        font-family: 'JetBrains Mono', monospace;
+        color: #6b7280;
+        font-size: 9px;
+    }
+    
+    /* Simulation indicator */
+    .dev-sim-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(251, 191, 36, 0.15);
+        color: #fbbf24;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 500;
+    }
+    
+    .dev-sim-indicator svg {
+        width: 12px;
+        height: 12px;
+    }
+    
+    /* Grid overlay */
+    .dev-grid-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 32px;
+        pointer-events: none;
+        z-index: 9998;
+        display: none;
+    }
+    
+    .dev-grid-overlay.active {
+        display: block;
+        background-image: 
+            linear-gradient(rgba(59, 130, 246, 0.1) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(59, 130, 246, 0.1) 1px, transparent 1px);
+        background-size: 8px 8px;
+    }
+    
+    /* Color palette popup */
+    .dev-palette-popup {
+        position: fixed;
+        bottom: 44px;
+        right: 12px;
+        background: #1a1a2e;
+        border: 1px solid #2a2a4a;
+        border-radius: 8px;
+        padding: 12px;
+        display: none;
+        z-index: 10000;
+        width: 280px;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+    }
+    
+    .dev-palette-popup.open {
+        display: block;
+    }
+    
+    .dev-palette-title {
+        color: #9ca3af;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+    }
+    
+    .dev-palette-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+    }
+    
+    .dev-palette-swatch {
+        width: 100%;
+        aspect-ratio: 1;
+        border-radius: 4px;
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: all 0.15s;
+        position: relative;
+    }
+    
+    .dev-palette-swatch:hover {
+        transform: scale(1.1);
+        border-color: white;
+    }
+    
+    .dev-palette-swatch::after {
+        content: attr(data-name);
+        position: absolute;
+        bottom: -18px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 8px;
+        color: #6b7280;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.15s;
+    }
+    
+    .dev-palette-swatch:hover::after {
+        opacity: 1;
+    }
+    
+    /* Viewport iframe preview */
+    .dev-viewport-preview {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 32px;
+        background: #1a1a2e;
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+    }
+    
+    .dev-viewport-preview.active {
+        display: flex;
+    }
+    
+    .dev-viewport-frame {
+        background: white;
+        box-shadow: 0 0 40px rgba(0,0,0,0.5);
+        overflow: hidden;
+        position: relative;
+    }
+    
+    .dev-viewport-frame iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+    }
+    
+    .dev-viewport-label {
+        position: absolute;
+        top: -24px;
+        left: 0;
+        color: #9ca3af;
+        font-size: 10px;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    
+    /* Resize handle for custom sizing */
+    .dev-resize-handle {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        width: 24px;
+        height: 24px;
+        background: rgba(59, 130, 246, 0.3);
+        cursor: nwse-resize;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #60a5fa;
+        font-size: 12px;
+        border-radius: 4px 0 0 0;
+        z-index: 10;
+    }
+    
+    .dev-resize-handle:hover {
+        background: rgba(59, 130, 246, 0.5);
+    }
+    
+    /* Device size buttons in preview */
+    .dev-device-buttons {
+        position: absolute;
+        top: -30px;
+        right: 0;
+        display: flex;
+        gap: 8px;
+    }
+    
+    .dev-device-btn {
+        background: #2a2a4a;
+        border: none;
+        color: #9ca3af;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 9px;
+        font-family: inherit;
+        transition: all 0.15s;
+    }
+    
+    .dev-device-btn:hover,
+    .dev-device-btn.active {
+        background: #3b82f6;
+        color: white;
+    }
+</style>
+
+<!-- ============================================================
+     SIMULATION DEBUG PANEL STYLES
+     ============================================================ -->
+<style id="simulation-panel-styles">
+    .simulation-panel {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .sim-panel-content {
+        background: white;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 800px;
+        max-height: 80vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+    }
+    .sim-panel-header {
+        background: linear-gradient(90deg, #fef3c7, #fef9c3);
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 2px solid #f59e0b;
+    }
+    .sim-panel-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        color: #92400e;
+    }
+    .sim-panel-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #92400e;
+    }
+    .sim-panel-body {
+        padding: 20px;
+        overflow-y: auto;
+    }
+    .sim-section {
+        margin-bottom: 20px;
+    }
+    .sim-section h4 {
+        font-size: 0.9rem;
+        color: #374151;
+        margin-bottom: 8px;
+        font-weight: 600;
+    }
+    #sim-state-info {
+        background: #f3f4f6;
+        padding: 12px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.8rem;
+    }
+    #sim-scenario-select {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 0.9rem;
+    }
+    .sim-event-log {
+        background: #1f2937;
+        color: #e5e7eb;
+        padding: 12px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.75rem;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    .sim-event {
+        padding: 4px 0;
+        border-bottom: 1px solid #374151;
+    }
+    .sim-event:last-child {
+        border-bottom: none;
+    }
+    .sim-event-type {
+        color: #60a5fa;
+    }
+    .sim-event-source {
+        color: #a78bfa;
+    }
+    .sim-event-time {
+        color: #6b7280;
+    }
+</style>
+
+<!-- ============================================================
+     DEV TOOLBAR HTML
+     ============================================================ -->
+<div class="dev-toolbar" id="dev-toolbar">
+    <div class="dev-toolbar-inner">
+        <!-- Viewport Section -->
+        <div class="dev-section">
+            <span class="dev-section-label">Viewport</span>
+            <span class="dev-viewport" id="dev-viewport-info">Loading...</span>
+            <div class="dev-viewport-selector">
+                <button class="dev-btn" onclick="toggleViewportDropdown()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="3" width="20" height="14" rx="2"/>
+                        <path d="M8 21h8m-4-4v4"/>
+                    </svg>
+                    Preview
+                </button>
+                <div class="dev-viewport-dropdown" id="dev-viewport-dropdown">
+                    <div class="dev-viewport-option" onclick="setViewportPreview('desktop')" data-viewport="desktop">
+                        <span>Desktop</span>
+                        <span class="dev-viewport-size">1920×1080</span>
+                    </div>
+                    <div class="dev-viewport-option" onclick="setViewportPreview('laptop')" data-viewport="laptop">
+                        <span>Laptop</span>
+                        <span class="dev-viewport-size">1366×768</span>
+                    </div>
+                    <div class="dev-viewport-option" onclick="setViewportPreview('tablet')" data-viewport="tablet">
+                        <span>Tablet</span>
+                        <span class="dev-viewport-size">768×1024</span>
+                    </div>
+                    <div class="dev-viewport-option" onclick="setViewportPreview('mobile')" data-viewport="mobile">
+                        <span>Mobile</span>
+                        <span class="dev-viewport-size">375×667</span>
+                    </div>
+                    <div class="dev-viewport-option" onclick="closeViewportPreview()" data-viewport="native">
+                        <span>Native</span>
+                        <span class="dev-viewport-size">Full size</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tools Section -->
+        <div class="dev-section">
+            <span class="dev-section-label">Tools</span>
+            <button class="dev-btn" id="dev-grid-btn" onclick="toggleGrid()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                </svg>
+                Grid
+            </button>
+            <button class="dev-btn" id="dev-palette-btn" onclick="togglePalette()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <circle cx="12" cy="8" r="2" fill="currentColor"/>
+                    <circle cx="8" cy="14" r="2" fill="currentColor"/>
+                    <circle cx="16" cy="14" r="2" fill="currentColor"/>
+                </svg>
+                Colors
+            </button>
+        </div>
+        
+        <!-- Simulation Section -->
+        <div class="dev-section">
+            <div class="dev-sim-indicator">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                </svg>
+                Simulation
+            </div>
+            <button class="dev-btn" onclick="openSimulationPanel()">Debug</button>
+            <button class="dev-btn" onclick="resetSimulation()">Reset</button>
+        </div>
+    </div>
+</div>
+
+<!-- Grid Overlay -->
+<div class="dev-grid-overlay" id="dev-grid-overlay"></div>
+
+<!-- Color Palette Popup -->
+<div class="dev-palette-popup" id="dev-palette-popup">
+    <div class="dev-palette-title">Brand Colors</div>
+    <div class="dev-palette-grid">
+        <div class="dev-palette-swatch" style="background: #3b82f6" data-name="primary" onclick="copyColor('#3b82f6')"></div>
+        <div class="dev-palette-swatch" style="background: #10b981" data-name="success" onclick="copyColor('#10b981')"></div>
+        <div class="dev-palette-swatch" style="background: #ef4444" data-name="danger" onclick="copyColor('#ef4444')"></div>
+        <div class="dev-palette-swatch" style="background: #f59e0b" data-name="warning" onclick="copyColor('#f59e0b')"></div>
+        <div class="dev-palette-swatch" style="background: #6b7280" data-name="gray" onclick="copyColor('#6b7280')"></div>
+    </div>
+    <div class="dev-palette-title" style="margin-top: 12px">Status Colors</div>
+    <div class="dev-palette-grid">
+        <div class="dev-palette-swatch" style="background: #fbbf24" data-name="queued" onclick="copyColor('#fbbf24')"></div>
+        <div class="dev-palette-swatch" style="background: #3b82f6" data-name="running" onclick="copyColor('#3b82f6')"></div>
+        <div class="dev-palette-swatch" style="background: #10b981" data-name="complete" onclick="copyColor('#10b981')"></div>
+        <div class="dev-palette-swatch" style="background: #ef4444" data-name="failed" onclick="copyColor('#ef4444')"></div>
+        <div class="dev-palette-swatch" style="background: #9ca3af" data-name="canceled" onclick="copyColor('#9ca3af')"></div>
+    </div>
+</div>
+
+<!-- Viewport Preview Container -->
+<div class="dev-viewport-preview" id="dev-viewport-preview">
+    <div class="dev-viewport-frame" id="dev-viewport-frame">
+        <span class="dev-viewport-label" id="dev-viewport-preview-label"></span>
+    </div>
+</div>
+
+<!-- Simulation Debug Panel Modal -->
+<div id="simulation-panel" class="simulation-panel" style="display: none;">
+    <div class="sim-panel-content">
+        <div class="sim-panel-header">
+            <h3>🔬 Simulation Debug Panel</h3>
+            <button class="sim-panel-close" onclick="closeSimulationPanel()">&times;</button>
+        </div>
+        <div class="sim-panel-body">
+            <div class="sim-section">
+                <h4>Current State</h4>
+                <div id="sim-state-info">Loading...</div>
+            </div>
+            <div class="sim-section">
+                <h4>Scenarios</h4>
+                <select id="sim-scenario-select" onchange="activateScenario(this.value)">
+                    <option value="">-- Select Scenario --</option>
+                </select>
+            </div>
+            <div class="sim-section">
+                <h4>Event History (Latest 20)</h4>
+                <div id="sim-event-log" class="sim-event-log"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================
+     DEV TOOLBAR + SIMULATION PANEL SCRIPTS
+     ============================================================ -->
+<script>
+(function() {
+    'use strict';
+    
+    // ===== Skip initialization if inside iframe preview =====
+    if (window.location.search.includes('_dev_iframe=1')) {
+        return; // CSS already hides elements, skip all JS setup
+    }
+    
+    // ===== Viewport Info =====
+    function updateViewportInfo() {
+        const el = document.getElementById('dev-viewport-info');
+        if (el) {
+            el.textContent = window.innerWidth + ' × ' + window.innerHeight;
+        }
+    }
+    
+    window.addEventListener('resize', updateViewportInfo);
+    updateViewportInfo();
+    
+    // ===== Viewport Dropdown =====
+    window.toggleViewportDropdown = function() {
+        const dropdown = document.getElementById('dev-viewport-dropdown');
+        dropdown.classList.toggle('open');
+    };
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        const dropdown = document.getElementById('dev-viewport-dropdown');
+        const btn = e.target.closest('.dev-viewport-selector');
+        if (!btn && dropdown) {
+            dropdown.classList.remove('open');
+        }
+    });
+    
+    // ===== Viewport Preview =====
+    const viewportSizes = {
+        desktop: { width: 1920, height: 1080 },
+        laptop: { width: 1366, height: 768 },
+        tablet: { width: 768, height: 1024 },
+        mobile: { width: 375, height: 667 }
+    };
+    
+    window.setViewportPreview = function(size) {
+        const preview = document.getElementById('dev-viewport-preview');
+        const frame = document.getElementById('dev-viewport-frame');
+        const label = document.getElementById('dev-viewport-preview-label');
+        const dropdown = document.getElementById('dev-viewport-dropdown');
+        
+        dropdown.classList.remove('open');
+        
+        // Update active state in dropdown
+        document.querySelectorAll('.dev-viewport-option').forEach(opt => {
+            opt.classList.toggle('active', opt.dataset.viewport === size);
+        });
+        
+        if (size === 'native') {
+            closeViewportPreview();
+            return;
+        }
+        
+        const dims = viewportSizes[size];
+        if (!dims) return;
+        
+        // Scale to fit available space (leave room for toolbar)
+        const availableWidth = window.innerWidth - 80;
+        const availableHeight = window.innerHeight - 100;
+        
+        let scale = Math.min(
+            availableWidth / dims.width,
+            availableHeight / dims.height,
+            1
+        );
+        
+        const scaledWidth = dims.width * scale;
+        const scaledHeight = dims.height * scale;
+        
+        frame.style.width = scaledWidth + 'px';
+        frame.style.height = scaledHeight + 'px';
+        frame.dataset.currentSize = size;
+        
+        label.textContent = size.charAt(0).toUpperCase() + size.slice(1) + ' (' + dims.width + '×' + dims.height + ')';
+        
+        // Create iframe if needed
+        let iframe = frame.querySelector('iframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            // Add _dev_iframe param to prevent nested dev toolbar
+            iframe.src = window.location.href + (window.location.href.includes('?') ? '&' : '?') + '_dev_iframe=1';
+            frame.appendChild(iframe);
+            
+            // Add resize handle
+            if (!frame.querySelector('.dev-resize-handle')) {
+                const handle = document.createElement('div');
+                handle.className = 'dev-resize-handle';
+                handle.innerHTML = '⋱';
+                handle.title = 'Drag to resize';
+                frame.appendChild(handle);
+                initResizeHandle(handle, frame);
+            }
+            
+            // Add device buttons
+            if (!frame.querySelector('.dev-device-buttons')) {
+                const buttons = document.createElement('div');
+                buttons.className = 'dev-device-buttons';
+                buttons.innerHTML = `
+                    <button class="dev-device-btn" onclick="resizeViewport(375, 667, 'Mobile')">Mobile</button>
+                    <button class="dev-device-btn" onclick="resizeViewport(768, 1024, 'Tablet')">Tablet</button>
+                    <button class="dev-device-btn" onclick="resizeViewport(1366, 768, 'Laptop')">Laptop</button>
+                    <button class="dev-device-btn" onclick="resizeViewport(1920, 1080, 'Desktop')">Desktop</button>
+                `;
+                frame.appendChild(buttons);
+            }
+        }
+        
+        preview.classList.add('active');
+        
+        // Dispatch resize event to iframe after it loads
+        iframe.onload = function() {
+            dispatchResizeToIframe(iframe);
+        };
+    };
+    
+    // Resize viewport and dispatch resize event
+    window.resizeViewport = function(width, height, label) {
+        const frame = document.getElementById('dev-viewport-frame');
+        const labelEl = document.getElementById('dev-viewport-preview-label');
+        const iframe = frame.querySelector('iframe');
+        
+        // Scale to fit
+        const availableWidth = window.innerWidth - 80;
+        const availableHeight = window.innerHeight - 100;
+        let scale = Math.min(availableWidth / width, availableHeight / height, 1);
+        
+        frame.style.width = (width * scale) + 'px';
+        frame.style.height = (height * scale) + 'px';
+        
+        if (labelEl) {
+            labelEl.textContent = label + ' (' + width + '×' + height + ')';
+        }
+        
+        // Update active button
+        frame.querySelectorAll('.dev-device-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.textContent === label);
+        });
+        
+        // Dispatch resize to iframe
+        dispatchResizeToIframe(iframe);
+    };
+    
+    // Dispatch resize event to iframe content
+    function dispatchResizeToIframe(iframe) {
+        if (iframe && iframe.contentWindow) {
+            try {
+                // Method 1: Direct event dispatch
+                iframe.contentWindow.dispatchEvent(new Event('resize'));
+                
+                // Method 2: PostMessage for cross-origin compatibility
+                iframe.contentWindow.postMessage({ type: 'dev-viewport-resize' }, '*');
+            } catch (e) {
+                console.log('Could not dispatch resize to iframe:', e);
+            }
+        }
+    }
+    
+    // Initialize resize handle dragging
+    function initResizeHandle(handle, frame) {
+        let isResizing = false;
+        let startX, startY, startW, startH;
+        
+        handle.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startW = frame.offsetWidth;
+            startH = frame.offsetHeight;
+            e.preventDefault();
+            document.body.style.cursor = 'nwse-resize';
+        });
+        
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+            
+            const w = Math.max(320, startW + (e.clientX - startX));
+            const h = Math.max(200, startH + (e.clientY - startY));
+            
+            frame.style.width = w + 'px';
+            frame.style.height = h + 'px';
+            
+            // Update label with current size
+            const label = document.getElementById('dev-viewport-preview-label');
+            if (label) {
+                label.textContent = 'Custom (' + Math.round(w) + '×' + Math.round(h) + ')';
+            }
+        });
+        
+        document.addEventListener('mouseup', function() {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = '';
+                
+                // Dispatch resize to iframe after drag ends
+                const iframe = frame.querySelector('iframe');
+                dispatchResizeToIframe(iframe);
+            }
+        });
+    }
+    
+    window.closeViewportPreview = function() {
+        const preview = document.getElementById('dev-viewport-preview');
+        const frame = document.getElementById('dev-viewport-frame');
+        const iframe = frame.querySelector('iframe');
+        const handle = frame.querySelector('.dev-resize-handle');
+        const buttons = frame.querySelector('.dev-device-buttons');
+        
+        if (iframe) iframe.remove();
+        if (handle) handle.remove();
+        if (buttons) buttons.remove();
+        preview.classList.remove('active');
+        
+        document.querySelectorAll('.dev-viewport-option').forEach(opt => {
+            opt.classList.toggle('active', opt.dataset.viewport === 'native');
+        });
+    };
+    // ===== Grid Overlay =====
+    window.toggleGrid = function() {
+        const overlay = document.getElementById('dev-grid-overlay');
+        const btn = document.getElementById('dev-grid-btn');
+        overlay.classList.toggle('active');
+        btn.classList.toggle('active');
+    };
+    
+    // ===== Color Palette =====
+    window.togglePalette = function() {
+        const popup = document.getElementById('dev-palette-popup');
+        const btn = document.getElementById('dev-palette-btn');
+        popup.classList.toggle('open');
+        btn.classList.toggle('active');
+    };
+    
+    window.copyColor = function(color) {
+        navigator.clipboard.writeText(color).then(function() {
+            // Brief visual feedback
+            const btn = document.getElementById('dev-palette-btn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = btn.innerHTML.replace('Colors', 'Copied!');
+            setTimeout(function() {
+                btn.innerHTML = originalText;
+            }, 1000);
+        });
+    };
+    
+    // Close palette when clicking outside
+    document.addEventListener('click', function(e) {
+        const popup = document.getElementById('dev-palette-popup');
+        const btn = document.getElementById('dev-palette-btn');
+        if (!popup.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+            popup.classList.remove('open');
+            btn.classList.remove('active');
+        }
+    });
+    
+    // ===== Simulation Panel Functions =====
+    window.openSimulationPanel = async function() {
+        document.getElementById('simulation-panel').style.display = 'flex';
+        await refreshSimulationState();
+        await loadScenarios();
+        await loadEventHistory();
+    };
+    
+    window.closeSimulationPanel = function() {
+        document.getElementById('simulation-panel').style.display = 'none';
+    };
+    
+    window.resetSimulation = async function() {
+        if (!confirm('Reset all simulation state? This will clear jobs, events, and S3 fixtures.')) {
+            return;
+        }
+        try {
+            const resp = await fetch('/simulation/reset', { method: 'POST' });
+            const data = await resp.json();
+            alert(data.message);
+            location.reload();
+        } catch (e) {
+            alert('Reset failed: ' + e.message);
+        }
+    };
+    
+    async function refreshSimulationState() {
+        try {
+            const resp = await fetch('/simulation/status');
+            const data = await resp.json();
+            document.getElementById('sim-state-info').innerHTML = 
+                '<div><strong>Scenario:</strong> ' + (data.current_scenario || 'None') + '</div>' +
+                '<div><strong>Jobs:</strong> ' + data.job_count + ' | <strong>Users:</strong> ' + data.user_count + ' | <strong>Hosts:</strong> ' + data.host_count + '</div>' +
+                '<div><strong>S3 Buckets:</strong> ' + data.s3_bucket_count + ' | <strong>Events:</strong> ' + data.event_count + '</div>';
+        } catch (e) {
+            document.getElementById('sim-state-info').textContent = 'Error loading state: ' + e.message;
+        }
+    }
+    
+    async function loadScenarios() {
+        try {
+            const resp = await fetch('/simulation/scenarios');
+            const data = await resp.json();
+            const select = document.getElementById('sim-scenario-select');
+            select.innerHTML = '<option value="">-- Select Scenario --</option>';
+            data.scenarios.forEach(function(s) {
+                const opt = document.createElement('option');
+                opt.value = s.type;
+                opt.textContent = s.name + ' - ' + s.description;
+                if (s.type === data.current) {
+                    opt.selected = true;
+                }
+                select.appendChild(opt);
+            });
+        } catch (e) {
+            console.error('Failed to load scenarios:', e);
+        }
+    }
+    
+    window.activateScenario = async function(scenarioType) {
+        if (!scenarioType) return;
+        try {
+            const resp = await fetch('/simulation/scenarios/activate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scenario_type: scenarioType })
+            });
+            const data = await resp.json();
+            await refreshSimulationState();
+            await loadEventHistory();
+        } catch (e) {
+            alert('Failed to activate scenario: ' + e.message);
+        }
+    };
+    
+    async function loadEventHistory() {
+        try {
+            const resp = await fetch('/simulation/events?limit=20');
+            const data = await resp.json();
+            const log = document.getElementById('sim-event-log');
+            if (data.events.length === 0) {
+                log.innerHTML = '<div style="color: #6b7280;">No events recorded yet</div>';
+                return;
+            }
+            log.innerHTML = data.events.map(function(e) {
+                return '<div class="sim-event">' +
+                    '<span class="sim-event-time">' + new Date(e.timestamp).toLocaleTimeString() + '</span> ' +
+                    '<span class="sim-event-type">' + e.event_type + '</span> ' +
+                    '<span class="sim-event-source">[' + e.source + ']</span>' +
+                    (e.job_id ? ' <span style="color:#f59e0b">job:' + e.job_id.substring(0,8) + '</span>' : '') +
+                '</div>';
+            }).join('');
+        } catch (e) {
+            document.getElementById('sim-event-log').innerHTML = '<div style="color:#ef4444">Error: ' + e.message + '</div>';
+        }
+    }
+    
+    // Close panel on escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeSimulationPanel();
+            closeViewportPreview();
+        }
+    });
+    
+    // ===== Keyboard Shortcut (Ctrl+`) to toggle toolbar =====
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === '`') {
+            e.preventDefault();
+            const toolbar = document.getElementById('dev-toolbar');
+            toolbar.style.display = toolbar.style.display === 'none' ? 'block' : 'none';
+        }
+    });
+})();
+</script>

@@ -1,0 +1,847 @@
+{#
+    Searchable Dropdown Component
+    HCA Layer: widgets (templates/partials)
+    
+    A reusable type-ahead search/select component.
+    
+    Usage:
+        {% from "partials/searchable_dropdown.html" import searchable_dropdown, searchable_dropdown_styles, searchable_dropdown_scripts %}
+        
+        In your <style> block or CSS file:
+        searchable_dropdown_styles()
+        
+        In your form:
+        searchable_dropdown(
+            id="customer",
+            name="customer",
+            label="Customer Name",
+            placeholder="Type at least 5 characters...",
+            min_chars=5,
+            api_endpoint="/api/customers/search",
+            hint="Type 5+ characters to search customers"
+        )
+        
+        Before </body>:
+        searchable_dropdown_scripts()
+#}
+
+{# Main dropdown component macro #}
+{% macro searchable_dropdown(
+    id,
+    name,
+    label,
+    placeholder="Type to search...",
+    min_chars=3,
+    debounce_ms=300,
+    api_endpoint="",
+    hint="",
+    required=false,
+    initial_value="",
+    initial_label="",
+    max_results=10,
+    no_results_text="No results found",
+    loading_text="Searching...",
+    allow_custom=false,
+    class_name="",
+    disabled=false
+) %}
+<div class="form-group {{ class_name }}">
+    <label for="{{ id }}" class="form-label">
+        {{ label }}
+        {% if required %}<span class="required-mark">*</span>{% endif %}
+    </label>
+    <div class="searchable-dropdown" 
+         id="{{ id }}-container"
+         data-min-chars="{{ min_chars }}"
+         data-debounce="{{ debounce_ms }}"
+         data-api="{{ api_endpoint }}"
+         data-max-results="{{ max_results }}"
+         data-no-results="{{ no_results_text }}"
+         data-loading="{{ loading_text }}"
+         data-allow-custom="{{ 'true' if allow_custom else 'false' }}">
+        
+        {# Hidden input for the actual value #}
+        <input type="hidden" 
+               id="{{ id }}-value" 
+               name="{{ name }}" 
+               value="{{ initial_value }}"
+               {% if required %}required{% endif %}>
+        
+        {# Visible search input #}
+        <input type="text" 
+               id="{{ id }}" 
+               class="form-input searchable-dropdown-input" 
+               placeholder="{{ placeholder }}"
+               autocomplete="off"
+               value="{{ initial_label or initial_value }}"
+               {% if disabled %}disabled{% endif %}
+               aria-haspopup="listbox"
+               aria-expanded="false"
+               aria-autocomplete="list"
+               aria-controls="{{ id }}-listbox"
+               role="combobox">
+        
+        {# Search/loading icon #}
+        <div class="searchable-dropdown-icon">
+            <svg class="icon-search" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="m21 21-4.35-4.35"/>
+            </svg>
+            <svg class="icon-loading" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+            </svg>
+            <svg class="icon-clear" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        </div>
+        
+        {# Dropdown list #}
+        <div class="searchable-dropdown-list" 
+             id="{{ id }}-listbox" 
+             role="listbox"
+             aria-label="{{ label }} options">
+            {# Options populated by JavaScript #}
+        </div>
+    </div>
+    
+    {% if hint %}
+    <p class="form-hint" id="{{ id }}-hint">{{ hint }}</p>
+    {% endif %}
+</div>
+{% endmacro %}
+
+
+{# CSS styles macro - include once per page #}
+{% macro searchable_dropdown_styles() %}
+<style>
+/* =================================================================
+   SEARCHABLE DROPDOWN COMPONENT
+   Standard type-ahead search/select for pullDB
+   ================================================================= */
+
+.searchable-dropdown {
+    position: relative;
+}
+
+.searchable-dropdown-input {
+    width: 100%;
+    padding: var(--space-3) var(--space-10) var(--space-3) var(--space-4);
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: 0.9375rem;
+    color: var(--gray-900);
+    background: white;
+    transition: all var(--transition-fast);
+}
+
+.searchable-dropdown-input:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+.searchable-dropdown-input:disabled {
+    background: var(--gray-100);
+    color: var(--gray-500);
+    cursor: not-allowed;
+}
+
+.searchable-dropdown-input.has-value {
+    font-weight: 500;
+}
+
+/* Icon container */
+.searchable-dropdown-icon {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.searchable-dropdown-icon svg {
+    width: 18px;
+    height: 18px;
+    color: var(--gray-400);
+    display: none;
+}
+
+.searchable-dropdown-icon .icon-search {
+    display: block;
+}
+
+/* Loading state */
+.searchable-dropdown.is-loading .searchable-dropdown-icon .icon-search {
+    display: none;
+}
+
+.searchable-dropdown.is-loading .searchable-dropdown-icon .icon-loading {
+    display: block;
+    animation: searchable-dropdown-spin 1s linear infinite;
+}
+
+@keyframes searchable-dropdown-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Clear button - when has value */
+.searchable-dropdown.has-value .searchable-dropdown-icon {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.searchable-dropdown.has-value .searchable-dropdown-icon .icon-search {
+    display: none;
+}
+
+.searchable-dropdown.has-value .searchable-dropdown-icon .icon-clear {
+    display: block;
+}
+
+.searchable-dropdown.has-value .searchable-dropdown-icon:hover .icon-clear {
+    color: var(--danger-500);
+}
+
+/* Dropdown list */
+.searchable-dropdown-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    max-height: 280px;
+    overflow-y: auto;
+    z-index: 100;
+    display: none;
+}
+
+.searchable-dropdown.is-open .searchable-dropdown-list {
+    display: block;
+}
+
+/* Dropdown option */
+.searchable-dropdown-option {
+    padding: var(--space-3) var(--space-4);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+    transition: background var(--transition-fast);
+    border-bottom: 1px solid var(--gray-50);
+}
+
+.searchable-dropdown-option:last-child {
+    border-bottom: none;
+}
+
+.searchable-dropdown-option:hover,
+.searchable-dropdown-option.is-highlighted {
+    background: var(--primary-50);
+}
+
+.searchable-dropdown-option.is-selected {
+    background: var(--primary-100);
+}
+
+.searchable-dropdown-option-primary {
+    font-weight: 500;
+    color: var(--gray-900);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.searchable-dropdown-option-secondary {
+    font-size: 0.8125rem;
+    color: var(--gray-500);
+    flex-shrink: 0;
+}
+
+/* Match highlighting */
+.searchable-dropdown-option-primary mark {
+    background: var(--warning-100);
+    color: inherit;
+    padding: 0 1px;
+    border-radius: 2px;
+}
+
+/* Empty/loading/error states */
+.searchable-dropdown-message {
+    padding: var(--space-4);
+    text-align: center;
+    color: var(--gray-500);
+    font-size: 0.875rem;
+}
+
+.searchable-dropdown-message.is-error {
+    color: var(--danger-600);
+}
+
+/* Type hint message */
+.searchable-dropdown-type-hint {
+    padding: var(--space-3) var(--space-4);
+    background: var(--gray-50);
+    color: var(--gray-500);
+    font-size: 0.8125rem;
+    text-align: center;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+/* Selected state indicator in hint */
+.form-hint strong {
+    color: var(--gray-700);
+}
+
+.required-mark {
+    color: var(--danger-500);
+    margin-left: 2px;
+}
+
+/* Group headers in dropdown */
+.searchable-dropdown-group {
+    padding: var(--space-2) var(--space-4);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--gray-500);
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-100);
+}
+
+/* Keyboard navigation indicator */
+.searchable-dropdown-option:focus {
+    outline: none;
+    background: var(--primary-50);
+}
+</style>
+{% endmacro %}
+
+
+{# JavaScript behavior macro - include once per page, before </body> #}
+{% macro searchable_dropdown_scripts() %}
+<script>
+/**
+ * Searchable Dropdown Component
+ * 
+ * Standard type-ahead search/select behavior for pullDB.
+ * Automatically initializes all .searchable-dropdown elements on page.
+ * 
+ * API Response Format Expected:
+ * {
+ *   "results": [
+ *     { "value": "abc123", "label": "Primary Text", "sublabel": "Secondary" },
+ *     ...
+ *   ],
+ *   "total": 42
+ * }
+ */
+(function() {
+    'use strict';
+
+    class SearchableDropdown {
+        constructor(container) {
+            this.container = container;
+            this.input = container.querySelector('.searchable-dropdown-input');
+            this.hiddenInput = container.querySelector('input[type="hidden"]');
+            this.listbox = container.querySelector('.searchable-dropdown-list');
+            this.iconContainer = container.querySelector('.searchable-dropdown-icon');
+            this.hint = document.getElementById(this.input.id + '-hint');
+            
+            // Configuration from data attributes
+            this.minChars = parseInt(container.dataset.minChars) || 3;
+            this.debounceMs = parseInt(container.dataset.debounce) || 300;
+            this.apiEndpoint = container.dataset.api || '';
+            this.maxResults = parseInt(container.dataset.maxResults) || 10;
+            this.noResultsText = container.dataset.noResults || 'No results found';
+            this.loadingText = container.dataset.loading || 'Searching...';
+            this.allowCustom = container.dataset.allowCustom === 'true';
+            
+            // State
+            this.options = [];
+            this.highlightedIndex = -1;
+            this.selectedValue = this.hiddenInput.value || '';
+            this.selectedLabel = this.input.value || '';
+            this.debounceTimer = null;
+            this.abortController = null;
+            this.originalHint = this.hint ? this.hint.textContent : '';
+            
+            // Initialize
+            this.bindEvents();
+            this.updateState();
+        }
+        
+        bindEvents() {
+            // Input events
+            this.input.addEventListener('input', this.onInput.bind(this));
+            this.input.addEventListener('focus', this.onFocus.bind(this));
+            this.input.addEventListener('blur', this.onBlur.bind(this));
+            this.input.addEventListener('keydown', this.onKeydown.bind(this));
+            
+            // Icon click (clear)
+            this.iconContainer.addEventListener('click', this.onIconClick.bind(this));
+            
+            // Click outside to close
+            document.addEventListener('click', this.onDocumentClick.bind(this));
+        }
+        
+        onInput(e) {
+            const query = this.input.value.trim();
+            
+            // Clear selection if user modifies input
+            if (this.selectedValue && query !== this.selectedLabel) {
+                this.clearSelection(false);
+            }
+            
+            // Clear previous debounce
+            if (this.debounceTimer) {
+                clearTimeout(this.debounceTimer);
+            }
+            
+            // Check minimum characters
+            if (query.length < this.minChars) {
+                this.showTypeHint(query.length);
+                return;
+            }
+            
+            // Debounced search
+            this.debounceTimer = setTimeout(() => {
+                this.search(query);
+            }, this.debounceMs);
+        }
+        
+        onFocus(e) {
+            // Show dropdown if we have results or show type hint
+            if (this.options.length > 0) {
+                this.open();
+            } else if (this.input.value.length < this.minChars) {
+                this.showTypeHint(this.input.value.length);
+            }
+        }
+        
+        onBlur(e) {
+            // Delay close to allow option click
+            setTimeout(() => {
+                if (!this.container.contains(document.activeElement)) {
+                    this.close();
+                    
+                    // If allow custom and has value but no selection, use input as value
+                    if (this.allowCustom && this.input.value && !this.selectedValue) {
+                        this.selectOption({
+                            value: this.input.value,
+                            label: this.input.value
+                        }, false);
+                    }
+                }
+            }, 150);
+        }
+        
+        onKeydown(e) {
+            switch (e.key) {
+                case 'ArrowDown':
+                    e.preventDefault();
+                    this.highlightNext();
+                    break;
+                    
+                case 'ArrowUp':
+                    e.preventDefault();
+                    this.highlightPrevious();
+                    break;
+                    
+                case 'Enter':
+                    e.preventDefault();
+                    if (this.highlightedIndex >= 0 && this.options[this.highlightedIndex]) {
+                        this.selectOption(this.options[this.highlightedIndex]);
+                    }
+                    break;
+                    
+                case 'Escape':
+                    this.close();
+                    this.input.blur();
+                    break;
+                    
+                case 'Tab':
+                    this.close();
+                    break;
+            }
+        }
+        
+        onIconClick(e) {
+            if (this.selectedValue) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.clearSelection(true);
+                this.input.focus();
+            }
+        }
+        
+        onDocumentClick(e) {
+            if (!this.container.contains(e.target)) {
+                this.close();
+            }
+        }
+        
+        async search(query) {
+            // Cancel previous request
+            if (this.abortController) {
+                this.abortController.abort();
+            }
+            
+            this.setLoading(true);
+            this.abortController = new AbortController();
+            
+            try {
+                const url = new URL(this.apiEndpoint, window.location.origin);
+                url.searchParams.set('q', query);
+                url.searchParams.set('limit', this.maxResults);
+                
+                const response = await fetch(url, {
+                    signal: this.abortController.signal,
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                this.options = data.results || [];
+                this.renderOptions(query);
+                this.open();
+                
+                // Update hint with result count
+                if (this.hint) {
+                    const count = this.options.length;
+                    const total = data.total || count;
+                    if (count === 0) {
+                        this.hint.textContent = this.noResultsText;
+                    } else if (total > count) {
+                        this.hint.textContent = `Showing ${count} of ${total} results`;
+                    } else {
+                        this.hint.textContent = `${count} result${count !== 1 ? 's' : ''} found`;
+                    }
+                }
+                
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error('SearchableDropdown search error:', err);
+                    this.showError('Search failed. Please try again.');
+                }
+            } finally {
+                this.setLoading(false);
+            }
+        }
+        
+        renderOptions(query) {
+            this.listbox.innerHTML = '';
+            this.highlightedIndex = -1;
+            
+            if (this.options.length === 0) {
+                this.listbox.innerHTML = `
+                    <div class="searchable-dropdown-message">
+                        ${this.escapeHtml(this.noResultsText)} "${this.escapeHtml(query)}"
+                    </div>
+                `;
+                return;
+            }
+            
+            this.options.forEach((option, index) => {
+                const div = document.createElement('div');
+                div.className = 'searchable-dropdown-option';
+                div.setAttribute('role', 'option');
+                div.setAttribute('data-index', index);
+                div.setAttribute('data-value', option.value);
+                
+                // Highlight matching text
+                const highlightedLabel = this.highlightMatch(option.label, query);
+                
+                div.innerHTML = `
+                    <span class="searchable-dropdown-option-primary">${highlightedLabel}</span>
+                    ${option.sublabel ? `<span class="searchable-dropdown-option-secondary">${this.escapeHtml(option.sublabel)}</span>` : ''}
+                `;
+                
+                div.addEventListener('click', () => this.selectOption(option));
+                div.addEventListener('mouseenter', () => this.highlight(index));
+                
+                this.listbox.appendChild(div);
+            });
+        }
+        
+        highlightMatch(text, query) {
+            if (!query) return this.escapeHtml(text);
+            
+            const escaped = this.escapeHtml(text);
+            const queryLower = query.toLowerCase();
+            const textLower = text.toLowerCase();
+            const index = textLower.indexOf(queryLower);
+            
+            if (index === -1) return escaped;
+            
+            const before = this.escapeHtml(text.substring(0, index));
+            const match = this.escapeHtml(text.substring(index, index + query.length));
+            const after = this.escapeHtml(text.substring(index + query.length));
+            
+            return `${before}<mark>${match}</mark>${after}`;
+        }
+        
+        highlight(index) {
+            const options = this.listbox.querySelectorAll('.searchable-dropdown-option');
+            options.forEach((opt, i) => {
+                opt.classList.toggle('is-highlighted', i === index);
+            });
+            this.highlightedIndex = index;
+            
+            // Scroll into view
+            if (options[index]) {
+                options[index].scrollIntoView({ block: 'nearest' });
+            }
+        }
+        
+        highlightNext() {
+            if (!this.isOpen()) return;
+            const newIndex = Math.min(this.highlightedIndex + 1, this.options.length - 1);
+            this.highlight(newIndex);
+        }
+        
+        highlightPrevious() {
+            if (!this.isOpen()) return;
+            const newIndex = Math.max(this.highlightedIndex - 1, 0);
+            this.highlight(newIndex);
+        }
+        
+        selectOption(option, shouldClose = true) {
+            this.selectedValue = option.value;
+            this.selectedLabel = option.label;
+            
+            this.hiddenInput.value = option.value;
+            this.input.value = option.label;
+            
+            if (shouldClose) {
+                this.close();
+            }
+            
+            this.updateState();
+            
+            // Update hint
+            if (this.hint) {
+                this.hint.innerHTML = `<strong>${this.escapeHtml(option.label)}</strong> selected`;
+            }
+            
+            // Dispatch change event
+            this.hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+            this.input.dispatchEvent(new CustomEvent('searchable-dropdown:select', {
+                bubbles: true,
+                detail: { value: option.value, label: option.label, option: option }
+            }));
+        }
+        
+        clearSelection(clearInput = true) {
+            this.selectedValue = '';
+            this.selectedLabel = '';
+            this.hiddenInput.value = '';
+            
+            if (clearInput) {
+                this.input.value = '';
+            }
+            
+            this.updateState();
+            
+            // Reset hint
+            if (this.hint) {
+                this.hint.textContent = this.originalHint;
+            }
+            
+            // Dispatch clear event
+            this.hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+            this.input.dispatchEvent(new CustomEvent('searchable-dropdown:clear', { bubbles: true }));
+        }
+        
+        showTypeHint(currentLength) {
+            const remaining = this.minChars - currentLength;
+            this.listbox.innerHTML = `
+                <div class="searchable-dropdown-type-hint">
+                    Type ${remaining} more character${remaining !== 1 ? 's' : ''} to search...
+                </div>
+            `;
+            this.open();
+        }
+        
+        showError(message) {
+            this.listbox.innerHTML = `
+                <div class="searchable-dropdown-message is-error">${this.escapeHtml(message)}</div>
+            `;
+            this.open();
+        }
+        
+        setLoading(loading) {
+            this.container.classList.toggle('is-loading', loading);
+            
+            if (loading) {
+                this.listbox.innerHTML = `
+                    <div class="searchable-dropdown-message">${this.escapeHtml(this.loadingText)}</div>
+                `;
+                this.open();
+            }
+        }
+        
+        updateState() {
+            const hasValue = Boolean(this.selectedValue);
+            this.container.classList.toggle('has-value', hasValue);
+            this.input.classList.toggle('has-value', hasValue);
+            this.input.setAttribute('aria-expanded', this.isOpen() ? 'true' : 'false');
+        }
+        
+        open() {
+            this.container.classList.add('is-open');
+            this.input.setAttribute('aria-expanded', 'true');
+        }
+        
+        close() {
+            this.container.classList.remove('is-open');
+            this.input.setAttribute('aria-expanded', 'false');
+            this.highlightedIndex = -1;
+        }
+        
+        isOpen() {
+            return this.container.classList.contains('is-open');
+        }
+        
+        escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Public API
+        getValue() {
+            return this.selectedValue;
+        }
+        
+        getLabel() {
+            return this.selectedLabel;
+        }
+        
+        setValue(value, label) {
+            this.selectOption({ value, label: label || value }, false);
+        }
+        
+        clear() {
+            this.clearSelection(true);
+        }
+        
+        disable() {
+            this.input.disabled = true;
+        }
+        
+        enable() {
+            this.input.disabled = false;
+        }
+    }
+
+    // Auto-initialize all searchable dropdowns on DOM ready
+    function initSearchableDropdowns() {
+        document.querySelectorAll('.searchable-dropdown').forEach(container => {
+            if (!container.searchableDropdown) {
+                container.searchableDropdown = new SearchableDropdown(container);
+            }
+        });
+    }
+
+    // Initialize on DOMContentLoaded
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSearchableDropdowns);
+    } else {
+        initSearchableDropdowns();
+    }
+
+    // Expose for manual initialization
+    window.SearchableDropdown = SearchableDropdown;
+    window.initSearchableDropdowns = initSearchableDropdowns;
+})();
+</script>
+{% endmacro %}
+
+
+{# Helper macro for static options (no API) #}
+{% macro searchable_dropdown_static(
+    id,
+    name,
+    label,
+    options,
+    placeholder="Select or search...",
+    hint="",
+    required=false,
+    initial_value="",
+    class_name=""
+) %}
+<div class="form-group {{ class_name }}">
+    <label for="{{ id }}" class="form-label">
+        {{ label }}
+        {% if required %}<span class="required-mark">*</span>{% endif %}
+    </label>
+    <div class="searchable-dropdown searchable-dropdown-static" 
+         id="{{ id }}-container"
+         data-min-chars="1"
+         data-allow-custom="false">
+        
+        <input type="hidden" 
+               id="{{ id }}-value" 
+               name="{{ name }}" 
+               value="{{ initial_value }}"
+               {% if required %}required{% endif %}>
+        
+        <input type="text" 
+               id="{{ id }}" 
+               class="form-input searchable-dropdown-input" 
+               placeholder="{{ placeholder }}"
+               autocomplete="off"
+               aria-haspopup="listbox"
+               aria-expanded="false"
+               role="combobox">
+        
+        <div class="searchable-dropdown-icon">
+            <svg class="icon-search" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <svg class="icon-clear" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        </div>
+        
+        <div class="searchable-dropdown-list" id="{{ id }}-listbox" role="listbox">
+            {% for opt in options %}
+            <div class="searchable-dropdown-option {% if opt.value == initial_value %}is-selected{% endif %}"
+                 role="option"
+                 data-value="{{ opt.value }}"
+                 data-label="{{ opt.label }}">
+                <span class="searchable-dropdown-option-primary">{{ opt.label }}</span>
+                {% if opt.sublabel %}
+                <span class="searchable-dropdown-option-secondary">{{ opt.sublabel }}</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    {% if hint %}
+    <p class="form-hint" id="{{ id }}-hint">{{ hint }}</p>
+    {% endif %}
+</div>
+{% endmacro %}

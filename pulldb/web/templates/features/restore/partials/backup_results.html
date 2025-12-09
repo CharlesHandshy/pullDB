@@ -1,0 +1,30 @@
+{% if backups %}
+<table class="backup-table">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Environment</th>
+            <th>Size</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for backup in backups %}
+        <tr data-backup-key="{{ backup.key }}" 
+            onclick="selectBackup('{{ backup.key }}', '{{ backup.environment }}', '{{ backup.timestamp.strftime('%Y-%m-%d %H:%M') }}', '{{ '%.1f'|format(backup.size_mb) }} MB')">
+            <td>{{ backup.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>
+                <span class="badge {% if backup.environment == 'prod' %}badge-primary{% else %}badge-neutral{% endif %}">
+                    {{ backup.environment }}
+                </span>
+            </td>
+            <td>{{ "%.1f"|format(backup.size_mb) }} MB</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="alert alert-warning" style="margin-top: 1rem; padding: 1rem; background: var(--warning-50); border: 1px solid var(--warning-200); border-radius: var(--radius-md); color: var(--warning-700);">
+    <strong>No backups found.</strong>
+    <p style="margin: 0.5rem 0 0 0;">No backups are available for this customer in the selected environment.</p>
+</div>
+{% endif %}

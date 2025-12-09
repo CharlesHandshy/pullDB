@@ -20,6 +20,7 @@ from pulldb.domain.models import (
     Job,
     User,
     UserDetail,
+    UserRole,
     UserSummary,
 )
 
@@ -195,8 +196,8 @@ class UserRepository(Protocol):
         """Get user by user_id."""
         ...
 
-    def create_user(self, username: str, user_code: str) -> User:
-        """Create new user with generated UUID."""
+    def create_user(self, username: str, user_code: str, manager_id: str | None = None) -> User:
+        """Create new user with generated UUID and optional manager assignment."""
         ...
 
     def get_or_create_user(self, username: str) -> User:
@@ -225,6 +226,18 @@ class UserRepository(Protocol):
 
     def get_user_detail(self, username: str) -> UserDetail | None:
         """Get detailed user statistics."""
+        ...
+
+    def get_users_managed_by(self, manager_id: str) -> list[User]:
+        """Get all users managed by a specific manager."""
+        ...
+
+    def set_user_manager(self, user_id: str, manager_id: str | None) -> None:
+        """Set or remove the manager for a user."""
+        ...
+
+    def update_user_role(self, user_id: str, role: UserRole) -> None:
+        """Update a user's role."""
         ...
 
 

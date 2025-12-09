@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/searchable_dropdown.html" import searchable_dropdown, searchable_dropdown_styles, searchable_dropdown_scripts %}
 
 {% block title %}Job Management - pullDB Admin{% endblock %}
 
@@ -91,24 +92,68 @@
                 </select>
             </div>
             
-            <div class="filter-group">
+            <div class="filter-group filter-group-searchable">
                 <label class="filter-label">User</label>
-                <select id="filter-user" class="filter-select" onchange="applyFilters()">
-                    <option value="">All Users</option>
-                    {% for user in users %}
-                    <option value="{{ user.username }}">{{ user.username }}</option>
-                    {% endfor %}
-                </select>
+                <div class="searchable-dropdown searchable-dropdown-filter" 
+                     id="filter-user-container"
+                     data-min-chars="2"
+                     data-debounce="200"
+                     data-api="/api/dropdown/users"
+                     data-max-results="15"
+                     data-no-results="No users found"
+                     data-loading="Searching..."
+                     data-allow-custom="false">
+                    <input type="hidden" id="filter-user-value" name="filter_user" value="">
+                    <input type="text" 
+                           id="filter-user" 
+                           class="filter-select searchable-dropdown-input" 
+                           placeholder="All Users"
+                           autocomplete="off">
+                    <div class="searchable-dropdown-icon">
+                        <svg class="icon-search" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                        <svg class="icon-loading" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                        </svg>
+                        <svg class="icon-clear" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </div>
+                    <div class="searchable-dropdown-list" id="filter-user-listbox" role="listbox"></div>
+                </div>
             </div>
             
-            <div class="filter-group">
+            <div class="filter-group filter-group-searchable">
                 <label class="filter-label">Host</label>
-                <select id="filter-host" class="filter-select" onchange="applyFilters()">
-                    <option value="">All Hosts</option>
-                    {% for host in hosts %}
-                    <option value="{{ host.hostname }}">{{ host.hostname }}</option>
-                    {% endfor %}
-                </select>
+                <div class="searchable-dropdown searchable-dropdown-filter" 
+                     id="filter-host-container"
+                     data-min-chars="2"
+                     data-debounce="200"
+                     data-api="/api/dropdown/hosts"
+                     data-max-results="10"
+                     data-no-results="No hosts found"
+                     data-loading="Searching..."
+                     data-allow-custom="false">
+                    <input type="hidden" id="filter-host-value" name="filter_host" value="">
+                    <input type="text" 
+                           id="filter-host" 
+                           class="filter-select searchable-dropdown-input" 
+                           placeholder="All Hosts"
+                           autocomplete="off">
+                    <div class="searchable-dropdown-icon">
+                        <svg class="icon-search" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                        <svg class="icon-loading" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                        </svg>
+                        <svg class="icon-clear" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </div>
+                    <div class="searchable-dropdown-list" id="filter-host-listbox" role="listbox"></div>
+                </div>
             </div>
             
             <div class="filter-group">
@@ -171,7 +216,7 @@
                     <tbody id="jobs-tbody">
                         {% for job in jobs %}
                         <tr class="job-row" 
-                            data-status="{{ job.status }}" 
+                            data-status="{{ job.status.value }}" 
                             data-user="{{ job.username }}"
                             data-host="{{ job.dbhost }}"
                             data-id="{{ job.id }}"
@@ -182,8 +227,8 @@
                                 </a>
                             </td>
                             <td>
-                                <span class="status-badge status-{{ job.status }}">
-                                    {{ job.status }}
+                                <span class="status-badge status-{{ job.status.value }}">
+                                    {{ job.status.value }}
                                 </span>
                             </td>
                             <td>
@@ -234,7 +279,7 @@
                                             <circle cx="12" cy="12" r="3"/>
                                         </svg>
                                     </a>
-                                    {% if job.status in ['pending', 'running'] %}
+                                    {% if job.status.value in ['pending', 'queued', 'running'] %}
                                     <form method="POST" action="/web/admin/jobs/{{ job.id }}/cancel" class="d-inline">
                                         <button type="submit" class="btn btn-sm btn-ghost btn-danger" title="Cancel Job" onclick="return confirm('Cancel this job?')">
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -322,6 +367,86 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
+}
+
+.filter-group-searchable {
+    position: relative;
+}
+
+.filter-group-searchable .searchable-dropdown-filter {
+    position: relative;
+    min-width: 160px;
+}
+
+.filter-group-searchable .searchable-dropdown-input {
+    width: 100%;
+    padding-right: 32px;
+}
+
+.filter-group-searchable .searchable-dropdown-icon {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    pointer-events: none;
+}
+
+.filter-group-searchable .searchable-dropdown-icon svg {
+    width: 14px;
+    height: 14px;
+    color: var(--gray-400);
+    display: none;
+}
+
+.filter-group-searchable .searchable-dropdown-icon .icon-search {
+    display: block;
+}
+
+.filter-group-searchable .searchable-dropdown.is-loading .icon-search { display: none; }
+.filter-group-searchable .searchable-dropdown.is-loading .icon-loading { display: block; animation: spin 1s linear infinite; }
+.filter-group-searchable .searchable-dropdown.has-value .icon-search { display: none; }
+.filter-group-searchable .searchable-dropdown.has-value .icon-clear { display: block; pointer-events: auto; cursor: pointer; }
+
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.filter-group-searchable .searchable-dropdown-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 100;
+    display: none;
+}
+
+.filter-group-searchable .searchable-dropdown.is-open .searchable-dropdown-list {
+    display: block;
+}
+
+.filter-group-searchable .searchable-dropdown-option {
+    padding: var(--space-2) var(--space-3);
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+.filter-group-searchable .searchable-dropdown-option:hover,
+.filter-group-searchable .searchable-dropdown-option.is-highlighted {
+    background: var(--primary-50);
+}
+
+.filter-group-searchable .searchable-dropdown-message {
+    padding: var(--space-3);
+    text-align: center;
+    color: var(--gray-500);
+    font-size: 0.8125rem;
 }
 
 .filter-label {
@@ -472,10 +597,126 @@
 </style>
 
 <script>
+// Initialize searchable dropdowns for filters
+document.addEventListener('DOMContentLoaded', function() {
+    initFilterDropdown('filter-user');
+    initFilterDropdown('filter-host');
+});
+
+function initFilterDropdown(inputId) {
+    const container = document.getElementById(inputId + '-container');
+    if (!container) return;
+    
+    const input = document.getElementById(inputId);
+    const hiddenInput = document.getElementById(inputId + '-value');
+    const listbox = container.querySelector('.searchable-dropdown-list');
+    const iconContainer = container.querySelector('.searchable-dropdown-icon');
+    
+    const minChars = parseInt(container.dataset.minChars) || 2;
+    const debounceMs = parseInt(container.dataset.debounce) || 200;
+    const apiEndpoint = container.dataset.api || '';
+    const maxResults = parseInt(container.dataset.maxResults) || 10;
+    
+    let debounceTimer = null;
+    let highlightedIndex = -1;
+    let options = [];
+    
+    input.addEventListener('input', function() {
+        const query = this.value.trim();
+        if (debounceTimer) clearTimeout(debounceTimer);
+        
+        // Clear selection if typing
+        if (hiddenInput.value) {
+            hiddenInput.value = '';
+            container.classList.remove('has-value');
+            applyFilters();
+        }
+        
+        if (query.length < minChars) {
+            listbox.innerHTML = `<div class="searchable-dropdown-message">Type ${minChars - query.length} more chars...</div>`;
+            container.classList.add('is-open');
+            return;
+        }
+        
+        debounceTimer = setTimeout(() => searchDropdown(query), debounceMs);
+    });
+    
+    async function searchDropdown(query) {
+        container.classList.add('is-loading');
+        try {
+            const url = new URL(apiEndpoint, window.location.origin);
+            url.searchParams.set('q', query);
+            url.searchParams.set('limit', maxResults);
+            const resp = await fetch(url);
+            const data = await resp.json();
+            options = data.results || [];
+            renderOptions(query);
+            container.classList.add('is-open');
+        } catch(e) {
+            listbox.innerHTML = '<div class="searchable-dropdown-message">Search failed</div>';
+        } finally {
+            container.classList.remove('is-loading');
+        }
+    }
+    
+    function renderOptions(query) {
+        highlightedIndex = -1;
+        if (options.length === 0) {
+            listbox.innerHTML = `<div class="searchable-dropdown-message">No results for "${query}"</div>`;
+            return;
+        }
+        listbox.innerHTML = options.map((opt, i) => 
+            `<div class="searchable-dropdown-option" data-index="${i}" data-value="${opt.value}">${opt.label}${opt.sublabel ? ` <small style="color:var(--gray-500)">${opt.sublabel}</small>` : ''}</div>`
+        ).join('');
+        
+        listbox.querySelectorAll('.searchable-dropdown-option').forEach(el => {
+            el.addEventListener('click', () => selectOption(options[parseInt(el.dataset.index)]));
+            el.addEventListener('mouseenter', () => highlight(parseInt(el.dataset.index)));
+        });
+    }
+    
+    function highlight(index) {
+        listbox.querySelectorAll('.searchable-dropdown-option').forEach((el, i) => {
+            el.classList.toggle('is-highlighted', i === index);
+        });
+        highlightedIndex = index;
+    }
+    
+    function selectOption(opt) {
+        input.value = opt.label;
+        hiddenInput.value = opt.value;
+        container.classList.remove('is-open');
+        container.classList.add('has-value');
+        applyFilters();
+    }
+    
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); highlight(Math.min(highlightedIndex + 1, options.length - 1)); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(Math.max(highlightedIndex - 1, 0)); }
+        else if (e.key === 'Enter' && highlightedIndex >= 0) { e.preventDefault(); selectOption(options[highlightedIndex]); }
+        else if (e.key === 'Escape') { container.classList.remove('is-open'); }
+    });
+    
+    input.addEventListener('focus', () => { if (input.value.length >= minChars || options.length > 0) container.classList.add('is-open'); });
+    
+    document.addEventListener('click', (e) => { if (!container.contains(e.target)) container.classList.remove('is-open'); });
+    
+    iconContainer.addEventListener('click', (e) => {
+        if (container.classList.contains('has-value')) {
+            e.stopPropagation();
+            input.value = '';
+            hiddenInput.value = '';
+            container.classList.remove('has-value', 'is-open');
+            applyFilters();
+            input.focus();
+        }
+    });
+}
+
 function applyFilters() {
     const status = document.getElementById('filter-status').value.toLowerCase();
-    const user = document.getElementById('filter-user').value.toLowerCase();
-    const host = document.getElementById('filter-host').value.toLowerCase();
+    const user = (document.getElementById('filter-user-value').value || document.getElementById('filter-user').value).toLowerCase();
+    const host = (document.getElementById('filter-host-value').value || document.getElementById('filter-host').value).toLowerCase();
     const search = document.getElementById('filter-search').value.toLowerCase();
     
     let visibleCount = 0;
@@ -487,8 +728,8 @@ function applyFilters() {
         const rowDb = row.dataset.database.toLowerCase();
         
         const matchesStatus = !status || rowStatus === status;
-        const matchesUser = !user || rowUser === user;
-        const matchesHost = !host || rowHost === host;
+        const matchesUser = !user || rowUser === user || rowUser.includes(user);
+        const matchesHost = !host || rowHost === host || rowHost.includes(host);
         const matchesSearch = !search || rowId.includes(search) || rowDb.includes(search);
         
         if (matchesStatus && matchesUser && matchesHost && matchesSearch) {
@@ -505,7 +746,11 @@ function applyFilters() {
 function clearFilters() {
     document.getElementById('filter-status').value = '';
     document.getElementById('filter-user').value = '';
+    document.getElementById('filter-user-value').value = '';
+    document.getElementById('filter-user-container').classList.remove('has-value');
     document.getElementById('filter-host').value = '';
+    document.getElementById('filter-host-value').value = '';
+    document.getElementById('filter-host-container').classList.remove('has-value');
     document.getElementById('filter-date').value = '';
     document.getElementById('filter-search').value = '';
     applyFilters();

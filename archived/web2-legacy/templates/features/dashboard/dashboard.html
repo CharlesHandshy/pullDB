@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - pullDB{% endblock %}
+
+{% block content %}
+<div class="dashboard-container" hx-get="{{ request.url }}" hx-trigger="every 10s" hx-select=".dashboard-container" hx-swap="outerHTML">
+    <h1 class="page-title">Dashboard</h1>
+    <p style="color: var(--gray-500);">Welcome to the new pullDB Web UI.</p>
+    
+    <div class="card-grid">
+        <div class="card card-padding">
+            <h3 class="stat-card-title">Active Jobs</h3>
+            <p class="stat-card-value text-primary">{{ stats.active_jobs }}</p>
+        </div>
+        <div class="card card-padding">
+            <h3 class="stat-card-title">Completed Today</h3>
+            <p class="stat-card-value text-success">{{ stats.completed_today }}</p>
+        </div>
+        <div class="card card-padding">
+            <h3 class="stat-card-title">Failed Jobs</h3>
+            <p class="stat-card-value text-danger">{{ stats.failed_jobs }}</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{#
+    Breadcrumb navigation partial template.
+    
+    Usage:
+        {% include "partials/breadcrumbs.html" %}
+    
+    Expected context:
+        breadcrumbs: list[BreadcrumbItem] - List of breadcrumb items
+                     Each item has: label, url (None for current page)
+#}
+{% if breadcrumbs %}
+<nav class="breadcrumb-nav" aria-label="Breadcrumb">
+    <ol class="breadcrumb-list">
+        {% for item in breadcrumbs %}
+        <li class="breadcrumb-item">
+            {% if item.url %}
+            <a href="{{ item.url }}" class="breadcrumb-link">{{ item.label }}</a>
+            {% else %}
+            <span class="breadcrumb-current" aria-current="page">{{ item.label }}</span>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+</nav>
+{% endif %}
