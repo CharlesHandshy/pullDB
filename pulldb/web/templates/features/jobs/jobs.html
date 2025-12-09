@@ -240,13 +240,9 @@
             currentView = this.dataset.view;
             
             // Restore saved state for new tab, or apply defaults if first visit
-            // Always re-apply URL filters so deep-links persist across tab switches
             if (viewStates[currentView]) {
-                const savedFilters = viewStates[currentView].columnFilters || {};
-                table.setState({
-                    ...viewStates[currentView],
-                    columnFilters: { ...savedFilters, ...urlFilters }
-                });
+                // User already visited this tab - restore their exact state (no URL filter override)
+                table.setState(viewStates[currentView]);
             } else {
                 // First visit to this tab - apply default + URL filters
                 table.setState({ 
