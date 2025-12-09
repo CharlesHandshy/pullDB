@@ -184,7 +184,8 @@
     
     // Parse URL filter params (for deep-links from dashboard)
     const urlParams = new URLSearchParams(window.location.search);
-    const urlFilters = {};  // Preserved across tab switches
+    const urlView = urlParams.get('view') || 'active';  // Which view URL filters target
+    const urlFilters = {};
     
     // Map URL param names to filter keys (support both filter_X and X formats)
     const filterParamMap = {
@@ -200,15 +201,26 @@
         const value = urlParams.get(param);
         if (value) {
             urlFilters[filterKey] = [value];
-            // When explicit status filter provided, remove date restriction so all matching jobs show
-            if (filterKey === 'status') {
-                delete defaultFilters.submitted_after;
-            }
         }
     }
     
-    // Merge URL filters into defaults (URL wins)
-    const initialFilters = { ...defaultFilters, ...urlFilters };
+    // Helper: get appropriate filters for a given view
+    // URL filters ONLY apply to the view specified in URL (e.g., ?view=history&filter_status=failed)
+    const getFiltersForView = (view) => {
+        let filters = { ...defaultFilters };
+        if (view === urlView && Object.keys(urlFilters).length > 0) {
+            // This is the targeted view - apply URL filters
+            // Remove date restriction when explicit status filter provided
+            if (urlFilters.status) {
+                delete filters.submitted_after;
+            }
+            filters = { ...filters, ...urlFilters };
+        }
+        return filters;
+    };
+    
+    // Initial filters depend on whether current view matches URL target
+    const initialFilters = getFiltersForView(currentView);
     
     const table = new LazyTable({
         container: document.getElementById('jobs-table-container'),
@@ -244,9 +256,9 @@
                 // User already visited this tab - restore their exact state (no URL filter override)
                 table.setState(viewStates[currentView]);
             } else {
-                // First visit to this tab - apply default + URL filters
+                // First visit to this tab - apply view-specific filters
                 table.setState({ 
-                    columnFilters: { ...defaultFilters, ...urlFilters }, 
+                    columnFilters: getFiltersForView(currentView), 
                     sortColumn: null, 
                     sortDirection: null 
                 });
