@@ -83,10 +83,10 @@
     <!-- Hosts List -->
     <div class="hosts-grid">
         {% for host in hosts %}
-        <div class="host-card {% if host.disabled %}disabled{% endif %}">
+        <div class="host-card {% if not host.enabled %}disabled{% endif %}">
             <div class="host-header">
                 <div class="host-status">
-                    {% if host.disabled %}
+                    {% if not host.enabled %}
                     <span class="status-indicator disabled"></span>
                     <span class="status-text">Disabled</span>
                     {% else %}
@@ -104,7 +104,7 @@
                             </svg>
                         </button>
                         <div class="dropdown-menu">
-                            {% if host.disabled %}
+                            {% if not host.enabled %}
                             <form method="POST" action="/web/admin/hosts/{{ host.hostname }}/enable">
                                 <button type="submit" class="dropdown-item">
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

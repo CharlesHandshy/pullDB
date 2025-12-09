@@ -1007,6 +1007,20 @@ class MockHostRepo:
         """Return only enabled hosts."""
         return [h for h in self.hosts if h.enabled]
 
+    def enable_host(self, hostname: str) -> None:
+        """Enable a host by hostname."""
+        for h in self.hosts:
+            if h.hostname == hostname:
+                h.enabled = True
+                break
+
+    def disable_host(self, hostname: str) -> None:
+        """Disable a host by hostname."""
+        for h in self.hosts:
+            if h.hostname == hostname:
+                h.enabled = False
+                break
+
     def get_host_credentials(self, hostname: str) -> Any:
         """Return mock credentials for host.
         
@@ -1023,7 +1037,39 @@ class MockHostRepo:
 
 
 class MockSettingsRepo:
-    """Mock settings repository for dev server."""
+    """Mock settings repository for dev server.
+    
+    Mock settings match exact Setting model structure:
+    - setting_key: str
+    - setting_value: str
+    - description: str | None
+    - updated_at: datetime
+    """
+
+    def __init__(self) -> None:
+        self.settings = [
+            self._create_setting("myloader_threads", "4", "Number of parallel threads for myloader"),
+            self._create_setting("myloader_overwrite", "true", "Whether to overwrite existing databases"),
+            self._create_setting("retention_days", "90", "Days to retain job event logs"),
+            self._create_setting("staging_retention_days", "7", "Days to retain staging databases"),
+            self._create_setting("max_active_jobs_global", "0", "Global limit on active jobs (0=unlimited)"),
+            self._create_setting("max_active_jobs_per_user", "5", "Per-user limit on active jobs"),
+            self._create_setting("s3_bucket_path", "s3://pulldb-backups/production", "S3 bucket path for backups"),
+            self._create_setting("work_dir", "/var/lib/pulldb/work", "Working directory for downloads"),
+        ]
+
+    def _create_setting(self, key: str, value: str, description: str) -> MagicMock:
+        """Create mock setting matching exact Setting model structure."""
+        setting = MagicMock()
+        setting.setting_key = key
+        setting.setting_value = value
+        setting.description = description
+        setting.updated_at = datetime(2024, 6, 1, tzinfo=UTC)
+        return setting
+
+    def list_settings(self) -> list[MagicMock]:
+        """Return all settings."""
+        return self.settings
 
     def get_max_active_jobs_global(self) -> int:
         """Return global active job limit (0 = unlimited)."""
@@ -1401,6 +1447,7 @@ def create_dev_app() -> FastAPI:
         filter_status: str | None = None,
         filter_dbhost: str | None = None,
         filter_user_code: str | None = None,
+        filter_owner_user_code: str | None = None,
         filter_target: str | None = None,
         filter_id: str | None = None,
         filter_submitted_at: str | None = None,
@@ -1423,8 +1470,10 @@ def create_dev_app() -> FastAPI:
         if filter_dbhost:
             dbhost_values = set(filter_dbhost.split(','))
             filtered = [j for j in filtered if j.dbhost in dbhost_values]
-        if filter_user_code:
-            user_code_values = set(filter_user_code.split(','))
+        # Support both filter_user_code and filter_owner_user_code for compatibility
+        user_code_filter = filter_owner_user_code or filter_user_code
+        if user_code_filter:
+            user_code_values = set(user_code_filter.split(','))
             filtered = [j for j in filtered if j.owner_user_code in user_code_values]
         if filter_target:
             target_values = set(v.lower() for v in filter_target.split(','))
@@ -1460,7 +1509,8 @@ def create_dev_app() -> FastAPI:
                 "submitted_at": lambda j: j.submitted_at or datetime.min.replace(tzinfo=UTC),
                 "status": lambda j: _get_status_value(j),
                 "target": lambda j: j.target or "",
-                "user_code": lambda j: j.owner_user_code or "",
+                "owner_user_code": lambda j: j.owner_user_code or "",
+                "user_code": lambda j: j.owner_user_code or "",  # Backward compatibility
                 "dbhost": lambda j: j.dbhost or "",
             }
             if sortColumn in sort_keys:
@@ -1477,16 +1527,26 @@ def create_dev_app() -> FastAPI:
         rows = []
         for job in page_jobs:
             status_val = _get_status_value(job)
+            
+            # Compute duration_seconds for completed jobs
+            duration_seconds = None
+            if job.started_at and job.completed_at:
+                delta = job.completed_at - job.started_at
+                duration_seconds = delta.total_seconds()
+            
             rows.append({
                 "id": job.id,
                 "target": job.target,
                 "status": status_val,
-                "user_code": job.owner_user_code,
+                "owner_user_code": job.owner_user_code,
                 "submitted_at": job.submitted_at.isoformat() if job.submitted_at else None,
                 "started_at": job.started_at.isoformat() if job.started_at else None,
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                 "dbhost": job.dbhost,
                 "staging_name": job.staging_name,
                 "current_operation": job.current_operation,
+                "duration_seconds": duration_seconds,
+                "error_detail": job.error_detail,
             })
         
         return {

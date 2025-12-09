@@ -82,7 +82,7 @@
             width: '200px'
         },
         { 
-            key: 'user_code', 
+            key: 'owner_user_code', 
             label: 'User', 
             sortable: true, 
             filterable: true, 
@@ -177,9 +177,9 @@
     if (userRole === 'admin') {
         defaultFilters = { submitted_after: [threeDaysAgoIso] };
     } else if (userRole === 'manager' && managedUserCodes.length > 0) {
-        defaultFilters = { user_code: managedUserCodes };
+        defaultFilters = { owner_user_code: managedUserCodes };
     } else {
-        defaultFilters = { user_code: [userCode] };
+        defaultFilters = { owner_user_code: [userCode] };
     }
     
     // Parse URL filter params (for deep-links from dashboard)
@@ -191,7 +191,7 @@
     const filterParamMap = {
         'filter_status': 'status',
         'status': 'status',
-        'filter_user_code': 'user_code',
+        'filter_user_code': 'owner_user_code',
         'filter_target': 'target',
         'filter_dbhost': 'dbhost',
         'filter_id': 'id'

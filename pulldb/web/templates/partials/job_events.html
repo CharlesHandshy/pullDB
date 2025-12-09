@@ -98,10 +98,10 @@
         <div class="event-content">
             <div class="event-header">
                 <span class="event-type">{{ event.event_type }}</span>
-                <span class="event-time">{{ event.created_at.strftime('%H:%M:%S') }}</span>
+                <span class="event-time">{{ event.logged_at.strftime('%H:%M:%S') }}</span>
             </div>
-            {% if event.message or event.detail %}
-            <div class="event-message">{{ event.message or event.detail }}</div>
+            {% if event.detail %}
+            <div class="event-message">{{ event.detail }}</div>
             {% endif %}
         </div>
     </div>

@@ -42,7 +42,7 @@ async def admin_page(
         "total_users": len(users),
         "admin_users": len([u for u in users if u.is_admin]),
         "total_hosts": len(hosts),
-        "enabled_hosts": len([h for h in hosts if not getattr(h, "disabled", False)]),
+        "enabled_hosts": len([h for h in hosts if getattr(h, "enabled", True)]),
         "active_jobs": len(active_jobs),
         "running_jobs": len([j for j in active_jobs if j.status == JobStatus.RUNNING]),
         "pending_jobs": len([j for j in active_jobs if j.status == JobStatus.QUEUED]),
@@ -52,6 +52,40 @@ async def admin_page(
         "features/admin/admin.html",
         {"request": request, "stats": stats, "user": user},
     )
+
+
+def _enrich_user(user_obj: Any, job_repo: Any) -> dict:
+    """Enrich user object with computed fields for template.
+    
+    Adds: active_jobs, total_jobs, disabled (bool from disabled_at)
+    """
+    active_jobs = 0
+    total_jobs = 0
+    
+    if job_repo:
+        if hasattr(job_repo, "get_active_jobs"):
+            active_jobs_list = job_repo.get_active_jobs()
+            active_jobs = len([j for j in active_jobs_list 
+                              if getattr(j, "owner_user_code", None) == user_obj.user_code])
+        if hasattr(job_repo, "count_jobs_by_user"):
+            total_jobs = job_repo.count_jobs_by_user(user_obj.user_code)
+    
+    return {
+        "user_id": user_obj.user_id,
+        "username": user_obj.username,
+        "user_code": user_obj.user_code,
+        "is_admin": user_obj.is_admin,
+        "role": user_obj.role,
+        "manager_id": getattr(user_obj, "manager_id", None),
+        "created_at": user_obj.created_at,
+        "disabled_at": user_obj.disabled_at,
+        "allowed_hosts": getattr(user_obj, "allowed_hosts", None),
+        "default_host": getattr(user_obj, "default_host", None),
+        # Computed fields
+        "active_jobs": active_jobs,
+        "total_jobs": total_jobs,
+        "disabled": user_obj.disabled_at is not None,
+    }
 
 
 @router.get("/users", response_class=HTMLResponse)
@@ -64,27 +98,30 @@ async def list_users(
     user: User = Depends(require_admin),
 ) -> HTMLResponse:
     """List all users with search and filtering."""
-    users = []
+    raw_users = []
     if hasattr(state.user_repo, "list_users"):
-        users = state.user_repo.list_users()
+        raw_users = state.user_repo.list_users()
     
     # Apply search filter
     if q:
         q_lower = q.lower()
-        users = [u for u in users if 
+        raw_users = [u for u in raw_users if 
                  q_lower in u.username.lower() or 
                  q_lower in (u.user_code or "").lower() or
                  q_lower in u.role.value.lower()]
     
     # Apply role filter
     if role:
-        users = [u for u in users if u.role.value.lower() == role.lower()]
+        raw_users = [u for u in raw_users if u.role.value.lower() == role.lower()]
     
     # Apply status filter
     if status == "active":
-        users = [u for u in users if not u.disabled_at]
+        raw_users = [u for u in raw_users if not u.disabled_at]
     elif status == "disabled":
-        users = [u for u in users if u.disabled_at]
+        raw_users = [u for u in raw_users if u.disabled_at]
+    
+    # Enrich users with job stats
+    users = [_enrich_user(u, state.job_repo) for u in raw_users]
 
     return templates.TemplateResponse(
         "features/admin/users.html",
@@ -141,6 +178,146 @@ async def update_user_role(
         pass  # Invalid role, ignore
     
     return RedirectResponse(url="/web/admin/users", status_code=303)
+
+
+# =============================================================================
+# Hosts Management
+# =============================================================================
+
+def _enrich_host(host: Any, job_repo: Any) -> dict:
+    """Enrich host object with computed fields for template.
+    
+    Adds: running_count, queued_count, active_restores, total_restores
+    """
+    # Get job counts for this host
+    running_count = 0
+    queued_count = 0
+    total_restores = 0
+    
+    if job_repo and hasattr(job_repo, "get_active_jobs"):
+        active_jobs = job_repo.get_active_jobs()
+        for job in active_jobs:
+            if getattr(job, "dbhost", None) == host.hostname:
+                if job.status == JobStatus.RUNNING:
+                    running_count += 1
+                elif job.status == JobStatus.QUEUED:
+                    queued_count += 1
+    
+    if job_repo and hasattr(job_repo, "count_jobs_by_host"):
+        total_restores = job_repo.count_jobs_by_host(host.hostname)
+    
+    return {
+        "id": host.id,
+        "hostname": host.hostname,
+        "host_alias": getattr(host, "host_alias", None),
+        "credential_ref": getattr(host, "credential_ref", None),
+        "max_concurrent_restores": getattr(host, "max_concurrent_restores", 2),
+        "enabled": getattr(host, "enabled", True),
+        "created_at": getattr(host, "created_at", None),
+        # Computed fields
+        "running_count": running_count,
+        "queued_count": queued_count,
+        "active_restores": running_count,  # Same as running_count
+        "total_restores": total_restores,
+    }
+
+
+@router.get("/hosts", response_class=HTMLResponse)
+async def list_hosts(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> HTMLResponse:
+    """List all database hosts with enriched stats."""
+    hosts = []
+    if hasattr(state, "host_repo") and state.host_repo and hasattr(state.host_repo, "list_hosts"):
+        raw_hosts = state.host_repo.list_hosts()
+        hosts = [_enrich_host(h, state.job_repo) for h in raw_hosts]
+    
+    # Calculate stats
+    stats = {
+        "total": len(hosts),
+        "enabled": len([h for h in hosts if h["enabled"]]),
+        "disabled": len([h for h in hosts if not h["enabled"]]),
+        "active_restores": sum(h["active_restores"] for h in hosts),
+    }
+    
+    return templates.TemplateResponse(
+        "admin/hosts.html",
+        {"request": request, "hosts": hosts, "stats": stats, "user": user},
+    )
+
+
+@router.post("/hosts/{hostname}/enable")
+async def enable_host(
+    hostname: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Enable a database host."""
+    if hasattr(state.host_repo, "enable_host"):
+        state.host_repo.enable_host(hostname)
+    return RedirectResponse(url="/web/admin/hosts", status_code=303)
+
+
+@router.post("/hosts/{hostname}/disable")
+async def disable_host(
+    hostname: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Disable a database host."""
+    if hasattr(state.host_repo, "disable_host"):
+        state.host_repo.disable_host(hostname)
+    return RedirectResponse(url="/web/admin/hosts", status_code=303)
+
+
+# =============================================================================
+# Settings Management
+# =============================================================================
+
+# Default values for settings (used for comparison in UI)
+SETTINGS_DEFAULTS = {
+    "myloader_threads": "4",
+    "myloader_overwrite": "true",
+    "retention_days": "90",
+    "staging_retention_days": "7",
+    "max_active_jobs_global": "0",
+    "max_active_jobs_per_user": "5",
+    "s3_bucket_path": "",
+    "work_dir": "/tmp/pulldb",
+}
+
+
+def _enrich_setting(setting: Any) -> dict:
+    """Enrich setting object with default value for template."""
+    key = getattr(setting, "setting_key", "")
+    return {
+        "setting_key": key,
+        "setting_value": getattr(setting, "setting_value", ""),
+        "description": getattr(setting, "description", None),
+        "updated_at": getattr(setting, "updated_at", None),
+        # Computed field
+        "default": SETTINGS_DEFAULTS.get(key, ""),
+    }
+
+
+@router.get("/settings", response_class=HTMLResponse)
+async def list_settings(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> HTMLResponse:
+    """List all system settings."""
+    settings = []
+    if hasattr(state, "settings_repo") and state.settings_repo and hasattr(state.settings_repo, "list_settings"):
+        raw_settings = state.settings_repo.list_settings()
+        settings = [_enrich_setting(s) for s in raw_settings]
+    
+    return templates.TemplateResponse(
+        "admin/settings.html",
+        {"request": request, "settings": settings, "user": user},
+    )
 
 
 # =============================================================================

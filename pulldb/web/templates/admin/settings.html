@@ -63,19 +63,19 @@
                     </thead>
                     <tbody>
                         {% for setting in settings %}
-                        <tr class="setting-row" data-key="{{ setting.key }}">
+                        <tr class="setting-row" data-key="{{ setting.setting_key }}">
                             <td>
-                                <div class="setting-key">{{ setting.key }}</div>
+                                <div class="setting-key">{{ setting.setting_key }}</div>
                                 <div class="setting-description">{{ setting.description }}</div>
                             </td>
                             <td>
-                                <code class="setting-value">{{ setting.value }}</code>
+                                <code class="setting-value">{{ setting.setting_value }}</code>
                             </td>
                             <td>
-                                <code class="setting-default">{{ setting.default }}</code>
+                                <code class="setting-default">{{ setting.default or '-' }}</code>
                             </td>
                             <td>
-                                {% if setting.value == setting.default %}
+                                {% if setting.setting_value == setting.default %}
                                 <span class="status-badge default">Default</span>
                                 {% else %}
                                 <span class="status-badge modified">Modified</span>
