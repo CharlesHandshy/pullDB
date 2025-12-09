@@ -52,6 +52,10 @@ def _construct_target(user: User, req: JobRequest) -> str:
         )
     target = f"{user.user_code}{sanitized}"
     
+    # Append optional suffix if provided
+    if req.suffix:
+        target = f"{target}{req.suffix}"
+    
     # Final validation: target must be lowercase letters only
     if not target.isalpha() or not target.islower():
         raise HTTPException(
@@ -157,6 +161,14 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
     user = state.user_repo.get_or_create_user(username=req.user)
     target = _construct_target(user, req)
     dbhost = _select_dbhost(state, req)
+
+    # Proactive duplicate check - fail fast with clear message
+    if state.job_repo.has_active_jobs_for_target(target, dbhost):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail=f"A restore for '{target}' on '{dbhost}' is already queued or running. "
+                   f"Please wait for it to complete or cancel it first."
+        )
 
     # Phase 2: Concurrency controls - check limits before job creation
     check_concurrency_limits(state, user)

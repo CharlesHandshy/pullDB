@@ -462,7 +462,25 @@ class LazyTable {
         // Add filters
         Object.entries(this.columnFilters).forEach(([key, values]) => {
             if (values.size > 0) {
-                url.searchParams.set(`filter_${key}`, Array.from(values).join(','));
+                const valueStr = Array.from(values).join(',');
+                
+                // Special handling for dateRange filter on submitted_at column
+                // Value format is "fromISO,toISO" - split into separate params
+                if (key === 'submitted_at' && valueStr.includes(',')) {
+                    const colDef = this.getColumnDef(key);
+                    if (colDef && colDef.filterType === 'dateRange') {
+                        const parts = valueStr.split(',');
+                        if (parts[0]) {
+                            url.searchParams.set('filter_submitted_after', parts[0]);
+                        }
+                        if (parts[1]) {
+                            url.searchParams.set('filter_submitted_before', parts[1]);
+                        }
+                        return; // Don't set filter_submitted_at
+                    }
+                }
+                
+                url.searchParams.set(`filter_${key}`, valueStr);
             }
         });
         
@@ -884,8 +902,16 @@ class LazyTable {
         // Remove any existing dropdown
         this.closeFilterDropdown();
         
-        // Check if this column uses text filter
+        // Check column filter type
         const colDef = this.getColumnDef(column);
+        
+        // Date range filter - From/To date inputs
+        if (colDef && colDef.filterType === 'dateRange') {
+            this.showDateRangeFilterDropdown(column, anchorElement);
+            return;
+        }
+        
+        // Text filter - single input with wildcard support
         if (colDef && colDef.filterType === 'text') {
             this.showTextFilterDropdown(column, anchorElement, colDef.filterPlaceholder);
             return;
@@ -1053,6 +1079,120 @@ class LazyTable {
         
         textInput.focus();
         textInput.select();
+    }
+
+    /**
+     * Show a date range filter dropdown for filtering by date period.
+     * Uses native HTML date inputs with From/To fields.
+     * Stores value as "fromISO,toISO" in filterSet for API transmission.
+     * @param {string} column - Column key
+     * @param {HTMLElement} anchorElement - Button to anchor dropdown to
+     */
+    showDateRangeFilterDropdown(column, anchorElement) {
+        // Get current filter value (stored as Set with single "from,to" value)
+        const currentFilter = this.columnFilters[column];
+        let fromValue = '', toValue = '';
+        
+        if (currentFilter && currentFilter.size > 0) {
+            const stored = Array.from(currentFilter)[0];
+            const parts = stored.split(',');
+            // Convert ISO datetime back to YYYY-MM-DD for date input
+            if (parts[0]) {
+                try {
+                    fromValue = parts[0].split('T')[0];
+                } catch (e) { /* ignore */ }
+            }
+            if (parts[1]) {
+                try {
+                    toValue = parts[1].split('T')[0];
+                } catch (e) { /* ignore */ }
+            }
+        }
+        
+        // Create dropdown
+        const dropdown = document.createElement('div');
+        dropdown.className = 'lazy-table-filter-dropdown lazy-table-filter-daterange';
+        dropdown.innerHTML = `
+            <div class="filter-daterange-wrapper">
+                <div class="filter-daterange-row">
+                    <label>From:</label>
+                    <input type="date" class="filter-date-input filter-date-from" value="${fromValue}">
+                </div>
+                <div class="filter-daterange-row">
+                    <label>To:</label>
+                    <input type="date" class="filter-date-input filter-date-to" value="${toValue}">
+                </div>
+            </div>
+            <div class="filter-dropdown-actions">
+                <button type="button" class="filter-clear-btn">${this.config.i18n.clear}</button>
+                <button type="button" class="filter-apply-btn">${this.config.i18n.apply}</button>
+            </div>
+        `;
+        
+        // Position dropdown
+        const rect = anchorElement.getBoundingClientRect();
+        dropdown.style.position = 'fixed';
+        dropdown.style.top = `${rect.bottom + 4}px`;
+        dropdown.style.left = `${rect.left}px`;
+        
+        document.body.appendChild(dropdown);
+        this.activeFilterDropdown = { element: dropdown, column };
+        
+        const fromInput = dropdown.querySelector('.filter-date-from');
+        const toInput = dropdown.querySelector('.filter-date-to');
+        
+        // Helper: convert YYYY-MM-DD to ISO datetime in local timezone
+        const toISODateTime = (dateStr, isEndOfDay) => {
+            if (!dateStr) return '';
+            // Create date in local timezone
+            const time = isEndOfDay ? 'T23:59:59' : 'T00:00:00';
+            const localDate = new Date(dateStr + time);
+            return localDate.toISOString();
+        };
+        
+        // Clear button
+        dropdown.querySelector('.filter-clear-btn').addEventListener('click', () => {
+            this.applyFilter(column, new Set());
+            this.closeFilterDropdown();
+        });
+        
+        // Apply button
+        dropdown.querySelector('.filter-apply-btn').addEventListener('click', () => {
+            const fromDate = fromInput.value;
+            const toDate = toInput.value;
+            
+            if (fromDate || toDate) {
+                // Store as "fromISO,toISO" - empty string if not set
+                const fromISO = toISODateTime(fromDate, false);
+                const toISO = toISODateTime(toDate, true);
+                this.applyFilter(column, new Set([`${fromISO},${toISO}`]));
+            } else {
+                this.applyFilter(column, new Set());
+            }
+            this.closeFilterDropdown();
+        });
+        
+        // Apply on Enter key in either input
+        [fromInput, toInput].forEach(input => {
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    dropdown.querySelector('.filter-apply-btn').click();
+                } else if (e.key === 'Escape') {
+                    this.closeFilterDropdown();
+                }
+            });
+        });
+        
+        // Close on outside click
+        setTimeout(() => {
+            document.addEventListener('click', this.handleOutsideClick = (e) => {
+                if (!dropdown.contains(e.target) && !anchorElement.contains(e.target)) {
+                    this.closeFilterDropdown();
+                }
+            });
+        }, 0);
+        
+        fromInput.focus();
     }
 
     async fetchDistinctValues(column) {

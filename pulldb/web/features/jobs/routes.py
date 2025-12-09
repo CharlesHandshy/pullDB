@@ -86,6 +86,10 @@ async def jobs_page(
         "features/jobs/jobs.html",
         {
             "request": request,
+            "breadcrumbs": [
+                {"label": "Dashboard", "url": "/web/dashboard"},
+                {"label": "Jobs", "url": None},
+            ],
             "jobs": jobs,
             "user": user,
             "active_nav": "jobs",
@@ -115,15 +119,9 @@ def _get_managed_user_codes(state: Any, user: User) -> list[str]:
     managed_codes = [user.user_code]  # Always include self
     
     if hasattr(state, "user_repo") and state.user_repo:
-        if hasattr(state.user_repo, "get_users_by_manager_id"):
-            managed_users = state.user_repo.get_users_by_manager_id(user.user_id)
+        if hasattr(state.user_repo, "get_users_managed_by"):
+            managed_users = state.user_repo.get_users_managed_by(user.user_id)
             managed_codes.extend(u.user_code for u in managed_users)
-        elif hasattr(state.user_repo, "users"):
-            # Mock repo fallback
-            managed_codes.extend(
-                u.user_code for u in state.user_repo.users
-                if u.manager_id == user.user_id
-            )
     
     return managed_codes
 
@@ -168,6 +166,11 @@ async def job_details(
         "features/jobs/details.html",
         {
             "request": request,
+            "breadcrumbs": [
+                {"label": "Dashboard", "url": "/web/dashboard"},
+                {"label": "Jobs", "url": "/web/jobs"},
+                {"label": job_id[:8], "url": None},
+            ],
             "job": job,
             "logs": logs,
             "profile": profile,

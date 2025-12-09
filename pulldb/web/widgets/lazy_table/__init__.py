@@ -12,9 +12,9 @@ A server-side lazy-loading table with:
 - Virtual action cell columns for row-level buttons
 
 Files:
-- lazy_table.js  - Main JavaScript class
-- lazy_table.css - Styles
-- lazy_table.html - Jinja template for easy inclusion
+- /static/widgets/lazy_table/lazy_table.js  - Main JavaScript class
+- /static/widgets/lazy_table/lazy_table.css - Styles  
+- /templates/widgets/lazy_table/lazy_table.html - Jinja template
 
 Usage:
     Include in your template:

@@ -71,22 +71,29 @@
             filterable: true,
             filterType: 'text',
             filterPlaceholder: 'job-01* or *0100',
-            width: '120px',
-            render: (val) => '<a href="/web/jobs/' + val + '" class="font-mono" style="color: var(--primary-600);">' + (val || '').substring(0, 8) + '</a>'
+            width: '125px',
+            render: (val, row) => {
+                const link = '<a href="/web/jobs/' + val + '" class="font-mono" style="color: var(--primary-600);">' + (val || '').substring(0, 8) + '</a>';
+                const canCancel = row.can_cancel && ['queued', 'running'].includes(row.status) && !row.cancel_requested_at;
+                if (canCancel) {
+                    return '<span style="display: flex; align-items: center; gap: 6px;">' + link + 
+                        '<button class="cancel-job-btn" data-job-id="' + val + '" title="Cancel Job" style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; background: var(--danger-50); color: var(--danger-600); border: 1px solid var(--danger-200); border-radius: 4px; cursor: pointer;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px;"><path fill-rule="evenodd" d="M4.5 7.5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-9Z" clip-rule="evenodd"/></svg></button></span>';
+                }
+                return link;
+            }
         },
         { 
             key: 'target', 
             label: 'Target', 
             sortable: true, 
-            filterable: true,
-            width: '200px'
+            filterable: true
         },
         { 
             key: 'owner_user_code', 
             label: 'User', 
             sortable: true, 
             filterable: true, 
-            width: '100px',
+            width: '95px',
             render: (val) => '<span class="font-mono" style="font-size: 0.85em;">' + (val || '-') + '</span>'
         },
         { 
@@ -117,49 +124,24 @@
         },
         { 
             key: 'submitted_at', 
-            label: 'Submitted', 
+            label: 'Date', 
             sortable: true, 
             filterable: true,
-            filterType: 'text',
-            filterPlaceholder: '12/08/2024 or 12/*/2024',
-            width: '150px',
+            filterType: 'dateRange',
+            width: '100px',
             render: (val) => {
                 if (!val) return '-';
                 const d = new Date(val);
-                return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                const now = new Date();
+                return d.getFullYear() === now.getFullYear() ? (d.getMonth()+1) + '/' + d.getDate() : d.toLocaleDateString();
             }
         },
         { 
             key: 'dbhost', 
             label: 'Host', 
             sortable: true, 
-            filterable: true, 
-            width: '140px' 
-        },
-        { 
-            type: 'actions', 
-            label: '', 
-            width: '140px',
-            actions: [
-                { 
-                    icon: 'view', 
-                    label: 'View', 
-                    className: 'primary',
-                    onClick: (row) => { window.location.href = '/web/jobs/' + row.id; }
-                },
-                {
-                    icon: 'x',
-                    label: 'Cancel',
-                    className: 'danger',
-                    onClick: (row) => {
-                        if (confirm('Are you sure you want to cancel this job?')) {
-                            fetch('/web/jobs/' + row.id + '/cancel', { method: 'POST' })
-                                .then(() => window.jobsTable.refresh());
-                        }
-                    },
-                    visible: (row) => row.can_cancel && ['queued', 'running'].includes(row.status) && !row.cancel_requested_at
-                }
-            ]
+            filterable: true,
+            render: (val) => val ? val.split('.')[0] : '-'
         }
     ];
     
@@ -170,57 +152,89 @@
     const threeDaysAgoIso = '{{ three_days_ago_iso }}';
     
     // Default filters based on role:
-    // - Admin: no user filter, but submitted_after filter (clearable)
+    // - Admin: no default filters (can use column filters to narrow down)
     // - Manager: filter to their users + self
     // - User: filter to only self
     let defaultFilters = {};
     if (userRole === 'admin') {
-        defaultFilters = { submitted_after: [threeDaysAgoIso] };
+        // Admin sees all jobs - can use visible Submitted column filter if needed
+        defaultFilters = {};
     } else if (userRole === 'manager' && managedUserCodes.length > 0) {
         defaultFilters = { owner_user_code: managedUserCodes };
     } else {
         defaultFilters = { owner_user_code: [userCode] };
     }
     
-    // Parse URL filter params (for deep-links from dashboard)
+    // =========================================================================
+    // Navigation Intent & Initial State
+    // =========================================================================
+    // Priority: 1) NavIntent (sessionStorage) 2) URL params (fallback for external links)
+    // Both are consumed immediately to prevent persistence on tab switches
+    
+    let intentFilters = {};
+    let intentView = null;
+    
+    // 1. Check NavIntent (from dashboard links)
+    const navIntent = NavIntent.consume();
+    if (navIntent) {
+        intentView = navIntent.view || null;
+        intentFilters = navIntent.filters || {};
+    }
+    
+    // 2. Fallback: Check URL params (for external deep-links, e.g., from email)
     const urlParams = new URLSearchParams(window.location.search);
-    const urlView = urlParams.get('view') || 'active';  // Which view URL filters target
-    const urlFilters = {};
-    
-    // Map URL param names to filter keys (support both filter_X and X formats)
-    const filterParamMap = {
-        'filter_status': 'status',
-        'status': 'status',
-        'filter_user_code': 'owner_user_code',
-        'filter_target': 'target',
-        'filter_dbhost': 'dbhost',
-        'filter_id': 'id'
-    };
-    
-    for (const [param, filterKey] of Object.entries(filterParamMap)) {
-        const value = urlParams.get(param);
-        if (value) {
-            urlFilters[filterKey] = [value];
+    if (!navIntent) {
+        const filterParamMap = {
+            'filter_status': 'status',
+            'status': 'status',
+            'filter_user_code': 'owner_user_code',
+            'filter_target': 'target',
+            'filter_dbhost': 'dbhost',
+            'filter_id': 'id'
+        };
+        
+        for (const [param, filterKey] of Object.entries(filterParamMap)) {
+            const value = urlParams.get(param);
+            if (value) {
+                intentFilters[filterKey] = [value];
+            }
+        }
+        
+        // Clear filter params from URL after consuming (keep only 'view')
+        if (Object.keys(intentFilters).length > 0) {
+            const cleanUrl = new URL(window.location);
+            Object.keys(filterParamMap).forEach(param => cleanUrl.searchParams.delete(param));
+            history.replaceState({}, '', cleanUrl);
         }
     }
     
-    // Helper: get appropriate filters for a given view
-    // URL filters ONLY apply to the view specified in URL (e.g., ?view=history&filter_status=failed)
-    const getFiltersForView = (view) => {
+    // Determine initial view: NavIntent > URL param > default from template
+    const urlView = urlParams.get('view');
+    currentView = intentView || urlView || currentView;
+    
+    // Set initial tab as active
+    document.querySelectorAll('.tab').forEach(t => {
+        t.classList.toggle('tab-active', t.dataset.view === currentView);
+    });
+    
+    // =========================================================================
+    // Filter Logic
+    // =========================================================================
+    
+    // Helper: get default filters for a given view (no intent logic here)
+    const getDefaultFiltersForView = (view) => {
         let filters = { ...defaultFilters };
-        if (view === urlView && Object.keys(urlFilters).length > 0) {
-            // This is the targeted view - apply URL filters
-            // Remove date restriction when explicit status filter provided
-            if (urlFilters.status) {
-                delete filters.submitted_after;
-            }
-            filters = { ...filters, ...urlFilters };
+        
+        // History view: remove date filter - users want to see all history
+        if (view === 'history') {
+            delete filters.submitted_at;
         }
+        
         return filters;
     };
     
-    // Initial filters depend on whether current view matches URL target
-    const initialFilters = getFiltersForView(currentView);
+    // Initial filters: merge defaults with intent filters
+    const initialFilters = { ...getDefaultFiltersForView(currentView), ...intentFilters };
     
     const table = new LazyTable({
         container: document.getElementById('jobs-table-container'),
@@ -234,6 +248,20 @@
     
     // Store reference globally for debugging
     window.jobsTable = table;
+    
+    // Cancel button click handler (delegated)
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.cancel-job-btn');
+        if (btn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const jobId = btn.dataset.jobId;
+            if (confirm('Are you sure you want to cancel this job?')) {
+                fetch('/web/jobs/' + jobId + '/cancel', { method: 'POST', credentials: 'same-origin' })
+                    .then(() => window.jobsTable.refresh());
+            }
+        }
+    });
     
     // Per-tab state persistence (in-memory)
     const viewStates = {};
@@ -253,12 +281,12 @@
             
             // Restore saved state for new tab, or apply defaults if first visit
             if (viewStates[currentView]) {
-                // User already visited this tab - restore their exact state (no URL filter override)
+                // User already visited this tab - restore their exact state
                 table.setState(viewStates[currentView]);
             } else {
-                // First visit to this tab - apply view-specific filters
+                // First visit to this tab - apply default filters (no intent/URL filters)
                 table.setState({ 
-                    columnFilters: getFiltersForView(currentView), 
+                    columnFilters: getDefaultFiltersForView(currentView), 
                     sortColumn: null, 
                     sortDirection: null 
                 });
@@ -267,8 +295,9 @@
             // Refresh with new URL
             table.setFetchUrl('/api/jobs/paginated?view=' + currentView);
             
-            // Update URL without reload (preserve filter params)
+            // Update URL - only set view param, remove any stale filter params
             const url = new URL(window.location);
+            url.search = ''; // Clear all params
             url.searchParams.set('view', currentView);
             history.pushState({}, '', url);
         });

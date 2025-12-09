@@ -257,6 +257,14 @@ class MockUserRepo:
                 )
                 break
 
+    def get_users_managed_by(self, manager_id: str) -> list[User]:
+        """Get users managed by a specific manager."""
+        return [u for u in self._users.values() if getattr(u, 'manager_id', None) == manager_id]
+
+    def get_users_with_job_counts(self) -> list[User]:
+        """Get all users (for admin user selector)."""
+        return list(self._users.values())
+
     def get_or_create_user(self, username: str) -> User:
         """Get existing user by username.
         
@@ -277,6 +285,7 @@ class MockAuthRepo:
 
     def __init__(self) -> None:
         self.sessions: dict[str, str] = {}  # token -> user_id (str)
+        self.password_reset_at: dict[str, datetime | None] = {}  # user_id -> reset timestamp
         # Password: "PullDB_Dev2025!" for all dev users (bcrypt hash)
         # Generated with: from pulldb.auth.password import hash_password; hash_password("PullDB_Dev2025!")
         test_hash = "$2b$12$XnisilncYSnbIvEinwVYTePMF/DMiVUwpUSv8BuOWSlPH5sRam.zG"
@@ -290,6 +299,24 @@ class MockAuthRepo:
 
     def get_password_hash(self, user_id: str) -> str | None:
         return self.password_hashes.get(user_id)
+
+    def set_password_hash(self, user_id: str, password_hash: str) -> None:
+        self.password_hashes[user_id] = password_hash
+
+    def has_password(self, user_id: str) -> bool:
+        return user_id in self.password_hashes
+
+    def mark_password_reset(self, user_id: str) -> None:
+        self.password_reset_at[user_id] = datetime.now(UTC)
+
+    def clear_password_reset(self, user_id: str) -> None:
+        self.password_reset_at[user_id] = None
+
+    def is_password_reset_required(self, user_id: str) -> bool:
+        return self.password_reset_at.get(user_id) is not None
+
+    def get_password_reset_at(self, user_id: str) -> datetime | None:
+        return self.password_reset_at.get(user_id)
 
     def validate_session(self, token: str) -> str | None:
         return self.sessions.get(token)
@@ -699,6 +726,14 @@ class MockJobRepo:
         if user_jobs:
             return sorted(user_jobs, key=lambda j: j.submitted_at, reverse=True)[0]
         return None
+
+    def has_active_jobs_for_target(self, target: str, dbhost: str) -> bool:
+        """Check if there are any active (queued/running) jobs for a target."""
+        for job in self.active_jobs:
+            status_val = job.status.value if hasattr(job.status, 'value') else job.status
+            if job.target == target and job.dbhost == dbhost and status_val in ('queued', 'running'):
+                return True
+        return False
 
     def request_cancellation(self, job_id: str) -> bool:
         """Request cancellation of a job. Returns True if cancellation was requested.
@@ -1194,7 +1229,7 @@ def create_dev_app() -> FastAPI:
 
     # Mount widgets directory for JS/CSS FIRST (single source of truth)
     # Must be before /static mount so /static/widgets/ resolves to widgets dir
-    widgets_dir = Path(__file__).parent.parent / "pulldb" / "web" / "widgets"
+    widgets_dir = Path(__file__).parent.parent / "pulldb" / "web" / "static" / "widgets"
     if widgets_dir.exists():
         app.mount("/static/widgets", StaticFiles(directory=str(widgets_dir)), name="widgets")
     
@@ -1452,9 +1487,18 @@ def create_dev_app() -> FastAPI:
         filter_id: str | None = None,
         filter_submitted_at: str | None = None,
         filter_submitted_after: str | None = None,
+        filter_submitted_before: str | None = None,
     ):
         """Get paginated jobs for LazyTable widget."""
         state: MockAPIState = request.app.state.api_state
+        
+        # Get current user from session cookie for can_cancel permission check
+        current_user = None
+        session_token = request.cookies.get("session_token")
+        if session_token and hasattr(state, "auth_repo") and state.auth_repo:
+            user_id = state.auth_repo.validate_session(session_token)
+            if user_id and hasattr(state, "user_repo") and state.user_repo:
+                current_user = state.user_repo.get_user_by_id(user_id)
         
         # Get jobs based on view
         if view == "history":
@@ -1501,6 +1545,14 @@ def create_dev_app() -> FastAPI:
             except ValueError:
                 pass  # Invalid date format, skip filter
         
+        # Date range filter for submitted_before (ISO datetime string)
+        if filter_submitted_before:
+            try:
+                cutoff = datetime.fromisoformat(filter_submitted_before.replace('Z', '+00:00'))
+                filtered = [j for j in filtered if j.submitted_at and j.submitted_at <= cutoff]
+            except ValueError:
+                pass  # Invalid date format, skip filter
+        
         # Sort
         if sortColumn and sortDirection:
             reverse = sortDirection == "desc"
@@ -1534,6 +1586,19 @@ def create_dev_app() -> FastAPI:
                 delta = job.completed_at - job.started_at
                 duration_seconds = delta.total_seconds()
             
+            # Determine can_cancel permission
+            can_cancel = False
+            if status_val in ("queued", "running") and current_user is not None:
+                if current_user.role.value == "admin":
+                    can_cancel = True
+                elif current_user.user_id == job.owner_user_id:
+                    can_cancel = True
+                elif current_user.role.value == "manager":
+                    # Managers can cancel jobs of users they manage
+                    job_owner = state.user_repo.get_user_by_id(job.owner_user_id) if state.user_repo else None
+                    if job_owner and job_owner.manager_id == current_user.user_id:
+                        can_cancel = True
+            
             rows.append({
                 "id": job.id,
                 "target": job.target,
@@ -1547,6 +1612,8 @@ def create_dev_app() -> FastAPI:
                 "current_operation": job.current_operation,
                 "duration_seconds": duration_seconds,
                 "error_detail": job.error_detail,
+                "can_cancel": can_cancel,
+                "cancel_requested_at": state.job_repo._cancel_requested.get(job.id),
             })
         
         return {
@@ -1579,10 +1646,152 @@ def create_dev_app() -> FastAPI:
                 values.add(status_val)
             elif column == "dbhost" and job.dbhost:
                 values.add(job.dbhost)
-            elif column == "user_code" and job.owner_user_code:
+            elif column in ("user_code", "owner_user_code") and job.owner_user_code:
                 values.add(job.owner_user_code)
             elif column == "target" and job.target:
                 values.add(job.target)
+        
+        return sorted(values)
+
+    # Paginated team endpoint for manager LazyTable widget
+    @app.get("/api/manager/team")
+    async def paginated_team(
+        request: Request,
+        page: int = 0,
+        pageSize: int = 50,
+        sortColumn: str | None = None,
+        sortDirection: str | None = None,
+        filter_username: str | None = None,
+        filter_user_code: str | None = None,
+        filter_status: str | None = None,
+    ):
+        """Get paginated team members for manager LazyTable widget."""
+        state: MockAPIState = request.app.state.api_state
+        
+        # Get current user from session cookie
+        current_user = None
+        session_token = request.cookies.get("session_token")
+        if session_token and hasattr(state, "auth_repo") and state.auth_repo:
+            user_id = state.auth_repo.validate_session(session_token)
+            if user_id and hasattr(state, "user_repo") and state.user_repo:
+                current_user = state.user_repo.get_user_by_id(user_id)
+        
+        if not current_user:
+            return {"rows": [], "totalCount": 0, "filteredCount": 0, "page": page, "pageSize": pageSize}
+        
+        # Get managed users
+        managed_users = []
+        if hasattr(state.user_repo, "get_users_managed_by"):
+            managed_users = state.user_repo.get_users_managed_by(current_user.user_id)
+        
+        # Get active jobs for counting
+        all_jobs = []
+        if hasattr(state.job_repo, "active_jobs"):
+            all_jobs = list(state.job_repo.active_jobs)
+        
+        # Compute per-user active job counts
+        user_active_jobs = {}
+        for mu in managed_users:
+            user_active_jobs[mu.user_id] = len([
+                j for j in all_jobs
+                if j.owner_user_id == mu.user_id
+                and (j.status.value if hasattr(j.status, 'value') else j.status) in ('queued', 'running')
+            ])
+        
+        # Compute per-user password reset status
+        user_password_reset = {}
+        for mu in managed_users:
+            if hasattr(state.auth_repo, "is_password_reset_required"):
+                user_password_reset[mu.user_id] = state.auth_repo.is_password_reset_required(mu.user_id)
+            else:
+                user_password_reset[mu.user_id] = False
+        
+        # Apply filters
+        filtered = managed_users
+        if filter_username:
+            filter_username_lower = filter_username.lower()
+            filtered = [u for u in filtered if filter_username_lower in (u.username or "").lower()]
+        if filter_user_code:
+            filter_user_code_lower = filter_user_code.lower()
+            filtered = [u for u in filtered if filter_user_code_lower in (u.user_code or "").lower()]
+        if filter_status:
+            status_values = set(filter_status.split(','))
+            def matches_status(u):
+                user_status = "disabled" if u.disabled_at else "active"
+                return user_status in status_values
+            filtered = [u for u in filtered if matches_status(u)]
+        
+        # Sort
+        if sortColumn and sortDirection:
+            reverse = sortDirection == "desc"
+            sort_keys = {
+                "username": lambda u: (u.username or "").lower(),
+                "user_code": lambda u: (u.user_code or "").lower(),
+                "active_jobs": lambda u: user_active_jobs.get(u.user_id, 0),
+                "status": lambda u: 0 if u.disabled_at else 1,  # Active first
+            }
+            if sortColumn in sort_keys:
+                filtered = sorted(filtered, key=sort_keys[sortColumn], reverse=reverse)
+        
+        total = len(managed_users)
+        filtered_count = len(filtered)
+        
+        # Paginate
+        offset = page * pageSize
+        page_users = filtered[offset:offset + pageSize]
+        
+        # Convert to dicts
+        rows = []
+        for u in page_users:
+            rows.append({
+                "user_id": u.user_id,
+                "username": u.username,
+                "user_code": u.user_code,
+                "active_jobs": user_active_jobs.get(u.user_id, 0),
+                "disabled_at": u.disabled_at.isoformat() if u.disabled_at else None,
+                "password_reset_pending": user_password_reset.get(u.user_id, False),
+            })
+        
+        return {
+            "rows": rows,
+            "totalCount": total,
+            "filteredCount": filtered_count,
+            "page": page,
+            "pageSize": pageSize,
+        }
+
+    @app.get("/api/manager/team/distinct")
+    async def team_distinct_values(
+        request: Request,
+        column: str,
+    ):
+        """Get distinct values for a column in the team table."""
+        state: MockAPIState = request.app.state.api_state
+        
+        # Get current user from session cookie
+        current_user = None
+        session_token = request.cookies.get("session_token")
+        if session_token and hasattr(state, "auth_repo") and state.auth_repo:
+            user_id = state.auth_repo.validate_session(session_token)
+            if user_id and hasattr(state, "user_repo") and state.user_repo:
+                current_user = state.user_repo.get_user_by_id(user_id)
+        
+        if not current_user:
+            return []
+        
+        # Get managed users
+        managed_users = []
+        if hasattr(state.user_repo, "get_users_managed_by"):
+            managed_users = state.user_repo.get_users_managed_by(current_user.user_id)
+        
+        values = set()
+        for u in managed_users:
+            if column == "username" and u.username:
+                values.add(u.username)
+            elif column == "user_code" and u.user_code:
+                values.add(u.user_code)
+            elif column == "status":
+                values.add("disabled" if u.disabled_at else "active")
         
         return sorted(values)
 

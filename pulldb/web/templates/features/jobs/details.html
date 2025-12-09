@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Job {{ job.id }} - pullDB{% endblock %}
+{% block title %}Job {{ job.id[:8] }} - pullDB{% endblock %}
 
 {% block content %}
 <div class="job-details-container" hx-get="{{ request.url }}" hx-trigger="every 5s" hx-select=".job-details-container" hx-swap="outerHTML">
     <div class="page-header">
-        <h1 class="page-title">Job Details: <span class="font-mono">{{ job.id }}</span></h1>
+        <h1 class="page-title">Job Details: <span class="font-mono" title="{{ job.id }}">{{ job.id[:8] }}</span></h1>
         <div style="display: flex; gap: 1rem;">
             {% if job.status.value in ['queued', 'running'] and can_cancel %}
             <form method="POST" action="/web/jobs/{{ job.id }}/cancel" onsubmit="return confirm('Are you sure you want to cancel this job?');">

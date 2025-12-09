@@ -73,7 +73,9 @@
         </svg>
         <span style="font-weight: 500; color: var(--danger-700);">{{ system_stats.failed_jobs }} failed job{% if system_stats.failed_jobs > 1 %}s{% endif %} require attention</span>
     </div>
-    <a href="/web/jobs?view=history&filter_status=failed" class="btn btn-danger" style="font-size: 0.875rem;">View Failed Jobs</a>
+    <a href="/web/jobs?view=history" 
+       onclick="NavIntent.set({view: 'history', filters: {status: ['failed']}})" 
+       class="btn btn-danger" style="font-size: 0.875rem;">View Failed Jobs</a>
 </div>
 {% endif %}
 

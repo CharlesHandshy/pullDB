@@ -88,8 +88,6 @@ async def restore_page(
                 if hasattr(state.user_repo, "get_users_with_job_counts"):
                     all_users = state.user_repo.get_users_with_job_counts()
                     managed_users = [u for u in all_users if not getattr(u, "disabled_at", None)]
-                elif hasattr(state.user_repo, "users"):
-                    managed_users = [u for u in state.user_repo.users if not getattr(u, "disabled_at", None)]
             else:
                 # Managers can only submit for their managed users
                 if hasattr(state.user_repo, "get_users_managed_by"):
@@ -100,6 +98,10 @@ async def restore_page(
         "features/restore/restore.html",
         {
             "request": request,
+            "breadcrumbs": [
+                {"label": "Dashboard", "url": "/web/dashboard"},
+                {"label": "New Restore Job", "url": None},
+            ],
             "allowed_hosts": allowed_hosts,
             "default_host": default_host,
             "user": user,
@@ -194,8 +196,6 @@ async def restore_submit(
         if hasattr(state, "user_repo") and state.user_repo:
             if hasattr(state.user_repo, "get_user_by_username"):
                 target_user = state.user_repo.get_user_by_username(submit_as_user)
-            elif hasattr(state.user_repo, "users"):
-                target_user = next((u for u in state.user_repo.users if u.username == submit_as_user), None)
         
         if target_user:
             # Managers can only submit for their managed users
@@ -231,10 +231,10 @@ async def restore_submit(
         all_hosts = state.host_repo.get_enabled_hosts()
     
     allowed_hosts = _get_allowed_hosts_for_user(user, all_hosts)
-    allowed_host_ids = {str(h.id) for h in allowed_hosts}
+    allowed_hostnames = {h.hostname for h in allowed_hosts}
     
     # Block if selected host is not in allowed list
-    if dbhost and dbhost not in allowed_host_ids and user.role != UserRole.ADMIN:
+    if dbhost and dbhost not in allowed_hostnames and user.role != UserRole.ADMIN:
         return templates.TemplateResponse(
             "features/restore/restore.html",
             {
@@ -294,6 +294,30 @@ async def restore_submit(
     try:
         await run_in_threadpool(enqueue_job, state, req)
         return RedirectResponse(url="/web/jobs", status_code=303)
+    except HTTPException as exc:
+        # Handle specific HTTP errors (e.g., 409 Conflict for duplicate jobs)
+        error_status = exc.status_code if hasattr(exc, 'status_code') else 400
+        error_message = exc.detail if hasattr(exc, 'detail') else str(exc)
+        return templates.TemplateResponse(
+            "features/restore/restore.html",
+            {
+                "request": request,
+                "allowed_hosts": allowed_hosts,
+                "default_host": user.default_host,
+                "user": user,
+                "error": error_message,
+                "active_nav": "restore",
+                # Preserve form values
+                "form": {
+                    "customer": customer,
+                    "s3env": s3env,
+                    "dbhost": dbhost,
+                    "suffix": suffix,
+                    "overwrite": overwrite_val,
+                }
+            },
+            status_code=error_status
+        )
     except Exception as exc:
         return templates.TemplateResponse(
             "features/restore/restore.html",

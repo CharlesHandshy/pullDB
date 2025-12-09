@@ -7,19 +7,20 @@
     Expected context:
         breadcrumbs: list[BreadcrumbItem] - List of breadcrumb items
                      Each item has: label, url (None for current page)
+    
+    Note: Only shows items with URLs (excludes current page)
 #}
 {% if breadcrumbs %}
+{% set nav_items = breadcrumbs | selectattr('url') | list %}
+{% if nav_items %}
 <nav class="breadcrumb-nav" aria-label="Breadcrumb">
     <ol class="breadcrumb-list">
-        {% for item in breadcrumbs %}
+        {% for item in nav_items %}
         <li class="breadcrumb-item">
-            {% if item.url %}
             <a href="{{ item.url }}" class="breadcrumb-link">{{ item.label }}</a>
-            {% else %}
-            <span class="breadcrumb-current" aria-current="page">{{ item.label }}</span>
-            {% endif %}
         </li>
         {% endfor %}
     </ol>
 </nav>
+{% endif %}
 {% endif %}

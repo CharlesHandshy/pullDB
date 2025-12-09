@@ -139,8 +139,6 @@ def _build_admin_context(state: Any, user: User) -> dict:
     if hasattr(state, "user_repo") and state.user_repo:
         if hasattr(state.user_repo, "get_users_with_job_counts"):
             all_users = state.user_repo.get_users_with_job_counts()
-        elif hasattr(state.user_repo, "users"):
-            all_users = state.user_repo.users
     
     # Get all hosts
     all_hosts = []
@@ -234,6 +232,9 @@ async def dashboard(
         "features/dashboard/dashboard.html",
         {
             "request": request,
+            "breadcrumbs": [
+                {"label": "Dashboard", "url": None},
+            ],
             "user": user,
             "active_nav": "dashboard",
             **context,

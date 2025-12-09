@@ -29,6 +29,9 @@
                 <span>pullDB</span>
             </div>
         </div>
+        <div class="header-center">
+            {% include "partials/breadcrumbs.html" %}
+        </div>
         <div class="header-actions">
             {% block header_actions %}
             <!-- User Profile / Actions -->
@@ -75,6 +78,7 @@
         </div>
     </footer>
 
+    <script src="/static/js/navigation.js"></script>
     <script src="/static/js/main.js"></script>
     {% block extra_js %}{% endblock %}
 </body>
