@@ -182,6 +182,34 @@
         defaultFilters = { user_code: [userCode] };
     }
     
+    // Parse URL filter params (for deep-links from dashboard)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlFilters = {};  // Preserved across tab switches
+    
+    // Map URL param names to filter keys (support both filter_X and X formats)
+    const filterParamMap = {
+        'filter_status': 'status',
+        'status': 'status',
+        'filter_user_code': 'user_code',
+        'filter_target': 'target',
+        'filter_dbhost': 'dbhost',
+        'filter_id': 'id'
+    };
+    
+    for (const [param, filterKey] of Object.entries(filterParamMap)) {
+        const value = urlParams.get(param);
+        if (value) {
+            urlFilters[filterKey] = [value];
+            // When explicit status filter provided, remove date restriction so all matching jobs show
+            if (filterKey === 'status') {
+                delete defaultFilters.submitted_after;
+            }
+        }
+    }
+    
+    // Merge URL filters into defaults (URL wins)
+    const initialFilters = { ...defaultFilters, ...urlFilters };
+    
     const table = new LazyTable({
         container: document.getElementById('jobs-table-container'),
         columns: columns,
@@ -189,7 +217,7 @@
         rowHeight: 52,
         rowIdKey: 'id',
         emptyMessage: 'No jobs found.',
-        initialFilters: defaultFilters
+        initialFilters: initialFilters
     });
     
     // Store reference globally for debugging
@@ -212,12 +240,17 @@
             currentView = this.dataset.view;
             
             // Restore saved state for new tab, or apply defaults if first visit
+            // Always re-apply URL filters so deep-links persist across tab switches
             if (viewStates[currentView]) {
-                table.setState(viewStates[currentView]);
+                const savedFilters = viewStates[currentView].columnFilters || {};
+                table.setState({
+                    ...viewStates[currentView],
+                    columnFilters: { ...savedFilters, ...urlFilters }
+                });
             } else {
-                // First visit to this tab - apply default filters
+                // First visit to this tab - apply default + URL filters
                 table.setState({ 
-                    columnFilters: defaultFilters, 
+                    columnFilters: { ...defaultFilters, ...urlFilters }, 
                     sortColumn: null, 
                     sortDirection: null 
                 });
@@ -226,7 +259,7 @@
             // Refresh with new URL
             table.setFetchUrl('/api/jobs/paginated?view=' + currentView);
             
-            // Update URL without reload
+            // Update URL without reload (preserve filter params)
             const url = new URL(window.location);
             url.searchParams.set('view', currentView);
             history.pushState({}, '', url);
