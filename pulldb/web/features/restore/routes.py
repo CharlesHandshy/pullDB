@@ -33,7 +33,7 @@ def _get_allowed_hosts_for_user(user: User, all_hosts: list) -> list:
     if not user.allowed_hosts:
         return []
     
-    return [h for h in all_hosts if h.name in user.allowed_hosts]
+    return [h for h in all_hosts if h.hostname in user.allowed_hosts]
 
 
 def _get_default_host_for_user(user: User, customer: str | None, state: Any) -> str | None:

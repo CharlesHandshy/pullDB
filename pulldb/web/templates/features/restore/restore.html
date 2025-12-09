@@ -715,8 +715,8 @@
                             <option value="">Select a host...</option>
                             {% for host in allowed_hosts %}
                             <option value="{{ host.id }}" 
-                                    {% if (form and form.dbhost == host.id|string) or (default_host and host.name == default_host) %}selected{% endif %}>
-                                {{ host.name }}
+                                    {% if (form and form.dbhost == host.id|string) or (default_host and host.hostname == default_host) %}selected{% endif %}>
+                                {{ host.hostname }}
                             </option>
                             {% endfor %}
                         </select>
