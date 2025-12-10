@@ -150,3 +150,17 @@
     </div>
 </div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    {% if flash_message %}
+    showToast('{{ flash_message }}', '{{ flash_type }}', true);
+    // Clean URL params after showing toast
+    if (window.history.replaceState) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    {% endif %}
+});
+</script>
+{% endblock %}

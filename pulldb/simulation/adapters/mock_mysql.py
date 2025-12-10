@@ -453,6 +453,118 @@ class SimulatedJobRepository:
             ]
             return original_count - len(self.state.job_events)
 
+    def get_prune_candidates(
+        self,
+        retention_days: int = 90,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> dict:
+        """Get paginated list of jobs with events that would be pruned.
+
+        Returns dict with:
+        - rows: list of job summaries with event counts
+        - totalCount: total jobs affected
+        - totalEvents: total events that would be deleted
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        terminal_statuses = (JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED)
+
+        with self.state.lock:
+            # Build lookup of terminal jobs
+            terminal_jobs = {
+                job_id: job
+                for job_id, job in self.state.jobs.items()
+                if job.status in terminal_statuses
+            }
+
+            # Find jobs with old events
+            candidates: list[dict] = []
+            total_events = 0
+
+            # Group events by job_id
+            events_by_job: dict[str, list[JobEvent]] = {}
+            for event in self.state.job_events:
+                if event.job_id not in events_by_job:
+                    events_by_job[event.job_id] = []
+                events_by_job[event.job_id].append(event)
+
+            for job_id, events in events_by_job.items():
+                # Only consider terminal jobs
+                job = terminal_jobs.get(job_id)
+                if not job:
+                    continue
+
+                old_events = [e for e in events if e.logged_at < cutoff]
+                if old_events:
+                    oldest = min(e.logged_at for e in old_events)
+                    newest = max(e.logged_at for e in old_events)
+                    candidates.append({
+                        "job_id": job_id,
+                        "target": job.target,
+                        "user_code": job.owner_user_code,
+                        "status": job.status.value,
+                        "event_count": len(old_events),
+                        "oldest_event": oldest.isoformat(),
+                        "newest_event": newest.isoformat(),
+                    })
+                    total_events += len(old_events)
+
+            # Sort by oldest event (oldest first)
+            candidates.sort(key=lambda x: x["oldest_event"])
+
+            return {
+                "rows": candidates[offset : offset + limit],
+                "totalCount": len(candidates),
+                "totalEvents": total_events,
+            }
+
+    def prune_job_events_by_ids(self, job_ids: list[str]) -> int:
+        """Prune all events for specific job IDs. Returns count deleted.
+
+        This removes ALL events for the specified jobs, regardless of age.
+        Used by the prune-logs UI when user selects specific jobs to purge.
+        """
+        with self.state.lock:
+            original_count = len(self.state.job_events)
+            self.state.job_events = [
+                e for e in self.state.job_events if e.job_id not in job_ids
+            ]
+            return original_count - len(self.state.job_events)
+
+    def prune_job_events_excluding(
+        self,
+        retention_days: int = 90,
+        exclude_job_ids: list[str] | None = None,
+    ) -> int:
+        """Prune old job events, excluding specified job IDs. Returns count deleted.
+
+        Deletes events older than retention_days for terminal jobs,
+        EXCEPT for jobs in the exclude list.
+        """
+        exclude_job_ids = exclude_job_ids or []
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        terminal_statuses = (JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED)
+
+        with self.state.lock:
+            # Build lookup of terminal jobs
+            terminal_job_ids = {
+                job_id
+                for job_id, job in self.state.jobs.items()
+                if job.status in terminal_statuses
+            }
+
+            original_count = len(self.state.job_events)
+            self.state.job_events = [
+                e
+                for e in self.state.job_events
+                if not (
+                    e.job_id in terminal_job_ids
+                    and e.job_id not in exclude_job_ids
+                    and e.logged_at < cutoff
+                )
+            ]
+            return original_count - len(self.state.job_events)
+
     # ==================== Additional Methods for Real Parity ====================
 
     def find_job_by_staging_prefix(

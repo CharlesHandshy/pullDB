@@ -18,8 +18,21 @@ async def admin_page(
     request: Request,
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
+    prune_success: int | None = None,
+    prune_jobs: int | None = None,
+    prune_error: str | None = None,
 ) -> HTMLResponse:
     """Render the admin page."""
+    # Build flash message from query params (set by prune redirect)
+    flash_message = None
+    flash_type = None
+    if prune_success is not None and prune_jobs is not None:
+        flash_message = f"Successfully deleted {prune_success} events from {prune_jobs} job(s)"
+        flash_type = "success"
+    elif prune_error:
+        flash_message = f"Prune failed: {prune_error}"
+        flash_type = "error"
+
     # Gather stats
     users = []
     if hasattr(state.user_repo, "list_users"):
@@ -50,7 +63,13 @@ async def admin_page(
 
     return templates.TemplateResponse(
         "features/admin/admin.html",
-        {"request": request, "stats": stats, "user": user},
+        {
+            "request": request,
+            "stats": stats,
+            "user": user,
+            "flash_message": flash_message,
+            "flash_type": flash_type,
+        },
     )
 
 
@@ -496,20 +515,37 @@ async def prune_logs_execute(
     """Execute prune-logs on specific job IDs."""
     include_list = [x.strip() for x in include_ids.split(",") if x.strip()]
     
+    deleted_count = 0
+    job_count = len(include_list)
+    error_msg = None
+
     if include_list:
-        if hasattr(state.job_repo, "prune_job_events_by_ids"):
-            state.job_repo.prune_job_events_by_ids(job_ids=include_list)
-        elif hasattr(state.job_repo, "prune_job_events_excluding"):
-            # Fallback: get all candidates, compute exclude list
-            result = state.job_repo.get_prune_candidates(retention_days=days, offset=0, limit=10000)
-            all_ids = {row["job_id"] for row in result.get("rows", [])}
-            exclude_list = list(all_ids - set(include_list))
-            state.job_repo.prune_job_events_excluding(
-                retention_days=days,
-                exclude_job_ids=exclude_list,
-            )
-    
-    return RedirectResponse(url="/web/admin/", status_code=303)
+        try:
+            if hasattr(state.job_repo, "prune_job_events_by_ids"):
+                deleted_count = state.job_repo.prune_job_events_by_ids(job_ids=include_list)
+            elif hasattr(state.job_repo, "prune_job_events_excluding"):
+                # Fallback: get all candidates, compute exclude list
+                result = state.job_repo.get_prune_candidates(retention_days=days, offset=0, limit=10000)
+                all_ids = {row["job_id"] for row in result.get("rows", [])}
+                exclude_list = list(all_ids - set(include_list))
+                deleted_count = state.job_repo.prune_job_events_excluding(
+                    retention_days=days,
+                    exclude_job_ids=exclude_list,
+                )
+        except Exception as e:
+            error_msg = str(e)
+
+    # Redirect with feedback params
+    if error_msg:
+        from urllib.parse import quote
+        return RedirectResponse(
+            url=f"/web/admin/?prune_error={quote(error_msg)}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=f"/web/admin/?prune_success={deleted_count}&prune_jobs={job_count}",
+        status_code=303,
+    )
 
 
 # Legacy endpoint for backward compatibility

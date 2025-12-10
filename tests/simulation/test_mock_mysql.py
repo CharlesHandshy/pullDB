@@ -131,3 +131,212 @@ class TestMockRepositories(unittest.TestCase):
         claimed2 = self.job_repo.claim_next_job("worker-2")
         self.assertIsNotNone(claimed2)
         self.assertEqual(claimed2.id, "job-2")
+
+
+class TestPruneJobEvents(unittest.TestCase):
+    """Tests for job event pruning methods."""
+
+    def setUp(self):
+        self.state = get_simulation_state()
+        self.state.clear()
+        self.job_repo = SimulatedJobRepository()
+        self.user_repo = SimulatedUserRepository()
+
+    def _create_job(self, job_id: str, status: JobStatus) -> Job:
+        """Helper to create a test job."""
+        user = self.user_repo.get_user_by_username("testuser")
+        if not user:
+            user = self.user_repo.create_user("testuser", "test01")
+        
+        job = Job(
+            id=job_id,
+            owner_user_id=user.user_id,
+            owner_username=user.username,
+            owner_user_code=user.user_code,
+            target="test_db",
+            staging_name=f"staging_{job_id}",
+            dbhost="db-01",
+            status=status,
+            submitted_at=datetime.now(UTC) - timedelta(days=100),
+            completed_at=datetime.now(UTC) - timedelta(days=95) if status != JobStatus.RUNNING else None,
+        )
+        self.state.jobs[job_id] = job
+        return job
+
+    def _add_old_event(self, job_id: str, event_type: str, days_ago: int):
+        """Helper to add an event with a specific age."""
+        from pulldb.domain.models import JobEvent
+        event = JobEvent(
+            id=len(self.state.job_events) + 1,
+            job_id=job_id,
+            event_type=event_type,
+            detail=f"Test event {event_type}",
+            logged_at=datetime.now(UTC) - timedelta(days=days_ago),
+        )
+        self.state.job_events.append(event)
+        return event
+
+    def test_get_prune_candidates_returns_old_terminal_jobs(self):
+        """get_prune_candidates should return jobs with events older than retention."""
+        # Create terminal jobs with old events
+        self._create_job("job-old-complete", JobStatus.COMPLETE)
+        self._add_old_event("job-old-complete", "queued", 100)
+        self._add_old_event("job-old-complete", "complete", 95)
+
+        self._create_job("job-old-failed", JobStatus.FAILED)
+        self._add_old_event("job-old-failed", "queued", 100)
+        self._add_old_event("job-old-failed", "failed", 95)
+
+        # Create running job (should NOT be included)
+        self._create_job("job-running", JobStatus.RUNNING)
+        self._add_old_event("job-running", "queued", 100)
+
+        result = self.job_repo.get_prune_candidates(retention_days=90)
+
+        self.assertEqual(result["totalCount"], 2)
+        self.assertEqual(result["totalEvents"], 4)
+        job_ids = {row["job_id"] for row in result["rows"]}
+        self.assertIn("job-old-complete", job_ids)
+        self.assertIn("job-old-failed", job_ids)
+        self.assertNotIn("job-running", job_ids)
+
+    def test_get_prune_candidates_excludes_recent_events(self):
+        """get_prune_candidates should not include jobs with only recent events."""
+        # Create job with recent events only
+        self._create_job("job-recent", JobStatus.COMPLETE)
+        self._add_old_event("job-recent", "queued", 30)  # Only 30 days old
+        self._add_old_event("job-recent", "complete", 30)
+
+        result = self.job_repo.get_prune_candidates(retention_days=90)
+
+        self.assertEqual(result["totalCount"], 0)
+        self.assertEqual(result["totalEvents"], 0)
+
+    def test_get_prune_candidates_pagination(self):
+        """get_prune_candidates should support pagination."""
+        # Create 5 jobs with old events
+        for i in range(5):
+            self._create_job(f"job-{i}", JobStatus.COMPLETE)
+            self._add_old_event(f"job-{i}", "complete", 100 + i)
+
+        # Page 1
+        result1 = self.job_repo.get_prune_candidates(retention_days=90, offset=0, limit=2)
+        self.assertEqual(len(result1["rows"]), 2)
+        self.assertEqual(result1["totalCount"], 5)
+
+        # Page 2
+        result2 = self.job_repo.get_prune_candidates(retention_days=90, offset=2, limit=2)
+        self.assertEqual(len(result2["rows"]), 2)
+
+        # Ensure no overlap
+        ids1 = {r["job_id"] for r in result1["rows"]}
+        ids2 = {r["job_id"] for r in result2["rows"]}
+        self.assertEqual(len(ids1 & ids2), 0)
+
+    def test_prune_job_events_by_ids_deletes_all_events(self):
+        """prune_job_events_by_ids should delete ALL events for specified jobs."""
+        # Create jobs with events
+        self._create_job("job-to-delete", JobStatus.COMPLETE)
+        self._add_old_event("job-to-delete", "queued", 100)
+        self._add_old_event("job-to-delete", "complete", 95)
+
+        self._create_job("job-to-keep", JobStatus.COMPLETE)
+        self._add_old_event("job-to-keep", "queued", 100)
+        self._add_old_event("job-to-keep", "complete", 95)
+
+        # Initial counts
+        self.assertEqual(len(self.state.job_events), 4)
+
+        # Delete events for one job
+        deleted = self.job_repo.prune_job_events_by_ids(["job-to-delete"])
+
+        self.assertEqual(deleted, 2)
+        self.assertEqual(len(self.state.job_events), 2)
+        
+        # Verify correct events remain
+        remaining_job_ids = {e.job_id for e in self.state.job_events}
+        self.assertNotIn("job-to-delete", remaining_job_ids)
+        self.assertIn("job-to-keep", remaining_job_ids)
+
+    def test_prune_job_events_by_ids_cascades_to_get_job_events(self):
+        """After pruning, get_job_events should return empty for pruned jobs."""
+        self._create_job("job-pruned", JobStatus.COMPLETE)
+        self._add_old_event("job-pruned", "queued", 100)
+        self._add_old_event("job-pruned", "complete", 95)
+
+        # Before prune
+        events_before = self.job_repo.get_job_events("job-pruned")
+        self.assertEqual(len(events_before), 2)
+
+        # Prune
+        self.job_repo.prune_job_events_by_ids(["job-pruned"])
+
+        # After prune - cascade effect visible
+        events_after = self.job_repo.get_job_events("job-pruned")
+        self.assertEqual(len(events_after), 0)
+
+    def test_prune_job_events_excluding_preserves_excluded(self):
+        """prune_job_events_excluding should preserve events for excluded jobs."""
+        # Create jobs with old events
+        self._create_job("job-exclude", JobStatus.COMPLETE)
+        self._add_old_event("job-exclude", "queued", 100)
+        self._add_old_event("job-exclude", "complete", 95)
+
+        self._create_job("job-delete", JobStatus.COMPLETE)
+        self._add_old_event("job-delete", "queued", 100)
+        self._add_old_event("job-delete", "complete", 95)
+
+        # Prune excluding one job
+        deleted = self.job_repo.prune_job_events_excluding(
+            retention_days=90,
+            exclude_job_ids=["job-exclude"],
+        )
+
+        self.assertEqual(deleted, 2)
+        
+        # Verify excluded job still has events
+        events_excluded = self.job_repo.get_job_events("job-exclude")
+        self.assertEqual(len(events_excluded), 2)
+
+        # Verify non-excluded job has no events
+        events_deleted = self.job_repo.get_job_events("job-delete")
+        self.assertEqual(len(events_deleted), 0)
+
+    def test_prune_job_events_excluding_ignores_running_jobs(self):
+        """prune_job_events_excluding should not delete events for running jobs."""
+        # Create running job with old events
+        self._create_job("job-running", JobStatus.RUNNING)
+        self._add_old_event("job-running", "queued", 100)
+
+        # Prune with no exclusions
+        deleted = self.job_repo.prune_job_events_excluding(retention_days=90)
+
+        self.assertEqual(deleted, 0)
+        events = self.job_repo.get_job_events("job-running")
+        self.assertEqual(len(events), 1)
+
+    def test_prune_job_events_by_ids_empty_list(self):
+        """prune_job_events_by_ids with empty list should delete nothing."""
+        self._create_job("job-1", JobStatus.COMPLETE)
+        self._add_old_event("job-1", "complete", 100)
+
+        deleted = self.job_repo.prune_job_events_by_ids([])
+        
+        self.assertEqual(deleted, 0)
+        self.assertEqual(len(self.state.job_events), 1)
+
+    def test_prune_multiple_jobs_at_once(self):
+        """prune_job_events_by_ids should handle multiple job IDs."""
+        for i in range(5):
+            self._create_job(f"job-{i}", JobStatus.COMPLETE)
+            self._add_old_event(f"job-{i}", "complete", 100)
+
+        # Delete 3 of 5
+        deleted = self.job_repo.prune_job_events_by_ids(["job-0", "job-2", "job-4"])
+
+        self.assertEqual(deleted, 3)
+        self.assertEqual(len(self.state.job_events), 2)
+        
+        remaining_job_ids = {e.job_id for e in self.state.job_events}
+        self.assertEqual(remaining_job_ids, {"job-1", "job-3"})
+

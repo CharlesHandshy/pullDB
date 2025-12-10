@@ -1075,6 +1075,176 @@ class JobRepository:
             conn.commit()
             return deleted_count
 
+    def get_prune_candidates(
+        self,
+        retention_days: int = 90,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> dict:
+        """Get paginated list of jobs with events that would be pruned.
+
+        Returns dict with:
+        - rows: list of job summaries with event counts
+        - totalCount: total jobs affected
+        - totalEvents: total events that would be deleted
+
+        Args:
+            retention_days: Days to retain events. Events older are candidates.
+            offset: Pagination offset.
+            limit: Maximum rows to return.
+
+        Returns:
+            Dict with rows (job summaries), totalCount, and totalEvents.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+
+            # Get total counts first
+            cursor.execute(
+                """
+                SELECT COUNT(DISTINCT je.job_id) as total_jobs,
+                       COUNT(*) as total_events
+                FROM job_events je
+                INNER JOIN jobs j ON je.job_id = j.id
+                WHERE je.logged_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
+                  AND j.status IN ('completed', 'failed', 'canceled')
+                """,
+                (retention_days,),
+            )
+            totals = cursor.fetchone()
+            total_count = totals["total_jobs"] if totals else 0
+            total_events = totals["total_events"] if totals else 0
+
+            # Get paginated job summaries
+            cursor.execute(
+                """
+                SELECT je.job_id,
+                       j.target,
+                       j.owner_user_code as user_code,
+                       j.status,
+                       COUNT(*) as event_count,
+                       MIN(je.logged_at) as oldest_event,
+                       MAX(je.logged_at) as newest_event
+                FROM job_events je
+                INNER JOIN jobs j ON je.job_id = j.id
+                WHERE je.logged_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
+                  AND j.status IN ('completed', 'failed', 'canceled')
+                GROUP BY je.job_id, j.target, j.owner_user_code, j.status
+                ORDER BY oldest_event ASC
+                LIMIT %s OFFSET %s
+                """,
+                (retention_days, limit, offset),
+            )
+            rows = cursor.fetchall()
+
+            # Format rows for consistency with mock
+            formatted_rows = []
+            for row in rows:
+                formatted_rows.append({
+                    "job_id": row["job_id"],
+                    "target": row["target"],
+                    "user_code": row["user_code"],
+                    "status": row["status"],
+                    "event_count": row["event_count"],
+                    "oldest_event": row["oldest_event"].isoformat()
+                    if row["oldest_event"]
+                    else None,
+                    "newest_event": row["newest_event"].isoformat()
+                    if row["newest_event"]
+                    else None,
+                })
+
+            return {
+                "rows": formatted_rows,
+                "totalCount": total_count,
+                "totalEvents": total_events,
+            }
+
+    def prune_job_events_by_ids(self, job_ids: list[str]) -> int:
+        """Prune all events for specific job IDs. Returns count deleted.
+
+        This removes ALL events for the specified jobs, regardless of age.
+        Used by the prune-logs UI when user selects specific jobs to purge.
+
+        Only deletes events for jobs in terminal states for safety.
+
+        Args:
+            job_ids: List of job UUIDs to delete events for.
+
+        Returns:
+            Number of events deleted.
+        """
+        if not job_ids:
+            return 0
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            # Use parameterized IN clause
+            placeholders = ", ".join(["%s"] * len(job_ids))
+            cursor.execute(
+                f"""
+                DELETE je FROM job_events je
+                INNER JOIN jobs j ON je.job_id = j.id
+                WHERE je.job_id IN ({placeholders})
+                  AND j.status IN ('completed', 'failed', 'canceled')
+                """,
+                tuple(job_ids),
+            )
+            deleted_count = cursor.rowcount
+            conn.commit()
+            return deleted_count
+
+    def prune_job_events_excluding(
+        self,
+        retention_days: int = 90,
+        exclude_job_ids: list[str] | None = None,
+    ) -> int:
+        """Prune old job events, excluding specified job IDs. Returns count deleted.
+
+        Deletes events older than retention_days for terminal jobs,
+        EXCEPT for jobs in the exclude list.
+
+        Args:
+            retention_days: Days to retain events.
+            exclude_job_ids: Job IDs to exclude from pruning.
+
+        Returns:
+            Number of events deleted.
+        """
+        exclude_job_ids = exclude_job_ids or []
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+
+            if exclude_job_ids:
+                # Use NOT IN with parameterized query
+                placeholders = ", ".join(["%s"] * len(exclude_job_ids))
+                cursor.execute(
+                    f"""
+                    DELETE je FROM job_events je
+                    INNER JOIN jobs j ON je.job_id = j.id
+                    WHERE je.logged_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
+                      AND j.status IN ('completed', 'failed', 'canceled')
+                      AND je.job_id NOT IN ({placeholders})
+                    """,
+                    (retention_days, *exclude_job_ids),
+                )
+            else:
+                # No exclusions - same as regular prune
+                cursor.execute(
+                    """
+                    DELETE je FROM job_events je
+                    INNER JOIN jobs j ON je.job_id = j.id
+                    WHERE je.logged_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
+                      AND j.status IN ('completed', 'failed', 'canceled')
+                    """,
+                    (retention_days,),
+                )
+
+            deleted_count = cursor.rowcount
+            conn.commit()
+            return deleted_count
+
     def find_job_by_staging_prefix(
         self, target: str, dbhost: str, job_id_prefix: str
     ) -> Job | None:

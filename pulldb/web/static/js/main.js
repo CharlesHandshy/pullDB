@@ -99,19 +99,54 @@ document.addEventListener('DOMContentLoaded', () => {
 // =================================================================
 // TOAST NOTIFICATIONS
 // =================================================================
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', persistent = false) {
     const container = document.getElementById('toast-container');
     if (!container) return;
     
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-    container.appendChild(toast);
     
-    setTimeout(() => {
-        toast.style.animation = 'fadeOut 0.3s ease-out forwards';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    // Create message span
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = message;
+    toast.appendChild(msgSpan);
+    
+    if (persistent) {
+        // Add close button for persistent toasts
+        const closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '&times;';
+        closeBtn.className = 'toast-close';
+        closeBtn.style.cssText = `
+            background: none;
+            border: none;
+            color: inherit;
+            font-size: 1.25rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin-left: 12px;
+            padding: 0 4px;
+            opacity: 0.7;
+            line-height: 1;
+        `;
+        closeBtn.addEventListener('mouseenter', () => closeBtn.style.opacity = '1');
+        closeBtn.addEventListener('mouseleave', () => closeBtn.style.opacity = '0.7');
+        closeBtn.addEventListener('click', () => {
+            toast.style.animation = 'fadeOut 0.3s ease-out forwards';
+            setTimeout(() => toast.remove(), 300);
+        });
+        toast.appendChild(closeBtn);
+        toast.style.display = 'flex';
+        toast.style.alignItems = 'center';
+        toast.style.justifyContent = 'space-between';
+    } else {
+        // Auto-dismiss after 3 seconds
+        setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s ease-out forwards';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+    
+    container.appendChild(toast);
 }
 
 window.showToast = showToast;
