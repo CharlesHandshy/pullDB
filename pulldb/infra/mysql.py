@@ -1061,13 +1061,13 @@ class JobRepository:
 
         with self.pool.connection() as conn:
             cursor = conn.cursor()
-            # Only prune events for terminal jobs (completed/failed/canceled)
+            # Only prune events for terminal jobs (complete/failed/canceled)
             cursor.execute(
                 """
                 DELETE je FROM job_events je
                 INNER JOIN jobs j ON je.job_id = j.id
                 WHERE je.logged_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
-                  AND j.status IN ('completed', 'failed', 'canceled')
+                  AND j.status IN ('complete', 'failed', 'canceled')
                 """,
                 (retention_days,),
             )
@@ -1107,7 +1107,7 @@ class JobRepository:
                 FROM job_events je
                 INNER JOIN jobs j ON je.job_id = j.id
                 WHERE je.logged_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
-                  AND j.status IN ('completed', 'failed', 'canceled')
+                  AND j.status IN ('complete', 'failed', 'canceled')
                 """,
                 (retention_days,),
             )
@@ -1128,7 +1128,7 @@ class JobRepository:
                 FROM job_events je
                 INNER JOIN jobs j ON je.job_id = j.id
                 WHERE je.logged_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
-                  AND j.status IN ('completed', 'failed', 'canceled')
+                  AND j.status IN ('complete', 'failed', 'canceled')
                 GROUP BY je.job_id, j.target, j.owner_user_code, j.status
                 ORDER BY oldest_event ASC
                 LIMIT %s OFFSET %s
@@ -1186,7 +1186,7 @@ class JobRepository:
                 DELETE je FROM job_events je
                 INNER JOIN jobs j ON je.job_id = j.id
                 WHERE je.job_id IN ({placeholders})
-                  AND j.status IN ('completed', 'failed', 'canceled')
+                  AND j.status IN ('complete', 'failed', 'canceled')
                 """,
                 tuple(job_ids),
             )
@@ -1224,7 +1224,7 @@ class JobRepository:
                     DELETE je FROM job_events je
                     INNER JOIN jobs j ON je.job_id = j.id
                     WHERE je.logged_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
-                      AND j.status IN ('completed', 'failed', 'canceled')
+                      AND j.status IN ('complete', 'failed', 'canceled')
                       AND je.job_id NOT IN ({placeholders})
                     """,
                     (retention_days, *exclude_job_ids),
@@ -1236,7 +1236,7 @@ class JobRepository:
                     DELETE je FROM job_events je
                     INNER JOIN jobs j ON je.job_id = j.id
                     WHERE je.logged_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
-                      AND j.status IN ('completed', 'failed', 'canceled')
+                      AND j.status IN ('complete', 'failed', 'canceled')
                     """,
                     (retention_days,),
                 )
@@ -1351,10 +1351,10 @@ class JobRepository:
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
                        j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
-                       j.error_detail, j.source
+                       j.error_detail, j.source, j.staging_cleaned_at
                 FROM jobs j
                 WHERE j.dbhost = %s
-                  AND j.status IN ('completed', 'failed', 'canceled')
+                  AND j.status IN ('complete', 'failed', 'canceled')
                   AND j.staging_name IS NOT NULL
                   AND j.staging_cleaned_at IS NULL
                   AND j.completed_at < %s
@@ -1441,6 +1441,7 @@ class JobRepository:
             retry_count=row.get("retry_count", 0),
             error_detail=row.get("error_detail"),
             worker_id=row.get("worker_id"),
+            staging_cleaned_at=row.get("staging_cleaned_at"),
             current_operation=self._derive_operation(row),
         )
 
@@ -2456,6 +2457,16 @@ class HostRepository:
             )
             rows = cursor.fetchall()
             return [self._row_to_dbhost(row) for row in rows]
+
+    def list_hosts(self) -> list[DBHost]:
+        """Get all hosts (alias for get_all_hosts).
+
+        Provided for API consistency with SimulatedHostRepository.
+
+        Returns:
+            List of all DBHost instances.
+        """
+        return self.get_all_hosts()
 
     def get_host_credentials(self, hostname: str) -> MySQLCredentials:
         """Get resolved MySQL credentials for host.

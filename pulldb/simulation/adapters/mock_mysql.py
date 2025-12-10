@@ -632,6 +632,156 @@ class SimulatedJobRepository:
                 and job.completed_at < cutoff_date
             ]
 
+    def get_cleanup_candidates(
+        self,
+        retention_days: int = 7,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> dict:
+        """Get paginated list of staging databases eligible for cleanup.
+
+        Returns dict with:
+        - rows: list of staging database candidates
+        - totalCount: total databases that would be cleaned up
+
+        A database is a candidate if:
+        - Job is in terminal state (complete/failed/canceled)
+        - Job has staging_name set
+        - Job's staging_cleaned_at is None (not yet cleaned)
+        - Job completed more than retention_days ago
+        - No active jobs exist for the same target (safety check)
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        terminal_statuses = (JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED)
+
+        with self.state.lock:
+            # Find active targets to exclude (safety check)
+            active_targets: set[tuple[str, str]] = set()
+            for job in self.state.jobs.values():
+                if job.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+                    active_targets.add((job.target, job.dbhost))
+
+            candidates: list[dict] = []
+            for job in self.state.jobs.values():
+                # Must be terminal
+                if job.status not in terminal_statuses:
+                    continue
+                # Must have staging_name
+                if not job.staging_name:
+                    continue
+                # Must not be already cleaned
+                staging_cleaned = getattr(job, "staging_cleaned_at", None)
+                if staging_cleaned is not None:
+                    continue
+                # Must be old enough
+                if not job.completed_at or job.completed_at >= cutoff:
+                    continue
+                # Safety: skip if active job for same target
+                if (job.target, job.dbhost) in active_targets:
+                    continue
+
+                candidates.append({
+                    "database_name": job.staging_name,
+                    "target": job.target,
+                    "dbhost": job.dbhost,
+                    "job_id": job.id,
+                    "job_status": job.status.value,
+                    "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                    "user_code": job.owner_user_code,
+                })
+
+            # Sort by completed_at (oldest first)
+            candidates.sort(key=lambda x: x["completed_at"] or "")
+
+            return {
+                "rows": candidates[offset : offset + limit],
+                "totalCount": len(candidates),
+            }
+
+    def cleanup_staging_by_names(
+        self,
+        database_names: list[str],
+    ) -> dict:
+        """Clean up staging databases by name (mock simulation).
+
+        Marks jobs as cleaned by setting staging_cleaned_at.
+        Includes safety check for active jobs on same target.
+
+        Returns dict with:
+        - dropped_count: number of databases "dropped"
+        - skipped_count: number skipped due to safety checks
+        - errors: list of error messages
+        """
+        dropped_count = 0
+        skipped_count = 0
+        errors: list[str] = []
+
+        if not database_names:
+            return {
+                "dropped_count": dropped_count,
+                "skipped_count": skipped_count,
+                "errors": errors,
+            }
+
+        with self.state.lock:
+            # Find active targets to exclude (safety check)
+            active_targets: set[tuple[str, str]] = set()
+            for job in self.state.jobs.values():
+                if job.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+                    active_targets.add((job.target, job.dbhost))
+
+            # Find jobs matching the database names
+            for job_id, job in self.state.jobs.items():
+                if job.staging_name not in database_names:
+                    continue
+
+                # Safety check: skip if active job for same target
+                if (job.target, job.dbhost) in active_targets:
+                    skipped_count += 1
+                    errors.append(
+                        f"Skipped {job.staging_name}: active job for target {job.target}"
+                    )
+                    continue
+
+                # Check not already cleaned
+                if job.staging_cleaned_at is not None:
+                    continue
+
+                # "Drop" the database by marking job as cleaned
+                # Note: Job is frozen dataclass, so we need to replace it
+                updated_job = replace(job, staging_cleaned_at=datetime.now(UTC))
+                self.state.jobs[job_id] = updated_job
+
+                # Log event
+                self.append_job_event(
+                    job_id=job_id,
+                    event_type="staging_admin_cleanup",
+                    detail="Dropped by admin cleanup action (simulation)",
+                )
+
+                dropped_count += 1
+
+        return {
+            "dropped_count": dropped_count,
+            "skipped_count": skipped_count,
+            "errors": errors,
+        }
+
+    def mark_job_staging_cleaned(self, job_id: str) -> bool:
+        """Mark a job's staging database as cleaned.
+
+        Sets staging_cleaned_at to current time.
+        Returns True if job was found and updated, False otherwise.
+        """
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if not job:
+                return False
+
+            updated_job = replace(job, staging_cleaned_at=datetime.now(UTC))
+            self.state.jobs[job_id] = updated_job
+            return True
+
 
 class SimulatedUserRepository:
     """In-memory implementation of UserRepository.

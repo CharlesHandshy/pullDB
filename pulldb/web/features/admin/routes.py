@@ -569,14 +569,33 @@ async def cleanup_staging_preview(
     days: int = 7,
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
+    cleanup_success: int | None = None,
+    cleanup_total: int | None = None,
+    cleanup_skipped: int | None = None,
+    cleanup_error: str | None = None,
 ) -> HTMLResponse:
     """Preview what cleanup-staging will delete."""
+    # Build flash message from query params (set by cleanup execute redirect)
+    flash_message = None
+    flash_type = None
+    if cleanup_success is not None and cleanup_total is not None:
+        if cleanup_skipped:
+            flash_message = f"Dropped {cleanup_success} of {cleanup_total} databases ({cleanup_skipped} skipped - active jobs)"
+        else:
+            flash_message = f"Successfully dropped {cleanup_success} staging database(s)"
+        flash_type = "success"
+    elif cleanup_error:
+        flash_message = f"Cleanup failed: {cleanup_error}"
+        flash_type = "error"
+    
     return templates.TemplateResponse(
         "features/admin/cleanup_preview.html",
         {
             "request": request,
             "user": user,
             "days": days,
+            "flash_message": flash_message,
+            "flash_type": flash_type,
             "breadcrumbs": [
                 {"label": "Dashboard", "url": "/web/dashboard"},
                 {"label": "Admin", "url": "/web/admin/"},
@@ -732,17 +751,57 @@ async def cleanup_staging_execute(
     user: User = Depends(require_admin),
 ) -> RedirectResponse:
     """Execute cleanup-staging on specific databases."""
+    from pulldb.infra.factory import is_simulation_mode
+    
     include_list = [x.strip() for x in include_ids.split(",") if x.strip()]
     
-    if include_list:
-        if hasattr(state.job_repo, "drop_staging_databases_by_names"):
-            state.job_repo.drop_staging_databases_by_names(database_names=include_list)
-        elif hasattr(state, "job_repo") and state.job_repo and hasattr(state, "host_repo"):
-            # Fallback: For mock/dev, just log what would be dropped
-            import logging
-            logging.info(f"Would drop staging databases: {include_list}")
+    if not include_list:
+        return RedirectResponse(
+            url="/web/admin/cleanup-staging/preview?cleanup_error=No+databases+selected",
+            status_code=303,
+        )
     
-    return RedirectResponse(url="/web/admin/", status_code=303)
+    try:
+        if is_simulation_mode():
+            # Use mock method directly
+            if hasattr(state.job_repo, "cleanup_staging_by_names"):
+                result = state.job_repo.cleanup_staging_by_names(database_names=include_list)
+                dropped = result.get("dropped_count", 0)
+                skipped = result.get("skipped_count", 0)
+            elif hasattr(state.job_repo, "drop_staging_databases_by_names"):
+                result = state.job_repo.drop_staging_databases_by_names(database_names=include_list)
+                dropped = result.get("dropped_count", 0)
+                skipped = result.get("skipped_count", 0)
+            else:
+                # Fallback for dev mode
+                import logging
+                logging.info(f"Would drop staging databases: {include_list}")
+                dropped = len(include_list)
+                skipped = 0
+        else:
+            # Use worker cleanup function for real database access
+            from pulldb.worker.cleanup import cleanup_specific_databases
+            cleanup_result = cleanup_specific_databases(
+                database_names=include_list,
+                job_repo=state.job_repo,
+                host_repo=state.host_repo,
+            )
+            dropped = cleanup_result.databases_dropped
+            skipped = cleanup_result.databases_skipped
+        
+        total = len(include_list)
+        return RedirectResponse(
+            url=f"/web/admin/cleanup-staging/preview?cleanup_success={dropped}&cleanup_total={total}&cleanup_skipped={skipped}",
+            status_code=303,
+        )
+    except Exception as e:
+        import logging
+        logging.exception("Failed to cleanup staging databases")
+        error_msg = str(e).replace(" ", "+")[:100]  # Truncate for URL safety
+        return RedirectResponse(
+            url=f"/web/admin/cleanup-staging/preview?cleanup_error={error_msg}",
+            status_code=303,
+        )
 
 
 # Legacy endpoint for backward compatibility

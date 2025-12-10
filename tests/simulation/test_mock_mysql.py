@@ -340,3 +340,134 @@ class TestPruneJobEvents(unittest.TestCase):
         remaining_job_ids = {e.job_id for e in self.state.job_events}
         self.assertEqual(remaining_job_ids, {"job-1", "job-3"})
 
+
+class TestCleanupStagingDatabases(unittest.TestCase):
+    """Tests for cleanup-staging mock functionality."""
+
+    def setUp(self):
+        """Reset simulation state before each test."""
+        self.state = get_simulation_state()
+        self.state.clear()
+        
+        # Create repositories
+        self.job_repo = SimulatedJobRepository()
+        self.user_repo = SimulatedUserRepository()
+        
+        # Create a test user
+        self.user = self.user_repo.create_user("testuser", "TU01")
+
+    def _create_job_with_staging(self, job_id: str, status: JobStatus, days_ago: int, target: str = "test_db") -> Job:
+        """Helper to create a job with staging database and completion time."""
+        from dataclasses import replace
+        job = Job(
+            id=job_id,
+            owner_user_id=self.user.user_id,
+            owner_username=self.user.username,
+            owner_user_code=self.user.user_code,
+            target=target,
+            staging_name=f"staging_{job_id}",
+            dbhost="db-01",
+            status=status,
+            submitted_at=datetime.now(UTC) - timedelta(days=days_ago + 5),
+            completed_at=datetime.now(UTC) - timedelta(days=days_ago) if status != JobStatus.RUNNING else None,
+        )
+        self.state.jobs[job_id] = job
+        return job
+
+    def test_get_cleanup_candidates_returns_old_terminal_jobs(self):
+        """get_cleanup_candidates should return terminal jobs with staging_name."""
+        # Create terminal job with staging
+        self._create_job_with_staging("job-old-complete", JobStatus.COMPLETE, days_ago=30)
+        
+        # Create running job with DIFFERENT target (safety check shouldn't block the terminal job)
+        self._create_job_with_staging("job-running", JobStatus.RUNNING, days_ago=30, target="other_db")
+
+        result = self.job_repo.get_cleanup_candidates(retention_days=7)
+
+        self.assertEqual(result["totalCount"], 1)
+        self.assertEqual(len(result["rows"]), 1)
+        self.assertEqual(result["rows"][0]["database_name"], "staging_job-old-complete")
+
+    def test_get_cleanup_candidates_excludes_recently_completed_jobs(self):
+        """get_cleanup_candidates should exclude jobs completed within retention period."""
+        # Create job completed recently
+        self._create_job_with_staging("job-recent", JobStatus.COMPLETE, days_ago=3)
+
+        result = self.job_repo.get_cleanup_candidates(retention_days=7)
+
+        self.assertEqual(result["totalCount"], 0)
+
+    def test_get_cleanup_candidates_excludes_already_cleaned(self):
+        """get_cleanup_candidates should exclude jobs already cleaned."""
+        from dataclasses import replace
+        job = self._create_job_with_staging("job-cleaned", JobStatus.COMPLETE, days_ago=30)
+        # Mark as already cleaned
+        self.state.jobs[job.id] = replace(job, staging_cleaned_at=datetime.now(UTC))
+
+        result = self.job_repo.get_cleanup_candidates(retention_days=7)
+
+        self.assertEqual(result["totalCount"], 0)
+
+    def test_cleanup_staging_by_names_marks_cleaned(self):
+        """cleanup_staging_by_names should mark jobs as cleaned."""
+        job = self._create_job_with_staging("job-to-clean", JobStatus.COMPLETE, days_ago=30)
+        
+        result = self.job_repo.cleanup_staging_by_names(
+            database_names=["staging_job-to-clean"]
+        )
+
+        self.assertEqual(result["dropped_count"], 1)
+        self.assertEqual(result["skipped_count"], 0)
+        
+        # Verify job is marked as cleaned
+        updated_job = self.state.jobs[job.id]
+        self.assertIsNotNone(updated_job.staging_cleaned_at)
+
+    def test_cleanup_staging_by_names_skips_active_jobs(self):
+        """cleanup_staging_by_names should skip active jobs."""
+        self._create_job_with_staging("job-running", JobStatus.RUNNING, days_ago=0)
+
+        result = self.job_repo.cleanup_staging_by_names(
+            database_names=["staging_job-running"]
+        )
+
+        self.assertEqual(result["dropped_count"], 0)
+        self.assertEqual(result["skipped_count"], 1)
+        
+        # Verify job is NOT marked as cleaned
+        job = self.state.jobs["job-running"]
+        self.assertIsNone(job.staging_cleaned_at)
+
+    def test_cleanup_staging_by_names_unknown_database(self):
+        """cleanup_staging_by_names should handle unknown database names gracefully."""
+        result = self.job_repo.cleanup_staging_by_names(
+            database_names=["nonexistent_staging"]
+        )
+
+        self.assertEqual(result["dropped_count"], 0)
+        self.assertEqual(result["skipped_count"], 0)
+
+    def test_cleanup_staging_by_names_mixed_results(self):
+        """cleanup_staging_by_names should handle mix of cleanable and skippable."""
+        # Terminal job (cleanable) - uses target1
+        self._create_job_with_staging("job-terminal", JobStatus.COMPLETE, days_ago=30, target="target1")
+        # Running job (should skip) - uses target2, so won't block target1's cleanup
+        self._create_job_with_staging("job-running", JobStatus.RUNNING, days_ago=0, target="target2")
+
+        result = self.job_repo.cleanup_staging_by_names(
+            database_names=["staging_job-terminal", "staging_job-running"]
+        )
+
+        self.assertEqual(result["dropped_count"], 1)
+        self.assertEqual(result["skipped_count"], 1)
+
+    def test_mark_job_staging_cleaned_updates_timestamp(self):
+        """mark_job_staging_cleaned should set staging_cleaned_at."""
+        job = self._create_job_with_staging("job-1", JobStatus.COMPLETE, days_ago=30)
+        
+        self.job_repo.mark_job_staging_cleaned(job.id)
+
+        updated_job = self.state.jobs[job.id]
+        self.assertIsNotNone(updated_job.staging_cleaned_at)
+
+

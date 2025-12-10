@@ -315,6 +315,20 @@
         }
     });
 
+    // Show flash message from redirect params
+    {% if flash_message %}
+    showToast('{{ flash_message }}', '{{ flash_type }}', true);
+    // Clean URL params after showing toast
+    if (window.history.replaceState) {
+        const url = new URL(window.location);
+        url.searchParams.delete('cleanup_success');
+        url.searchParams.delete('cleanup_total');
+        url.searchParams.delete('cleanup_skipped');
+        url.searchParams.delete('cleanup_error');
+        window.history.replaceState({}, document.title, url);
+    }
+    {% endif %}
+
     initTable();
 })();
 </script>

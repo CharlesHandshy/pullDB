@@ -90,6 +90,13 @@ class _FakeJobRepository:
         """Count all active jobs."""
         return len(self.active)
 
+    def has_active_jobs_for_target(self, target: str, dbhost: str) -> bool:
+        """Check if there are active jobs for a target."""
+        return any(
+            j.target == target and j.dbhost == dbhost
+            for j in self.active
+        )
+
 
 class _FakeSettingsRepository:
     """In-memory settings repository stub for smoke tests."""

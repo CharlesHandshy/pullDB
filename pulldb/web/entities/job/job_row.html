@@ -57,7 +57,7 @@
             <div class="progress-fill" style="width: {{ job.progress or 0 }}%;"></div>
         </div>
         <span class="progress-text text-xs">{{ job.progress or 0 }}%</span>
-        {% elif job.status == 'completed' %}
+        {% elif job.status == 'complete' %}
         <span class="progress-complete text-success">✓ Done</span>
         {% else %}
         <span class="progress-na text-muted">—</span>

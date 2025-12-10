@@ -40,6 +40,17 @@ DEFAULT_RETENTION_DAYS = 7
 # Pattern for staging database names: {target}_{hex12}
 STAGING_PATTERN = re.compile(r"^(.+)_([0-9a-f]{12})$")
 
+# Protected databases that must NEVER be dropped, regardless of name matching.
+# This is a defense-in-depth measure to prevent catastrophic mistakes.
+PROTECTED_DATABASES = frozenset({
+    "mysql",
+    "information_schema",
+    "performance_schema",
+    "sys",
+    "pulldb",
+    "pulldb_service",
+})
+
 
 # =============================================================================
 # Data Classes
@@ -149,6 +160,42 @@ def _parse_staging_name(db_name: str) -> tuple[str, str] | None:
     return None
 
 
+def is_valid_staging_name(db_name: str) -> tuple[bool, str]:
+    """Validate a database name is a legitimate pullDB staging database.
+
+    Defense-in-depth validation before any cleanup operation. Checks:
+    1. Not a protected system database
+    2. Matches the staging pattern {target}_{hex12}
+    3. Target portion is not a system database name
+
+    Args:
+        db_name: Database name to validate.
+
+    Returns:
+        (is_valid, reason) - reason explains why invalid, empty if valid.
+    """
+    # Check 1: Not a protected database
+    if db_name.lower() in PROTECTED_DATABASES:
+        return False, f"'{db_name}' is a protected database"
+
+    # Check 2: Matches staging pattern
+    match = STAGING_PATTERN.match(db_name)
+    if not match:
+        return False, f"'{db_name}' does not match staging pattern {{target}}_{{hex12}}"
+
+    target, job_prefix = match.groups()
+
+    # Check 3: Target is not a system database name
+    if target.lower() in PROTECTED_DATABASES:
+        return False, f"Target '{target}' is a protected database name"
+
+    # Check 4: Job prefix is valid hex (redundant with regex but explicit)
+    if not all(c in "0123456789abcdef" for c in job_prefix):
+        return False, f"Job prefix '{job_prefix}' contains non-hex characters"
+
+    return True, ""
+
+
 def _list_databases(credentials: MySQLCredentials) -> list[str]:
     """List all databases on a host.
 
@@ -188,13 +235,35 @@ def _database_exists(credentials: MySQLCredentials, db_name: str) -> bool:
 def _drop_database(credentials: MySQLCredentials, db_name: str) -> bool:
     """Drop a database on a host and verify deletion.
 
+    SAFETY: This function includes hard blocks to prevent dropping protected
+    databases. These checks are defense-in-depth and should never be reached
+    if callers properly validate with is_valid_staging_name() first.
+
     Args:
         credentials: MySQL credentials for the host.
         db_name: Name of the database to drop.
 
     Returns:
         True if database was dropped and confirmed gone, False otherwise.
+
+    Raises:
+        ValueError: If attempting to drop a protected database.
     """
+    # HARD BLOCK: Never drop protected databases
+    if db_name.lower() in PROTECTED_DATABASES:
+        raise ValueError(
+            f"FATAL: Attempted to drop protected database: {db_name}. "
+            f"This should never happen - report this as a critical bug."
+        )
+
+    # Validate staging name pattern as additional safety layer
+    is_valid, reason = is_valid_staging_name(db_name)
+    if not is_valid:
+        raise ValueError(
+            f"FATAL: Attempted to drop non-staging database: {db_name}. "
+            f"Reason: {reason}. This should never happen - report this as a critical bug."
+        )
+
     conn = mysql.connector.connect(
         host=credentials.host,
         port=credentials.port,
@@ -394,6 +463,159 @@ def cleanup_from_jobs(
             result.errors.append(
                 f"Failed to archive job {candidate.matched_job_id}: {e}"
             )
+
+    return result
+
+
+def cleanup_specific_databases(
+    database_names: list[str],
+    job_repo: JobRepository,
+    host_repo: HostRepository,
+    dry_run: bool = False,
+) -> CleanupResult:
+    """Clean up specific staging databases by name (admin-initiated).
+
+    For each database name:
+    1. Find the matching job record by staging_name
+    2. Verify no active jobs exist for that target (safety check)
+    3. Drop the database and verify deletion
+    4. Update job record with staging_cleaned_at
+
+    Args:
+        database_names: List of staging database names to drop.
+        job_repo: JobRepository for job lookups and updates.
+        host_repo: HostRepository for credential resolution.
+        dry_run: If True, don't actually drop databases.
+
+    Returns:
+        CleanupResult with counts and any errors.
+    """
+    from pulldb.domain.models import Job
+
+    if not database_names:
+        return CleanupResult(dbhost="none")
+
+    # Group databases by dbhost for efficient credential resolution
+    # First, find all matching jobs to determine hosts
+    jobs_by_db: dict[str, Job] = {}
+    for db_name in database_names:
+        # Parse to get target and job prefix
+        parsed = _parse_staging_name(db_name)
+        if not parsed:
+            continue
+        target, job_prefix = parsed
+
+        # Find matching job - need to search across all hosts
+        # For now, iterate through enabled hosts
+        hosts = list(host_repo.list_hosts()) if hasattr(host_repo, "list_hosts") else []
+        for host in hosts:
+            if not getattr(host, "enabled", True):
+                continue
+            job = job_repo.find_job_by_staging_prefix(
+                target=target,
+                dbhost=host.hostname,
+                job_id_prefix=job_prefix,
+            )
+            if job and job.staging_name == db_name:
+                jobs_by_db[db_name] = job
+                break
+
+    if not jobs_by_db:
+        result = CleanupResult(dbhost="none")
+        result.errors.append("No matching jobs found for specified databases")
+        return result
+
+    # Group jobs by dbhost to fetch correct credentials for each host
+    jobs_by_host: dict[str, dict[str, Job]] = {}
+    for db_name, job in jobs_by_db.items():
+        job_host = job.dbhost
+        if job_host not in jobs_by_host:
+            jobs_by_host[job_host] = {}
+        jobs_by_host[job_host][db_name] = job
+
+    # Determine result dbhost label
+    if len(jobs_by_host) == 1:
+        result_dbhost = next(iter(jobs_by_host.keys()))
+    else:
+        result_dbhost = f"multiple ({len(jobs_by_host)} hosts)"
+
+    result = CleanupResult(dbhost=result_dbhost)
+    result.jobs_processed = len(jobs_by_db)
+
+    # Process each host with its own credentials
+    for dbhost, host_jobs in jobs_by_host.items():
+        try:
+            credentials = host_repo.get_host_credentials(dbhost)
+        except Exception as e:
+            result.errors.append(f"Failed to get credentials for {dbhost}: {e}")
+            result.databases_skipped += len(host_jobs)
+            continue
+
+        for db_name, job in host_jobs.items():
+            # Safety check: verify no active jobs for this target
+            if job_repo.has_active_jobs_for_target(job.target, job.dbhost):
+                logger.warning(
+                    "Skipping %s: active job exists for target %s",
+                    db_name,
+                    job.target,
+                )
+                result.databases_skipped += 1
+                continue
+
+            # Check if database exists
+            try:
+                exists = _database_exists(credentials, db_name)
+            except Exception as e:
+                result.errors.append(f"Failed to check existence of {db_name}: {e}")
+                continue
+
+            if not exists:
+                logger.info("Database %s already gone for job %s", db_name, job.id)
+                result.databases_not_found += 1
+                # Still mark the job as cleaned
+                if not dry_run:
+                    try:
+                        job_repo.append_job_event(
+                            job_id=job.id,
+                            event_type="staging_cleanup_verified",
+                            detail="Staging database already removed (admin cleanup)",
+                        )
+                        job_repo.mark_job_staging_cleaned(job.id)
+                        result.jobs_archived += 1
+                    except Exception as e:
+                        result.errors.append(f"Failed to archive job {job.id}: {e}")
+                continue
+
+            if dry_run:
+                logger.info("[DRY RUN] Would drop: %s", db_name)
+                result.databases_skipped += 1
+                continue
+
+            # Drop the database
+            try:
+                dropped = _drop_database(credentials, db_name)
+            except Exception as e:
+                result.errors.append(f"Failed to drop {db_name}: {e}")
+                continue
+
+            if not dropped:
+                result.errors.append(f"Drop succeeded but {db_name} still exists")
+                continue
+
+            result.databases_dropped += 1
+            result.dropped_names.append(db_name)
+
+            # Archive the job record
+            try:
+                job_repo.append_job_event(
+                    job_id=job.id,
+                    event_type="staging_admin_cleanup",
+                    detail="Dropped by admin cleanup action",
+                )
+                job_repo.mark_job_staging_cleaned(job.id)
+                result.jobs_archived += 1
+            except Exception as e:
+                result.errors.append(f"Failed to archive job {job.id}: {e}")
 
     return result
 

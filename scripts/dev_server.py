@@ -73,11 +73,17 @@ def create_mock_job(
     backup_env: str = "prd",
     is_qatemplate: bool = False,
     dbhost: str = "mysql-staging-01.example.com",
+    staging_name: str | None = None,
 ) -> Job:
     """Create a Job dataclass instance for dev/testing.
     
     Returns a real Job dataclass (frozen) to match production behavior.
     Uses short string IDs (e.g., 'job-001', 'usr-001') for readability.
+    
+    Args:
+        staging_name: Override staging name. If None, generates from target + job_id.
+                      For mock jobs with non-UUID job_ids, pass explicit staging_name
+                      or use UUID job_ids to match production behavior.
     """
     
     ts = created_at or datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
@@ -87,9 +93,14 @@ def create_mock_job(
     else:
         target = f"{owner_user_code}{source_customer}"
     
-    # Staging name: {target}_{job_id_hex[:12]}
-    job_hex = job_id.replace("job-", "").replace("-", "")[:12].ljust(12, "0")
-    staging_name = f"{target}_{job_hex}"
+    # Generate staging name if not provided
+    # For mock job_ids like "job-001", this produces "001000000000" which is valid hex
+    # For real UUIDs, this produces proper 12-char hex prefix
+    if staging_name is None:
+        # Strip common mock prefixes and hyphens, take first 12 chars, pad with 0
+        job_clean = job_id.replace("job-", "").replace("-", "").lower()
+        job_hex = job_clean[:12].ljust(12, "0")
+        staging_name = f"{target}_{job_hex}"
     
     # Convert string status to JobStatus enum
     status_enum = JobStatus(status)
@@ -984,16 +995,47 @@ class MockJobRepo:
             "totalCount": len(candidates),
         }
 
-    def drop_staging_databases_by_names(self, database_names: list[str]) -> int:
-        """Drop staging databases by name. Returns count dropped."""
-        dropped = 0
-        for job in self.history_jobs:
-            staging_name = getattr(job, "staging_database_name", None)
-            if staging_name and staging_name in database_names:
-                # Mark as cleaned
-                job.staging_cleaned_at = datetime.now(UTC)
-                dropped += 1
-        return dropped
+    def drop_staging_databases_by_names(self, database_names: list[str]) -> dict:
+        """Drop staging databases by name. Returns cleanup result dict.
+        
+        Includes safety check for active jobs on the same target.
+        """
+        from dataclasses import replace
+        
+        dropped_count = 0
+        skipped_count = 0
+        errors: list[str] = []
+        
+        # Build set of active targets for safety check
+        active_targets: set[tuple[str, str]] = set()
+        for job in self.active_jobs:
+            if job.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+                active_targets.add((job.target, job.dbhost))
+        
+        for i, job in enumerate(self.history_jobs):
+            if job.staging_name not in database_names:
+                continue
+            
+            # Safety check: skip if active job for same target
+            if (job.target, job.dbhost) in active_targets:
+                skipped_count += 1
+                errors.append(f"Skipped {job.staging_name}: active job for target {job.target}")
+                continue
+            
+            # Skip if already cleaned
+            if job.staging_cleaned_at is not None:
+                continue
+            
+            # Mark as cleaned using replace (Job is frozen)
+            updated_job = replace(job, staging_cleaned_at=datetime.now(UTC))
+            self.history_jobs[i] = updated_job
+            dropped_count += 1
+        
+        return {
+            "dropped_count": dropped_count,
+            "skipped_count": skipped_count,
+            "errors": errors,
+        }
 
 
 class MockHostRepo:

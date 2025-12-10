@@ -39,6 +39,14 @@ class JobStatus(Enum):
     CANCELED = "canceled"  # Reserved for Phase 1
 
 
+# Terminal states - jobs in these states have finished processing and
+# their staging databases are eligible for cleanup
+TERMINAL_STATUSES = frozenset({JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED})
+
+# SQL-safe terminal status values for use in queries
+TERMINAL_STATUS_VALUES = frozenset({s.value for s in TERMINAL_STATUSES})
+
+
 class UserRole(Enum):
     """User role for RBAC.
 
@@ -158,6 +166,7 @@ class Job:
         error_detail: Error message if job failed (NULL for success).
         worker_id: Identifier of worker that claimed job (format: hostname:pid).
             Set by claim_next_job() and retained after completion for debugging.
+        staging_cleaned_at: Timestamp when staging database was cleaned up (NULL until cleanup).
     """
 
     id: str
@@ -176,6 +185,7 @@ class Job:
     error_detail: str | None = None
     worker_id: str | None = None
     current_operation: str | None = None
+    staging_cleaned_at: datetime | None = None
 
 
 @dataclass(frozen=True)

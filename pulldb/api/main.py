@@ -1466,7 +1466,7 @@ def _prune_logs(state: APIState, request: PruneLogsRequest) -> PruneLogsResponse
                 SELECT COUNT(*) FROM job_events je
                 INNER JOIN jobs j ON je.job_id = j.id
                 WHERE je.logged_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
-                  AND j.status IN ('completed', 'failed', 'canceled')
+                  AND j.status IN ('complete', 'failed', 'canceled')
                 """,
                 (request.days,),
             )
