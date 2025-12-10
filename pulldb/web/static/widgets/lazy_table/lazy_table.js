@@ -272,10 +272,10 @@ class LazyTable {
             th.dataset.columnKey = col.key || `action-${index}`;
             th.dataset.columnIndex = index;
             
-            if (col.type === 'actions') {
-                // Action column - no sort/filter
-                th.classList.add('lazy-table-th-actions');
-                th.innerHTML = `<span class="th-label">${col.label || ''}</span>`;
+            if (col.type === 'actions' || (!col.sortable && !col.filterable)) {
+                // Action column or non-interactive column - no sort/filter controls
+                if (col.type === 'actions') th.classList.add('lazy-table-th-actions');
+                th.innerHTML = `<span class="th-label">${col.label != null ? col.label : ''}</span>`;
             } else {
                 // Regular column with sort/filter controls
                 th.innerHTML = this.createColumnHeaderContent(col);
@@ -339,7 +339,7 @@ class LazyTable {
         
         return `
             <div class="th-content">
-                <span class="th-label">${col.label || col.key}</span>
+                <span class="th-label">${col.label != null ? col.label : col.key}</span>
                 <div class="th-controls">
                     ${sortIcon}
                     ${filterIcon}
@@ -463,21 +463,18 @@ class LazyTable {
         Object.entries(this.columnFilters).forEach(([key, values]) => {
             if (values.size > 0) {
                 const valueStr = Array.from(values).join(',');
+                const colDef = this.getColumnDef(key);
                 
-                // Special handling for dateRange filter on submitted_at column
-                // Value format is "fromISO,toISO" - split into separate params
-                if (key === 'submitted_at' && valueStr.includes(',')) {
-                    const colDef = this.getColumnDef(key);
-                    if (colDef && colDef.filterType === 'dateRange') {
-                        const parts = valueStr.split(',');
-                        if (parts[0]) {
-                            url.searchParams.set('filter_submitted_after', parts[0]);
-                        }
-                        if (parts[1]) {
-                            url.searchParams.set('filter_submitted_before', parts[1]);
-                        }
-                        return; // Don't set filter_submitted_at
+                // Handle dateRange filter type generically - split into _after/_before params
+                if (colDef && colDef.filterType === 'dateRange' && valueStr.includes(',')) {
+                    const parts = valueStr.split(',');
+                    if (parts[0]) {
+                        url.searchParams.set(`filter_${key}_after`, parts[0]);
                     }
+                    if (parts[1]) {
+                        url.searchParams.set(`filter_${key}_before`, parts[1]);
+                    }
+                    return;
                 }
                 
                 url.searchParams.set(`filter_${key}`, valueStr);
@@ -497,6 +494,15 @@ class LazyTable {
             
             this.totalCount = data.totalCount ?? data.total ?? 0;
             this.filteredCount = data.filteredCount ?? data.totalCount ?? this.totalCount;
+            
+            // Call onDataLoaded callback if provided
+            if (this.config.onDataLoaded) {
+                this.config.onDataLoaded({
+                    totalCount: this.totalCount,
+                    filteredCount: this.filteredCount,
+                    pageIndex: pageIndex
+                });
+            }
             
         } catch (error) {
             console.error('LazyTable: fetch error', error);
@@ -640,6 +646,11 @@ class LazyTable {
             tr.style.cursor = 'pointer';
         } else if (!selectable && onRowClick) {
             tr.style.cursor = 'pointer';
+        }
+        
+        // Call onRowRendered callback if provided
+        if (this.config.onRowRendered) {
+            this.config.onRowRendered(tr, row, index);
         }
         
         return tr;

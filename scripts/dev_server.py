@@ -923,6 +923,15 @@ class MockJobRepo:
         
         return deleted
 
+    def prune_job_events_by_ids(self, job_ids: list[str]) -> int:
+        """Prune all events for specific job IDs. Returns count deleted."""
+        deleted = 0
+        for job_id in job_ids:
+            if job_id in self.events:
+                deleted += len(self.events[job_id])
+                self.events[job_id] = []  # Clear all events for this job
+        return deleted
+
     def get_cleanup_candidates(
         self,
         retention_days: int = 7,
@@ -974,6 +983,17 @@ class MockJobRepo:
             "rows": candidates[offset:offset + limit],
             "totalCount": len(candidates),
         }
+
+    def drop_staging_databases_by_names(self, database_names: list[str]) -> int:
+        """Drop staging databases by name. Returns count dropped."""
+        dropped = 0
+        for job in self.history_jobs:
+            staging_name = getattr(job, "staging_database_name", None)
+            if staging_name and staging_name in database_names:
+                # Mark as cleaned
+                job.staging_cleaned_at = datetime.now(UTC)
+                dropped += 1
+        return dropped
 
 
 class MockHostRepo:

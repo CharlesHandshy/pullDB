@@ -1,6 +1,6 @@
 """Admin routes for Web2 interface."""
 
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -334,46 +334,180 @@ async def prune_logs_preview(
     """Preview what prune-logs will delete."""
     return templates.TemplateResponse(
         "features/admin/prune_preview.html",
-        {"request": request, "user": user, "days": days},
+        {
+            "request": request,
+            "user": user,
+            "days": days,
+            "breadcrumbs": [
+                {"label": "Dashboard", "url": "/web/dashboard"},
+                {"label": "Admin", "url": "/web/admin/"},
+                {"label": "Prune Logs", "url": None},
+            ],
+        },
     )
 
 
 @router.get("/api/prune-candidates")
 async def get_prune_candidates(
+    request: Request,
     days: int = 90,
-    offset: int = 0,
-    limit: int = 50,
+    page: int = 1,
+    pageSize: int = 50,
+    sortColumn: Optional[str] = None,
+    sortDirection: str = "asc",
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> dict:
-    """Get paginated list of jobs with events to prune."""
-    if hasattr(state.job_repo, "get_prune_candidates"):
-        return state.job_repo.get_prune_candidates(
-            retention_days=days,
-            offset=offset,
-            limit=limit,
-        )
-    return {"rows": [], "totalCount": 0, "totalEvents": 0}
+    """Get paginated list of jobs with events to prune.
+    
+    Supports LazyTable params: page, pageSize, sortColumn, sortDirection, filter_*
+    """
+    if not hasattr(state.job_repo, "get_prune_candidates"):
+        return {"rows": [], "totalCount": 0, "filteredCount": 0, "totalEvents": 0}
+    
+    # Get all candidates (we'll filter/sort in memory)
+    result = state.job_repo.get_prune_candidates(
+        retention_days=days,
+        offset=0,
+        limit=10000,  # Get all for filtering
+    )
+    
+    rows = result.get("rows", [])
+    total_count = len(rows)
+    
+    # Extract filter params from query string
+    text_filters = {}  # column -> [values]
+    date_after = {}    # column -> ISO date string
+    date_before = {}   # column -> ISO date string
+    date_columns = ["oldest_event", "newest_event"]
+    
+    for key, value in request.query_params.items():
+        if key.startswith("filter_") and value:
+            col_key = key[7:]  # Remove "filter_" prefix
+            
+            # Check for date range suffixes
+            if col_key.endswith("_after"):
+                base_col = col_key[:-6]
+                if base_col in date_columns:
+                    date_after[base_col] = value
+                    continue
+            if col_key.endswith("_before"):
+                base_col = col_key[:-7]
+                if base_col in date_columns:
+                    date_before[base_col] = value
+                    continue
+            
+            # Regular filter (could be multi-value comma-separated)
+            text_filters[col_key] = [v.strip().lower() for v in value.split(',') if v.strip()]
+    
+    # Apply filters
+    if text_filters or date_after or date_before:
+        from datetime import datetime
+        filtered_rows = []
+        for row in rows:
+            match = True
+            
+            # Check text filters (any of the values match)
+            for col_key, filter_vals in text_filters.items():
+                cell_val = str(row.get(col_key, "")).lower()
+                if not any(fv in cell_val for fv in filter_vals):
+                    match = False
+                    break
+            
+            # Check date after filters
+            if match:
+                for col_key, after_val in date_after.items():
+                    cell_val = row.get(col_key)
+                    if cell_val:
+                        try:
+                            cutoff = datetime.fromisoformat(after_val.replace('Z', '+00:00'))
+                            cell_dt = datetime.fromisoformat(str(cell_val).replace('Z', '+00:00'))
+                            if cell_dt < cutoff:
+                                match = False
+                                break
+                        except (ValueError, TypeError):
+                            pass
+            
+            # Check date before filters
+            if match:
+                for col_key, before_val in date_before.items():
+                    cell_val = row.get(col_key)
+                    if cell_val:
+                        try:
+                            cutoff = datetime.fromisoformat(before_val.replace('Z', '+00:00'))
+                            cell_dt = datetime.fromisoformat(str(cell_val).replace('Z', '+00:00'))
+                            if cell_dt > cutoff:
+                                match = False
+                                break
+                        except (ValueError, TypeError):
+                            pass
+            
+            if match:
+                filtered_rows.append(row)
+        rows = filtered_rows
+    
+    filtered_count = len(rows)
+    
+    # Apply sorting
+    if sortColumn and sortColumn in ["job_id", "target", "user_code", "status", "oldest_event", "event_count"]:
+        reverse = sortDirection.lower() == "desc"
+        rows = sorted(rows, key=lambda r: (r.get(sortColumn) is None, r.get(sortColumn, "")), reverse=reverse)
+    
+    # Apply pagination (LazyTable sends 0-indexed page)
+    offset = page * pageSize
+    paginated_rows = rows[offset:offset + pageSize]
+    
+    return {
+        "rows": paginated_rows,
+        "totalCount": total_count,
+        "filteredCount": filtered_count,
+        "totalEvents": result.get("totalEvents", 0),
+    }
+
+
+@router.get("/api/prune-candidates/distinct")
+async def get_prune_distinct_values(
+    column: str,
+    days: int = 90,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> list:
+    """Get distinct values for filter dropdowns."""
+    if not hasattr(state.job_repo, "get_prune_candidates"):
+        return []
+    result = state.job_repo.get_prune_candidates(retention_days=days, offset=0, limit=10000)
+    rows = result.get("rows", [])
+    values = set()
+    for row in rows:
+        val = row.get(column)
+        if val is not None:
+            values.add(str(val))
+    return sorted(values)
 
 
 @router.post("/prune-logs/execute")
 async def prune_logs_execute(
     request: Request,
     days: int = Form(90),
-    exclude_ids: str = Form(""),  # Comma-separated job IDs to exclude
+    include_ids: str = Form(""),  # Comma-separated job IDs to prune
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> RedirectResponse:
-    """Execute prune-logs with optional exclusions."""
-    exclude_list = [x.strip() for x in exclude_ids.split(",") if x.strip()]
+    """Execute prune-logs on specific job IDs."""
+    include_list = [x.strip() for x in include_ids.split(",") if x.strip()]
     
-    if hasattr(state.job_repo, "prune_job_events_excluding"):
-        state.job_repo.prune_job_events_excluding(
-            retention_days=days,
-            exclude_job_ids=exclude_list,
-        )
-    elif hasattr(state.job_repo, "prune_job_events"):
-        state.job_repo.prune_job_events(retention_days=days)
+    if include_list:
+        if hasattr(state.job_repo, "prune_job_events_by_ids"):
+            state.job_repo.prune_job_events_by_ids(job_ids=include_list)
+        elif hasattr(state.job_repo, "prune_job_events_excluding"):
+            # Fallback: get all candidates, compute exclude list
+            result = state.job_repo.get_prune_candidates(retention_days=days, offset=0, limit=10000)
+            all_ids = {row["job_id"] for row in result.get("rows", [])}
+            exclude_list = list(all_ids - set(include_list))
+            state.job_repo.prune_job_events_excluding(
+                retention_days=days,
+                exclude_job_ids=exclude_list,
+            )
     
     return RedirectResponse(url="/web/admin/", status_code=303)
 
@@ -403,50 +537,175 @@ async def cleanup_staging_preview(
     """Preview what cleanup-staging will delete."""
     return templates.TemplateResponse(
         "features/admin/cleanup_preview.html",
-        {"request": request, "user": user, "days": days},
+        {
+            "request": request,
+            "user": user,
+            "days": days,
+            "breadcrumbs": [
+                {"label": "Dashboard", "url": "/web/dashboard"},
+                {"label": "Admin", "url": "/web/admin/"},
+                {"label": "Cleanup Staging", "url": None},
+            ],
+        },
     )
 
 
 @router.get("/api/cleanup-candidates")
 async def get_cleanup_candidates(
+    request: Request,
     days: int = 7,
-    offset: int = 0,
-    limit: int = 50,
+    page: int = 1,
+    pageSize: int = 50,
+    sortColumn: Optional[str] = None,
+    sortDirection: str = "asc",
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> dict:
-    """Get paginated list of staging databases to cleanup."""
-    if hasattr(state.job_repo, "get_cleanup_candidates"):
-        return state.job_repo.get_cleanup_candidates(
-            retention_days=days,
-            offset=offset,
-            limit=limit,
-        )
-    return {"rows": [], "totalCount": 0}
+    """Get paginated list of staging databases to cleanup.
+    
+    Supports LazyTable params: page, pageSize, sortColumn, sortDirection, filter_*
+    """
+    if not hasattr(state.job_repo, "get_cleanup_candidates"):
+        return {"rows": [], "totalCount": 0, "filteredCount": 0}
+    
+    # Get all candidates (we'll filter/sort in memory)
+    result = state.job_repo.get_cleanup_candidates(
+        retention_days=days,
+        offset=0,
+        limit=10000,  # Get all for filtering
+    )
+    
+    rows = result.get("rows", [])
+    total_count = len(rows)
+    
+    # Extract filter params from query string
+    text_filters = {}  # column -> [values]
+    date_after = {}    # column -> ISO date string
+    date_before = {}   # column -> ISO date string
+    date_columns = ["completed_at"]
+    
+    for key, value in request.query_params.items():
+        if key.startswith("filter_") and value:
+            col_key = key[7:]  # Remove "filter_" prefix
+            
+            # Check for date range suffixes
+            if col_key.endswith("_after"):
+                base_col = col_key[:-6]
+                if base_col in date_columns:
+                    date_after[base_col] = value
+                    continue
+            if col_key.endswith("_before"):
+                base_col = col_key[:-7]
+                if base_col in date_columns:
+                    date_before[base_col] = value
+                    continue
+            
+            # Regular filter (could be multi-value comma-separated)
+            text_filters[col_key] = [v.strip().lower() for v in value.split(',') if v.strip()]
+    
+    # Apply filters
+    if text_filters or date_after or date_before:
+        from datetime import datetime
+        filtered_rows = []
+        for row in rows:
+            match = True
+            
+            # Check text filters (any of the values match)
+            for col_key, filter_vals in text_filters.items():
+                cell_val = str(row.get(col_key, "")).lower()
+                if not any(fv in cell_val for fv in filter_vals):
+                    match = False
+                    break
+            
+            # Check date after filters
+            if match:
+                for col_key, after_val in date_after.items():
+                    cell_val = row.get(col_key)
+                    if cell_val:
+                        try:
+                            cutoff = datetime.fromisoformat(after_val.replace('Z', '+00:00'))
+                            cell_dt = datetime.fromisoformat(str(cell_val).replace('Z', '+00:00'))
+                            if cell_dt < cutoff:
+                                match = False
+                                break
+                        except (ValueError, TypeError):
+                            pass
+            
+            # Check date before filters
+            if match:
+                for col_key, before_val in date_before.items():
+                    cell_val = row.get(col_key)
+                    if cell_val:
+                        try:
+                            cutoff = datetime.fromisoformat(before_val.replace('Z', '+00:00'))
+                            cell_dt = datetime.fromisoformat(str(cell_val).replace('Z', '+00:00'))
+                            if cell_dt > cutoff:
+                                match = False
+                                break
+                        except (ValueError, TypeError):
+                            pass
+            
+            if match:
+                filtered_rows.append(row)
+        rows = filtered_rows
+    
+    filtered_count = len(rows)
+    
+    # Apply sorting
+    if sortColumn and sortColumn in ["database_name", "target", "dbhost", "user_code", "job_status", "completed_at"]:
+        reverse = sortDirection.lower() == "desc"
+        rows = sorted(rows, key=lambda r: (r.get(sortColumn) is None, r.get(sortColumn, "")), reverse=reverse)
+    
+    # Apply pagination (LazyTable sends 0-indexed page)
+    offset = page * pageSize
+    paginated_rows = rows[offset:offset + pageSize]
+    
+    return {
+        "rows": paginated_rows,
+        "totalCount": total_count,
+        "filteredCount": filtered_count,
+    }
+
+
+@router.get("/api/cleanup-candidates/distinct")
+async def get_cleanup_distinct_values(
+    column: str,
+    days: int = 7,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> list:
+    """Get distinct values for filter dropdowns."""
+    if not hasattr(state.job_repo, "get_cleanup_candidates"):
+        return []
+    result = state.job_repo.get_cleanup_candidates(retention_days=days, offset=0, limit=10000)
+    rows = result.get("rows", [])
+    values = set()
+    for row in rows:
+        val = row.get(column)
+        if val is not None:
+            values.add(str(val))
+    return sorted(values)
 
 
 @router.post("/cleanup-staging/execute")
 async def cleanup_staging_execute(
     request: Request,
     days: int = Form(7),
-    exclude_ids: str = Form(""),  # Comma-separated database names to exclude
+    include_ids: str = Form(""),  # Comma-separated database names to drop
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> RedirectResponse:
-    """Execute cleanup-staging with optional exclusions."""
-    from pulldb.worker.cleanup import run_scheduled_cleanup
+    """Execute cleanup-staging on specific databases."""
+    include_list = [x.strip() for x in include_ids.split(",") if x.strip()]
     
-    exclude_list = [x.strip() for x in exclude_ids.split(",") if x.strip()]
+    if include_list:
+        if hasattr(state.job_repo, "drop_staging_databases_by_names"):
+            state.job_repo.drop_staging_databases_by_names(database_names=include_list)
+        elif hasattr(state, "job_repo") and state.job_repo and hasattr(state, "host_repo"):
+            # Fallback: For mock/dev, just log what would be dropped
+            import logging
+            logging.info(f"Would drop staging databases: {include_list}")
     
-    if hasattr(state, "job_repo") and state.job_repo and hasattr(state, "host_repo"):
-        # Note: run_scheduled_cleanup doesn't support exclusions yet
-        # For now, run without exclusions
-        run_scheduled_cleanup(
-            job_repo=state.job_repo,
-            host_repo=state.host_repo,
-            retention_days=days,
-            dry_run=False,
-        )
     return RedirectResponse(url="/web/admin/", status_code=303)
 
 

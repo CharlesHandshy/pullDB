@@ -6,14 +6,11 @@
 <div class="job-details-container" hx-get="{{ request.url }}" hx-trigger="every 5s" hx-select=".job-details-container" hx-swap="outerHTML">
     <div class="page-header">
         <h1 class="page-title">Job Details: <span class="font-mono" title="{{ job.id }}">{{ job.id[:8] }}</span></h1>
-        <div style="display: flex; gap: 1rem;">
-            {% if job.status.value in ['queued', 'running'] and can_cancel %}
-            <form method="POST" action="/web/jobs/{{ job.id }}/cancel" onsubmit="return confirm('Are you sure you want to cancel this job?');">
-                <button type="submit" class="btn btn-danger">Cancel Job</button>
-            </form>
-            {% endif %}
-            <a href="/web/jobs" class="btn">Back to Jobs</a>
-        </div>
+        {% if job.status.value in ['queued', 'running'] and can_cancel %}
+        <form method="POST" action="/web/jobs/{{ job.id }}/cancel" onsubmit="return confirm('Are you sure you want to cancel this job?');">
+            <button type="submit" class="btn btn-danger">Cancel Job</button>
+        </form>
+        {% endif %}
     </div>
 
     <div class="card card-padding">
@@ -24,8 +21,11 @@
                     {% if job.status.value == 'complete' %}badge-success
                     {% elif job.status.value == 'failed' %}badge-danger
                     {% elif job.status.value == 'running' %}badge-primary
-                    {% else %}badge-neutral{% endif %}
-                ">
+                    {% else %}badge-neutral{% endif %}"
+                    {% if job.status.value == 'running' and cancel_requested_at %}
+                    style="text-decoration: line-through; background-color: var(--danger-100); color: var(--danger-700); border-color: var(--danger-200);"
+                    {% endif %}
+                >
                     {{ job.status.value }}
                 </span>
             </div>

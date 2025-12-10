@@ -162,6 +162,13 @@ async def job_details(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    # Check if cancellation was requested
+    cancel_requested_at = None
+    if hasattr(state.job_repo, '_cancel_requested'):
+        cancel_requested_at = state.job_repo._cancel_requested.get(job_id)
+    elif hasattr(state.job_repo, 'get_cancel_requested_at'):
+        cancel_requested_at = state.job_repo.get_cancel_requested_at(job_id)
+
     return templates.TemplateResponse(
         "features/jobs/details.html",
         {
@@ -177,6 +184,7 @@ async def job_details(
             "user": user,
             "active_nav": "jobs",
             "can_cancel": job_can_cancel,
+            "cancel_requested_at": cancel_requested_at,
         },
     )
 
