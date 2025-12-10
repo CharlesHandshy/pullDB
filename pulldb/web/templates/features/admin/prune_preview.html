@@ -5,18 +5,36 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
 <style>
-.checkbox-cell {
-    width: 40px;
-    text-align: center;
-}
-.checkbox-cell input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
+.exclude-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: var(--gray-100);
+    border-radius: 4px;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gray-500);
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1;
+    transition: all 0.15s ease;
+}
+.exclude-btn:hover {
+    background: var(--danger-100);
+    color: var(--danger-600);
+}
+.exclude-btn.excluded {
+    background: var(--danger-100);
+    color: var(--danger-600);
+}
+.excluded-row .job-id-cell {
+    color: var(--danger-600) !important;
+    text-decoration: line-through;
 }
 .excluded-row {
-    opacity: 0.5;
-    background: var(--gray-50);
+    opacity: 0.6;
 }
 .warning-box {
     background: var(--danger-50);
@@ -32,19 +50,35 @@
     flex-shrink: 0;
     color: var(--danger-600);
 }
+.reset-exclusions-btn {
+    display: inline-flex;
+    visibility: hidden;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--gray-300);
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    color: var(--gray-500);
+    transition: all 0.15s ease;
+}
+.reset-exclusions-btn:hover {
+    background: var(--gray-100);
+    color: var(--gray-700);
+    border-color: var(--gray-400);
+}
+.reset-exclusions-btn.visible {
+    visibility: visible;
+}
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <div style="display: flex; align-items: center; gap: var(--space-4);">
-        <a href="/web/admin/" class="btn btn-ghost" style="padding: 0.5rem;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="15 18 9 12 15 6"></polyline>
-            </svg>
-        </a>
-        <h1 class="page-title">Prune Job Logs</h1>
-    </div>
+    <h1 class="page-title">Prune Job Logs</h1>
 </div>
 
 <!-- Warning Box -->
@@ -56,7 +90,7 @@
         <div style="font-weight: 600; color: var(--danger-700); margin-bottom: 0.25rem;">Destructive Operation</div>
         <div style="color: var(--danger-600); font-size: 0.875rem;">
             This will permanently delete job event logs. Deleted logs cannot be recovered.
-            Review the items below and uncheck any you want to exclude.
+            Click the X button on any row to exclude it from deletion.
         </div>
     </div>
 </div>
@@ -81,23 +115,17 @@
 <!-- Preview Table -->
 <div class="card card-padding">
     <div style="color: var(--gray-500); font-size: 0.875rem; margin-bottom: var(--space-3);">
-        Uncheck items to exclude them from deletion
+        Click X to exclude items from deletion. Exclusions persist through filter changes.
     </div>
 
     <!-- LazyTable Container -->
     <div id="prune-table-container" style="height: 400px;"></div>
 </div>
 
-<!-- Execute Form -->
-<form id="execute-form" method="POST" action="/web/admin/prune-logs/execute" style="margin-top: var(--space-4);">
+<!-- Hidden Execute Form -->
+<form id="execute-form" method="POST" action="/web/admin/prune-logs/execute" style="display: none;">
     <input type="hidden" name="days" id="form-days" value="{{ days }}">
     <input type="hidden" name="include_ids" id="include-ids" value="">
-    <div style="display: flex; gap: var(--space-3); justify-content: flex-end;">
-        <a href="/web/admin/" class="btn btn-secondary">Cancel</a>
-        <button type="submit" id="execute-btn" class="btn btn-danger" disabled>
-            Delete Selected Events
-        </button>
-    </div>
 </form>
 {% endblock %}
 
@@ -105,54 +133,70 @@
 <script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=3"></script>
 <script>
 (function() {
-    // Track excluded job IDs (for UI display)
     const excludedIds = new Set();
-    // Track all loaded row IDs from current filtered view
     let loadedRowIds = new Set();
     let totalCount = 0;
     let filteredCount = 0;
     let lazyTable = null;
 
+    // Reset button HTML - always in DOM, visibility controlled by CSS
+    const resetBtnHtml = `<button type="button" id="clear-exclusions" class="reset-exclusions-btn" title="Clear all exclusions">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+        </svg>
+    </button>`;
+
     const columns = [
         {
-            key: '_checkbox',
-            label: '',
-            width: '40px',
+            key: '_exclude',
+            label: resetBtnHtml,
+            width: '36px',
             sortable: false,
             filterable: false,
             render: (val, row) => {
-                const checked = !excludedIds.has(row.job_id) ? 'checked' : '';
-                return '<input type="checkbox" class="row-checkbox" data-job-id="' + row.job_id + '" ' + checked + '>';
+                const isExcluded = excludedIds.has(row.job_id);
+                const cls = isExcluded ? 'exclude-btn excluded' : 'exclude-btn';
+                return '<button type="button" class="' + cls + '" data-job-id="' + row.job_id + '" title="' + (isExcluded ? 'Click to include' : 'Click to exclude') + '">X</button>';
             }
         },
-        { key: 'job_id', label: 'Job ID', width: '120px', sortable: true,
-          render: (val) => '<code style="font-size: 0.8em;">' + (val || '').substring(0, 12) + '</code>' },
-        { key: 'oldest_event', label: 'Oldest Event', width: '150px', sortable: true, filterable: true,
+        { key: 'job_id', label: 'Job ID', width: '100px', sortable: true,
+          render: (val) => '<code class="job-id-cell" style="font-size: 0.8em;">' + (val || '').substring(0, 12) + '</code>' },
+        { key: 'oldest_event', label: 'Date', width: '95px', sortable: true, filterable: true,
           filterType: 'dateRange',
           render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
-        { key: 'target', label: 'Target', width: '180px', sortable: true, filterable: true },
-        { key: 'user_code', label: 'User', width: '80px', sortable: true, filterable: true,
-          render: (val) => '<span class="font-mono" style="font-size: 0.85em;">' + (val || '-') + '</span>' },
-        { key: 'status', label: 'Status', width: '90px', sortable: true, filterable: true,
+        { key: 'status', label: 'Status', width: '100px', sortable: true, filterable: true,
           render: (val) => {
             const cls = val === 'complete' ? 'badge-success' : val === 'failed' ? 'badge-danger' : 'badge-neutral';
             return '<span class="badge ' + cls + '" style="font-size: 0.75rem;">' + val + '</span>';
           }
         },
-        { key: 'event_count', label: 'Events', width: '80px', sortable: true,
+        { key: 'user_code', label: 'User', width: '85px', sortable: true, filterable: true,
+          render: (val) => '<span class="font-mono" style="font-size: 0.85em;">' + (val || '-') + '</span>' },
+        { key: 'event_count', label: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>', width: '45px', sortable: true,
           render: (val) => '<strong style="color: var(--danger-600);">' + val + '</strong>' },
+        { key: 'target', label: 'Target', sortable: true, filterable: true },
     ];
 
     function updateButton() {
-        // Calculate selected IDs: loaded rows minus excluded
         const selectedIds = Array.from(loadedRowIds).filter(id => !excludedIds.has(id));
         const selectedCount = selectedIds.length;
+        
+        // Update reset exclusions button (always in DOM)
+        const exclusionCount = excludedIds.size;
+        const clearBtn = document.getElementById('clear-exclusions');
+        if (clearBtn) {
+            clearBtn.classList.toggle('visible', exclusionCount > 0);
+            clearBtn.title = 'Clear all exclusions (' + exclusionCount + ')';
+        }
+        
+        // Update execute button (may not exist until footer renders)
         const btn = document.getElementById('execute-btn');
+        if (!btn) return;
         btn.disabled = selectedCount === 0;
         btn.textContent = selectedCount > 0 
-            ? `Delete ${selectedCount} Job${selectedCount !== 1 ? 's' : ''} Events` 
+            ? 'Delete ' + selectedCount + ' Job' + (selectedCount !== 1 ? 's' : '') + ' Events'
             : 'No Items Selected';
-        // Send explicit list of IDs to delete
         document.getElementById('include-ids').value = selectedIds.join(',');
     }
 
@@ -160,7 +204,6 @@
         const days = document.getElementById('days-input').value;
         document.getElementById('form-days').value = days;
         
-        // Clear loaded IDs and update button to "No Items Selected" while loading
         loadedRowIds.clear();
         updateButton();
         
@@ -171,13 +214,20 @@
         lazyTable = new LazyTable({
             container: document.getElementById('prune-table-container'),
             columns: columns,
-            fetchUrl: `/web/admin/api/prune-candidates?days=${days}`,
+            fetchUrl: '/web/admin/api/prune-candidates?days=' + days,
             rowHeight: 40,
             pageSize: 50,
+            footerSlot: `
+                <a href="/web/admin/" class="btn btn-secondary">Cancel</a>
+                <button type="button" id="execute-btn" class="btn btn-danger" disabled>No Items Selected</button>
+            `,
             onDataLoaded: (data) => {
+                // Reset loadedRowIds on fresh filter load (pageIndex 0)
+                if (data.pageIndex === 0) {
+                    loadedRowIds.clear();
+                }
                 totalCount = data.totalCount || 0;
                 filteredCount = data.filteredCount || data.totalCount || 0;
-                // Collect all row IDs from this page
                 if (data.rows) {
                     data.rows.forEach(row => loadedRowIds.add(row.job_id));
                 }
@@ -191,29 +241,56 @@
         });
     }
 
-    // Event delegation for checkboxes
-    document.getElementById('prune-table-container').addEventListener('change', (e) => {
-        if (e.target.classList.contains('row-checkbox')) {
+    document.getElementById('prune-table-container').addEventListener('click', (e) => {
+        // Handle reset button click
+        if (e.target.closest('#clear-exclusions')) {
+            excludedIds.clear();
+            if (lazyTable) {
+                lazyTable.refresh();
+            }
+            updateButton();
+            return;
+        }
+        if (e.target.classList.contains('exclude-btn')) {
             const jobId = e.target.dataset.jobId;
-            if (e.target.checked) {
+            const row = e.target.closest('tr');
+            if (excludedIds.has(jobId)) {
                 excludedIds.delete(jobId);
-                e.target.closest('tr')?.classList.remove('excluded-row');
+                e.target.classList.remove('excluded');
+                e.target.title = 'Click to exclude';
+                row?.classList.remove('excluded-row');
             } else {
                 excludedIds.add(jobId);
-                e.target.closest('tr')?.classList.add('excluded-row');
+                e.target.classList.add('excluded');
+                e.target.title = 'Click to include';
+                row?.classList.add('excluded-row');
             }
             updateButton();
         }
     });
 
-    // Refresh preview
     document.getElementById('refresh-preview').addEventListener('click', () => {
-        excludedIds.clear();
+        const daysInput = document.getElementById('days-input');
+        if (!daysInput.checkValidity()) {
+            daysInput.reportValidity();
+            return;
+        }
         loadedRowIds.clear();
         initTable();
     });
 
-    // Form submission confirmation
+    // Handle execute button click (in LazyTable footer) - validate before submit
+    document.getElementById('prune-table-container').addEventListener('click', (e) => {
+        if (e.target.id === 'execute-btn') {
+            const daysInput = document.getElementById('days-input');
+            if (!daysInput.checkValidity()) {
+                daysInput.reportValidity();
+                return;
+            }
+            document.getElementById('execute-form').requestSubmit();
+        }
+    });
+
     document.getElementById('execute-form').addEventListener('submit', (e) => {
         const selectedIds = Array.from(loadedRowIds).filter(id => !excludedIds.has(id));
         const selectedCount = selectedIds.length;
@@ -222,12 +299,11 @@
             alert('No items selected for deletion.');
             return;
         }
-        if (!confirm(`Are you sure you want to delete events from ${selectedCount} job(s)?\n\nThis action cannot be undone.`)) {
+        if (!confirm('Are you sure you want to delete events from ' + selectedCount + ' job(s)?\n\nThis action cannot be undone.')) {
             e.preventDefault();
         }
     });
 
-    // Initialize
     initTable();
 })();
 </script>

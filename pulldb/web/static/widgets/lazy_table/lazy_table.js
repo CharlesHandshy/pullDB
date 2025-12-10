@@ -337,13 +337,10 @@ class LazyTable {
             </button>
         ` : '';
         
+        // Order: filter icon, label, sort icons - no gaps
         return `
             <div class="th-content">
-                <span class="th-label">${col.label != null ? col.label : col.key}</span>
-                <div class="th-controls">
-                    ${sortIcon}
-                    ${filterIcon}
-                </div>
+                ${filterIcon}<span class="th-label">${col.label != null ? col.label : col.key}</span>${sortIcon}
             </div>
         `;
     }
@@ -356,7 +353,19 @@ class LazyTable {
                 <span class="footer-showing"></span>
             </div>
             <div class="footer-spacer"></div>
+            <div class="footer-actions"></div>
         `;
+        
+        // Inject custom footer slot content if provided
+        if (this.config.footerSlot) {
+            const actionsContainer = footer.querySelector('.footer-actions');
+            if (typeof this.config.footerSlot === 'string') {
+                actionsContainer.innerHTML = this.config.footerSlot;
+            } else if (this.config.footerSlot instanceof HTMLElement) {
+                actionsContainer.appendChild(this.config.footerSlot);
+            }
+        }
+        
         return footer;
     }
 
@@ -500,7 +509,8 @@ class LazyTable {
                 this.config.onDataLoaded({
                     totalCount: this.totalCount,
                     filteredCount: this.filteredCount,
-                    pageIndex: pageIndex
+                    pageIndex: pageIndex,
+                    rows: data.rows || data.data || []
                 });
             }
             

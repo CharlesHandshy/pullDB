@@ -86,7 +86,7 @@
 }
 
 .lazy-table-th {
-    padding: var(--space-3, 12px) var(--space-4, 16px);
+    padding: 8px;
     text-align: left;
     font-size: 0.75rem;
     font-weight: 600;
@@ -96,6 +96,13 @@
     background: var(--surface-secondary, #f9fafb);
     white-space: nowrap;
     position: relative;
+    height: 40px; /* Pre-size for icon buttons in header */
+    box-sizing: border-box;
+}
+
+/* First column: reduced padding for icon button fit */
+.lazy-table-th:first-child {
+    padding: 8px 6px;
 }
 
 .lazy-table-th-select {
@@ -109,19 +116,14 @@
 
 /* Header content with sort/filter controls */
 .th-content {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: var(--space-1, 4px);
+    gap: 0;
+    white-space: nowrap;
 }
 
 .th-label {
-    /* Title stays at natural width, controls follow immediately */
-}
-
-.th-controls {
-    display: flex;
-    align-items: center;
-    gap: 0;
+    /* Title stays at natural width, no extra spacing */
 }
 
 /* Sort button - stacked arrows */
@@ -263,10 +265,15 @@
 }
 
 .lazy-table-td {
-    padding: var(--space-3, 12px) var(--space-4, 16px);
+    padding: 8px;
     font-size: 0.875rem;
     color: var(--text-primary, #111827);
     vertical-align: middle;
+}
+
+/* First column: reduced padding to match header */
+.lazy-table-td:first-child {
+    padding: 8px 6px;
 }
 
 .lazy-table-td-select {
@@ -451,6 +458,12 @@
 
 .footer-spacer {
     flex: 1;
+}
+
+.footer-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 12px);
 }
 
 /* =========================================================================
