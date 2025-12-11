@@ -96,16 +96,25 @@ def seed_dev_users(state: SimulationState) -> dict[str, User]:
     Returns:
         Dict mapping user_id to User for reference.
     """
+    # Host list for non-admin users (admins get all hosts implicitly)
+    dev_hosts = [
+        "mysql-staging-01.example.com",
+        "mysql-staging-02.example.com",
+        "mysql-staging-03.example.com",
+    ]
+    default_host = "mysql-staging-01.example.com"
+
+    # (user_id, username, user_code, role, manager_id, allowed_hosts)
     users_data = [
-        ("usr-001", "devuser", "devusr", UserRole.USER, None),
-        ("usr-002", "devadmin", "devadm", UserRole.ADMIN, None),
-        ("usr-003", "devmanager", "devmgr", UserRole.MANAGER, "usr-002"),
+        ("usr-001", "devuser", "devusr", UserRole.USER, None, dev_hosts),
+        ("usr-002", "devadmin", "devadm", UserRole.ADMIN, None, None),  # Admin gets all implicitly
+        ("usr-003", "devmanager", "devmgr", UserRole.MANAGER, "usr-002", dev_hosts),
     ]
 
     created_users: dict[str, User] = {}
 
     with state.lock:
-        for user_id, username, user_code, role, manager_id in users_data:
+        for user_id, username, user_code, role, manager_id, allowed_hosts in users_data:
             user = User(
                 user_id=user_id,
                 username=username,
@@ -115,8 +124,8 @@ def seed_dev_users(state: SimulationState) -> dict[str, User]:
                 created_at=datetime(2024, 1, 1, tzinfo=UTC),
                 manager_id=manager_id,
                 disabled_at=None,
-                allowed_hosts=None,
-                default_host=None,
+                allowed_hosts=allowed_hosts,
+                default_host=default_host if allowed_hosts else None,
             )
             state.users[user_id] = user
             state.users_by_code[user_code] = user

@@ -856,6 +856,7 @@ def _get_paginated_jobs(
             target=job.target,
             status=job.status.value,
             user_code=job.owner_user_code,
+            owner_user_code=job.owner_user_code,
             owner_user_id=job.owner_user_id,
             submitted_at=job.submitted_at,
             started_at=job.started_at,

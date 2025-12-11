@@ -39,6 +39,7 @@ class JobSummary(pydantic.BaseModel):
     target: str
     status: str
     user_code: str
+    owner_user_code: str | None = None  # For templates expecting this field name
     owner_user_id: str | None = None  # For authorization checks
     submitted_at: datetime | None = None
     started_at: datetime | None = None
