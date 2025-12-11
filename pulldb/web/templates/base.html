@@ -81,5 +81,10 @@
     <script src="/static/js/navigation.js"></script>
     <script src="/static/js/main.js"></script>
     {% block extra_js %}{% endblock %}
+    
+    {# Dev toolbar - only injected when dev_extensions is defined (dev_server.py) #}
+    {% if dev_extensions is defined %}
+    {{ dev_extensions | safe }}
+    {% endif %}
 </body>
 </html>

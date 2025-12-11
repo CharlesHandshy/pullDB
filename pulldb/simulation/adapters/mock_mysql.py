@@ -223,8 +223,11 @@ class SimulatedJobRepository:
             if job.status in (JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED):
                 return False
             
-            # Set the cancellation flag
+            # Set the cancellation flag and timestamp on the job
+            now = datetime.now(UTC)
             self.state.cancellation_requested.add(job_id)
+            updated = replace(job, cancel_requested_at=now)
+            self.state.jobs[job_id] = updated
             self.append_job_event(job_id, "cancellation_requested", "Job cancellation requested")
             return True
 

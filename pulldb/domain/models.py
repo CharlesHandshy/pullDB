@@ -186,6 +186,7 @@ class Job:
     worker_id: str | None = None
     current_operation: str | None = None
     staging_cleaned_at: datetime | None = None
+    cancel_requested_at: datetime | None = None
 
 
 @dataclass(frozen=True)

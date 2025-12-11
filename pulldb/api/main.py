@@ -1570,6 +1570,7 @@ def _bulk_cancel_jobs(
 )
 async def bulk_cancel_jobs(
     request: BulkCancelRequest,
+    http_request: fastapi.Request,
     state: APIState = Depends(get_api_state),
     x_trusted_user: str | None = fastapi.Header(None, alias="X-Trusted-User"),
     x_session_token: str | None = fastapi.Header(None, alias="X-Session-Token"),
@@ -1581,7 +1582,10 @@ async def bulk_cancel_jobs(
     """
     from pulldb.api.auth import authenticate_user
 
-    user = await authenticate_user(state, x_trusted_user, x_session_token)
+    # Also check cookie for session token (web UI uses httponly cookies)
+    session_token = x_session_token or http_request.cookies.get("session_token")
+
+    user = await authenticate_user(state, x_trusted_user, session_token)
 
     if not user.is_admin:
         raise HTTPException(

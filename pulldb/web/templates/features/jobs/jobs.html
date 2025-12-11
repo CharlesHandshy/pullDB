@@ -465,18 +465,11 @@
                 request.filter_target = Array.from(filters.target)[0];
             }
             
-            // Get session token from cookie for API auth
-            const sessionToken = document.cookie.split('; ')
-                .find(row => row.startsWith('session_token='))
-                ?.split('=')[1] || '';
-            
             try {
+                // credentials: 'same-origin' sends the httponly session cookie automatically
                 const response = await fetch('/api/admin/jobs/bulk-cancel', {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'X-Session-Token': sessionToken
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
                     body: JSON.stringify(request)
                 });
