@@ -37,6 +37,10 @@ from pulldb.simulation.core.state import (
     get_simulation_state,
     reset_simulation,
 )
+from pulldb.simulation.core.seeding import (
+    reset_and_seed,
+    seed_dev_scenario,
+)
 
 __all__ = [
     # Adapters
@@ -65,4 +69,7 @@ __all__ = [
     "SimulationState",
     "get_simulation_state",
     "reset_simulation",
+    # Seeding
+    "reset_and_seed",
+    "seed_dev_scenario",
 ]

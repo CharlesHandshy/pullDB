@@ -2,26 +2,38 @@
 
 This module provides fixtures for running the FastAPI web app in a test server
 and driving it with Playwright for browser-based testing.
+
+Uses the unified pulldb.simulation infrastructure to ensure e2e tests use
+the same mock implementations as dev server and PULLDB_MODE=SIMULATION.
 """
 
 from __future__ import annotations
 
-import secrets
+import os
 import socket
 import threading
 import time
+from collections.abc import Generator
 from contextlib import closing
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Generator
-from unittest.mock import MagicMock
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import pytest
 import uvicorn
 from fastapi import FastAPI
 from playwright.sync_api import Page
 
+
 if TYPE_CHECKING:
     from playwright.sync_api import BrowserContext
+
+
+# =============================================================================
+# Ensure SIMULATION mode is set early
+# =============================================================================
+
+# Set before any pulldb imports
+os.environ["PULLDB_MODE"] = "SIMULATION"
 
 
 def find_free_port() -> int:
@@ -33,260 +45,246 @@ def find_free_port() -> int:
 
 
 # =============================================================================
-# Mock Data
+# E2E Test API State (Using Simulation Infrastructure)
 # =============================================================================
 
 
-def create_mock_user(
-    user_id: int = 1,
-    username: str = "testuser",
-    role: str = "developer",
-    disabled: bool = False,
-) -> MagicMock:
-    """Create a mock User object."""
-    user = MagicMock()
-    user.user_id = user_id
-    user.username = username
-    user.role = role
-    user.disabled_at = "2024-01-01" if disabled else None
-    return user
+class E2EAPIState:
+    """API state for e2e tests using unified simulation infrastructure.
 
-
-def create_mock_job(
-    job_id: str = "job-001",
-    target: str = "dev-db",
-    status: str = "pending",
-    owner_user_id: int = 1,
-    created_at: datetime | None = None,
-    started_at: datetime | None = None,
-    finished_at: datetime | None = None,
-    error_detail: str | None = None,
-    worker_id: str | None = None,
-) -> MagicMock:
-    """Create a mock Job object."""
-    job = MagicMock()
-    job.job_id = job_id
-    job.target = target
-    job.status = status
-    job.owner_user_id = owner_user_id
-    job.created_at = created_at or datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
-    job.started_at = started_at
-    job.finished_at = finished_at
-    job.submitted_at = job.created_at  # alias for template compatibility
-    job.error_detail = error_detail
-    job.worker_id = worker_id
-    return job
-
-
-def create_mock_event(
-    event_id: int = 1,
-    job_id: str = "job-001",
-    event_type: str = "created",
-    message: str = "Job created",
-    created_at: datetime | None = None,
-) -> MagicMock:
-    """Create a mock JobEvent object."""
-    event = MagicMock()
-    event.event_id = event_id
-    event.job_id = job_id
-    event.event_type = event_type
-    event.message = message
-    event.created_at = created_at or datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
-    return event
-
-
-# =============================================================================
-# Mock Repositories
-# =============================================================================
-
-
-class MockUserRepo:
-    """Mock user repository for testing."""
+    This mirrors DevAPIState but is optimized for e2e test scenarios.
+    Uses pulldb.simulation module to ensure e2e tests use the same
+    mock implementations as dev server.
+    """
 
     def __init__(self) -> None:
-        self.users = {
-            "testuser": create_mock_user(1, "testuser", "developer"),
-            "admin": create_mock_user(2, "admin", "admin"),
-            "devadmin": create_mock_user(4, "devadmin", "admin"),
-            "disabled": create_mock_user(3, "disabled", "developer", disabled=True),
-        }
+        from pulldb.api.main import _initialize_simulation_state
+        from pulldb.simulation import get_simulation_state, reset_simulation
 
-    def get_user_by_username(self, username: str) -> MagicMock | None:
-        return self.users.get(username)
+        # Reset and seed simulation state
+        reset_simulation()
+        state = get_simulation_state()
 
-    def get_user_by_id(self, user_id: int) -> MagicMock | None:
-        for user in self.users.values():
-            if user.user_id == user_id:
-                return user
-        return None
+        # Seed test data suitable for e2e tests
+        self._seed_e2e_data(state)
 
+        # Seed auth credentials for test users
+        self._seed_auth_credentials(state)
 
-class MockAuthRepo:
-    """Mock auth repository for testing."""
+        # Get APIState from simulation infrastructure
+        api_state = _initialize_simulation_state()
 
-    def __init__(self) -> None:
-        self.sessions: dict[str, int] = {}
-        # password = "testpass123" - generated with hash_password()
-        self.password_hashes = {
-            1: "$2b$12$mfPL.PHDhJKCXPV4OZawlO8lNwTjarJ8CGzR8s4A9K9vuAR2csbTe",
-            2: "$2b$12$mfPL.PHDhJKCXPV4OZawlO8lNwTjarJ8CGzR8s4A9K9vuAR2csbTe",
-            3: "$2b$12$mfPL.PHDhJKCXPV4OZawlO8lNwTjarJ8CGzR8s4A9K9vuAR2csbTe",
-            4: "$2b$12$mfPL.PHDhJKCXPV4OZawlO8lNwTjarJ8CGzR8s4A9K9vuAR2csbTe",
-        }
+        # Expose repos for compatibility
+        self.config = api_state.config
+        self.job_repo = api_state.job_repo
+        self.user_repo = api_state.user_repo
+        self.host_repo = api_state.host_repo
+        self.settings_repo = api_state.settings_repo
+        self.auth_repo = api_state.auth_repo
+        self.audit_repo = api_state.audit_repo
 
-    def get_password_hash(self, user_id: int) -> str | None:
-        return self.password_hashes.get(user_id)
+    def _seed_e2e_data(self, state) -> None:
+        """Seed data for e2e tests.
 
-    def validate_session(self, token: str) -> int | None:
-        return self.sessions.get(token)
+        Creates users, hosts, and jobs that match the original e2e test
+        expectations for compatibility.
+        """
+        from pulldb.domain.models import (
+            DBHost,
+            Job,
+            JobEvent,
+            JobStatus,
+            User,
+            UserRole,
+        )
 
-    def create_session(
-        self,
-        user_id: int,
-        ip_address: str | None = None,
-        user_agent: str | None = None,
-    ) -> tuple[int, str]:
-        token = secrets.token_urlsafe(32)
-        self.sessions[token] = user_id
-        return (1, token)
+        # Create test users (matching original e2e expectations)
+        users_data = [
+            ("usr-001", "testuser", "tstusr", UserRole.USER, False),
+            ("usr-002", "admin", "admin", UserRole.ADMIN, False),
+            ("usr-003", "disabled", "dsbusr", UserRole.USER, True),
+            ("usr-004", "devadmin", "devadm", UserRole.ADMIN, False),
+        ]
 
-    def invalidate_session_by_token(self, token: str) -> bool:
-        if token in self.sessions:
-            del self.sessions[token]
-            return True
-        return False
+        with state.lock:
+            for user_id, username, user_code, role, disabled in users_data:
+                user = User(
+                    user_id=user_id,
+                    username=username,
+                    user_code=user_code,
+                    is_admin=(role == UserRole.ADMIN),
+                    role=role,
+                    created_at=datetime(2024, 1, 1, tzinfo=UTC),
+                    manager_id=None,
+                    disabled_at=datetime(2024, 1, 1, tzinfo=UTC) if disabled else None,
+                    allowed_hosts=None,
+                    default_host=None,
+                )
+                state.users[user_id] = user
+                state.users_by_code[user_code] = user
 
+        # Create test hosts
+        hosts_data = [
+            (1, "db-prod-01", "prod-01", 3, True),
+            (2, "db-staging-01", "staging-01", 2, True),
+        ]
 
-class MockJobRepo:
-    """Mock job repository for testing."""
+        with state.lock:
+            for host_id, hostname, alias, max_concurrent, enabled in hosts_data:
+                host = DBHost(
+                    id=host_id,
+                    hostname=hostname,
+                    host_alias=alias,
+                    credential_ref=f"mock/mysql/{alias}",
+                    max_concurrent_restores=max_concurrent,
+                    enabled=enabled,
+                    created_at=datetime(2024, 1, 1, tzinfo=UTC),
+                    disabled_at=None,
+                )
+                state.hosts[hostname] = host
+                state.hosts_by_alias[alias] = host
 
-    def __init__(self) -> None:
-        self.jobs = [
-            create_mock_job("job-001", "dev-db", "pending", 1),
-            create_mock_job(
-                "job-002", "staging-db", "running", 1,
-                started_at=datetime(2024, 1, 15, 10, 5, 0, tzinfo=UTC),
-                worker_id="worker-1",
+        # Create test jobs (matching original e2e expectations)
+        base_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
+
+        jobs_data = [
+            # (job_id, target, status, owner_user_id, owner_username, owner_code,
+            #  started_at, completed_at, error_detail, worker_id)
+            (
+                "job-001",
+                "tstusr_devdb",
+                JobStatus.QUEUED,
+                "usr-001",
+                "testuser",
+                "tstusr",
+                None,
+                None,
+                None,
+                None,
             ),
-            create_mock_job(
-                "job-003", "prod-copy", "completed", 2,
-                started_at=datetime(2024, 1, 15, 9, 0, 0, tzinfo=UTC),
-                finished_at=datetime(2024, 1, 15, 9, 30, 0, tzinfo=UTC),
-                worker_id="worker-2",
+            (
+                "job-002",
+                "tstusr_stagingdb",
+                JobStatus.RUNNING,
+                "usr-001",
+                "testuser",
+                "tstusr",
+                base_time + timedelta(minutes=5),
+                None,
+                None,
+                "worker-1",
             ),
-            create_mock_job(
-                "job-004", "test-db", "failed", 1,
-                started_at=datetime(2024, 1, 15, 8, 0, 0, tzinfo=UTC),
-                finished_at=datetime(2024, 1, 15, 8, 15, 0, tzinfo=UTC),
-                error_detail="Download failed: connection timeout",
-                worker_id="worker-1",
+            (
+                "job-003",
+                "admin_prodcopy",
+                JobStatus.COMPLETED,
+                "usr-002",
+                "admin",
+                "admin",
+                base_time - timedelta(hours=1),
+                base_time - timedelta(minutes=30),
+                None,
+                "worker-2",
+            ),
+            (
+                "job-004",
+                "tstusr_testdb",
+                JobStatus.FAILED,
+                "usr-001",
+                "testuser",
+                "tstusr",
+                base_time - timedelta(hours=2),
+                base_time - timedelta(hours=1, minutes=45),
+                "Download failed: connection timeout",
+                "worker-1",
             ),
         ]
-        self.events = {
-            "job-001": [
-                create_mock_event(1, "job-001", "created", "Job created"),
-            ],
-            "job-002": [
-                create_mock_event(2, "job-002", "created", "Job created"),
-                create_mock_event(3, "job-002", "claimed", "Claimed by worker-1"),
-                create_mock_event(4, "job-002", "downloading", "Downloading..."),
-            ],
-            "job-003": [
-                create_mock_event(5, "job-003", "created", "Job created"),
-                create_mock_event(6, "job-003", "completed", "Restore complete"),
-            ],
-            "job-004": [
-                create_mock_event(7, "job-004", "created", "Job created"),
-                create_mock_event(8, "job-004", "failed", "Download timeout"),
-            ],
-        }
 
-    def list_jobs(
-        self,
-        limit: int = 20,
-        active_only: bool = False,
-        user_filter: str | None = None,
-        dbhost: str | None = None,
-        status_filter: str | None = None,
-    ) -> list[MagicMock]:
-        jobs = self.jobs
-        if active_only:
-            jobs = [j for j in jobs if j.status in ("pending", "running")]
-        if dbhost:
-            jobs = [j for j in jobs if j.target == dbhost]
-        if status_filter:
-            jobs = [j for j in jobs if j.status == status_filter]
-        return jobs[:limit]
+        with state.lock:
+            for (
+                job_id,
+                target,
+                status,
+                owner_id,
+                owner_name,
+                owner_code,
+                started,
+                completed,
+                error,
+                worker,
+            ) in jobs_data:
+                job = Job(
+                    id=job_id,
+                    owner_user_id=owner_id,
+                    owner_username=owner_name,
+                    owner_user_code=owner_code,
+                    target=target,
+                    staging_name=(
+                        f"{target}_{job_id.replace('job-', '').ljust(12, '0')}"
+                    ),
+                    dbhost="db-staging-01",
+                    status=status,
+                    submitted_at=base_time,
+                    started_at=started,
+                    completed_at=completed,
+                    options_json={},
+                    retry_count=0,
+                    error_detail=error,
+                    worker_id=worker,
+                    current_operation=None,
+                )
+                state.jobs[job_id] = job
 
-    @property
-    def active_jobs(self) -> list[MagicMock]:
-        return [j for j in self.jobs if j.status in ("pending", "running")]
+            # Add job events
+            event_id = 1
+            for job_id in ["job-001", "job-002", "job-003", "job-004"]:
+                event = JobEvent(
+                    id=event_id,
+                    job_id=job_id,
+                    event_type="created",
+                    detail="Job created",
+                    logged_at=base_time,
+                )
+                state.job_events.append(event)
+                event_id += 1
 
-    @property
-    def history_jobs(self) -> list[MagicMock]:
-        return [j for j in self.jobs if j.status not in ("pending", "running")]
+            # Additional events for running job
+            state.job_events.append(
+                JobEvent(
+                    id=event_id,
+                    job_id="job-002",
+                    event_type="claimed",
+                    detail="Claimed by worker-1",
+                    logged_at=base_time + timedelta(minutes=5),
+                )
+            )
+            event_id += 1
+            state.job_events.append(
+                JobEvent(
+                    id=event_id,
+                    job_id="job-002",
+                    event_type="downloading",
+                    detail="Downloading...",
+                    logged_at=base_time + timedelta(minutes=6),
+                )
+            )
 
-    def get_job_by_id(self, job_id: str) -> MagicMock | None:
-        for job in self.jobs:
-            if job.job_id == job_id:
-                return job
-        return None
+    def _seed_auth_credentials(self, state) -> None:
+        """Seed auth credentials for test users.
 
-    def get_active_jobs(self) -> list[MagicMock]:
-        return [j for j in self.jobs if j.status in ("pending", "running")]
+        Password: testpass123 (bcrypt hash)
+        """
+        # Pre-computed bcrypt hash for "testpass123"
+        test_hash = "$2b$12$mfPL.PHDhJKCXPV4OZawlO8lNwTjarJ8CGzR8s4A9K9vuAR2csbTe"
 
-    def get_recent_jobs(
-        self,
-        limit: int = 50,
-        statuses: list[str] | None = None,
-    ) -> list[MagicMock]:
-        jobs = self.jobs
-        if statuses:
-            jobs = [j for j in jobs if j.status in statuses]
-        return jobs[:limit]
-
-    def get_job_events(
-        self,
-        job_id: str,
-        since_id: int | None = None,
-    ) -> list[MagicMock]:
-        events = self.events.get(job_id, [])
-        if since_id:
-            events = [e for e in events if e.event_id > since_id]
-        return events
-
-
-class MockHostRepo:
-    """Mock host repository for testing."""
-
-    def get_enabled_hosts(self) -> list[MagicMock]:
-        host1 = MagicMock()
-        host1.hostname = "db-prod-01"
-        host1.is_active = True
-
-        host2 = MagicMock()
-        host2.hostname = "db-staging-01"
-        host2.is_active = True
-
-        return [host1, host2]
-
-    def search_hosts(self, query: str, limit: int = 10) -> list[MagicMock]:
-        return self.get_enabled_hosts()
-
-
-# =============================================================================
-# Mock API State
-# =============================================================================
-
-
-class MockAPIState:
-    """Mock API state with all repositories."""
-
-    def __init__(self) -> None:
-        self.user_repo = MockUserRepo()
-        self.auth_repo = MockAuthRepo()
-        self.job_repo = MockJobRepo()
-        self.host_repo = MockHostRepo()
+        with state.lock:
+            for user_id in ["usr-001", "usr-002", "usr-003", "usr-004"]:
+                state.auth_credentials[user_id] = {
+                    "password_hash": test_hash,
+                    "totp_secret": None,
+                    "failed_attempts": 0,
+                    "locked_until": None,
+                }
 
 
 # =============================================================================
@@ -296,18 +294,18 @@ class MockAPIState:
 
 def create_test_app() -> FastAPI:
     """Create a FastAPI app configured for testing."""
-    from pulldb.web import router as web_router
-    from pulldb.web import router as web_router
-    from fastapi.staticfiles import StaticFiles
     from pathlib import Path
+
+    from fastapi.staticfiles import StaticFiles
+
+    from pulldb.web import router as web_router
 
     app = FastAPI(title="pullDB Test")
 
-    # Store mock state
-    app.state.api_state = MockAPIState()
+    # Store mock state using simulation infrastructure
+    app.state.api_state = E2EAPIState()
 
     # Include web routers
-    app.include_router(web_router)
     app.include_router(web_router)
 
     # Mount static files
@@ -321,9 +319,9 @@ def create_test_app() -> FastAPI:
 
     return app
 
-def _mock_get_api_state() -> MockAPIState:
+
+def _mock_get_api_state() -> E2EAPIState:
     """Override for get_api_state that returns our mock."""
-    # This gets the app from the thread-local storage
     import pulldb.api.main as api_main
 
     return api_main._test_api_state  # type: ignore[attr-defined]
@@ -337,8 +335,6 @@ def _mock_get_api_state() -> MockAPIState:
 @pytest.fixture(scope="session", autouse=True)
 def setup_simulation_mode() -> Generator[None, None, None]:
     """Ensure tests run in simulation mode."""
-    import os
-
     os.environ["PULLDB_MODE"] = "SIMULATION"
     yield
     if "PULLDB_MODE" in os.environ:
@@ -408,7 +404,7 @@ def base_url(test_server: str) -> str:
 
 
 @pytest.fixture
-def page(context: "BrowserContext", base_url: str) -> Generator[Page, None, None]:
+def page(context: BrowserContext, base_url: str) -> Generator[Page, None, None]:
     """Create a new page for each test."""
     page = context.new_page()
     yield page
@@ -443,4 +439,3 @@ def admin_page(page: Page, base_url: str) -> Page:
     page.click('button[type="submit"]')
     page.wait_for_url(f"{base_url}/web/dashboard")
     return page
-

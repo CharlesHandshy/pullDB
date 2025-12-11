@@ -249,6 +249,35 @@ class SimulatedJobRepository:
         with self.state.lock:
             return job_id in self.state.cancellation_requested
 
+    @property
+    def active_jobs(self) -> list[Job]:
+        """Property alias for get_active_jobs() for dev server compatibility."""
+        return self.get_active_jobs()
+
+    @property
+    def history_jobs(self) -> list[Job]:
+        """Property alias for terminal jobs (complete/failed/canceled).
+        
+        Used by dev server for pagination. Returns jobs sorted by submitted_at desc.
+        """
+        with self.state.lock:
+            terminal = [
+                j for j in self.state.jobs.values()
+                if j.status in (JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED)
+            ]
+            return sorted(terminal, key=lambda j: j.submitted_at, reverse=True)
+
+    @property
+    def _cancel_requested(self) -> dict[str, datetime]:
+        """Property for dev server compatibility - returns cancellation timestamps.
+        
+        Maps job_id -> cancellation request timestamp.
+        Note: SimulationState only tracks a set of job_ids, not timestamps.
+        """
+        with self.state.lock:
+            now = datetime.now(UTC)
+            return {jid: now for jid in self.state.cancellation_requested}
+
     def get_active_jobs(self) -> list[Job]:
         """Get all active jobs (queued or running)."""
         with self.state.lock:
@@ -443,7 +472,7 @@ class SimulatedJobRepository:
                 events = [e for e in events if e.id > since_id]
             return sorted(events, key=lambda e: e.id)
 
-    def prune_job_events(self, retention_days: int) -> int:
+    def prune_job_events(self, retention_days: int = 90) -> int:
         """Prune old job events. Returns count of deleted events."""
         cutoff = datetime.now(UTC) - timedelta(days=retention_days)
         with self.state.lock:

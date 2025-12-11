@@ -84,6 +84,13 @@ class FakeJobRepository:
         """Count all active jobs."""
         return len(self.active)
 
+    def has_active_jobs_for_target(self, target: str, dbhost: str) -> bool:
+        """Check if there are active jobs for the same target on the same host."""
+        return any(
+            j.target == target and j.dbhost == dbhost
+            for j in self.active
+        )
+
 
 class FakeSettingsRepository:
     """In-memory settings repository stub for API tests."""
@@ -270,11 +277,11 @@ def test_submit_job_unlimited_when_caps_are_zero(
     fake_state.settings_repo.settings["max_active_jobs_per_user"] = "0"
     fake_state.settings_repo.settings["max_active_jobs_global"] = "0"
 
-    # Add some existing active jobs
+    # Add some existing active jobs (with different targets to avoid conflict)
     fake_state.job_repo.active = [
-        _build_job(id="existing-1"),
-        _build_job(id="existing-2"),
-        _build_job(id="existing-3"),
+        _build_job(id="existing-1", target="othercust1"),
+        _build_job(id="existing-2", target="othercust2"),
+        _build_job(id="existing-3", target="othercust3"),
     ]
 
     response = _post_json(
@@ -293,10 +300,10 @@ def test_submit_job_respects_per_user_limit(
     fake_state.settings_repo.settings["max_active_jobs_per_user"] = "2"
     fake_state.settings_repo.settings["max_active_jobs_global"] = "0"
 
-    # Add 2 existing active jobs for user-1
+    # Add 2 existing active jobs for user-1 (with different targets to avoid conflict)
     fake_state.job_repo.active = [
-        _build_job(id="job-1", owner_user_id="user-1"),
-        _build_job(id="job-2", owner_user_id="user-1"),
+        _build_job(id="job-1", owner_user_id="user-1", target="othercust1"),
+        _build_job(id="job-2", owner_user_id="user-1", target="othercust2"),
     ]
 
     # Submit a new job (FakeUserRepository always returns user_id="user-1")
@@ -316,10 +323,10 @@ def test_submit_job_allows_under_per_user_limit(
     fake_state.settings_repo.settings["max_active_jobs_per_user"] = "3"
     fake_state.settings_repo.settings["max_active_jobs_global"] = "0"
 
-    # Add 2 existing active jobs for user-1 (under limit of 3)
+    # Add 2 existing active jobs for user-1 (under limit of 3, with different targets)
     fake_state.job_repo.active = [
-        _build_job(id="job-1", owner_user_id="user-1"),
-        _build_job(id="job-2", owner_user_id="user-1"),
+        _build_job(id="job-1", owner_user_id="user-1", target="othercust1"),
+        _build_job(id="job-2", owner_user_id="user-1", target="othercust2"),
     ]
 
     response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
@@ -335,13 +342,13 @@ def test_submit_job_respects_global_limit(
     fake_state.settings_repo.settings["max_active_jobs_per_user"] = "0"
     fake_state.settings_repo.settings["max_active_jobs_global"] = "5"
 
-    # Add 5 existing active jobs (across different users)
+    # Add 5 existing active jobs (across different users, with different targets)
     fake_state.job_repo.active = [
-        _build_job(id="job-1", owner_user_id="user-1"),
-        _build_job(id="job-2", owner_user_id="user-2"),
-        _build_job(id="job-3", owner_user_id="user-3"),
-        _build_job(id="job-4", owner_user_id="user-4"),
-        _build_job(id="job-5", owner_user_id="user-5"),
+        _build_job(id="job-1", owner_user_id="user-1", target="othercust1"),
+        _build_job(id="job-2", owner_user_id="user-2", target="othercust2"),
+        _build_job(id="job-3", owner_user_id="user-3", target="othercust3"),
+        _build_job(id="job-4", owner_user_id="user-4", target="othercust4"),
+        _build_job(id="job-5", owner_user_id="user-5", target="othercust5"),
     ]
 
     response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
@@ -362,9 +369,9 @@ def test_submit_job_global_limit_takes_precedence(
 
     # Add 3 active jobs (user has 0, so under per-user limit, but at global limit)
     fake_state.job_repo.active = [
-        _build_job(id="job-1", owner_user_id="other-user-1"),
-        _build_job(id="job-2", owner_user_id="other-user-2"),
-        _build_job(id="job-3", owner_user_id="other-user-3"),
+        _build_job(id="job-1", owner_user_id="other-user-1", target="othercust1"),
+        _build_job(id="job-2", owner_user_id="other-user-2", target="othercust2"),
+        _build_job(id="job-3", owner_user_id="other-user-3", target="othercust3"),
     ]
 
     response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
@@ -382,12 +389,12 @@ def test_submit_job_both_limits_satisfied(
     fake_state.settings_repo.settings["max_active_jobs_per_user"] = "3"
     fake_state.settings_repo.settings["max_active_jobs_global"] = "10"
 
-    # Add 4 active jobs (1 for current user, 3 for others)
+    # Add 4 active jobs (1 for current user, 3 for others, with different targets)
     fake_state.job_repo.active = [
-        _build_job(id="job-1", owner_user_id="user-1"),  # Current user's job
-        _build_job(id="job-2", owner_user_id="other-user"),
-        _build_job(id="job-3", owner_user_id="other-user"),
-        _build_job(id="job-4", owner_user_id="other-user"),
+        _build_job(id="job-1", owner_user_id="user-1", target="othercust1"),  # Current user's job
+        _build_job(id="job-2", owner_user_id="other-user", target="othercust2"),
+        _build_job(id="job-3", owner_user_id="other-user", target="othercust3"),
+        _build_job(id="job-4", owner_user_id="other-user", target="othercust4"),
     ]
 
     response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})

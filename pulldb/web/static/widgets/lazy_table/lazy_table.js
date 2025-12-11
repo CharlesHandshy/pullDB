@@ -938,12 +938,13 @@ class LazyTable {
             return;
         }
         
-        // Fetch distinct values if not cached
-        if (!this.distinctValues[column]) {
+        // Fetch distinct values if not cached or cache is stale (filters changed)
+        if (!this.isDistinctCacheValid(column)) {
             await this.fetchDistinctValues(column);
         }
         
-        const values = this.distinctValues[column] || [];
+        const cached = this.distinctValues[column];
+        const values = (cached && cached.values) ? cached.values : [];
         const selectedValues = this.columnFilters[column] || new Set();
         
         // Create dropdown
@@ -1226,15 +1227,59 @@ class LazyTable {
             distinctUrl.search = baseUrl.search;
             distinctUrl.searchParams.set('column', column);
             
+            // Pass current filters for cascading behavior (excluding the column being queried)
+            Object.entries(this.columnFilters).forEach(([filterColumn, filterValues]) => {
+                if (filterColumn !== column && filterValues && filterValues.size > 0) {
+                    // For multi-value filters, use first value (API expects single value)
+                    const value = Array.from(filterValues)[0];
+                    distinctUrl.searchParams.set(`filter_${filterColumn}`, value);
+                }
+            });
+            
             const response = await fetch(distinctUrl.toString());
             if (response.ok) {
                 const data = await response.json();
-                this.distinctValues[column] = Array.isArray(data) ? data : (data.values || []);
+                // Cache with filter signature to detect when to invalidate
+                const filterSig = this.getFilterSignature(column);
+                this.distinctValues[column] = {
+                    values: Array.isArray(data) ? data : (data.values || []),
+                    filterSignature: filterSig
+                };
             }
         } catch (error) {
             console.error('LazyTable: error fetching distinct values', error);
-            this.distinctValues[column] = [];
+            this.distinctValues[column] = { values: [], filterSignature: '' };
         }
+    }
+    
+    /**
+     * Generate a signature of current filters excluding a specific column.
+     * Used to detect when cached distinct values are stale.
+     * @param {string} excludeColumn - Column to exclude from signature
+     * @returns {string}
+     */
+    getFilterSignature(excludeColumn) {
+        const parts = [];
+        Object.entries(this.columnFilters)
+            .filter(([col]) => col !== excludeColumn)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .forEach(([col, vals]) => {
+                if (vals && vals.size > 0) {
+                    parts.push(`${col}:${Array.from(vals).sort().join(',')}`);
+                }
+            });
+        return parts.join('|');
+    }
+    
+    /**
+     * Check if cached distinct values are still valid for current filters.
+     * @param {string} column - Column to check
+     * @returns {boolean}
+     */
+    isDistinctCacheValid(column) {
+        const cached = this.distinctValues[column];
+        if (!cached || !cached.values) return false;
+        return cached.filterSignature === this.getFilterSignature(column);
     }
 
     applyFilter(column, values) {

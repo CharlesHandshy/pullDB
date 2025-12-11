@@ -28,6 +28,63 @@
     color: var(--primary-600);
     border-bottom-color: var(--primary-600);
 }
+/* Bulk cancel modal */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.modal-content {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    max-width: 450px;
+    width: 90%;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+.modal-title {
+    margin: 0 0 1rem 0;
+    font-size: 1.25rem;
+    color: var(--danger-700);
+}
+.modal-body {
+    margin-bottom: 1.5rem;
+}
+.modal-body p {
+    margin: 0 0 1rem 0;
+    color: var(--gray-700);
+}
+.modal-body input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--gray-300);
+    border-radius: 4px;
+    font-size: 1rem;
+}
+.modal-body input:focus {
+    outline: none;
+    border-color: var(--danger-500);
+}
+.modal-footer {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+}
+.btn-cancel-all {
+    background: var(--danger-600);
+    color: white;
+}
+.btn-cancel-all:hover {
+    background: var(--danger-700);
+}
+.btn-cancel-all:disabled {
+    background: var(--gray-300);
+    cursor: not-allowed;
+}
 </style>
 {% endblock %}
 
@@ -36,6 +93,11 @@
     <div class="page-header">
         <h1 class="page-title">Jobs</h1>
         <div style="display: flex; gap: 1rem; align-items: center;">
+            {% if user.is_admin %}
+            <button type="button" id="bulk-cancel-btn" class="btn btn-danger" style="display: none;">
+                Cancel All Filtered
+            </button>
+            {% endif %}
             <a href="/web/restore" class="btn btn-primary">New Restore Job</a>
         </div>
     </div>
@@ -55,6 +117,24 @@
         <div id="jobs-table-container" style="height: 100%;"></div>
     </div>
 </div>
+
+<!-- Bulk Cancel Confirmation Modal -->
+{% if user.is_admin %}
+<div id="bulk-cancel-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <h2 class="modal-title">⚠️ Bulk Cancel Jobs</h2>
+        <div class="modal-body">
+            <p id="bulk-cancel-count">This will cancel <strong>0</strong> job(s) matching your current filters.</p>
+            <p>Type <strong>CANCEL ALL</strong> to confirm:</p>
+            <input type="text" id="bulk-cancel-confirm" placeholder="Type CANCEL ALL" autocomplete="off">
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn" id="bulk-cancel-close">Cancel</button>
+            <button type="button" class="btn btn-cancel-all" id="bulk-cancel-execute" disabled>Cancel All Jobs</button>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -299,8 +379,134 @@
             url.search = ''; // Clear all params
             url.searchParams.set('view', currentView);
             history.pushState({}, '', url);
+            
+            // Update bulk cancel button visibility
+            updateBulkCancelVisibility();
         });
     });
+    
+    // =========================================================================
+    // Bulk Cancel (Admin Only)
+    // =========================================================================
+    {% if user.is_admin %}
+    const bulkCancelBtn = document.getElementById('bulk-cancel-btn');
+    const bulkCancelModal = document.getElementById('bulk-cancel-modal');
+    const bulkCancelConfirm = document.getElementById('bulk-cancel-confirm');
+    const bulkCancelExecute = document.getElementById('bulk-cancel-execute');
+    const bulkCancelClose = document.getElementById('bulk-cancel-close');
+    const bulkCancelCount = document.getElementById('bulk-cancel-count');
+    
+    // Show/hide bulk cancel button based on view (only show for active view)
+    function updateBulkCancelVisibility() {
+        if (bulkCancelBtn) {
+            bulkCancelBtn.style.display = currentView === 'active' ? 'inline-block' : 'none';
+        }
+    }
+    updateBulkCancelVisibility();
+    
+    // Open modal when button clicked
+    if (bulkCancelBtn) {
+        bulkCancelBtn.addEventListener('click', () => {
+            // Get count of filtered jobs from table
+            const filteredCount = table.filteredCount || 0;
+            bulkCancelCount.innerHTML = `This will cancel <strong>${filteredCount}</strong> job(s) matching your current filters.`;
+            bulkCancelConfirm.value = '';
+            bulkCancelExecute.disabled = true;
+            bulkCancelModal.style.display = 'flex';
+            bulkCancelConfirm.focus();
+        });
+    }
+    
+    // Enable execute button only when confirmation matches
+    if (bulkCancelConfirm) {
+        bulkCancelConfirm.addEventListener('input', () => {
+            bulkCancelExecute.disabled = bulkCancelConfirm.value !== 'CANCEL ALL';
+        });
+        bulkCancelConfirm.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && bulkCancelConfirm.value === 'CANCEL ALL') {
+                bulkCancelExecute.click();
+            } else if (e.key === 'Escape') {
+                bulkCancelModal.style.display = 'none';
+            }
+        });
+    }
+    
+    // Close modal
+    if (bulkCancelClose) {
+        bulkCancelClose.addEventListener('click', () => {
+            bulkCancelModal.style.display = 'none';
+        });
+    }
+    
+    // Execute bulk cancel
+    if (bulkCancelExecute) {
+        bulkCancelExecute.addEventListener('click', async () => {
+            bulkCancelExecute.disabled = true;
+            bulkCancelExecute.textContent = 'Canceling...';
+            
+            // Build request with current filters
+            const filters = table.columnFilters || {};
+            const request = {
+                view: currentView,
+                confirmation: 'CANCEL ALL'
+            };
+            
+            // Map LazyTable column filters to API filter params
+            if (filters.status && filters.status.size > 0) {
+                request.filter_status = Array.from(filters.status)[0];
+            }
+            if (filters.dbhost && filters.dbhost.size > 0) {
+                request.filter_dbhost = Array.from(filters.dbhost)[0];
+            }
+            if (filters.owner_user_code && filters.owner_user_code.size > 0) {
+                request.filter_user_code = Array.from(filters.owner_user_code)[0];
+            }
+            if (filters.target && filters.target.size > 0) {
+                request.filter_target = Array.from(filters.target)[0];
+            }
+            
+            // Get session token from cookie for API auth
+            const sessionToken = document.cookie.split('; ')
+                .find(row => row.startsWith('session_token='))
+                ?.split('=')[1] || '';
+            
+            try {
+                const response = await fetch('/api/admin/jobs/bulk-cancel', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-Session-Token': sessionToken
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(request)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    alert(`${data.message}`);
+                    table.refresh();
+                } else {
+                    alert(`Error: ${data.detail || 'Bulk cancel failed'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                bulkCancelModal.style.display = 'none';
+                bulkCancelExecute.textContent = 'Cancel All Jobs';
+            }
+        });
+    }
+    
+    // Close modal on overlay click
+    if (bulkCancelModal) {
+        bulkCancelModal.addEventListener('click', (e) => {
+            if (e.target === bulkCancelModal) {
+                bulkCancelModal.style.display = 'none';
+            }
+        });
+    }
+    {% endif %}
 })();
 </script>
 {% endblock %}

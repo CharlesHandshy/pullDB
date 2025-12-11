@@ -933,18 +933,42 @@ async def get_paginated_jobs(
 async def get_distinct_values(
     column: str = fastapi.Query(..., description="Column to get distinct values for"),
     view: str = fastapi.Query("active", description="View: 'active' or 'history'"),
+    filter_status: str | None = fastapi.Query(None, description="Filter by status"),
+    filter_dbhost: str | None = fastapi.Query(None, description="Filter by host"),
+    filter_user_code: str | None = fastapi.Query(None, description="Filter by user"),
+    filter_target: str | None = fastapi.Query(None, description="Filter by target"),
     state: APIState = fastapi.Depends(get_api_state),
 ) -> list[str]:
-    """Get distinct values for a column (for filter dropdowns)."""
+    """Get distinct values for a column (for cascading filter dropdowns).
+
+    When other filters are applied, only returns values that exist in the
+    filtered dataset. This enables cascading filter behavior where selecting
+    one filter narrows the options available in other filter dropdowns.
+    """
     if view == "history":
         statuses = [JobStatus.COMPLETE.value, JobStatus.FAILED.value, JobStatus.CANCELED.value]
     else:
         statuses = [JobStatus.QUEUED.value, JobStatus.RUNNING.value]
 
+    # Apply status filter if not querying status column
+    if filter_status and filter_status in [s.value for s in JobStatus] and column != "status":
+        statuses = [filter_status]
+
     jobs = state.job_repo.get_recent_jobs(limit=1000, statuses=statuses)
 
+    # Apply other filters (except the one being queried)
+    filtered_jobs = list(jobs)
+    if filter_dbhost and column != "dbhost":
+        filtered_jobs = [j for j in filtered_jobs if j.dbhost == filter_dbhost]
+    if filter_user_code and column != "user_code":
+        filtered_jobs = [j for j in filtered_jobs if j.owner_user_code == filter_user_code]
+    if filter_target and column != "target":
+        filtered_jobs = [
+            j for j in filtered_jobs if filter_target.lower() in (j.target or "").lower()
+        ]
+
     values: set[str] = set()
-    for job in jobs:
+    for job in filtered_jobs:
         if column == "status":
             values.add(job.status.value)
         elif column == "dbhost":
@@ -1415,6 +1439,352 @@ async def cancel_job(
 
     user = await authenticate_user(state, x_trusted_user, x_session_token)
     return await run_in_threadpool(_cancel_job, state, job_id, user)
+
+
+class BulkCancelRequest(pydantic.BaseModel):
+    """Request to bulk cancel jobs matching filters."""
+
+    view: str = pydantic.Field(
+        default="active",
+        description="View: 'active' or 'history'",
+    )
+    filter_status: str | None = pydantic.Field(
+        default=None,
+        description="Filter by status",
+    )
+    filter_dbhost: str | None = pydantic.Field(
+        default=None,
+        description="Filter by host",
+    )
+    filter_user_code: str | None = pydantic.Field(
+        default=None,
+        description="Filter by user code",
+    )
+    filter_target: str | None = pydantic.Field(
+        default=None,
+        description="Filter by target",
+    )
+    confirmation: str = pydantic.Field(
+        ...,
+        description="Must be 'CANCEL ALL' to confirm",
+    )
+
+
+class BulkCancelResponse(pydantic.BaseModel):
+    """Response from bulk cancel operation."""
+
+    canceled_count: int
+    skipped_count: int
+    message: str
+    canceled_job_ids: list[str]
+
+
+def _bulk_cancel_jobs(
+    state: APIState,
+    request: BulkCancelRequest,
+    user: User,
+) -> BulkCancelResponse:
+    """Bulk cancel jobs matching filters (admin only).
+
+    Only cancels jobs in QUEUED or RUNNING state.
+    """
+    # Verify confirmation phrase
+    if request.confirmation != "CANCEL ALL":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Confirmation must be 'CANCEL ALL'",
+        )
+
+    # Build status filter - only cancelable jobs
+    if request.view == "history":
+        # History view shouldn't have cancelable jobs, return early
+        return BulkCancelResponse(
+            canceled_count=0,
+            skipped_count=0,
+            message="No cancelable jobs in history view",
+            canceled_job_ids=[],
+        )
+
+    statuses = [JobStatus.QUEUED.value, JobStatus.RUNNING.value]
+    if request.filter_status and request.filter_status in statuses:
+        statuses = [request.filter_status]
+
+    # Get jobs matching filters
+    all_jobs = state.job_repo.get_recent_jobs(limit=1000, statuses=statuses)
+    filtered_jobs = list(all_jobs)
+
+    if request.filter_dbhost:
+        filtered_jobs = [j for j in filtered_jobs if j.dbhost == request.filter_dbhost]
+    if request.filter_user_code:
+        filtered_jobs = [
+            j for j in filtered_jobs if j.owner_user_code == request.filter_user_code
+        ]
+    if request.filter_target:
+        filtered_jobs = [
+            j
+            for j in filtered_jobs
+            if request.filter_target.lower() in (j.target or "").lower()
+        ]
+
+    # Cancel each job
+    canceled_ids = []
+    skipped = 0
+
+    for job in filtered_jobs:
+        if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
+            skipped += 1
+            continue
+
+        was_requested = state.job_repo.request_cancellation(job.id)
+        if not was_requested:
+            skipped += 1
+            continue
+
+        # Log cancellation event
+        state.job_repo.append_job_event(
+            job_id=job.id,
+            event_type="cancel_requested",
+            detail=f"Bulk cancel by admin {user.username}",
+        )
+
+        # For queued jobs, cancel immediately
+        if job.status == JobStatus.QUEUED:
+            state.job_repo.mark_job_canceled(
+                job.id, f"Bulk canceled by admin {user.username}"
+            )
+
+        canceled_ids.append(job.id)
+
+    return BulkCancelResponse(
+        canceled_count=len(canceled_ids),
+        skipped_count=skipped,
+        message=f"Canceled {len(canceled_ids)} job(s), skipped {skipped}",
+        canceled_job_ids=canceled_ids,
+    )
+
+
+@app.post(
+    "/api/admin/jobs/bulk-cancel",
+    response_model=BulkCancelResponse,
+)
+async def bulk_cancel_jobs(
+    request: BulkCancelRequest,
+    state: APIState = Depends(get_api_state),
+    x_trusted_user: str | None = fastapi.Header(None, alias="X-Trusted-User"),
+    x_session_token: str | None = fastapi.Header(None, alias="X-Session-Token"),
+) -> BulkCancelResponse:
+    """Bulk cancel jobs matching filters (admin only).
+
+    Requires admin role and typing 'CANCEL ALL' as confirmation.
+    Only affects jobs in QUEUED or RUNNING state.
+    """
+    from pulldb.api.auth import authenticate_user
+
+    user = await authenticate_user(state, x_trusted_user, x_session_token)
+
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required for bulk cancel",
+        )
+
+    return await run_in_threadpool(_bulk_cancel_jobs, state, request, user)
+
+
+# --- Manager Endpoints ---
+
+
+class TeamMemberSummary(pydantic.BaseModel):
+    """Summary of a team member for the manager view."""
+
+    user_id: str
+    username: str
+    user_code: str
+    active_jobs: int
+    disabled_at: datetime | None
+    password_reset_pending: bool
+
+
+class PaginatedTeamResponse(pydantic.BaseModel):
+    """Paginated response for manager team list."""
+
+    rows: list[TeamMemberSummary]
+    totalCount: int
+    filteredCount: int
+    page: int
+    pageSize: int
+
+
+def _get_paginated_team(
+    state: APIState,
+    user: User,
+    page: int,
+    page_size: int,
+    sort_column: str | None,
+    sort_direction: str | None,
+    filter_username: str | None,
+    filter_user_code: str | None,
+    filter_status: str | None,
+) -> PaginatedTeamResponse:
+    """Get paginated team members for a manager (sync, runs in threadpool)."""
+    # Get users managed by this user
+    managed_users = []
+    if hasattr(state.user_repo, "get_users_managed_by"):
+        managed_users = state.user_repo.get_users_managed_by(user.user_id)
+
+    # Count active jobs per user
+    user_active_jobs: dict[str, int] = {}
+    for mu in managed_users:
+        jobs = state.job_repo.get_jobs_by_user(mu.user_id)
+        user_active_jobs[mu.user_id] = len([
+            j for j in jobs
+            if j.status in (JobStatus.QUEUED, JobStatus.RUNNING)
+        ])
+
+    # Check password reset status per user
+    user_password_reset: dict[str, bool] = {}
+    for mu in managed_users:
+        if state.auth_repo and hasattr(state.auth_repo, "is_password_reset_required"):
+            user_password_reset[mu.user_id] = state.auth_repo.is_password_reset_required(mu.user_id)
+        else:
+            user_password_reset[mu.user_id] = False
+
+    # Apply filters
+    filtered = list(managed_users)
+    if filter_username:
+        filter_lower = filter_username.lower()
+        filtered = [u for u in filtered if filter_lower in (u.username or "").lower()]
+    if filter_user_code:
+        filter_lower = filter_user_code.lower()
+        filtered = [u for u in filtered if filter_lower in (u.user_code or "").lower()]
+    if filter_status:
+        status_values = set(filter_status.split(","))
+
+        def matches_status(u: User) -> bool:
+            user_status = "disabled" if u.disabled_at else "active"
+            return user_status in status_values
+
+        filtered = [u for u in filtered if matches_status(u)]
+
+    # Sort
+    if sort_column and sort_direction:
+        reverse = sort_direction == "desc"
+        sort_keys: dict[str, t.Callable[[User], t.Any]] = {
+            "username": lambda u: (u.username or "").lower(),
+            "user_code": lambda u: (u.user_code or "").lower(),
+            "active_jobs": lambda u: user_active_jobs.get(u.user_id, 0),
+            "status": lambda u: 0 if u.disabled_at else 1,
+        }
+        if sort_column in sort_keys:
+            filtered = sorted(filtered, key=sort_keys[sort_column], reverse=reverse)
+
+    total = len(managed_users)
+    filtered_count = len(filtered)
+
+    # Paginate
+    offset = page * page_size
+    page_users = filtered[offset : offset + page_size]
+
+    # Build response
+    rows = [
+        TeamMemberSummary(
+            user_id=u.user_id,
+            username=u.username,
+            user_code=u.user_code,
+            active_jobs=user_active_jobs.get(u.user_id, 0),
+            disabled_at=u.disabled_at,
+            password_reset_pending=user_password_reset.get(u.user_id, False),
+        )
+        for u in page_users
+    ]
+
+    return PaginatedTeamResponse(
+        rows=rows,
+        totalCount=total,
+        filteredCount=filtered_count,
+        page=page,
+        pageSize=page_size,
+    )
+
+
+@app.get("/api/manager/team", response_model=PaginatedTeamResponse)
+async def get_paginated_team(
+    page: int = fastapi.Query(0, ge=0, description="Page number (0-indexed)"),
+    pageSize: int = fastapi.Query(50, ge=10, le=200, description="Page size"),
+    sortColumn: str | None = fastapi.Query(None, description="Column to sort by"),
+    sortDirection: str | None = fastapi.Query(None, description="Sort direction: 'asc' or 'desc'"),
+    filter_username: str | None = fastapi.Query(None, description="Filter by username"),
+    filter_user_code: str | None = fastapi.Query(None, description="Filter by user code"),
+    filter_status: str | None = fastapi.Query(None, description="Filter by status (active/disabled)"),
+    state: APIState = fastapi.Depends(get_api_state),
+    x_trusted_user: str | None = fastapi.Header(None, alias="X-Trusted-User"),
+    x_session_token: str | None = fastapi.Header(None, alias="X-Session-Token"),
+) -> PaginatedTeamResponse:
+    """Get paginated team members for manager LazyTable widget.
+
+    Returns users that are managed by the authenticated user.
+    Requires manager or admin role.
+    """
+    from pulldb.api.auth import authenticate_user
+
+    user = await authenticate_user(state, x_trusted_user, x_session_token)
+
+    if not user.is_manager_or_above:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Manager or admin role required",
+        )
+
+    return await run_in_threadpool(
+        _get_paginated_team,
+        state,
+        user,
+        page,
+        pageSize,
+        sortColumn,
+        sortDirection,
+        filter_username,
+        filter_user_code,
+        filter_status,
+    )
+
+
+@app.get("/api/manager/team/distinct")
+async def get_team_distinct_values(
+    column: str = fastapi.Query(..., description="Column to get distinct values for"),
+    state: APIState = fastapi.Depends(get_api_state),
+    x_trusted_user: str | None = fastapi.Header(None, alias="X-Trusted-User"),
+    x_session_token: str | None = fastapi.Header(None, alias="X-Session-Token"),
+) -> list[str]:
+    """Get distinct values for a column in the team table.
+
+    Used for populating filter dropdowns in the manager team view.
+    """
+    from pulldb.api.auth import authenticate_user
+
+    user = await authenticate_user(state, x_trusted_user, x_session_token)
+
+    if not user.is_manager_or_above:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Manager or admin role required",
+        )
+
+    # Get users managed by this user
+    managed_users = []
+    if hasattr(state.user_repo, "get_users_managed_by"):
+        managed_users = state.user_repo.get_users_managed_by(user.user_id)
+
+    values: set[str] = set()
+    for u in managed_users:
+        if column == "username" and u.username:
+            values.add(u.username)
+        elif column == "user_code" and u.user_code:
+            values.add(u.user_code)
+        elif column == "status":
+            values.add("disabled" if u.disabled_at else "active")
+
+    return sorted(values)
 
 
 # --- Admin Endpoints ---

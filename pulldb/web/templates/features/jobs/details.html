@@ -3,13 +3,22 @@
 {% block title %}Job {{ job.id[:8] }} - pullDB{% endblock %}
 
 {% block content %}
-<div class="job-details-container" hx-get="{{ request.url }}" hx-trigger="every 5s" hx-select=".job-details-container" hx-swap="outerHTML">
+<div class="job-details-container" hx-get="{{ request.url.path }}" hx-trigger="every 5s" hx-select=".job-details-container" hx-swap="outerHTML">
+    {% if flash_message %}
+    <div class="alert alert-{{ flash_type or 'info' }}" style="margin-bottom: 1rem;">
+        {{ flash_message }}
+    </div>
+    {% endif %}
+    
     <div class="page-header">
         <h1 class="page-title">Job Details: <span class="font-mono" title="{{ job.id }}">{{ job.id[:8] }}</span></h1>
-        {% if job.status.value in ['queued', 'running'] and can_cancel %}
-        <form method="POST" action="/web/jobs/{{ job.id }}/cancel" onsubmit="return confirm('Are you sure you want to cancel this job?');">
+        {% if job.status.value in ['queued', 'running'] and can_cancel and not cancel_requested_at %}
+        <form method="POST" action="/web/jobs/{{ job.id }}/cancel" 
+              onsubmit="if(confirm('Are you sure you want to cancel this job?')) { this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Canceling...'; return true; } return false;">
             <button type="submit" class="btn btn-danger">Cancel Job</button>
         </form>
+        {% elif cancel_requested_at and job.status.value == 'running' %}
+        <span class="badge badge-warning">Cancellation Pending</span>
         {% endif %}
     </div>
 

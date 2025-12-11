@@ -6,6 +6,83 @@
 
 ---
 
+## 2025-12-11 | Phase 2: E2E Tests Migration to Simulation Infrastructure
+
+### Context
+Continuation of mock infrastructure unification. Phase 1 completed dev_server.py migration.
+Phase 2 migrates e2e tests (Playwright) to use the same unified simulation infrastructure.
+
+### What Was Done
+1. **Refactored `tests/e2e/conftest.py`** - Replaced 447 lines of duplicate mock code with `E2EAPIState`
+2. **Created `E2EAPIState` class** - Mirrors `DevAPIState`, uses `_initialize_simulation_state()`
+3. **Preserved test data compatibility** - Seeded users, hosts, jobs matching original e2e expectations
+4. **Maintained auth compatibility** - Same "testpass123" password hash for e2e login tests
+
+### Key Changes
+- Removed: `MockUserRepo`, `MockAuthRepo`, `MockJobRepo`, `MockHostRepo`, `create_mock_*` helpers
+- Added: `E2EAPIState` class using simulation infrastructure
+- Added: `_seed_e2e_data()` and `_seed_auth_credentials()` methods
+- File reduced from 447 to ~440 lines (much cleaner, less duplication)
+
+### Rationale
+- **Single Source of Truth**: All three mock systems (dev, e2e, simulation) now share one implementation
+- **Prevents Drift**: Future changes to simulation automatically apply to e2e tests
+- **Easier Maintenance**: One place to update mock behavior
+
+### Files Modified
+- `tests/e2e/conftest.py` (major refactor)
+
+---
+
+## 2025-12-XX | Mock Infrastructure Unification & Cleanup-Staging Bug Fix
+
+### Context
+User reported bug: `Cleanup failed: 'MockJobRepo' object has no attribute 'find_job_by_staging_prefix'` on the cleanup-staging page in dev server mode.
+
+### Root Cause
+The dev server (`scripts/dev_server.py`) used custom `MockJobRepo` but did NOT set `PULLDB_MODE=SIMULATION`. This meant cleanup code took the "real" path expecting full `JobRepository` interface, but got incomplete mock.
+
+Additionally, discovered THREE separate mock implementations causing drift:
+1. `pulldb/simulation/` - Production simulation mode (most complete)
+2. `scripts/dev_server.py` - Dev server custom mocks (incomplete)
+3. `tests/e2e/conftest.py` - Playwright e2e test mocks (incomplete)
+
+### What Was Done
+1. **Created `pulldb/simulation/core/seeding.py`** - Data seeding functions for dev scenarios
+2. **Enhanced `SimulatedJobRepository`** - Added compatibility properties (`active_jobs`, `history_jobs`, `_cancel_requested`)
+3. **Set `PULLDB_MODE=SIMULATION`** at top of dev_server.py
+4. **Created `DevAPIState` class** - Replaces `MockAPIState`, uses unified simulation infrastructure
+5. **Deleted ~1100 lines of duplicate mock code** from dev_server.py
+6. **Fixed `prune_job_events` signature** - Added default value to match production
+7. **Created `tests/simulation/test_protocol_parity.py`** - Catches future mock drift at CI time
+
+### Rationale
+- **FAIL HARD**: Three separate mocks inevitably drift, causing silent failures
+- **Single Source of Truth**: Unified simulation prevents drift
+- **Protocol Parity Tests**: CI catches missing methods BEFORE they cause bugs
+- **HCA Compliance**: Seeding module in shared layer, DevAPIState in pages layer
+
+### Key Decisions
+| Decision | Why |
+|----------|-----|
+| Unify to simulation module | Single source prevents drift |
+| Keep scenario switching | Dev workflow requires different states |
+| Add parity tests | CI catches drift early |
+| Leave e2e for phase 2 | Focus on immediate bug fix first |
+
+### Files Modified
+- `pulldb/simulation/core/seeding.py` (created)
+- `pulldb/simulation/adapters/mock_mysql.py` (added properties, fixed signature)
+- `scripts/dev_server.py` (refactored, deleted ~1100 lines)
+- `tests/simulation/test_protocol_parity.py` (created)
+
+### Test Results
+- 42 tests pass (simulation + unit)
+- Dev server starts correctly
+- Protocol parity tests catch future drift
+
+---
+
 ## 2025-12-04 | Automatic Session Logging Implementation
 
 ### Context
