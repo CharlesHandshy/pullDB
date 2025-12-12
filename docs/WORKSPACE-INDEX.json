@@ -1,125 +1,1343 @@
 {
   "meta": {
-    "version": "1.0.0",
-    "updated": "2025-11-26",
-    "file_count": 297,
+    "version": "2.0.0",
+    "generated": "2025-12-12",
+    "file_count": 91,
+    "test_count": 137,
     "purpose": "Atomic-level workspace index for AI model searching"
   },
   "architecture": {
-    "pattern": "CLI → API → MySQL Queue ← Worker → S3/myloader",
-    "services": ["api", "worker"],
+    "pattern": "CLI \u2192 API \u2192 MySQL Queue \u2190 Worker \u2192 S3/myloader",
+    "services": [
+      "api",
+      "worker",
+      "web"
+    ],
     "database": "pulldb_service",
     "coordinator": "mysql_only"
   },
+  "hca_layers": {
+    "shared": [
+      "pulldb/auth/__init__.py",
+      "pulldb/auth/password.py",
+      "pulldb/auth/repository.py",
+      "pulldb/infra/__init__.py",
+      "pulldb/infra/exec.py",
+      "pulldb/infra/factory.py",
+      "pulldb/infra/logging.py",
+      "pulldb/infra/metrics.py",
+      "pulldb/infra/mysql.py",
+      "pulldb/infra/s3.py",
+      "pulldb/infra/secrets.py",
+      "pulldb/simulation/adapters/__init__.py",
+      "pulldb/simulation/adapters/mock_exec.py",
+      "pulldb/simulation/adapters/mock_mysql.py",
+      "pulldb/simulation/adapters/mock_s3.py",
+      "pulldb/web/shared/__init__.py",
+      "pulldb/web/shared/contracts/__init__.py",
+      "pulldb/web/shared/contracts/page_contracts.py",
+      "pulldb/web/shared/contracts/service_contracts.py",
+      "pulldb/web/shared/layouts/__init__.py",
+      "pulldb/web/shared/ui/__init__.py",
+      "pulldb/web/shared/utils/__init__.py"
+    ],
+    "entities": [
+      "pulldb/domain/__init__.py",
+      "pulldb/domain/config.py",
+      "pulldb/domain/errors.py",
+      "pulldb/domain/interfaces.py",
+      "pulldb/domain/models.py",
+      "pulldb/domain/permissions.py",
+      "pulldb/domain/restore_models.py",
+      "pulldb/web/entities/__init__.py"
+    ],
+    "features": [
+      "pulldb/domain/services/__init__.py",
+      "pulldb/domain/services/discovery.py",
+      "pulldb/simulation/core/bus.py",
+      "pulldb/simulation/core/engine.py",
+      "pulldb/simulation/core/queue_runner.py",
+      "pulldb/simulation/core/scenarios.py",
+      "pulldb/simulation/core/seeding.py",
+      "pulldb/simulation/core/state.py",
+      "pulldb/web/features/__init__.py",
+      "pulldb/web/features/admin/routes.py",
+      "pulldb/web/features/auth/routes.py",
+      "pulldb/web/features/dashboard/routes.py",
+      "pulldb/web/features/jobs/routes.py",
+      "pulldb/web/features/manager/routes.py",
+      "pulldb/web/features/restore/routes.py",
+      "pulldb/worker/__init__.py",
+      "pulldb/worker/atomic_rename.py",
+      "pulldb/worker/cleanup.py",
+      "pulldb/worker/downloader.py",
+      "pulldb/worker/executor.py",
+      "pulldb/worker/log_normalizer.py",
+      "pulldb/worker/loop.py",
+      "pulldb/worker/metadata.py",
+      "pulldb/worker/metadata_synthesis.py",
+      "pulldb/worker/post_sql.py",
+      "pulldb/worker/profiling.py",
+      "pulldb/worker/restore.py",
+      "pulldb/worker/staging.py"
+    ],
+    "widgets": [
+      "pulldb/web/widgets/__init__.py",
+      "pulldb/web/widgets/breadcrumbs/__init__.py",
+      "pulldb/web/widgets/bulk_actions/__init__.py",
+      "pulldb/web/widgets/filter_bar/__init__.py",
+      "pulldb/web/widgets/header/__init__.py",
+      "pulldb/web/widgets/lazy_table/__init__.py",
+      "pulldb/web/widgets/searchable_dropdown/__init__.py",
+      "pulldb/web/widgets/sidebar/__init__.py",
+      "pulldb/web/widgets/virtual_table/__init__.py",
+      "pulldb/worker/service.py"
+    ],
+    "pages": [
+      "pulldb/api/__init__.py",
+      "pulldb/api/auth.py",
+      "pulldb/api/logic.py",
+      "pulldb/api/main.py",
+      "pulldb/api/schemas.py",
+      "pulldb/api/types.py",
+      "pulldb/cli/__init__.py",
+      "pulldb/cli/__main__.py",
+      "pulldb/cli/admin.py",
+      "pulldb/cli/admin_commands.py",
+      "pulldb/cli/main.py",
+      "pulldb/cli/parse.py",
+      "pulldb/cli/secrets_commands.py",
+      "pulldb/cli/settings.py",
+      "pulldb/simulation/api/__init__.py",
+      "pulldb/simulation/api/router.py",
+      "pulldb/web/__init__.py",
+      "pulldb/web/dependencies.py",
+      "pulldb/web/exceptions.py",
+      "pulldb/web/router_registry.py"
+    ],
+    "plugins": [
+      "pulldb/binaries/__init__.py"
+    ]
+  },
   "packages": {
-    "pulldb": {
+    "__init__.py": {
+      "__init__.py": {
+        "layer": "unknown",
+        "classes": [],
+        "functions": []
+      }
+    },
+    "api": {
+      "__init__.py": {
+        "layer": "pages",
+        "classes": [],
+        "functions": []
+      },
+      "auth.py": {
+        "layer": "pages",
+        "classes": [],
+        "functions": [
+          "get_auth_mode",
+          "get_current_user_optional",
+          "authenticate_user",
+          "authenticate_user_optional",
+          "get_authenticated_user",
+          "get_admin_user",
+          "get_manager_user",
+          "get_optional_user",
+          "validate_job_submission_user"
+        ],
+        "endpoints": [
+          "GET session_token",
+          "GET session_token",
+          "GET session_token",
+          "GET session_token"
+        ]
+      },
+      "logic.py": {
+        "layer": "pages",
+        "classes": [],
+        "functions": [
+          "validate_job_request",
+          "check_concurrency_limits",
+          "enqueue_job"
+        ]
+      },
+      "main.py": {
+        "layer": "pages",
+        "classes": [
+          "UserInfoResponse",
+          "ChangePasswordRequest",
+          "UserLastJobResponse",
+          "JobMatch",
+          "JobResolveResponse",
+          "JobSearchResult",
+          "JobSearchResponse",
+          "PaginatedJobsResponse",
+          "LastJobResponse",
+          "PhaseProfileResponse",
+          "JobProfileResponse",
+          "CancelResponse",
+          "BulkCancelRequest",
+          "BulkCancelResponse",
+          "TeamMemberSummary",
+          "PaginatedTeamResponse",
+          "PruneLogsRequest",
+          "PruneLogsResponse",
+          "CleanupStagingRequest",
+          "CleanupStagingResponse",
+          "OrphanDatabaseItem",
+          "OrphanReportResponse",
+          "HostScanError",
+          "AllOrphansResponse",
+          "DeleteOrphansRequest",
+          "DeleteOrphansResponse",
+          "PaginatedOrphansResponse",
+          "OrphanMetadataResponse",
+          "DropdownOption",
+          "DropdownSearchResponse",
+          "BackupInfo",
+          "BackupSearchResponse"
+        ],
+        "functions": [
+          "get_api_state",
+          "health",
+          "get_user_info",
+          "change_password",
+          "status_endpoint",
+          "submit_job",
+          "list_jobs",
+          "list_active_jobs",
+          "get_user_last_job",
+          "resolve_job_id",
+          "get_paginated_jobs",
+          "get_distinct_values",
+          "search_jobs",
+          "get_my_last_job",
+          "list_job_history",
+          "list_job_events",
+          "get_job_profile",
+          "cancel_job",
+          "bulk_cancel_jobs",
+          "get_paginated_team",
+          "get_team_distinct_values",
+          "prune_logs",
+          "cleanup_staging",
+          "get_orphan_databases",
+          "delete_orphan_databases",
+          "get_paginated_orphan_databases",
+          "get_orphan_database_metadata",
+          "delete_single_orphan_database",
+          "create_app",
+          "search_customers_dropdown",
+          "search_users_dropdown",
+          "search_hosts_dropdown",
+          "search_backups",
+          "main"
+        ],
+        "endpoints": [
+          "GET /api/health",
+          "GET /api/users/{username}",
+          "POST /api/auth/change-password",
+          "GET /api/status",
+          "POST /api/jobs",
+          "GET /api/jobs",
+          "GET /api/jobs/active",
+          "GET /api/users/{user_code}/last-job",
+          "GET /api/jobs/resolve/{prefix}",
+          "GET /api/jobs/paginated",
+          "GET /api/jobs/paginated/distinct",
+          "GET /api/jobs/search",
+          "GET /api/jobs/my-last",
+          "GET /api/jobs/history",
+          "GET /api/jobs/{job_id}/events",
+          "GET /api/jobs/{job_id}/profile",
+          "POST /api/jobs/{job_id}/cancel",
+          "POST /api/admin/jobs/bulk-cancel",
+          "GET /api/manager/team",
+          "GET /api/manager/team/distinct",
+          "POST /api/admin/prune-logs",
+          "POST /api/admin/cleanup-staging",
+          "GET /api/admin/orphan-databases",
+          "POST /api/admin/delete-orphans",
+          "GET /api/admin/orphan-databases/paginated",
+          "GET /api/admin/orphan-databases/{dbhost}/{db_name}/meta",
+          "DELETE /api/admin/orphan-databases/{dbhost}/{db_name}",
+          "GET /api/dropdown/customers",
+          "GET /api/dropdown/users",
+          "GET /api/dropdown/hosts",
+          "GET /api/backups/search",
+          "GET is_qatemplate",
+          "GET customer_id",
+          "GET is_qatemplate",
+          "GET customer_id",
+          "GET is_qatemplate",
+          "GET customer_id",
+          "GET is_qatemplate",
+          "GET customer_id",
+          "GET completed_at",
+          "GET duration_seconds",
+          "GET bytes_processed",
+          "GET bytes_per_second",
+          "GET mbps",
+          "GET metadata"
+        ]
+      },
+      "schemas.py": {
+        "layer": "pages",
+        "classes": [
+          "JobRequest",
+          "JobResponse",
+          "JobSummary",
+          "JobHistoryItem",
+          "JobEventResponse",
+          "UserLastJobResponse",
+          "JobMatch",
+          "JobResolveResponse"
+        ],
+        "functions": []
+      },
+      "types.py": {
+        "layer": "pages",
+        "classes": [
+          "APIState"
+        ],
+        "functions": []
+      }
+    },
+    "auth": {
+      "__init__.py": {
+        "layer": "shared",
+        "classes": [],
+        "functions": []
+      },
+      "password.py": {
+        "layer": "shared",
+        "classes": [],
+        "functions": [
+          "hash_password",
+          "verify_password",
+          "needs_rehash"
+        ]
+      },
+      "repository.py": {
+        "layer": "shared",
+        "classes": [
+          "AuthRepository"
+        ],
+        "functions": [],
+        "endpoints": [
+          "GET password_hash",
+          "GET password_reset_at",
+          "GET totp_secret",
+          "GET password_reset_at",
+          "GET totp_enabled"
+        ]
+      }
+    },
+    "binaries": {
+      "__init__.py": {
+        "layer": "plugins",
+        "classes": [],
+        "functions": []
+      }
+    },
+    "cli": {
+      "__init__.py": {
+        "layer": "pages",
+        "classes": [],
+        "functions": []
+      },
+      "__main__.py": {
+        "layer": "pages",
+        "classes": [],
+        "functions": []
+      },
+      "admin.py": {
+        "layer": "pages",
+        "classes": [],
+        "functions": [
+          "cli",
+          "main"
+        ]
+      },
+      "admin_commands.py": {
+        "layer": "pages",
+        "classes": [],
+        "functions": [
+          "jobs_group",
+          "jobs_list",
+          "jobs_cancel",
+          "cleanup_cmd",
+          "hosts_group",
+          "hosts_list",
+          "hosts_enable",
+          "hosts_disable",
+          "hosts_add",
+          "users_group",
+          "users_list",
+          "users_enable",
+          "users_disable",
+          "users_show"
+        ],
+        "endpoints": [
+          "GET created_at",
+          "GET created_at"
+        ]
+      },
+      "main.py": {
+        "layer": "pages",
+        "classes": [
+          "_APIError",
+          "_JobSummary",
+          "_JobRow"
+        ],
+        "functions": [
+          "cli",
+          "restore_cmd",
+          "status_cmd",
+          "search_cmd",
+          "cancel_cmd",
+          "events_cmd",
+          "history_cmd",
+          "profile_cmd",
+          "setpass_cmd",
+          "main"
+        ],
+        "endpoints": [
+          "GET resolved_id",
+          "GET matches",
+          "GET count",
+          "GET staging_name",
+          "GET current_operation",
+          "GET dbhost",
+          "GET source",
+          "GET backups",
+          "GET status",
+          "GET message",
+          "GET total_duration_seconds",
+          "GET total_bytes",
+          "GET error",
+          "GET phases",
+          "GET phase_breakdown_percent",
+          "GET SUDO_USER",
+          "GET USER",
+          "GET submitted_at",
+          "GET started_at",
+          "GET job_id",
+          "GET target",
+          "GET staging_name",
+          "GET owner_username",
+          "GET owner_user_code",
+          "GET timestamp",
+          "GET status",
+          "GET detail",
+          "GET job_id",
+          "GET duration_seconds",
+          "GET mbps",
+          "GET status",
+          "GET detail",
+          "GET message",
+          "GET status",
+          "GET size_mb",
+          "GET event_type",
+          "GET event_type",
+          "GET event_type",
+          "GET user_code",
+          "GET id",
+          "GET target",
+          "GET user_code",
+          "GET detail",
+          "GET job",
+          "GET customer",
+          "GET logged_at",
+          "GET detail",
+          "GET logged_at",
+          "GET detail",
+          "GET logged_at",
+          "GET detail",
+          "GET id",
+          "GET target",
+          "GET user_code",
+          "GET completed_at",
+          "GET duration_seconds",
+          "GET error_detail",
+          "GET key",
+          "GET environment",
+          "GET status",
+          "GET status",
+          "GET status"
+        ],
+        "protocols": [
+          "_JobSummary"
+        ]
+      },
+      "parse.py": {
+        "layer": "pages",
+        "classes": [
+          "CLIParseError",
+          "RestoreCLIOptions"
+        ],
+        "functions": [
+          "parse_restore_args"
+        ]
+      },
+      "secrets_commands.py": {
+        "layer": "pages",
+        "classes": [
+          "SecretParams"
+        ],
+        "functions": [
+          "secrets_group",
+          "list_secrets",
+          "get_secret",
+          "set_secret",
+          "delete_secret",
+          "test_secret",
+          "rotate_secret"
+        ],
+        "endpoints": [
+          "GET host",
+          "GET password",
+          "GET port",
+          "GET username",
+          "GET password",
+          "GET SecretList",
+          "GET Code",
+          "GET Code",
+          "GET DeletionDate",
+          "GET Code",
+          "GET Code",
+          "GET Code",
+          "GET Code",
+          "GET ARN",
+          "GET Error",
+          "GET Error",
+          "GET Error",
+          "GET Error",
+          "GET Error",
+          "GET Description",
+          "GET Error",
+          "GET CreatedDate",
+          "GET LastChangedDate",
+          "GET CreatedDate",
+          "GET LastChangedDate"
+        ]
+      },
+      "settings.py": {
+        "layer": "pages",
+        "classes": [],
+        "functions": [
+          "settings_group",
+          "list_settings",
+          "get_setting",
+          "set_setting",
+          "reset_setting",
+          "export_settings",
+          "diff_settings",
+          "pull_settings",
+          "push_settings"
+        ]
+      }
+    },
+    "domain": {
+      "__init__.py": {
+        "layer": "entities",
+        "classes": [],
+        "functions": []
+      },
+      "config.py": {
+        "layer": "entities",
+        "classes": [
+          "S3BackupLocationConfig",
+          "Config"
+        ],
+        "functions": [],
+        "endpoints": [
+          "GET s3_bucket_stg",
+          "GET s3_bucket_prod",
+          "GET default_dbhost",
+          "GET work_directory",
+          "GET customers_after_sql_dir",
+          "GET qa_template_after_sql_dir",
+          "GET s3_backup_locations",
+          "GET bucket_path",
+          "GET profile",
+          "GET target_aliases",
+          "GET myloader_binary",
+          "GET myloader_default_args",
+          "GET myloader_extra_args",
+          "GET myloader_timeout_seconds",
+          "GET myloader_threads",
+          "GET name",
+          "GET format"
+        ]
+      },
+      "errors.py": {
+        "layer": "entities",
+        "classes": [
+          "JobExecutionError",
+          "DownloadError",
+          "ExtractionError",
+          "DiskCapacityError",
+          "MyLoaderError",
+          "PostSQLError",
+          "AtomicRenameError",
+          "BackupValidationError",
+          "BackupDiscoveryError",
+          "MetadataInjectionError",
+          "StagingError",
+          "CancellationError"
+        ],
+        "functions": []
+      },
+      "interfaces.py": {
+        "layer": "entities",
+        "classes": [
+          "JobRepository",
+          "AuthRepository",
+          "S3Client",
+          "ProcessExecutor",
+          "UserRepository",
+          "HostRepository",
+          "SettingsRepository"
+        ],
+        "functions": [],
+        "protocols": [
+          "JobRepository",
+          "AuthRepository",
+          "S3Client",
+          "ProcessExecutor",
+          "UserRepository",
+          "HostRepository",
+          "SettingsRepository"
+        ]
+      },
+      "models.py": {
+        "layer": "entities",
+        "classes": [
+          "JobStatus",
+          "UserRole",
+          "User",
+          "Job",
+          "JobEvent",
+          "DBHost",
+          "Setting",
+          "CommandResult",
+          "MySQLCredentials",
+          "UserSummary",
+          "UserDetail"
+        ],
+        "functions": []
+      },
+      "permissions.py": {
+        "layer": "entities",
+        "classes": [],
+        "functions": [
+          "can_view_job",
+          "can_cancel_job",
+          "can_submit_for_user",
+          "can_manage_users",
+          "can_manage_user",
+          "can_reset_password",
+          "can_reassign_user",
+          "can_bulk_manage_users",
+          "can_change_user_role",
+          "can_manage_config",
+          "can_view_all_jobs",
+          "require_role"
+        ]
+      },
+      "restore_models.py": {
+        "layer": "entities",
+        "classes": [
+          "MyLoaderSpec",
+          "MyLoaderResult"
+        ],
+        "functions": [
+          "build_configured_myloader_spec"
+        ]
+      },
+      "services": {
+        "__init__.py": {
+          "layer": "features",
+          "classes": [],
+          "functions": []
+        },
+        "discovery.py": {
+          "layer": "features",
+          "classes": [
+            "BackupInfo",
+            "SearchContext",
+            "DiscoveryService"
+          ],
+          "functions": [],
+          "endpoints": [
+            "GET bucket_path",
+            "GET profile",
+            "GET bucket_path",
+            "GET name",
+            "GET profile",
+            "GET ContentLength"
+          ]
+        }
+      }
+    },
+    "infra": {
+      "__init__.py": {
+        "layer": "shared",
+        "classes": [],
+        "functions": []
+      },
+      "exec.py": {
+        "layer": "shared",
+        "classes": [
+          "CommandExecutionError",
+          "CommandTimeoutError",
+          "SubprocessExecutor"
+        ],
+        "functions": [
+          "run_command",
+          "run_command_streaming"
+        ]
+      },
+      "factory.py": {
+        "layer": "shared",
+        "classes": [],
+        "functions": [
+          "get_mode",
+          "is_simulation_mode",
+          "get_job_repository",
+          "get_s3_client",
+          "get_process_executor",
+          "get_user_repository",
+          "get_host_repository",
+          "get_settings_repository"
+        ]
+      },
+      "logging.py": {
+        "layer": "shared",
+        "classes": [
+          "JSONFormatter"
+        ],
+        "functions": [
+          "get_logger"
+        ]
+      },
+      "metrics.py": {
+        "layer": "shared",
+        "classes": [
+          "MetricLabels"
+        ],
+        "functions": [
+          "emit_counter",
+          "emit_gauge",
+          "emit_timer",
+          "time_operation",
+          "emit_event"
+        ]
+      },
+      "mysql.py": {
+        "layer": "shared",
+        "classes": [
+          "MySQLPool",
+          "JobRepository",
+          "UserRepository",
+          "AuditRepository",
+          "HostRepository",
+          "SettingsRepository"
+        ],
+        "functions": [
+          "build_default_pool"
+        ],
+        "endpoints": [
+          "GET options_json",
+          "GET status",
+          "GET last_event_type",
+          "GET role",
+          "GET last_event_detail",
+          "GET is_admin",
+          "GET started_at",
+          "GET completed_at",
+          "GET retry_count",
+          "GET error_detail",
+          "GET worker_id",
+          "GET staging_cleaned_at",
+          "GET started_at",
+          "GET detail",
+          "GET manager_id",
+          "GET disabled_at",
+          "GET context_json",
+          "GET host_alias",
+          "GET downloaded_bytes",
+          "GET total_bytes"
+        ]
+      },
+      "s3.py": {
+        "layer": "shared",
+        "classes": [
+          "BackupSpec",
+          "S3Client"
+        ],
+        "functions": [
+          "parse_s3_bucket_path",
+          "discover_latest_backup"
+        ],
+        "endpoints": [
+          "GET ContentLength",
+          "GET IsTruncated",
+          "GET Contents",
+          "GET Key",
+          "GET NextContinuationToken"
+        ]
+      },
+      "secrets.py": {
+        "layer": "shared",
+        "classes": [
+          "CredentialResolver",
+          "CredentialResolutionError"
+        ],
+        "functions": [],
+        "endpoints": [
+          "GET password",
+          "GET host",
+          "GET username",
+          "GET dbClusterIdentifier",
+          "GET password",
+          "GET host",
+          "GET Code",
+          "GET Code",
+          "GET Error",
+          "GET Error"
+        ]
+      }
+    },
+    "simulation": {
+      "__init__.py": {
+        "layer": "unknown",
+        "classes": [],
+        "functions": []
+      },
+      "adapters": {
+        "__init__.py": {
+          "layer": "shared",
+          "classes": [],
+          "functions": []
+        },
+        "mock_exec.py": {
+          "layer": "shared",
+          "classes": [
+            "MockCommandConfig",
+            "MockProcessExecutor"
+          ],
+          "functions": []
+        },
+        "mock_mysql.py": {
+          "layer": "shared",
+          "classes": [
+            "SimulatedJobRepository",
+            "SimulatedUserRepository",
+            "SimulatedHostRepository",
+            "SimulatedSettingsRepository",
+            "SimulatedAuthRepository",
+            "SimulatedAuditRepository"
+          ],
+          "functions": [],
+          "endpoints": [
+            "GET totp_enabled",
+            "GET password_hash",
+            "GET password_reset_at",
+            "GET totp_secret",
+            "GET totp_enabled",
+            "GET password_reset_at",
+            "GET description",
+            "GET updated_at",
+            "GET session_id"
+          ]
+        },
+        "mock_s3.py": {
+          "layer": "shared",
+          "classes": [
+            "S3Error",
+            "MockStreamingBody",
+            "MockS3Client"
+          ],
+          "functions": []
+        }
+      },
       "api": {
-        "main.py": {
-          "classes": ["JobRequest", "JobResponse", "JobSummary", "JobEventResponse", "APIState"],
-          "functions": ["create_app", "submit_job", "list_jobs", "health", "status_endpoint"],
-          "endpoints": ["/jobs", "/jobs/active", "/jobs/{id}/events", "/health", "/status"]
+        "__init__.py": {
+          "layer": "pages",
+          "classes": [],
+          "functions": []
+        },
+        "router.py": {
+          "layer": "pages",
+          "classes": [
+            "SimulationStatusResponse",
+            "ResetResponse",
+            "ScenarioInfo",
+            "ScenarioListResponse",
+            "ActivateScenarioRequest",
+            "ActivateScenarioResponse",
+            "EventInfo",
+            "EventHistoryResponse",
+            "InjectChaosRequest",
+            "InjectChaosResponse",
+            "StateSnapshotResponse",
+            "SeedUserRequest",
+            "SeedUserResponse",
+            "QueueProcessRequest",
+            "ProcessedJobInfo",
+            "QueueProcessResponse",
+            "AdvanceJobRequest",
+            "AdvanceJobResponse",
+            "QueueStatusResponse"
+          ],
+          "functions": [
+            "get_status",
+            "reset_state",
+            "list_scenarios",
+            "activate_scenario",
+            "get_events",
+            "clear_events",
+            "inject_chaos",
+            "get_state_snapshot",
+            "list_event_types",
+            "list_scenario_types",
+            "seed_user",
+            "process_next_job",
+            "process_all_jobs",
+            "advance_job_phase",
+            "get_queue_status"
+          ],
+          "endpoints": [
+            "GET /status",
+            "POST /reset",
+            "GET /scenarios",
+            "POST /scenarios/activate",
+            "GET /events",
+            "DELETE /events",
+            "POST /chaos",
+            "GET /state",
+            "GET /event-types",
+            "GET /scenario-types",
+            "POST /seed-user",
+            "POST /queue/process-next",
+            "POST /queue/process-all",
+            "POST /queue/advance-job",
+            "GET /queue/status"
+          ]
         }
       },
-      "cli": {
-        "main.py": {
-          "classes": ["_APIError", "_JobRow"],
-          "functions": ["cli", "restore_cmd", "status_cmd", "_api_post", "_api_get"],
-          "commands": ["restore", "status", "settings"]
+      "core": {
+        "bus.py": {
+          "layer": "features",
+          "classes": [
+            "EventType",
+            "SimulationEvent",
+            "SimulationEventBus",
+            "_BusHolder"
+          ],
+          "functions": [
+            "get_event_bus",
+            "reset_event_bus"
+          ],
+          "endpoints": [
+            "GET None"
+          ]
         },
-        "parse.py": {
-          "classes": ["CLIParseError", "RestoreCLIOptions"],
-          "functions": ["parse_restore_args"]
+        "engine.py": {
+          "layer": "features",
+          "classes": [
+            "SimulationConfig",
+            "SimulationEngine"
+          ],
+          "functions": []
         },
-        "settings.py": {
-          "functions": ["settings_group", "list_settings", "get_setting", "set_setting", "reset_setting", "export_settings"]
+        "queue_runner.py": {
+          "layer": "features",
+          "classes": [
+            "JobPhase",
+            "MockRunnerConfig",
+            "MockQueueRunner"
+          ],
+          "functions": [
+            "get_mock_queue_runner"
+          ]
+        },
+        "scenarios.py": {
+          "layer": "features",
+          "classes": [
+            "ScenarioType",
+            "ChaosConfig",
+            "Scenario",
+            "ScenarioManager"
+          ],
+          "functions": [
+            "get_scenario_manager",
+            "reset_scenario_manager"
+          ]
+        },
+        "seeding.py": {
+          "layer": "features",
+          "classes": [],
+          "functions": [
+            "seed_dev_users",
+            "seed_dev_hosts",
+            "seed_orphan_databases",
+            "seed_dev_settings",
+            "seed_active_jobs",
+            "seed_history_jobs",
+            "seed_dev_scenario",
+            "reset_and_seed"
+          ]
+        },
+        "state.py": {
+          "layer": "features",
+          "classes": [
+            "SimulationState"
+          ],
+          "functions": [
+            "get_simulation_state",
+            "reset_simulation"
+          ]
+        }
+      }
+    },
+    "web": {
+      "__init__.py": {
+        "layer": "pages",
+        "classes": [],
+        "functions": []
+      },
+      "dependencies.py": {
+        "layer": "pages",
+        "classes": [],
+        "functions": [
+          "get_api_state",
+          "get_session_user",
+          "require_login",
+          "require_admin",
+          "require_manager_or_above"
+        ],
+        "endpoints": [
+          "GET session_token",
+          "GET HX-Request",
+          "GET labelStyle",
+          "GET path",
+          "GET type",
+          "GET label",
+          "GET logoScale",
+          "GET top",
+          "GET bottom",
+          "GET left",
+          "GET right",
+          "GET x",
+          "GET y",
+          "GET font",
+          "GET size",
+          "GET weight",
+          "GET style",
+          "GET color",
+          "GET rotation",
+          "GET spacing",
+          "GET transform",
+          "GET crop",
+          "GET crop",
+          "GET crop",
+          "GET crop"
+        ]
+      },
+      "entities": {
+        "__init__.py": {
+          "layer": "entities",
+          "classes": [],
+          "functions": []
         }
       },
-      "domain": {
-        "models.py": {
-          "classes": ["JobStatus", "User", "Job", "JobEvent", "DBHost", "Setting"],
-          "enums": {"JobStatus": ["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"]}
+      "exceptions.py": {
+        "layer": "pages",
+        "classes": [
+          "SessionExpiredError",
+          "PermissionDeniedError",
+          "ResourceNotFoundError"
+        ],
+        "functions": [
+          "create_session_expired_handler",
+          "render_error_page"
+        ],
+        "endpoints": [
+          "GET referer"
+        ]
+      },
+      "features": {
+        "__init__.py": {
+          "layer": "features",
+          "classes": [],
+          "functions": []
         },
-        "config.py": {
-          "classes": ["Config", "S3BackupLocationConfig"],
-          "functions": ["_parse_extra_args", "_parse_myloader_default_args", "_load_s3_backup_locations"]
-        },
-        "errors.py": {
-          "classes": ["JobExecutionError", "DownloadError", "ExtractionError", "DiskCapacityError", "MyLoaderError", "PostSQLError", "AtomicRenameError", "BackupValidationError", "BackupDiscoveryError", "MetadataInjectionError", "StagingError"]
-        },
-        "restore_models.py": {
-          "classes": ["MyLoaderSpec", "MyLoaderResult"],
-          "functions": ["build_configured_myloader_spec"]
+        "routes.py": {
+          "layer": "features",
+          "classes": [],
+          "functions": [
+            "restore_page",
+            "search_customers",
+            "search_backups",
+            "restore_submit"
+          ],
+          "endpoints": [
+            "GET /",
+            "GET /search-customers",
+            "GET /search-backups",
+            "POST /"
+          ]
         }
       },
-      "infra": {
-        "mysql.py": {
-          "classes": ["MySQLPool", "JobRepository", "UserRepository", "HostRepository", "SettingsRepository"],
-          "functions": ["build_default_pool"]
+      "router_registry.py": {
+        "layer": "pages",
+        "classes": [],
+        "functions": []
+      },
+      "shared": {
+        "__init__.py": {
+          "layer": "shared",
+          "classes": [],
+          "functions": []
         },
-        "s3.py": {
-          "classes": ["S3Client", "BackupSpec"],
-          "functions": ["discover_latest_backup", "parse_s3_bucket_path"]
+        "page_contracts.py": {
+          "layer": "shared",
+          "classes": [
+            "PageContext",
+            "ErrorPageContext",
+            "DashboardContext",
+            "JobDetailContext",
+            "AdminContext",
+            "PageRenderer"
+          ],
+          "functions": [],
+          "protocols": [
+            "PageRenderer"
+          ]
         },
-        "secrets.py": {
-          "classes": ["MySQLCredentials", "CredentialResolver", "CredentialResolutionError"]
-        },
-        "logging.py": {
-          "classes": ["JSONFormatter"],
-          "functions": ["get_logger"]
-        },
-        "metrics.py": {
-          "classes": ["MetricLabels"],
-          "functions": ["emit_counter", "emit_gauge", "emit_timer", "time_operation", "emit_event"]
-        },
-        "exec.py": {
-          "classes": ["CommandResult", "CommandExecutionError", "CommandTimeoutError"],
-          "functions": ["run_command", "run_command_streaming"]
+        "service_contracts.py": {
+          "layer": "shared",
+          "classes": [
+            "AuthService",
+            "UserRepository",
+            "JobRepository"
+          ],
+          "functions": [],
+          "protocols": [
+            "AuthService",
+            "UserRepository",
+            "JobRepository"
+          ]
         }
       },
-      "worker": {
-        "service.py": {
-          "functions": ["main", "_build_job_repository", "_build_job_executor", "_register_signal_handlers", "_cleanup_zombies"]
-        },
-        "loop.py": {
-          "functions": ["run_poll_loop", "_transition_to_running", "_execute_job"]
-        },
-        "executor.py": {
-          "classes": ["WorkerJobExecutor", "WorkerExecutorDependencies", "WorkerExecutorTimeouts", "WorkerExecutorHooks"],
-          "functions": ["derive_backup_lookup_target", "extract_tar_archive", "build_lookup_targets_for_location"]
-        },
-        "downloader.py": {
-          "functions": ["download_backup", "ensure_disk_capacity", "_stream_download"]
-        },
-        "restore.py": {
-          "classes": ["RestoreWorkflowSpec"],
-          "functions": ["build_restore_workflow_spec", "run_myloader", "orchestrate_restore_workflow", "build_myloader_command"]
-        },
-        "staging.py": {
-          "classes": ["StagingConnectionSpec", "StagingResult"],
-          "functions": ["generate_staging_name", "find_orphaned_staging_databases", "cleanup_orphaned_staging"]
-        },
-        "atomic_rename.py": {
-          "classes": ["AtomicRenameConnectionSpec", "AtomicRenameSpec"],
-          "functions": ["atomic_rename_staging_to_target"]
-        },
-        "post_sql.py": {
-          "classes": ["PostSQLConnectionSpec", "PostSQLScriptResult", "PostSQLExecutionResult"],
-          "functions": ["execute_post_sql", "_discover_scripts"]
-        },
-        "metadata.py": {
-          "classes": ["MetadataConnectionSpec", "MetadataSpec"],
-          "functions": ["inject_metadata_table"]
-        },
-        "metadata_synthesis.py": {
-          "functions": ["synthesize_metadata", "ensure_compatible_metadata", "parse_filename", "count_rows_in_file"]
-        },
-        "log_normalizer.py": {
-          "classes": ["NormalizedLogEvent"],
-          "functions": ["normalize_myloader_line"]
+      "widgets": {
+        "__init__.py": {
+          "layer": "widgets",
+          "classes": [],
+          "functions": []
         }
+      }
+    },
+    "worker": {
+      "__init__.py": {
+        "layer": "features",
+        "classes": [],
+        "functions": []
       },
-      "binaries": {
-        "files": ["myloader-0.9.5", "myloader-0.19.3-3"]
+      "atomic_rename.py": {
+        "layer": "features",
+        "classes": [
+          "AtomicRenameConnectionSpec",
+          "AtomicRenameSpec"
+        ],
+        "functions": [
+          "atomic_rename_staging_to_target"
+        ]
+      },
+      "cleanup.py": {
+        "layer": "features",
+        "classes": [
+          "CleanupCandidate",
+          "OrphanCandidate",
+          "OrphanMetadata",
+          "CleanupResult",
+          "OrphanReport",
+          "ScheduledCleanupSummary"
+        ],
+        "functions": [
+          "is_valid_staging_name",
+          "get_orphan_metadata",
+          "find_cleanup_candidates_from_jobs",
+          "cleanup_from_jobs",
+          "cleanup_specific_databases",
+          "detect_orphaned_databases",
+          "fetch_orphan_metadata",
+          "admin_delete_orphan_databases",
+          "run_scheduled_cleanup",
+          "cleanup_host_staging",
+          "find_orphaned_staging"
+        ],
+        "endpoints": [
+          "GET restored_at",
+          "GET job_id",
+          "GET restored_by",
+          "GET restored_at",
+          "GET target_database",
+          "GET backup_filename",
+          "GET restore_duration_seconds",
+          "GET job_id",
+          "GET restored_by",
+          "GET target_database",
+          "GET backup_filename",
+          "GET restore_duration_seconds"
+        ]
+      },
+      "downloader.py": {
+        "layer": "features",
+        "classes": [],
+        "functions": [
+          "ensure_disk_capacity",
+          "download_backup"
+        ],
+        "endpoints": [
+          "GET Code",
+          "GET Error"
+        ]
+      },
+      "executor.py": {
+        "layer": "features",
+        "classes": [
+          "WorkerExecutorDependencies",
+          "WorkerExecutorTimeouts",
+          "WorkerExecutorHooks",
+          "WorkerJobExecutor"
+        ],
+        "functions": [
+          "derive_backup_lookup_target",
+          "build_lookup_targets_for_location",
+          "extract_tar_archive"
+        ],
+        "endpoints": [
+          "GET customer_id",
+          "GET is_qatemplate",
+          "GET env",
+          "GET is_qatemplate",
+          "GET status",
+          "GET phase",
+          "GET phase",
+          "GET file",
+          "GET file",
+          "GET phase"
+        ]
+      },
+      "log_normalizer.py": {
+        "layer": "features",
+        "classes": [
+          "NormalizedLogEvent"
+        ],
+        "functions": [
+          "normalize_myloader_line"
+        ]
+      },
+      "loop.py": {
+        "layer": "features",
+        "classes": [],
+        "functions": [
+          "get_worker_id",
+          "run_poll_loop"
+        ]
+      },
+      "metadata.py": {
+        "layer": "features",
+        "classes": [
+          "MetadataConnectionSpec",
+          "MetadataSpec"
+        ],
+        "functions": [
+          "inject_metadata_table"
+        ]
+      },
+      "metadata_synthesis.py": {
+        "layer": "features",
+        "classes": [],
+        "functions": [
+          "parse_filename",
+          "count_rows_in_file",
+          "synthesize_metadata",
+          "ensure_compatible_metadata"
+        ]
+      },
+      "post_sql.py": {
+        "layer": "features",
+        "classes": [
+          "PostSQLScriptResult",
+          "PostSQLExecutionResult",
+          "PostSQLConnectionSpec"
+        ],
+        "functions": [
+          "execute_post_sql"
+        ]
+      },
+      "profiling.py": {
+        "layer": "features",
+        "classes": [
+          "RestorePhase",
+          "PhaseProfile",
+          "RestoreProfile",
+          "RestoreProfiler"
+        ],
+        "functions": [
+          "parse_profile_from_event"
+        ],
+        "endpoints": [
+          "GET completed_at",
+          "GET bytes_processed",
+          "GET job_id",
+          "GET total_bytes",
+          "GET error",
+          "GET phases",
+          "GET completed_at",
+          "GET duration_seconds",
+          "GET bytes_processed",
+          "GET bytes_per_second",
+          "GET metadata"
+        ]
+      },
+      "restore.py": {
+        "layer": "features",
+        "classes": [
+          "RestoreWorkflowSpec"
+        ],
+        "functions": [
+          "build_restore_workflow_spec",
+          "build_myloader_command",
+          "run_myloader",
+          "orchestrate_restore_workflow"
+        ]
+      },
+      "service.py": {
+        "layer": "widgets",
+        "classes": [],
+        "functions": [
+          "main"
+        ]
+      },
+      "staging.py": {
+        "layer": "features",
+        "classes": [
+          "StagingConnectionSpec",
+          "StagingResult"
+        ],
+        "functions": [
+          "generate_staging_name",
+          "find_orphaned_staging_databases",
+          "cleanup_orphaned_staging"
+        ]
       }
     }
   },
@@ -127,99 +1345,1422 @@
     "database": "pulldb_service",
     "path": "schema/pulldb_service/",
     "files": [
-      {"name": "000_auth_users.sql", "table": "auth_users"},
-      {"name": "010_jobs.sql", "table": "jobs"},
-      {"name": "020_job_events.sql", "table": "job_events"},
-      {"name": "030_db_hosts.sql", "table": "db_hosts"},
-      {"name": "040_locks.sql", "table": "job_locks"},
-      {"name": "050_settings.sql", "table": "settings"},
-      {"name": "060_active_jobs_view.sql", "view": "active_jobs"},
-      {"name": "200_seed_db_hosts.sql", "type": "seed"},
-      {"name": "210_seed_settings.sql", "type": "seed"},
-      {"name": "300_mysql_users.sql", "type": "grants"}
-    ],
-    "users": {
-      "pulldb_api": "API service (jobs, job_events, settings)",
-      "pulldb_worker": "Worker service (full job access)",
-      "pulldb_loader": "myloader restore (target databases)"
-    }
+      {
+        "name": "000_auth_users.sql",
+        "purpose": "auth_users"
+      },
+      {
+        "name": "010_jobs.sql",
+        "purpose": "jobs"
+      },
+      {
+        "name": "020_job_events.sql",
+        "purpose": "job_events"
+      },
+      {
+        "name": "030_db_hosts.sql",
+        "purpose": "db_hosts"
+      },
+      {
+        "name": "040_locks.sql",
+        "purpose": "locks"
+      },
+      {
+        "name": "050_settings.sql",
+        "purpose": "settings"
+      },
+      {
+        "name": "060_active_jobs_view.sql",
+        "purpose": "active_jobs_view"
+      },
+      {
+        "name": "070_auth_users_role.sql",
+        "purpose": "auth_users_role"
+      },
+      {
+        "name": "071_auth_credentials.sql",
+        "purpose": "auth_credentials"
+      },
+      {
+        "name": "072_password_reset.sql",
+        "purpose": "password_reset"
+      },
+      {
+        "name": "072_sessions.sql",
+        "purpose": "sessions"
+      },
+      {
+        "name": "073_manager_user_relationship.sql",
+        "purpose": "manager_user_relationship"
+      },
+      {
+        "name": "074_audit_logs.sql",
+        "purpose": "audit_logs"
+      },
+      {
+        "name": "200_seed_db_hosts.sql",
+        "purpose": "seed_db_hosts"
+      },
+      {
+        "name": "210_seed_settings.sql",
+        "purpose": "seed_settings"
+      },
+      {
+        "name": "300_mysql_users.sql",
+        "purpose": "mysql_users"
+      }
+    ]
   },
   "scripts": {
-    "packaging": ["install_pulldb.sh", "uninstall_pulldb.sh", "upgrade_pulldb.sh", "configure-pulldb.sh", "merge-config.sh", "monitor_jobs.py", "service-validate.sh"],
-    "build": ["build_deb.sh", "build_client_deb.sh"],
-    "setup": ["setup-aws.sh", "setup-aws-credentials.sh", "setup-mysql.sh", "setup-test-environment.sh", "setup_test_env.sh", "teardown-test-environment.sh", "start-test-services.sh"],
-    "validation": ["pulldb-validate.sh", "verify-secrets-perms.sh", "verify-aws-access.py"],
-    "operations": ["cleanup_dev_env.py", "cleanup_system.sh", "deploy-iam-templates.sh"],
-    "development": ["precommit-verify.py", "validate-knowledge-pool.py", "validate-metrics-emission.py", "ensure_fail_hard.py", "benchmark_atomic_rename.py", "deploy_atomic_rename.py", "generate_cloudshell.py", "update-engineering-dna.sh", "audit-permissions.sh", "ci-permissions-check.sh"]
+    "packaging": [
+      "configure-pulldb.sh",
+      "install-dbmate.sh",
+      "install_pulldb.sh",
+      "merge-config.sh",
+      "monitor_jobs.py",
+      "pulldb-worker.service",
+      "service-validate.sh",
+      "start-test-services.sh",
+      "uninstall_pulldb.sh",
+      "upgrade_pulldb.sh"
+    ],
+    "build": [
+      "build_client_deb.sh",
+      "build_deb.sh"
+    ],
+    "setup": [
+      "setup-aws-credentials.sh",
+      "setup-aws.sh",
+      "setup-mysql.sh",
+      "setup-test-environment.sh",
+      "setup_test_env.sh",
+      "teardown-test-environment.sh"
+    ],
+    "validation": [
+      "audit-permissions.sh",
+      "ci-permissions-check.sh",
+      "precommit-verify.py",
+      "pulldb-validate.sh",
+      "validate-knowledge-pool.py",
+      "validate-metrics-emission.py",
+      "verify-aws-access.py",
+      "verify-secrets-perms.sh",
+      "verify_prune_events.sql"
+    ],
+    "operations": [
+      "cleanup_dev_env.py",
+      "cleanup_system.sh",
+      "deploy-and-test.sh",
+      "deploy-iam-templates.sh",
+      "deploy_atomic_rename.py",
+      "pulldb-migrate.sh"
+    ],
+    "development": [
+      "README.md",
+      "benchmark_atomic_rename.py",
+      "capture_styleguide.py",
+      "dev_server.py",
+      "ensure_fail_hard.py",
+      "generate_cloudshell.py",
+      "generate_workspace_index.py",
+      "resource_guard.py",
+      "update-engineering-dna.sh"
+    ]
   },
-  "docs": {
-    "canonical": ["AWS-SETUP.md", "mysql-setup.md", "mysql-schema.md", "testing.md", "KNOWLEDGE-POOL.md", "KNOWLEDGE-POOL.json", "WORKSPACE-INDEX.md"],
-    "reference": ["backup-formats.md", "coding-standards.md", "restore-execution.md", "security-controls.md", "test-environment.md"],
-    "design": ["TRUTH-MATRIX.md", "WORKER-ATOM-EVALUATION.md", "appalachian_workflow_plan.md", "atomic_rename_procedure.sql"],
-    "subdirs": ["archived/", "generated/", "policies/", "terraform/"]
+  "test_mapping": {
+    "pulldb/api/auth.py": [
+      "pulldb/tests/test_api_auth_integration.py",
+      "pulldb/tests/test_auth_repository.py",
+      "pulldb/tests/test_simulated_auth_repository.py",
+      "pulldb/tests/test_web_auth_flow.py"
+    ],
+    "pulldb/auth/password.py": [
+      "pulldb/tests/test_password.py"
+    ],
+    "pulldb/auth/repository.py": [
+      "pulldb/tests/test_auth_repository.py",
+      "pulldb/tests/test_host_repository.py",
+      "pulldb/tests/test_job_repository.py",
+      "pulldb/tests/test_settings_repository.py",
+      "pulldb/tests/test_simulated_auth_repository.py",
+      "pulldb/tests/test_user_repository.py",
+      "pulldb/tests/test_user_repository_role.py",
+      "tests/unit/test_job_repository_active_jobs.py"
+    ],
+    "pulldb/cli/admin.py": [
+      "tests/qa/api/test_admin.py"
+    ],
+    "pulldb/cli/parse.py": [
+      "pulldb/tests/test_cli_parse.py"
+    ],
+    "pulldb/cli/settings.py": [
+      "pulldb/tests/test_settings_repository.py",
+      "tests/qa/admin/test_settings.py"
+    ],
+    "pulldb/domain/config.py": [
+      "pulldb/tests/test_config.py",
+      "pulldb/tests/test_config_integration.py"
+    ],
+    "pulldb/domain/errors.py": [
+      "pulldb/tests/test_errors.py"
+    ],
+    "pulldb/domain/models.py": [
+      "pulldb/tests/test_models.py",
+      "pulldb/tests/test_models_role.py",
+      "pulldb/tests/test_restore_models.py"
+    ],
+    "pulldb/domain/permissions.py": [
+      "pulldb/tests/test_permissions.py",
+      "pulldb/tests/test_permissions_integration.py"
+    ],
+    "pulldb/domain/restore_models.py": [
+      "pulldb/tests/test_restore_models.py"
+    ],
+    "pulldb/domain/services/discovery.py": [
+      "pulldb/tests/test_s3_discovery.py"
+    ],
+    "pulldb/infra/exec.py": [
+      "pulldb/tests/test_exec.py",
+      "pulldb/tests/test_post_sql_execution.py",
+      "pulldb/tests/test_worker_executor.py",
+      "tests/qa/worker/test_executor.py",
+      "tests/simulation/test_mock_exec.py"
+    ],
+    "pulldb/infra/logging.py": [
+      "pulldb/tests/test_logging.py"
+    ],
+    "pulldb/infra/mysql.py": [
+      "tests/simulation/test_mock_mysql.py"
+    ],
+    "pulldb/infra/s3.py": [
+      "pulldb/tests/test_s3_discovery.py",
+      "pulldb/tests/test_s3_real_listing_optional.py",
+      "tests/simulation/test_mock_s3.py"
+    ],
+    "pulldb/infra/secrets.py": [
+      "pulldb/tests/test_secrets.py"
+    ],
+    "pulldb/simulation/adapters/mock_exec.py": [
+      "tests/simulation/test_mock_exec.py"
+    ],
+    "pulldb/simulation/adapters/mock_mysql.py": [
+      "tests/simulation/test_mock_mysql.py"
+    ],
+    "pulldb/simulation/adapters/mock_s3.py": [
+      "tests/simulation/test_mock_s3.py"
+    ],
+    "pulldb/web/features/admin/routes.py": [
+      "pulldb/tests/test_web_routes.py",
+      "tests/qa/webapp/test_routes.py"
+    ],
+    "pulldb/web/features/auth/routes.py": [
+      "pulldb/tests/test_web_routes.py",
+      "tests/qa/webapp/test_routes.py"
+    ],
+    "pulldb/web/features/dashboard/routes.py": [
+      "pulldb/tests/test_web_routes.py",
+      "tests/qa/webapp/test_routes.py"
+    ],
+    "pulldb/web/features/jobs/routes.py": [
+      "pulldb/tests/test_web_routes.py",
+      "tests/qa/webapp/test_routes.py"
+    ],
+    "pulldb/web/features/manager/routes.py": [
+      "pulldb/tests/test_web_routes.py",
+      "tests/qa/webapp/test_routes.py"
+    ],
+    "pulldb/web/features/restore/routes.py": [
+      "pulldb/tests/test_web_routes.py",
+      "tests/qa/webapp/test_routes.py"
+    ],
+    "pulldb/worker/atomic_rename.py": [
+      "pulldb/tests/test_atomic_rename.py",
+      "pulldb/tests/test_atomic_rename_benchmark.py",
+      "pulldb/tests/test_atomic_rename_deploy.py"
+    ],
+    "pulldb/worker/cleanup.py": [
+      "pulldb/tests/test_cleanup.py",
+      "tests/qa/admin/test_cleanup.py",
+      "tests/qa/worker/test_cleanup.py"
+    ],
+    "pulldb/worker/downloader.py": [
+      "pulldb/tests/test_downloader.py",
+      "tests/qa/worker/test_downloader.py"
+    ],
+    "pulldb/worker/executor.py": [
+      "pulldb/tests/test_worker_executor.py",
+      "tests/qa/worker/test_executor.py"
+    ],
+    "pulldb/worker/log_normalizer.py": [
+      "pulldb/tests/test_worker_log_normalizer.py"
+    ],
+    "pulldb/worker/loop.py": [
+      "pulldb/tests/test_loop.py",
+      "tests/qa/worker/test_loop.py"
+    ],
+    "pulldb/worker/metadata.py": [
+      "pulldb/tests/test_metadata_injection.py",
+      "tests/qa/worker/test_metadata.py",
+      "tests/test_worker_metadata_synthesis.py"
+    ],
+    "pulldb/worker/metadata_synthesis.py": [
+      "tests/test_worker_metadata_synthesis.py"
+    ],
+    "pulldb/worker/post_sql.py": [
+      "pulldb/tests/test_post_sql.py",
+      "pulldb/tests/test_post_sql_execution.py"
+    ],
+    "pulldb/worker/profiling.py": [
+      "pulldb/tests/test_profiling.py",
+      "tests/qa/worker/test_profiling.py"
+    ],
+    "pulldb/worker/restore.py": [
+      "pulldb/tests/test_cli_restore.py",
+      "pulldb/tests/test_restore.py",
+      "pulldb/tests/test_restore_models.py",
+      "tests/qa/cli/test_restore.py",
+      "tests/test_restore_version_detection.py"
+    ],
+    "pulldb/worker/service.py": [
+      "pulldb/tests/test_worker_service.py",
+      "tests/qa/worker/test_service.py"
+    ],
+    "pulldb/worker/staging.py": [
+      "pulldb/tests/test_staging.py",
+      "tests/qa/worker/test_staging.py"
+    ]
   },
-  "design": {
-    "architecture": ["two-service-architecture.md", "system-overview.md", "security-model.md"],
-    "planning": ["roadmap.md", "milestone-2-plan.md", "PHASE1-PLANNING.md", "worker_build_plan.md"],
-    "patterns": ["configuration-map.md", "staging-rename-pattern.md"],
-    "operations": ["runbook-failure.md", "runbook-restore.md"]
-  },
-  "copilot": {
-    "main": "copilot-instructions.md",
-    "loadable": ["copilot-instructions-behavior.md", "copilot-instructions-business-logic.md", "copilot-instructions-python.md", "copilot-instructions-status.md", "copilot-instructions-testing.md"]
-  },
-  "environment": {
-    "required": {
-      "PULLDB_API_MYSQL_USER": "API MySQL username",
-      "PULLDB_WORKER_MYSQL_USER": "Worker MySQL username",
-      "PULLDB_MYSQL_HOST": "MySQL host",
-      "PULLDB_MYSQL_DATABASE": "Database name",
-      "PULLDB_WORK_DIR": "Working directory",
-      "PULLDB_S3_BUCKET": "Backup bucket",
-      "PULLDB_S3_PREFIX": "Backup prefix"
+  "search_index": {
+    "classes": {
+      "UserInfoResponse": "pulldb/api/main.py",
+      "ChangePasswordRequest": "pulldb/api/main.py",
+      "UserLastJobResponse": "pulldb/api/schemas.py",
+      "JobMatch": "pulldb/api/schemas.py",
+      "JobResolveResponse": "pulldb/api/schemas.py",
+      "JobSearchResult": "pulldb/api/main.py",
+      "JobSearchResponse": "pulldb/api/main.py",
+      "PaginatedJobsResponse": "pulldb/api/main.py",
+      "LastJobResponse": "pulldb/api/main.py",
+      "PhaseProfileResponse": "pulldb/api/main.py",
+      "JobProfileResponse": "pulldb/api/main.py",
+      "CancelResponse": "pulldb/api/main.py",
+      "BulkCancelRequest": "pulldb/api/main.py",
+      "BulkCancelResponse": "pulldb/api/main.py",
+      "TeamMemberSummary": "pulldb/api/main.py",
+      "PaginatedTeamResponse": "pulldb/api/main.py",
+      "PruneLogsRequest": "pulldb/api/main.py",
+      "PruneLogsResponse": "pulldb/api/main.py",
+      "CleanupStagingRequest": "pulldb/api/main.py",
+      "CleanupStagingResponse": "pulldb/api/main.py",
+      "OrphanDatabaseItem": "pulldb/api/main.py",
+      "OrphanReportResponse": "pulldb/api/main.py",
+      "HostScanError": "pulldb/api/main.py",
+      "AllOrphansResponse": "pulldb/api/main.py",
+      "DeleteOrphansRequest": "pulldb/api/main.py",
+      "DeleteOrphansResponse": "pulldb/api/main.py",
+      "PaginatedOrphansResponse": "pulldb/api/main.py",
+      "OrphanMetadataResponse": "pulldb/api/main.py",
+      "DropdownOption": "pulldb/api/main.py",
+      "DropdownSearchResponse": "pulldb/api/main.py",
+      "BackupInfo": "pulldb/domain/services/discovery.py",
+      "BackupSearchResponse": "pulldb/api/main.py",
+      "JobRequest": "pulldb/api/schemas.py",
+      "JobResponse": "pulldb/api/schemas.py",
+      "JobSummary": "pulldb/api/schemas.py",
+      "JobHistoryItem": "pulldb/api/schemas.py",
+      "JobEventResponse": "pulldb/api/schemas.py",
+      "APIState": "pulldb/api/types.py",
+      "AuthRepository": "pulldb/domain/interfaces.py",
+      "_APIError": "pulldb/cli/main.py",
+      "_JobSummary": "pulldb/cli/main.py",
+      "_JobRow": "pulldb/cli/main.py",
+      "CLIParseError": "pulldb/cli/parse.py",
+      "RestoreCLIOptions": "pulldb/cli/parse.py",
+      "SecretParams": "pulldb/cli/secrets_commands.py",
+      "S3BackupLocationConfig": "pulldb/domain/config.py",
+      "Config": "pulldb/domain/config.py",
+      "JobExecutionError": "pulldb/domain/errors.py",
+      "DownloadError": "pulldb/domain/errors.py",
+      "ExtractionError": "pulldb/domain/errors.py",
+      "DiskCapacityError": "pulldb/domain/errors.py",
+      "MyLoaderError": "pulldb/domain/errors.py",
+      "PostSQLError": "pulldb/domain/errors.py",
+      "AtomicRenameError": "pulldb/domain/errors.py",
+      "BackupValidationError": "pulldb/domain/errors.py",
+      "BackupDiscoveryError": "pulldb/domain/errors.py",
+      "MetadataInjectionError": "pulldb/domain/errors.py",
+      "StagingError": "pulldb/domain/errors.py",
+      "CancellationError": "pulldb/domain/errors.py",
+      "JobRepository": "pulldb/web/shared/contracts/service_contracts.py",
+      "S3Client": "pulldb/infra/s3.py",
+      "ProcessExecutor": "pulldb/domain/interfaces.py",
+      "UserRepository": "pulldb/web/shared/contracts/service_contracts.py",
+      "HostRepository": "pulldb/infra/mysql.py",
+      "SettingsRepository": "pulldb/infra/mysql.py",
+      "JobStatus": "pulldb/domain/models.py",
+      "UserRole": "pulldb/domain/models.py",
+      "User": "pulldb/domain/models.py",
+      "Job": "pulldb/domain/models.py",
+      "JobEvent": "pulldb/domain/models.py",
+      "DBHost": "pulldb/domain/models.py",
+      "Setting": "pulldb/domain/models.py",
+      "CommandResult": "pulldb/domain/models.py",
+      "MySQLCredentials": "pulldb/domain/models.py",
+      "UserSummary": "pulldb/domain/models.py",
+      "UserDetail": "pulldb/domain/models.py",
+      "MyLoaderSpec": "pulldb/domain/restore_models.py",
+      "MyLoaderResult": "pulldb/domain/restore_models.py",
+      "SearchContext": "pulldb/domain/services/discovery.py",
+      "DiscoveryService": "pulldb/domain/services/discovery.py",
+      "CommandExecutionError": "pulldb/infra/exec.py",
+      "CommandTimeoutError": "pulldb/infra/exec.py",
+      "SubprocessExecutor": "pulldb/infra/exec.py",
+      "JSONFormatter": "pulldb/infra/logging.py",
+      "MetricLabels": "pulldb/infra/metrics.py",
+      "MySQLPool": "pulldb/infra/mysql.py",
+      "AuditRepository": "pulldb/infra/mysql.py",
+      "BackupSpec": "pulldb/infra/s3.py",
+      "CredentialResolver": "pulldb/infra/secrets.py",
+      "CredentialResolutionError": "pulldb/infra/secrets.py",
+      "MockCommandConfig": "pulldb/simulation/adapters/mock_exec.py",
+      "MockProcessExecutor": "pulldb/simulation/adapters/mock_exec.py",
+      "SimulatedJobRepository": "pulldb/simulation/adapters/mock_mysql.py",
+      "SimulatedUserRepository": "pulldb/simulation/adapters/mock_mysql.py",
+      "SimulatedHostRepository": "pulldb/simulation/adapters/mock_mysql.py",
+      "SimulatedSettingsRepository": "pulldb/simulation/adapters/mock_mysql.py",
+      "SimulatedAuthRepository": "pulldb/simulation/adapters/mock_mysql.py",
+      "SimulatedAuditRepository": "pulldb/simulation/adapters/mock_mysql.py",
+      "S3Error": "pulldb/simulation/adapters/mock_s3.py",
+      "MockStreamingBody": "pulldb/simulation/adapters/mock_s3.py",
+      "MockS3Client": "pulldb/simulation/adapters/mock_s3.py",
+      "SimulationStatusResponse": "pulldb/simulation/api/router.py",
+      "ResetResponse": "pulldb/simulation/api/router.py",
+      "ScenarioInfo": "pulldb/simulation/api/router.py",
+      "ScenarioListResponse": "pulldb/simulation/api/router.py",
+      "ActivateScenarioRequest": "pulldb/simulation/api/router.py",
+      "ActivateScenarioResponse": "pulldb/simulation/api/router.py",
+      "EventInfo": "pulldb/simulation/api/router.py",
+      "EventHistoryResponse": "pulldb/simulation/api/router.py",
+      "InjectChaosRequest": "pulldb/simulation/api/router.py",
+      "InjectChaosResponse": "pulldb/simulation/api/router.py",
+      "StateSnapshotResponse": "pulldb/simulation/api/router.py",
+      "SeedUserRequest": "pulldb/simulation/api/router.py",
+      "SeedUserResponse": "pulldb/simulation/api/router.py",
+      "QueueProcessRequest": "pulldb/simulation/api/router.py",
+      "ProcessedJobInfo": "pulldb/simulation/api/router.py",
+      "QueueProcessResponse": "pulldb/simulation/api/router.py",
+      "AdvanceJobRequest": "pulldb/simulation/api/router.py",
+      "AdvanceJobResponse": "pulldb/simulation/api/router.py",
+      "QueueStatusResponse": "pulldb/simulation/api/router.py",
+      "EventType": "pulldb/simulation/core/bus.py",
+      "SimulationEvent": "pulldb/simulation/core/bus.py",
+      "SimulationEventBus": "pulldb/simulation/core/bus.py",
+      "_BusHolder": "pulldb/simulation/core/bus.py",
+      "SimulationConfig": "pulldb/simulation/core/engine.py",
+      "SimulationEngine": "pulldb/simulation/core/engine.py",
+      "JobPhase": "pulldb/simulation/core/queue_runner.py",
+      "MockRunnerConfig": "pulldb/simulation/core/queue_runner.py",
+      "MockQueueRunner": "pulldb/simulation/core/queue_runner.py",
+      "ScenarioType": "pulldb/simulation/core/scenarios.py",
+      "ChaosConfig": "pulldb/simulation/core/scenarios.py",
+      "Scenario": "pulldb/simulation/core/scenarios.py",
+      "ScenarioManager": "pulldb/simulation/core/scenarios.py",
+      "SimulationState": "pulldb/simulation/core/state.py",
+      "TestSimulationState": "pulldb/tests/simulation/test_simulation.py",
+      "TestEventBus": "pulldb/tests/simulation/test_simulation.py",
+      "TestSimulatedJobRepository": "pulldb/tests/simulation/test_simulation.py",
+      "TestMockS3Client": "pulldb/tests/simulation/test_simulation.py",
+      "TestMockProcessExecutor": "pulldb/tests/simulation/test_simulation.py",
+      "TestScenarioManager": "pulldb/tests/simulation/test_simulation.py",
+      "TestIntegrationScenarios": "pulldb/tests/simulation/test_simulation.py",
+      "TestAPIAuthIntegration": "pulldb/tests/test_api_auth_integration.py",
+      "FakeUserRepository": "pulldb/tests/test_api_jobs.py",
+      "FakeJobRepository": "pulldb/tests/test_api_jobs.py",
+      "FakeSettingsRepository": "pulldb/tests/test_api_jobs.py",
+      "FakeRepos": "pulldb/tests/test_api_jobs.py",
+      "ResponseProtocol": "pulldb/tests/test_api_jobs.py",
+      "FakeCursor": "pulldb/tests/test_post_sql_execution.py",
+      "FakeConnection": "pulldb/tests/test_post_sql_execution.py",
+      "_BenchmarkEntry": "pulldb/tests/test_atomic_rename_benchmark.py",
+      "_FakeCursor": "pulldb/tests/test_staging.py",
+      "_FakeConnection": "pulldb/tests/test_staging.py",
+      "TestAuthRepositoryPassword": "pulldb/tests/test_auth_repository.py",
+      "TestAuthRepositorySessions": "pulldb/tests/test_auth_repository.py",
+      "TestCancellationError": "pulldb/tests/test_cancellation.py",
+      "TestCancelAPIEndpoint": "pulldb/tests/test_cancellation.py",
+      "TestExecutorCancellationCheckpoints": "pulldb/tests/test_cancellation.py",
+      "TestRepositoryCancellationMethods": "pulldb/tests/test_cancellation.py",
+      "TestCleanupStagingAPI": "pulldb/tests/test_cleanup.py",
+      "TestOrphanReportAPI": "pulldb/tests/test_cleanup.py",
+      "TestCleanupModule": "pulldb/tests/test_cleanup.py",
+      "TestJobRepositoryCleanupMethods": "pulldb/tests/test_cleanup.py",
+      "TestCleanupSafetyGuarantees": "pulldb/tests/test_cleanup.py",
+      "TestClaimNextJob": "pulldb/tests/test_concurrent_workers.py",
+      "TestConcurrentClaiming": "pulldb/tests/test_concurrent_workers.py",
+      "TestWorkerIdentification": "pulldb/tests/test_concurrent_workers.py",
+      "TestMinimalFromEnv": "pulldb/tests/test_config.py",
+      "TestFromEnvAndMySQL": "pulldb/tests/test_config.py",
+      "TestS3BackupLocationParsing": "pulldb/tests/test_config.py",
+      "TestConfigIntegration": "pulldb/tests/test_config_integration.py",
+      "FakeBody": "pulldb/tests/test_downloader.py",
+      "TestHostRepository": "pulldb/tests/test_host_repository.py",
+      "TestPruneLogsAPI": "pulldb/tests/test_job_logs.py",
+      "TestJobRepositoryPruneValidation": "pulldb/tests/test_job_logs.py",
+      "TestEventTypes": "pulldb/tests/test_job_logs.py",
+      "TestJobRepository": "pulldb/tests/test_job_repository.py",
+      "TestUserRole": "pulldb/tests/test_models.py",
+      "TestUserModel": "pulldb/tests/test_models.py",
+      "TestUserRoleEnum": "pulldb/tests/test_models_role.py",
+      "TestUserModelRole": "pulldb/tests/test_models_role.py",
+      "TestHashPassword": "pulldb/tests/test_password.py",
+      "TestVerifyPassword": "pulldb/tests/test_password.py",
+      "TestNeedsRehash": "pulldb/tests/test_password.py",
+      "TestCanViewJob": "pulldb/tests/test_permissions.py",
+      "TestCanCancelJob": "pulldb/tests/test_permissions.py",
+      "TestCanSubmitForUser": "pulldb/tests/test_permissions.py",
+      "TestCanManageUsers": "pulldb/tests/test_permissions.py",
+      "TestCanManageConfig": "pulldb/tests/test_permissions.py",
+      "TestCanViewAllJobs": "pulldb/tests/test_permissions.py",
+      "TestRequireRole": "pulldb/tests/test_permissions.py",
+      "TestPermissionsIntegration": "pulldb/tests/test_permissions_integration.py",
+      "_FakeResult": "pulldb/tests/test_post_sql.py",
+      "FakeResult": "pulldb/tests/test_post_sql_execution.py",
+      "TestRestorePhase": "pulldb/tests/test_profiling.py",
+      "TestPhaseProfile": "pulldb/tests/test_profiling.py",
+      "TestRestoreProfile": "pulldb/tests/test_profiling.py",
+      "TestRestoreProfiler": "pulldb/tests/test_profiling.py",
+      "TestParseProfileFromEvent": "pulldb/tests/test_profiling.py",
+      "TestProfileAPIModels": "pulldb/tests/test_profiling.py",
+      "TestProfileAPIEndpoint": "pulldb/tests/test_profiling.py",
+      "TestProfileCLI": "pulldb/tests/test_profiling.py",
+      "TestAuthUsersRoleMigration": "pulldb/tests/test_schema_phase4.py",
+      "TestAuthCredentialsMigration": "pulldb/tests/test_schema_phase4.py",
+      "TestSessionsMigration": "pulldb/tests/test_schema_phase4.py",
+      "TestMySQLCredentials": "pulldb/tests/test_secrets.py",
+      "TestCredentialResolver": "pulldb/tests/test_secrets.py",
+      "TestSecretsManagerResolution": "pulldb/tests/test_secrets.py",
+      "TestSSMResolution": "pulldb/tests/test_secrets.py",
+      "TestCredentialResolutionError": "pulldb/tests/test_secrets.py",
+      "TestSettingsRepository": "pulldb/tests/test_settings_repository.py",
+      "TestSimulatedAuthRepository": "pulldb/tests/test_simulated_auth_repository.py",
+      "TestUserRepository": "pulldb/tests/test_user_repository.py",
+      "TestUserRepositoryRoleField": "pulldb/tests/test_user_repository_role.py",
+      "TestWebAuthFlow": "pulldb/tests/test_web_auth_flow.py",
+      "TestWebModuleImport": "pulldb/tests/test_web_routes.py",
+      "TestWebRouteDefinitions": "pulldb/tests/test_web_routes.py",
+      "TestTemplateContent": "pulldb/tests/test_web_routes.py",
+      "TestAPIStateWithAuth": "pulldb/tests/test_web_routes.py",
+      "TestHCAStructure": "pulldb/tests/test_web_routes.py",
+      "TestWorkerRBAC": "pulldb/tests/test_worker_rbac.py",
+      "_FakeJobRepo": "pulldb/tests/test_worker_service.py",
+      "SessionExpiredError": "pulldb/web/exceptions.py",
+      "PermissionDeniedError": "pulldb/web/exceptions.py",
+      "ResourceNotFoundError": "pulldb/web/exceptions.py",
+      "PageContext": "pulldb/web/shared/contracts/page_contracts.py",
+      "ErrorPageContext": "pulldb/web/shared/contracts/page_contracts.py",
+      "DashboardContext": "pulldb/web/shared/contracts/page_contracts.py",
+      "JobDetailContext": "pulldb/web/shared/contracts/page_contracts.py",
+      "AdminContext": "pulldb/web/shared/contracts/page_contracts.py",
+      "PageRenderer": "pulldb/web/shared/contracts/page_contracts.py",
+      "AuthService": "pulldb/web/shared/contracts/service_contracts.py",
+      "BreadcrumbItem": "pulldb/web/widgets/breadcrumbs/__init__.py",
+      "BulkActionType": "pulldb/web/widgets/bulk_actions/__init__.py",
+      "BulkAction": "pulldb/web/widgets/bulk_actions/__init__.py",
+      "BulkActionRequest": "pulldb/web/widgets/bulk_actions/__init__.py",
+      "BulkActionResult": "pulldb/web/widgets/bulk_actions/__init__.py",
+      "SortOrder": "pulldb/web/widgets/filter_bar/__init__.py",
+      "FilterOption": "pulldb/web/widgets/filter_bar/__init__.py",
+      "FilterField": "pulldb/web/widgets/filter_bar/__init__.py",
+      "SortField": "pulldb/web/widgets/filter_bar/__init__.py",
+      "FilterBarConfig": "pulldb/web/widgets/filter_bar/__init__.py",
+      "AppliedFilters": "pulldb/web/widgets/filter_bar/__init__.py",
+      "SearchTriggerMode": "pulldb/web/widgets/searchable_dropdown/__init__.py",
+      "SearchableDropdownOption": "pulldb/web/widgets/searchable_dropdown/__init__.py",
+      "SearchableDropdownConfig": "pulldb/web/widgets/searchable_dropdown/__init__.py",
+      "AtomicRenameConnectionSpec": "pulldb/worker/atomic_rename.py",
+      "AtomicRenameSpec": "pulldb/worker/atomic_rename.py",
+      "CleanupCandidate": "pulldb/worker/cleanup.py",
+      "OrphanCandidate": "pulldb/worker/cleanup.py",
+      "OrphanMetadata": "pulldb/worker/cleanup.py",
+      "CleanupResult": "pulldb/worker/cleanup.py",
+      "OrphanReport": "pulldb/worker/cleanup.py",
+      "ScheduledCleanupSummary": "pulldb/worker/cleanup.py",
+      "WorkerExecutorDependencies": "pulldb/worker/executor.py",
+      "WorkerExecutorTimeouts": "pulldb/worker/executor.py",
+      "WorkerExecutorHooks": "pulldb/worker/executor.py",
+      "WorkerJobExecutor": "pulldb/worker/executor.py",
+      "NormalizedLogEvent": "pulldb/worker/log_normalizer.py",
+      "MetadataConnectionSpec": "pulldb/worker/metadata.py",
+      "MetadataSpec": "pulldb/worker/metadata.py",
+      "PostSQLScriptResult": "pulldb/worker/post_sql.py",
+      "PostSQLExecutionResult": "pulldb/worker/post_sql.py",
+      "PostSQLConnectionSpec": "pulldb/worker/post_sql.py",
+      "RestorePhase": "pulldb/worker/profiling.py",
+      "PhaseProfile": "pulldb/worker/profiling.py",
+      "RestoreProfile": "pulldb/worker/profiling.py",
+      "RestoreProfiler": "pulldb/worker/profiling.py",
+      "RestoreWorkflowSpec": "pulldb/worker/restore.py",
+      "StagingConnectionSpec": "pulldb/worker/staging.py",
+      "StagingResult": "pulldb/worker/staging.py"
     },
-    "optional": {
-      "PULLDB_MYSQL_PORT": {"default": "3306"},
-      "PULLDB_API_HOST": {"default": "0.0.0.0"},
-      "PULLDB_API_PORT": {"default": "8080"},
-      "PULLDB_AWS_PROFILE": {"default": null},
-      "PULLDB_S3_AWS_PROFILE": {"default": null},
-      "PULLDB_MYLOADER_BINARY": {"default": "myloader"},
-      "PULLDB_MYLOADER_THREADS": {"default": "4"},
-      "PULLDB_LOG_LEVEL": {"default": "INFO"}
+    "functions": {
+      "get_auth_mode": "pulldb/api/auth.py",
+      "get_current_user_optional": "pulldb/api/auth.py",
+      "authenticate_user": "pulldb/api/auth.py",
+      "authenticate_user_optional": "pulldb/api/auth.py",
+      "get_authenticated_user": "pulldb/api/auth.py",
+      "get_admin_user": "pulldb/api/auth.py",
+      "get_manager_user": "pulldb/api/auth.py",
+      "get_optional_user": "pulldb/api/auth.py",
+      "validate_job_submission_user": "pulldb/api/auth.py",
+      "validate_job_request": "pulldb/api/logic.py",
+      "check_concurrency_limits": "pulldb/api/logic.py",
+      "enqueue_job": "pulldb/api/logic.py",
+      "get_api_state": "pulldb/web/dependencies.py",
+      "health": "pulldb/api/main.py",
+      "get_user_info": "pulldb/api/main.py",
+      "change_password": "pulldb/web/features/auth/routes.py",
+      "status_endpoint": "pulldb/api/main.py",
+      "submit_job": "pulldb/api/main.py",
+      "list_jobs": "pulldb/api/main.py",
+      "list_active_jobs": "pulldb/api/main.py",
+      "get_user_last_job": "pulldb/api/main.py",
+      "resolve_job_id": "pulldb/api/main.py",
+      "get_paginated_jobs": "pulldb/api/main.py",
+      "get_distinct_values": "pulldb/api/main.py",
+      "search_jobs": "pulldb/api/main.py",
+      "get_my_last_job": "pulldb/api/main.py",
+      "list_job_history": "pulldb/api/main.py",
+      "list_job_events": "pulldb/api/main.py",
+      "get_job_profile": "pulldb/api/main.py",
+      "cancel_job": "pulldb/web/features/jobs/routes.py",
+      "bulk_cancel_jobs": "pulldb/api/main.py",
+      "get_paginated_team": "pulldb/api/main.py",
+      "get_team_distinct_values": "pulldb/api/main.py",
+      "prune_logs": "pulldb/web/features/admin/routes.py",
+      "cleanup_staging": "pulldb/web/features/admin/routes.py",
+      "get_orphan_databases": "pulldb/api/main.py",
+      "delete_orphan_databases": "pulldb/api/main.py",
+      "get_paginated_orphan_databases": "pulldb/api/main.py",
+      "get_orphan_database_metadata": "pulldb/api/main.py",
+      "delete_single_orphan_database": "pulldb/api/main.py",
+      "create_app": "pulldb/api/main.py",
+      "search_customers_dropdown": "pulldb/api/main.py",
+      "search_users_dropdown": "pulldb/api/main.py",
+      "search_hosts_dropdown": "pulldb/api/main.py",
+      "search_backups": "pulldb/web/features/restore/routes.py",
+      "main": "pulldb/worker/service.py",
+      "hash_password": "pulldb/auth/password.py",
+      "verify_password": "pulldb/auth/password.py",
+      "needs_rehash": "pulldb/auth/password.py",
+      "cli": "pulldb/cli/main.py",
+      "jobs_group": "pulldb/cli/admin_commands.py",
+      "jobs_list": "pulldb/cli/admin_commands.py",
+      "jobs_cancel": "pulldb/cli/admin_commands.py",
+      "cleanup_cmd": "pulldb/cli/admin_commands.py",
+      "hosts_group": "pulldb/cli/admin_commands.py",
+      "hosts_list": "pulldb/cli/admin_commands.py",
+      "hosts_enable": "pulldb/cli/admin_commands.py",
+      "hosts_disable": "pulldb/cli/admin_commands.py",
+      "hosts_add": "pulldb/cli/admin_commands.py",
+      "users_group": "pulldb/cli/admin_commands.py",
+      "users_list": "pulldb/cli/admin_commands.py",
+      "users_enable": "pulldb/cli/admin_commands.py",
+      "users_disable": "pulldb/cli/admin_commands.py",
+      "users_show": "pulldb/cli/admin_commands.py",
+      "restore_cmd": "pulldb/cli/main.py",
+      "status_cmd": "pulldb/cli/main.py",
+      "search_cmd": "pulldb/cli/main.py",
+      "cancel_cmd": "pulldb/cli/main.py",
+      "events_cmd": "pulldb/cli/main.py",
+      "history_cmd": "pulldb/cli/main.py",
+      "profile_cmd": "pulldb/cli/main.py",
+      "setpass_cmd": "pulldb/cli/main.py",
+      "parse_restore_args": "pulldb/cli/parse.py",
+      "secrets_group": "pulldb/cli/secrets_commands.py",
+      "list_secrets": "pulldb/cli/secrets_commands.py",
+      "get_secret": "pulldb/cli/secrets_commands.py",
+      "set_secret": "pulldb/cli/secrets_commands.py",
+      "delete_secret": "pulldb/cli/secrets_commands.py",
+      "test_secret": "pulldb/cli/secrets_commands.py",
+      "rotate_secret": "pulldb/cli/secrets_commands.py",
+      "settings_group": "pulldb/cli/settings.py",
+      "list_settings": "pulldb/web/features/admin/routes.py",
+      "get_setting": "pulldb/cli/settings.py",
+      "set_setting": "pulldb/cli/settings.py",
+      "reset_setting": "pulldb/cli/settings.py",
+      "export_settings": "pulldb/cli/settings.py",
+      "diff_settings": "pulldb/cli/settings.py",
+      "pull_settings": "pulldb/cli/settings.py",
+      "push_settings": "pulldb/cli/settings.py",
+      "can_view_job": "pulldb/domain/permissions.py",
+      "can_cancel_job": "pulldb/domain/permissions.py",
+      "can_submit_for_user": "pulldb/domain/permissions.py",
+      "can_manage_users": "pulldb/domain/permissions.py",
+      "can_manage_user": "pulldb/domain/permissions.py",
+      "can_reset_password": "pulldb/domain/permissions.py",
+      "can_reassign_user": "pulldb/domain/permissions.py",
+      "can_bulk_manage_users": "pulldb/domain/permissions.py",
+      "can_change_user_role": "pulldb/domain/permissions.py",
+      "can_manage_config": "pulldb/domain/permissions.py",
+      "can_view_all_jobs": "pulldb/domain/permissions.py",
+      "require_role": "pulldb/domain/permissions.py",
+      "build_configured_myloader_spec": "pulldb/domain/restore_models.py",
+      "run_command": "pulldb/infra/exec.py",
+      "run_command_streaming": "pulldb/infra/exec.py",
+      "get_mode": "pulldb/infra/factory.py",
+      "is_simulation_mode": "pulldb/infra/factory.py",
+      "get_job_repository": "pulldb/infra/factory.py",
+      "get_s3_client": "pulldb/infra/factory.py",
+      "get_process_executor": "pulldb/infra/factory.py",
+      "get_user_repository": "pulldb/infra/factory.py",
+      "get_host_repository": "pulldb/infra/factory.py",
+      "get_settings_repository": "pulldb/infra/factory.py",
+      "get_logger": "pulldb/infra/logging.py",
+      "emit_counter": "pulldb/infra/metrics.py",
+      "emit_gauge": "pulldb/infra/metrics.py",
+      "emit_timer": "pulldb/infra/metrics.py",
+      "time_operation": "pulldb/infra/metrics.py",
+      "emit_event": "pulldb/infra/metrics.py",
+      "build_default_pool": "pulldb/infra/mysql.py",
+      "parse_s3_bucket_path": "pulldb/infra/s3.py",
+      "discover_latest_backup": "pulldb/infra/s3.py",
+      "get_status": "pulldb/simulation/api/router.py",
+      "reset_state": "pulldb/tests/simulation/test_simulation.py",
+      "list_scenarios": "pulldb/simulation/api/router.py",
+      "activate_scenario": "pulldb/simulation/api/router.py",
+      "get_events": "pulldb/simulation/api/router.py",
+      "clear_events": "pulldb/simulation/api/router.py",
+      "inject_chaos": "pulldb/simulation/api/router.py",
+      "get_state_snapshot": "pulldb/simulation/api/router.py",
+      "list_event_types": "pulldb/simulation/api/router.py",
+      "list_scenario_types": "pulldb/simulation/api/router.py",
+      "seed_user": "pulldb/simulation/api/router.py",
+      "process_next_job": "pulldb/simulation/api/router.py",
+      "process_all_jobs": "pulldb/simulation/api/router.py",
+      "advance_job_phase": "pulldb/simulation/api/router.py",
+      "get_queue_status": "pulldb/simulation/api/router.py",
+      "get_event_bus": "pulldb/simulation/core/bus.py",
+      "reset_event_bus": "pulldb/simulation/core/bus.py",
+      "get_mock_queue_runner": "pulldb/simulation/core/queue_runner.py",
+      "get_scenario_manager": "pulldb/simulation/core/scenarios.py",
+      "reset_scenario_manager": "pulldb/simulation/core/scenarios.py",
+      "seed_dev_users": "pulldb/simulation/core/seeding.py",
+      "seed_dev_hosts": "pulldb/simulation/core/seeding.py",
+      "seed_orphan_databases": "pulldb/simulation/core/seeding.py",
+      "seed_dev_settings": "pulldb/simulation/core/seeding.py",
+      "seed_active_jobs": "pulldb/simulation/core/seeding.py",
+      "seed_history_jobs": "pulldb/simulation/core/seeding.py",
+      "seed_dev_scenario": "pulldb/simulation/core/seeding.py",
+      "reset_and_seed": "pulldb/simulation/core/seeding.py",
+      "get_simulation_state": "pulldb/simulation/core/state.py",
+      "reset_simulation": "pulldb/simulation/core/state.py",
+      "aws_region": "pulldb/tests/conftest.py",
+      "aws_profile": "pulldb/tests/conftest.py",
+      "s3_aws_profile": "pulldb/tests/conftest.py",
+      "coordination_db_secret": "pulldb/tests/conftest.py",
+      "verify_secret_residency": "pulldb/tests/conftest.py",
+      "mysql_credentials": "pulldb/tests/conftest.py",
+      "ensure_database": "pulldb/tests/conftest.py",
+      "mysql_pool": "pulldb/tests/conftest.py",
+      "mysql_network_credentials": "pulldb/tests/conftest.py",
+      "isolated_mysql": "pulldb/tests/conftest.py",
+      "isolated_mysql_pool": "pulldb/tests/conftest.py",
+      "isolated_worker": "pulldb/tests/conftest.py",
+      "simulation_mode": "pulldb/tests/test_worker_rbac.py",
+      "client": "pulldb/tests/test_web_auth_flow.py",
+      "fake_state": "pulldb/tests/test_api_jobs.py",
+      "test_submit_job_customer_success": "pulldb/tests/test_api_jobs.py",
+      "test_submit_job_conflict_returns_409": "pulldb/tests/test_api_jobs.py",
+      "test_submit_job_requires_mutual_exclusive": "pulldb/tests/test_api_jobs.py",
+      "test_active_jobs_endpoint": "pulldb/tests/test_api_jobs.py",
+      "test_submit_job_unlimited_when_caps_are_zero": "pulldb/tests/test_api_jobs.py",
+      "test_submit_job_respects_per_user_limit": "pulldb/tests/test_api_jobs.py",
+      "test_submit_job_allows_under_per_user_limit": "pulldb/tests/test_api_jobs.py",
+      "test_submit_job_respects_global_limit": "pulldb/tests/test_api_jobs.py",
+      "test_submit_job_global_limit_takes_precedence": "pulldb/tests/test_api_jobs.py",
+      "test_submit_job_both_limits_satisfied": "pulldb/tests/test_api_jobs.py",
+      "test_atomic_rename_missing_procedure": "pulldb/tests/test_atomic_rename.py",
+      "test_atomic_rename_success": "pulldb/tests/test_atomic_rename.py",
+      "test_json_output_structure": "pulldb/tests/test_atomic_rename_benchmark.py",
+      "test_fail_hard_non_positive_table_count": "pulldb/tests/test_atomic_rename_benchmark.py",
+      "test_fail_hard_excessive_table_count": "pulldb/tests/test_atomic_rename_benchmark.py",
+      "test_fail_hard_non_positive_repeat": "pulldb/tests/test_atomic_rename_benchmark.py",
+      "test_fail_hard_width_outside_range": "pulldb/tests/test_atomic_rename_benchmark.py",
+      "test_multiple_table_counts": "pulldb/tests/test_atomic_rename_benchmark.py",
+      "sql_file": "pulldb/tests/test_atomic_rename_deploy.py",
+      "test_dry_run_single_host": "pulldb/tests/test_atomic_rename_deploy.py",
+      "test_host_conflict_validation": "pulldb/tests/test_atomic_rename_deploy.py",
+      "test_missing_sql_file": "pulldb/tests/test_atomic_rename_deploy.py",
+      "test_connection_failure": "pulldb/tests/test_atomic_rename_deploy.py",
+      "test_drop_failure": "pulldb/tests/test_atomic_rename_deploy.py",
+      "test_create_failure": "pulldb/tests/test_atomic_rename_deploy.py",
+      "test_success_single_host": "pulldb/tests/test_atomic_rename_deploy.py",
+      "test_version_header_missing": "pulldb/tests/test_atomic_rename_deploy.py",
+      "test_skip_version_check_allows_missing_header": "pulldb/tests/test_atomic_rename_deploy.py",
+      "test_deploy_without_preview_strips_preview": "pulldb/tests/test_atomic_rename_deploy.py",
+      "test_deploy_with_preview_keeps_preview": "pulldb/tests/test_atomic_rename_deploy.py",
+      "test_atom_cp_tokens": "pulldb/tests/test_atoms.py",
+      "test_atom_s3_regex": "pulldb/tests/test_atoms.py",
+      "test_atom_wd_stream": "pulldb/tests/test_atoms.py",
+      "test_atom_wr_cmd": "pulldb/tests/test_atoms.py",
+      "test_atom_stg_name": "pulldb/tests/test_atoms.py",
+      "test_atom_stg_orphan": "pulldb/tests/test_atoms.py",
+      "test_atom_s3_parse": "pulldb/tests/test_atoms.py",
+      "test_atom_cfg_parse": "pulldb/tests/test_atoms.py",
+      "test_atom_psql_disc": "pulldb/tests/test_atoms.py",
+      "test_parse_success_customer_minimal": "pulldb/tests/test_cli_parse.py",
+      "test_parse_success_customer_with_user": "pulldb/tests/test_cli_parse.py",
+      "test_parse_success_qatemplate": "pulldb/tests/test_cli_parse.py",
+      "test_parse_success_qatemplate_with_user": "pulldb/tests/test_cli_parse.py",
+      "test_parse_rejects_missing_mode": "pulldb/tests/test_cli_parse.py",
+      "test_parse_rejects_both_modes": "pulldb/tests/test_cli_parse.py",
+      "test_parse_rejects_duplicate_customer": "pulldb/tests/test_cli_parse.py",
+      "test_parse_rejects_duplicate_dbhost": "pulldb/tests/test_cli_parse.py",
+      "test_parse_rejects_unknown_token": "pulldb/tests/test_cli_parse.py",
+      "test_parse_dbhost_and_overwrite_flags": "pulldb/tests/test_cli_parse.py",
+      "test_parse_date_option": "pulldb/tests/test_cli_parse.py",
+      "test_parse_s3env_option": "pulldb/tests/test_cli_parse.py",
+      "test_parse_all_options": "pulldb/tests/test_cli_parse.py",
+      "test_parse_dashed_option_syntax": "pulldb/tests/test_cli_parse.py",
+      "test_parse_space_separated_syntax": "pulldb/tests/test_cli_parse.py",
+      "test_parse_mixed_syntax": "pulldb/tests/test_cli_parse.py",
+      "test_restore_rate_limit_user": "pulldb/tests/test_cli_restore.py",
+      "test_restore_rate_limit_global": "pulldb/tests/test_cli_restore.py",
+      "test_restore_rate_limit_generic": "pulldb/tests/test_cli_restore.py",
+      "test_restore_success": "pulldb/tests/test_cli_restore.py",
+      "test_status_no_active_jobs": "pulldb/tests/test_cli_status.py",
+      "test_status_active_jobs_table": "pulldb/tests/test_cli_status.py",
+      "test_status_wide": "pulldb/tests/test_cli_status.py",
+      "test_status_json": "pulldb/tests/test_cli_status.py",
+      "test_status_limit": "pulldb/tests/test_cli_status.py",
+      "job_repo": "pulldb/tests/test_concurrent_workers.py",
+      "sample_job": "pulldb/tests/test_loop.py",
+      "clear_env": "pulldb/tests/test_config_integration.py",
+      "test_ensure_disk_capacity_insufficient": "pulldb/tests/test_downloader.py",
+      "test_ensure_disk_capacity_sufficient": "pulldb/tests/test_downloader.py",
+      "test_download_backup_success": "pulldb/tests/test_downloader.py",
+      "test_download_backup_s3_error": "pulldb/tests/test_downloader.py",
+      "test_job_execution_error_structure": "pulldb/tests/test_errors.py",
+      "test_job_execution_error_message_format": "pulldb/tests/test_errors.py",
+      "test_download_error_no_such_key": "pulldb/tests/test_errors.py",
+      "test_download_error_access_denied": "pulldb/tests/test_errors.py",
+      "test_disk_capacity_error_details": "pulldb/tests/test_errors.py",
+      "test_myloader_error_preserves_output": "pulldb/tests/test_errors.py",
+      "test_post_sql_error_tracks_completed": "pulldb/tests/test_errors.py",
+      "test_atomic_rename_error_preserves_staging": "pulldb/tests/test_errors.py",
+      "test_backup_validation_error_lists_missing": "pulldb/tests/test_errors.py",
+      "test_error_inheritance": "pulldb/tests/test_errors.py",
+      "test_error_detail_optional": "pulldb/tests/test_errors.py",
+      "test_error_can_be_raised": "pulldb/tests/test_errors.py",
+      "test_run_command_success": "pulldb/tests/test_exec.py",
+      "test_run_command_nonzero_exit": "pulldb/tests/test_exec.py",
+      "test_run_command_timeout": "pulldb/tests/test_exec.py",
+      "test_run_command_start_failure": "pulldb/tests/test_exec.py",
+      "test_truncation_limits": "pulldb/tests/test_exec.py",
+      "test_import_cli": "pulldb/tests/test_imports.py",
+      "test_import_api": "pulldb/tests/test_imports.py",
+      "test_import_worker": "pulldb/tests/test_imports.py",
+      "test_version": "pulldb/tests/test_imports.py",
+      "run_installer": "pulldb/tests/test_installer.py",
+      "run_installer_validate": "pulldb/tests/test_installer.py",
+      "test_installer_creates_env_and_venv": "pulldb/tests/test_installer.py",
+      "test_installer_respects_no_systemd": "pulldb/tests/test_installer.py",
+      "test_installer_usage_help": "pulldb/tests/test_installer.py",
+      "test_installer_validate_warns_on_missing_aws": "pulldb/tests/test_installer.py",
+      "test_installer_requires_root_without_override": "pulldb/tests/test_installer.py",
+      "test_installer_help_references_quickstart": "pulldb/tests/test_installer_help.py",
+      "test_disk_insufficient_preflight": "pulldb/tests/test_integration_disk_insufficient.py",
+      "test_disk_capacity_success": "pulldb/tests/test_integration_disk_insufficient.py",
+      "isolate_aws_profile": "pulldb/tests/test_integration_missing_backup.py",
+      "moto_s3_empty": "pulldb/tests/test_integration_missing_backup.py",
+      "test_missing_backup_discovery": "pulldb/tests/test_integration_missing_backup.py",
+      "moto_env": "pulldb/tests/test_integration_workflow.py",
+      "fake_myloader": "pulldb/tests/test_integration_workflow.py",
+      "test_restore_workflow_happy_path": "pulldb/tests/test_integration_workflow.py",
+      "job_fixture": "pulldb/tests/test_integration_workflow_failures.py",
+      "test_workflow_disk_insufficient_architecture_separation": "pulldb/tests/test_integration_workflow_disk_insufficient.py",
+      "test_workflow_myloader_failure": "pulldb/tests/test_integration_workflow_failures.py",
+      "test_workflow_post_sql_failure": "pulldb/tests/test_integration_workflow_failures.py",
+      "test_isolation_environment": "pulldb/tests/test_isolation.py",
+      "test_database_connection": "pulldb/tests/test_isolation.py",
+      "test_schema_deployed": "pulldb/tests/test_isolation.py",
+      "test_data_persistence": "pulldb/tests/test_isolation.py",
+      "test_worker_startup": "pulldb/tests/test_isolation.py",
+      "test_json_formatter_basic_fields": "pulldb/tests/test_logging.py",
+      "test_json_formatter_extra_fields": "pulldb/tests/test_logging.py",
+      "test_json_formatter_exception_info": "pulldb/tests/test_logging.py",
+      "test_get_logger_creates_logger": "pulldb/tests/test_logging.py",
+      "test_get_logger_json_output": "pulldb/tests/test_logging.py",
+      "test_get_logger_idempotent": "pulldb/tests/test_logging.py",
+      "test_get_logger_no_propagation": "pulldb/tests/test_logging.py",
+      "test_get_logger_custom_level": "pulldb/tests/test_logging.py",
+      "mock_job_repo": "pulldb/tests/test_loop.py",
+      "mock_job_executor": "pulldb/tests/test_loop.py",
+      "test_poll_loop_processes_job": "pulldb/tests/test_loop.py",
+      "test_poll_loop_empty_queue_backs_off": "pulldb/tests/test_loop.py",
+      "test_poll_loop_respects_max_iterations": "pulldb/tests/test_loop.py",
+      "test_poll_loop_handles_transition_error": "pulldb/tests/test_loop.py",
+      "test_poll_loop_continues_after_poll_error": "pulldb/tests/test_loop.py",
+      "test_poll_loop_resets_backoff_after_job": "pulldb/tests/test_loop.py",
+      "test_poll_loop_emits_correct_event_detail": "pulldb/tests/test_loop.py",
+      "test_poll_loop_multiple_jobs": "pulldb/tests/test_loop.py",
+      "test_poll_loop_handles_job_executor_failure": "pulldb/tests/test_loop.py",
+      "test_metadata_injection_success": "pulldb/tests/test_metadata_injection.py",
+      "test_metadata_injection_create_table_failure": "pulldb/tests/test_metadata_injection.py",
+      "test_metadata_injection_insert_failure": "pulldb/tests/test_metadata_injection.py",
+      "test_build_command_uses_binary_and_extra_args": "pulldb/tests/test_myloader_command.py",
+      "test_execute_post_sql_no_scripts": "pulldb/tests/test_post_sql.py",
+      "test_execute_post_sql_success": "pulldb/tests/test_post_sql.py",
+      "test_execute_post_sql_failure": "pulldb/tests/test_post_sql.py",
+      "test_post_sql_no_scripts": "pulldb/tests/test_post_sql_execution.py",
+      "test_post_sql_success_ordering": "pulldb/tests/test_post_sql_execution.py",
+      "test_post_sql_failure_stops": "pulldb/tests/test_post_sql_execution.py",
+      "test_post_sql_size_limit": "pulldb/tests/test_post_sql_execution.py",
+      "test_run_myloader_success": "pulldb/tests/test_restore.py",
+      "test_run_myloader_nonzero": "pulldb/tests/test_restore.py",
+      "test_run_myloader_timeout": "pulldb/tests/test_restore.py",
+      "test_build_restore_workflow_spec_uses_config": "pulldb/tests/test_restore.py",
+      "test_build_restore_workflow_spec_allows_timeout_override": "pulldb/tests/test_restore.py",
+      "test_build_spec_applies_configured_defaults": "pulldb/tests/test_restore_models.py",
+      "test_build_spec_respects_existing_threads_override": "pulldb/tests/test_restore_models.py",
+      "test_build_spec_includes_max_threads_per_table_for_new_format": "pulldb/tests/test_restore_models.py",
+      "s3_client": "pulldb/tests/test_s3_discovery.py",
+      "moto_s3": "pulldb/tests/test_s3_discovery.py",
+      "test_discovery_selects_newest_backup": "pulldb/tests/test_s3_discovery.py",
+      "test_discovery_no_objects_raises": "pulldb/tests/test_s3_discovery.py",
+      "test_discovery_malformed_timestamp": "pulldb/tests/test_s3_discovery.py",
+      "test_discovery_no_matching_target": "pulldb/tests/test_s3_discovery.py",
+      "test_filename_regex_valid": "pulldb/tests/test_s3_discovery.py",
+      "test_real_staging_backup_listing_optional": "pulldb/tests/test_s3_real_listing_optional.py",
+      "clear_aws_profile": "pulldb/tests/test_secrets.py",
+      "test_setup_test_env_dry_run": "pulldb/tests/test_setup_test_env_script.py",
+      "test_generate_staging_name_success": "pulldb/tests/test_staging.py",
+      "test_generate_staging_name_exact_12_char_job_id": "pulldb/tests/test_staging.py",
+      "test_generate_staging_name_target_too_long": "pulldb/tests/test_staging.py",
+      "test_generate_staging_name_job_id_too_short": "pulldb/tests/test_staging.py",
+      "test_generate_staging_name_job_id_non_hex": "pulldb/tests/test_staging.py",
+      "test_find_orphaned_staging_databases_none": "pulldb/tests/test_staging.py",
+      "test_find_orphaned_staging_databases_single": "pulldb/tests/test_staging.py",
+      "test_find_orphaned_staging_databases_multiple": "pulldb/tests/test_staging.py",
+      "test_find_orphaned_staging_databases_wrong_pattern": "pulldb/tests/test_staging.py",
+      "test_cleanup_orphaned_staging_no_orphans": "pulldb/tests/test_staging.py",
+      "test_cleanup_orphaned_staging_with_orphans": "pulldb/tests/test_staging.py",
+      "test_cleanup_orphaned_staging_connection_error": "pulldb/tests/test_staging.py",
+      "test_cleanup_orphaned_staging_show_databases_error": "pulldb/tests/test_staging.py",
+      "test_cleanup_orphaned_staging_staging_exists_after_cleanup": "pulldb/tests/test_staging.py",
+      "test_user": "pulldb/tests/test_web_auth_flow.py",
+      "test_derive_backup_target_strips_user_code": "pulldb/tests/test_worker_executor.py",
+      "test_derive_backup_target_qatemplate_suffix": "pulldb/tests/test_worker_executor.py",
+      "test_derive_backup_target_falls_back_to_options": "pulldb/tests/test_worker_executor.py",
+      "test_derive_backup_target_defaults_to_target": "pulldb/tests/test_worker_executor.py",
+      "test_build_lookup_targets_function_includes_aliases": "pulldb/tests/test_worker_executor.py",
+      "test_discover_backup_iterates_locations": "pulldb/tests/test_worker_executor.py",
+      "test_discover_backup_raises_when_all_locations_fail": "pulldb/tests/test_worker_executor.py",
+      "test_build_job_repository_fails_on_db_error": "pulldb/tests/test_worker_failure_modes.py",
+      "test_build_job_executor_fails_on_s3_error": "pulldb/tests/test_worker_failure_modes.py",
+      "test_executor_prepare_job_dirs_permission_error": "pulldb/tests/test_worker_failure_modes.py",
+      "test_executor_handle_failure_db_error": "pulldb/tests/test_worker_failure_modes.py",
+      "test_download_backup_write_error": "pulldb/tests/test_worker_failure_modes.py",
+      "test_run_myloader_binary_missing": "pulldb/tests/test_worker_failure_modes.py",
+      "test_cleanup_orphaned_staging_drop_permission_error": "pulldb/tests/test_worker_failure_modes.py",
+      "test_execute_post_sql_script_read_error": "pulldb/tests/test_worker_failure_modes.py",
+      "test_thread_start_event_parses_minimal_fields": "pulldb/tests/test_worker_log_normalizer.py",
+      "test_table_progress_event_extracts_schema_table_and_pct": "pulldb/tests/test_worker_log_normalizer.py",
+      "test_legacy_thread_dump_line_maps_to_table_data_phase": "pulldb/tests/test_worker_log_normalizer.py",
+      "test_warning_line_sets_warning_severity": "pulldb/tests/test_worker_log_normalizer.py",
+      "test_non_log_line_returns_none": "pulldb/tests/test_worker_log_normalizer.py",
+      "test_poll_loop_graceful_stop_callback": "pulldb/tests/test_worker_service.py",
+      "test_worker_service_main_invokes_poll_loop": "pulldb/tests/test_worker_service.py",
+      "test_worker_service_oneshot_overrides_iterations": "pulldb/tests/test_worker_service.py",
+      "test_worker_service_returns_error_on_config_failure": "pulldb/tests/test_worker_service.py",
+      "get_session_user": "pulldb/web/dependencies.py",
+      "require_login": "pulldb/web/dependencies.py",
+      "require_admin": "pulldb/web/dependencies.py",
+      "require_manager_or_above": "pulldb/web/dependencies.py",
+      "create_session_expired_handler": "pulldb/web/exceptions.py",
+      "render_error_page": "pulldb/web/exceptions.py",
+      "admin_page": "pulldb/web/features/admin/routes.py",
+      "list_users": "pulldb/web/features/admin/routes.py",
+      "enable_user": "pulldb/web/features/admin/routes.py",
+      "disable_user": "pulldb/web/features/admin/routes.py",
+      "update_user_role": "pulldb/web/features/admin/routes.py",
+      "update_user_manager": "pulldb/web/features/admin/routes.py",
+      "force_password_reset": "pulldb/web/features/admin/routes.py",
+      "clear_password_reset": "pulldb/web/features/admin/routes.py",
+      "api_users_paginated": "pulldb/web/features/admin/routes.py",
+      "api_users_distinct": "pulldb/web/features/admin/routes.py",
+      "list_hosts": "pulldb/web/features/admin/routes.py",
+      "enable_host": "pulldb/web/features/admin/routes.py",
+      "disable_host": "pulldb/web/features/admin/routes.py",
+      "prune_logs_preview": "pulldb/web/features/admin/routes.py",
+      "get_prune_candidates": "pulldb/web/features/admin/routes.py",
+      "get_prune_distinct_values": "pulldb/web/features/admin/routes.py",
+      "prune_logs_execute": "pulldb/web/features/admin/routes.py",
+      "cleanup_staging_preview": "pulldb/web/features/admin/routes.py",
+      "get_cleanup_candidates": "pulldb/web/features/admin/routes.py",
+      "get_cleanup_distinct_values": "pulldb/web/features/admin/routes.py",
+      "cleanup_staging_execute": "pulldb/web/features/admin/routes.py",
+      "orphan_preview_page": "pulldb/web/features/admin/routes.py",
+      "api_orphan_candidates": "pulldb/web/features/admin/routes.py",
+      "get_orphan_distinct_values": "pulldb/web/features/admin/routes.py",
+      "execute_orphan_deletion": "pulldb/web/features/admin/routes.py",
+      "get_orphans": "pulldb/web/features/admin/routes.py",
+      "delete_orphans": "pulldb/web/features/admin/routes.py",
+      "login_page": "pulldb/web/features/auth/routes.py",
+      "login_submit": "pulldb/web/features/auth/routes.py",
+      "logout": "pulldb/web/features/auth/routes.py",
+      "profile_page": "pulldb/web/features/auth/routes.py",
+      "set_default_host": "pulldb/web/features/auth/routes.py",
+      "dashboard": "pulldb/web/features/dashboard/routes.py",
+      "jobs_page": "pulldb/web/features/jobs/routes.py",
+      "job_details": "pulldb/web/features/jobs/routes.py",
+      "manager_page": "pulldb/web/features/manager/routes.py",
+      "reset_team_member_password": "pulldb/web/features/manager/routes.py",
+      "clear_team_member_password_reset": "pulldb/web/features/manager/routes.py",
+      "enable_team_member": "pulldb/web/features/manager/routes.py",
+      "disable_team_member": "pulldb/web/features/manager/routes.py",
+      "restore_page": "pulldb/web/features/restore/routes.py",
+      "search_customers": "pulldb/web/features/restore/routes.py",
+      "restore_submit": "pulldb/web/features/restore/routes.py",
+      "build_breadcrumbs": "pulldb/web/widgets/breadcrumbs/__init__.py",
+      "get_breadcrumbs": "pulldb/web/widgets/breadcrumbs/__init__.py",
+      "validate_bulk_action": "pulldb/web/widgets/bulk_actions/__init__.py",
+      "get_action_definition": "pulldb/web/widgets/bulk_actions/__init__.py",
+      "get_job_status_options": "pulldb/web/widgets/filter_bar/__init__.py",
+      "get_user_role_options": "pulldb/web/widgets/filter_bar/__init__.py",
+      "get_filter_config": "pulldb/web/widgets/filter_bar/__init__.py",
+      "filter_fields_for_role": "pulldb/web/widgets/filter_bar/__init__.py",
+      "parse_filter_params": "pulldb/web/widgets/filter_bar/__init__.py",
+      "build_dropdown_config": "pulldb/web/widgets/searchable_dropdown/__init__.py",
+      "atomic_rename_staging_to_target": "pulldb/worker/atomic_rename.py",
+      "is_valid_staging_name": "pulldb/worker/cleanup.py",
+      "get_orphan_metadata": "pulldb/worker/cleanup.py",
+      "find_cleanup_candidates_from_jobs": "pulldb/worker/cleanup.py",
+      "cleanup_from_jobs": "pulldb/worker/cleanup.py",
+      "cleanup_specific_databases": "pulldb/worker/cleanup.py",
+      "detect_orphaned_databases": "pulldb/worker/cleanup.py",
+      "fetch_orphan_metadata": "pulldb/worker/cleanup.py",
+      "admin_delete_orphan_databases": "pulldb/worker/cleanup.py",
+      "run_scheduled_cleanup": "pulldb/worker/cleanup.py",
+      "cleanup_host_staging": "pulldb/worker/cleanup.py",
+      "find_orphaned_staging": "pulldb/worker/cleanup.py",
+      "ensure_disk_capacity": "pulldb/worker/downloader.py",
+      "download_backup": "pulldb/worker/downloader.py",
+      "derive_backup_lookup_target": "pulldb/worker/executor.py",
+      "build_lookup_targets_for_location": "pulldb/worker/executor.py",
+      "extract_tar_archive": "pulldb/worker/executor.py",
+      "normalize_myloader_line": "pulldb/worker/log_normalizer.py",
+      "get_worker_id": "pulldb/worker/loop.py",
+      "run_poll_loop": "pulldb/worker/loop.py",
+      "inject_metadata_table": "pulldb/worker/metadata.py",
+      "parse_filename": "pulldb/worker/metadata_synthesis.py",
+      "count_rows_in_file": "pulldb/worker/metadata_synthesis.py",
+      "synthesize_metadata": "pulldb/worker/metadata_synthesis.py",
+      "ensure_compatible_metadata": "pulldb/worker/metadata_synthesis.py",
+      "execute_post_sql": "pulldb/worker/post_sql.py",
+      "parse_profile_from_event": "pulldb/worker/profiling.py",
+      "build_restore_workflow_spec": "pulldb/worker/restore.py",
+      "build_myloader_command": "pulldb/worker/restore.py",
+      "run_myloader": "pulldb/worker/restore.py",
+      "orchestrate_restore_workflow": "pulldb/worker/restore.py",
+      "generate_staging_name": "pulldb/worker/staging.py",
+      "find_orphaned_staging_databases": "pulldb/worker/staging.py",
+      "cleanup_orphaned_staging": "pulldb/worker/staging.py"
     },
-    "test": {
-      "PULLDB_TEST_MYSQL_HOST": "Test MySQL host",
-      "PULLDB_TEST_MYSQL_USER": "Test MySQL user",
-      "PULLDB_TEST_MYSQL_PASSWORD": "Test MySQL password"
+    "protocols": {
+      "_JobSummary": "pulldb/cli/main.py",
+      "JobRepository": "pulldb/web/shared/contracts/service_contracts.py",
+      "AuthRepository": "pulldb/domain/interfaces.py",
+      "S3Client": "pulldb/domain/interfaces.py",
+      "ProcessExecutor": "pulldb/domain/interfaces.py",
+      "UserRepository": "pulldb/web/shared/contracts/service_contracts.py",
+      "HostRepository": "pulldb/domain/interfaces.py",
+      "SettingsRepository": "pulldb/domain/interfaces.py",
+      "ResponseProtocol": "pulldb/tests/test_api_jobs.py",
+      "PageRenderer": "pulldb/web/shared/contracts/page_contracts.py",
+      "AuthService": "pulldb/web/shared/contracts/service_contracts.py"
     }
   },
-  "aws": {
-    "accounts": {
-      "development": "345321506926",
-      "staging": "333204494849",
-      "production": "448509429610"
+  "search_patterns": {
+    "authentication": [
+      "AuthRepository",
+      "hash_password",
+      "verify_password",
+      "SessionManager"
+    ],
+    "rbac": [
+      "permissions.py",
+      "check_permission",
+      "UserRole",
+      "require_permission"
+    ],
+    "job_creation": [
+      "JobRepository.create",
+      "submit_job",
+      "_enqueue_job"
+    ],
+    "job_processing": [
+      "run_poll_loop",
+      "_execute_job",
+      "WorkerJobExecutor"
+    ],
+    "s3_download": [
+      "download_backup",
+      "S3Client",
+      "discover_latest_backup"
+    ],
+    "myloader": [
+      "run_myloader",
+      "build_myloader_command",
+      "MyLoaderSpec"
+    ],
+    "staging": [
+      "generate_staging_name",
+      "cleanup_orphaned_staging",
+      "StagingResult"
+    ],
+    "atomic_rename": [
+      "atomic_rename_staging_to_target",
+      "AtomicRenameSpec"
+    ],
+    "simulation": [
+      "MockJobRepository",
+      "SimulationEngine",
+      "ScenarioRunner"
+    ],
+    "web_ui": [
+      "router_registry",
+      "dependencies.py",
+      "templates/"
+    ]
+  },
+  "hca_violations": [
+    {
+      "file": "pulldb/infra/exec.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
     },
-    "s3": {
-      "staging": {"bucket": "pestroutesrdsdbs", "prefix": "daily/stg/"},
-      "production": {"bucket": "pestroutes-rds-backup-prod-vpc-us-east-1-s3", "prefix": "daily/prod/"}
+    {
+      "file": "pulldb/infra/factory.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.interfaces' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
     },
-    "secrets": {
-      "api": "/pulldb/mysql/api",
-      "worker": "/pulldb/mysql/worker",
-      "loader": "/pulldb/mysql/loader"
+    {
+      "file": "pulldb/infra/mysql.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
     },
-    "roles": {
-      "ec2": "pulldb-ec2-service-role",
-      "cross_account": "pulldb-cross-account-readonly"
+    {
+      "file": "pulldb/infra/s3.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.errors' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/infra/secrets.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_exec.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_exec.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.simulation.core.bus' (features) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "features"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_exec.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.simulation.core.state' (features) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "features"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_mysql.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_mysql.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.simulation.core.bus' (features) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "features"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_mysql.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.simulation.core.state' (features) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "features"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_s3.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.simulation.core.bus' (features) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "features"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_s3.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.simulation.core.state' (features) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "features"
+    },
+    {
+      "file": "pulldb/web/features/admin/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.web.dependencies' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/auth/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.web.dependencies' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/dashboard/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.web.dependencies' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/jobs/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.web.dependencies' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/manager/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.web.dependencies' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/restore/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.api.logic' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/restore/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.api.schemas' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/restore/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.web.dependencies' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/shared/contracts/page_contracts.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/web/shared/contracts/service_contracts.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
     }
-  },
-  "tests": {
-    "location": "pulldb/tests/",
-    "count": 50,
-    "fixtures": ["mysql_pool", "isolated_mysql", "isolated_worker", "mysql_credentials", "aws_profile", "s3_aws_profile"],
-    "categories": ["unit", "integration", "api", "repository", "workflow"]
-  },
+  ],
+  "hca_violation_baseline": [
+    {
+      "file": "pulldb/infra/exec.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/infra/factory.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.interfaces' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/infra/mysql.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/infra/s3.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.errors' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/infra/secrets.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_exec.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_exec.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.simulation.core.bus' (features) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "features"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_exec.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.simulation.core.state' (features) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "features"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_mysql.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_mysql.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.simulation.core.bus' (features) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "features"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_mysql.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.simulation.core.state' (features) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "features"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_s3.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.simulation.core.bus' (features) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "features"
+    },
+    {
+      "file": "pulldb/simulation/adapters/mock_s3.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.simulation.core.state' (features) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "features"
+    },
+    {
+      "file": "pulldb/web/features/admin/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.web.dependencies' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/auth/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.web.dependencies' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/dashboard/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.web.dependencies' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/jobs/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.web.dependencies' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/manager/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.web.dependencies' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/restore/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.api.logic' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/restore/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.api.schemas' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/features/restore/routes.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.web.dependencies' (pages) from features layer",
+      "from_layer": "features",
+      "to_layer": "pages"
+    },
+    {
+      "file": "pulldb/web/shared/contracts/page_contracts.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    },
+    {
+      "file": "pulldb/web/shared/contracts/service_contracts.py",
+      "violation_type": "upward_import",
+      "detail": "Imports 'pulldb.domain.models' (entities) from shared layer",
+      "from_layer": "shared",
+      "to_layer": "entities"
+    }
+  ],
   "invariants": [
     "MySQL is the only coordinator",
     "Per-target exclusivity",
@@ -228,24 +2769,17 @@
     "Service-specific MySQL users",
     "Fail hard - never silent degradation",
     "Post-SQL lexicographic ordering",
-    "Atomic rename via stored procedure"
+    "Atomic rename via stored procedure",
+    "HCA layer isolation"
   ],
   "versions": {
     "python": "3.12+",
-    "mydumper": ["0.9.5", "0.19.3-3"],
+    "mydumper": [
+      "0.9.5",
+      "0.19.3-3"
+    ],
     "mysql": "8.0+",
     "fastapi": "0.100+",
     "pydantic": "2.0+"
-  },
-  "search_patterns": {
-    "job_creation": ["JobRepository.create", "submit_job", "_enqueue_job"],
-    "job_processing": ["run_poll_loop", "_execute_job", "WorkerJobExecutor"],
-    "s3_download": ["download_backup", "S3Client", "discover_latest_backup"],
-    "myloader": ["run_myloader", "build_myloader_command", "MyLoaderSpec"],
-    "post_sql": ["execute_post_sql", "PostSQLConnectionSpec"],
-    "atomic_rename": ["atomic_rename_staging_to_target", "AtomicRenameSpec"],
-    "configuration": ["Config", "from_env", "S3BackupLocationConfig"],
-    "error_handling": ["JobExecutionError", "DownloadError", "MyLoaderError"],
-    "credentials": ["CredentialResolver", "MySQLCredentials"]
   }
 }

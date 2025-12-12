@@ -6,17 +6,22 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 
 **Related:** [Deployment](deployment.md) · [policies/](policies/) · [terraform/](terraform/)
 
-Last updated: 2025-12-03
+Last updated: 2025-12-12
 Current version: v0.0.8
 Phases complete: 0-4
 
 ---
 
 ## Index (categories)
+- **Authentication & Sessions** (NEW - Phase 4)
+- **RBAC Permission Matrix** (NEW - Phase 4)
+- **Simulation Framework** (NEW - Phase 4)
 - CLI Architecture & Scope
 - Web UI Layout Architecture
-- Web UI Style Guide (NEW)
+- Web UI Style Guide
+- Web UI HCA Architecture (NEW)
 - S3 Multi-Location Configuration (v0.0.7)
+- **Phase 4 Schema Tables** (NEW)
 - Accounts & ARNs
 - S3 buckets & paths
 - IAM roles & policies
@@ -30,6 +35,248 @@ Phases complete: 0-4
 - Machine-readable index (JSON)
 - IAM policy snippets (examples)
 - Terraform examples (optional, small snippets)
+
+---
+
+## Authentication & Sessions (Phase 4)
+
+pullDB implements a dual-mode authentication system supporting both development (trusted headers) and production (session-based) flows.
+
+### Auth Modes
+
+| Mode | Environment | How It Works |
+|------|-------------|--------------|
+| `trusted` | Development | `X-Pulldb-User` header trusted directly |
+| `session` | Production | bcrypt password + session token cookie |
+| `both` | Transition | Tries trusted header first, falls back to session |
+
+**Configuration**: `PULLDB_AUTH_MODE` environment variable (default: `both`)
+
+### Password Hashing
+
+- **Algorithm**: bcrypt with work factor 12
+- **Functions**: `hash_password()`, `verify_password()` in `pulldb/auth/password.py`
+- **Storage**: `auth_credentials` table (user_id → hashed password)
+
+### Session Management
+
+- **Token**: 32-byte random hex string
+- **Cookie**: `pulldb_session` (HttpOnly, Secure in prod, SameSite=Lax)
+- **TTL**: 24 hours (configurable via `PULLDB_SESSION_TTL_HOURS`)
+- **Storage**: `sessions` table with expiry timestamp
+
+### Key Components
+
+| File | Layer | Purpose |
+|------|-------|---------|
+| `pulldb/auth/password.py` | shared | bcrypt hash/verify utilities |
+| `pulldb/auth/repository.py` | shared | AuthRepository for credential storage |
+| `pulldb/api/auth.py` | pages | FastAPI auth middleware |
+| `pulldb/web/features/auth/` | features | Login/logout routes |
+
+### Quick Reference
+
+```python
+# Verify password
+from pulldb.auth.password import verify_password
+is_valid = verify_password(plain_text, hashed)
+
+# Get current user (in route)
+from pulldb.api.auth import get_current_user
+user = await get_current_user(request, auth_repo)
+```
+
+---
+
+## RBAC Permission Matrix (Phase 4)
+
+Role-Based Access Control with three roles: `USER`, `MANAGER`, `ADMIN`.
+
+### Permission Matrix
+
+| Action | USER | MANAGER | ADMIN |
+|--------|------|---------|-------|
+| View own jobs | ✅ | ✅ | ✅ |
+| Submit own jobs | ✅ | ✅ | ✅ |
+| Cancel own jobs | ✅ | ✅ | ✅ |
+| View managed users' jobs | ❌ | ✅ | ✅ |
+| Cancel managed users' jobs | ❌ | ✅ | ✅ |
+| View all jobs | ❌ | ❌ | ✅ |
+| Cancel any job | ❌ | ❌ | ✅ |
+| Manage users | ❌ | ❌ | ✅ |
+| Orphan cleanup | ❌ | ❌ | ✅ |
+| System settings | ❌ | ❌ | ✅ |
+
+### Manager Relationships
+
+- Stored in `manager_user_relationship` table
+- One manager can manage multiple users
+- Users can have multiple managers (uncommon)
+- Query: `SELECT user_id FROM manager_user_relationship WHERE manager_id = ?`
+
+### Key Components
+
+| File | Layer | Purpose |
+|------|-------|---------|
+| `pulldb/domain/permissions.py` | entities | `check_permission()`, `UserRole` enum |
+| `pulldb/domain/models.py` | entities | `User.role` field |
+| `pulldb/infra/mysql.py` | shared | `UserRepository.get_managed_users()` |
+
+### Usage Pattern
+
+```python
+from pulldb.domain.permissions import check_permission, Permission
+
+# Check if user can cancel a job
+if not check_permission(current_user, Permission.CANCEL_JOB, job.user_id):
+    raise PermissionDenied("Cannot cancel this job")
+```
+
+---
+
+## Simulation Framework (Phase 4)
+
+In-memory mock system for testing without external dependencies.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│              pulldb/simulation/                     │
+├─────────────────────────────────────────────────────┤
+│ api/         │ FastAPI routes for scenario control  │
+├──────────────┼──────────────────────────────────────┤
+│ core/engine  │ SimulationEngine orchestration       │
+│ core/bus     │ EventBus for component communication │
+│ core/state   │ Global state management              │
+│ core/runner  │ MockQueueRunner job processing       │
+│ core/seed    │ Test data generation                 │
+├──────────────┼──────────────────────────────────────┤
+│ adapters/    │ Mock implementations                 │
+│   mock_mysql │ In-memory Job/User/Host repos        │
+│   mock_s3    │ Mock S3 client                       │
+│   mock_exec  │ Mock command executor                │
+└──────────────┴──────────────────────────────────────┘
+```
+
+### Mock Adapters
+
+| Adapter | Replaces | Key Class |
+|---------|----------|-----------|
+| `mock_mysql.py` | `pulldb/infra/mysql.py` | `MockJobRepository`, `MockUserRepository` |
+| `mock_s3.py` | `pulldb/infra/s3.py` | `MockS3Client` |
+| `mock_exec.py` | `pulldb/infra/exec.py` | `MockCommandExecutor` |
+
+### Usage
+
+```python
+# Import through package root (HCA compliant)
+from pulldb.simulation import (
+    MockJobRepository,
+    MockUserRepository,
+    SimulationEngine,
+)
+
+# Set up simulation
+engine = SimulationEngine()
+job_repo = MockJobRepository()
+engine.register(job_repo)
+```
+
+### Chaos Scenarios
+
+Available via `core/scenarios.py`:
+- `DownloadFailure` - S3 download fails
+- `RestoreTimeout` - myloader times out
+- `DiskFull` - Disk capacity check fails
+- `NetworkPartition` - Connection drops
+
+---
+
+## Web UI HCA Architecture (Phase 4)
+
+The web package follows HCA internally for UI component organization.
+
+### Layer Mapping
+
+| HCA Layer | Web Directory | Contents |
+|-----------|---------------|----------|
+| **shared** | `web/shared/` | `layouts/`, `ui/`, `contracts/`, `utils/` |
+| **entities** | `web/entities/` | `job/`, `user/`, `host/`, `database/` |
+| **features** | `web/features/` | `auth/`, `dashboard/`, `jobs/`, `admin/`, `manager/`, `restore/` |
+| **widgets** | `web/widgets/` | `sidebar/`, `job_table/`, `filter_bar/`, `stats_cards/` |
+| **pages** | `web/pages/` | `admin/`, `dashboard/`, `error/` |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `dependencies.py` | FastAPI dependency injection (templates, auth) |
+| `router_registry.py` | Combines all feature routers |
+| `exceptions.py` | Custom web exception types |
+
+### Template Hierarchy
+
+```
+templates/
+├── base.html           # Root layout (shared)
+├── layouts/            # Page layouts (shared)
+├── components/         # Reusable components (widgets)
+├── pages/              # Full page templates
+└── partials/           # HTMX partials (features)
+```
+
+---
+
+## Phase 4 Schema Tables
+
+New tables added in Phase 4 for authentication and RBAC.
+
+| Migration | Table | Purpose |
+|-----------|-------|---------|
+| `070_auth_users_role.sql` | — | Adds `role` column to `auth_users` |
+| `071_auth_credentials.sql` | `auth_credentials` | Bcrypt password hashes |
+| `072_sessions.sql` | `sessions` | Session tokens with expiry |
+| `072_password_reset.sql` | `password_reset_tokens` | Password reset flow |
+| `073_manager_user_relationship.sql` | `manager_user_relationship` | Manager-to-user mapping |
+| `074_audit_logs.sql` | `audit_logs` | Security audit trail |
+
+### Table: auth_credentials
+
+```sql
+CREATE TABLE auth_credentials (
+    user_id INT PRIMARY KEY,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES auth_users(id)
+);
+```
+
+### Table: sessions
+
+```sql
+CREATE TABLE sessions (
+    token VARCHAR(64) PRIMARY KEY,
+    user_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES auth_users(id)
+);
+```
+
+### Table: manager_user_relationship
+
+```sql
+CREATE TABLE manager_user_relationship (
+    manager_id INT NOT NULL,
+    user_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (manager_id, user_id),
+    FOREIGN KEY (manager_id) REFERENCES auth_users(id),
+    FOREIGN KEY (user_id) REFERENCES auth_users(id)
+);
+```
 
 ---
 

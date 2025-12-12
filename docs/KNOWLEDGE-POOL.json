@@ -162,6 +162,81 @@
       "each_window_size": "viewport height worth of rows",
       "overscan_default": 10,
       "requires": "fixed row height"
+    },
+    "hca_structure": {
+      "shared": "web/shared/",
+      "entities": "web/entities/",
+      "features": "web/features/",
+      "widgets": "web/widgets/",
+      "pages": "web/pages/"
     }
+  },
+  "auth": {
+    "modes": {
+      "trusted": "X-Pulldb-User header trusted directly (dev)",
+      "session": "bcrypt password + session token cookie (prod)",
+      "both": "tries trusted header first, falls back to session"
+    },
+    "config_var": "PULLDB_AUTH_MODE",
+    "default_mode": "both",
+    "password_algorithm": "bcrypt",
+    "work_factor": 12,
+    "session_ttl_hours": 24,
+    "session_cookie": "pulldb_session",
+    "files": {
+      "password": "pulldb/auth/password.py",
+      "repository": "pulldb/auth/repository.py",
+      "middleware": "pulldb/api/auth.py",
+      "web_routes": "pulldb/web/features/auth/"
+    }
+  },
+  "rbac": {
+    "roles": ["USER", "MANAGER", "ADMIN"],
+    "permissions": {
+      "view_own_jobs": ["USER", "MANAGER", "ADMIN"],
+      "submit_own_jobs": ["USER", "MANAGER", "ADMIN"],
+      "cancel_own_jobs": ["USER", "MANAGER", "ADMIN"],
+      "view_managed_jobs": ["MANAGER", "ADMIN"],
+      "cancel_managed_jobs": ["MANAGER", "ADMIN"],
+      "view_all_jobs": ["ADMIN"],
+      "cancel_any_job": ["ADMIN"],
+      "manage_users": ["ADMIN"],
+      "orphan_cleanup": ["ADMIN"],
+      "system_settings": ["ADMIN"]
+    },
+    "files": {
+      "permissions": "pulldb/domain/permissions.py",
+      "models": "pulldb/domain/models.py"
+    },
+    "manager_relationship_table": "manager_user_relationship"
+  },
+  "simulation": {
+    "package": "pulldb/simulation/",
+    "components": {
+      "api": "simulation/api/router.py",
+      "engine": "simulation/core/engine.py",
+      "bus": "simulation/core/bus.py",
+      "state": "simulation/core/state.py",
+      "runner": "simulation/core/queue_runner.py",
+      "seeding": "simulation/core/seeding.py",
+      "scenarios": "simulation/core/scenarios.py"
+    },
+    "adapters": {
+      "mock_mysql": "simulation/adapters/mock_mysql.py",
+      "mock_s3": "simulation/adapters/mock_s3.py",
+      "mock_exec": "simulation/adapters/mock_exec.py"
+    },
+    "exports": ["MockJobRepository", "MockUserRepository", "MockS3Client", "SimulationEngine"]
+  },
+  "phase4_schema": {
+    "migrations": [
+      {"file": "070_auth_users_role.sql", "purpose": "adds role column to auth_users"},
+      {"file": "071_auth_credentials.sql", "table": "auth_credentials"},
+      {"file": "072_sessions.sql", "table": "sessions"},
+      {"file": "072_password_reset.sql", "table": "password_reset_tokens"},
+      {"file": "073_manager_user_relationship.sql", "table": "manager_user_relationship"},
+      {"file": "074_audit_logs.sql", "table": "audit_logs"}
+    ],
+    "tables": ["auth_credentials", "sessions", "password_reset_tokens", "manager_user_relationship", "audit_logs"]
   }
 }

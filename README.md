@@ -4,6 +4,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-585%20total-success.svg)](pulldb/tests/)
+[![Index Updated](https://img.shields.io/badge/Index%20Updated-2025--12--12-blue)](docs/WORKSPACE-INDEX.md)
 
 > Pull production database backups from S3 and restore them into development environments.
 

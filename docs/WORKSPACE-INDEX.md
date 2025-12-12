@@ -3,8 +3,8 @@
 [← Back to Documentation Index](START-HERE.md)
 
 > **Purpose**: Comprehensive atomic-level index for AI model searching and navigation.  
-> **Last Updated**: 2025-11-26  
-> **File Count**: ~297 project files (excluding venv, .git, caches)
+> **Last Updated**: 2025-12-12  
+> **File Count**: ~286 project files (excluding venv, .git, caches)
 
 ---
 
@@ -12,12 +12,11 @@
 
 | Category | Count | Primary Path |
 |----------|-------|--------------|
-| Python Source | 78 | `pulldb/` |
-| Tests | 50+ | `pulldb/tests/` |
-| Shell Scripts | 33 active | `scripts/` |
-| SQL Schema | 10 | `schema/pulldb_service/` |
+| Python Source | 91 | `pulldb/` |
+| Tests | 137 | `pulldb/tests/`, `tests/` |
+| Shell Scripts | 42 | `scripts/` |
+| SQL Schema | 16 | `schema/pulldb_service/` |
 | Documentation | 35+ | `docs/` |
-| Design Docs | 18 | `design/` |
 | Copilot Instructions | 6 | `.github/` |
 
 ---
@@ -29,656 +28,332 @@
 │   CLI   │───►│ API Service │───►│ MySQL Queue      │
 └─────────┘    │ (FastAPI)   │    │ (pulldb_service) │
                └─────────────┘    └────────┬─────────┘
-                                           │
-                                           ▼
-                              ┌────────────────────────┐
-                              │    Worker Service      │
-                              │ ┌─────────┬──────────┐ │
-                              │ │Download │ myloader │ │
-                              │ │  S3     │ restore  │ │
-                              │ └─────────┴──────────┘ │
-                              └────────────────────────┘
+                     │                     │
+                     ▼                     ▼
+              ┌─────────────┐   ┌────────────────────────┐
+              │   Web UI    │   │    Worker Service      │
+              │ (templates) │   │ ┌─────────┬──────────┐ │
+              └─────────────┘   │ │Download │ myloader │ │
+                                │ │  S3     │ restore  │ │
+                                │ └─────────┴──────────┘ │
+                                └────────────────────────┘
 ```
 
 ---
 
-## 1. Python Package (`pulldb/`)
+## HCA Layer Summary
 
-### 1.1 Core Modules
+| Layer | Directories | File Count |
+|-------|-------------|------------|
+| **shared** | `pulldb/auth/`, `pulldb/infra/`, `pulldb/simulation/adapters/` (+5 more) | 22 |
+| **entities** | `pulldb/domain/`, `pulldb/web/entities/` | 8 |
+| **features** | `pulldb/domain/services/`, `pulldb/simulation/core/`, `pulldb/web/features/` (+7 more) | 28 |
+| **widgets** | `pulldb/web/widgets/`, `pulldb/web/widgets/breadcrumbs/`, `pulldb/web/widgets/bulk_actions/` (+7 more) | 10 |
+| **pages** | `pulldb/api/`, `pulldb/cli/`, `pulldb/simulation/api/` (+1 more) | 20 |
+| **plugins** | `pulldb/binaries/` | 1 |
 
-| File | Purpose | Key Classes/Functions |
-|------|---------|----------------------|
-| `__init__.py` | Package root | Version export |
+---
 
-### 1.2 API Service (`pulldb/api/`)
+## 1. Package: `pulldb/api/`
 
-| File | Purpose | Key Elements |
-|------|---------|--------------|
-| `main.py` | FastAPI application | `JobRequest`, `JobResponse`, `JobSummary`, `JobEventResponse`, `APIState`, `create_app()`, `submit_job()`, `list_jobs()`, `health()` |
-| `__init__.py` | Package marker | - |
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | pages |  |
+| `auth.py` | pages | `get_auth_mode()`, `get_current_user_optional()`, `authenticate_user()`, 📍 4 endpoints (+4 more) |
+| `logic.py` | pages | `validate_job_request()`, `check_concurrency_limits()`, `enqueue_job()` |
+| `main.py` | pages | `UserInfoResponse`, `ChangePasswordRequest`, `UserLastJobResponse`, `get_api_state()`, `health()` (+61 more) |
+| `schemas.py` | pages | `JobRequest`, `JobResponse`, `JobSummary` (+3 more) |
+| `types.py` | pages | `APIState` |
 
-**Endpoints**:
-- `POST /jobs` - Submit restore job
-- `GET /jobs` - List jobs with filters
-- `GET /jobs/active` - Active jobs only
-- `GET /jobs/{job_id}/events` - Job event stream
-- `GET /health` - Health check
-- `GET /status` - System status
+## 2. Package: `pulldb/auth/`
 
-### 1.3 CLI (`pulldb/cli/`)
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | shared |  |
+| `password.py` | shared | `hash_password()`, `verify_password()`, `needs_rehash()` |
+| `repository.py` | shared | `AuthRepository`, 📍 5 endpoints |
 
-| File | Purpose | Key Elements |
-|------|---------|--------------|
-| `main.py` | CLI entry point | `cli()`, `restore_cmd()`, `status_cmd()`, `_api_post()`, `_api_get()`, `_JobRow` |
-| `parse.py` | Argument parser | `RestoreCLIOptions`, `CLIParseError`, `parse_restore_args()` |
-| `settings.py` | Settings management | `settings_group()`, `list_settings()`, `get_setting()`, `set_setting()`, `reset_setting()`, `export_settings()` |
-| `__main__.py` | Module execution | CLI bootstrap |
-| `__init__.py` | Package marker | - |
+## 3. Package: `pulldb/cli/`
 
-**CLI Commands**:
-- `pulldb restore <user> customer <name>` - Customer restore
-- `pulldb restore <user> qatemplate` - QA template restore
-- `pulldb status [--json] [--wide] [--limit N]` - View jobs
-- `pulldb settings list|get|set|reset|export` - Settings management
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | pages |  |
+| `__main__.py` | pages |  |
+| `admin.py` | pages | `cli()`, `main()` |
+| `admin_commands.py` | pages | `jobs_group()`, `jobs_list()`, `jobs_cancel()`, 📍 2 endpoints (+9 more) |
+| `main.py` | pages | `_APIError`, 🔌 `_JobSummary`, `_JobRow`, `cli()`, `restore_cmd()` (+8 more) |
+| `parse.py` | pages | `CLIParseError`, 📦 `RestoreCLIOptions`, `parse_restore_args()` |
+| `secrets_commands.py` | pages | 📦 `SecretParams`, `secrets_group()`, `list_secrets()`, `get_secret()`, 📍 25 endpoints (+3 more) |
+| `settings.py` | pages | `settings_group()`, `list_settings()`, `get_setting()` (+4 more) |
 
-### 1.4 Domain Layer (`pulldb/domain/`)
+## 4. Package: `pulldb/domain/`
 
-| File | Purpose | Key Elements |
-|------|---------|--------------|
-| `models.py` | Domain entities | `JobStatus` (Enum), `User`, `Job`, `JobEvent`, `DBHost`, `Setting` |
-| `config.py` | Configuration | `Config`, `S3BackupLocationConfig`, environment variable parsing |
-| `errors.py` | Error hierarchy | `JobExecutionError`, `DownloadError`, `ExtractionError`, `DiskCapacityError`, `MyLoaderError`, `PostSQLError`, `AtomicRenameError`, `BackupValidationError`, `BackupDiscoveryError`, `MetadataInjectionError`, `StagingError` |
-| `restore_models.py` | Restore DTOs | `MyLoaderSpec`, `MyLoaderResult`, `build_configured_myloader_spec()` |
-| `__init__.py` | Package marker | - |
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | entities |  |
+| `config.py` | entities | 📦 `S3BackupLocationConfig`, 📦 `Config`, 📍 17 endpoints |
+| `errors.py` | entities | `JobExecutionError`, `DownloadError`, `ExtractionError` (+7 more) |
+| `interfaces.py` | entities | 🔌 `JobRepository`, 🔌 `AuthRepository`, 🔌 `S3Client` (+2 more) |
+| `models.py` | entities | 📊 `JobStatus`, 📊 `UserRole`, 📦 `User` (+6 more) |
+| `permissions.py` | entities | `can_view_job()`, `can_cancel_job()`, `can_submit_for_user()` (+7 more) |
+| `restore_models.py` | entities | 📦 `MyLoaderSpec`, 📦 `MyLoaderResult`, `build_configured_myloader_spec()` |
 
-**JobStatus Enum Values**:
-- `PENDING` - Awaiting processing
-- `RUNNING` - Currently executing
-- `COMPLETED` - Successfully finished
-- `FAILED` - Error occurred
-- `CANCELLED` - User cancelled
+### domain/services/
 
-### 1.5 Infrastructure (`pulldb/infra/`)
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | features |  |
+| `discovery.py` | features | 📦 `BackupInfo`, 📦 `SearchContext`, `DiscoveryService`, 📍 6 endpoints |
 
-| File | Purpose | Key Elements |
-|------|---------|--------------|
-| `mysql.py` | Database access | `MySQLPool`, `JobRepository`, `UserRepository`, `HostRepository`, `SettingsRepository`, `build_default_pool()` |
-| `s3.py` | S3 operations | `S3Client`, `BackupSpec`, `discover_latest_backup()`, `parse_s3_bucket_path()` |
-| `secrets.py` | Credential resolution | `MySQLCredentials`, `CredentialResolver`, `CredentialResolutionError` |
-| `logging.py` | JSON structured logging | `JSONFormatter`, `get_logger()` |
-| `metrics.py` | Observability | `MetricLabels`, `emit_counter()`, `emit_gauge()`, `emit_timer()`, `time_operation()`, `emit_event()` |
-| `exec.py` | Command execution | `CommandResult`, `CommandExecutionError`, `CommandTimeoutError`, `run_command()`, `run_command_streaming()` |
-| `__init__.py` | Package marker | - |
+## 5. Package: `pulldb/infra/`
 
-**Repository Methods (JobRepository)**:
-- `create()` - Insert new job
-- `get_by_id()` - Fetch single job
-- `list_pending()` - Get queue
-- `update_status()` - Transition state
-- `add_event()` - Append event log
-- `acquire_lock()` / `release_lock()` - Job locking
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | shared |  |
+| `exec.py` | shared | `CommandExecutionError`, `CommandTimeoutError`, `SubprocessExecutor`, `run_command()`, `run_command_streaming()` |
+| `factory.py` | shared | `get_mode()`, `is_simulation_mode()`, `get_job_repository()` (+3 more) |
+| `logging.py` | shared | `JSONFormatter`, `get_logger()` |
+| `metrics.py` | shared | 📦 `MetricLabels`, `emit_counter()`, `emit_gauge()`, `emit_timer()` (+1 more) |
+| `mysql.py` | shared | `MySQLPool`, `JobRepository`, `UserRepository`, `build_default_pool()`, 📍 20 endpoints (+2 more) |
+| `s3.py` | shared | 📦 `BackupSpec`, `S3Client`, `parse_s3_bucket_path()`, `discover_latest_backup()`, 📍 5 endpoints |
+| `secrets.py` | shared | `CredentialResolver`, `CredentialResolutionError`, 📍 10 endpoints |
 
-### 1.6 Worker Service (`pulldb/worker/`)
+## 6. Package: `pulldb/simulation/`
 
-| File | Purpose | Key Elements |
-|------|---------|--------------|
-| `service.py` | Worker main | `main()`, `_build_job_repository()`, `_build_job_executor()`, `_register_signal_handlers()`, `_cleanup_zombies()` |
-| `loop.py` | Poll loop | `run_poll_loop()`, `_transition_to_running()`, `_execute_job()` |
-| `executor.py` | Job orchestrator | `WorkerJobExecutor`, `WorkerExecutorDependencies`, `WorkerExecutorTimeouts`, `WorkerExecutorHooks`, `extract_tar_archive()`, `derive_backup_lookup_target()` |
-| `downloader.py` | S3 download | `download_backup()`, `ensure_disk_capacity()`, `_stream_download()` |
-| `restore.py` | myloader execution | `RestoreWorkflowSpec`, `build_restore_workflow_spec()`, `run_myloader()`, `orchestrate_restore_workflow()`, `build_myloader_command()` |
-| `staging.py` | Staging DB management | `StagingConnectionSpec`, `StagingResult`, `generate_staging_name()`, `find_orphaned_staging_databases()`, `cleanup_orphaned_staging()` |
-| `atomic_rename.py` | Rename procedure | `AtomicRenameConnectionSpec`, `AtomicRenameSpec`, `atomic_rename_staging_to_target()` |
-| `post_sql.py` | Post-restore SQL | `PostSQLConnectionSpec`, `PostSQLScriptResult`, `PostSQLExecutionResult`, `execute_post_sql()`, `_discover_scripts()` |
-| `metadata.py` | Metadata injection | `MetadataConnectionSpec`, `MetadataSpec`, `inject_metadata_table()` |
-| `metadata_synthesis.py` | Legacy backup fix | `synthesize_metadata()`, `ensure_compatible_metadata()`, `parse_filename()`, `count_rows_in_file()` |
-| `log_normalizer.py` | myloader log parsing | `NormalizedLogEvent`, `normalize_myloader_line()` |
-| `__init__.py` | Package marker | - |
+### simulation/adapters/
 
-**Worker Flow**:
-1. Poll for PENDING jobs
-2. Acquire lock, transition to RUNNING
-3. Download backup from S3
-4. Extract archive
-5. Run myloader
-6. Execute post-restore SQL
-7. Atomic rename staging → target
-8. Transition to COMPLETED
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | shared |  |
+| `mock_exec.py` | shared | 📦 `MockCommandConfig`, `MockProcessExecutor` |
+| `mock_mysql.py` | shared | `SimulatedJobRepository`, `SimulatedUserRepository`, `SimulatedHostRepository`, 📍 9 endpoints (+1 more) |
+| `mock_s3.py` | shared | `S3Error`, `MockStreamingBody`, `MockS3Client` |
 
-### 1.7 Binaries (`pulldb/binaries/`)
+### simulation/api/
+
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | pages |  |
+| `router.py` | pages | `SimulationStatusResponse`, `ResetResponse`, `ScenarioInfo`, `get_status()`, `reset_state()` (+29 more) |
+
+### simulation/core/
+
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `bus.py` | features | 📊 `EventType`, 📦 `SimulationEvent`, `SimulationEventBus`, `get_event_bus()`, `reset_event_bus()` (+1 more) |
+| `engine.py` | features | 📦 `SimulationConfig`, `SimulationEngine` |
+| `queue_runner.py` | features | 📊 `JobPhase`, 📦 `MockRunnerConfig`, `MockQueueRunner`, `get_mock_queue_runner()` |
+| `scenarios.py` | features | 📊 `ScenarioType`, 📦 `ChaosConfig`, 📦 `Scenario`, `get_scenario_manager()`, `reset_scenario_manager()` (+1 more) |
+| `seeding.py` | features | `seed_dev_users()`, `seed_dev_hosts()`, `seed_orphan_databases()` (+3 more) |
+| `state.py` | features | 📦 `SimulationState`, `get_simulation_state()`, `reset_simulation()` |
+
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | unknown |  |
+
+## 7. Package: `pulldb/web/`
+
+### web/entities/
+
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | entities |  |
+
+### web/features/
+
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | features |  |
+| `routes.py` | features | `admin_page()`, `list_users()`, `enable_user()`, 📍 40 endpoints (+25 more) |
+| `routes.py` | features | `login_page()`, `login_submit()`, `logout()`, 📍 8 endpoints (+1 more) |
+| `routes.py` | features | `dashboard()`, 📍 1 endpoints |
+| `routes.py` | features | `jobs_page()`, `job_details()`, `cancel_job()`, 📍 3 endpoints |
+| `routes.py` | features | `manager_page()`, `reset_team_member_password()`, `clear_team_member_password_reset()`, 📍 5 endpoints |
+| `routes.py` | features | `restore_page()`, `search_customers()`, `search_backups()`, 📍 4 endpoints |
+
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | pages |  |
+| `dependencies.py` | pages | `get_api_state()`, `get_session_user()`, `require_login()`, 📍 25 endpoints |
+| `exceptions.py` | pages | `SessionExpiredError`, `PermissionDeniedError`, `ResourceNotFoundError`, `create_session_expired_handler()`, `render_error_page()` |
+| `router_registry.py` | pages |  |
+
+### web/shared/
+
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | shared |  |
+| `__init__.py` | shared |  |
+| `page_contracts.py` | shared | 📦 `PageContext`, 📦 `ErrorPageContext`, 📦 `DashboardContext` (+1 more) |
+| `service_contracts.py` | shared | 🔌 `AuthService`, 🔌 `UserRepository`, 🔌 `JobRepository` |
+| `__init__.py` | shared |  |
+| `__init__.py` | shared |  |
+| `__init__.py` | shared |  |
+
+### web/widgets/
+
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | widgets |  |
+| `__init__.py` | widgets | 📦 `BreadcrumbItem`, `build_breadcrumbs()`, `get_breadcrumbs()` |
+| `__init__.py` | widgets | 📊 `BulkActionType`, 📦 `BulkAction`, 📦 `BulkActionRequest`, `validate_bulk_action()`, `get_action_definition()` (+1 more) |
+| `__init__.py` | widgets | 📊 `SortOrder`, 📦 `FilterOption`, 📦 `FilterField`, `get_job_status_options()`, `get_user_role_options()` (+6 more) |
+| `__init__.py` | widgets |  |
+| `__init__.py` | widgets |  |
+| `__init__.py` | widgets | 📊 `SearchTriggerMode`, 📦 `SearchableDropdownOption`, 📦 `SearchableDropdownConfig`, `build_dropdown_config()` |
+| `__init__.py` | widgets |  |
+| `__init__.py` | widgets |  |
+
+## 8. Package: `pulldb/worker/`
+
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | features |  |
+| `atomic_rename.py` | features | 📦 `AtomicRenameConnectionSpec`, 📦 `AtomicRenameSpec`, `atomic_rename_staging_to_target()` |
+| `cleanup.py` | features | 📦 `CleanupCandidate`, 📦 `OrphanCandidate`, 📦 `OrphanMetadata`, `is_valid_staging_name()`, `get_orphan_metadata()` (+12 more) |
+| `downloader.py` | features | `ensure_disk_capacity()`, `download_backup()`, 📍 2 endpoints |
+| `executor.py` | features | 📦 `WorkerExecutorDependencies`, 📦 `WorkerExecutorTimeouts`, 📦 `WorkerExecutorHooks`, `derive_backup_lookup_target()`, `build_lookup_targets_for_location()` (+2 more) |
+| `log_normalizer.py` | features | 📦 `NormalizedLogEvent`, `normalize_myloader_line()` |
+| `loop.py` | features | `get_worker_id()`, `run_poll_loop()` |
+| `metadata.py` | features | 📦 `MetadataConnectionSpec`, 📦 `MetadataSpec`, `inject_metadata_table()` |
+| `metadata_synthesis.py` | features | `parse_filename()`, `count_rows_in_file()`, `synthesize_metadata()` |
+| `post_sql.py` | features | 📦 `PostSQLScriptResult`, 📦 `PostSQLExecutionResult`, 📦 `PostSQLConnectionSpec`, `execute_post_sql()` |
+| `profiling.py` | features | 📊 `RestorePhase`, 📦 `PhaseProfile`, 📦 `RestoreProfile`, `parse_profile_from_event()`, 📍 11 endpoints |
+| `restore.py` | features | 📦 `RestoreWorkflowSpec`, `build_restore_workflow_spec()`, `build_myloader_command()`, `run_myloader()` |
+| `service.py` | widgets | `main()` |
+| `staging.py` | features | 📦 `StagingConnectionSpec`, 📦 `StagingResult`, `generate_staging_name()`, `find_orphaned_staging_databases()`, `cleanup_orphaned_staging()` |
+
+## 9. Package: `pulldb/binaries/`
+
+| File | Layer | Key Elements |
+|------|-------|--------------|
+| `__init__.py` | plugins |  |
+
+---
+
+## Test Coverage Mapping
+
+| Source Module | Test File(s) | Coverage Area |
+|---------------|--------------|---------------|
+| `auth.py` | `test_api_auth_integration.py`, `test_auth_repository.py` (+2) | api |
+| `password.py` | `test_password.py` | auth |
+| `repository.py` | `test_auth_repository.py`, `test_host_repository.py` (+6) | auth |
+| `admin.py` | `test_admin.py` | cli |
+| `parse.py` | `test_cli_parse.py` | cli |
+| `settings.py` | `test_settings_repository.py`, `test_settings.py` | cli |
+| `config.py` | `test_config.py`, `test_config_integration.py` | domain |
+| `errors.py` | `test_errors.py` | domain |
+| `models.py` | `test_models.py`, `test_models_role.py` (+1) | domain |
+| `permissions.py` | `test_permissions.py`, `test_permissions_integration.py` | domain |
+| `restore_models.py` | `test_restore_models.py` | domain |
+| `discovery.py` | `test_s3_discovery.py` | domain |
+| `exec.py` | `test_exec.py`, `test_post_sql_execution.py` (+3) | infra |
+| `logging.py` | `test_logging.py` | infra |
+| `mysql.py` | `test_mock_mysql.py` | infra |
+| `s3.py` | `test_s3_discovery.py`, `test_s3_real_listing_optional.py` (+1) | infra |
+| `secrets.py` | `test_secrets.py` | infra |
+| `mock_exec.py` | `test_mock_exec.py` | simulation |
+| `mock_mysql.py` | `test_mock_mysql.py` | simulation |
+| `mock_s3.py` | `test_mock_s3.py` | simulation |
+| `routes.py` | `test_web_routes.py`, `test_routes.py` | web |
+| `routes.py` | `test_web_routes.py`, `test_routes.py` | web |
+| `routes.py` | `test_web_routes.py`, `test_routes.py` | web |
+| `routes.py` | `test_web_routes.py`, `test_routes.py` | web |
+| `routes.py` | `test_web_routes.py`, `test_routes.py` | web |
+| `routes.py` | `test_web_routes.py`, `test_routes.py` | web |
+| `atomic_rename.py` | `test_atomic_rename.py`, `test_atomic_rename_benchmark.py` (+1) | worker |
+| `cleanup.py` | `test_cleanup.py`, `test_cleanup.py` (+1) | worker |
+| `downloader.py` | `test_downloader.py`, `test_downloader.py` | worker |
+| `executor.py` | `test_worker_executor.py`, `test_executor.py` | worker |
+| ... | (9 more mappings) | ... |
+
+---
+
+## Database Schema
 
 | File | Purpose |
 |------|---------|
-| `myloader-0.9.5` | Legacy mydumper binary |
-| `myloader-0.19.3-3` | Modern mydumper binary |
-
-### 1.8 SQL Templates
-
-| Directory | Purpose |
-|-----------|---------|
-| `pulldb/template_after_sql/` | QA template post-SQL scripts |
-| `customers_after_sql/` | Customer post-SQL (PII removal) |
-| `qa_template_after_sql/` | QA template post-SQL |
-
----
-
-## 2. Test Suite (`pulldb/tests/`)
-
-### 2.1 Test Files
-
-| File | Coverage Area | Key Test Classes |
-|------|---------------|------------------|
-| `conftest.py` | Fixtures | MySQL pool, isolated DB, credentials |
-| `test_api_jobs.py` | API endpoints | `FakeUserRepository`, `FakeJobRepository` |
-| `test_job_repository.py` | Job CRUD | `TestJobRepository` |
-| `test_user_repository.py` | User CRUD | `TestUserRepository` |
-| `test_host_repository.py` | Host CRUD | `TestHostRepository` |
-| `test_settings_repository.py` | Settings CRUD | `TestSettingsRepository` |
-| `test_secrets.py` | Credential resolution | `TestMySQLCredentials`, `TestCredentialResolver` |
-| `test_config.py` | Config parsing | `TestMinimalFromEnv`, `TestFromEnvAndMySQL`, `TestS3BackupLocationParsing` |
-| `test_config_integration.py` | Config + DB | `TestConfigIntegration` |
-| `test_cli_parse.py` | CLI parsing | Argument validation tests |
-| `test_cli_status.py` | Status command | Table/JSON output tests |
-| `test_downloader.py` | S3 download | Disk capacity, download success/failure |
-| `test_restore.py` | myloader execution | Command building, timeout handling |
-| `test_restore_models.py` | MyLoaderSpec | Config application tests |
-| `test_s3_discovery.py` | Backup discovery | Newest backup selection |
-| `test_staging.py` | Staging management | Name generation, orphan cleanup |
-| `test_atomic_rename.py` | Rename procedure | Success/failure scenarios |
-| `test_atomic_rename_benchmark.py` | Performance | Benchmark validation |
-| `test_atomic_rename_deploy.py` | Deployment | Dry-run, host validation |
-| `test_post_sql.py` | Post-SQL execution | Script ordering, failure handling |
-| `test_post_sql_execution.py` | Script execution | Size limits, read errors |
-| `test_metadata_injection.py` | Metadata tables | Create/insert operations |
-| `test_worker_service.py` | Worker main | Poll loop, oneshot mode |
-| `test_worker_executor.py` | Job executor | Backup target derivation |
-| `test_worker_failure_modes.py` | Error paths | DB errors, permission errors |
-| `test_worker_log_normalizer.py` | Log parsing | Event extraction |
-| `test_loop.py` | Poll loop | Job processing, backoff |
-| `test_exec.py` | Command runner | Success, timeout, errors |
-| `test_logging.py` | JSON logging | Formatter validation |
-| `test_errors.py` | Error classes | Structure, inheritance |
-| `test_atoms.py` | Atomic operations | Sanitization, parsing |
-| `test_integration_*.py` | Integration | Workflow, disk, backup tests |
-| `test_isolation.py` | Fixture isolation | Environment, connection tests |
-| `test_installer*.py` | Installer scripts | Validation, help text |
-| `test_imports.py` | Import health | Module loading |
-| `test_constants.py` | Constants | Value assertions |
-| `test_myloader_command.py` | Command building | Arguments validation |
-
-### 2.2 Test Fixtures (conftest.py)
-
-| Fixture | Scope | Purpose |
-|---------|-------|---------|
-| `aws_region` | session | AWS region constant |
-| `aws_profile` | session | AWS profile for tests |
-| `s3_aws_profile` | session | S3-specific profile |
-| `coordination_db_secret` | session | Secret ID |
-| `verify_secret_residency` | session | AWS validation |
-| `mysql_credentials` | session | DB credentials |
-| `ensure_database` | session | DB existence check |
-| `mysql_pool` | session | Connection pool |
-| `seed_settings` | session | Insert test settings |
-| `mysql_network_credentials` | session | Network credentials |
-| `isolated_mysql` | function | Isolated DB per test |
-| `isolated_worker` | function | Isolated worker process |
+| `000_auth_users.sql` | auth_users |
+| `010_jobs.sql` | jobs |
+| `020_job_events.sql` | job_events |
+| `030_db_hosts.sql` | db_hosts |
+| `040_locks.sql` | locks |
+| `050_settings.sql` | settings |
+| `060_active_jobs_view.sql` | active_jobs_view |
+| `070_auth_users_role.sql` | auth_users_role |
+| `071_auth_credentials.sql` | auth_credentials |
+| `072_password_reset.sql` | password_reset |
+| `072_sessions.sql` | sessions |
+| `073_manager_user_relationship.sql` | manager_user_relationship |
+| `074_audit_logs.sql` | audit_logs |
+| `200_seed_db_hosts.sql` | seed_db_hosts |
+| `210_seed_settings.sql` | seed_settings |
+| `300_mysql_users.sql` | mysql_users |
 
 ---
 
-## 3. Database Schema (`schema/pulldb_service/`)
+## Known HCA Violations (Technical Debt Baseline)
 
-| File | Order | Content |
-|------|-------|---------|
-| `000_auth_users.sql` | 000 | `auth_users` table |
-| `010_jobs.sql` | 010 | `jobs` table with status enum |
-| `020_job_events.sql` | 020 | `job_events` table |
-| `030_db_hosts.sql` | 030 | `db_hosts` table |
-| `040_locks.sql` | 040 | `job_locks` table |
-| `050_settings.sql` | 050 | `settings` table |
-| `060_active_jobs_view.sql` | 060 | `active_jobs` view |
-| `200_seed_db_hosts.sql` | 200 | Default hosts seed |
-| `210_seed_settings.sql` | 210 | Default settings seed |
-| `300_mysql_users.sql` | 300 | User grants (api/worker/loader) |
+Established: 2025-12-12
 
-### Tables
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `auth_users` | Authorized users | `id`, `user_code`, `user_name`, `email` |
-| `jobs` | Job queue | `id`, `user_id`, `status`, `target`, `s3_path`, `options` |
-| `job_events` | Event log | `job_id`, `event_type`, `detail`, `created_at` |
-| `db_hosts` | Target hosts | `id`, `hostname`, `credential_ref`, `is_default` |
-| `job_locks` | Exclusive locks | `job_id`, `acquired_by`, `acquired_at` |
-| `settings` | Dynamic config | `key`, `value`, `description`, `is_default` |
-
-### MySQL Users
-
-| User | Purpose | Permissions |
-|------|---------|-------------|
-| `pulldb_api` | API service | SELECT/INSERT/UPDATE on jobs, job_events, settings |
-| `pulldb_worker` | Worker service | All on jobs, job_events; SELECT on db_hosts, settings |
-| `pulldb_loader` | myloader restore | All privileges on target databases |
+| File | Violation | Detail |
+|------|-----------|--------|
+| `pulldb/infra/exec.py` | upward_import | Imports 'pulldb.domain.models' (entities) from sha... |
+| `pulldb/infra/factory.py` | upward_import | Imports 'pulldb.domain.interfaces' (entities) from... |
+| `pulldb/infra/mysql.py` | upward_import | Imports 'pulldb.domain.models' (entities) from sha... |
+| `pulldb/infra/s3.py` | upward_import | Imports 'pulldb.domain.errors' (entities) from sha... |
+| `pulldb/infra/secrets.py` | upward_import | Imports 'pulldb.domain.models' (entities) from sha... |
+| `pulldb/simulation/adapters/mock_exec.py` | upward_import | Imports 'pulldb.domain.models' (entities) from sha... |
+| `pulldb/simulation/adapters/mock_exec.py` | upward_import | Imports 'pulldb.simulation.core.bus' (features) fr... |
+| `pulldb/simulation/adapters/mock_exec.py` | upward_import | Imports 'pulldb.simulation.core.state' (features) ... |
+| `pulldb/simulation/adapters/mock_mysql.py` | upward_import | Imports 'pulldb.domain.models' (entities) from sha... |
+| `pulldb/simulation/adapters/mock_mysql.py` | upward_import | Imports 'pulldb.simulation.core.bus' (features) fr... |
+| `pulldb/simulation/adapters/mock_mysql.py` | upward_import | Imports 'pulldb.simulation.core.state' (features) ... |
+| `pulldb/simulation/adapters/mock_s3.py` | upward_import | Imports 'pulldb.simulation.core.bus' (features) fr... |
+| `pulldb/simulation/adapters/mock_s3.py` | upward_import | Imports 'pulldb.simulation.core.state' (features) ... |
+| `pulldb/web/features/admin/routes.py` | upward_import | Imports 'pulldb.web.dependencies' (pages) from fea... |
+| `pulldb/web/features/auth/routes.py` | upward_import | Imports 'pulldb.web.dependencies' (pages) from fea... |
+| `pulldb/web/features/dashboard/routes.py` | upward_import | Imports 'pulldb.web.dependencies' (pages) from fea... |
+| `pulldb/web/features/jobs/routes.py` | upward_import | Imports 'pulldb.web.dependencies' (pages) from fea... |
+| `pulldb/web/features/manager/routes.py` | upward_import | Imports 'pulldb.web.dependencies' (pages) from fea... |
+| `pulldb/web/features/restore/routes.py` | upward_import | Imports 'pulldb.api.logic' (pages) from features l... |
+| `pulldb/web/features/restore/routes.py` | upward_import | Imports 'pulldb.api.schemas' (pages) from features... |
+| ... | 3 more violations | See JSON for full list |
 
 ---
 
-## 4. Scripts (`scripts/`)
+## Search Patterns
 
-### 4.1 Packaging (bundled into .deb)
-
-| Script | Purpose |
-|--------|---------|
-| `install_pulldb.sh` | Main installer |
-| `uninstall_pulldb.sh` | Uninstaller |
-| `upgrade_pulldb.sh` | Upgrade handler |
-| `configure-pulldb.sh` | Interactive configuration |
-| `merge-config.sh` | Config migration |
-| `monitor_jobs.py` | Job/process monitoring |
-| `service-validate.sh` | Production validation |
-
-### 4.2 Build
-
-| Script | Purpose |
-|--------|---------|
-| `build_deb.sh` | Server .deb package |
-| `build_client_deb.sh` | Client .deb package |
-
-### 4.3 Infrastructure Setup
-
-| Script | Purpose |
-|--------|---------|
-| `setup-aws.sh` | AWS CLI install |
-| `setup-aws-credentials.sh` | AWS credential validation |
-| `setup-mysql.sh` | MySQL install/config |
-| `setup-test-environment.sh` | Full test env |
-| `setup_test_env.sh` | Python venv only |
-| `teardown-test-environment.sh` | Cleanup test env |
-| `start-test-services.sh` | Start test services |
-
-### 4.4 Validation
-
-| Script | Purpose |
-|--------|---------|
-| `pulldb-validate.sh` | Validation orchestrator |
-| `verify-secrets-perms.sh` | IAM/Secrets permissions |
-| `verify-aws-access.py` | Cross-account S3 |
-
-### 4.5 Operations
-
-| Script | Purpose |
-|--------|---------|
-| `cleanup_dev_env.py` | Drop test databases |
-| `cleanup_system.sh` | System cleanup |
-| `deploy-iam-templates.sh` | IAM CLI commands |
-
-### 4.6 Development
-
-| Script | Purpose |
-|--------|---------|
-| `precommit-verify.py` | Pre-commit gates |
-| `validate-knowledge-pool.py` | JSON/MD sync |
-| `validate-metrics-emission.py` | Metrics test |
-| `ensure_fail_hard.py` | Doc compliance |
-| `benchmark_atomic_rename.py` | Performance benchmark |
-| `deploy_atomic_rename.py` | Stored procedure deploy |
-| `generate_cloudshell.py` | AWS CLI scripts |
-| `update-engineering-dna.sh` | Submodule update |
-| `audit-permissions.sh` | Permission audit |
-| `ci-permissions-check.sh` | CI permission check |
-
-### 4.7 Subdirectories
-
-| Path | Purpose |
-|------|---------|
-| `scripts/lib/` | Shared shell libraries |
-| `scripts/validate/` | Numbered validation phases (00-99) |
-| `scripts/archived/` | Historical scripts |
+| Topic | Search Terms |
+|-------|--------------|
+| Authentication | `AuthRepository`, `hash_password`, `verify_password`, `SessionManager` |
+| RBAC | `permissions.py`, `check_permission`, `UserRole`, `require_permission` |
+| Job Creation | `JobRepository.create`, `submit_job`, `_enqueue_job` |
+| Job Processing | `run_poll_loop`, `_execute_job`, `WorkerJobExecutor` |
+| S3 Download | `download_backup`, `S3Client`, `discover_latest_backup` |
+| myloader | `run_myloader`, `build_myloader_command`, `MyLoaderSpec` |
+| Staging | `generate_staging_name`, `cleanup_orphaned_staging`, `StagingResult` |
+| Atomic Rename | `atomic_rename_staging_to_target`, `AtomicRenameSpec` |
+| Simulation | `MockJobRepository`, `SimulationEngine`, `ScenarioRunner` |
+| Web UI | `router_registry`, `dependencies.py`, `templates/` |
 
 ---
 
-## 5. Documentation (`docs/`)
+## Key Invariants
 
-### 5.1 Primary Docs
-
-| File | Purpose | Status |
-|------|---------|--------|
-| `AWS-SETUP.md` | Comprehensive AWS setup | Canonical |
-| `mysql-setup.md` | MySQL installation and config | Canonical |
-| `mysql-schema.md` | Schema documentation | Canonical |
-| `testing.md` | Test suite documentation | Canonical |
-| `KNOWLEDGE-POOL.md` | Quick reference facts | Canonical |
-| `KNOWLEDGE-POOL.json` | Machine-readable facts | Canonical |
-
-### 5.2 Reference Docs
-
-| File | Purpose |
-|------|---------|
-| `backup-formats.md` | S3 backup structure |
-| `coding-standards.md` | Python/SQL style guide |
-| `restore-execution.md` | Restore workflow details |
-| `security-controls.md` | Security model |
-| `test-environment.md` | Test env setup |
-
-### 5.3 Design/Analysis
-
-| File | Purpose |
-|------|---------|
-| `TRUTH-MATRIX.md` | Feature/behavior matrix |
-| `WORKER-ATOM-EVALUATION.md` | Worker design analysis |
-| `appalachian_workflow_plan.md` | Integration planning |
-| `atomic_rename_procedure.sql` | Stored procedure source |
-| `plan-metadata-synthesis.md` | Metadata design |
-| `research-myloader-unification.md` | myloader analysis |
-| `pulldb_program_flow_workbook.md` | Flow documentation |
-
-### 5.4 Generated/Operational
-
-| File | Purpose |
-|------|---------|
-| `cloudshell-commands-summary.md` | AWS CLI commands |
-| `scripts-audit-report.md` | Scripts analysis |
-| `drift-resolution-checklist.md` | Doc alignment |
-| `vscode-diagnostics.md` | VS Code setup |
-
-### 5.5 Subdirectories
-
-| Path | Purpose |
-|------|---------|
-| `docs/archived/` | Historical docs |
-| `docs/generated/` | Auto-generated content |
-| `docs/policies/` | IAM policy examples |
-| `docs/terraform/` | Terraform snippets |
+1. MySQL is the only coordinator
+2. Per-target exclusivity (one restore per database at a time)
+3. Download per job (no archive reuse)
+4. Staging prefix: `stg_`
+5. Service-specific MySQL users (api, worker, loader)
+6. Fail hard - never silent degradation
+7. Post-SQL lexicographic ordering
+8. Atomic rename via stored procedure
+9. HCA layer isolation (import only from same or lower layers)
 
 ---
 
-## 6. Design Documents (`design/`)
+*Generated by `scripts/generate_workspace_index.py` on 2025-12-12*
 
-| File | Purpose |
-|------|---------|
-| `two-service-architecture.md` | API/Worker split design |
-| `system-overview.md` | High-level architecture |
-| `security-model.md` | Security design |
-| `configuration-map.md` | Config variable mapping |
-| `staging-rename-pattern.md` | Staging DB naming |
-| `implementation-notes.md` | Implementation details |
-| `reference-analysis.md` | Legacy PHP analysis |
-| `roadmap.md` | Feature roadmap |
-| `worker_build_plan.md` | Worker implementation plan |
-| `milestone-2-plan.md` | Phase 2 planning |
-| `PHASE1-PLANNING.md` | Phase 1 planning |
-| `restore-workflow-questionnaire.md` | Requirements gathering |
-| `apptype-analysis.md` | Application type analysis |
-| `engineering-dna-adoption.md` | Standards adoption |
-| `runbook-failure.md` | Failure handling |
-| `runbook-restore.md` | Restore procedures |
-
----
-
-## 7. Copilot Instructions (`.github/`)
-
-| File | Purpose |
-|------|---------|
-| `copilot-instructions.md` | Main instructions (slim) |
-| `copilot-instructions-behavior.md` | AI agent behavior |
-| `copilot-instructions-business-logic.md` | Domain logic |
-| `copilot-instructions-python.md` | Python patterns |
-| `copilot-instructions-status.md` | Progress tracking |
-| `copilot-instructions-testing.md` | Test writing guide |
-
----
-
-## 8. Packaging (`packaging/`)
-
-| Path | Purpose |
-|------|---------|
-| `packaging/debian/` | Debian package config |
-| `packaging/debian/control` | Package metadata |
-| `packaging/debian/postinst` | Post-install script |
-| `packaging/debian/prerm` | Pre-remove script |
-| `packaging/debian/postrm` | Post-remove script |
-| `packaging/debian/conffiles` | Config file list |
-
----
-
-## 9. Configuration Files (Root)
-
-| File | Purpose |
-|------|---------|
-| `pyproject.toml` | Python project config |
-| `setup.py` | Legacy setup script |
-| `requirements.txt` | Production dependencies |
-| `requirements-dev.txt` | Development dependencies |
-| `requirements-test.txt` | Test dependencies |
-| `Makefile` | Build automation |
-| `MANIFEST.in` | Package manifest |
-| `constitution.md` | Project standards |
-| `README.md` | Project overview |
-| `CHANGELOG.md` | Version history |
-
----
-
-## 10. Environment Variables
-
-### Required
-
-| Variable | Service | Purpose |
-|----------|---------|---------|
-| `PULLDB_API_MYSQL_USER` | API | MySQL username |
-| `PULLDB_WORKER_MYSQL_USER` | Worker | MySQL username |
-| `PULLDB_MYSQL_HOST` | Both | MySQL host |
-| `PULLDB_MYSQL_DATABASE` | Both | Database name |
-| `PULLDB_WORK_DIR` | Worker | Working directory |
-| `PULLDB_S3_BUCKET` | Worker | Backup bucket |
-| `PULLDB_S3_PREFIX` | Worker | Backup prefix |
-
-### Optional
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `PULLDB_MYSQL_PORT` | 3306 | MySQL port |
-| `PULLDB_API_HOST` | 0.0.0.0 | API bind host |
-| `PULLDB_API_PORT` | 8080 | API port |
-| `PULLDB_AWS_PROFILE` | None | AWS profile |
-| `PULLDB_S3_AWS_PROFILE` | None | S3-specific profile |
-| `PULLDB_MYLOADER_BINARY` | myloader | Binary path |
-| `PULLDB_MYLOADER_THREADS` | 4 | Thread count |
-| `PULLDB_LOG_LEVEL` | INFO | Logging level |
-
-### Test Overrides
-
-| Variable | Purpose |
-|----------|---------|
-| `PULLDB_TEST_MYSQL_HOST` | Test MySQL host |
-| `PULLDB_TEST_MYSQL_USER` | Test MySQL user |
-| `PULLDB_TEST_MYSQL_PASSWORD` | Test MySQL password |
-
----
-
-## 11. AWS Resources
-
-### Accounts
-
-| Environment | Account ID |
-|-------------|------------|
-| Development | 345321506926 |
-| Staging | 333204494849 |
-| Production | 448509429610 |
-
-### S3 Buckets
-
-| Environment | Bucket | Prefix |
-|-------------|--------|--------|
-| Staging | `pestroutesrdsdbs` | `daily/stg/` |
-| Production | `pestroutes-rds-backup-prod-vpc-us-east-1-s3` | `daily/prod/` |
-
-### Secrets
-
-| Secret | Purpose |
-|--------|---------|
-| `/pulldb/mysql/api` | API service credentials |
-| `/pulldb/mysql/worker` | Worker service credentials |
-| `/pulldb/mysql/loader` | myloader credentials |
-
-### IAM Roles
-
-| Role | Purpose |
-|------|---------|
-| `pulldb-ec2-service-role` | EC2 instance role |
-| `pulldb-cross-account-readonly` | Cross-account access |
-
----
-
-## 12. Search Tips for AI Models
-
-### Finding by Purpose
-
-- **Job creation**: Search `JobRepository.create`, `submit_job`, `_enqueue_job`
-- **Job processing**: Search `run_poll_loop`, `_execute_job`, `WorkerJobExecutor`
-- **S3 download**: Search `download_backup`, `S3Client`, `discover_latest_backup`
-- **myloader**: Search `run_myloader`, `build_myloader_command`, `MyLoaderSpec`
-- **Post-SQL**: Search `execute_post_sql`, `PostSQLConnectionSpec`
-- **Atomic rename**: Search `atomic_rename_staging_to_target`, `AtomicRenameSpec`
-- **Configuration**: Search `Config`, `from_env`, `S3BackupLocationConfig`
-- **Error handling**: Search `JobExecutionError`, error class names
-- **Credentials**: Search `CredentialResolver`, `MySQLCredentials`
-
-### Finding by Pattern
-
-- **All repository classes**: Grep `class.*Repository`
-- **All error classes**: Grep `class.*Error.*Exception`
-- **All specs/DTOs**: Grep `class.*Spec|class.*Result`
-- **All test functions**: Grep `^def test_`
-- **All fixtures**: Grep `@pytest.fixture`
-
-### File Type Quick Access
-
-- **Python source**: `pulldb/**/*.py` (exclude `venv/`, `tests/`)
-- **Tests only**: `pulldb/tests/*.py`
-- **SQL files**: `schema/**/*.sql`, `docs/*.sql`
-- **Shell scripts**: `scripts/*.sh`
-- **Markdown docs**: `docs/*.md`, `design/*.md`
-- **Config files**: `*.toml`, `*.json`, `*.yaml`
-
----
-
-## 13. Key Invariants
-
-1. **MySQL is the only coordinator** - No Redis, no file locks
-2. **Per-target exclusivity** - One job per target database at a time
-3. **Download per job** - No archive reuse between jobs
-4. **Staging prefix** - All staging DBs use `stg_` prefix
-5. **Service-specific users** - API, Worker, Loader have separate credentials
-6. **Fail hard** - Never silently degrade, always surface errors
-7. **Post-SQL ordering** - Scripts execute in lexicographic order
-8. **Atomic rename** - Uses stored procedure for zero-downtime swap
-
----
-
-## 14. Version Information
-
-| Component | Version |
-|-----------|---------|
-| Python | 3.12+ |
-| mydumper/myloader | 0.9.5, 0.19.3-3 |
-| MySQL | 8.0+ |
-| FastAPI | 0.100+ |
-| Pydantic | 2.0+ |
-
----
-
-## Appendix A: Complete File Listing
-
-### Python Modules (78 files)
-
-```
-pulldb/__init__.py
-pulldb/api/__init__.py
-pulldb/api/main.py
-pulldb/binaries/__init__.py
-pulldb/cli/__init__.py
-pulldb/cli/__main__.py
-pulldb/cli/main.py
-pulldb/cli/parse.py
-pulldb/cli/settings.py
-pulldb/domain/__init__.py
-pulldb/domain/config.py
-pulldb/domain/errors.py
-pulldb/domain/models.py
-pulldb/domain/restore_models.py
-pulldb/infra/__init__.py
-pulldb/infra/exec.py
-pulldb/infra/logging.py
-pulldb/infra/metrics.py
-pulldb/infra/mysql.py
-pulldb/infra/s3.py
-pulldb/infra/secrets.py
-pulldb/worker/__init__.py
-pulldb/worker/atomic_rename.py
-pulldb/worker/downloader.py
-pulldb/worker/executor.py
-pulldb/worker/log_normalizer.py
-pulldb/worker/loop.py
-pulldb/worker/metadata.py
-pulldb/worker/metadata_synthesis.py
-pulldb/worker/post_sql.py
-pulldb/worker/restore.py
-pulldb/worker/service.py
-pulldb/worker/staging.py
-```
-
-### Test Files (50 files in pulldb/tests/)
-
-```
-pulldb/tests/__init__.py
-pulldb/tests/conftest.py
-pulldb/tests/test_api_jobs.py
-pulldb/tests/test_atomic_rename.py
-pulldb/tests/test_atomic_rename_benchmark.py
-pulldb/tests/test_atomic_rename_deploy.py
-pulldb/tests/test_atoms.py
-pulldb/tests/test_cli_parse.py
-pulldb/tests/test_cli_status.py
-pulldb/tests/test_config.py
-pulldb/tests/test_config_integration.py
-pulldb/tests/test_constants.py
-pulldb/tests/test_downloader.py
-pulldb/tests/test_errors.py
-pulldb/tests/test_exec.py
-pulldb/tests/test_host_repository.py
-pulldb/tests/test_imports.py
-pulldb/tests/test_installer.py
-pulldb/tests/test_installer_help.py
-pulldb/tests/test_integration_disk_insufficient.py
-pulldb/tests/test_integration_missing_backup.py
-pulldb/tests/test_integration_workflow.py
-pulldb/tests/test_integration_workflow_disk_insufficient.py
-pulldb/tests/test_integration_workflow_failures.py
-pulldb/tests/test_isolation.py
-pulldb/tests/test_job_repository.py
-pulldb/tests/test_logging.py
-pulldb/tests/test_loop.py
-pulldb/tests/test_metadata_injection.py
-pulldb/tests/test_myloader_command.py
-pulldb/tests/test_post_sql.py
-pulldb/tests/test_post_sql_execution.py
-pulldb/tests/test_restore.py
-pulldb/tests/test_restore_models.py
-pulldb/tests/test_s3_discovery.py
-pulldb/tests/test_s3_real_listing_optional.py
-pulldb/tests/test_secrets.py
-pulldb/tests/test_settings_repository.py
-pulldb/tests/test_setup_test_env_script.py
-pulldb/tests/test_staging.py
-pulldb/tests/test_user_repository.py
-pulldb/tests/test_worker_executor.py
-pulldb/tests/test_worker_failure_modes.py
-pulldb/tests/test_worker_log_normalizer.py
-pulldb/tests/test_worker_service.py
-```
-
----
-
-*This index is designed for AI model context retrieval. For human navigation, start with `README.md` and `docs/KNOWLEDGE-POOL.md`.*
-
----
-
-[← Back to Documentation Index](START-HERE.md)
+**Remember to update the README.md badge when regenerating!**
+Badge date: `2025-12-12`

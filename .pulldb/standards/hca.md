@@ -161,6 +161,121 @@ When Copilot creates new files, it MUST:
 4. **Validate imports** follow downward-only rule
 5. **Add to test coverage** in corresponding `tests/` subdirectory
 
+---
+
+## Nested HCA Boundaries
+
+Some packages implement their own internal HCA structure. These are **isolated subsystems** with their own layer hierarchy.
+
+### Simulation Package (`pulldb/simulation/`)
+
+The simulation package is a self-contained subsystem for testing with mock adapters. It has its own HCA boundary:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    pulldb/simulation/                           │
+│                   (Isolated HCA Boundary)                       │
+├─────────────────────────────────────────────────────────────────┤
+│ pages/    │ api/router.py           │ Simulation control API    │
+├───────────┼─────────────────────────┼───────────────────────────┤
+│ features/ │ core/engine.py          │ Simulation orchestration  │
+│           │ core/scenarios.py       │ Chaos scenario logic      │
+│           │ core/queue_runner.py    │ Mock worker loop          │
+│           │ core/seeding.py         │ Test data generation      │
+│           │ core/state.py           │ Global simulation state   │
+│           │ core/bus.py             │ Event bus system          │
+├───────────┼─────────────────────────┼───────────────────────────┤
+│ shared/   │ adapters/mock_mysql.py  │ In-memory repositories    │
+│           │ adapters/mock_s3.py     │ Mock S3 client            │
+│           │ adapters/mock_exec.py   │ Mock command executor     │
+└───────────┴─────────────────────────┴───────────────────────────┘
+```
+
+**Boundary Contract:**
+- External code imports ONLY through `pulldb/simulation/__init__.py`
+- Internal imports stay within boundary (adapters → core → api)
+- Adapters implement protocols from `pulldb/domain/interfaces.py`
+
+**Allowed External Access:**
+```python
+# ✅ GOOD - import through package root
+from pulldb.simulation import MockJobRepository, SimulationEngine
+
+# ❌ BAD - reaching into internal structure
+from pulldb.simulation.adapters.mock_mysql import MockJobRepository
+```
+
+### Web Package (`pulldb/web/`)
+
+The web package follows HCA for UI component organization:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       pulldb/web/                               │
+│                    (HCA UI Structure)                           │
+├─────────────────────────────────────────────────────────────────┤
+│ pages/    │ pages/admin/            │ Admin page templates      │
+│           │ pages/dashboard/        │ Dashboard templates       │
+│           │ pages/error/            │ Error page templates      │
+│           │ features/*/routes.py    │ Feature route handlers    │
+├───────────┼─────────────────────────┼───────────────────────────┤
+│ widgets/  │ widgets/sidebar/        │ Navigation sidebar        │
+│           │ widgets/job_table/      │ Job listing table         │
+│           │ widgets/filter_bar/     │ Search/filter controls    │
+│           │ widgets/stats_cards/    │ Dashboard stat cards      │
+├───────────┼─────────────────────────┼───────────────────────────┤
+│ features/ │ features/auth/          │ Auth routes & logic       │
+│           │ features/dashboard/     │ Dashboard feature         │
+│           │ features/jobs/          │ Job management feature    │
+│           │ features/admin/         │ Admin feature             │
+├───────────┼─────────────────────────┼───────────────────────────┤
+│ entities/ │ entities/job/           │ Job HTML components       │
+│           │ entities/user/          │ User HTML components      │
+│           │ entities/host/          │ Host HTML components      │
+├───────────┼─────────────────────────┼───────────────────────────┤
+│ shared/   │ shared/layouts/         │ Base layout templates     │
+│           │ shared/ui/              │ Reusable UI components    │
+│           │ shared/contracts/       │ Type definitions          │
+│           │ shared/utils/           │ Utility functions         │
+└───────────┴─────────────────────────┴───────────────────────────┘
+```
+
+**Web HCA Import Rules:**
+- `shared/` → No web-internal imports
+- `entities/` → May import from `shared/`
+- `features/` → May import from `shared/`, `entities/`
+- `widgets/` → May import from `shared/`, `entities/`, `features/`
+- `pages/` → May import from all lower layers
+
+### Auth Package (`pulldb/auth/`)
+
+The auth package is **shared layer** infrastructure:
+
+| File | Layer | Purpose |
+|------|-------|---------|
+| `password.py` | shared | Bcrypt hashing utilities |
+| `repository.py` | shared | Auth credential storage |
+
+These are foundational infrastructure, so they belong in the shared layer and can be imported by any higher layer.
+
+---
+
+## HCA Validation
+
+Use the workspace index generator to check for HCA violations:
+
+```bash
+# Check for violations
+python scripts/generate_workspace_index.py --check
+
+# Regenerate index with current violations as baseline
+python scripts/generate_workspace_index.py --set-baseline
+```
+
+The CI workflow (`workspace-index-check.yml`) runs on every PR to detect new violations.
+
+---
+
 ## See Also
 
 - [Full HCA Methodology](../docs/IngestMe/HCA/hierarchical-containment-architect.md)

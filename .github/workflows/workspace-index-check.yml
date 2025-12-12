@@ -1,0 +1,53 @@
+name: Workspace Index Drift Check
+
+on:
+  pull_request:
+    paths:
+      - 'pulldb/**/*.py'
+      - 'tests/**/*.py'
+      - 'schema/**/*.sql'
+      - 'scripts/generate_workspace_index.py'
+  push:
+    branches: [main]
+    paths:
+      - 'pulldb/**/*.py'
+      - 'tests/**/*.py'
+      - 'schema/**/*.sql'
+
+jobs:
+  index-drift:
+    runs-on: ubuntu-latest
+    continue-on-error: true  # Advisory only, don't block PRs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check workspace index drift
+        id: drift-check
+        run: |
+          python scripts/generate_workspace_index.py --check 2>&1 | tee drift-output.txt
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          cat drift-output.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post drift summary
+        if: always()
+        run: |
+          echo "## 📊 Workspace Index Drift Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if grep -q "⚠️" drift-output.txt; then
+            echo "⚠️ **Index drift detected** - Consider regenerating the workspace index." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat drift-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**To fix:** Run \`python scripts/generate_workspace_index.py\` and commit the updated index files." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ Workspace index is up to date." >> $GITHUB_STEP_SUMMARY
+          fi

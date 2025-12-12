@@ -107,3 +107,13 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
         files: ^scripts/audit-permissions.sh$
+
+      # Workspace index drift check (manual stage only)
+      # Run via: pre-commit run workspace-index --hook-stage manual
+      - id: workspace-index
+        name: workspace-index (drift check)
+        entry: python3 scripts/generate_workspace_index.py --check
+        language: system
+        pass_filenames: false
+        stages: [manual]
+        verbose: true
