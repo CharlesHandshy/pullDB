@@ -94,25 +94,6 @@ class BackupSpec:
         return self.key.rsplit("/", 1)[-1]
 
 
-def parse_s3_bucket_path(value: str) -> tuple[str, str]:
-    """Parse bucket/prefix from configuration value."""
-    trimmed = (value or "").strip()
-    if not trimmed:
-        raise ValueError("s3_bucket_path configuration is required")
-
-    if trimmed.startswith("s3://"):
-        trimmed = trimmed[len("s3://") :]
-
-    if not trimmed:
-        raise ValueError("s3_bucket_path must include bucket name")
-
-    bucket, _, remainder = trimmed.partition("/")
-    prefix = remainder.lstrip("/")
-    if prefix and not prefix.endswith("/"):
-        prefix = f"{prefix}/"
-    return bucket, prefix
-
-
 class S3Client:
     """Thin S3 client wrapper for backup discovery.
 
