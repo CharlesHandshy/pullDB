@@ -1,3 +1,11 @@
+{% if errors %}
+    {% for error in errors %}
+    <div class="alert alert-danger" style="margin-bottom: 0.5rem;">
+        <strong>{{ error.host }}</strong>: {{ error.message }}
+    </div>
+    {% endfor %}
+{% endif %}
+
 {% if reports %}
     {% for report in reports %}
     <div class="card card-padding" style="margin-bottom: 1rem;">
@@ -30,6 +38,6 @@
         </table>
     </div>
     {% endfor %}
-{% else %}
+{% elif not errors %}
     <div class="alert alert-success">No orphan databases found.</div>
 {% endif %}

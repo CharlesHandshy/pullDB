@@ -525,3 +525,214 @@ async def seed_user(request: SeedUserRequest) -> SeedUserResponse:
         username=user.username,
         message=f"Created user '{request.username}' with password",
     )
+
+
+# ============================================================================
+# Queue Runner Endpoints
+# ============================================================================
+
+
+class QueueProcessRequest(BaseModel):
+    """Request to process queued jobs."""
+
+    max_jobs: int | None = Field(None, description="Maximum jobs to process (None=all)")
+    failure_rate: float = Field(
+        0.0, ge=0.0, le=1.0, description="Probability of job failure"
+    )
+    phase_delay_ms: int = Field(0, ge=0, description="Delay between phases in ms")
+
+
+class ProcessedJobInfo(BaseModel):
+    """Information about a processed job."""
+
+    job_id: str
+    target: str
+    status: str
+    error_detail: str | None = None
+
+
+class QueueProcessResponse(BaseModel):
+    """Response from queue processing."""
+
+    success: bool = True
+    jobs_processed: int
+    jobs: list[ProcessedJobInfo]
+    message: str
+
+
+class AdvanceJobRequest(BaseModel):
+    """Request to advance a specific job."""
+
+    job_id: str = Field(..., description="Job ID to advance")
+
+
+class AdvanceJobResponse(BaseModel):
+    """Response from advancing a job."""
+
+    success: bool
+    job_id: str
+    current_phase: str | None = None
+    status: str
+    message: str
+
+
+@router.post("/queue/process-next", response_model=QueueProcessResponse)
+async def process_next_job(
+    request: QueueProcessRequest | None = None,
+) -> QueueProcessResponse:
+    """Process the next queued job.
+
+    Claims and processes one queued job through all phases.
+    Useful for step-by-step testing.
+    """
+    from pulldb.simulation import SimulatedJobRepository
+    from pulldb.simulation.core.queue_runner import MockQueueRunner, MockRunnerConfig
+
+    job_repo = SimulatedJobRepository()
+
+    config = MockRunnerConfig(
+        failure_rate=request.failure_rate if request else 0.0,
+        phase_delay_ms=request.phase_delay_ms if request else 0,
+    )
+    runner = MockQueueRunner(job_repo, config)
+
+    job = runner.process_next()
+
+    if job is None:
+        return QueueProcessResponse(
+            success=True,
+            jobs_processed=0,
+            jobs=[],
+            message="No queued jobs to process",
+        )
+
+    return QueueProcessResponse(
+        success=True,
+        jobs_processed=1,
+        jobs=[
+            ProcessedJobInfo(
+                job_id=job.id,
+                target=job.target,
+                status=job.status.value,
+                error_detail=job.error_detail,
+            )
+        ],
+        message=f"Processed job {job.id[:8]} -> {job.status.value}",
+    )
+
+
+@router.post("/queue/process-all", response_model=QueueProcessResponse)
+async def process_all_jobs(
+    request: QueueProcessRequest | None = None,
+) -> QueueProcessResponse:
+    """Process all queued jobs.
+
+    Claims and processes all queued jobs through their phases.
+    Optionally limit the number of jobs processed.
+    """
+    from pulldb.simulation import SimulatedJobRepository
+    from pulldb.simulation.core.queue_runner import MockQueueRunner, MockRunnerConfig
+
+    job_repo = SimulatedJobRepository()
+
+    config = MockRunnerConfig(
+        failure_rate=request.failure_rate if request else 0.0,
+        phase_delay_ms=request.phase_delay_ms if request else 0,
+    )
+    runner = MockQueueRunner(job_repo, config)
+
+    max_jobs = request.max_jobs if request else None
+    jobs = runner.process_all(max_jobs=max_jobs)
+
+    job_infos = [
+        ProcessedJobInfo(
+            job_id=job.id,
+            target=job.target,
+            status=job.status.value,
+            error_detail=job.error_detail,
+        )
+        for job in jobs
+    ]
+
+    completed = sum(1 for j in jobs if j.status.value == "complete")
+    failed = sum(1 for j in jobs if j.status.value == "failed")
+    canceled = sum(1 for j in jobs if j.status.value == "canceled")
+
+    return QueueProcessResponse(
+        success=True,
+        jobs_processed=len(jobs),
+        jobs=job_infos,
+        message=f"Processed {len(jobs)} jobs: {completed} complete, {failed} failed, {canceled} canceled",
+    )
+
+
+@router.post("/queue/advance-job", response_model=AdvanceJobResponse)
+async def advance_job_phase(request: AdvanceJobRequest) -> AdvanceJobResponse:
+    """Advance a specific running job to its next phase.
+
+    Useful for step-by-step debugging. Only works for RUNNING jobs.
+    """
+    from pulldb.simulation import SimulatedJobRepository
+    from pulldb.simulation.core.queue_runner import MockQueueRunner
+
+    job_repo = SimulatedJobRepository()
+    runner = MockQueueRunner(job_repo)
+
+    job = runner.advance_job_phase(request.job_id)
+
+    if job is None:
+        # Check if job exists
+        existing = job_repo.get_job_by_id(request.job_id)
+        if existing is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job {request.job_id} not found",
+            )
+        return AdvanceJobResponse(
+            success=False,
+            job_id=request.job_id,
+            current_phase=existing.current_operation,
+            status=existing.status.value,
+            message=f"Cannot advance job in {existing.status.value} state",
+        )
+
+    return AdvanceJobResponse(
+        success=True,
+        job_id=job.id,
+        current_phase=job.current_operation,
+        status=job.status.value,
+        message=f"Advanced job to {job.current_operation or job.status.value}",
+    )
+
+
+class QueueStatusResponse(BaseModel):
+    """Response with queue status."""
+
+    queued_count: int
+    running_count: int
+    complete_count: int
+    failed_count: int
+    canceled_count: int
+    total_count: int
+
+
+@router.get("/queue/status", response_model=QueueStatusResponse)
+async def get_queue_status() -> QueueStatusResponse:
+    """Get current queue status with job counts by status."""
+    state = get_simulation_state()
+
+    with state.lock:
+        statuses = {"queued": 0, "running": 0, "complete": 0, "failed": 0, "canceled": 0}
+        for job in state.jobs.values():
+            status_val = job.status.value
+            if status_val in statuses:
+                statuses[status_val] += 1
+
+        return QueueStatusResponse(
+            queued_count=statuses["queued"],
+            running_count=statuses["running"],
+            complete_count=statuses["complete"],
+            failed_count=statuses["failed"],
+            canceled_count=statuses["canceled"],
+            total_count=len(state.jobs),
+        )

@@ -9,6 +9,7 @@ HCA Layer: shared (simulation infrastructure)
 from __future__ import annotations
 
 import random
+import typing as t
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -182,6 +183,107 @@ def seed_dev_hosts(state: SimulationState) -> list[DBHost]:
             created_hosts.append(host)
 
     return created_hosts
+
+
+# =============================================================================
+# Orphan Database Seeding
+# =============================================================================
+
+# Fixed UUIDs for deterministic orphan generation (first 12 hex chars used)
+ORPHAN_DB_SEEDS = [
+    # Orphans for staging-01: 4 databases
+    ("mysql-staging-01.example.com", "devusracmehvac", "aaa111bbb222"),
+    ("mysql-staging-01.example.com", "devusrtechcorp", "ccc333ddd444"),
+    ("mysql-staging-01.example.com", "devadmglobalretail", "eee555fff666"),
+    ("mysql-staging-01.example.com", "devmgrfastlogistics", "111222333444"),
+    # Orphans for staging-02: 3 databases
+    ("mysql-staging-02.example.com", "devusrmedisys", "555666777888"),
+    ("mysql-staging-02.example.com", "devadmedulearn", "999aaabbbccc"),
+    ("mysql-staging-02.example.com", "devusrfinserve", "dddeeefff000"),
+    # staging-03: will simulate connection failure, no databases seeded
+]
+
+# Orphan database sizes (MB) for realistic display
+# (hostname, target, job_prefix) -> size_mb
+# Keys MUST match ORPHAN_DB_SEEDS tuples
+ORPHAN_DB_SIZES: dict[tuple[str, str, str], float] = {
+    ("mysql-staging-01.example.com", "devusracmehvac", "aaa111bbb222"): 245.5,
+    ("mysql-staging-01.example.com", "devusrtechcorp", "ccc333ddd444"): 1024.0,
+    ("mysql-staging-01.example.com", "devadmglobalretail", "eee555fff666"): 512.75,
+    ("mysql-staging-01.example.com", "devmgrfastlogistics", "111222333444"): 78.25,
+    ("mysql-staging-02.example.com", "devusrmedisys", "555666777888"): 2048.0,
+    ("mysql-staging-02.example.com", "devadmedulearn", "999aaabbbccc"): 156.0,
+    ("mysql-staging-02.example.com", "devusrfinserve", "dddeeefff000"): 892.5,
+}
+
+# Orphan metadata for those with pulldb meta table (some orphans won't have it)
+# (hostname, target, job_prefix) -> metadata dict
+# Only some orphans have metadata - simulates DBs created before tracking was added
+ORPHAN_DB_METADATA: dict[tuple[str, str, str], dict[str, t.Any]] = {
+    ("mysql-staging-01.example.com", "devusracmehvac", "aaa111bbb222"): {
+        "job_id": "aaa111bbb222-7890-abcd-ef12-345678901234",
+        "restored_by": "devuser",
+        "restored_at": "2025-01-15T10:30:00Z",
+        "target_database": "acmehvac_prd",
+        "backup_filename": "acmehvac_prd_2025-01-15.tar.zst",
+        "restore_duration_seconds": 342,
+    },
+    ("mysql-staging-01.example.com", "devusrtechcorp", "ccc333ddd444"): {
+        "job_id": "ccc333ddd444-abcd-ef12-3456-78901234abcd",
+        "restored_by": "devadmin",
+        "restored_at": "2025-01-14T14:45:00Z",
+        "target_database": "techcorp_prd",
+        "backup_filename": "techcorp_prd_2025-01-14.tar.zst",
+        "restore_duration_seconds": 1205,
+    },
+    ("mysql-staging-02.example.com", "devusrmedisys", "555666777888"): {
+        "job_id": "555666777888-1234-5678-90ab-cdef12345678",
+        "restored_by": "devuser",
+        "restored_at": "2025-01-13T09:15:00Z",
+        "target_database": "medisys_prd",
+        "backup_filename": "medisys_prd_2025-01-13.tar.zst",
+        "restore_duration_seconds": 2156,
+    },
+    # Note: Other orphans intentionally don't have metadata to simulate
+    # databases that were created before pulldb meta table was implemented
+}
+
+
+def seed_orphan_databases(state: SimulationState) -> None:
+    """Seed mock orphan databases into SimulationState.
+
+    Creates deterministic orphan databases on staging hosts that have NO
+    matching job records. These simulate databases left behind by crashes
+    or bugs that require admin review.
+
+    Note: mysql-staging-03 is intentionally NOT seeded with databases
+    to simulate a connection failure scenario during orphan scanning.
+    """
+    with state.lock:
+        # Clear any existing staging databases (reset on server restart)
+        state.staging_databases.clear()
+        state.deleted_orphans.clear()
+        state.orphan_sizes.clear()
+        state.orphan_metadata.clear()
+
+        for hostname, target, job_prefix in ORPHAN_DB_SEEDS:
+            # Format: {target}_{12-hex-chars}
+            db_name = f"{target}_{job_prefix}"
+
+            # Initialize host's database set if needed
+            if hostname not in state.staging_databases:
+                state.staging_databases[hostname] = set()
+
+            state.staging_databases[hostname].add(db_name)
+
+            # Add size for this orphan
+            key = (hostname, target, job_prefix)
+            if key in ORPHAN_DB_SIZES:
+                state.orphan_sizes[(hostname, db_name)] = ORPHAN_DB_SIZES[key]
+
+            # Add metadata if available (simulates pulldb meta table)
+            if key in ORPHAN_DB_METADATA:
+                state.orphan_metadata[(hostname, db_name)] = ORPHAN_DB_METADATA[key]
 
 
 # =============================================================================
@@ -633,13 +735,14 @@ def _seed_job_events(
 
 def seed_dev_scenario(
     state: SimulationState,
-    scenario: str = "dev_mocks",
+    scenario: str = "minimal",
 ) -> None:
     """Seed SimulationState for a specific development scenario.
 
     Available scenarios:
-    - "dev_mocks": Default dev data (400 active, 400 history jobs)
-    - "empty": No jobs (fresh system)
+    - "minimal": Infrastructure only (users, hosts, settings) - no jobs
+    - "empty": Alias for minimal (no jobs)
+    - "dev_mocks": Large dataset for stress testing (400 active, 400 history jobs)
     - "busy": Many concurrent running jobs (15 active, 100 history)
     - "all_failed": Multiple failed jobs for error testing
     - "queue_backlog": Many jobs waiting in queue
@@ -654,9 +757,13 @@ def seed_dev_scenario(
     users = seed_dev_users(state)
     seed_dev_hosts(state)
     seed_dev_settings(state)
+    
+    # Always seed orphan databases for admin maintenance testing
+    seed_orphan_databases(state)
 
-    if scenario == "empty":
-        # No jobs
+    if scenario in ("minimal", "empty"):
+        # Infrastructure only - no jobs, history, logs, or staged databases
+        # Users, hosts, and settings are seeded above
         pass
 
     elif scenario == "busy":
@@ -716,7 +823,7 @@ def seed_dev_scenario(
         seed_history_jobs(state, 400, users)
 
 
-def reset_and_seed(scenario: str = "dev_mocks") -> None:
+def reset_and_seed(scenario: str = "minimal") -> None:
     """Reset simulation state and seed with specified scenario.
 
     Convenience function that:
@@ -724,7 +831,7 @@ def reset_and_seed(scenario: str = "dev_mocks") -> None:
     2. Seeds with the specified scenario
 
     Args:
-        scenario: Scenario name to seed after reset.
+        scenario: Scenario name to seed after reset. Defaults to "minimal".
     """
     from pulldb.simulation.core.state import get_simulation_state, reset_simulation
 

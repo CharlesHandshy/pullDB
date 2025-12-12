@@ -15,6 +15,7 @@ import uvicorn
 from fastapi import Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 
+from pulldb.api.auth import AdminUser, AuthUser, ManagerUser, OptionalUser, validate_job_submission_user
 from pulldb.api.logic import enqueue_job, validate_job_request
 from pulldb.api.schemas import (
     JobEventResponse,
@@ -466,8 +467,19 @@ async def status_endpoint(state: APIState = Depends(get_api_state)) -> dict[str,
 
 @app.post("/api/jobs", status_code=status.HTTP_201_CREATED, response_model=JobResponse)
 async def submit_job(
-    req: JobRequest, state: APIState = Depends(get_api_state)
+    req: JobRequest,
+    state: APIState = Depends(get_api_state),
+    authenticated_user: OptionalUser = None,
 ) -> JobResponse:
+    """Submit a new restore job.
+
+    Authentication:
+    - In trusted mode: Optional (backwards compatible with CLI)
+    - In session mode: Required
+    - If authenticated, validates user can only submit jobs for themselves
+      (admins can submit for anyone)
+    """
+    validate_job_submission_user(authenticated_user, req.user)
     validate_job_request(req)
     return await run_in_threadpool(enqueue_job, state, req)
 
@@ -975,7 +987,7 @@ async def get_distinct_values(
         elif column == "dbhost":
             if job.dbhost:
                 values.add(job.dbhost)
-        elif column == "user_code":
+        elif column in ("user_code", "owner_user_code"):
             if job.owner_user_code:
                 values.add(job.owner_user_code)
         elif column == "target":
@@ -1424,9 +1436,8 @@ def _cancel_job(state: APIState, job_id: str, user: User) -> CancelResponse:
 )
 async def cancel_job(
     job_id: str,
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
-    x_trusted_user: str | None = fastapi.Header(None, alias="X-Trusted-User"),
-    x_session_token: str | None = fastapi.Header(None, alias="X-Session-Token"),
 ) -> CancelResponse:
     """Request cancellation of a job.
 
@@ -1436,9 +1447,6 @@ async def cancel_job(
     Requires authentication. Users can only cancel their own jobs.
     Managers can cancel jobs for users they manage. Admins can cancel any job.
     """
-    from pulldb.api.auth import authenticate_user
-
-    user = await authenticate_user(state, x_trusted_user, x_session_token)
     return await run_in_threadpool(_cancel_job, state, job_id, user)
 
 
@@ -1570,29 +1578,14 @@ def _bulk_cancel_jobs(
 )
 async def bulk_cancel_jobs(
     request: BulkCancelRequest,
-    http_request: fastapi.Request,
+    user: AdminUser,
     state: APIState = Depends(get_api_state),
-    x_trusted_user: str | None = fastapi.Header(None, alias="X-Trusted-User"),
-    x_session_token: str | None = fastapi.Header(None, alias="X-Session-Token"),
 ) -> BulkCancelResponse:
     """Bulk cancel jobs matching filters (admin only).
 
     Requires admin role and typing 'CANCEL ALL' as confirmation.
     Only affects jobs in QUEUED or RUNNING state.
     """
-    from pulldb.api.auth import authenticate_user
-
-    # Also check cookie for session token (web UI uses httponly cookies)
-    session_token = x_session_token or http_request.cookies.get("session_token")
-
-    user = await authenticate_user(state, x_trusted_user, session_token)
-
-    if not user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin role required for bulk cancel",
-        )
-
     return await run_in_threadpool(_bulk_cancel_jobs, state, request, user)
 
 
@@ -1714,6 +1707,7 @@ def _get_paginated_team(
 
 @app.get("/api/manager/team", response_model=PaginatedTeamResponse)
 async def get_paginated_team(
+    user: ManagerUser,
     page: int = fastapi.Query(0, ge=0, description="Page number (0-indexed)"),
     pageSize: int = fastapi.Query(50, ge=10, le=200, description="Page size"),
     sortColumn: str | None = fastapi.Query(None, description="Column to sort by"),
@@ -1722,24 +1716,12 @@ async def get_paginated_team(
     filter_user_code: str | None = fastapi.Query(None, description="Filter by user code"),
     filter_status: str | None = fastapi.Query(None, description="Filter by status (active/disabled)"),
     state: APIState = fastapi.Depends(get_api_state),
-    x_trusted_user: str | None = fastapi.Header(None, alias="X-Trusted-User"),
-    x_session_token: str | None = fastapi.Header(None, alias="X-Session-Token"),
 ) -> PaginatedTeamResponse:
     """Get paginated team members for manager LazyTable widget.
 
     Returns users that are managed by the authenticated user.
     Requires manager or admin role.
     """
-    from pulldb.api.auth import authenticate_user
-
-    user = await authenticate_user(state, x_trusted_user, x_session_token)
-
-    if not user.is_manager_or_above:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Manager or admin role required",
-        )
-
     return await run_in_threadpool(
         _get_paginated_team,
         state,
@@ -1756,24 +1738,15 @@ async def get_paginated_team(
 
 @app.get("/api/manager/team/distinct")
 async def get_team_distinct_values(
+    user: ManagerUser,
     column: str = fastapi.Query(..., description="Column to get distinct values for"),
     state: APIState = fastapi.Depends(get_api_state),
-    x_trusted_user: str | None = fastapi.Header(None, alias="X-Trusted-User"),
-    x_session_token: str | None = fastapi.Header(None, alias="X-Session-Token"),
 ) -> list[str]:
     """Get distinct values for a column in the team table.
 
     Used for populating filter dropdowns in the manager team view.
+    Requires manager or admin role.
     """
-    from pulldb.api.auth import authenticate_user
-
-    user = await authenticate_user(state, x_trusted_user, x_session_token)
-
-    if not user.is_manager_or_above:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Manager or admin role required",
-        )
 
     # Get users managed by this user
     managed_users = []
@@ -1872,6 +1845,7 @@ def _prune_logs(state: APIState, request: PruneLogsRequest) -> PruneLogsResponse
 )
 async def prune_logs(
     request: PruneLogsRequest,
+    user: AdminUser,
     state: APIState = Depends(get_api_state),
 ) -> PruneLogsResponse:
     """Prune job events older than retention period.
@@ -1880,6 +1854,7 @@ async def prune_logs(
     (completed/failed/canceled). Events for active jobs are never pruned.
 
     Use dry_run=true to preview what would be deleted.
+    Requires admin authentication.
     """
     return await run_in_threadpool(_prune_logs, state, request)
 
@@ -1970,6 +1945,7 @@ def _cleanup_staging(
 )
 async def cleanup_staging(
     request: CleanupStagingRequest,
+    user: AdminUser,
     state: APIState = Depends(get_api_state),
 ) -> CleanupStagingResponse:
     """Clean up orphaned staging databases.
@@ -1983,6 +1959,7 @@ async def cleanup_staging(
     - Logs all deletions to job_events
 
     Use dry_run=true to preview what would be deleted.
+    Requires admin authentication.
     """
     return await run_in_threadpool(_cleanup_staging, state, request)
 
@@ -1997,6 +1974,7 @@ class OrphanDatabaseItem(pydantic.BaseModel):
     target_name: str = pydantic.Field(description="Parsed target name")
     job_id_prefix: str = pydantic.Field(description="Parsed job ID prefix")
     dbhost: str = pydantic.Field(description="Host where database exists")
+    size_mb: float | None = pydantic.Field(default=None, description="Database size in MB")
 
 
 class OrphanReportResponse(pydantic.BaseModel):
@@ -2010,6 +1988,13 @@ class OrphanReportResponse(pydantic.BaseModel):
     count: int = pydantic.Field(description="Number of orphans found")
 
 
+class HostScanError(pydantic.BaseModel):
+    """Error that occurred while scanning a host."""
+
+    hostname: str = pydantic.Field(description="Host that failed to scan")
+    message: str = pydantic.Field(description="Error message")
+
+
 class AllOrphansResponse(pydantic.BaseModel):
     """Response containing orphan databases across all hosts."""
 
@@ -2018,13 +2003,18 @@ class AllOrphansResponse(pydantic.BaseModel):
     reports: list[OrphanReportResponse] = pydantic.Field(
         description="Per-host orphan reports"
     )
+    errors: list[HostScanError] = pydantic.Field(
+        default_factory=list,
+        description="Hosts that failed to scan with error messages"
+    )
 
 
 def _get_orphan_report(state: APIState, dbhost: str | None) -> AllOrphansResponse:
     """Get orphan database report for admin review."""
-    from pulldb.worker.cleanup import detect_orphaned_databases
+    from pulldb.worker.cleanup import detect_orphaned_databases, OrphanReport
 
     reports: list[OrphanReportResponse] = []
+    errors: list[HostScanError] = []
     total_orphans = 0
 
     if dbhost:
@@ -2033,18 +2023,29 @@ def _get_orphan_report(state: APIState, dbhost: str | None) -> AllOrphansRespons
         hosts = state.host_repo.get_enabled_hosts()
 
     for host in hosts:
-        orphan_report = detect_orphaned_databases(
+        result = detect_orphaned_databases(
             dbhost=host.hostname,
             job_repo=state.job_repo,
             host_repo=state.host_repo,
         )
 
+        # Handle error string return (connection failure)
+        if isinstance(result, str):
+            errors.append(HostScanError(
+                hostname=host.hostname,
+                message=result,
+            ))
+            continue
+
+        # Handle successful OrphanReport
+        orphan_report: OrphanReport = result
         orphan_items = [
             OrphanDatabaseItem(
                 database_name=o.database_name,
                 target_name=o.target_name,
                 job_id_prefix=o.job_id_prefix,
                 dbhost=o.dbhost,
+                size_mb=o.size_mb,
             )
             for o in orphan_report.orphans
         ]
@@ -2063,6 +2064,7 @@ def _get_orphan_report(state: APIState, dbhost: str | None) -> AllOrphansRespons
         hosts_scanned=len(hosts),
         total_orphans=total_orphans,
         reports=reports,
+        errors=errors,
     )
 
 
@@ -2071,6 +2073,7 @@ def _get_orphan_report(state: APIState, dbhost: str | None) -> AllOrphansRespons
     response_model=AllOrphansResponse,
 )
 async def get_orphan_databases(
+    user: AdminUser,
     dbhost: str | None = None,
     state: APIState = Depends(get_api_state),
 ) -> AllOrphansResponse:
@@ -2081,6 +2084,7 @@ async def get_orphan_databases(
     review before deletion.
 
     Use the delete-orphans endpoint to remove selected orphans after review.
+    Requires admin authentication.
     """
     return await run_in_threadpool(_get_orphan_report, state, dbhost)
 
@@ -2136,6 +2140,7 @@ def _delete_orphans(
 )
 async def delete_orphan_databases(
     request: DeleteOrphansRequest,
+    user: AdminUser,
     state: APIState = Depends(get_api_state),
 ) -> DeleteOrphansResponse:
     """Delete admin-approved orphan databases.
@@ -2144,7 +2149,220 @@ async def delete_orphan_databases(
     orphan-databases report and confirmed safe to delete.
 
     The admin_user field is logged for audit purposes.
+    Requires admin authentication.
     """
+    return await run_in_threadpool(_delete_orphans, state, request)
+
+
+# ---------------------------------------------------------------------------
+# Paginated Orphan Database API (LazyTable compatible)
+# ---------------------------------------------------------------------------
+
+
+class PaginatedOrphansResponse(pydantic.BaseModel):
+    """Paginated response for orphan databases LazyTable."""
+
+    rows: list[OrphanDatabaseItem] = pydantic.Field(description="Orphan database items")
+    totalCount: int = pydantic.Field(description="Total count before filtering")
+    filteredCount: int = pydantic.Field(description="Count after filtering")
+    page: int = pydantic.Field(description="Current page (0-indexed)")
+    pageSize: int = pydantic.Field(description="Items per page")
+    errors: list[HostScanError] = pydantic.Field(
+        default_factory=list,
+        description="Hosts that failed to scan"
+    )
+
+
+def _get_paginated_orphans(
+    state: APIState,
+    page: int,
+    page_size: int,
+    sort_column: str,
+    sort_direction: str,
+    filter_host: str | None,
+    filter_target: str | None,
+) -> PaginatedOrphansResponse:
+    """Get paginated orphan databases for LazyTable."""
+    from pulldb.worker.cleanup import detect_orphaned_databases, OrphanReport
+
+    all_orphans: list[OrphanDatabaseItem] = []
+    errors: list[HostScanError] = []
+
+    # Get all enabled hosts (or filter to specific host)
+    if filter_host:
+        hosts = [type("H", (), {"hostname": filter_host})()]
+    else:
+        hosts = state.host_repo.get_enabled_hosts()
+
+    for host in hosts:
+        result = detect_orphaned_databases(
+            dbhost=host.hostname,
+            job_repo=state.job_repo,
+            host_repo=state.host_repo,
+        )
+
+        if isinstance(result, str):
+            errors.append(HostScanError(hostname=host.hostname, message=result))
+            continue
+
+        orphan_report: OrphanReport = result
+        for o in orphan_report.orphans:
+            all_orphans.append(OrphanDatabaseItem(
+                database_name=o.database_name,
+                target_name=o.target_name,
+                job_id_prefix=o.job_id_prefix,
+                dbhost=o.dbhost,
+                size_mb=o.size_mb,
+            ))
+
+    total_count = len(all_orphans)
+
+    # Apply target filter if provided
+    if filter_target:
+        filter_target_lower = filter_target.lower()
+        all_orphans = [
+            o for o in all_orphans
+            if filter_target_lower in o.target_name.lower()
+            or filter_target_lower in o.database_name.lower()
+        ]
+
+    filtered_count = len(all_orphans)
+
+    # Sort
+    reverse = sort_direction.lower() == "desc"
+    if sort_column == "size_mb":
+        all_orphans.sort(key=lambda o: o.size_mb or 0, reverse=reverse)
+    elif sort_column == "database_name":
+        all_orphans.sort(key=lambda o: o.database_name, reverse=reverse)
+    elif sort_column == "target_name":
+        all_orphans.sort(key=lambda o: o.target_name, reverse=reverse)
+    elif sort_column == "dbhost":
+        all_orphans.sort(key=lambda o: o.dbhost, reverse=reverse)
+
+    # Paginate
+    start = page * page_size
+    end = start + page_size
+    page_rows = all_orphans[start:end]
+
+    return PaginatedOrphansResponse(
+        rows=page_rows,
+        totalCount=total_count,
+        filteredCount=filtered_count,
+        page=page,
+        pageSize=page_size,
+        errors=errors,
+    )
+
+
+@app.get(
+    "/api/admin/orphan-databases/paginated",
+    response_model=PaginatedOrphansResponse,
+)
+async def get_paginated_orphan_databases(
+    user: AdminUser,
+    page: int = 0,
+    pageSize: int = 50,
+    sortColumn: str = "database_name",
+    sortDirection: str = "asc",
+    filter_host: str | None = None,
+    filter_target: str | None = None,
+    state: APIState = Depends(get_api_state),
+) -> PaginatedOrphansResponse:
+    """Get paginated orphan databases for LazyTable display.
+
+    Supports sorting by database_name, target_name, dbhost, size_mb.
+    Supports filtering by host and target name.
+    """
+    return await run_in_threadpool(
+        _get_paginated_orphans,
+        state,
+        page,
+        pageSize,
+        sortColumn,
+        sortDirection,
+        filter_host,
+        filter_target,
+    )
+
+
+class OrphanMetadataResponse(pydantic.BaseModel):
+    """Metadata from pullDB table inside an orphan database."""
+
+    found: bool = pydantic.Field(description="Whether metadata was found")
+    job_id: str | None = pydantic.Field(default=None, description="Original restore job ID")
+    restored_by: str | None = pydantic.Field(default=None, description="User who restored")
+    restored_at: str | None = pydantic.Field(default=None, description="When restored (ISO format)")
+    target_database: str | None = pydantic.Field(default=None, description="Target database name")
+    backup_filename: str | None = pydantic.Field(default=None, description="S3 backup path used")
+    restore_duration_seconds: float | None = pydantic.Field(default=None, description="Restore duration")
+
+
+def _get_orphan_metadata(
+    state: APIState,
+    dbhost: str,
+    db_name: str,
+) -> OrphanMetadataResponse:
+    """Get metadata for a specific orphan database."""
+    from pulldb.worker.cleanup import fetch_orphan_metadata
+
+    meta = fetch_orphan_metadata(
+        dbhost=dbhost,
+        db_name=db_name,
+        host_repo=state.host_repo,
+    )
+
+    if meta is None:
+        return OrphanMetadataResponse(found=False)
+
+    return OrphanMetadataResponse(
+        found=True,
+        job_id=meta.job_id,
+        restored_by=meta.restored_by,
+        restored_at=meta.restored_at.isoformat() if meta.restored_at else None,
+        target_database=meta.target_database,
+        backup_filename=meta.backup_filename,
+        restore_duration_seconds=meta.restore_duration_seconds,
+    )
+
+
+@app.get(
+    "/api/admin/orphan-databases/{dbhost}/{db_name}/meta",
+    response_model=OrphanMetadataResponse,
+)
+async def get_orphan_database_metadata(
+    dbhost: str,
+    db_name: str,
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> OrphanMetadataResponse:
+    """Get metadata from pullDB table inside an orphan database.
+
+    This fetches restore information (who, when, what backup) from the
+    pullDB table that is created during restore. If the table doesn't
+    exist (old restore or crash before completion), returns found=false.
+    """
+    return await run_in_threadpool(_get_orphan_metadata, state, dbhost, db_name)
+
+
+@app.delete(
+    "/api/admin/orphan-databases/{dbhost}/{db_name}",
+    response_model=DeleteOrphansResponse,
+)
+async def delete_single_orphan_database(
+    dbhost: str,
+    db_name: str,
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> DeleteOrphansResponse:
+    """Delete a single orphan database.
+
+    REST-style endpoint for deleting individual orphans via trash icon.
+    """
+    request = DeleteOrphansRequest(
+        dbhost=dbhost,
+        database_names=[db_name],
+        admin_user=user.username,
+    )
     return await run_in_threadpool(_delete_orphans, state, request)
 
 

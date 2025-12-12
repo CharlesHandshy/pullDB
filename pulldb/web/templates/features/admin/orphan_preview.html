@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Prune Logs Preview - Admin - pullDB{% endblock %}
+{% block title %}Orphan Databases Preview - Admin - pullDB{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
@@ -29,7 +29,7 @@
     background: var(--danger-100);
     color: var(--danger-600);
 }
-.excluded-row .job-id-cell {
+.excluded-row .db-name-cell {
     color: var(--danger-600) !important;
     text-decoration: line-through;
 }
@@ -73,12 +73,15 @@
 .reset-exclusions-btn.visible {
     visibility: visible;
 }
+.size-cell {
+    font-variant-numeric: tabular-nums;
+}
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <h1 class="page-title">Prune Job Logs</h1>
+    <h1 class="page-title">Delete Orphan Databases</h1>
 </div>
 
 <!-- Warning Box -->
@@ -89,27 +92,23 @@
     <div>
         <div style="font-weight: 600; color: var(--danger-700); margin-bottom: 0.25rem;">Destructive Operation</div>
         <div style="color: var(--danger-600); font-size: 0.875rem;">
-            This will permanently delete job event logs. Deleted logs cannot be recovered.
+            This will permanently delete orphan databases. These databases have no matching job record and cannot be recovered.
             Click the X button on any row to exclude it from deletion.
         </div>
     </div>
 </div>
 
-<!-- Config Panel -->
+<!-- Info Panel -->
 <div class="card card-padding" style="margin-bottom: var(--space-4);">
-    <form id="config-form" style="display: flex; gap: var(--space-4); align-items: flex-end;">
-        <div>
-            <label class="form-label">Delete events older than</label>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <input type="number" id="days-input" name="days" value="{{ days }}" 
-                       class="form-input" style="width: 100px;" min="1" max="365">
-                <span style="color: var(--gray-600);">days</span>
-            </div>
+    <div style="display: flex; gap: var(--space-4); align-items: center; justify-content: space-between;">
+        <div style="color: var(--gray-600); font-size: 0.875rem;">
+            Orphan databases match the staging naming pattern but have no associated job record.
+            They may be remnants from interrupted restores or manual testing.
         </div>
         <button type="button" id="refresh-preview" class="btn btn-secondary">
-            Refresh Preview
+            Refresh
         </button>
-    </form>
+    </div>
 </div>
 
 <!-- Preview Table -->
@@ -119,13 +118,12 @@
     </div>
 
     <!-- LazyTable Container -->
-    <div id="prune-table-container" style="height: 400px;"></div>
+    <div id="orphan-table-container" style="height: 400px;"></div>
 </div>
 
 <!-- Hidden Execute Form -->
-<form id="execute-form" method="POST" action="/web/admin/prune-logs/execute" style="display: none;">
-    <input type="hidden" name="days" id="form-days" value="{{ days }}">
-    <input type="hidden" name="include_ids" id="include-ids" value="">
+<form id="execute-form" method="POST" action="/web/admin/orphans/execute" style="display: none;">
+    <input type="hidden" name="selected_orphans" id="selected-orphans" value="">
 </form>
 {% endblock %}
 
@@ -133,11 +131,16 @@
 <script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=3"></script>
 <script>
 (function() {
-    const excludedIds = new Set();
-    let loadedRowIds = new Set();
+    // Track exclusions by composite key: "dbhost|database_name"
+    const excludedKeys = new Set();
+    let loadedRowKeys = new Set();
     let totalCount = 0;
     let filteredCount = 0;
     let lazyTable = null;
+
+    function makeKey(row) {
+        return row.dbhost + '|' + row.database_name;
+    }
 
     // Reset button HTML - always in DOM, visibility controlled by CSS
     const resetBtnHtml = `<button type="button" id="clear-exclusions" class="reset-exclusions-btn" title="Clear all exclusions">
@@ -155,56 +158,59 @@
             sortable: false,
             filterable: false,
             render: (val, row) => {
-                const isExcluded = excludedIds.has(row.job_id);
+                const key = makeKey(row);
+                const isExcluded = excludedKeys.has(key);
                 const cls = isExcluded ? 'exclude-btn excluded' : 'exclude-btn';
-                return '<button type="button" class="' + cls + '" data-job-id="' + row.job_id + '" title="' + (isExcluded ? 'Click to include' : 'Click to exclude') + '">X</button>';
+                return '<button type="button" class="' + cls + '" data-key="' + key + '" title="' + (isExcluded ? 'Click to include' : 'Click to exclude') + '">X</button>';
             }
         },
-        { key: 'job_id', label: 'Job ID', width: '100px', sortable: true,
-          render: (val) => '<code class="job-id-cell" style="font-size: 0.8em;">' + (val || '').substring(0, 12) + '</code>' },
-        { key: 'oldest_event', label: 'Date', width: '95px', sortable: true, filterable: true,
-          filterType: 'dateRange',
-          render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
-        { key: 'status', label: 'Status', width: '100px', sortable: true, filterable: true,
+        { key: 'dbhost', label: 'Host', width: '130px', sortable: true, filterable: true,
           render: (val) => {
-            const cls = val === 'complete' ? 'badge-success' : val === 'failed' ? 'badge-danger' : 'badge-neutral';
-            return '<span class="badge ' + cls + '" style="font-size: 0.75rem;">' + val + '</span>';
+            const hostname = val ? val.split('.')[0] : '-';
+            return '<span style="font-size: 0.85em;">' + hostname + '</span>';
           }
         },
-        { key: 'user_code', label: 'User', width: '85px', sortable: true, filterable: true,
-          render: (val) => '<span class="font-mono" style="font-size: 0.85em;">' + (val || '-') + '</span>' },
-        { key: 'event_count', label: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>', width: '45px', sortable: true,
-          render: (val) => '<strong style="color: var(--danger-600);">' + val + '</strong>' },
-        { key: 'target', label: 'Target', sortable: true, filterable: true },
+        { key: 'target_name', label: 'Target', width: '140px', sortable: true, filterable: true },
+        { key: 'discovered_at', label: 'Found', width: '90px', sortable: true, filterable: true,
+          filterType: 'dateRange',
+          render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
+        { key: 'size_mb', label: 'Size', width: '75px', sortable: true,
+          render: (val) => {
+            if (val === null || val === undefined) return '<span class="size-cell" style="color: var(--gray-400);">-</span>';
+            const formatted = val >= 1000 ? (val / 1024).toFixed(1) + ' GB' : val.toFixed(1) + ' MB';
+            return '<span class="size-cell">' + formatted + '</span>';
+          }
+        },
+        { key: 'database_name', label: 'Database', sortable: true, filterable: true,
+          render: (val) => '<span class="db-name db-name-cell">' + (val || '') + '</span>' },
     ];
 
     function updateButton() {
-        const selectedIds = Array.from(loadedRowIds).filter(id => !excludedIds.has(id));
-        const selectedCount = selectedIds.length;
+        const selectedKeys = Array.from(loadedRowKeys).filter(k => !excludedKeys.has(k));
+        const selectedCount = selectedKeys.length;
         
-        // Update reset exclusions button (always in DOM)
-        const exclusionCount = excludedIds.size;
+        // Update reset exclusions button
+        const exclusionCount = excludedKeys.size;
         const clearBtn = document.getElementById('clear-exclusions');
         if (clearBtn) {
             clearBtn.classList.toggle('visible', exclusionCount > 0);
             clearBtn.title = 'Clear all exclusions (' + exclusionCount + ')';
         }
         
-        // Update execute button (may not exist until footer renders)
+        // Update execute button
         const btn = document.getElementById('execute-btn');
         if (!btn) return;
         btn.disabled = selectedCount === 0;
         btn.textContent = selectedCount > 0 
-            ? 'Delete ' + selectedCount + ' Job' + (selectedCount !== 1 ? 's' : '') + ' Events'
+            ? 'Delete ' + selectedCount + ' Database' + (selectedCount !== 1 ? 's' : '')
             : 'No Items Selected';
-        document.getElementById('include-ids').value = selectedIds.join(',');
+        
+        // Store selected keys in hidden form field
+        document.getElementById('selected-orphans').value = selectedKeys.join(',');
     }
 
     function initTable() {
-        const days = document.getElementById('days-input').value;
-        document.getElementById('form-days').value = days;
-        
-        loadedRowIds.clear();
+        loadedRowKeys.clear();
         updateButton();
         
         if (lazyTable) {
@@ -212,9 +218,9 @@
         }
 
         lazyTable = new LazyTable({
-            container: document.getElementById('prune-table-container'),
+            container: document.getElementById('orphan-table-container'),
             columns: columns,
-            fetchUrl: '/web/admin/api/prune-candidates?days=' + days,
+            fetchUrl: '/web/admin/api/orphan-candidates',
             rowHeight: 40,
             pageSize: 50,
             footerSlot: `
@@ -222,45 +228,46 @@
                 <button type="button" id="execute-btn" class="btn btn-danger" disabled>No Items Selected</button>
             `,
             onDataLoaded: (data) => {
-                // Reset loadedRowIds on fresh filter load (pageIndex 0)
+                // Reset loadedRowKeys on fresh filter load (pageIndex 0)
                 if (data.pageIndex === 0) {
-                    loadedRowIds.clear();
+                    loadedRowKeys.clear();
                 }
                 totalCount = data.totalCount || 0;
                 filteredCount = data.filteredCount || data.totalCount || 0;
                 if (data.rows) {
-                    data.rows.forEach(row => loadedRowIds.add(row.job_id));
+                    data.rows.forEach(row => loadedRowKeys.add(makeKey(row)));
                 }
                 updateButton();
             },
             onRowRendered: (row, data) => {
-                if (excludedIds.has(data.job_id)) {
+                if (excludedKeys.has(makeKey(data))) {
                     row.classList.add('excluded-row');
                 }
             }
         });
     }
 
-    document.getElementById('prune-table-container').addEventListener('click', (e) => {
+    document.getElementById('orphan-table-container').addEventListener('click', (e) => {
         // Handle reset button click
         if (e.target.closest('#clear-exclusions')) {
-            excludedIds.clear();
+            excludedKeys.clear();
             if (lazyTable) {
                 lazyTable.refresh();
             }
             updateButton();
             return;
         }
+        // Handle exclude button click
         if (e.target.classList.contains('exclude-btn')) {
-            const jobId = e.target.dataset.jobId;
+            const key = e.target.dataset.key;
             const row = e.target.closest('tr');
-            if (excludedIds.has(jobId)) {
-                excludedIds.delete(jobId);
+            if (excludedKeys.has(key)) {
+                excludedKeys.delete(key);
                 e.target.classList.remove('excluded');
                 e.target.title = 'Click to exclude';
                 row?.classList.remove('excluded-row');
             } else {
-                excludedIds.add(jobId);
+                excludedKeys.add(key);
                 e.target.classList.add('excluded');
                 e.target.title = 'Click to include';
                 row?.classList.add('excluded-row');
@@ -270,36 +277,26 @@
     });
 
     document.getElementById('refresh-preview').addEventListener('click', () => {
-        const daysInput = document.getElementById('days-input');
-        if (!daysInput.checkValidity()) {
-            daysInput.reportValidity();
-            return;
-        }
-        loadedRowIds.clear();
+        loadedRowKeys.clear();
         initTable();
     });
 
-    // Handle execute button click (in LazyTable footer) - validate before submit
-    document.getElementById('prune-table-container').addEventListener('click', (e) => {
+    // Handle execute button click (in LazyTable footer)
+    document.getElementById('orphan-table-container').addEventListener('click', (e) => {
         if (e.target.id === 'execute-btn') {
-            const daysInput = document.getElementById('days-input');
-            if (!daysInput.checkValidity()) {
-                daysInput.reportValidity();
-                return;
-            }
             document.getElementById('execute-form').requestSubmit();
         }
     });
 
     document.getElementById('execute-form').addEventListener('submit', (e) => {
-        const selectedIds = Array.from(loadedRowIds).filter(id => !excludedIds.has(id));
-        const selectedCount = selectedIds.length;
+        const selectedKeys = Array.from(loadedRowKeys).filter(k => !excludedKeys.has(k));
+        const selectedCount = selectedKeys.length;
         if (selectedCount === 0) {
             e.preventDefault();
             showToast('No items selected for deletion.', 'warning');
             return;
         }
-        if (!confirm('Are you sure you want to delete events from ' + selectedCount + ' job(s)?\\n\\nThis action cannot be undone.')) {
+        if (!confirm('Are you sure you want to delete ' + selectedCount + ' orphan database(s)?\\n\\nThis action cannot be undone.')) {
             e.preventDefault();
         }
     });

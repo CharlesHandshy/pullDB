@@ -815,6 +815,317 @@ async def cleanup_staging(
     return RedirectResponse(url=f"/web/admin/cleanup-staging/preview?days={days}", status_code=303)
 
 
+@router.get("/orphans/preview", response_class=HTMLResponse)
+async def orphan_preview_page(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+    orphan_success: int | None = None,
+    orphan_error: str | None = None,
+) -> HTMLResponse:
+    """Render the orphan database deletion preview page."""
+    flash_message = None
+    flash_type = None
+    if orphan_success is not None:
+        flash_message = f"Successfully deleted {orphan_success} orphan database(s)"
+        flash_type = "success"
+    elif orphan_error:
+        flash_message = f"Orphan deletion failed: {orphan_error}"
+        flash_type = "error"
+
+    return templates.TemplateResponse(
+        "features/admin/orphan_preview.html",
+        {
+            "request": request,
+            "user": user,
+            "flash_message": flash_message,
+            "flash_type": flash_type,
+        },
+    )
+
+
+@router.get("/api/orphan-candidates")
+async def api_orphan_candidates(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+    pageIndex: int = 0,
+    pageSize: int = 50,
+    sortColumn: str | None = None,
+    sortDirection: str | None = None,
+) -> dict:
+    """Get paginated orphan candidates for LazyTable.
+    
+    Returns all orphans from all hosts in a flat list with dbhost included.
+    Supports multi-select filters (filter_<column>) and date range (filter_<column>_after/before).
+    """
+    from pulldb.worker.cleanup import detect_orphaned_databases
+    from datetime import datetime
+
+    # Collect all orphans from all hosts
+    all_orphans = []
+    if hasattr(state, "host_repo") and state.host_repo:
+        hosts = state.host_repo.get_enabled_hosts()
+        for host in hosts:
+            result = detect_orphaned_databases(
+                dbhost=host.hostname,
+                job_repo=state.job_repo,
+                host_repo=state.host_repo,
+            )
+            # Skip hosts with connection errors
+            if isinstance(result, str):
+                continue
+            for orphan in result.orphans:
+                all_orphans.append({
+                    "database_name": orphan.database_name,
+                    "dbhost": orphan.dbhost,
+                    "target_name": orphan.target_name,
+                    "job_id_prefix": orphan.job_id_prefix,
+                    "discovered_at": orphan.discovered_at.isoformat() if orphan.discovered_at else None,
+                    "size_mb": orphan.size_mb,
+                })
+
+    total_count = len(all_orphans)
+
+    # Extract filter params from query string
+    text_filters: dict[str, list[str]] = {}  # column -> [values]
+    date_after: dict[str, str] = {}    # column -> ISO date string
+    date_before: dict[str, str] = {}   # column -> ISO date string
+    date_columns = ["discovered_at"]
+    
+    for key, value in request.query_params.items():
+        if key.startswith("filter_") and value:
+            col_key = key[7:]  # Remove "filter_" prefix
+            
+            # Check for date range suffixes
+            if col_key.endswith("_after"):
+                base_col = col_key[:-6]
+                if base_col in date_columns:
+                    date_after[base_col] = value
+                    continue
+            if col_key.endswith("_before"):
+                base_col = col_key[:-7]
+                if base_col in date_columns:
+                    date_before[base_col] = value
+                    continue
+            
+            # Regular filter (could be multi-value comma-separated)
+            text_filters[col_key] = [v.strip().lower() for v in value.split(',') if v.strip()]
+
+    # Apply filters
+    if text_filters or date_after or date_before:
+        filtered_orphans = []
+        for orphan in all_orphans:
+            match = True
+            
+            # Check text filters (any of the values match)
+            for col_key, filter_vals in text_filters.items():
+                cell_val = str(orphan.get(col_key, "")).lower()
+                if not any(fv in cell_val for fv in filter_vals):
+                    match = False
+                    break
+            
+            # Check date after filters
+            if match:
+                for col_key, after_val in date_after.items():
+                    cell_val = orphan.get(col_key)
+                    if cell_val:
+                        try:
+                            cell_date = datetime.fromisoformat(cell_val.replace('Z', '+00:00'))
+                            after_date = datetime.fromisoformat(after_val)
+                            if cell_date.date() < after_date.date():
+                                match = False
+                                break
+                        except (ValueError, TypeError):
+                            pass
+            
+            # Check date before filters
+            if match:
+                for col_key, before_val in date_before.items():
+                    cell_val = orphan.get(col_key)
+                    if cell_val:
+                        try:
+                            cell_date = datetime.fromisoformat(cell_val.replace('Z', '+00:00'))
+                            before_date = datetime.fromisoformat(before_val)
+                            if cell_date.date() > before_date.date():
+                                match = False
+                                break
+                        except (ValueError, TypeError):
+                            pass
+            
+            if match:
+                filtered_orphans.append(orphan)
+        
+        all_orphans = filtered_orphans
+
+    filtered_count = len(all_orphans)
+
+    # Apply sorting
+    if sortColumn and sortColumn in ("database_name", "dbhost", "target_name", "discovered_at", "size_mb"):
+        reverse = sortDirection == "desc"
+        all_orphans.sort(
+            key=lambda o: (o.get(sortColumn) is None, o.get(sortColumn) or ""),
+            reverse=reverse
+        )
+    
+    # Apply pagination
+    start = pageIndex * pageSize
+    end = start + pageSize
+    page_orphans = all_orphans[start:end]
+
+    return {
+        "rows": page_orphans,
+        "totalCount": total_count,
+        "filteredCount": filtered_count,
+        "pageIndex": pageIndex,
+        "pageSize": pageSize,
+    }
+
+
+@router.get("/api/orphan-candidates/distinct")
+async def get_orphan_distinct_values(
+    request: Request,
+    column: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> list:
+    """Get distinct values for filter dropdowns.
+    
+    Applies current filters (excluding the requested column) so that
+    filter options update based on other active filters.
+    """
+    from pulldb.worker.cleanup import detect_orphaned_databases
+    
+    all_orphans = []
+    if hasattr(state, "host_repo") and state.host_repo:
+        hosts = state.host_repo.get_enabled_hosts()
+        for host in hosts:
+            result = detect_orphaned_databases(
+                dbhost=host.hostname,
+                job_repo=state.job_repo,
+                host_repo=state.host_repo,
+            )
+            if isinstance(result, str):
+                continue
+            for orphan in result.orphans:
+                all_orphans.append({
+                    "database_name": orphan.database_name,
+                    "dbhost": orphan.dbhost,
+                    "target_name": orphan.target_name,
+                })
+    
+    # Extract filter params from query string (excluding the column we're getting distinct values for)
+    text_filters: dict[str, list[str]] = {}
+    for key, value in request.query_params.items():
+        if key.startswith("filter_") and value:
+            col_key = key[7:]  # Remove "filter_" prefix
+            # Skip date range suffixes and the column being queried
+            if col_key.endswith("_after") or col_key.endswith("_before"):
+                continue
+            if col_key == column:
+                continue
+            text_filters[col_key] = [v.strip().lower() for v in value.split(',') if v.strip()]
+    
+    # Apply filters to narrow down distinct values
+    if text_filters:
+        filtered_orphans = []
+        for orphan in all_orphans:
+            match = True
+            for col_key, filter_vals in text_filters.items():
+                cell_val = str(orphan.get(col_key, "")).lower()
+                if not any(fv in cell_val for fv in filter_vals):
+                    match = False
+                    break
+            if match:
+                filtered_orphans.append(orphan)
+        all_orphans = filtered_orphans
+    
+    values = set()
+    for orphan in all_orphans:
+        val = orphan.get(column)
+        if val is not None:
+            values.add(str(val))
+    return sorted(values)
+
+
+@router.post("/orphans/execute")
+async def execute_orphan_deletion(
+    selected_orphans: str = Form(""),
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Execute deletion of selected orphan databases.
+    
+    selected_orphans is a comma-separated list of "dbhost|database_name" keys.
+    Groups by dbhost for efficient credential lookup and deletion.
+    """
+    from pulldb.worker.cleanup import admin_delete_orphan_databases
+
+    if not selected_orphans.strip():
+        return RedirectResponse(
+            url="/web/admin/orphans/preview?orphan_error=No+orphans+selected",
+            status_code=303,
+        )
+
+    # Parse selected keys and group by dbhost
+    by_host: dict[str, list[str]] = {}
+    for key in selected_orphans.split(","):
+        key = key.strip()
+        if "|" not in key:
+            continue
+        dbhost, database_name = key.split("|", 1)
+        if dbhost not in by_host:
+            by_host[dbhost] = []
+        by_host[dbhost].append(database_name)
+
+    if not by_host:
+        return RedirectResponse(
+            url="/web/admin/orphans/preview?orphan_error=Invalid+selection+format",
+            status_code=303,
+        )
+
+    # Delete orphans grouped by host
+    total_deleted = 0
+    errors = []
+    
+    try:
+        for dbhost, database_names in by_host.items():
+            if hasattr(state, "host_repo") and state.host_repo:
+                results = admin_delete_orphan_databases(
+                    dbhost=dbhost,
+                    database_names=database_names,
+                    host_repo=state.host_repo,
+                    admin_user=user.username,
+                )
+                # results is dict[str, bool] mapping database_name to success
+                for db_name, success in results.items():
+                    if success:
+                        total_deleted += 1
+                    else:
+                        errors.append(f"{dbhost}:{db_name}")
+
+        if errors:
+            error_msg = f"Deleted+{total_deleted},+failed:+" + ",".join(errors[:3])
+            if len(errors) > 3:
+                error_msg += f"+and+{len(errors)-3}+more"
+            return RedirectResponse(
+                url=f"/web/admin/orphans/preview?orphan_error={error_msg}",
+                status_code=303,
+            )
+
+        return RedirectResponse(
+            url=f"/web/admin/orphans/preview?orphan_success={total_deleted}",
+            status_code=303,
+        )
+
+    except Exception as e:
+        error_msg = str(e).replace(" ", "+")[:100]
+        return RedirectResponse(
+            url=f"/web/admin/orphans/preview?orphan_error={error_msg}",
+            status_code=303,
+        )
+
+
 @router.get("/orphans", response_class=HTMLResponse)
 async def get_orphans(
     request: Request,
@@ -822,17 +1133,24 @@ async def get_orphans(
     user: User = Depends(require_admin),
 ) -> HTMLResponse:
     """Get orphan databases report."""
-    from pulldb.worker.cleanup import detect_orphaned_databases
+    from pulldb.worker.cleanup import detect_orphaned_databases, OrphanReport
     
     reports = []
+    errors = []
     if hasattr(state, "host_repo") and state.host_repo:
         hosts = state.host_repo.get_enabled_hosts()
         for host in hosts:
-            orphan_report = detect_orphaned_databases(
+            result = detect_orphaned_databases(
                 dbhost=host.hostname,
                 job_repo=state.job_repo,
                 host_repo=state.host_repo,
             )
+            # Handle error string return (connection failure)
+            if isinstance(result, str):
+                errors.append({"host": host.hostname, "message": result})
+                continue
+            # Handle successful OrphanReport
+            orphan_report: OrphanReport = result
             if orphan_report.orphans:
                 reports.append({
                     "host": host.hostname,
@@ -841,7 +1159,7 @@ async def get_orphans(
 
     return templates.TemplateResponse(
         "features/admin/partials/orphans.html",
-        {"request": request, "reports": reports}
+        {"request": request, "reports": reports, "errors": errors}
     )
 
 

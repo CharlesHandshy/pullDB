@@ -143,30 +143,65 @@
 (function() {
     let currentView = '{{ view or "active" }}';
     
-    const columns = [
+    // =========================================================================
+    // Column Definitions
+    // =========================================================================
+    // Column order: Job ID -> User -> Status -> Date -> Host -> Target
+    // Fixed width columns: Job ID (125px), User (95px), Status (110px), Date (100px)
+    // Flexible nowrap columns with max-width: Host (180px), Target (200px)
+    
+    // Shared column renderers
+    const renderJobId = (val, row) => {
+        const link = '<a href="/web/jobs/' + val + '" class="font-mono" style="color: var(--primary-600);">' + (val || '').substring(0, 8) + '</a>';
+        const canCancel = row.can_cancel && ['queued', 'running'].includes(row.status) && !row.cancel_requested_at;
+        if (canCancel) {
+            return '<span style="display: flex; align-items: center; gap: 6px;">' + link + 
+                '<button class="cancel-job-btn" data-job-id="' + val + '" title="Cancel Job" style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; background: var(--danger-50); color: var(--danger-600); border: 1px solid var(--danger-200); border-radius: 4px; cursor: pointer;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px;"><path fill-rule="evenodd" d="M4.5 7.5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-9Z" clip-rule="evenodd"/></svg></button></span>';
+        }
+        return link;
+    };
+    
+    const renderUser = (val) => '<span class="font-mono" style="font-size: 0.85em;">' + (val || '-') + '</span>';
+    
+    const renderStatus = (val, row) => {
+        const classes = {
+            'complete': 'badge-success',
+            'failed': 'badge-danger',
+            'running': 'badge-primary',
+            'queued': 'badge-neutral',
+            'canceled': 'badge-neutral'
+        };
+        let cls = classes[val] || 'badge-neutral';
+        let style = '';
+        
+        // If running with cancel requested, show strikethrough + red
+        if (val === 'running' && row.cancel_requested_at) {
+            style = 'text-decoration: line-through; background-color: var(--danger-100); color: var(--danger-700); border-color: var(--danger-200);';
+        }
+        
+        return '<span class="badge ' + cls + '" style="' + style + '">' + val + '</span>';
+    };
+    
+    const renderDate = (val) => {
+        if (!val) return '-';
+        const d = new Date(val);
+        const now = new Date();
+        return d.getFullYear() === now.getFullYear() ? (d.getMonth()+1) + '/' + d.getDate() : d.toLocaleDateString();
+    };
+    
+    const renderHost = (val) => val ? val.split('.')[0] : '-';
+    
+    // Active Jobs columns configuration
+    const activeColumns = [
         { 
             key: 'id', 
             label: 'Job ID', 
             sortable: true, 
             filterable: true,
             filterType: 'text',
-            filterPlaceholder: 'job-01* or *0100',
+            filterPlaceholder: 'b875* or *ef3c',
             width: '125px',
-            render: (val, row) => {
-                const link = '<a href="/web/jobs/' + val + '" class="font-mono" style="color: var(--primary-600);">' + (val || '').substring(0, 8) + '</a>';
-                const canCancel = row.can_cancel && ['queued', 'running'].includes(row.status) && !row.cancel_requested_at;
-                if (canCancel) {
-                    return '<span style="display: flex; align-items: center; gap: 6px;">' + link + 
-                        '<button class="cancel-job-btn" data-job-id="' + val + '" title="Cancel Job" style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; background: var(--danger-50); color: var(--danger-600); border: 1px solid var(--danger-200); border-radius: 4px; cursor: pointer;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px;"><path fill-rule="evenodd" d="M4.5 7.5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-9Z" clip-rule="evenodd"/></svg></button></span>';
-                }
-                return link;
-            }
-        },
-        { 
-            key: 'target', 
-            label: 'Target', 
-            sortable: true, 
-            filterable: true
+            render: renderJobId
         },
         { 
             key: 'owner_user_code', 
@@ -174,7 +209,7 @@
             sortable: true, 
             filterable: true, 
             width: '95px',
-            render: (val) => '<span class="font-mono" style="font-size: 0.85em;">' + (val || '-') + '</span>'
+            render: renderUser
         },
         { 
             key: 'status', 
@@ -182,24 +217,7 @@
             sortable: true, 
             filterable: true, 
             width: '110px',
-            render: (val, row) => {
-                const classes = {
-                    'complete': 'badge-success',
-                    'failed': 'badge-danger',
-                    'running': 'badge-primary',
-                    'queued': 'badge-neutral',
-                    'canceled': 'badge-neutral'
-                };
-                let cls = classes[val] || 'badge-neutral';
-                let style = '';
-                
-                // If running with cancel requested, show strikethrough + red
-                if (val === 'running' && row.cancel_requested_at) {
-                    style = 'text-decoration: line-through; background-color: var(--danger-100); color: var(--danger-700); border-color: var(--danger-200);';
-                }
-                
-                return '<span class="badge ' + cls + '" style="' + style + '">' + val + '</span>';
-            }
+            render: renderStatus
         },
         { 
             key: 'submitted_at', 
@@ -208,21 +226,85 @@
             filterable: true,
             filterType: 'dateRange',
             width: '100px',
-            render: (val) => {
-                if (!val) return '-';
-                const d = new Date(val);
-                const now = new Date();
-                return d.getFullYear() === now.getFullYear() ? (d.getMonth()+1) + '/' + d.getDate() : d.toLocaleDateString();
-            }
+            render: renderDate
         },
         { 
             key: 'dbhost', 
             label: 'Host', 
             sortable: true, 
             filterable: true,
-            render: (val) => val ? val.split('.')[0] : '-'
+            nowrap: true,
+            maxWidth: '180px',
+            render: renderHost
+        },
+        { 
+            key: 'target', 
+            label: 'Target', 
+            sortable: true, 
+            filterable: true,
+            nowrap: true,
+            maxWidth: '200px'
         }
     ];
+    
+    // History columns configuration (same as active for now, but separate for future flexibility)
+    const historyColumns = [
+        { 
+            key: 'id', 
+            label: 'Job ID', 
+            sortable: true, 
+            filterable: true,
+            filterType: 'text',
+            filterPlaceholder: 'b875* or *ef3c',
+            width: '125px',
+            render: renderJobId
+        },
+        { 
+            key: 'owner_user_code', 
+            label: 'User', 
+            sortable: true, 
+            filterable: true, 
+            width: '95px',
+            render: renderUser
+        },
+        { 
+            key: 'status', 
+            label: 'Status', 
+            sortable: true, 
+            filterable: true, 
+            width: '110px',
+            render: renderStatus
+        },
+        { 
+            key: 'submitted_at', 
+            label: 'Date', 
+            sortable: true, 
+            filterable: true,
+            filterType: 'dateRange',
+            width: '100px',
+            render: renderDate
+        },
+        { 
+            key: 'dbhost', 
+            label: 'Host', 
+            sortable: true, 
+            filterable: true,
+            nowrap: true,
+            maxWidth: '180px',
+            render: renderHost
+        },
+        { 
+            key: 'target', 
+            label: 'Target', 
+            sortable: true, 
+            filterable: true,
+            nowrap: true,
+            maxWidth: '200px'
+        }
+    ];
+    
+    // Helper to get columns for current view
+    const getColumnsForView = (view) => view === 'history' ? historyColumns : activeColumns;
     
     // Compute role-based default filters
     const userRole = '{{ user.role.value }}';
@@ -317,7 +399,7 @@
     
     const table = new LazyTable({
         container: document.getElementById('jobs-table-container'),
-        columns: columns,
+        columns: getColumnsForView(currentView),
         fetchUrl: '/api/jobs/paginated?view=' + currentView,
         rowHeight: 52,
         rowIdKey: 'id',
@@ -477,13 +559,13 @@
                 const data = await response.json();
                 
                 if (response.ok) {
-                    alert(`${data.message}`);
+                    showToast(data.message, 'success');
                     table.refresh();
                 } else {
-                    alert(`Error: ${data.detail || 'Bulk cancel failed'}`);
+                    showToast(`Error: ${data.detail || 'Bulk cancel failed'}`, 'error');
                 }
             } catch (error) {
-                alert(`Error: ${error.message}`);
+                showToast(`Error: ${error.message}`, 'error');
             } finally {
                 bulkCancelModal.style.display = 'none';
                 bulkCancelExecute.textContent = 'Cancel All Jobs';

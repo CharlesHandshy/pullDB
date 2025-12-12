@@ -553,7 +553,7 @@ function hideAddHostModal() {
 }
 
 function testConnection(hostname) {
-    alert(`Testing connection to ${hostname}...`);
+    showToast(`Testing connection to ${hostname}...`, 'info');
     // TODO: Implement actual connection test via API
 }
 

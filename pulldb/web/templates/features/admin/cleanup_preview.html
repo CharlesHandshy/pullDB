@@ -307,7 +307,7 @@
         const selectedCount = selectedIds.length;
         if (selectedCount === 0) {
             e.preventDefault();
-            alert('No items selected for deletion.');
+            showToast('No items selected for deletion.', 'warning');
             return;
         }
         if (!confirm('Are you sure you want to DROP ' + selectedCount + ' staging database(s)?\n\nThis action cannot be undone.')) {
@@ -317,7 +317,7 @@
 
     // Show flash message from redirect params
     {% if flash_message %}
-    showToast('{{ flash_message }}', '{{ flash_type }}', true);
+    showToast('{{ flash_message }}', '{{ flash_type }}');
     // Clean URL params after showing toast
     if (window.history.replaceState) {
         const url = new URL(window.location);

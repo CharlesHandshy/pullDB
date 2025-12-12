@@ -15,6 +15,7 @@ import os
 os.environ["PULLDB_MODE"] = "SIMULATION"
 os.environ["PULLDB_AUTH_MODE"] = "both"  # Support both trusted headers and session tokens
 
+import asyncio
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -42,13 +43,17 @@ class DevAPIState:
     
     # Available scenarios (same as MockAPIState for compatibility)
     SCENARIOS = {
+        "minimal": {
+            "name": "Minimal",
+            "description": "Infrastructure only (users, hosts, settings) - no jobs",
+        },
         "dev_mocks": {
             "name": "Dev Server Mocks",
-            "description": "Default mock data for development",
+            "description": "Large dataset for stress testing (800 jobs)",
         },
         "empty": {
             "name": "Empty State",
-            "description": "No jobs - fresh system",
+            "description": "Alias for minimal - no jobs",
         },
         "busy": {
             "name": "Busy System",
@@ -64,7 +69,7 @@ class DevAPIState:
         },
     }
     
-    def __init__(self, scenario: str = "dev_mocks") -> None:
+    def __init__(self, scenario: str = "minimal") -> None:
         from pulldb.api.main import _initialize_simulation_state
         from pulldb.simulation import (
             get_simulation_state,
@@ -501,6 +506,47 @@ def create_dev_app():
         state: DevAPIState = request.app.state.dev_api_state
         state.switch_scenario("dev_mocks")
         return {"status": "success", "message": "Simulation reset to default. Page will reload."}
+
+    # =============================================================================
+    # Background Queue Runner
+    # =============================================================================
+    # Process one queued job every 15 seconds to simulate worker behavior
+
+    async def queue_runner_loop() -> None:
+        """Background task that processes queued jobs periodically."""
+        from pulldb.simulation import SimulatedJobRepository
+        from pulldb.simulation.core.queue_runner import MockQueueRunner, MockRunnerConfig
+
+        job_repo = SimulatedJobRepository()
+        # 10% failure rate for realistic simulation
+        config = MockRunnerConfig(failure_rate=0.1)
+        runner = MockQueueRunner(job_repo, config)
+
+        print("  [Queue Runner] Started - processing jobs every 15 seconds")
+
+        while True:
+            await asyncio.sleep(15)
+            try:
+                job = runner.process_next()
+                if job:
+                    status_emoji = {
+                        "complete": "✓",
+                        "failed": "✗",
+                        "canceled": "⊘",
+                    }.get(job.status.value, "?")
+                    print(
+                        f"  [Queue Runner] {status_emoji} Job {job.id[:8]} -> {job.status.value}"
+                    )
+            except Exception as e:
+                print(f"  [Queue Runner] Error: {e}")
+
+    async def start_queue_runner() -> None:
+        """Start the background queue runner on app startup."""
+        asyncio.create_task(queue_runner_loop())
+
+    # Use app.router.on_startup.append() instead of @app.on_event("startup")
+    # to avoid FastAPI deprecation warning about lifespan event handlers
+    app.router.on_startup.append(start_queue_runner)
 
     return app
 

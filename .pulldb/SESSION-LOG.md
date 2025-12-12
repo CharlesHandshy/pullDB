@@ -6,6 +6,83 @@
 
 ---
 
+## 2025-01-XX | Site-Wide Authentication Standardization
+
+### Context
+User reported "Failed to load data" on /web/manager page. Root cause: `/api/manager/team` endpoint only checked headers for auth tokens, not cookies. Web UI uses httponly cookies for session auth.
+
+Full site audit revealed inconsistent authentication patterns across endpoints:
+- Some endpoints check headers only (CLI-focused)
+- Some check both headers and cookies (web-compatible)
+- Admin endpoints had NO authentication at all (security critical)
+
+### What Was Done
+
+1. **Created unified auth dependencies in `pulldb/api/auth.py`**:
+   - `get_authenticated_user()` - Requires login, checks headers AND cookies
+   - `get_admin_user()` - Requires admin role
+   - `get_manager_user()` - Requires manager or admin role
+   - `get_optional_user()` - Optional auth (for backwards compatibility)
+   - `validate_job_submission_user()` - Validates job submitter authorization
+   - Type aliases: `AuthUser`, `AdminUser`, `ManagerUser`, `OptionalUser`
+
+2. **Secured admin endpoints (previously NO auth)**:
+   - `/api/admin/prune-logs` - Now requires AdminUser
+   - `/api/admin/cleanup-staging` - Now requires AdminUser
+   - `/api/admin/orphan-databases` - Now requires AdminUser
+   - `/api/admin/delete-orphans` - Now requires AdminUser
+   - `/api/admin/jobs/bulk-cancel` - Now requires AdminUser
+
+3. **Fixed manager endpoints (cookie support)**:
+   - `/api/manager/team` - Now uses ManagerUser (supports cookies)
+   - `/api/manager/team/distinct` - Now uses ManagerUser (supports cookies)
+
+4. **Fixed cancel endpoint**:
+   - `/api/jobs/{job_id}/cancel` - Now uses AuthUser (supports cookies)
+
+5. **Added auth to job submission**:
+   - `/api/jobs` POST - Uses OptionalUser for backwards compatibility
+   - Validates user can only submit jobs for themselves (admins exempt)
+
+### Rationale
+- **FAIL HARD**: Admin endpoints without auth = security vulnerability
+- **Consistency**: All endpoints now use unified auth pattern
+- **UX**: Web UI using httponly cookies must work everywhere
+- **Backwards Compatibility**: CLI in trusted mode still works without headers
+
+### Files Modified
+- `pulldb/api/auth.py` - Added unified auth dependencies
+- `pulldb/api/main.py` - Updated all endpoint signatures
+
+### Tests
+- All API tests passing (11 passed)
+- Dev smoke test passing
+
+---
+
+## 2025-01-XX | Minimal Seeding for Simulation Mode
+
+### Context
+User requested reducing simulation initial mock data to only include required data (users, hosts, settings) - not jobs, history, logs, or staged databases.
+
+### What Was Done
+1. Changed default scenario from "dev_mocks" to "minimal" in:
+   - `pulldb/simulation/core/seeding.py` - `seed_dev_scenario()` and `reset_and_seed()`
+   - `scripts/dev_server.py` - command-line default
+
+2. Verified minimal scenario only seeds:
+   - Admin user (pulldb_admin)
+   - Manager user (alice)
+   - Regular users (bob, carol)
+   - Host configurations
+   - Settings
+
+### Files Modified
+- `pulldb/simulation/core/seeding.py`
+- `scripts/dev_server.py`
+
+---
+
 ## 2025-12-11 | Phase 2: E2E Tests Migration to Simulation Infrastructure
 
 ### Context

@@ -99,54 +99,152 @@ document.addEventListener('DOMContentLoaded', () => {
 // =================================================================
 // TOAST NOTIFICATIONS
 // =================================================================
-function showToast(message, type = 'info', persistent = false) {
+
+/**
+ * Type-based auto-dismiss durations (milliseconds)
+ * All toasts have a close button for manual dismissal
+ */
+const TOAST_DURATIONS = {
+    success: 5000,   // 5 seconds
+    info: 5000,      // 5 seconds
+    warning: 30000,  // 30 seconds
+    error: 60000     // 60 seconds
+};
+
+/**
+ * Create a close button element for toasts
+ * @returns {HTMLButtonElement}
+ */
+function createToastCloseButton(onClose) {
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '&times;';
+    closeBtn.className = 'toast-close';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.style.cssText = `
+        background: none;
+        border: none;
+        color: inherit;
+        font-size: 1.25rem;
+        font-weight: bold;
+        cursor: pointer;
+        margin-left: 12px;
+        padding: 0 4px;
+        opacity: 0.7;
+        line-height: 1;
+        flex-shrink: 0;
+    `;
+    closeBtn.addEventListener('mouseenter', () => closeBtn.style.opacity = '1');
+    closeBtn.addEventListener('mouseleave', () => closeBtn.style.opacity = '0.7');
+    closeBtn.addEventListener('click', onClose);
+    return closeBtn;
+}
+
+/**
+ * Dismiss a toast element with animation
+ * @param {HTMLElement} toast
+ */
+function dismissToast(toast) {
+    toast.style.animation = 'fadeOut 0.3s ease-out forwards';
+    setTimeout(() => toast.remove(), 300);
+}
+
+/**
+ * Show a toast notification
+ * @param {string} message - The message to display
+ * @param {string} type - Toast type: 'success', 'info', 'warning', 'error'
+ */
+function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
     if (!container) return;
     
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
+    toast.style.display = 'flex';
+    toast.style.alignItems = 'center';
+    toast.style.justifyContent = 'space-between';
     
     // Create message span
     const msgSpan = document.createElement('span');
     msgSpan.textContent = message;
     toast.appendChild(msgSpan);
     
-    if (persistent) {
-        // Add close button for persistent toasts
-        const closeBtn = document.createElement('button');
-        closeBtn.innerHTML = '&times;';
-        closeBtn.className = 'toast-close';
-        closeBtn.style.cssText = `
-            background: none;
-            border: none;
-            color: inherit;
-            font-size: 1.25rem;
-            font-weight: bold;
-            cursor: pointer;
-            margin-left: 12px;
-            padding: 0 4px;
-            opacity: 0.7;
-            line-height: 1;
-        `;
-        closeBtn.addEventListener('mouseenter', () => closeBtn.style.opacity = '1');
-        closeBtn.addEventListener('mouseleave', () => closeBtn.style.opacity = '0.7');
-        closeBtn.addEventListener('click', () => {
-            toast.style.animation = 'fadeOut 0.3s ease-out forwards';
-            setTimeout(() => toast.remove(), 300);
-        });
-        toast.appendChild(closeBtn);
-        toast.style.display = 'flex';
-        toast.style.alignItems = 'center';
-        toast.style.justifyContent = 'space-between';
-    } else {
-        // Auto-dismiss after 3 seconds
-        setTimeout(() => {
-            toast.style.animation = 'fadeOut 0.3s ease-out forwards';
-            setTimeout(() => toast.remove(), 300);
-        }, 3000);
-    }
+    // Always add close button
+    const closeBtn = createToastCloseButton(() => dismissToast(toast));
+    toast.appendChild(closeBtn);
     
     container.appendChild(toast);
+    
+    // Auto-dismiss based on type
+    const duration = TOAST_DURATIONS[type] || TOAST_DURATIONS.info;
+    setTimeout(() => {
+        if (toast.parentNode) {
+            dismissToast(toast);
+        }
+    }, duration);
+}
+
+/**
+ * Show a validation summary with multiple error messages
+ * Displayed as a toast-like panel with a bullet list of errors
+ * @param {string[]} errors - Array of error messages
+ * @param {string} title - Optional title (default: 'Please fix the following issues:')
+ */
+function showValidationSummary(errors, title = 'Please fix the following issues:') {
+    const container = document.getElementById('toast-container');
+    if (!container || !errors || errors.length === 0) return;
+    
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-error validation-summary';
+    toast.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        max-width: 400px;
+        padding: 12px 16px;
+    `;
+    
+    // Header with title and close button
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    `;
+    
+    const titleSpan = document.createElement('strong');
+    titleSpan.textContent = title;
+    titleSpan.style.cssText = 'flex: 1; padding-right: 8px;';
+    header.appendChild(titleSpan);
+    
+    const closeBtn = createToastCloseButton(() => dismissToast(toast));
+    header.appendChild(closeBtn);
+    toast.appendChild(header);
+    
+    // Error list
+    const list = document.createElement('ul');
+    list.style.cssText = `
+        margin: 0;
+        padding-left: 20px;
+        font-size: 0.9em;
+        line-height: 1.5;
+    `;
+    errors.forEach(err => {
+        const li = document.createElement('li');
+        li.textContent = err;
+        list.appendChild(li);
+    });
+    toast.appendChild(list);
+    
+    container.appendChild(toast);
+    
+    // Auto-dismiss after 60 seconds (error duration)
+    setTimeout(() => {
+        if (toast.parentNode) {
+            dismissToast(toast);
+        }
+    }, TOAST_DURATIONS.error);
 }
 
 window.showToast = showToast;
+window.showValidationSummary = showValidationSummary;

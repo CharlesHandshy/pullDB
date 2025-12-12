@@ -1277,11 +1277,7 @@
     });
     
     function alertUser(message) {
-        if (typeof showToast === 'function') {
-            showToast(message, 'error');
-        } else {
-            alert(message);
-        }
+        showToast(message, 'error');
     }
 })();
 </script>

@@ -107,14 +107,16 @@
         <div class="card card-padding">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                 <h3 class="card-header" style="margin-bottom: 0;">Orphan Databases</h3>
-                <button class="btn btn-sm btn-secondary" 
-                        hx-get="/web/admin/orphans" 
-                        hx-target="#orphan-results">
-                    Scan Now
-                </button>
+                <a href="/web/admin/orphans/preview" class="btn btn-sm btn-secondary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    Preview &amp; Delete
+                </a>
             </div>
             <div id="orphan-results">
-                <div class="text-gray-500">Click 'Scan Now' to check for orphans.</div>
+                <div class="text-gray-500">Click 'Preview & Delete' to scan and manage orphan databases.</div>
             </div>
         </div>
     </div>
@@ -155,7 +157,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     {% if flash_message %}
-    showToast('{{ flash_message }}', '{{ flash_type }}', true);
+    showToast('{{ flash_message }}', '{{ flash_type }}');
     // Clean URL params after showing toast
     if (window.history.replaceState) {
         window.history.replaceState({}, document.title, window.location.pathname);

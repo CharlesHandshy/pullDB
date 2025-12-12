@@ -646,6 +646,19 @@ class LazyTable {
                 } else {
                     td.textContent = value ?? '';
                 }
+                
+                // Apply nowrap and maxWidth styles for truncation with tooltip
+                if (col.nowrap || col.maxWidth) {
+                    td.classList.add('lazy-table-td-nowrap');
+                    if (col.maxWidth) {
+                        td.style.maxWidth = col.maxWidth;
+                    }
+                    // Add tooltip with full value for truncated content
+                    const displayValue = value ?? '';
+                    if (displayValue && typeof displayValue === 'string') {
+                        td.title = displayValue;
+                    }
+                }
             }
             
             tr.appendChild(td);

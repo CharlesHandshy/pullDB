@@ -43,6 +43,16 @@ class SimulationState:
     # Job cancellation tracking (set of job_ids with pending cancellation requests)
     cancellation_requested: set[str] = field(default_factory=set)
     
+    # Orphan database simulation
+    # hostname -> set of database names that exist on that staging host
+    staging_databases: dict[str, set[str]] = field(default_factory=dict)
+    # (hostname, db_name) tuples of orphans deleted this session
+    deleted_orphans: set[tuple[str, str]] = field(default_factory=set)
+    # (hostname, db_name) -> size in MB for mock orphan databases
+    orphan_sizes: dict[tuple[str, str], float] = field(default_factory=dict)
+    # (hostname, db_name) -> OrphanMetadata for mock metadata (lazy import to avoid circular)
+    orphan_metadata: dict[tuple[str, str], t.Any] = field(default_factory=dict)
+    
     # Concurrency control
     lock: threading.RLock = field(default_factory=threading.RLock)
 
@@ -61,6 +71,10 @@ class SimulationState:
             self.auth_credentials.clear()
             self.sessions.clear()
             self.cancellation_requested.clear()
+            self.staging_databases.clear()
+            self.deleted_orphans.clear()
+            self.orphan_sizes.clear()
+            self.orphan_metadata.clear()
 
 
 # Global singleton instance

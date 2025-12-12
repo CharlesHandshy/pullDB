@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 import mysql.connector
 
+from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_gauge
 
 
@@ -85,6 +86,22 @@ class OrphanCandidate:
     job_id_prefix: str
     dbhost: str
     discovered_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    size_mb: float | None = None  # Database size in MB from INFORMATION_SCHEMA
+
+
+@dataclass
+class OrphanMetadata:
+    """Metadata from pullDB table inside an orphan database.
+    
+    Loaded on-demand when user clicks details icon.
+    """
+    
+    job_id: str | None = None
+    restored_by: str | None = None
+    restored_at: datetime | None = None
+    target_database: str | None = None
+    backup_filename: str | None = None
+    restore_duration_seconds: float | None = None
 
 
 @dataclass
@@ -214,6 +231,103 @@ def _list_databases(credentials: MySQLCredentials) -> list[str]:
         cursor.execute("SHOW DATABASES")
         rows = cursor.fetchall()
         return [str(row[0]) for row in rows]
+    finally:
+        conn.close()
+
+
+def _get_database_size_mb(credentials: MySQLCredentials, db_name: str) -> float | None:
+    """Get the size of a database in MB.
+
+    Args:
+        credentials: MySQL credentials for the host.
+        db_name: Name of the database to measure.
+
+    Returns:
+        Size in MB, or None if unable to determine.
+    """
+    conn = mysql.connector.connect(
+        host=credentials.host,
+        port=credentials.port,
+        user=credentials.username,
+        password=credentials.password,
+        connect_timeout=30,
+    )
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) as size_mb
+            FROM information_schema.TABLES
+            WHERE table_schema = %s
+        """, (db_name,))
+        row = cursor.fetchone()
+        if row and row[0] is not None:
+            return float(row[0])
+        return 0.0  # Empty database
+    except Exception as e:
+        logger.warning("Failed to get size for database %s: %s", db_name, e)
+        return None
+    finally:
+        conn.close()
+
+
+def get_orphan_metadata(
+    credentials: MySQLCredentials,
+    db_name: str,
+) -> OrphanMetadata | None:
+    """Get metadata from pullDB table inside an orphan database.
+
+    The pullDB table is created by the restore process and contains
+    information about when/how the database was restored.
+
+    Args:
+        credentials: MySQL credentials for the host.
+        db_name: Name of the orphan database to query.
+
+    Returns:
+        OrphanMetadata if pullDB table exists and has data, None otherwise.
+    """
+    conn = mysql.connector.connect(
+        host=credentials.host,
+        port=credentials.port,
+        user=credentials.username,
+        password=credentials.password,
+        database=db_name,
+        connect_timeout=30,
+    )
+    try:
+        cursor = conn.cursor(dictionary=True)
+        # Check if pullDB table exists
+        cursor.execute("""
+            SELECT COUNT(*) as cnt FROM information_schema.TABLES 
+            WHERE table_schema = %s AND table_name = 'pullDB'
+        """, (db_name,))
+        row = cursor.fetchone()
+        if not row or row["cnt"] == 0:
+            return None
+        
+        # Query the pullDB metadata table
+        cursor.execute("""
+            SELECT job_id, restored_by, restored_at, target_database,
+                   backup_filename, restore_duration_seconds
+            FROM pullDB
+            LIMIT 1
+        """)
+        meta_row = cursor.fetchone()
+        if not meta_row:
+            return None
+        
+        return OrphanMetadata(
+            job_id=meta_row.get("job_id"),
+            restored_by=meta_row.get("restored_by"),
+            restored_at=meta_row.get("restored_at"),
+            target_database=meta_row.get("target_database"),
+            backup_filename=meta_row.get("backup_filename"),
+            restore_duration_seconds=float(meta_row["restore_duration_seconds"]) 
+                if meta_row.get("restore_duration_seconds") else None,
+        )
+    except Exception as e:
+        logger.warning("Failed to get metadata for orphan %s: %s", db_name, e)
+        return None
     finally:
         conn.close()
 
@@ -624,12 +738,117 @@ def cleanup_specific_databases(
 # Orphan Detection (Report only - NEVER auto-delete)
 # =============================================================================
 
+# Hostname that simulates connection failure in simulation mode
+SIMULATION_FAILING_HOST = "mysql-staging-03.example.com"
+
+
+def _detect_orphaned_databases_simulation(dbhost: str) -> OrphanReport | str:
+    """Simulation mode orphan detection.
+
+    Returns mock orphan data from SimulationState, or an error string
+    for hosts configured to fail (mysql-staging-03).
+
+    Args:
+        dbhost: Hostname to scan.
+
+    Returns:
+        OrphanReport with mock orphans, or error string for failing hosts.
+    """
+    from pulldb.simulation.core.state import get_simulation_state
+
+    # Simulate connection failure for staging-03
+    if dbhost == SIMULATION_FAILING_HOST:
+        return f"Connection refused to {dbhost}"
+
+    state = get_simulation_state()
+    report = OrphanReport(
+        dbhost=dbhost,
+        scanned_at=datetime.now(UTC),
+    )
+
+    with state.lock:
+        # Get databases for this host, excluding any that have been deleted this session
+        host_dbs = state.staging_databases.get(dbhost, set())
+
+        for db_name in host_dbs:
+            # Skip if deleted this session
+            if (dbhost, db_name) in state.deleted_orphans:
+                continue
+
+            parsed = _parse_staging_name(db_name)
+            if not parsed:
+                continue
+
+            target, job_prefix = parsed
+            
+            # Get mock size from orphan_sizes dict, or generate deterministic size
+            size_mb = state.orphan_sizes.get((dbhost, db_name))
+            if size_mb is None:
+                # Generate deterministic size based on db_name hash (10-500 MB range)
+                size_mb = 10.0 + (hash(db_name) % 490)
+
+            orphan = OrphanCandidate(
+                database_name=db_name,
+                target_name=target,
+                job_id_prefix=job_prefix,
+                dbhost=dbhost,
+                size_mb=size_mb,
+            )
+            report.orphans.append(orphan)
+            logger.info(
+                "[SIMULATION] Detected orphan database: %s on %s (%.2f MB)",
+                db_name,
+                dbhost,
+                size_mb,
+            )
+
+    return report
+
+
+def _get_orphan_metadata_simulation(dbhost: str, db_name: str) -> OrphanMetadata | None:
+    """Simulation mode orphan metadata retrieval.
+    
+    Returns mock metadata for orphan databases.
+    """
+    from pulldb.simulation.core.state import get_simulation_state
+    
+    state = get_simulation_state()
+    
+    with state.lock:
+        # Check if this orphan exists
+        host_dbs = state.staging_databases.get(dbhost, set())
+        if db_name not in host_dbs:
+            return None
+        if (dbhost, db_name) in state.deleted_orphans:
+            return None
+        
+        # Get mock metadata from orphan_metadata dict
+        meta_dict = state.orphan_metadata.get((dbhost, db_name))
+        if meta_dict:
+            # Convert dict to OrphanMetadata (handle ISO date string)
+            restored_at = meta_dict.get("restored_at")
+            if isinstance(restored_at, str):
+                restored_at = datetime.fromisoformat(restored_at.replace("Z", "+00:00"))
+            
+            return OrphanMetadata(
+                job_id=meta_dict.get("job_id"),
+                restored_by=meta_dict.get("restored_by"),
+                restored_at=restored_at,
+                target_database=meta_dict.get("target_database"),
+                backup_filename=meta_dict.get("backup_filename"),
+                restore_duration_seconds=float(meta_dict["restore_duration_seconds"])
+                    if meta_dict.get("restore_duration_seconds") else None,
+            )
+        
+        # No seeded metadata - return None (simulates no pulldb table)
+        return None
+
 
 def detect_orphaned_databases(
     dbhost: str,
     job_repo: JobRepository,
     host_repo: HostRepository,
-) -> OrphanReport:
+) -> OrphanReport | str:
     """Detect databases matching staging pattern but with no job record.
 
     These databases are NEVER auto-deleted. This function generates a report
@@ -642,8 +861,13 @@ def detect_orphaned_databases(
         host_repo: HostRepository for credential resolution.
 
     Returns:
-        OrphanReport with list of orphaned databases for admin review.
+        OrphanReport with list of orphaned databases for admin review,
+        or error string if connection failed.
     """
+    # Simulation mode: return mock data
+    if is_simulation_mode():
+        return _detect_orphaned_databases_simulation(dbhost)
+
     report = OrphanReport(
         dbhost=dbhost,
         scanned_at=datetime.now(UTC),
@@ -654,7 +878,7 @@ def detect_orphaned_databases(
         all_databases = _list_databases(credentials)
     except Exception as e:
         logger.error("Failed to list databases on %s: %s", dbhost, e)
-        return report
+        return f"Failed to connect: {e}"
 
     for db_name in all_databases:
         parsed = _parse_staging_name(db_name)
@@ -672,20 +896,107 @@ def detect_orphaned_databases(
 
         if job is None:
             # No matching job - this is an orphan
+            # Get database size
+            size_mb = _get_database_size_mb(credentials, db_name)
+            
             orphan = OrphanCandidate(
                 database_name=db_name,
                 target_name=target,
                 job_id_prefix=job_prefix,
                 dbhost=dbhost,
+                size_mb=size_mb,
             )
             report.orphans.append(orphan)
             logger.info(
-                "Detected orphan database: %s on %s (no matching job record)",
+                "Detected orphan database: %s on %s (no matching job record, %.2f MB)",
                 db_name,
                 dbhost,
+                size_mb or 0,
             )
 
     return report
+
+
+def fetch_orphan_metadata(
+    dbhost: str,
+    db_name: str,
+    host_repo: HostRepository,
+) -> OrphanMetadata | None:
+    """Fetch metadata from pullDB table inside an orphan database.
+    
+    This is called on-demand when user clicks the details icon.
+    
+    Args:
+        dbhost: Hostname where database exists.
+        db_name: Name of the orphan database.
+        host_repo: HostRepository for credential resolution.
+        
+    Returns:
+        OrphanMetadata if available, None if pullDB table missing or error.
+    """
+    if is_simulation_mode():
+        return _get_orphan_metadata_simulation(dbhost, db_name)
+    
+    try:
+        credentials = host_repo.get_host_credentials(dbhost)
+        return get_orphan_metadata(credentials, db_name)
+    except Exception as e:
+        logger.error("Failed to fetch metadata for %s on %s: %s", db_name, dbhost, e)
+        return None
+
+
+def _admin_delete_orphan_databases_simulation(
+    dbhost: str,
+    database_names: list[str],
+    admin_user: str,
+) -> dict[str, bool]:
+    """Simulation mode orphan deletion.
+
+    Tracks deleted databases in SimulationState so subsequent scans
+    no longer show them as orphans.
+
+    Args:
+        dbhost: Hostname where databases exist.
+        database_names: List of database names to delete.
+        admin_user: Username of admin performing the deletion.
+
+    Returns:
+        Dict mapping database name to success (True) or failure (False).
+    """
+    from pulldb.simulation.core.state import get_simulation_state
+
+    state = get_simulation_state()
+    results: dict[str, bool] = {}
+
+    with state.lock:
+        for db_name in database_names:
+            # Validate it matches staging pattern
+            if not _parse_staging_name(db_name):
+                logger.warning(
+                    "[SIMULATION] Admin deletion rejected: %s doesn't match staging pattern",
+                    db_name,
+                )
+                results[db_name] = False
+                continue
+
+            # Check if database exists in simulation state
+            host_dbs = state.staging_databases.get(dbhost, set())
+            if db_name not in host_dbs:
+                logger.info("[SIMULATION] Database %s already doesn't exist", db_name)
+                results[db_name] = True
+                continue
+
+            # Mark as deleted (will be filtered from future scans)
+            state.deleted_orphans.add((dbhost, db_name))
+            logger.info(
+                "[SIMULATION] Admin %s deleted orphan database: %s on %s",
+                admin_user,
+                db_name,
+                dbhost,
+            )
+            results[db_name] = True
+
+    return results
 
 
 def admin_delete_orphan_databases(
@@ -708,6 +1019,10 @@ def admin_delete_orphan_databases(
     Returns:
         Dict mapping database name to success (True) or failure (False).
     """
+    # Simulation mode: track in SimulationState
+    if is_simulation_mode():
+        return _admin_delete_orphan_databases_simulation(dbhost, database_names, admin_user)
+
     credentials = host_repo.get_host_credentials(dbhost)
     results: dict[str, bool] = {}
 
@@ -818,13 +1133,14 @@ def run_scheduled_cleanup(
 
         # Orphan detection (report only, no deletion)
         if include_orphan_report:
-            orphan_report = detect_orphaned_databases(
+            orphan_result = detect_orphaned_databases(
                 dbhost=host.hostname,
                 job_repo=job_repo,
                 host_repo=host_repo,
             )
-            if orphan_report.orphans:
-                summary.orphan_reports.append(orphan_report)
+            # Handle both OrphanReport and error string returns
+            if isinstance(orphan_result, OrphanReport) and orphan_result.orphans:
+                summary.orphan_reports.append(orphan_result)
 
     summary.completed_at = datetime.now(UTC)
 
