@@ -24,7 +24,37 @@ import boto3
 if t.TYPE_CHECKING:
     from pulldb.infra.mysql import MySQLPool
 
-from pulldb.infra.s3 import parse_s3_bucket_path
+
+def parse_s3_bucket_path(value: str) -> tuple[str, str]:
+    """Parse bucket/prefix from configuration value.
+
+    Accepts formats:
+        - s3://bucket/prefix/
+        - bucket/prefix
+        - bucket-only
+
+    Returns:
+        Tuple of (bucket_name, prefix_with_trailing_slash).
+        Prefix is empty string if not provided.
+
+    Raises:
+        ValueError: If value is empty or contains only s3:// scheme.
+    """
+    trimmed = (value or "").strip()
+    if not trimmed:
+        raise ValueError("s3_bucket_path configuration is required")
+
+    if trimmed.startswith("s3://"):
+        trimmed = trimmed[len("s3://"):]
+
+    if not trimmed:
+        raise ValueError("s3_bucket_path must include bucket name")
+
+    bucket, _, remainder = trimmed.partition("/")
+    prefix = remainder.lstrip("/")
+    if prefix and not prefix.endswith("/"):
+        prefix = f"{prefix}/"
+    return bucket, prefix
 
 
 @dataclass(slots=True)

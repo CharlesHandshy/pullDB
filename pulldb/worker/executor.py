@@ -30,13 +30,13 @@ from pulldb.domain.errors import (
     DownloadError,
     ExtractionError,
 )
+from pulldb.domain.config import parse_s3_bucket_path
 from pulldb.domain.models import Job
 from pulldb.infra.logging import get_logger
 from pulldb.infra.s3 import (
     BackupSpec,
     S3Client,
     discover_latest_backup,
-    parse_s3_bucket_path,
 )
 from pulldb.infra.secrets import MySQLCredentials
 from pulldb.worker.downloader import download_backup

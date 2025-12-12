@@ -18,9 +18,10 @@ from pulldb.domain.config import (
     _parse_positive_float,
     _parse_positive_int,
 )
+from pulldb.domain.config import parse_s3_bucket_path
 from pulldb.domain.errors import StagingError
 from pulldb.domain.restore_models import MyLoaderSpec
-from pulldb.infra.s3 import BACKUP_FILENAME_REGEX, parse_s3_bucket_path
+from pulldb.infra.s3 import BACKUP_FILENAME_REGEX
 from pulldb.worker.downloader import _stream_download
 from pulldb.worker.post_sql import _discover_scripts
 from pulldb.worker.restore import build_myloader_command
