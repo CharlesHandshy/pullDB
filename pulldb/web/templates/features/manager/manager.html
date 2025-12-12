@@ -122,11 +122,11 @@
                 const resetPending = row.password_reset_pending;
                 
                 if (resetPending) {
-                    // Show lock icon (gray) - clicking clears the reset requirement
-                    return '<button class="team-action-btn" data-action="clear-password-reset" data-user-id="' + userId + '" data-username="' + username + '" title="Clear password reset requirement" style="background: none; border: none; padding: 0; cursor: pointer; color: var(--gray-400); display: inline-flex; align-items: center; justify-content: center;">' + lockIcon + '</button>';
+                    // Red key - active/pending, clicking clears the reset requirement
+                    return '<button class="team-action-btn" data-action="clear-password-reset" data-user-id="' + userId + '" data-username="' + username + '" title="Password Reset Pending - Click to Clear" style="background: none; border: none; padding: 0; cursor: pointer; color: var(--danger-600); display: inline-flex; align-items: center; justify-content: center;">' + keyIcon + '</button>';
                 } else {
-                    // Show key icon (warning color) - clicking sets the reset requirement
-                    return '<button class="team-action-btn" data-action="reset-password" data-user-id="' + userId + '" data-username="' + username + '" title="Force Password Reset" style="background: none; border: none; padding: 0; cursor: pointer; color: var(--warning-600); display: inline-flex; align-items: center; justify-content: center;">' + keyIcon + '</button>';
+                    // Grey key - inactive, clicking sets the reset requirement
+                    return '<button class="team-action-btn" data-action="reset-password" data-user-id="' + userId + '" data-username="' + username + '" title="Force Password Reset" style="background: none; border: none; padding: 0; cursor: pointer; color: var(--gray-500); display: inline-flex; align-items: center; justify-content: center;">' + keyIcon + '</button>';
                 }
             }
         }

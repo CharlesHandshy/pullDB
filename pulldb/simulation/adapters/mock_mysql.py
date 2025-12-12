@@ -936,6 +936,30 @@ class SimulatedUserRepository:
             if user.user_code in self.state.users_by_code:
                 self.state.users_by_code[user.user_code] = updated
 
+    def enable_user_by_id(self, user_id: str) -> None:
+        """Enable a user by ID."""
+        with self.state.lock:
+            user = self.state.users.get(user_id)
+            if not user:
+                raise ValueError(f"User not found: {user_id}")
+            
+            updated = replace(user, disabled_at=None)
+            self.state.users[user.user_id] = updated
+            if user.user_code in self.state.users_by_code:
+                self.state.users_by_code[user.user_code] = updated
+
+    def disable_user_by_id(self, user_id: str) -> None:
+        """Disable a user by ID."""
+        with self.state.lock:
+            user = self.state.users.get(user_id)
+            if not user:
+                raise ValueError(f"User not found: {user_id}")
+            
+            updated = replace(user, disabled_at=datetime.now(UTC))
+            self.state.users[user.user_id] = updated
+            if user.user_code in self.state.users_by_code:
+                self.state.users_by_code[user.user_code] = updated
+
     def get_user_detail(self, username: str) -> UserDetail | None:
         """Get detailed user info including job stats."""
         with self.state.lock:

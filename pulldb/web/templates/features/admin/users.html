@@ -2,103 +2,514 @@
 
 {% block title %}Users - Admin - pullDB{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
+<style>
+/* Page Layout - flexbox to fill available space */
+.users-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--space-6);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+/* Card fills remaining space */
+.users-page .card {
+    flex: 1;
+    min-height: 0; /* Critical: allows flex shrinking */
+    display: flex;
+    flex-direction: column;
+}
+
+/* Table container fills the card */
+.users-page #users-table-container {
+    flex: 1;
+    min-height: 0;
+}
+
+/* Stats Row */
+.stats-row {
+    display: flex;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+}
+
+.stat-pill {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: white;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--gray-200);
+    font-size: 0.875rem;
+}
+
+.stat-pill .stat-value {
+    font-weight: 700;
+    color: var(--gray-900);
+}
+
+.stat-pill .stat-label {
+    color: var(--gray-500);
+}
+
+/* User Avatar */
+.user-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-full);
+    background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.75rem;
+    color: white;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+/* Role Badges */
+.role-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.role-badge.admin { background: var(--warning-100); color: var(--warning-700); }
+.role-badge.manager { background: var(--info-100); color: var(--info-700); }
+.role-badge.user { background: var(--gray-100); color: var(--gray-700); }
+
+/* Status Badges */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-badge.enabled { background: var(--success-100); color: var(--success-700); }
+.status-badge.disabled { background: var(--gray-100); color: var(--gray-500); }
+
+.status-badge svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* Action Buttons - Icon only */
+.action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--gray-500);
+    transition: all var(--transition-fast);
+}
+
+.action-btn:hover {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.action-btn.danger:hover {
+    background: var(--danger-50);
+    color: var(--danger-600);
+}
+
+.action-btn.success:hover {
+    background: var(--success-50);
+    color: var(--success-600);
+}
+
+.action-btn.warning:hover {
+    background: var(--warning-50);
+    color: var(--warning-600);
+}
+
+.action-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Manager Select */
+.manager-select {
+    font-size: 0.8125rem;
+    padding: 2px 6px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    background: white;
+    color: var(--gray-700);
+    cursor: pointer;
+    max-width: 120px;
+}
+
+.manager-select:hover {
+    border-color: var(--gray-300);
+}
+
+.manager-select:focus {
+    outline: none;
+    border-color: var(--primary-400);
+    box-shadow: 0 0 0 2px var(--primary-100);
+}
+
+/* Page Header */
+.page-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+}
+
+.page-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.back-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    color: var(--gray-500);
+    transition: all var(--transition-fast);
+}
+
+.back-btn:hover {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.page-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--gray-900);
+    margin: 0;
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="page-header">
-    <div style="display: flex; align-items: center; gap: var(--space-4);">
-        <a href="/web/admin" class="btn btn-ghost" style="padding: 0.5rem;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="15 18 9 12 15 6"></polyline>
+<div class="users-page">
+    <!-- Header -->
+    <div class="page-header-row">
+        <div class="page-header-left">
+            <a href="/web/admin" class="back-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+            </a>
+            <h1 class="page-title">Users</h1>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showToast('Add user coming soon', 'info')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                <line x1="12" x2="12" y1="5" y2="19"></line>
+                <line x1="5" x2="19" y1="12" y2="12"></line>
             </svg>
-        </a>
-        <h1 class="page-title">Manage Users</h1>
+            Add User
+        </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+        <div class="stat-pill">
+            <span class="stat-value">{{ stats.total }}</span>
+            <span class="stat-label">total</span>
+        </div>
+        <div class="stat-pill">
+            <span class="stat-value">{{ stats.admins }}</span>
+            <span class="stat-label">admins</span>
+        </div>
+        <div class="stat-pill">
+            <span class="stat-value">{{ stats.managers }}</span>
+            <span class="stat-label">managers</span>
+        </div>
+        <div class="stat-pill">
+            <span class="stat-value">{{ stats.active }}</span>
+            <span class="stat-label">active</span>
+        </div>
+        <div class="stat-pill">
+            <span class="stat-value">{{ stats.disabled }}</span>
+            <span class="stat-label">disabled</span>
+        </div>
+    </div>
+
+    <!-- LazyTable Container -->
+    <div class="card">
+        <div id="users-table-container"></div>
     </div>
 </div>
+{% endblock %}
 
-<!-- User Search -->
-<form method="GET" action="/web/admin/users" class="card card-padding" style="margin-bottom: var(--space-4);">
-    <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-        <input type="text" name="q" value="{{ q or '' }}" placeholder="Search by username, user code, or role..." class="form-input" style="width: 300px;">
-        <select name="role" class="form-select" style="width: 140px;" onchange="this.form.submit()">
-            <option value="">All Roles</option>
-            <option value="user" {% if role == 'user' %}selected{% endif %}>User</option>
-            <option value="manager" {% if role == 'manager' %}selected{% endif %}>Manager</option>
-            <option value="admin" {% if role == 'admin' %}selected{% endif %}>Admin</option>
-        </select>
-        <select name="status" class="form-select" style="width: 130px;" onchange="this.form.submit()">
-            <option value="">All Status</option>
-            <option value="active" {% if status == 'active' %}selected{% endif %}>Active</option>
-            <option value="disabled" {% if status == 'disabled' %}selected{% endif %}>Disabled</option>
-        </select>
-        <button type="submit" class="btn btn-secondary">Search</button>
-        {% if q or role or status %}
-        <a href="/web/admin/users" class="btn btn-ghost">Clear</a>
-        {% endif %}
-    </div>
-</form>
-
-<div class="card">
-    <div class="table-container">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Username</th>
-                    <th>User Code</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                    <th>Created At</th>
-                    <th style="text-align: right;">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for u in users %}
-                <tr>
-                    <td class="font-medium">{{ u.username }}</td>
-                    <td class="font-mono">{{ u.user_code }}</td>
-                    <td>
-                        <!-- Role dropdown -->
-                        <form method="POST" action="/web/admin/users/{{ u.user_id }}/role" style="display: inline;" 
-                              onsubmit="return confirm('Change {{ u.username }} role to ' + this.new_role.value + '?');">
-                            <select name="new_role" class="form-select" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
-                                    onchange="this.form.submit()">
-                                <option value="user" {% if u.role.value == 'user' %}selected{% endif %}>user</option>
-                                <option value="manager" {% if u.role.value == 'manager' %}selected{% endif %}>manager</option>
-                                <option value="admin" {% if u.role.value == 'admin' %}selected{% endif %}>admin</option>
-                            </select>
-                        </form>
-                    </td>
-                    <td>
-                        {% if u.disabled_at %}
-                        <span class="badge badge-danger">Disabled</span>
-                        {% else %}
-                        <span class="badge badge-success">Active</span>
-                        {% endif %}
-                    </td>
-                    <td>{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '-' }}</td>
-                    <td style="text-align: right;">
-                        {% if u.disabled_at %}
-                        <form method="POST" action="/web/admin/users/{{ u.user_id }}/enable" style="display: inline;"
-                              onsubmit="return confirm('Enable user {{ u.username }}?');">
-                            <button type="submit" class="btn btn-sm btn-success" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Enable</button>
-                        </form>
-                        {% else %}
-                        <form method="POST" action="/web/admin/users/{{ u.user_id }}/disable" style="display: inline;"
-                              onsubmit="return confirm('Disable user {{ u.username }}? They will not be able to log in.');">
-                            <button type="submit" class="btn btn-sm btn-danger" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Disable</button>
-                        </form>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="6" class="empty-state">No users found.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<div style="margin-top: var(--space-4); color: var(--gray-500); font-size: 0.875rem;">
-    Showing {{ users|length }} user(s)
-</div>
+{% block extra_js %}
+<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=3"></script>
+<script>
+(function() {
+    // Managers list from server (for dropdown)
+    const managers = {{ managers | tojson | safe }};
+    
+    // Build manager options HTML
+    function buildManagerOptions(currentManagerId) {
+        let opts = '<option value="">None</option>';
+        managers.forEach(m => {
+            const selected = m.user_id === currentManagerId ? ' selected' : '';
+            opts += `<option value="${m.user_id}"${selected}>${m.username}</option>`;
+        });
+        return opts;
+    }
+    
+    // Column renderers
+    const renderUsername = (val, row) => {
+        const initial = val ? val[0].toUpperCase() : '?';
+        return `<span class="user-avatar">${initial}</span><span style="font-weight: 500;">${val}</span>`;
+    };
+    
+    const renderUserCode = (val) => `<code style="font-size: 0.8125rem; background: var(--gray-100); padding: 2px 6px; border-radius: 4px;">${val}</code>`;
+    
+    const renderManager = (val, row) => {
+        return `<select class="manager-select" data-user-id="${row.user_id}" onchange="updateManager(this)">
+            ${buildManagerOptions(row.manager_id)}
+        </select>`;
+    };
+    
+    const renderRole = (val) => `<span class="role-badge ${val}">${val}</span>`;
+    
+    const renderDate = (val) => {
+        if (!val) return '-';
+        const d = new Date(val);
+        return d.toLocaleDateString();
+    };
+    
+    const currentUserId = '{{ user.user_id }}';
+    
+    const renderStatus = (val, row) => {
+        const isCurrentUser = row.user_id === currentUserId;
+        const cursorStyle = isCurrentUser ? 'cursor: not-allowed; opacity: 0.6;' : 'cursor: pointer;';
+        const titleAttr = isCurrentUser ? 'title="Cannot modify your own account"' : 'title="Click to toggle status"';
+        
+        if (row.disabled) {
+            return `<span class="status-badge disabled" style="${cursorStyle}" ${titleAttr} onclick="toggleUserStatus('${row.user_id}', '${row.username}', true)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/></svg>
+                Disabled
+            </span>`;
+        }
+        return `<span class="status-badge enabled" style="${cursorStyle}" ${titleAttr} onclick="toggleUserStatus('${row.user_id}', '${row.username}', false)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Enabled
+        </span>`;
+    };
+    
+    const renderActions = (val, row) => {
+        const isCurrentUser = row.user_id === currentUserId;
+        let html = '<div style="display: flex; gap: 2px; justify-content: flex-start;">';
+        
+        // Password reset - key icon: grey = inactive, red = pending
+        if (isCurrentUser) {
+            // Current user - disabled grey key
+            html += `<button class="action-btn" style="color: var(--gray-400); cursor: not-allowed; opacity: 0.5;" title="Cannot modify your own account" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                </svg>
+            </button>`;
+        } else if (row.password_reset_pending) {
+            // Red key - pending, click to clear
+            html += `<button class="action-btn" style="color: var(--danger-600);" title="Password Reset Pending - Click to Clear" onclick="clearPasswordReset('${row.user_id}', '${row.username}')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                </svg>
+            </button>`;
+        } else {
+            // Grey key - inactive, click to set password reset
+            html += `<button class="action-btn" style="color: var(--gray-500);" title="Force Password Reset" onclick="forcePasswordReset('${row.user_id}', '${row.username}')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                </svg>
+            </button>`;
+        }
+        
+        html += '</div>';
+        return html;
+    };
+    
+    // Column definitions
+    // Order: Username, User Code, Manager Assignment, Role, Created, Status, Actions
+    const columns = [
+        { 
+            key: 'username', 
+            label: 'Username', 
+            sortable: true, 
+            filterable: true,
+            filterType: 'text',
+            width: '180px',
+            render: renderUsername
+        },
+        { 
+            key: 'user_code', 
+            label: 'User Code', 
+            sortable: true, 
+            filterable: true,
+            filterType: 'text',
+            width: '100px',
+            render: renderUserCode
+        },
+        { 
+            key: 'manager_username', 
+            label: 'Manager', 
+            sortable: true, 
+            filterable: true,
+            width: '140px',
+            render: renderManager
+        },
+        { 
+            key: 'role', 
+            label: 'Role', 
+            sortable: true, 
+            filterable: true,
+            width: '100px',
+            render: renderRole
+        },
+        { 
+            key: 'created_at', 
+            label: 'Created', 
+            sortable: true,
+            width: '100px',
+            render: renderDate
+        },
+        { 
+            key: 'disabled', 
+            label: 'Status', 
+            sortable: true, 
+            filterable: true,
+            width: '100px',
+            render: renderStatus
+        },
+        { 
+            key: '_actions', 
+            label: 'Actions', 
+            sortable: false, 
+            filterable: false,
+            width: '80px',
+            render: renderActions
+        }
+    ];
+    
+    // Initialize LazyTable
+    const table = new LazyTable({
+        container: document.getElementById('users-table-container'),
+        columns: columns,
+        fetchUrl: '/web/admin/api/users',
+        rowHeight: 48,
+        rowIdKey: 'user_id',
+        emptyMessage: 'No users found'
+    });
+    
+    // Action functions
+    window.updateManager = async function(select) {
+        const userId = select.dataset.userId;
+        const managerId = select.value;
+        
+        const formData = new FormData();
+        formData.append('manager_id', managerId);
+        
+        try {
+            const resp = await fetch(`/web/admin/users/${userId}/manager`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+            if (data.success) {
+                showToast('Manager updated', 'success');
+            } else {
+                showToast('Failed to update manager', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    };
+    
+    window.forcePasswordReset = async function(userId, username) {
+        if (!confirm(`Force password reset for ${username}?`)) return;
+        
+        try {
+            const resp = await fetch(`/web/admin/users/${userId}/force-password-reset`, {
+                method: 'POST'
+            });
+            const data = await resp.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                table.refresh();
+            } else {
+                showToast('Failed to set password reset', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    };
+    
+    window.toggleUserStatus = async function(userId, username, isCurrentlyDisabled) {
+        // Prevent modifying own account
+        if (userId === currentUserId) {
+            showToast('Cannot modify your own account', 'error');
+            return;
+        }
+        
+        const action = isCurrentlyDisabled ? 'enable' : 'disable';
+        const confirmMsg = isCurrentlyDisabled 
+            ? `Enable user ${username}?`
+            : `Disable user ${username}?`;
+        
+        if (!confirm(confirmMsg)) return;
+        
+        try {
+            const resp = await fetch(`/web/admin/users/${userId}/${action}`, { method: 'POST' });
+            const data = await resp.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                table.refresh();
+            } else {
+                showToast(data.message || 'Operation failed', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    };
+    
+    window.clearPasswordReset = async function(userId, username) {
+        if (!confirm(`Clear password reset requirement for ${username}?`)) return;
+        
+        try {
+            const resp = await fetch(`/web/admin/users/${userId}/clear-password-reset`, {
+                method: 'POST'
+            });
+            const data = await resp.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                table.refresh();
+            } else {
+                showToast(data.message || 'Failed to clear password reset', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    };
+})();
+</script>
 {% endblock %}

@@ -131,22 +131,27 @@ async def enable_team_member(
     user_id: str,
     user: User = Depends(require_manager_or_above),
     state: Any = Depends(get_api_state),
-) -> RedirectResponse:
+) -> dict:
     """Enable a disabled managed user."""
-    # Verify user is managed by this manager
-    managed_users = []
-    if hasattr(state.user_repo, "get_users_managed_by"):
-        managed_users = state.user_repo.get_users_managed_by(user.user_id)
+    try:
+        # Verify user is managed by this manager
+        managed_users = []
+        if hasattr(state.user_repo, "get_users_managed_by"):
+            managed_users = state.user_repo.get_users_managed_by(user.user_id)
 
-    managed_user_ids = {u.user_id for u in managed_users}
-    if user_id not in managed_user_ids:
-        return RedirectResponse(url="/web/manager/", status_code=303)
+        managed_user_ids = {u.user_id for u in managed_users}
+        if user_id not in managed_user_ids:
+            return {"success": False, "message": "User is not managed by you"}
 
-    # Enable the user
-    if hasattr(state.user_repo, "enable_user"):
-        state.user_repo.enable_user(user_id)
+        # Enable the user
+        if hasattr(state.user_repo, "enable_user_by_id"):
+            state.user_repo.enable_user_by_id(user_id)
+        elif hasattr(state.user_repo, "enable_user"):
+            state.user_repo.enable_user(user_id)
 
-    return RedirectResponse(url="/web/manager/", status_code=303)
+        return {"success": True, "message": "User enabled successfully"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 
 @router.post("/my-team/{user_id}/disable")
@@ -154,19 +159,28 @@ async def disable_team_member(
     user_id: str,
     user: User = Depends(require_manager_or_above),
     state: Any = Depends(get_api_state),
-) -> RedirectResponse:
+) -> dict:
     """Disable a managed user."""
-    # Verify user is managed by this manager
-    managed_users = []
-    if hasattr(state.user_repo, "get_users_managed_by"):
-        managed_users = state.user_repo.get_users_managed_by(user.user_id)
+    try:
+        # Prevent self-modification
+        if user_id == user.user_id:
+            return {"success": False, "message": "Cannot disable your own account"}
 
-    managed_user_ids = {u.user_id for u in managed_users}
-    if user_id not in managed_user_ids:
-        return RedirectResponse(url="/web/manager/", status_code=303)
+        # Verify user is managed by this manager
+        managed_users = []
+        if hasattr(state.user_repo, "get_users_managed_by"):
+            managed_users = state.user_repo.get_users_managed_by(user.user_id)
 
-    # Disable the user
-    if hasattr(state.user_repo, "disable_user"):
-        state.user_repo.disable_user(user_id)
+        managed_user_ids = {u.user_id for u in managed_users}
+        if user_id not in managed_user_ids:
+            return {"success": False, "message": "User is not managed by you"}
 
-    return RedirectResponse(url="/web/manager/", status_code=303)
+        # Disable the user
+        if hasattr(state.user_repo, "disable_user_by_id"):
+            state.user_repo.disable_user_by_id(user_id)
+        elif hasattr(state.user_repo, "disable_user"):
+            state.user_repo.disable_user(user_id)
+
+        return {"success": True, "message": "User disabled successfully"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}

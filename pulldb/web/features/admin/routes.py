@@ -110,47 +110,37 @@ def _enrich_user(user_obj: Any, job_repo: Any) -> dict:
 @router.get("/users", response_class=HTMLResponse)
 async def list_users(
     request: Request,
-    q: str | None = None,
-    role: str | None = None,
-    status: str | None = None,
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> HTMLResponse:
-    """List all users with search and filtering."""
+    """Render the users management page with LazyTable."""
+    # Get stats and managers for the page
     raw_users = []
     if hasattr(state.user_repo, "list_users"):
         raw_users = state.user_repo.list_users()
     
-    # Apply search filter
-    if q:
-        q_lower = q.lower()
-        raw_users = [u for u in raw_users if 
-                 q_lower in u.username.lower() or 
-                 q_lower in (u.user_code or "").lower() or
-                 q_lower in u.role.value.lower()]
+    # Convert managers to simple dicts for JSON serialization
+    managers = [
+        {"user_id": u.user_id, "username": u.username}
+        for u in raw_users 
+        if u.role.value in ("manager", "admin")
+    ]
     
-    # Apply role filter
-    if role:
-        raw_users = [u for u in raw_users if u.role.value.lower() == role.lower()]
-    
-    # Apply status filter
-    if status == "active":
-        raw_users = [u for u in raw_users if not u.disabled_at]
-    elif status == "disabled":
-        raw_users = [u for u in raw_users if u.disabled_at]
-    
-    # Enrich users with job stats
-    users = [_enrich_user(u, state.job_repo) for u in raw_users]
+    stats = {
+        "total": len(raw_users),
+        "admins": len([u for u in raw_users if u.role.value == "admin"]),
+        "managers": len([u for u in raw_users if u.role.value == "manager"]),
+        "active": len([u for u in raw_users if not u.disabled_at]),
+        "disabled": len([u for u in raw_users if u.disabled_at]),
+    }
 
     return templates.TemplateResponse(
         "features/admin/users.html",
         {
-            "request": request, 
-            "users": users, 
+            "request": request,
             "user": user,
-            "q": q,
-            "role": role,
-            "status": status,
+            "stats": stats,
+            "managers": managers,
         },
     )
 
@@ -159,24 +149,36 @@ async def list_users(
 async def enable_user(
     user_id: str,
     state: Any = Depends(get_api_state),
-    user: User = Depends(require_admin),
-) -> RedirectResponse:
-    """Enable a user account."""
-    if hasattr(state.user_repo, "enable_user"):
-        state.user_repo.enable_user(user_id)
-    return RedirectResponse(url="/web/admin/users", status_code=303)
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Enable a user account. Returns JSON for AJAX calls."""
+    if user_id == admin.user_id:
+        return {"success": False, "message": "Cannot modify your own account"}
+    
+    try:
+        if hasattr(state.user_repo, "enable_user_by_id"):
+            state.user_repo.enable_user_by_id(user_id)
+        return {"success": True, "message": "User enabled"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 
 @router.post("/users/{user_id}/disable")
 async def disable_user(
     user_id: str,
     state: Any = Depends(get_api_state),
-    user: User = Depends(require_admin),
-) -> RedirectResponse:
-    """Disable a user account."""
-    if hasattr(state.user_repo, "disable_user"):
-        state.user_repo.disable_user(user_id)
-    return RedirectResponse(url="/web/admin/users", status_code=303)
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Disable a user account. Returns JSON for AJAX calls."""
+    if user_id == admin.user_id:
+        return {"success": False, "message": "Cannot disable your own account"}
+    
+    try:
+        if hasattr(state.user_repo, "disable_user_by_id"):
+            state.user_repo.disable_user_by_id(user_id)
+        return {"success": True, "message": "User disabled"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 
 @router.post("/users/{user_id}/role")
@@ -197,6 +199,198 @@ async def update_user_role(
         pass  # Invalid role, ignore
     
     return RedirectResponse(url="/web/admin/users", status_code=303)
+
+
+@router.post("/users/{user_id}/manager")
+async def update_user_manager(
+    user_id: str,
+    manager_id: str = Form(None),
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Update a user's manager assignment. Returns JSON for AJAX calls."""
+    if hasattr(state.user_repo, "set_user_manager"):
+        actual_manager_id = manager_id if manager_id else None
+        state.user_repo.set_user_manager(user_id, actual_manager_id)
+        return {"success": True, "message": "Manager updated"}
+    return {"success": True, "message": "Manager updated (simulation)"}
+
+
+@router.post("/users/{user_id}/force-password-reset")
+async def force_password_reset(
+    user_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Force a password reset for a user. Returns JSON for AJAX calls."""
+    if user_id == admin.user_id:
+        return {"success": False, "message": "Cannot modify your own account"}
+    
+    # Get the user to find their username
+    target_user = None
+    if hasattr(state.user_repo, "get_user_by_id"):
+        target_user = state.user_repo.get_user_by_id(user_id)
+    
+    if target_user and hasattr(state.auth_repo, "mark_password_reset"):
+        state.auth_repo.mark_password_reset(target_user.username)
+        return {"success": True, "message": "Password reset required on next login"}
+    return {"success": False, "message": "Could not set password reset"}
+
+
+@router.post("/users/{user_id}/clear-password-reset")
+async def clear_password_reset(
+    user_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Clear a pending password reset for a user. Returns JSON for AJAX calls."""
+    if user_id == admin.user_id:
+        return {"success": False, "message": "Cannot modify your own account"}
+    
+    # Get the user to find their username
+    target_user = None
+    if hasattr(state.user_repo, "get_user_by_id"):
+        target_user = state.user_repo.get_user_by_id(user_id)
+    
+    if target_user and hasattr(state.auth_repo, "clear_password_reset"):
+        state.auth_repo.clear_password_reset(target_user.username)
+        return {"success": True, "message": "Password reset cleared"}
+    return {"success": False, "message": "Could not clear password reset"}
+
+
+@router.get("/api/users")
+async def api_users_paginated(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+    pageIndex: int = 0,
+    pageSize: int = 50,
+    sortColumn: str | None = None,
+    sortDirection: str | None = None,
+) -> dict:
+    """Get paginated users for LazyTable."""
+    raw_users = []
+    if hasattr(state.user_repo, "list_users"):
+        raw_users = state.user_repo.list_users()
+    
+    user_map = {u.user_id: u for u in raw_users}
+    
+    # Get active job counts
+    job_counts: dict[str, int] = {}
+    if hasattr(state.job_repo, "get_active_jobs"):
+        for job in state.job_repo.get_active_jobs():
+            code = getattr(job, "owner_user_code", None)
+            if code:
+                job_counts[code] = job_counts.get(code, 0) + 1
+    
+    # Get managers for dropdown
+    managers = [u for u in raw_users if u.role.value in ("manager", "admin")]
+    
+    # Build enriched user list
+    all_users = []
+    for u in raw_users:
+        manager_username = None
+        if u.manager_id and u.manager_id in user_map:
+            manager_username = user_map[u.manager_id].username
+        
+        # Check password reset status
+        password_reset_pending = False
+        if hasattr(state, "auth_repo") and hasattr(state.auth_repo, "is_password_reset_required"):
+            password_reset_pending = state.auth_repo.is_password_reset_required(u.username)
+        
+        all_users.append({
+            "user_id": u.user_id,
+            "username": u.username,
+            "user_code": u.user_code,
+            "role": u.role.value,
+            "manager_id": u.manager_id,
+            "manager_username": manager_username,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+            "disabled": u.disabled_at is not None,
+            "password_reset_pending": password_reset_pending,
+            "active_jobs": job_counts.get(u.user_code, 0),
+        })
+    
+    total_count = len(all_users)
+    
+    # Apply filters
+    text_filters: dict[str, list[str]] = {}
+    for key, value in request.query_params.items():
+        if key.startswith("filter_") and value:
+            col_key = key[7:]
+            text_filters[col_key] = [v.strip().lower() for v in value.split(',') if v.strip()]
+    
+    if text_filters:
+        filtered = []
+        for u in all_users:
+            match = True
+            for col, vals in text_filters.items():
+                if col == "status":
+                    status = "disabled" if u["disabled"] else "enabled"
+                    if not any(v in status for v in vals):
+                        match = False
+                        break
+                else:
+                    cell = str(u.get(col, "")).lower()
+                    if not any(v in cell for v in vals):
+                        match = False
+                        break
+            if match:
+                filtered.append(u)
+        all_users = filtered
+    
+    filtered_count = len(all_users)
+    
+    # Apply sorting
+    if sortColumn in ("username", "user_code", "role", "manager_username", "created_at", "disabled"):
+        reverse = sortDirection == "desc"
+        all_users.sort(
+            key=lambda u: (u.get(sortColumn) is None, str(u.get(sortColumn) or "").lower()),
+            reverse=reverse
+        )
+    
+    # Paginate
+    start = pageIndex * pageSize
+    page_users = all_users[start:start + pageSize]
+    
+    return {
+        "rows": page_users,
+        "totalCount": total_count,
+        "filteredCount": filtered_count,
+        "pageIndex": pageIndex,
+        "pageSize": pageSize,
+        "managers": [{"user_id": m.user_id, "username": m.username} for m in managers],
+    }
+
+
+@router.get("/api/users/distinct")
+async def api_users_distinct(
+    column: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> list:
+    """Get distinct values for user filter dropdowns."""
+    raw_users = []
+    if hasattr(state.user_repo, "list_users"):
+        raw_users = state.user_repo.list_users()
+    
+    user_map = {u.user_id: u for u in raw_users}
+    values = set()
+    
+    for u in raw_users:
+        if column == "role":
+            values.add(u.role.value)
+        elif column == "status":
+            values.add("disabled" if u.disabled_at else "enabled")
+        elif column == "manager_username":
+            if u.manager_id and u.manager_id in user_map:
+                values.add(user_map[u.manager_id].username)
+        elif column == "username":
+            values.add(u.username)
+        elif column == "user_code":
+            values.add(u.user_code)
+    
+    return sorted(values)
 
 
 # =============================================================================
