@@ -100,6 +100,119 @@ async def logout(
     return response
 
 
+# =============================================================================
+# Forced Password Change (for users with force_password_reset flag)
+# =============================================================================
+
+def validate_password_policy(password: str) -> tuple[bool, str]:
+    """Validate password against policy: 8+ chars, upper, lower, number, symbol.
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    import re
+    
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters"
+    if not re.search(r'[A-Z]', password):
+        return False, "Password must contain at least one uppercase letter"
+    if not re.search(r'[a-z]', password):
+        return False, "Password must contain at least one lowercase letter"
+    if not re.search(r'[0-9]', password):
+        return False, "Password must contain at least one number"
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;\'`~]', password):
+        return False, "Password must contain at least one symbol (!@#$%^&*...)"
+    return True, ""
+
+
+@router.get("/change-password", response_class=HTMLResponse)
+async def change_password_page(
+    request: Request,
+    error: str | None = None,
+    user: User | None = Depends(get_session_user),
+    state: Any = Depends(get_api_state),
+) -> Any:
+    """Render the forced password change page.
+    
+    This page is shown to users who have the force_password_reset flag set.
+    They cannot navigate away until they set a new password.
+    """
+    if not user:
+        return RedirectResponse(url="/web/login", status_code=303)
+    
+    # Check if user actually needs to change password
+    reset_required = False
+    if hasattr(state, "auth_repo") and state.auth_repo:
+        if hasattr(state.auth_repo, "is_password_reset_required"):
+            reset_required = state.auth_repo.is_password_reset_required(user.user_id)
+    
+    # If no reset required, redirect to dashboard
+    if not reset_required:
+        return RedirectResponse(url="/web/dashboard/", status_code=303)
+    
+    return templates.TemplateResponse(
+        "features/auth/change_password.html",
+        {"request": request, "user": user, "error": error},
+    )
+
+
+@router.post("/change-password", response_class=HTMLResponse)
+async def change_password_submit(
+    request: Request,
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    state: Any = Depends(get_api_state),
+    user: User | None = Depends(get_session_user),
+) -> Any:
+    """Handle forced password change submission."""
+    from pulldb.auth.password import hash_password
+    
+    if not user:
+        return RedirectResponse(url="/web/login", status_code=303)
+    
+    # Verify user needs to change password
+    reset_required = False
+    if hasattr(state, "auth_repo") and state.auth_repo:
+        if hasattr(state.auth_repo, "is_password_reset_required"):
+            reset_required = state.auth_repo.is_password_reset_required(user.user_id)
+    
+    if not reset_required:
+        return RedirectResponse(url="/web/dashboard/", status_code=303)
+    
+    # Validate passwords match
+    if new_password != confirm_password:
+        return templates.TemplateResponse(
+            "features/auth/change_password.html",
+            {"request": request, "user": user, "error": "Passwords do not match"},
+            status_code=400,
+        )
+    
+    # Validate password policy
+    is_valid, error_msg = validate_password_policy(new_password)
+    if not is_valid:
+        return templates.TemplateResponse(
+            "features/auth/change_password.html",
+            {"request": request, "user": user, "error": error_msg},
+            status_code=400,
+        )
+    
+    # Set new password
+    new_hash = hash_password(new_password)
+    if hasattr(state.auth_repo, "set_password_hash"):
+        state.auth_repo.set_password_hash(user.user_id, new_hash)
+    
+    # Clear the password reset flag
+    if hasattr(state.auth_repo, "clear_password_reset"):
+        state.auth_repo.clear_password_reset(user.user_id)
+    
+    # Redirect to dashboard
+    return RedirectResponse(url="/web/dashboard/", status_code=303)
+
+
+# =============================================================================
+# User Profile
+# =============================================================================
+
 @router.get("/auth/profile", response_class=HTMLResponse)
 async def profile_page(
     request: Request,

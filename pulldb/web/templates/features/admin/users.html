@@ -168,6 +168,29 @@
     box-shadow: 0 0 0 2px var(--primary-100);
 }
 
+/* Role Select */
+.role-select {
+    font-size: 0.8125rem;
+    padding: 2px 6px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    background: white;
+    color: var(--gray-700);
+    cursor: pointer;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.role-select:hover {
+    border-color: var(--gray-300);
+}
+
+.role-select:focus {
+    outline: none;
+    border-color: var(--primary-400);
+    box-shadow: 0 0 0 2px var(--primary-100);
+}
+
 /* Page Header */
 .page-header-row {
     display: flex;
@@ -204,6 +227,233 @@
     color: var(--gray-900);
     margin: 0;
 }
+
+/* Modal Styles */
+.modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-hidden {
+    display: none !important;
+}
+
+.modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    background: white;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-5);
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.modal-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.modal-close {
+    padding: var(--space-1);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--gray-400);
+}
+
+.modal-close:hover {
+    color: var(--gray-600);
+}
+
+.modal-close svg {
+    width: 20px;
+    height: 20px;
+}
+
+.modal-body {
+    padding: var(--space-5);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-3);
+    padding: var(--space-5);
+    border-top: 1px solid var(--gray-200);
+}
+
+/* Form Styles */
+.form-group {
+    margin-bottom: var(--space-4);
+}
+
+.form-group:last-child {
+    margin-bottom: 0;
+}
+
+.form-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--gray-700);
+    margin-bottom: var(--space-1);
+}
+
+.form-label.required::after {
+    content: " *";
+    color: var(--danger-500);
+}
+
+.form-input {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    font-size: 0.875rem;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-md);
+    background: white;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--primary-400);
+    box-shadow: 0 0 0 2px var(--primary-100);
+}
+
+.form-hint {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    margin-top: var(--space-1);
+}
+
+/* Password Display */
+.password-display p {
+    margin: 0 0 var(--space-3) 0;
+}
+
+.password-display code {
+    background: var(--gray-100);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-family: monospace;
+}
+
+.password-box {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-3);
+}
+
+.password-box code {
+    flex: 1;
+    font-size: 1rem;
+    font-weight: 600;
+    background: transparent;
+    padding: 0;
+}
+
+.password-note {
+    font-size: 0.8125rem;
+    color: var(--warning-700);
+    background: var(--warning-50);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    margin: 0;
+}
+
+/* Hosts Modal Styles */
+.hosts-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    padding: var(--space-2);
+}
+
+.host-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast);
+}
+
+.host-item:hover {
+    background: var(--gray-50);
+}
+
+.host-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary-500);
+}
+
+.host-item-label {
+    flex: 1;
+    font-size: 0.875rem;
+    color: var(--gray-700);
+}
+
+.host-item-default {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: 0.75rem;
+    color: var(--gray-500);
+}
+
+.host-item-default input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--warning-500);
+}
+
+.host-item-default.hidden {
+    visibility: hidden;
+}
+
+.hosts-empty {
+    text-align: center;
+    padding: var(--space-6);
+    color: var(--gray-500);
+}
+
+.hosts-modal-info {
+    font-size: 0.8125rem;
+    color: var(--gray-500);
+    margin-bottom: var(--space-3);
+}
+
+.hosts-selected-count {
+    font-size: 0.8125rem;
+    color: var(--gray-600);
+    margin-top: var(--space-2);
+}
 </style>
 {% endblock %}
 
@@ -219,7 +469,7 @@
             </a>
             <h1 class="page-title">Users</h1>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="showToast('Add user coming soon', 'info')">
+        <button class="btn btn-primary btn-sm" onclick="showAddUserModal()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
                 <line x1="12" x2="12" y1="5" y2="19"></line>
                 <line x1="5" x2="19" y1="12" y2="12"></line>
@@ -231,23 +481,23 @@
     <!-- Stats -->
     <div class="stats-row">
         <div class="stat-pill">
-            <span class="stat-value">{{ stats.total }}</span>
+            <span class="stat-value" id="stat-total">{{ stats.total }}</span>
             <span class="stat-label">total</span>
         </div>
         <div class="stat-pill">
-            <span class="stat-value">{{ stats.admins }}</span>
+            <span class="stat-value" id="stat-admins">{{ stats.admins }}</span>
             <span class="stat-label">admins</span>
         </div>
         <div class="stat-pill">
-            <span class="stat-value">{{ stats.managers }}</span>
+            <span class="stat-value" id="stat-managers">{{ stats.managers }}</span>
             <span class="stat-label">managers</span>
         </div>
         <div class="stat-pill">
-            <span class="stat-value">{{ stats.active }}</span>
+            <span class="stat-value" id="stat-active">{{ stats.active }}</span>
             <span class="stat-label">active</span>
         </div>
         <div class="stat-pill">
-            <span class="stat-value">{{ stats.disabled }}</span>
+            <span class="stat-value" id="stat-disabled">{{ stats.disabled }}</span>
             <span class="stat-label">disabled</span>
         </div>
     </div>
@@ -255,6 +505,139 @@
     <!-- LazyTable Container -->
     <div class="card">
         <div id="users-table-container"></div>
+    </div>
+</div>
+
+<!-- Add User Modal -->
+<div id="add-user-modal" class="modal modal-hidden">
+    <div class="modal-backdrop" onclick="hideAddUserModal()"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">Add New User</h3>
+            <button type="button" class="modal-close" onclick="hideAddUserModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" x2="6" y1="6" y2="18"/>
+                    <line x1="6" x2="18" y1="6" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <form id="add-user-form" onsubmit="return submitAddUser(event)">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="new-username" class="form-label required">Username</label>
+                    <input type="text" id="new-username" name="username" class="form-input" 
+                           pattern="[a-z0-9_-]+" minlength="3" maxlength="50"
+                           placeholder="e.g., john_doe" required>
+                    <span class="form-hint">Lowercase letters, numbers, underscore, hyphen (3-50 chars)</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="new-role" class="form-label">Role</label>
+                    <select id="new-role" name="role" class="form-input">
+                        <option value="user" selected>User</option>
+                        <option value="manager">Manager</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                    <span class="form-hint">User's permission level</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="new-manager" class="form-label">Manager</label>
+                    <select id="new-manager" name="manager_id" class="form-input">
+                        <option value="">No manager</option>
+                        {% for m in managers %}
+                        <option value="{{ m.user_id }}">{{ m.username }}</option>
+                        {% endfor %}
+                    </select>
+                    <span class="form-hint">Optional: Assign a manager to this user</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="hideAddUserModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="add-user-submit">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; margin-right: 4px;">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="8.5" cy="7" r="4"/>
+                        <line x1="20" x2="20" y1="8" y2="14"/>
+                        <line x1="23" x2="17" y1="11" y2="11"/>
+                    </svg>
+                    Create User
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Password Display Modal -->
+<div id="password-modal" class="modal modal-hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">User Created Successfully</h3>
+        </div>
+        <div class="modal-body">
+            <div class="password-display">
+                <p><strong>Username:</strong> <code id="created-username"></code></p>
+                <p><strong>User Code:</strong> <code id="created-user-code"></code></p>
+                <p><strong>Temporary Password:</strong></p>
+                <div class="password-box">
+                    <code id="created-password"></code>
+                    <button type="button" class="btn btn-sm" onclick="copyPassword()" title="Copy to clipboard">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                        </svg>
+                    </button>
+                </div>
+                <p class="password-note">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; vertical-align: middle;">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" x2="12" y1="8" y2="12"/>
+                        <line x1="12" x2="12.01" y1="16" y2="16"/>
+                    </svg>
+                    Share this password securely with the user. They will be required to change it on first login.
+                </p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-primary" onclick="hidePasswordModal()">Done</button>
+        </div>
+    </div>
+</div>
+
+<!-- Manage Hosts Modal -->
+<div id="hosts-modal" class="modal modal-hidden">
+    <div class="modal-backdrop" onclick="hideHostsModal()"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">Manage Database Hosts</h3>
+            <button type="button" class="modal-close" onclick="hideHostsModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" x2="6" y1="6" y2="18"/>
+                    <line x1="6" x2="18" y1="6" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="hosts-modal-info">
+                <strong id="hosts-modal-username"></strong> - Select which database hosts this user can access, and set a default.
+            </p>
+            <div id="hosts-list" class="hosts-list">
+                <div class="hosts-empty">Loading hosts...</div>
+            </div>
+            <p class="hosts-selected-count" id="hosts-selected-count">0 hosts selected</p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="hideHostsModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="save-hosts-btn" onclick="saveUserHosts()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; margin-right: 4px;">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                </svg>
+                Save
+            </button>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -290,7 +673,19 @@
         </select>`;
     };
     
-    const renderRole = (val) => `<span class="role-badge ${val}">${val}</span>`;
+    const renderRole = (val, row) => {
+        const isCurrentUser = row.user_id === currentUserId;
+        // Current user sees static badge (cannot change own role)
+        if (isCurrentUser) {
+            return `<span class="role-badge ${val}">${val}</span>`;
+        }
+        // Other users get a dropdown
+        return `<select class="role-select" data-user-id="${row.user_id}" data-username="${row.username}" onchange="updateRole(this)">
+            <option value="user"${val === 'user' ? ' selected' : ''}>user</option>
+            <option value="manager"${val === 'manager' ? ' selected' : ''}>manager</option>
+            <option value="admin"${val === 'admin' ? ' selected' : ''}>admin</option>
+        </select>`;
+    };
     
     const renderDate = (val) => {
         if (!val) return '-';
@@ -320,6 +715,15 @@
     const renderActions = (val, row) => {
         const isCurrentUser = row.user_id === currentUserId;
         let html = '<div style="display: flex; gap: 2px; justify-content: flex-start;">';
+        
+        // Hosts button - database icon
+        html += `<button class="action-btn" style="color: var(--primary-600);" title="Manage Database Hosts" onclick="showHostsModal('${row.user_id}', '${row.username}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+            </svg>
+        </button>`;
         
         // Password reset - key icon: grey = inactive, red = pending
         if (isCurrentUser) {
@@ -411,6 +815,18 @@
         }
     ];
     
+    // Update stat pills from API response
+    function updateStats(data) {
+        console.log('[DEBUG] updateStats called, data.stats:', data.stats);
+        if (data.stats) {
+            document.getElementById('stat-total').textContent = data.stats.total;
+            document.getElementById('stat-admins').textContent = data.stats.admins;
+            document.getElementById('stat-managers').textContent = data.stats.managers;
+            document.getElementById('stat-active').textContent = data.stats.active;
+            document.getElementById('stat-disabled').textContent = data.stats.disabled;
+        }
+    }
+    
     // Initialize LazyTable
     const table = new LazyTable({
         container: document.getElementById('users-table-container'),
@@ -418,7 +834,8 @@
         fetchUrl: '/web/admin/api/users',
         rowHeight: 48,
         rowIdKey: 'user_id',
-        emptyMessage: 'No users found'
+        emptyMessage: 'No users found',
+        onDataLoaded: updateStats
     });
     
     // Action functions
@@ -442,6 +859,39 @@
             }
         } catch (e) {
             showToast('Error: ' + e.message, 'error');
+        }
+    };
+    
+    window.updateRole = async function(select) {
+        const userId = select.dataset.userId;
+        const username = select.dataset.username;
+        const newRole = select.value;
+        
+        if (!confirm(`Change ${username}'s role to ${newRole}?`)) {
+            // Revert the dropdown to previous value
+            table.refresh();
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('new_role', newRole);
+        
+        try {
+            const resp = await fetch(`/web/admin/users/${userId}/role`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+            if (data.success) {
+                showToast('Role updated', 'success');
+                table.refresh();
+            } else {
+                showToast(data.message || 'Failed to update role', 'error');
+                table.refresh();
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+            table.refresh();
         }
     };
     
@@ -472,11 +922,11 @@
         }
         
         const action = isCurrentlyDisabled ? 'enable' : 'disable';
-        const confirmMsg = isCurrentlyDisabled 
-            ? `Enable user ${username}?`
-            : `Disable user ${username}?`;
         
-        if (!confirm(confirmMsg)) return;
+        // Only confirm for disable action
+        if (action === 'disable') {
+            if (!confirm(`Disable user ${username}?`)) return;
+        }
         
         try {
             const resp = await fetch(`/web/admin/users/${userId}/${action}`, { method: 'POST' });
@@ -493,8 +943,6 @@
     };
     
     window.clearPasswordReset = async function(userId, username) {
-        if (!confirm(`Clear password reset requirement for ${username}?`)) return;
-        
         try {
             const resp = await fetch(`/web/admin/users/${userId}/clear-password-reset`, {
                 method: 'POST'
@@ -510,6 +958,272 @@
             showToast('Error: ' + e.message, 'error');
         }
     };
+    
+    // =========================================================================
+    // Add User Modal Functions
+    // =========================================================================
+    
+    window.showAddUserModal = function() {
+        document.getElementById('add-user-modal').classList.remove('modal-hidden');
+        document.getElementById('new-username').focus();
+    };
+    
+    window.hideAddUserModal = function() {
+        document.getElementById('add-user-modal').classList.add('modal-hidden');
+        document.getElementById('add-user-form').reset();
+    };
+    
+    window.showPasswordModal = function(username, userCode, password) {
+        document.getElementById('created-username').textContent = username;
+        document.getElementById('created-user-code').textContent = userCode;
+        document.getElementById('created-password').textContent = password;
+        document.getElementById('password-modal').classList.remove('modal-hidden');
+    };
+    
+    window.hidePasswordModal = function() {
+        document.getElementById('password-modal').classList.add('modal-hidden');
+        table.refresh();
+    };
+    
+    window.copyPassword = function() {
+        const password = document.getElementById('created-password').textContent;
+        navigator.clipboard.writeText(password).then(() => {
+            showToast('Password copied to clipboard', 'success');
+        }).catch(() => {
+            showToast('Failed to copy password', 'error');
+        });
+    };
+    
+    window.submitAddUser = async function(event) {
+        event.preventDefault();
+        
+        const form = document.getElementById('add-user-form');
+        const submitBtn = document.getElementById('add-user-submit');
+        const originalText = submitBtn.innerHTML;
+        
+        // Disable button and show loading
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = 'Creating...';
+        
+        const formData = new FormData(form);
+        
+        try {
+            const resp = await fetch('/web/admin/users/add', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+            
+            if (data.success) {
+                hideAddUserModal();
+                showPasswordModal(data.username, data.user_code, data.password);
+            } else {
+                showToast(data.message || 'Failed to create user', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+        
+        return false;
+    };
+    
+    // =========================================================================
+    // Manage Hosts Modal Functions
+    // =========================================================================
+    
+    // All database hosts (loaded once on first modal open)
+    let allHosts = null;
+    // Current user being edited
+    let currentHostsUserId = null;
+    let currentHostsUsername = null;
+    
+    async function loadAllHosts() {
+        if (allHosts !== null) return allHosts;
+        
+        try {
+            const resp = await fetch('/web/admin/api/hosts');
+            const data = await resp.json();
+            if (data.success) {
+                allHosts = data.hosts;
+                return allHosts;
+            }
+        } catch (e) {
+            console.error('Failed to load hosts:', e);
+        }
+        return [];
+    }
+    
+    async function loadUserHosts(userId) {
+        try {
+            const resp = await fetch(`/web/admin/users/${userId}/hosts`);
+            const data = await resp.json();
+            if (data.success) {
+                return {
+                    host_ids: data.host_ids || [],
+                    default_host_id: data.default_host_id
+                };
+            }
+        } catch (e) {
+            console.error('Failed to load user hosts:', e);
+        }
+        return { host_ids: [], default_host_id: null };
+    }
+    
+    function renderHostsList(hosts, userHostIds, defaultHostId) {
+        const listEl = document.getElementById('hosts-list');
+        
+        if (!hosts || hosts.length === 0) {
+            listEl.innerHTML = '<div class="hosts-empty">No database hosts configured.</div>';
+            return;
+        }
+        
+        let html = '';
+        hosts.forEach(host => {
+            const isChecked = userHostIds.includes(host.id);
+            const isDefault = host.id === defaultHostId;
+            const displayName = host.display_name || host.hostname;
+            
+            html += `
+                <div class="host-item">
+                    <input type="checkbox" 
+                           id="host-${host.id}" 
+                           value="${host.id}" 
+                           ${isChecked ? 'checked' : ''}
+                           onchange="updateHostSelection()">
+                    <label class="host-item-label" for="host-${host.id}">${displayName}</label>
+                    <div class="host-item-default ${isChecked ? '' : 'hidden'}" id="default-${host.id}">
+                        <input type="radio" 
+                               name="default_host" 
+                               value="${host.id}"
+                               ${isDefault ? 'checked' : ''}>
+                        <span>Default</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        listEl.innerHTML = html;
+        updateSelectedCount();
+    }
+    
+    function updateHostSelection() {
+        // Show/hide default radio buttons based on checkbox state
+        const checkboxes = document.querySelectorAll('#hosts-list input[type="checkbox"]');
+        const checkedBoxes = document.querySelectorAll('#hosts-list input[type="checkbox"]:checked');
+        
+        checkboxes.forEach(cb => {
+            const defaultDiv = document.getElementById(`default-${cb.value}`);
+            if (defaultDiv) {
+                if (cb.checked) {
+                    defaultDiv.classList.remove('hidden');
+                } else {
+                    defaultDiv.classList.add('hidden');
+                    // Uncheck the radio if host is unchecked
+                    const radio = defaultDiv.querySelector('input[type="radio"]');
+                    if (radio) radio.checked = false;
+                }
+            }
+        });
+        
+        // Auto-select default when only one host is checked
+        if (checkedBoxes.length === 1) {
+            const hostId = checkedBoxes[0].value;
+            const radio = document.querySelector(`#default-${hostId} input[type="radio"]`);
+            if (radio) radio.checked = true;
+        }
+        
+        updateSelectedCount();
+    }
+    
+    function updateSelectedCount() {
+        const checked = document.querySelectorAll('#hosts-list input[type="checkbox"]:checked').length;
+        const hasDefault = document.querySelector('#hosts-list input[type="radio"]:checked') !== null;
+        
+        let text = `${checked} host${checked !== 1 ? 's' : ''} selected`;
+        if (checked === 1) {
+            text += ' (will be default)';
+        } else if (checked > 1 && !hasDefault) {
+            text += ' — select a default';
+        }
+        document.getElementById('hosts-selected-count').textContent = text;
+    }
+    
+    window.showHostsModal = async function(userId, username) {
+        currentHostsUserId = userId;
+        currentHostsUsername = username;
+        
+        document.getElementById('hosts-modal-username').textContent = username;
+        document.getElementById('hosts-list').innerHTML = '<div class="hosts-empty">Loading hosts...</div>';
+        document.getElementById('hosts-modal').classList.remove('modal-hidden');
+        
+        // Load data
+        const [hosts, userHosts] = await Promise.all([
+            loadAllHosts(),
+            loadUserHosts(userId)
+        ]);
+        
+        renderHostsList(hosts, userHosts.host_ids, userHosts.default_host_id);
+    };
+    
+    window.hideHostsModal = function() {
+        document.getElementById('hosts-modal').classList.add('modal-hidden');
+        currentHostsUserId = null;
+        currentHostsUsername = null;
+    };
+    
+    window.saveUserHosts = async function() {
+        if (!currentHostsUserId) return;
+        
+        const saveBtn = document.getElementById('save-hosts-btn');
+        const originalText = saveBtn.innerHTML;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = 'Saving...';
+        
+        // Collect selected host IDs
+        const checkboxes = document.querySelectorAll('#hosts-list input[type="checkbox"]:checked');
+        const hostIds = Array.from(checkboxes).map(cb => cb.value);
+        
+        // Get default host ID
+        const defaultRadio = document.querySelector('#hosts-list input[type="radio"]:checked');
+        const defaultHostId = defaultRadio ? defaultRadio.value : null;
+        
+        try {
+            const resp = await fetch(`/web/admin/users/${currentHostsUserId}/hosts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    host_ids: hostIds,
+                    default_host_id: defaultHostId
+                })
+            });
+            const data = await resp.json();
+            
+            if (data.success) {
+                showToast('Host assignments updated', 'success');
+                hideHostsModal();
+                table.refresh();
+            } else {
+                showToast(data.message || 'Failed to update hosts', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalText;
+        }
+    };
+    
+    // Close modals on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            hideAddUserModal();
+            hidePasswordModal();
+            hideHostsModal();
+        }
+    });
 })();
 </script>
 {% endblock %}

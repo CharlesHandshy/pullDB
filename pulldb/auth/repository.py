@@ -465,3 +465,126 @@ class AuthRepository:
             )
             result = cursor.fetchone()
             return int(result[0]) if result else 0
+
+    # =========================================================================
+    # User Host Assignment Methods
+    # =========================================================================
+
+    def get_user_hosts(self, user_id: str) -> list[tuple[str, str, bool]]:
+        """Get database hosts assigned to a user.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            List of (host_id, hostname, is_default) tuples.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT uh.host_id, h.hostname, h.host_alias, uh.is_default
+                FROM user_hosts uh
+                JOIN db_hosts h ON h.id = uh.host_id
+                WHERE uh.user_id = %s
+                ORDER BY uh.is_default DESC, h.hostname ASC
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+            return [
+                (row["host_id"], row["host_alias"] or row["hostname"], row["is_default"])
+                for row in rows
+            ]
+
+    def set_user_hosts(
+        self,
+        user_id: str,
+        host_ids: list[str],
+        default_host_id: str | None,
+        assigned_by: str | None = None,
+    ) -> None:
+        """Set database hosts for a user (replaces all existing assignments).
+
+        Args:
+            user_id: UUID of the user.
+            host_ids: List of host IDs to assign.
+            default_host_id: Host ID to mark as default (must be in host_ids).
+            assigned_by: UUID of admin making the assignment.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+
+            # Delete existing assignments
+            cursor.execute(
+                "DELETE FROM user_hosts WHERE user_id = %s",
+                (user_id,),
+            )
+
+            # Insert new assignments
+            if host_ids:
+                # Auto-default: if only one host, it becomes the default
+                if len(host_ids) == 1:
+                    default_host_id = host_ids[0]
+                for host_id in host_ids:
+                    is_default = host_id == default_host_id
+                    cursor.execute(
+                        """
+                        INSERT INTO user_hosts 
+                            (user_id, host_id, is_default, assigned_at, assigned_by)
+                        VALUES (%s, %s, %s, UTC_TIMESTAMP(6), %s)
+                        """,
+                        (user_id, host_id, is_default, assigned_by),
+                    )
+
+            conn.commit()
+
+    def get_user_default_host(self, user_id: str) -> str | None:
+        """Get the default host hostname for a user.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Hostname of default host, or None if no default set.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT h.hostname, h.host_alias
+                FROM user_hosts uh
+                JOIN db_hosts h ON h.id = uh.host_id
+                WHERE uh.user_id = %s AND uh.is_default = TRUE
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            if row:
+                return row["host_alias"] or row["hostname"]
+            return None
+
+    def get_user_allowed_hosts(self, user_id: str) -> list[str]:
+        """Get list of hostnames a user is allowed to access.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            List of hostnames the user can access.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT h.hostname, h.host_alias
+                FROM user_hosts uh
+                JOIN db_hosts h ON h.id = uh.host_id
+                WHERE uh.user_id = %s
+                ORDER BY h.hostname ASC
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+            return [row["host_alias"] or row["hostname"] for row in rows]

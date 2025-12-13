@@ -187,18 +187,97 @@ async def update_user_role(
     new_role: str = Form(...),
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
-) -> RedirectResponse:
-    """Update a user's role."""
+) -> dict:
+    """Update a user's role. Returns JSON for AJAX calls."""
     from pulldb.domain.models import UserRole
+    
+    # Prevent self-modification
+    if user_id == user.user_id:
+        return {"success": False, "message": "Cannot modify your own role"}
     
     try:
         role_enum = UserRole(new_role.lower())
-        if hasattr(state.user_repo, "update_role"):
-            state.user_repo.update_role(user_id, role_enum)
+        if hasattr(state.user_repo, "update_user_role"):
+            state.user_repo.update_user_role(user_id, role_enum)
+        return {"success": True, "message": "Role updated"}
     except ValueError:
-        pass  # Invalid role, ignore
+        return {"success": False, "message": "Invalid role"}
+
+
+@router.post("/users/add")
+async def add_user(
+    username: str = Form(...),
+    role: str = Form("user"),
+    manager_id: str = Form(None),
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Create a new user with random password. Returns JSON with password."""
+    import secrets
+    import string
+    from pulldb.auth.password import hash_password
+    from pulldb.domain.models import UserRole
     
-    return RedirectResponse(url="/web/admin/users", status_code=303)
+    # Validate username format
+    username = username.strip().lower()
+    if not username or len(username) < 3 or len(username) > 50:
+        return {"success": False, "message": "Username must be 3-50 characters"}
+    
+    import re
+    if not re.match(r'^[a-z0-9_-]+$', username):
+        return {"success": False, "message": "Username can only contain lowercase letters, numbers, underscore, and hyphen"}
+    
+    # Check if username already exists
+    existing = None
+    if hasattr(state.user_repo, "get_user_by_username"):
+        existing = state.user_repo.get_user_by_username(username)
+    if existing:
+        return {"success": False, "message": f"Username '{username}' already exists"}
+    
+    # Generate user code
+    user_code = username[:6].upper()
+    if hasattr(state.user_repo, "generate_user_code"):
+        user_code = state.user_repo.generate_user_code(username)
+    
+    # Create user
+    actual_manager_id = manager_id if manager_id else None
+    new_user = None
+    if hasattr(state.user_repo, "create_user"):
+        new_user = state.user_repo.create_user(username, user_code, actual_manager_id)
+    
+    if not new_user:
+        return {"success": False, "message": "Failed to create user"}
+    
+    # Set role if not default 'user'
+    if role != "user":
+        try:
+            role_enum = UserRole(role.lower())
+            if hasattr(state.user_repo, "update_user_role"):
+                state.user_repo.update_user_role(new_user.user_id, role_enum)
+        except ValueError:
+            pass  # Invalid role, keep default
+    
+    # Generate random password (12 chars, mix of letters/digits/symbols)
+    alphabet = string.ascii_letters + string.digits + "!@#$%&*"
+    random_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+    
+    # Set password hash
+    password_hash = hash_password(random_password)
+    if hasattr(state.auth_repo, "set_password_hash"):
+        state.auth_repo.set_password_hash(new_user.user_id, password_hash)
+    
+    # Mark for password reset on first login
+    if hasattr(state.auth_repo, "mark_password_reset"):
+        state.auth_repo.mark_password_reset(new_user.user_id)
+    
+    return {
+        "success": True,
+        "message": "User created successfully",
+        "user_id": new_user.user_id,
+        "username": username,
+        "user_code": user_code,
+        "password": random_password,
+    }
 
 
 @router.post("/users/{user_id}/manager")
@@ -232,7 +311,7 @@ async def force_password_reset(
         target_user = state.user_repo.get_user_by_id(user_id)
     
     if target_user and hasattr(state.auth_repo, "mark_password_reset"):
-        state.auth_repo.mark_password_reset(target_user.username)
+        state.auth_repo.mark_password_reset(target_user.user_id)
         return {"success": True, "message": "Password reset required on next login"}
     return {"success": False, "message": "Could not set password reset"}
 
@@ -253,9 +332,99 @@ async def clear_password_reset(
         target_user = state.user_repo.get_user_by_id(user_id)
     
     if target_user and hasattr(state.auth_repo, "clear_password_reset"):
-        state.auth_repo.clear_password_reset(target_user.username)
+        state.auth_repo.clear_password_reset(target_user.user_id)
         return {"success": True, "message": "Password reset cleared"}
     return {"success": False, "message": "Could not clear password reset"}
+
+
+# =============================================================================
+# User Host Assignment Routes
+# =============================================================================
+
+@router.get("/users/{user_id}/hosts")
+async def get_user_hosts(
+    user_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Get database hosts assigned to a user. Returns JSON for AJAX calls."""
+    if not hasattr(state.auth_repo, "get_user_hosts"):
+        return {"success": False, "message": "Host assignment not supported"}
+    
+    try:
+        # Returns list of (host_id, hostname, is_default)
+        hosts = state.auth_repo.get_user_hosts(user_id)
+        host_ids = [h[0] for h in hosts]
+        default_host_id = None
+        for h in hosts:
+            if h[2]:  # is_default
+                default_host_id = h[0]
+                break
+        
+        return {
+            "success": True,
+            "host_ids": host_ids,
+            "default_host_id": default_host_id,
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@router.post("/users/{user_id}/hosts")
+async def set_user_hosts(
+    user_id: str,
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Set database hosts for a user. Accepts JSON body. Returns JSON for AJAX calls."""
+    if not hasattr(state.auth_repo, "set_user_hosts"):
+        return {"success": False, "message": "Host assignment not supported"}
+    
+    try:
+        body = await request.json()
+        host_ids: list[str] = body.get("host_ids", [])
+        default_host_id: str | None = body.get("default_host_id")
+        
+        # Validate default is in host_ids if provided
+        if default_host_id and default_host_id not in host_ids:
+            return {"success": False, "message": "Default host must be in assigned hosts"}
+        
+        state.auth_repo.set_user_hosts(
+            user_id=user_id,
+            host_ids=host_ids,
+            default_host_id=default_host_id,
+            assigned_by=admin.user_id,
+        )
+        
+        return {"success": True, "message": "Host assignments updated"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@router.get("/api/hosts")
+async def api_hosts_list(
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Get all database hosts for admin UI. Returns JSON."""
+    hosts = []
+    if hasattr(state, "host_repo") and state.host_repo and hasattr(state.host_repo, "list_hosts"):
+        hosts = state.host_repo.list_hosts()
+    
+    return {
+        "success": True,
+        "hosts": [
+            {
+                "id": h.id,
+                "hostname": h.hostname,
+                "host_alias": getattr(h, "host_alias", None),
+                "display_name": getattr(h, "host_alias", None) or h.hostname,
+                "enabled": getattr(h, "enabled", True),
+            }
+            for h in hosts
+        ],
+    }
 
 
 @router.get("/api/users")
@@ -296,7 +465,7 @@ async def api_users_paginated(
         # Check password reset status
         password_reset_pending = False
         if hasattr(state, "auth_repo") and hasattr(state.auth_repo, "is_password_reset_required"):
-            password_reset_pending = state.auth_repo.is_password_reset_required(u.username)
+            password_reset_pending = state.auth_repo.is_password_reset_required(u.user_id)
         
         all_users.append({
             "user_id": u.user_id,
@@ -312,6 +481,15 @@ async def api_users_paginated(
         })
     
     total_count = len(all_users)
+    
+    # Compute stats before filtering (for real-time stat pill updates)
+    stats = {
+        "total": total_count,
+        "admins": len([u for u in all_users if u["role"] == "admin"]),
+        "managers": len([u for u in all_users if u["role"] == "manager"]),
+        "active": len([u for u in all_users if not u["disabled"]]),
+        "disabled": len([u for u in all_users if u["disabled"]]),
+    }
     
     # Apply filters
     text_filters: dict[str, list[str]] = {}
@@ -360,6 +538,7 @@ async def api_users_paginated(
         "pageIndex": pageIndex,
         "pageSize": pageSize,
         "managers": [{"user_id": m.user_id, "username": m.username} for m in managers],
+        "stats": stats,
     }
 
 

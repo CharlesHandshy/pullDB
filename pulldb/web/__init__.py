@@ -8,6 +8,18 @@ Unified - all routes under /web prefix with modern design system.
 
 from pulldb.web.router_registry import main_router as router
 from pulldb.web.dependencies import TEMPLATES_DIR
-from pulldb.web.exceptions import SessionExpiredError, create_session_expired_handler
+from pulldb.web.exceptions import (
+    SessionExpiredError,
+    PasswordResetRequiredError,
+    create_session_expired_handler,
+    create_password_reset_required_handler,
+)
 
-__all__ = ["router", "TEMPLATES_DIR", "SessionExpiredError", "create_session_expired_handler"]
+__all__ = [
+    "router",
+    "TEMPLATES_DIR",
+    "SessionExpiredError",
+    "PasswordResetRequiredError",
+    "create_session_expired_handler",
+    "create_password_reset_required_handler",
+]

@@ -56,10 +56,17 @@ app = fastapi.FastAPI(title="pullDB API Service", version="0.0.1.dev0")
 
 # Mount unified web UI router
 try:
-    from pulldb.web import router as web_router, SessionExpiredError, create_session_expired_handler
+    from pulldb.web import (
+        router as web_router,
+        SessionExpiredError,
+        PasswordResetRequiredError,
+        create_session_expired_handler,
+        create_password_reset_required_handler,
+    )
     
     app.include_router(web_router)
     app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
+    app.add_exception_handler(PasswordResetRequiredError, create_password_reset_required_handler())
 except ImportError:
     pass  # Web UI module not installed
 

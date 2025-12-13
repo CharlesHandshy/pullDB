@@ -506,12 +506,7 @@ class LazyTable {
             
             // Call onDataLoaded callback if provided
             if (this.config.onDataLoaded) {
-                this.config.onDataLoaded({
-                    totalCount: this.totalCount,
-                    filteredCount: this.filteredCount,
-                    pageIndex: pageIndex,
-                    rows: data.rows || data.data || []
-                });
+                this.config.onDataLoaded(data);
             }
             
         } catch (error) {

@@ -39,6 +39,8 @@ class SimulationState:
     auth_credentials: dict[str, dict[str, t.Any]] = field(default_factory=dict)
     # token_hash -> session data
     sessions: dict[str, dict[str, t.Any]] = field(default_factory=dict)
+    # user_id -> list of {host_id, is_default, assigned_at, assigned_by}
+    user_hosts: dict[str, list[dict[str, t.Any]]] = field(default_factory=dict)
     
     # Job cancellation tracking (set of job_ids with pending cancellation requests)
     cancellation_requested: set[str] = field(default_factory=set)
@@ -70,6 +72,7 @@ class SimulationState:
             self.users_by_code.clear()
             self.auth_credentials.clear()
             self.sessions.clear()
+            self.user_hosts.clear()
             self.cancellation_requested.clear()
             self.staging_databases.clear()
             self.deleted_orphans.clear()

@@ -830,17 +830,68 @@ class SimulatedUserRepository:
     # ==================== Public API ====================
 
     def get_user_by_username(self, username: str) -> User | None:
-        """Get user by username."""
+        """Get user by username with allowed_hosts populated."""
+        from dataclasses import replace
+
         with self.state.lock:
             for user in self.state.users.values():
                 if user.username == username:
-                    return user
+                    # Populate allowed_hosts and default_host from user_hosts
+                    user_hosts = self.state.user_hosts.get(user.user_id, [])
+                    allowed_hosts: list[str] = []
+                    default_host: str | None = None
+
+                    for uh in user_hosts:
+                        host_id = uh['host_id']
+                        host = next(
+                            (h for h in self.state.hosts.values() if str(h.id) == host_id),
+                            None
+                        )
+                        if host:
+                            hostname = host.host_alias or host.hostname
+                            allowed_hosts.append(hostname)
+                            if uh.get('is_default'):
+                                default_host = hostname
+
+                    # Return user with hosts populated
+                    return replace(
+                        user,
+                        allowed_hosts=allowed_hosts if allowed_hosts else None,
+                        default_host=default_host,
+                    )
             return None
 
     def get_user_by_id(self, user_id: str) -> User | None:
-        """Get user by ID."""
+        """Get user by ID with allowed_hosts populated."""
+        from dataclasses import replace
+
         with self.state.lock:
-            return self.state.users.get(user_id)
+            user = self.state.users.get(user_id)
+            if not user:
+                return None
+
+            # Populate allowed_hosts and default_host from user_hosts
+            user_hosts = self.state.user_hosts.get(user_id, [])
+            allowed_hosts: list[str] = []
+            default_host: str | None = None
+
+            for uh in user_hosts:
+                host_id = uh['host_id']
+                host = next(
+                    (h for h in self.state.hosts.values() if str(h.id) == host_id),
+                    None
+                )
+                if host:
+                    hostname = host.host_alias or host.hostname
+                    allowed_hosts.append(hostname)
+                    if uh.get('is_default'):
+                        default_host = hostname
+
+            return replace(
+                user,
+                allowed_hosts=allowed_hosts if allowed_hosts else None,
+                default_host=default_host,
+            )
 
     def generate_user_code(self, username: str) -> str:
         """Generate a unique user code with collision handling."""
@@ -1544,6 +1595,83 @@ class SimulatedAuthRepository:
     def invalidate_all_user_sessions(self, user_id: str) -> int:
         """Invalidate all sessions for user. Alias for delete_user_sessions."""
         return self.delete_user_sessions(user_id)
+
+    # =========================================================================
+    # User Host Assignment Methods
+    # =========================================================================
+
+    def get_user_hosts(self, user_id: str) -> list[tuple[str, str, bool]]:
+        """Get database hosts assigned to a user.
+
+        Returns:
+            List of (host_id, hostname, is_default) tuples.
+        """
+        with self.state.lock:
+            user_hosts = self.state.user_hosts.get(user_id, [])
+            result: list[tuple[str, str, bool]] = []
+            for uh in user_hosts:
+                host_id = uh['host_id']
+                # Look up host details from hosts dict (keyed by hostname)
+                host = next(
+                    (h for h in self.state.hosts.values() if str(h.id) == host_id),
+                    None
+                )
+                if host:
+                    hostname = host.host_alias or host.hostname
+                    result.append((host_id, hostname, bool(uh.get('is_default', False))))
+            return result
+
+    def set_user_hosts(
+        self,
+        user_id: str,
+        host_ids: list[str],
+        default_host_id: str | None,
+        assigned_by: str | None = None,
+    ) -> None:
+        """Set database hosts for a user (replaces all existing assignments)."""
+        with self.state.lock:
+            # Auto-default: if only one host, it becomes the default
+            if len(host_ids) == 1:
+                default_host_id = host_ids[0]
+            new_assignments: list[dict[str, t.Any]] = []
+            for host_id in host_ids:
+                new_assignments.append({
+                    'host_id': host_id,
+                    'is_default': host_id == default_host_id,
+                    'assigned_at': datetime.now(UTC),
+                    'assigned_by': assigned_by,
+                })
+            self.state.user_hosts[user_id] = new_assignments
+
+    def get_user_default_host(self, user_id: str) -> str | None:
+        """Get the default host hostname for a user."""
+        with self.state.lock:
+            user_hosts = self.state.user_hosts.get(user_id, [])
+            for uh in user_hosts:
+                if uh.get('is_default'):
+                    host_id = uh['host_id']
+                    host = next(
+                        (h for h in self.state.hosts.values() if str(h.id) == host_id),
+                        None
+                    )
+                    if host:
+                        return host.host_alias or host.hostname
+            return None
+
+    def get_user_allowed_hosts(self, user_id: str) -> list[str]:
+        """Get list of hostnames a user is allowed to access."""
+        with self.state.lock:
+            user_hosts = self.state.user_hosts.get(user_id, [])
+            result: list[str] = []
+            for uh in user_hosts:
+                host_id = uh['host_id']
+                host = next(
+                    (h for h in self.state.hosts.values() if str(h.id) == host_id),
+                    None
+                )
+                if host:
+                    result.append(host.host_alias or host.hostname)
+            return result
 
 
 class SimulatedAuditRepository:

@@ -219,8 +219,10 @@ async def restore_submit(
                 "allowed_hosts": [],
                 "default_host": None,
                 "user": user,
-                "error": "You don't have any database hosts assigned. Contact your manager.",
+                "error": "You don't have any database hosts assigned. Contact an administrator to request access.",
                 "active_nav": "restore",
+                "show_user_selector": False,
+                "managed_users": [],
             },
             status_code=403
         )

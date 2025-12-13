@@ -20,9 +20,19 @@ def _letters_only(value: str) -> str:
     return "".join(ch for ch in value.lower() if ch.isalpha())
 
 
-def _select_dbhost(state: APIState, req: JobRequest) -> str:
+def _select_dbhost(state: APIState, req: JobRequest, user: User) -> str:
+    """Select database host for job, using user's default if not specified.
+
+    Priority:
+    1. Explicitly requested host (req.dbhost)
+    2. User's configured default_host
+    3. System default_dbhost from config
+    4. mysql_host from config (fallback)
+    """
     if req.dbhost:
         return req.dbhost
+    if user.default_host:
+        return user.default_host
     if state.config.default_dbhost:
         return state.config.default_dbhost
     return state.config.mysql_host
@@ -157,10 +167,18 @@ def check_concurrency_limits(state: APIState, user: User) -> None:
 def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
     """Enqueue a new restore job."""
     validate_job_request(req)
-    
+
     user = state.user_repo.get_or_create_user(username=req.user)
     target = _construct_target(user, req)
-    dbhost = _select_dbhost(state, req)
+    dbhost = _select_dbhost(state, req, user)  # Pass user for default_host
+
+    # Validate user can use the selected host
+    if not user.can_use_host(dbhost):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail=f"You are not authorized to use database host '{dbhost}'. "
+                   f"Contact an administrator to request access."
+        )
 
     # Proactive duplicate check - fail fast with clear message
     if state.job_repo.has_active_jobs_for_target(target, dbhost):

@@ -1635,7 +1635,35 @@ class UserRepository:
                 (username,),
             )
             row = cursor.fetchone()
-            return self._row_to_user(row) if row else None
+            if not row:
+                return None
+
+            # Fetch allowed hosts and default host from user_hosts table
+            user_id = row["user_id"]
+            cursor.execute(
+                """
+                SELECT h.hostname, h.host_alias, uh.is_default
+                FROM user_hosts uh
+                JOIN db_hosts h ON h.id = uh.host_id
+                WHERE uh.user_id = %s
+                ORDER BY uh.is_default DESC, h.hostname ASC
+                """,
+                (user_id,),
+            )
+            host_rows = cursor.fetchall()
+
+            allowed_hosts: list[str] = []
+            default_host: str | None = None
+            for hr in host_rows:
+                hostname = hr["host_alias"] or hr["hostname"]
+                allowed_hosts.append(hostname)
+                if hr["is_default"]:
+                    default_host = hostname
+
+            row["allowed_hosts"] = allowed_hosts if allowed_hosts else None
+            row["default_host"] = default_host
+
+            return self._row_to_user(row)
 
     def get_user_by_id(self, user_id: str) -> User | None:
         """Get user by user_id.
@@ -1658,7 +1686,34 @@ class UserRepository:
                 (user_id,),
             )
             row = cursor.fetchone()
-            return self._row_to_user(row) if row else None
+            if not row:
+                return None
+
+            # Fetch allowed hosts and default host from user_hosts table
+            cursor.execute(
+                """
+                SELECT h.hostname, h.host_alias, uh.is_default
+                FROM user_hosts uh
+                JOIN db_hosts h ON h.id = uh.host_id
+                WHERE uh.user_id = %s
+                ORDER BY uh.is_default DESC, h.hostname ASC
+                """,
+                (user_id,),
+            )
+            host_rows = cursor.fetchall()
+
+            allowed_hosts: list[str] = []
+            default_host: str | None = None
+            for hr in host_rows:
+                hostname = hr["host_alias"] or hr["hostname"]
+                allowed_hosts.append(hostname)
+                if hr["is_default"]:
+                    default_host = hostname
+
+            row["allowed_hosts"] = allowed_hosts if allowed_hosts else None
+            row["default_host"] = default_host
+
+            return self._row_to_user(row)
 
     def create_user(self, username: str, user_code: str, manager_id: str | None = None) -> User:
         """Create new user with generated UUID.
@@ -1953,6 +2008,8 @@ class UserRepository:
             created_at=row["created_at"],
             manager_id=row.get("manager_id"),
             disabled_at=row.get("disabled_at"),
+            allowed_hosts=row.get("allowed_hosts"),
+            default_host=row.get("default_host"),
         )
 
     def get_users_managed_by(self, manager_id: str) -> list[User]:

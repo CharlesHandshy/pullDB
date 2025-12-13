@@ -173,27 +173,43 @@ def get_session_user(
 def require_login(
     request: Request,
     user: Annotated[User | None, Depends(get_session_user)],
+    state: "APIState" = Depends(get_api_state),
 ) -> User:
     """Require authenticated user, raise SessionExpiredError if not.
     
+    Also checks if user must change their password before continuing.
+    The change-password route is exempted from the password reset check.
+    
     Handles both regular requests (via Location header) and HTMX requests
-    (via HX-Redirect header) to properly redirect to the login page.
+    (via HX-Redirect header) to properly redirect.
     
     Args:
         request: The FastAPI request object
         user: The current user from session (injected)
+        state: API state with auth_repo (injected)
         
     Returns:
         The authenticated User
         
     Raises:
         SessionExpiredError: If no valid session exists
+        PasswordResetRequiredError: If user must change password first
     """
-    from pulldb.web.exceptions import SessionExpiredError
+    from pulldb.web.exceptions import SessionExpiredError, PasswordResetRequiredError
     
     if not user:
         is_htmx = request.headers.get("HX-Request") == "true"
         raise SessionExpiredError(is_htmx=is_htmx)
+    
+    # Check if password reset is required (exempt the change-password route itself)
+    current_path = request.url.path
+    if not current_path.startswith("/web/change-password"):
+        if hasattr(state, "auth_repo") and state.auth_repo:
+            if hasattr(state.auth_repo, "is_password_reset_required"):
+                if state.auth_repo.is_password_reset_required(user.user_id):
+                    is_htmx = request.headers.get("HX-Request") == "true"
+                    raise PasswordResetRequiredError(is_htmx=is_htmx)
+    
     return user
 
 

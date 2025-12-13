@@ -160,6 +160,13 @@
             }
         }
         
+        // Confirm for reset-password action
+        if (action === 'reset-password') {
+            if (!confirm('Force password reset for ' + username + '?')) {
+                return;
+            }
+        }
+        
         // Map action to endpoint
         const endpoints = {
             'enable': '/web/manager/my-team/' + userId + '/enable',
