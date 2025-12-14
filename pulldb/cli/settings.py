@@ -22,8 +22,11 @@ from pathlib import Path
 
 import click
 
-# Private import is intentional - we need access to built-in defaults
-from pulldb.domain.config import _MYLOADER_DEFAULT_ARGS_BUILTIN
+# Import setting definitions from domain layer (single source of truth)
+from pulldb.domain.settings import (
+    SETTING_REGISTRY,
+    get_known_settings_compat,
+)
 
 
 # .env file locations (in priority order)
@@ -35,69 +38,8 @@ ENV_FILE_PATHS = [
 
 # Known settings with their environment variable names and defaults
 # Format: (env_var, default_value, description)
-KNOWN_SETTINGS: dict[str, tuple[str, str | None, str]] = {
-    "myloader_binary": (
-        "PULLDB_MYLOADER_BINARY",
-        "/opt/pulldb.service/bin/myloader-0.19.3-3",
-        "Path to myloader binary",
-    ),
-    "myloader_default_args": (
-        "PULLDB_MYLOADER_DEFAULT_ARGS",
-        ",".join(_MYLOADER_DEFAULT_ARGS_BUILTIN),
-        "Default myloader arguments (comma-separated)",
-    ),
-    "myloader_extra_args": (
-        "PULLDB_MYLOADER_EXTRA_ARGS",
-        "",
-        "Additional myloader arguments",
-    ),
-    "myloader_threads": (
-        "PULLDB_MYLOADER_THREADS",
-        "8",
-        "Number of parallel restore threads",
-    ),
-    "myloader_timeout_seconds": (
-        "PULLDB_MYLOADER_TIMEOUT_SECONDS",
-        "7200",
-        "Maximum execution time (seconds)",
-    ),
-    "work_directory": (
-        "PULLDB_WORK_DIR",
-        "/opt/pulldb.service/work",
-        "Working directory for downloads/extraction",
-    ),
-    "customers_after_sql_dir": (
-        "PULLDB_CUSTOMERS_AFTER_SQL_DIR",
-        "/opt/pulldb.service/after_sql/customer",
-        "Customer post-restore SQL scripts directory",
-    ),
-    "qa_template_after_sql_dir": (
-        "PULLDB_QA_TEMPLATE_AFTER_SQL_DIR",
-        "/opt/pulldb.service/after_sql/quality",
-        "QA template post-restore SQL scripts directory",
-    ),
-    "default_dbhost": (
-        "PULLDB_DEFAULT_DBHOST",
-        None,
-        "Default target database host",
-    ),
-    "s3_bucket_path": (
-        "PULLDB_S3_BUCKET_PATH",
-        None,
-        "S3 bucket path for backups",
-    ),
-    # Phase 2: Concurrency controls (v0.0.4)
-    "max_active_jobs_per_user": (
-        "PULLDB_MAX_ACTIVE_JOBS_PER_USER",
-        "0",
-        "Maximum active jobs per user (0=unlimited)",
-    ),
-    "max_active_jobs_global": (
-        "PULLDB_MAX_ACTIVE_JOBS_GLOBAL",
-        "0",
-        "Maximum active jobs system-wide (0=unlimited)",
-    ),
-}
+# Now imported from domain/settings.py for single source of truth
+KNOWN_SETTINGS: dict[str, tuple[str, str | None, str]] = get_known_settings_compat()
 
 
 def _find_env_file() -> Path | None:

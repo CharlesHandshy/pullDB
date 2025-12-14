@@ -113,3 +113,288 @@ def is_valid_uuid_prefix(value: str, min_length: int = 8) -> bool:
         return False
     # Allow hex characters and dashes only
     return bool(re.match(r"^[0-9a-f-]+$", value, re.IGNORECASE))
+
+
+# =============================================================================
+# Path and Directory Validation
+# =============================================================================
+
+import os
+from dataclasses import dataclass
+
+
+@dataclass
+class ValidationResult:
+    """Result of a validation operation.
+
+    Attributes:
+        valid: Whether validation passed
+        error: Error message if invalid
+        warning: Warning message (validation passed but with caveats)
+        can_create: For directories, whether we can offer to create it
+    """
+
+    valid: bool
+    error: str | None = None
+    warning: str | None = None
+    can_create: bool = False
+
+
+def validate_file_exists(path: str, field_name: str = "path") -> ValidationResult:
+    """Validate that a file exists at the given path.
+
+    Args:
+        path: File path to validate.
+        field_name: Name of the field for error messages.
+
+    Returns:
+        ValidationResult with valid=True if file exists.
+    """
+    if not path or not path.strip():
+        return ValidationResult(valid=False, error=f"{field_name}: Path cannot be empty")
+
+    path = path.strip()
+
+    if not os.path.exists(path):
+        return ValidationResult(valid=False, error=f"{field_name}: Path does not exist: {path}")
+
+    if not os.path.isfile(path):
+        return ValidationResult(valid=False, error=f"{field_name}: Not a file: {path}")
+
+    return ValidationResult(valid=True)
+
+
+def validate_executable(path: str, field_name: str = "binary") -> ValidationResult:
+    """Validate that a file exists and is executable.
+
+    Args:
+        path: File path to validate.
+        field_name: Name of the field for error messages.
+
+    Returns:
+        ValidationResult with valid=True if file exists and is executable.
+    """
+    file_result = validate_file_exists(path, field_name)
+    if not file_result.valid:
+        return file_result
+
+    if not os.access(path.strip(), os.X_OK):
+        return ValidationResult(
+            valid=False,
+            error=f"{field_name}: File is not executable: {path}",
+        )
+
+    return ValidationResult(valid=True)
+
+
+def validate_directory(
+    path: str, field_name: str = "directory", check_writable: bool = True
+) -> ValidationResult:
+    """Validate that a directory exists and is optionally writable.
+
+    If the directory doesn't exist, checks if it can be created.
+
+    Args:
+        path: Directory path to validate.
+        field_name: Name of the field for error messages.
+        check_writable: Whether to check write permissions.
+
+    Returns:
+        ValidationResult with valid=True if directory exists (and is writable if required).
+        If directory doesn't exist but parent is writable, can_create=True.
+    """
+    if not path or not path.strip():
+        return ValidationResult(valid=False, error=f"{field_name}: Path cannot be empty")
+
+    path = path.strip()
+
+    if not os.path.exists(path):
+        # Check if we can create it (parent directory exists and is writable)
+        parent = os.path.dirname(path)
+        if parent and os.path.isdir(parent) and os.access(parent, os.W_OK):
+            return ValidationResult(
+                valid=False,
+                error=f"{field_name}: Directory does not exist: {path}",
+                can_create=True,
+            )
+        return ValidationResult(
+            valid=False,
+            error=f"{field_name}: Directory does not exist and cannot be created: {path}",
+        )
+
+    if not os.path.isdir(path):
+        return ValidationResult(valid=False, error=f"{field_name}: Not a directory: {path}")
+
+    if check_writable and not os.access(path, os.W_OK):
+        return ValidationResult(
+            valid=False,
+            error=f"{field_name}: Directory is not writable: {path}",
+        )
+
+    return ValidationResult(valid=True)
+
+
+def validate_integer(
+    value: str,
+    field_name: str = "value",
+    min_value: int | None = None,
+    max_value: int | None = None,
+) -> ValidationResult:
+    """Validate that a value is an integer within optional bounds.
+
+    Args:
+        value: String value to validate.
+        field_name: Name of the field for error messages.
+        min_value: Minimum allowed value (inclusive).
+        max_value: Maximum allowed value (inclusive).
+
+    Returns:
+        ValidationResult with valid=True if value is valid integer within bounds.
+    """
+    if not value or not value.strip():
+        return ValidationResult(valid=False, error=f"{field_name}: Value cannot be empty")
+
+    try:
+        int_value = int(value.strip())
+    except ValueError:
+        return ValidationResult(
+            valid=False,
+            error=f"{field_name}: Must be a valid integer, got '{value}'",
+        )
+
+    if min_value is not None and int_value < min_value:
+        return ValidationResult(
+            valid=False,
+            error=f"{field_name}: Must be at least {min_value}, got {int_value}",
+        )
+
+    if max_value is not None and int_value > max_value:
+        return ValidationResult(
+            valid=False,
+            error=f"{field_name}: Must be at most {max_value}, got {int_value}",
+        )
+
+    return ValidationResult(valid=True)
+
+
+def validate_positive_integer(value: str, field_name: str = "value") -> ValidationResult:
+    """Validate that a value is a positive integer (>0).
+
+    Args:
+        value: String value to validate.
+        field_name: Name of the field for error messages.
+
+    Returns:
+        ValidationResult with valid=True if value is positive integer.
+    """
+    return validate_integer(value, field_name, min_value=1)
+
+
+def validate_non_negative_integer(value: str, field_name: str = "value") -> ValidationResult:
+    """Validate that a value is a non-negative integer (>=0).
+
+    Args:
+        value: String value to validate.
+        field_name: Name of the field for error messages.
+
+    Returns:
+        ValidationResult with valid=True if value is non-negative integer.
+    """
+    return validate_integer(value, field_name, min_value=0)
+
+
+def try_create_directory(path: str) -> tuple[bool, str | None]:
+    """Attempt to create a directory.
+
+    Args:
+        path: Directory path to create.
+
+    Returns:
+        Tuple of (success, error_message). If success is True, error is None.
+    """
+    if not path or not path.strip():
+        return False, "Path cannot be empty"
+
+    path = path.strip()
+
+    if os.path.exists(path):
+        if os.path.isdir(path):
+            return True, None  # Already exists
+        return False, f"Path exists but is not a directory: {path}"
+
+    try:
+        os.makedirs(path, mode=0o755)
+        return True, None
+    except PermissionError:
+        return False, f"Permission denied creating directory: {path}"
+    except OSError as e:
+        return False, f"Failed to create directory: {e}"
+
+
+# =============================================================================
+# Setting-Type Validators (for SettingMeta.validators)
+# =============================================================================
+
+def validate_setting_value(
+    key: str,
+    value: str,
+    setting_type: str,
+    validators: list[str],
+) -> ValidationResult:
+    """Validate a setting value based on its type and validators.
+
+    Args:
+        key: Setting key name.
+        value: Value to validate.
+        setting_type: SettingType value as string.
+        validators: List of validator names to apply.
+
+    Returns:
+        ValidationResult from the first failing validator, or success if all pass.
+    """
+    # Type-based validation
+    if setting_type == "integer":
+        result = validate_integer(value, key)
+        if not result.valid:
+            return result
+    elif setting_type == "executable":
+        result = validate_executable(value, key)
+        if not result.valid:
+            return result
+    elif setting_type == "directory":
+        result = validate_directory(value, key)
+        if not result.valid:
+            return result
+    elif setting_type == "path":
+        result = validate_file_exists(value, key)
+        if not result.valid:
+            return result
+
+    # Named validators
+    for validator in validators:
+        if validator == "is_positive_integer":
+            result = validate_positive_integer(value, key)
+            if not result.valid:
+                return result
+        elif validator == "is_non_negative_integer":
+            result = validate_non_negative_integer(value, key)
+            if not result.valid:
+                return result
+        elif validator == "file_exists":
+            result = validate_file_exists(value, key)
+            if not result.valid:
+                return result
+        elif validator == "is_executable":
+            result = validate_executable(value, key)
+            if not result.valid:
+                return result
+        elif validator == "directory_exists":
+            result = validate_directory(value, key, check_writable=False)
+            if not result.valid:
+                return result
+        elif validator == "is_writable":
+            result = validate_directory(value, key, check_writable=True)
+            if not result.valid:
+                return result
+
+    return ValidationResult(valid=True)

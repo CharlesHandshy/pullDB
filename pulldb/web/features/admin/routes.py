@@ -1537,29 +1537,70 @@ async def provision_host(
 # Settings Management
 # =============================================================================
 
-# Default values for settings (used for comparison in UI)
-SETTINGS_DEFAULTS = {
-    "myloader_threads": "4",
-    "myloader_overwrite": "true",
-    "retention_days": "90",
-    "staging_retention_days": "7",
-    "max_active_jobs_global": "0",
-    "max_active_jobs_per_user": "5",
-    "s3_bucket_path": "",
-    "work_dir": "/tmp/pulldb",
-}
+import os as _os
+from pulldb.domain.settings import (
+    SETTING_REGISTRY,
+    SettingCategory,
+    SettingMeta,
+    SettingType,
+    get_setting_meta,
+    get_settings_by_category,
+)
+from pulldb.domain.validation import (
+    ValidationResult,
+    validate_setting_value,
+    try_create_directory,
+)
 
 
-def _enrich_setting(setting: Any) -> dict:
-    """Enrich setting object with default value for template."""
-    key = getattr(setting, "setting_key", "")
+def _get_setting_source(
+    key: str,
+    db_value: str | None,
+    meta: SettingMeta | None,
+) -> tuple[str | None, str]:
+    """Determine setting's effective value and source.
+
+    Priority: database > environment > default
+
+    Returns:
+        Tuple of (effective_value, source) where source is 'database', 'environment', or 'default'.
+    """
+    # Database has highest priority
+    if db_value is not None:
+        return db_value, "database"
+
+    # Check environment
+    if meta:
+        env_value = _os.getenv(meta.env_var)
+        if env_value is not None:
+            return env_value, "environment"
+        # Return default
+        return meta.default, "default"
+
+    return None, "none"
+
+
+def _build_setting_dict(
+    key: str,
+    db_settings: dict[str, str],
+    meta: SettingMeta | None,
+) -> dict:
+    """Build a complete setting dictionary for template rendering."""
+    db_value = db_settings.get(key)
+    effective_value, source = _get_setting_source(key, db_value, meta)
+
     return {
         "setting_key": key,
-        "setting_value": getattr(setting, "setting_value", ""),
-        "description": getattr(setting, "description", None),
-        "updated_at": getattr(setting, "updated_at", None),
-        # Computed field
-        "default": SETTINGS_DEFAULTS.get(key, ""),
+        "setting_value": effective_value or "",
+        "db_value": db_value,
+        "env_value": _os.getenv(meta.env_var) if meta else None,
+        "default": meta.default if meta else None,
+        "description": meta.description if meta else "",
+        "setting_type": meta.setting_type.value if meta else "string",
+        "category": meta.category.value if meta else "Paths & Directories",
+        "dangerous": meta.dangerous if meta else False,
+        "source": source,
+        "env_var": meta.env_var if meta else f"PULLDB_{key.upper()}",
     }
 
 
@@ -1569,16 +1610,257 @@ async def list_settings(
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> HTMLResponse:
-    """List all system settings."""
-    settings = []
-    if hasattr(state, "settings_repo") and state.settings_repo and hasattr(state.settings_repo, "list_settings"):
-        raw_settings = state.settings_repo.list_settings()
-        settings = [_enrich_setting(s) for s in raw_settings]
-    
+    """List all system settings grouped by category."""
+    # Get all database settings
+    db_settings: dict[str, str] = {}
+    if hasattr(state, "settings_repo") and state.settings_repo:
+        db_settings = state.settings_repo.get_all_settings()
+
+    # Build settings list from registry
+    settings_list = []
+    for key, meta in SETTING_REGISTRY.items():
+        settings_list.append(_build_setting_dict(key, db_settings, meta))
+
+    # Also include any database settings not in registry
+    for key in db_settings:
+        if key not in SETTING_REGISTRY:
+            settings_list.append(_build_setting_dict(key, db_settings, None))
+
+    # Group by category
+    categories: dict[str, list[dict]] = {}
+    category_order = [
+        SettingCategory.JOB_LIMITS.value,
+        SettingCategory.PATHS.value,
+        SettingCategory.MYLOADER.value,
+        SettingCategory.S3_BACKUP.value,
+        SettingCategory.CLEANUP.value,
+    ]
+
+    for cat in category_order:
+        categories[cat] = []
+
+    for setting in settings_list:
+        cat = setting["category"]
+        if cat not in categories:
+            categories[cat] = []
+        categories[cat].append(setting)
+
+    # Get recent audit logs for settings
+    audit_logs = []
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        try:
+            all_logs = state.audit_repo.get_audit_logs(limit=50)
+            audit_logs = [
+                log for log in all_logs
+                if log.get("action") in ("setting_updated", "setting_reset")
+            ][:10]  # Last 10 settings changes
+        except Exception:
+            pass  # Audit logs are optional
+
     return templates.TemplateResponse(
         "admin/settings.html",
-        {"request": request, "settings": settings, "user": user},
+        {
+            "request": request,
+            "categories": categories,
+            "category_order": category_order,
+            "settings": settings_list,  # Flat list for search
+            "audit_logs": audit_logs,
+            "user": user,
+        },
     )
+
+
+@router.post("/settings/{key}")
+async def update_setting(
+    key: str,
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+    value: str = Form(...),
+) -> dict:
+    """Update a setting value.
+
+    Validates the value, saves to database, and logs the change.
+    Returns JSON for HTMX partial update.
+    """
+    meta = get_setting_meta(key)
+
+    # Validate value
+    if meta:
+        result = validate_setting_value(
+            key=key,
+            value=value,
+            setting_type=meta.setting_type.value,
+            validators=list(meta.validators),
+        )
+        if not result.valid:
+            return {
+                "success": False,
+                "error": result.error,
+                "can_create": result.can_create,
+            }
+
+    # Get old value for audit
+    old_value = None
+    if hasattr(state, "settings_repo") and state.settings_repo:
+        old_value = state.settings_repo.get_setting(key)
+
+    # Save new value
+    try:
+        description = meta.description if meta else None
+        state.settings_repo.set_setting(key, value, description)
+    except Exception as e:
+        return {"success": False, "error": f"Failed to save: {e}"}
+
+    # Audit log
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        try:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="setting_updated",
+                detail=f"Setting '{key}' updated",
+                context={
+                    "key": key,
+                    "old_value": old_value,
+                    "new_value": value,
+                },
+            )
+        except Exception:
+            pass  # Audit is best-effort
+
+    # Return updated setting data
+    db_settings = state.settings_repo.get_all_settings()
+    setting_dict = _build_setting_dict(key, db_settings, meta)
+
+    return {
+        "success": True,
+        "setting": setting_dict,
+        "message": f"Setting '{key}' updated successfully",
+    }
+
+
+@router.delete("/settings/{key}")
+async def reset_setting(
+    key: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> dict:
+    """Reset a setting to its default value by deleting from database.
+
+    Returns JSON for HTMX partial update.
+    """
+    meta = get_setting_meta(key)
+
+    # Get old value for audit
+    old_value = None
+    if hasattr(state, "settings_repo") and state.settings_repo:
+        old_value = state.settings_repo.get_setting(key)
+
+    if old_value is None:
+        return {"success": False, "error": "Setting not found in database"}
+
+    # Delete from database
+    try:
+        deleted = state.settings_repo.delete_setting(key)
+        if not deleted:
+            return {"success": False, "error": "Setting could not be deleted"}
+    except Exception as e:
+        return {"success": False, "error": f"Failed to delete: {e}"}
+
+    # Audit log
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        try:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="setting_reset",
+                detail=f"Setting '{key}' reset to default",
+                context={
+                    "key": key,
+                    "old_value": old_value,
+                },
+            )
+        except Exception:
+            pass  # Audit is best-effort
+
+    # Return updated setting data (now showing env/default)
+    db_settings = state.settings_repo.get_all_settings()
+    setting_dict = _build_setting_dict(key, db_settings, meta)
+
+    return {
+        "success": True,
+        "setting": setting_dict,
+        "message": f"Setting '{key}' reset to default",
+    }
+
+
+@router.post("/settings/{key}/validate")
+async def validate_setting(
+    key: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+    value: str = Form(...),
+) -> dict:
+    """Validate a setting value without saving.
+
+    Returns validation result for HTMX feedback.
+    """
+    meta = get_setting_meta(key)
+
+    if not meta:
+        return {"valid": True, "message": "Unknown setting, no validation rules"}
+
+    result = validate_setting_value(
+        key=key,
+        value=value,
+        setting_type=meta.setting_type.value,
+        validators=list(meta.validators),
+    )
+
+    return {
+        "valid": result.valid,
+        "error": result.error,
+        "warning": result.warning,
+        "can_create": result.can_create,
+    }
+
+
+@router.post("/settings/{key}/create-directory")
+async def create_setting_directory(
+    key: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+    path: str = Form(...),
+) -> dict:
+    """Create a directory for a setting.
+
+    Used when validation fails because directory doesn't exist but can be created.
+    """
+    meta = get_setting_meta(key)
+
+    if not meta or meta.setting_type != SettingType.DIRECTORY:
+        return {"success": False, "error": "Setting is not a directory type"}
+
+    success, error = try_create_directory(path)
+
+    if success:
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            try:
+                state.audit_repo.log_action(
+                    actor_user_id=user.user_id,
+                    action="setting_updated",
+                    detail=f"Directory created for setting '{key}'",
+                    context={
+                        "key": key,
+                        "directory_created": path,
+                    },
+                )
+            except Exception:
+                pass  # Audit is best-effort
+
+        return {"success": True, "message": f"Directory created: {path}"}
+
+    return {"success": False, "error": error}
 
 
 # =============================================================================
