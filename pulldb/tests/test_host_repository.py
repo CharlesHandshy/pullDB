@@ -50,10 +50,10 @@ class TestHostRepository:
             cursor.execute(
                 (
                     "INSERT INTO db_hosts (id, hostname, credential_ref, "
-                    "max_concurrent_restores, enabled, created_at) VALUES "
-                    "(%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
+                    "max_running_jobs, max_active_jobs, enabled, created_at) VALUES "
+                    "(%s,%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
                 ),
-                (host_id, hostname, credential_ref, 4),
+                (host_id, hostname, credential_ref, 4, 10),
             )
             conn.commit()
             cursor.close()
@@ -77,10 +77,10 @@ class TestHostRepository:
             cursor.execute(
                 (
                     "INSERT INTO db_hosts (id, hostname, host_alias, credential_ref, "
-                    "max_concurrent_restores, enabled, created_at) VALUES "
-                    "(%s,%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
+                    "max_running_jobs, max_active_jobs, enabled, created_at) VALUES "
+                    "(%s,%s,%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
                 ),
-                (host_id, hostname, host_alias, credential_ref, 4),
+                (host_id, hostname, host_alias, credential_ref, 4, 10),
             )
             conn.commit()
             cursor.close()
@@ -108,10 +108,10 @@ class TestHostRepository:
             cursor.execute(
                 (
                     "INSERT INTO db_hosts (id, hostname, credential_ref, "
-                    "max_concurrent_restores, enabled, created_at) VALUES "
-                    "(%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
+                    "max_running_jobs, max_active_jobs, enabled, created_at) VALUES "
+                    "(%s,%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
                 ),
-                (host_id, hostname, credential_ref, 4),
+                (host_id, hostname, credential_ref, 4, 10),
             )
             conn.commit()
             cursor.close()
@@ -131,10 +131,10 @@ class TestHostRepository:
             cursor.execute(
                 (
                     "INSERT INTO db_hosts (id, hostname, host_alias, credential_ref, "
-                    "max_concurrent_restores, enabled, created_at) VALUES "
-                    "(%s,%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
+                    "max_running_jobs, max_active_jobs, enabled, created_at) VALUES "
+                    "(%s,%s,%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
                 ),
-                (host_id, hostname, host_alias, credential_ref, 4),
+                (host_id, hostname, host_alias, credential_ref, 4, 10),
             )
             conn.commit()
             cursor.close()
@@ -188,10 +188,10 @@ class TestHostRepository:
             cursor.execute(
                 (
                     "INSERT INTO db_hosts (id, hostname, credential_ref, "
-                    "max_concurrent_restores, enabled, created_at) VALUES "
-                    "(%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
+                    "max_running_jobs, max_active_jobs, enabled, created_at) VALUES "
+                    "(%s,%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
                 ),
-                (host_id, hostname, credential_ref, 2),
+                (host_id, hostname, credential_ref, 2, 10),
             )
             conn.commit()
             cursor.close()
@@ -203,7 +203,7 @@ class TestHostRepository:
         assert creds.host == "db-mysql-cred.example.com"
         self._cleanup_host(mysql_pool, host_id, hostname)
 
-    def test_check_host_capacity(self, mysql_pool: Any) -> None:
+    def test_check_host_running_capacity(self, mysql_pool: Any) -> None:
         host_id = str(uuid.uuid4())
         hostname = f"db-cap-{host_id[:8]}"
         credential_ref = "aws-secretsmanager:/pulldb/mysql/test-host"
@@ -212,10 +212,10 @@ class TestHostRepository:
             cursor.execute(
                 (
                     "INSERT INTO db_hosts (id, hostname, credential_ref, "
-                    "max_concurrent_restores, enabled, created_at) VALUES "
-                    "(%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
+                    "max_running_jobs, max_active_jobs, enabled, created_at) VALUES "
+                    "(%s,%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(6))"
                 ),
-                (host_id, hostname, credential_ref, 1),
+                (host_id, hostname, credential_ref, 1, 10),
             )
             conn.commit()
             cursor.close()
@@ -239,5 +239,5 @@ class TestHostRepository:
         assert claimed is not None
 
         host_repo = HostRepository(mysql_pool, CredentialResolver())
-        assert host_repo.check_host_capacity(hostname) is False
+        assert host_repo.check_host_running_capacity(hostname) is False
         self._cleanup_host(mysql_pool, host_id, hostname)

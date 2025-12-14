@@ -60,7 +60,8 @@ class TestWebRouteDefinitions:
         from pulldb.web import router
 
         routes = {r.path: r.methods for r in router.routes if hasattr(r, "methods")}
-        assert "/web/dashboard" in routes
+        # Dashboard uses prefix /web/dashboard, so the root is /web/dashboard/
+        assert "/web/dashboard/" in routes or "/web/dashboard" in routes
 
     def test_router_has_job_detail_route(self) -> None:
         """Router has job detail route."""
@@ -81,8 +82,8 @@ class TestTemplateContent:
         assert "{% block title %}" in content
         assert "{% block content %}" in content or "{% block public_content %}" in content
         assert "htmx" in content.lower()  # HTMX included
-        # Bootstrap CSS (the base template uses Bootstrap now)
-        assert "bootstrap" in content.lower()
+        # Custom design system CSS
+        assert "design-system.css" in content
 
     def test_login_template_has_form(self) -> None:
         """Login template has login form."""
@@ -141,35 +142,33 @@ class TestHCAStructure:
         """All feature routers can be imported."""
         from pulldb.web.features.auth.routes import router as auth_router
         from pulldb.web.features.dashboard.routes import router as dashboard_router
-        from pulldb.web.features.job_view.routes import router as job_view_router
+        from pulldb.web.features.jobs.routes import router as jobs_router
         from pulldb.web.features.restore.routes import router as restore_router
-        from pulldb.web.features.search.routes import router as search_router
         from pulldb.web.features.admin.routes import router as admin_router
-        from pulldb.web.features.admin.logo_routes import router as logo_router
+        from pulldb.web.features.manager.routes import router as manager_router
         
         assert auth_router is not None
         assert dashboard_router is not None
-        assert job_view_router is not None
+        assert jobs_router is not None
         assert restore_router is not None
-        assert search_router is not None
         assert admin_router is not None
-        assert logo_router is not None
+        assert manager_router is not None
     
     def test_feature_modules_have_routes(self) -> None:
         """Each feature module has at least one route."""
         from pulldb.web.features.auth.routes import router as auth_router
         from pulldb.web.features.dashboard.routes import router as dashboard_router
-        from pulldb.web.features.job_view.routes import router as job_view_router
+        from pulldb.web.features.jobs.routes import router as jobs_router
         from pulldb.web.features.restore.routes import router as restore_router
-        from pulldb.web.features.search.routes import router as search_router
         from pulldb.web.features.admin.routes import router as admin_router
+        from pulldb.web.features.manager.routes import router as manager_router
         
         assert len(auth_router.routes) >= 1
         assert len(dashboard_router.routes) >= 1
-        assert len(job_view_router.routes) >= 1
+        assert len(jobs_router.routes) >= 1
         assert len(restore_router.routes) >= 1
-        assert len(search_router.routes) >= 1
         assert len(admin_router.routes) >= 1
+        assert len(manager_router.routes) >= 1
     
     def test_dependencies_module_has_templates(self) -> None:
         """Dependencies module exports templates."""

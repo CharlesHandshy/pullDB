@@ -394,22 +394,26 @@
         {% if user.allowed_hosts %}
         <div class="default-host-section">
             <div class="info-item">
-                <span class="info-label">Default Database Host</span>
-                <div class="default-host-select">
-                    <span class="default-star">★</span>
-                    <select id="default_host" name="default_host" onchange="updateDefaultHost(this.value)">
-                        {% for host in user.allowed_hosts %}
-                        <option value="{{ host }}" {{ 'selected' if host == user.default_host else '' }}>
-                            {{ host }}
-                        </option>
-                        {% endfor %}
-                    </select>
+                <span class="info-label">Database Host Access</span>
+                <div style="margin-top: var(--space-2);">
+                    {% for host in user.allowed_hosts %}
+                    <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; font-size: 0.875rem;">
+                        {% if host == user.default_host %}
+                        <span style="color: var(--warning-500);">★</span>
+                        <span style="font-family: var(--font-mono); color: var(--gray-900);">{{ host }}</span>
+                        <span style="font-size: 0.75rem; color: var(--gray-500);">(default)</span>
+                        {% else %}
+                        <span style="color: transparent;">★</span>
+                        <span style="font-family: var(--font-mono); color: var(--gray-600);">{{ host }}</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
                 </div>
-                <div class="default-host-hint">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                <div class="default-host-hint" style="margin-top: var(--space-3);">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" style="width: 14px; height: 14px;">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
                     </svg>
-                    This host will be pre-selected when creating new restore jobs
+                    Contact an administrator to change your host assignments
                 </div>
             </div>
         </div>
@@ -419,6 +423,15 @@
                 <span class="info-label">Database Host Access</span>
                 <div class="info-value" style="color: var(--gray-500); font-style: italic; margin-top: var(--space-2);">
                     All hosts (administrator access)
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="default-host-section">
+            <div class="info-item">
+                <span class="info-label">Database Host Access</span>
+                <div class="info-value" style="color: var(--gray-500); font-style: italic; margin-top: var(--space-2);">
+                    No database hosts assigned. Contact an administrator.
                 </div>
             </div>
         </div>
@@ -525,27 +538,5 @@ function togglePassword(inputId, button) {
     }
 }
 
-function updateDefaultHost(newHost) {
-    fetch('/web/auth/set-default-host', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ host: newHost })
-    })
-    .then(response => {
-        if (response.ok) {
-            // Show brief success feedback
-            const select = document.getElementById('default_host');
-            select.style.borderColor = 'var(--success-500, #22c55e)';
-            setTimeout(() => {
-                select.style.borderColor = '';
-            }, 1500);
-        }
-    })
-    .catch(err => {
-        console.error('Failed to update default host:', err);
-    });
-}
 </script>
 {% endblock %}

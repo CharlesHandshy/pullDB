@@ -137,6 +137,14 @@ class JobRepository(Protocol):
         """Count all active jobs system-wide."""
         ...
 
+    def count_active_jobs_for_host(self, hostname: str) -> int:
+        """Count active jobs (queued + running) for a specific host."""
+        ...
+
+    def count_running_jobs_for_host(self, hostname: str) -> int:
+        """Count running jobs for a specific host."""
+        ...
+
 class AuthRepository(Protocol):
     """Protocol for authentication operations."""
     
@@ -240,6 +248,15 @@ class UserRepository(Protocol):
         """Update a user's role."""
         ...
 
+    def update_user_max_active_jobs(self, user_id: str, max_active_jobs: int | None) -> None:
+        """Update a user's max active jobs limit.
+        
+        Args:
+            user_id: The user ID to update.
+            max_active_jobs: New limit (None = system default, 0 = unlimited).
+        """
+        ...
+
 
 class HostRepository(Protocol):
     """Protocol for database host operations."""
@@ -268,8 +285,18 @@ class HostRepository(Protocol):
         """Get resolved MySQL credentials for host."""
         ...
 
-    def check_host_capacity(self, hostname: str) -> bool:
-        """Check if host has capacity for new restore job."""
+    def check_host_running_capacity(self, hostname: str) -> bool:
+        """Check if host has capacity for running jobs (worker enforcement)."""
+        ...
+
+    def check_host_active_capacity(self, hostname: str) -> bool:
+        """Check if host has capacity for active jobs (API enforcement)."""
+        ...
+
+    def update_host_limits(
+        self, hostname: str, max_active_jobs: int, max_running_jobs: int
+    ) -> None:
+        """Update job limits for a host."""
         ...
 
     def add_host(

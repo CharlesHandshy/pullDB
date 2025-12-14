@@ -154,7 +154,8 @@ class TestSimulationIntegration(unittest.TestCase):
             hostname="localhost",
             host_alias="test-host",
             credential_ref="mock-creds",
-            max_concurrent_restores=5,
+            max_running_jobs=5,
+            max_active_jobs=10,
             enabled=True,
             created_at=datetime.now(UTC),
         )
@@ -229,11 +230,12 @@ class TestSimulationIntegration(unittest.TestCase):
         """Test basic job lifecycle without full executor."""
         # Add a host
         host = DBHost(
-            id=1,
+            id="00000000-0000-0000-0000-000000000001",
             hostname="localhost",
             host_alias="test-host",
             credential_ref="mock-creds",
-            max_concurrent_restores=5,
+            max_running_jobs=5,
+            max_active_jobs=10,
             enabled=True,
             created_at=datetime.now(UTC),
         )

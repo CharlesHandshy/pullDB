@@ -128,9 +128,10 @@ def _resolve_job_id(job_id_or_prefix: str) -> str:
             "Use 'pulldb status' to find job IDs."
         )
 
-    # If it looks like a full UUID (36 chars with dashes), use directly
-    if len(job_id_or_prefix) == 36 and job_id_or_prefix.count("-") == 4:
-        return job_id_or_prefix
+    # If it's a valid full UUID, use directly (normalized to lowercase)
+    from pulldb.domain.validation import is_valid_uuid
+    if is_valid_uuid(job_id_or_prefix):
+        return job_id_or_prefix.lower()
 
     # Call resolution API
     base_url, timeout = _load_api_config()

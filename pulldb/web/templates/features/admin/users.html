@@ -394,6 +394,30 @@
     padding: var(--space-2);
 }
 
+.hosts-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--gray-200);
+    margin-bottom: var(--space-1);
+}
+
+.hosts-header-default {
+    width: 60px;
+    text-align: center;
+}
+
+.hosts-header-auth {
+    width: 80px;
+    text-align: center;
+}
+
 .host-item {
     display: flex;
     align-items: center;
@@ -407,7 +431,55 @@
     background: var(--gray-50);
 }
 
-.host-item input[type="checkbox"] {
+.host-item.inactive {
+    opacity: 0.5;
+}
+
+.host-item.inactive .host-item-label {
+    color: var(--gray-400);
+}
+
+.host-item-auth.disabled {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.host-item-auth.disabled input[type="checkbox"] {
+    cursor: not-allowed;
+}
+
+.host-item-default {
+    width: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.host-item-default input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--warning-500);
+}
+
+.host-item-default.disabled {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.host-item-default.disabled input[type="radio"] {
+    cursor: not-allowed;
+}
+
+.host-item-auth {
+    width: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.host-item-auth input[type="checkbox"] {
     width: 18px;
     height: 18px;
     accent-color: var(--primary-500);
@@ -417,24 +489,6 @@
     flex: 1;
     font-size: 0.875rem;
     color: var(--gray-700);
-}
-
-.host-item-default {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: 0.75rem;
-    color: var(--gray-500);
-}
-
-.host-item-default input[type="radio"] {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--warning-500);
-}
-
-.host-item-default.hidden {
-    visibility: hidden;
 }
 
 .hosts-empty {
@@ -453,6 +507,10 @@
     font-size: 0.8125rem;
     color: var(--gray-600);
     margin-top: var(--space-2);
+}
+
+.hosts-selected-count.needs-default {
+    color: var(--warning-600);
 }
 </style>
 {% endblock %}
@@ -1080,59 +1138,83 @@
             return;
         }
         
-        let html = '';
+        let html = `
+            <div class="hosts-header">
+                <div class="hosts-header-default">Default</div>
+                <div class="hosts-header-auth">Authorized</div>
+                <div style="flex: 1;">Host</div>
+            </div>
+        `;
         hosts.forEach(host => {
             const isChecked = userHostIds.includes(host.id);
             const isDefault = host.id === defaultHostId;
+            const isEnabled = host.enabled !== false;
             const displayName = host.display_name || host.hostname;
+            // Default only available if host is active AND authorized
+            const canBeDefault = isEnabled && isChecked;
             
             html += `
-                <div class="host-item">
-                    <input type="checkbox" 
-                           id="host-${host.id}" 
-                           value="${host.id}" 
-                           ${isChecked ? 'checked' : ''}
-                           onchange="updateHostSelection()">
-                    <label class="host-item-label" for="host-${host.id}">${displayName}</label>
-                    <div class="host-item-default ${isChecked ? '' : 'hidden'}" id="default-${host.id}">
+                <div class="host-item ${isEnabled ? '' : 'inactive'}" data-enabled="${isEnabled}">
+                    <div class="host-item-default ${canBeDefault ? '' : 'disabled'}" id="default-${host.id}">
                         <input type="radio" 
                                name="default_host" 
                                value="${host.id}"
-                               ${isDefault ? 'checked' : ''}>
-                        <span>Default</span>
+                               ${canBeDefault ? '' : 'disabled'}
+                               ${isDefault && canBeDefault ? 'checked' : ''}>
                     </div>
+                    <div class="host-item-auth ${isEnabled ? '' : 'disabled'}">
+                        <input type="checkbox" 
+                               id="host-${host.id}" 
+                               value="${host.id}" 
+                               data-enabled="${isEnabled}"
+                               ${isChecked && isEnabled ? 'checked' : ''}
+                               ${isEnabled ? '' : 'disabled'}
+                               onchange="updateHostSelection()">
+                    </div>
+                    <label class="host-item-label" for="host-${host.id}">${displayName}${isEnabled ? '' : ' (inactive)'}</label>
                 </div>
             `;
         });
         
         listEl.innerHTML = html;
-        updateSelectedCount();
+        updateHostSelection();  // This also calls updateSelectedCount()
     }
     
-    function updateHostSelection() {
-        // Show/hide default radio buttons based on checkbox state
+    // Expose to global scope for onchange handler
+    window.updateHostSelection = function updateHostSelection() {
+        // Enable/disable default radio buttons based on checkbox state AND host active status
         const checkboxes = document.querySelectorAll('#hosts-list input[type="checkbox"]');
         const checkedBoxes = document.querySelectorAll('#hosts-list input[type="checkbox"]:checked');
         
         checkboxes.forEach(cb => {
+            const isEnabled = cb.dataset.enabled === 'true';
             const defaultDiv = document.getElementById(`default-${cb.value}`);
-            if (defaultDiv) {
-                if (cb.checked) {
-                    defaultDiv.classList.remove('hidden');
+            const radio = defaultDiv?.querySelector('input[type="radio"]');
+            if (defaultDiv && radio) {
+                // Default only available if host is active AND authorized
+                const canBeDefault = isEnabled && cb.checked;
+                if (canBeDefault) {
+                    defaultDiv.classList.remove('disabled');
+                    radio.disabled = false;
                 } else {
-                    defaultDiv.classList.add('hidden');
-                    // Uncheck the radio if host is unchecked
-                    const radio = defaultDiv.querySelector('input[type="radio"]');
-                    if (radio) radio.checked = false;
+                    defaultDiv.classList.add('disabled');
+                    radio.disabled = true;
+                    // Uncheck the radio if it can't be default
+                    if (radio.checked) {
+                        radio.checked = false;
+                    }
                 }
             }
         });
         
-        // Auto-select default when only one host is checked
+        // Auto-select default when only one active+authorized host is checked
         if (checkedBoxes.length === 1) {
-            const hostId = checkedBoxes[0].value;
-            const radio = document.querySelector(`#default-${hostId} input[type="radio"]`);
-            if (radio) radio.checked = true;
+            const cb = checkedBoxes[0];
+            const isEnabled = cb.dataset.enabled === 'true';
+            if (isEnabled) {
+                const radio = document.querySelector(`#default-${cb.value} input[type="radio"]`);
+                if (radio) radio.checked = true;
+            }
         }
         
         updateSelectedCount();
@@ -1141,14 +1223,19 @@
     function updateSelectedCount() {
         const checked = document.querySelectorAll('#hosts-list input[type="checkbox"]:checked').length;
         const hasDefault = document.querySelector('#hosts-list input[type="radio"]:checked') !== null;
+        const countEl = document.getElementById('hosts-selected-count');
         
         let text = `${checked} host${checked !== 1 ? 's' : ''} selected`;
         if (checked === 1) {
             text += ' (will be default)';
+            countEl.classList.remove('needs-default');
         } else if (checked > 1 && !hasDefault) {
             text += ' — select a default';
+            countEl.classList.add('needs-default');
+        } else {
+            countEl.classList.remove('needs-default');
         }
-        document.getElementById('hosts-selected-count').textContent = text;
+        countEl.textContent = text;
     }
     
     window.showHostsModal = async function(userId, username) {
@@ -1177,11 +1264,6 @@
     window.saveUserHosts = async function() {
         if (!currentHostsUserId) return;
         
-        const saveBtn = document.getElementById('save-hosts-btn');
-        const originalText = saveBtn.innerHTML;
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = 'Saving...';
-        
         // Collect selected host IDs
         const checkboxes = document.querySelectorAll('#hosts-list input[type="checkbox"]:checked');
         const hostIds = Array.from(checkboxes).map(cb => cb.value);
@@ -1189,6 +1271,17 @@
         // Get default host ID
         const defaultRadio = document.querySelector('#hosts-list input[type="radio"]:checked');
         const defaultHostId = defaultRadio ? defaultRadio.value : null;
+        
+        // Validation: require default if multiple hosts selected
+        if (hostIds.length > 1 && !defaultHostId) {
+            showToast('Please select a default host', 'error');
+            return;
+        }
+        
+        const saveBtn = document.getElementById('save-hosts-btn');
+        const originalText = saveBtn.innerHTML;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = 'Saving...';
         
         try {
             const resp = await fetch(`/web/admin/users/${currentHostsUserId}/hosts`, {

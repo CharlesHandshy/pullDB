@@ -93,6 +93,7 @@ class User:
     created_at: datetime
     manager_id: str | None = None
     disabled_at: datetime | None = None
+    max_active_jobs: int | None = None
     allowed_hosts: list[str] | None = None
     default_host: str | None = None
 
@@ -125,20 +126,17 @@ class User:
     def has_any_hosts(self) -> bool:
         """Check if user has any allowed database hosts.
         
-        Admins implicitly have access to all hosts, so always return True.
+        All users (including admins) must have hosts explicitly assigned.
         """
-        if self.role == UserRole.ADMIN:
-            return True
         return bool(self.allowed_hosts)
 
     def can_use_host(self, hostname: str) -> bool:
         """Check if user is authorized to use a specific database host.
         
-        Admins can use any host. Other users must have the host in their
-        allowed_hosts list.
+        All users (including admins) must have the host in their
+        allowed_hosts list. Note: allowed_hosts stores canonical hostnames,
+        so pass the hostname, not the display alias.
         """
-        if self.role == UserRole.ADMIN:
-            return True
         return hostname in (self.allowed_hosts or [])
 
 
@@ -238,15 +236,19 @@ class DBHost:
         credential_ref: Reference to credentials in AWS service.
             Format: aws-secretsmanager:/pulldb/mysql/localhost-test (recommended)
             Format: aws-ssm:/pulldb/mysql/localhost-test-credentials (alternative)
-        max_concurrent_restores: Maximum simultaneous restores on this host.
+        max_running_jobs: Maximum concurrent running jobs on this host.
+            Enforced by worker when claiming jobs.
+        max_active_jobs: Maximum queued + running jobs on this host.
+            Enforced by API when enqueueing jobs.
         enabled: Whether host is available for new jobs.
         created_at: Timestamp when host was registered.
     """
 
-    id: int
+    id: str  # UUID string (CHAR(36) in database)
     hostname: str
     credential_ref: str
-    max_concurrent_restores: int
+    max_running_jobs: int
+    max_active_jobs: int
     enabled: bool
     created_at: datetime
     host_alias: str | None = None

@@ -390,6 +390,26 @@ async def set_user_hosts(
         if default_host_id and default_host_id not in host_ids:
             return {"success": False, "message": "Default host must be in assigned hosts"}
         
+        # Validate all hosts exist and are active (enabled)
+        if host_ids and hasattr(state, "host_repo") and state.host_repo:
+            all_hosts = state.host_repo.list_hosts()
+            host_map = {str(h.id): h for h in all_hosts}
+            
+            for host_id in host_ids:
+                host = host_map.get(host_id)
+                if not host:
+                    return {"success": False, "message": f"Host '{host_id}' not found"}
+                if not host.enabled:
+                    display = getattr(host, "host_alias", None) or host.hostname
+                    return {"success": False, "message": f"Cannot assign inactive host '{display}'"}
+            
+            # Validate default host is active if provided
+            if default_host_id:
+                default_host = host_map.get(default_host_id)
+                if default_host and not default_host.enabled:
+                    display = getattr(default_host, "host_alias", None) or default_host.hostname
+                    return {"success": False, "message": f"Cannot set inactive host '{display}' as default"}
+        
         state.auth_repo.set_user_hosts(
             user_id=user_id,
             host_ids=host_ids,
@@ -416,7 +436,7 @@ async def api_hosts_list(
         "success": True,
         "hosts": [
             {
-                "id": h.id,
+                "id": str(h.id),  # Explicit string for JSON consistency
                 "hostname": h.hostname,
                 "host_alias": getattr(h, "host_alias", None),
                 "display_name": getattr(h, "host_alias", None) or h.hostname,
@@ -603,7 +623,8 @@ def _enrich_host(host: Any, job_repo: Any) -> dict:
         "hostname": host.hostname,
         "host_alias": getattr(host, "host_alias", None),
         "credential_ref": getattr(host, "credential_ref", None),
-        "max_concurrent_restores": getattr(host, "max_concurrent_restores", 2),
+        "max_running_jobs": getattr(host, "max_running_jobs", 1),
+        "max_active_jobs": getattr(host, "max_active_jobs", 10),
         "enabled": getattr(host, "enabled", True),
         "created_at": getattr(host, "created_at", None),
         # Computed fields
@@ -619,6 +640,8 @@ async def list_hosts(
     request: Request,
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
+    error: str | None = None,
+    deleted: int | None = None,
 ) -> HTMLResponse:
     """List all database hosts with enriched stats."""
     hosts = []
@@ -633,10 +656,28 @@ async def list_hosts(
         "disabled": len([h for h in hosts if not h["enabled"]]),
         "active_restores": sum(h["active_restores"] for h in hosts),
     }
+
+    # Build flash message
+    flash_message = None
+    flash_type = None
+    if deleted:
+        flash_message = "Host disabled successfully"
+        flash_type = "success"
+    elif error:
+        flash_message = error
+        flash_type = "error"
     
     return templates.TemplateResponse(
         "admin/hosts.html",
-        {"request": request, "hosts": hosts, "stats": stats, "user": user},
+        {
+            "request": request,
+            "hosts": hosts,
+            "stats": stats,
+            "user": user,
+            "flash_message": flash_message,
+            "flash_type": flash_type,
+            "aws_create_secret_url": get_secrets_manager_create_url(),
+        },
     )
 
 
@@ -662,6 +703,834 @@ async def disable_host(
     if hasattr(state.host_repo, "disable_host"):
         state.host_repo.disable_host(hostname)
     return RedirectResponse(url="/web/admin/hosts", status_code=303)
+
+
+# =============================================================================
+# Host Management - Add, Edit, Delete, Test Connection
+# =============================================================================
+
+import os
+import uuid
+from urllib.parse import quote as url_quote
+
+
+def get_aws_region() -> str:
+    """Get AWS region using pullDB's established fallback chain."""
+    return (
+        os.getenv("PULLDB_AWS_REGION")
+        or os.getenv("AWS_DEFAULT_REGION")
+        or "us-east-1"
+    )
+
+
+def get_secrets_manager_console_url(secret_path: str, region: str | None = None) -> str:
+    """Build AWS Secrets Manager console URL for a secret.
+
+    Args:
+        secret_path: The secret path (e.g., "/pulldb/mysql/dev-db-01").
+        region: AWS region. If None, uses fallback chain.
+
+    Returns:
+        Console URL to view/edit the secret.
+    """
+    region = region or get_aws_region()
+    encoded_path = url_quote(secret_path, safe="")
+    return f"https://{region}.console.aws.amazon.com/secretsmanager/secret?name={encoded_path}&region={region}"
+
+
+def get_secrets_manager_create_url(region: str | None = None) -> str:
+    """Build AWS Secrets Manager console URL for creating a new secret.
+
+    Args:
+        region: AWS region. If None, uses fallback chain.
+
+    Returns:
+        Console URL to create a new secret.
+    """
+    region = region or get_aws_region()
+    return f"https://{region}.console.aws.amazon.com/secretsmanager/newsecret?region={region}"
+
+
+@router.post("/hosts/add")
+async def add_host(
+    request: Request,
+    hostname: str = Form(...),
+    host_alias: str = Form(None),
+    credential_ref: str = Form(...),
+    max_running_jobs: int = Form(1),
+    max_active_jobs: int = Form(10),
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Add a new database host."""
+    try:
+        # Validate limits
+        if max_running_jobs < 1:
+            raise ValueError("max_running_jobs must be at least 1")
+        if max_active_jobs < 1:
+            raise ValueError("max_active_jobs must be at least 1")
+        if max_running_jobs > max_active_jobs:
+            raise ValueError("max_running_jobs cannot exceed max_active_jobs")
+
+        # Generate UUID for new host
+        host_id = str(uuid.uuid4())
+
+        # Insert via repository
+        if hasattr(state, "host_repo") and state.host_repo:
+            state.host_repo.add_host(
+                hostname=hostname,
+                max_concurrent=max_running_jobs,  # Legacy param
+                credential_ref=credential_ref,
+                host_id=host_id,
+                host_alias=host_alias or None,
+                max_running_jobs=max_running_jobs,
+                max_active_jobs=max_active_jobs,
+            )
+
+        return RedirectResponse(
+            url=f"/web/admin/hosts/{host_id}?added=1", status_code=303
+        )
+    except Exception as e:
+        # On error, redirect back to hosts list with error message
+        error_msg = url_quote(str(e))
+        return RedirectResponse(
+            url=f"/web/admin/hosts?error={error_msg}", status_code=303
+        )
+
+
+@router.get("/hosts/{host_id}", response_class=HTMLResponse)
+async def host_detail(
+    host_id: str,
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+    added: int | None = None,
+    updated: int | None = None,
+    error: str | None = None,
+) -> HTMLResponse:
+    """Render host detail/edit page."""
+    from pulldb.infra.secrets import CredentialResolver, CredentialResolutionError
+
+    # Get host by ID using repository method
+    host_obj = None
+    if hasattr(state, "host_repo") and state.host_repo:
+        if hasattr(state.host_repo, "get_host_by_id"):
+            host_obj = state.host_repo.get_host_by_id(host_id)
+
+    if not host_obj:
+        return templates.TemplateResponse(
+            "errors/404.html",
+            {"request": request, "user": user, "message": "Host not found"},
+            status_code=404,
+        )
+
+    # Convert DBHost to dict for template
+    from dataclasses import asdict
+    host = asdict(host_obj)
+
+    # Enrich host with computed fields
+    enriched_host = _enrich_host_detail(host, state)
+
+    # Build flash message
+    flash_message = None
+    flash_type = None
+    if added:
+        flash_message = "Host added successfully"
+        flash_type = "success"
+    elif updated:
+        flash_message = "Host updated successfully"
+        flash_type = "success"
+    elif error:
+        flash_message = error
+        flash_type = "error"
+
+    return templates.TemplateResponse(
+        "admin/host_detail.html",
+        {
+            "request": request,
+            "user": user,
+            "host": enriched_host,
+            "flash_message": flash_message,
+            "flash_type": flash_type,
+            "aws_create_secret_url": get_secrets_manager_create_url(),
+        },
+    )
+
+
+def _enrich_host_detail(host: dict, state: Any) -> dict:
+    """Enrich host dict with computed fields for detail template."""
+    from pulldb.infra.secrets import CredentialResolver, CredentialResolutionError
+
+    # Get job counts
+    running_count = 0
+    queued_count = 0
+    total_restores = 0
+
+    if state.job_repo and hasattr(state.job_repo, "get_active_jobs"):
+        active_jobs = state.job_repo.get_active_jobs()
+        for job in active_jobs:
+            if getattr(job, "dbhost", None) == host["hostname"]:
+                if job.status == JobStatus.RUNNING:
+                    running_count += 1
+                elif job.status == JobStatus.QUEUED:
+                    queued_count += 1
+
+    if state.job_repo and hasattr(state.job_repo, "count_jobs_by_host"):
+        total_restores = state.job_repo.count_jobs_by_host(host["hostname"])
+
+    # Resolve credential_ref to get actual host URI
+    resolved_host_uri = None
+    credential_error = None
+    secret_path = None
+    aws_secret_url = None
+
+    credential_ref = host.get("credential_ref")
+    if credential_ref:
+        try:
+            resolver = CredentialResolver()
+            secret_path = resolver.get_secret_path(credential_ref)
+            if secret_path:
+                aws_secret_url = get_secrets_manager_console_url(secret_path)
+
+            # Try to resolve credentials to get actual host URI
+            try:
+                creds = resolver.resolve(credential_ref)
+                resolved_host_uri = creds.host
+            except CredentialResolutionError as e:
+                credential_error = str(e)
+        except Exception as e:
+            credential_error = str(e)
+
+    # Get assigned users
+    assigned_users = []
+    # Try using pool from host_repo if available (real MySQL)
+    pool = None
+    if hasattr(state, "host_repo") and state.host_repo and hasattr(state.host_repo, "pool"):
+        pool = state.host_repo.pool
+    elif hasattr(state, "auth_repo") and state.auth_repo and hasattr(state.auth_repo, "pool"):
+        pool = state.auth_repo.pool
+    
+    if pool:
+        try:
+            with pool.connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(
+                    """
+                    SELECT u.user_id, u.username, u.user_code, uh.is_default
+                    FROM user_hosts uh
+                    JOIN auth_users u ON u.user_id = uh.user_id
+                    WHERE uh.host_id = %s
+                    ORDER BY u.username
+                    """,
+                    (host["id"],),
+                )
+                assigned_users = cursor.fetchall()
+        except Exception:
+            pass  # User assignment table may not exist
+    elif hasattr(state, "auth_repo") and state.auth_repo:
+        # For simulated mode, try get_users_for_host if available
+        if hasattr(state.auth_repo, "get_users_for_host"):
+            try:
+                assigned_users = state.auth_repo.get_users_for_host(host["id"])
+            except Exception:
+                pass
+
+    return {
+        **host,
+        "running_count": running_count,
+        "queued_count": queued_count,
+        "active_restores": running_count + queued_count,
+        "total_restores": total_restores,
+        "resolved_host_uri": resolved_host_uri,
+        "credential_error": credential_error,
+        "secret_path": secret_path,
+        "aws_secret_url": aws_secret_url,
+        "assigned_users": assigned_users,
+    }
+
+
+@router.post("/hosts/{host_id}/update")
+async def update_host(
+    host_id: str,
+    host_alias: str = Form(None),
+    credential_ref: str = Form(...),
+    max_running_jobs: int = Form(1),
+    max_active_jobs: int = Form(10),
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Update host configuration."""
+    try:
+        # Validate limits
+        if max_running_jobs < 1:
+            raise ValueError("max_running_jobs must be at least 1")
+        if max_active_jobs < 1:
+            raise ValueError("max_active_jobs must be at least 1")
+        if max_running_jobs > max_active_jobs:
+            raise ValueError("max_running_jobs cannot exceed max_active_jobs")
+
+        if hasattr(state, "host_repo") and state.host_repo:
+            # Use update_host_config if available (simulated), else fall back to raw SQL
+            if hasattr(state.host_repo, "update_host_config"):
+                state.host_repo.update_host_config(
+                    host_id,
+                    host_alias=host_alias or None,
+                    credential_ref=credential_ref,
+                    max_running_jobs=max_running_jobs,
+                    max_active_jobs=max_active_jobs,
+                )
+            else:
+                # Fall back to direct database access for real repository
+                with state.host_repo.pool.connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        """
+                        UPDATE db_hosts 
+                        SET host_alias = %s, credential_ref = %s, 
+                            max_running_jobs = %s, max_active_jobs = %s
+                        WHERE id = %s
+                        """,
+                        (host_alias or None, credential_ref, max_running_jobs,
+                         max_active_jobs, host_id),
+                    )
+                    conn.commit()
+                    if cursor.rowcount == 0:
+                        raise ValueError("Host not found")
+
+        return RedirectResponse(
+            url=f"/web/admin/hosts/{host_id}?updated=1", status_code=303
+        )
+    except Exception as e:
+        error_msg = url_quote(str(e))
+        return RedirectResponse(
+            url=f"/web/admin/hosts/{host_id}?error={error_msg}", status_code=303
+        )
+
+        return RedirectResponse(
+            url=f"/web/admin/hosts/{host_id}?updated=1", status_code=303
+        )
+    except Exception as e:
+        error_msg = url_quote(str(e))
+        return RedirectResponse(
+            url=f"/web/admin/hosts/{host_id}?error={error_msg}", status_code=303
+        )
+
+
+@router.post("/hosts/{host_id}/delete")
+async def delete_host(
+    host_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Soft delete (disable) a host. Validates no active jobs exist."""
+    try:
+        if hasattr(state, "host_repo") and state.host_repo:
+            # Get host by ID first
+            host = state.host_repo.get_host_by_id(host_id)
+            if not host:
+                raise ValueError("Host not found")
+            hostname = host.hostname
+
+            # Check for active jobs
+            if state.job_repo and hasattr(state.job_repo, "get_active_jobs"):
+                active_jobs = state.job_repo.get_active_jobs()
+                host_jobs = [j for j in active_jobs if getattr(j, "dbhost", None) == hostname]
+                if host_jobs:
+                    raise ValueError(
+                        f"Cannot delete host with {len(host_jobs)} active job(s). "
+                        "Wait for jobs to complete or cancel them first."
+                    )
+
+            # Soft delete by disabling
+            state.host_repo.disable_host(hostname)
+
+        return RedirectResponse(url="/web/admin/hosts?deleted=1", status_code=303)
+    except Exception as e:
+        error_msg = url_quote(str(e))
+        return RedirectResponse(
+            url=f"/web/admin/hosts/{host_id}?error={error_msg}", status_code=303
+        )
+
+
+@router.post("/hosts/{host_id}/test-connection")
+async def test_host_connection(
+    host_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Test MySQL connection to a host with comprehensive pre-flight checks.
+    
+    Returns JSON with connection status and setup validation:
+    - credential_valid: AWS secret exists and contains required fields
+    - connection_valid: Can connect to MySQL server
+    - sproc_valid: pulldb_atomic_rename procedure exists
+    - pulldb_db_valid: pulldb database exists
+    """
+    from pulldb.infra.secrets import CredentialResolver, CredentialResolutionError
+    import mysql.connector
+
+    result = {
+        "success": False,
+        "message": "",
+        "checks": {
+            "credential_valid": False,
+            "credential_message": "",
+            "connection_valid": False,
+            "connection_message": "",
+            "pulldb_db_valid": False,
+            "pulldb_db_message": "",
+            "sproc_valid": False,
+            "sproc_message": "",
+        }
+    }
+
+    try:
+        # Get host using repository method
+        host_obj = None
+        if hasattr(state, "host_repo") and state.host_repo:
+            host_obj = state.host_repo.get_host_by_id(host_id)
+
+        if not host_obj:
+            result["message"] = "Host not found"
+            return result
+
+        # Detect simulation mode (mock credentials)
+        is_mock = host_obj.credential_ref.startswith("mock/")
+        if is_mock:
+            # Return simulated success with transparent messaging
+            result["success"] = True
+            result["message"] = "Simulation mode - all checks simulated"
+            result["simulation_mode"] = True
+            result["checks"] = {
+                "credential_valid": True,
+                "credential_message": "Mock credentials (simulation mode)",
+                "connection_valid": True,
+                "connection_message": "Simulated connection - no actual MySQL call",
+                "pulldb_db_valid": True,
+                "pulldb_db_message": "Simulated - pulldb database assumed present",
+                "sproc_valid": True,
+                "sproc_message": "Simulated - stored procedure assumed deployed",
+            }
+            return result
+
+        # Check 1: Resolve credentials
+        resolver = CredentialResolver()
+        creds = None
+        try:
+            creds = resolver.resolve(host_obj.credential_ref)
+            result["checks"]["credential_valid"] = True
+            result["checks"]["credential_message"] = "AWS secret resolved successfully"
+        except CredentialResolutionError as e:
+            result["checks"]["credential_message"] = f"Credential error: {e}"
+            result["message"] = "Credential resolution failed"
+            return result
+
+        # Check 2: MySQL connection
+        test_conn = None
+        try:
+            test_conn = mysql.connector.connect(
+                host=creds.host,
+                port=creds.port,
+                user=creds.username or "pulldb_loader",
+                password=creds.password,
+                connection_timeout=5,
+            )
+            result["checks"]["connection_valid"] = True
+            result["checks"]["connection_message"] = f"Connected to {creds.host}:{creds.port}"
+        except mysql.connector.Error as e:
+            result["checks"]["connection_message"] = f"Connection failed: {e}"
+            result["message"] = "MySQL connection failed"
+            if test_conn:
+                test_conn.close()
+            return result
+
+        # Check 3: pulldb database exists
+        try:
+            cursor = test_conn.cursor()
+            cursor.execute("SHOW DATABASES LIKE 'pulldb'")
+            db_exists = cursor.fetchone()
+            cursor.close()
+            if db_exists:
+                result["checks"]["pulldb_db_valid"] = True
+                result["checks"]["pulldb_db_message"] = "pulldb database exists"
+            else:
+                result["checks"]["pulldb_db_message"] = "pulldb database not found - create with: CREATE DATABASE pulldb;"
+        except mysql.connector.Error as e:
+            result["checks"]["pulldb_db_message"] = f"Could not check database: {e}"
+
+        # Check 4: Stored procedure exists (only if pulldb database exists)
+        if result["checks"]["pulldb_db_valid"]:
+            try:
+                cursor = test_conn.cursor()
+                cursor.execute("""
+                    SELECT ROUTINE_NAME FROM information_schema.ROUTINES 
+                    WHERE ROUTINE_SCHEMA = 'pulldb' 
+                    AND ROUTINE_NAME = 'pulldb_atomic_rename' 
+                    AND ROUTINE_TYPE = 'PROCEDURE'
+                """)
+                sproc_exists = cursor.fetchone()
+                cursor.close()
+                if sproc_exists:
+                    result["checks"]["sproc_valid"] = True
+                    result["checks"]["sproc_message"] = "pulldb_atomic_rename procedure found"
+                else:
+                    result["checks"]["sproc_message"] = "Stored procedure not found - deploy with: python scripts/deploy_atomic_rename.py"
+            except mysql.connector.Error as e:
+                result["checks"]["sproc_message"] = f"Could not check procedure: {e}"
+        else:
+            result["checks"]["sproc_message"] = "Skipped - pulldb database required first"
+
+        test_conn.close()
+
+        # Determine overall success
+        all_valid = all([
+            result["checks"]["credential_valid"],
+            result["checks"]["connection_valid"],
+            result["checks"]["pulldb_db_valid"],
+            result["checks"]["sproc_valid"],
+        ])
+
+        if all_valid:
+            result["success"] = True
+            result["message"] = "All pre-flight checks passed"
+        else:
+            # Build message about what's missing
+            missing = []
+            if not result["checks"]["pulldb_db_valid"]:
+                missing.append("pulldb database")
+            if not result["checks"]["sproc_valid"]:
+                missing.append("stored procedure")
+            result["message"] = f"Connected successfully, but missing: {', '.join(missing)}"
+
+        return result
+
+    except Exception as e:
+        result["message"] = str(e)
+        return result
+
+
+# =============================================================================
+# Host Provisioning - Automated Setup Flow
+# =============================================================================
+
+from pydantic import BaseModel
+
+
+class ProvisionHostRequest(BaseModel):
+    """Request model for automated host provisioning."""
+    host_alias: str
+    mysql_host: str
+    mysql_port: int = 3306
+    admin_username: str
+    admin_password: str
+    max_running_jobs: int = 1
+    max_active_jobs: int = 10
+
+
+@router.post("/hosts/check-alias")
+async def check_host_alias(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Check if a host alias exists and if credentials already exist.
+    
+    Returns JSON for HTMX to update status badges:
+    - host_exists: Whether host with this alias is already registered
+    - host_id: Existing host ID if found
+    - secret_exists: Whether AWS secret exists for this alias
+    - secret_path: The computed secret path
+    """
+    from pulldb.infra.secrets import check_secret_exists, get_secret_path_from_alias
+    
+    form_data = await request.form()
+    host_alias = form_data.get("host_alias", "").strip()
+    
+    result = {
+        "host_alias": host_alias,
+        "host_exists": False,
+        "host_id": None,
+        "secret_exists": False,
+        "secret_path": None,
+        "status": "new",  # new, existing, credentials_found
+        "message": "",
+    }
+    
+    if not host_alias:
+        result["message"] = "Enter a host alias"
+        return result
+    
+    # Check if host alias already exists in database
+    if hasattr(state, "host_repo") and state.host_repo:
+        if hasattr(state.host_repo, "get_host_by_alias"):
+            existing_host = state.host_repo.get_host_by_alias(host_alias)
+            if existing_host:
+                result["host_exists"] = True
+                result["host_id"] = existing_host.id
+                result["status"] = "existing"
+                result["message"] = f"Host exists (will update)"
+    
+    # Check if AWS secret exists for this alias
+    secret_path = get_secret_path_from_alias(host_alias)
+    result["secret_path"] = secret_path
+    
+    secret_check = check_secret_exists(secret_path)
+    if secret_check.exists:
+        result["secret_exists"] = True
+        if not result["host_exists"]:
+            result["status"] = "credentials_found"
+            result["message"] = "Credentials found (will reuse)"
+    
+    if result["status"] == "new":
+        result["message"] = "New host"
+    
+    return result
+
+
+@router.post("/hosts/provision")
+async def provision_host(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Provision a new host with automated MySQL setup.
+    
+    This endpoint:
+    1. Checks if host alias already exists (reuses if so)
+    2. Tests admin MySQL connection
+    3. Creates pulldb_loader user (or updates password)
+    4. Creates pulldb database if needed
+    5. Deploys stored procedure
+    6. Creates AWS secret (only if new, never overwrites others)
+    7. Registers/updates host in database
+    
+    On failure, rolls back only newly-created resources:
+    - Deletes AWS secret only if it was created in this operation
+    - Leaves pre-existing users/databases/secrets untouched
+    
+    Returns JSON with step-by-step results for UI display.
+    """
+    from pulldb.infra.secrets import (
+        check_secret_exists,
+        safe_upsert_single_secret,
+        delete_secret_if_new,
+        generate_credential_ref,
+        get_secret_path_from_alias,
+    )
+    from pulldb.infra.mysql_provisioning import provision_host_full
+    
+    # Parse form data
+    form_data = await request.form()
+    host_alias = form_data.get("host_alias", "").strip()
+    mysql_host = form_data.get("mysql_host", "").strip()
+    mysql_port = int(form_data.get("mysql_port", "3306"))
+    admin_username = form_data.get("admin_username", "").strip()
+    admin_password = form_data.get("admin_password", "")
+    max_running_jobs = int(form_data.get("max_running_jobs", "1"))
+    max_active_jobs = int(form_data.get("max_active_jobs", "10"))
+    
+    result = {
+        "success": False,
+        "message": "",
+        "host_id": None,
+        "steps": [],
+        "rollback_performed": False,
+    }
+    
+    def add_step(name: str, success: bool, message: str, details: str | None = None):
+        result["steps"].append({
+            "name": name,
+            "success": success,
+            "message": message,
+            "details": details,
+        })
+    
+    # Validate inputs
+    if not host_alias:
+        result["message"] = "Host alias is required"
+        return result
+    if not mysql_host:
+        result["message"] = "MySQL host is required"
+        return result
+    if not admin_username or not admin_password:
+        result["message"] = "Admin credentials are required"
+        return result
+    if max_running_jobs < 1 or max_active_jobs < 1:
+        result["message"] = "Job limits must be at least 1"
+        return result
+    if max_running_jobs > max_active_jobs:
+        result["message"] = "max_running_jobs cannot exceed max_active_jobs"
+        return result
+    
+    # Check for simulation mode
+    from pulldb.infra.factory import is_simulation_mode
+    
+    if is_simulation_mode():
+        # Simulate successful provisioning without real MySQL/AWS calls
+        import uuid as uuid_module
+        
+        add_step("Check Host", True, f"New host '{host_alias}'")
+        add_step("Check Secret", True, "No existing credentials (simulated)", 
+                 f"Will create: /pulldb/mysql/{host_alias}")
+        add_step("MySQL Setup", True, 
+                 "User created, database exists, procedure deployed (simulated)",
+                 "User: pulldb_loader")
+        add_step("AWS Secret", True, "Credentials created (simulated)", 
+                 f"Path: /pulldb/mysql/{host_alias}")
+        
+        # Actually register host in simulated repo
+        host_id = str(uuid_module.uuid4())
+        credential_ref = f"mock/pulldb/mysql/{host_alias}"
+        
+        if hasattr(state, "host_repo") and state.host_repo:
+            state.host_repo.add_host(
+                hostname=mysql_host,
+                max_concurrent=max_running_jobs,
+                credential_ref=credential_ref,
+                host_id=host_id,
+                host_alias=host_alias,
+                max_running_jobs=max_running_jobs,
+                max_active_jobs=max_active_jobs,
+            )
+            add_step("Register Host", True, "Host registered successfully (simulated)")
+        
+        result["success"] = True
+        result["host_id"] = host_id
+        result["message"] = "Host provisioned successfully (simulation mode)"
+        result["simulation_mode"] = True
+        return result
+    
+    # Track what was newly created for rollback
+    secret_was_new = False
+    created_secret_path = None
+    
+    try:
+        # Step 1: Check existing host
+        existing_host = None
+        if hasattr(state, "host_repo") and state.host_repo:
+            if hasattr(state.host_repo, "get_host_by_alias"):
+                existing_host = state.host_repo.get_host_by_alias(host_alias)
+        
+        if existing_host:
+            add_step("Check Host", True, f"Host '{host_alias}' exists, will update")
+            result["host_id"] = existing_host.id
+        else:
+            add_step("Check Host", True, f"New host '{host_alias}'")
+        
+        # Step 2: Check existing AWS secret
+        secret_path = get_secret_path_from_alias(host_alias)
+        credential_ref = generate_credential_ref(host_alias)
+        
+        secret_check = check_secret_exists(secret_path, fetch_value=True)
+        if secret_check.error:
+            add_step("Check Secret", False, "Error checking AWS secret", secret_check.error)
+            result["message"] = f"AWS error: {secret_check.error}"
+            return result
+        
+        if secret_check.exists:
+            add_step("Check Secret", True, "Existing credentials found", 
+                     f"Secret: {secret_path}")
+        else:
+            add_step("Check Secret", True, "No existing credentials", 
+                     f"Will create: {secret_path}")
+        
+        # Step 3: Provision MySQL (test connection, create user, db, sproc)
+        prov_result, created_resources = provision_host_full(
+            mysql_host=mysql_host,
+            mysql_port=mysql_port,
+            admin_username=admin_username,
+            admin_password=admin_password,
+        )
+        
+        if not prov_result.success:
+            add_step("MySQL Setup", False, prov_result.message, 
+                     prov_result.error or "")
+            if prov_result.suggestions:
+                result["message"] = f"{prov_result.message}. Try: {prov_result.suggestions[0]}"
+            else:
+                result["message"] = prov_result.message
+            return result
+        
+        loader_username = prov_result.data["loader_username"]
+        loader_password = prov_result.data["loader_password"]
+        
+        user_action = "created" if created_resources["user_created"] else "updated"
+        db_action = "created" if created_resources["database_created"] else "exists"
+        
+        add_step("MySQL Setup", True, 
+                 f"User {user_action}, database {db_action}, procedure deployed",
+                 f"User: {loader_username}")
+        
+        # Step 4: Create or update AWS secret
+        secret_data = {
+            "host": mysql_host,
+            "password": loader_password,
+            "username": loader_username,
+            "port": mysql_port,
+        }
+        
+        upsert_result = safe_upsert_single_secret(
+            secret_path=secret_path,
+            secret_data=secret_data,
+        )
+        
+        if not upsert_result.success:
+            add_step("AWS Secret", False, "Failed to save credentials", 
+                     upsert_result.error or "")
+            result["message"] = f"AWS error: {upsert_result.error}"
+            return result
+        
+        secret_was_new = upsert_result.was_new
+        created_secret_path = secret_path
+        
+        secret_action = "created" if upsert_result.was_new else "updated"
+        add_step("AWS Secret", True, f"Credentials {secret_action}", 
+                 f"Path: {secret_path}")
+        
+        # Step 5: Register or update host in database
+        host_id = result["host_id"] or str(uuid.uuid4())
+        
+        if hasattr(state, "host_repo") and state.host_repo:
+            if existing_host:
+                # Update existing host
+                if hasattr(state.host_repo, "update_host_config"):
+                    state.host_repo.update_host_config(
+                        host_id,
+                        host_alias=host_alias,
+                        credential_ref=credential_ref,
+                        max_running_jobs=max_running_jobs,
+                        max_active_jobs=max_active_jobs,
+                    )
+                add_step("Register Host", True, "Host configuration updated")
+            else:
+                # Add new host
+                state.host_repo.add_host(
+                    hostname=mysql_host,
+                    max_concurrent=max_running_jobs,
+                    credential_ref=credential_ref,
+                    host_id=host_id,
+                    host_alias=host_alias,
+                    max_running_jobs=max_running_jobs,
+                    max_active_jobs=max_active_jobs,
+                )
+                result["host_id"] = host_id
+                add_step("Register Host", True, "Host registered successfully")
+        
+        result["success"] = True
+        result["message"] = "Host provisioned successfully"
+        return result
+        
+    except Exception as e:
+        # Rollback: Delete secret only if it was newly created
+        if secret_was_new and created_secret_path:
+            delete_secret_if_new(created_secret_path, was_new=True)
+            result["rollback_performed"] = True
+            add_step("Rollback", True, "Cleaned up newly-created secret", 
+                     f"Deleted: {created_secret_path}")
+        
+        result["message"] = f"Unexpected error: {e}"
+        add_step("Error", False, str(e))
+        return result
 
 
 # =============================================================================

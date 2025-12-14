@@ -48,7 +48,7 @@
                         <select id="dbhost" name="dbhost" class="form-select" required>
                             <option value="">Select a database host...</option>
                             {% for host in hosts %}
-                            <option value="{{ host.hostname }}">{{ host.hostname }}</option>
+                            <option value="{{ host.hostname }}">{{ host.host_alias or host.hostname }}</option>
                             {% endfor %}
                         </select>
                         <span class="form-hint">The MySQL host to scan for orphaned databases</span>

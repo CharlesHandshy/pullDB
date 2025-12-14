@@ -69,10 +69,18 @@ class TestCanCancelJob:
         admin = _make_user(UserRole.ADMIN)
         assert can_cancel_job(admin, "other-user-id") is True
 
-    def test_manager_can_cancel_any_job(self) -> None:
-        """Manager can cancel any job."""
-        manager = _make_user(UserRole.MANAGER)
-        assert can_cancel_job(manager, "other-user-id") is True
+    def test_manager_can_cancel_managed_user_job(self) -> None:
+        """Manager can cancel jobs owned by users they manage."""
+        manager = _make_user(UserRole.MANAGER, user_id="manager-123")
+        # Job owner is managed by this manager
+        assert can_cancel_job(manager, "managed-user-id", job_owner_manager_id="manager-123") is True
+
+    def test_manager_cannot_cancel_unmanaged_user_job(self) -> None:
+        """Manager cannot cancel jobs owned by users they don't manage."""
+        manager = _make_user(UserRole.MANAGER, user_id="manager-123")
+        # Job owner is not managed by this manager
+        assert can_cancel_job(manager, "other-user-id", job_owner_manager_id=None) is False
+        assert can_cancel_job(manager, "other-user-id", job_owner_manager_id="different-manager") is False
 
     def test_user_can_cancel_own_job(self) -> None:
         """User can cancel their own job."""
@@ -91,22 +99,45 @@ class TestCanSubmitForUser:
     def test_admin_can_submit_for_anyone(self) -> None:
         """Admin can submit jobs for any user."""
         admin = _make_user(UserRole.ADMIN, user_id="admin-123")
-        assert can_submit_for_user(admin, "other-user-id") is True
+        target = _make_user(UserRole.USER, user_id="other-user-id", username="other")
+        assert can_submit_for_user(admin, target) is True
 
-    def test_manager_can_submit_for_anyone(self) -> None:
-        """Manager can submit jobs for any user."""
+    def test_manager_can_submit_for_managed_user(self) -> None:
+        """Manager can submit jobs for users they manage."""
         manager = _make_user(UserRole.MANAGER, user_id="manager-123")
-        assert can_submit_for_user(manager, "other-user-id") is True
+        # Create a user managed by this manager
+        managed_user = User(
+            user_id="managed-user-id",
+            username="managed",
+            user_code="manage",
+            is_admin=False,
+            role=UserRole.USER,
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
+            manager_id="manager-123",  # Managed by the manager
+        )
+        assert can_submit_for_user(manager, managed_user) is True
+
+    def test_manager_can_submit_for_self(self) -> None:
+        """Manager can submit jobs for themselves."""
+        manager = _make_user(UserRole.MANAGER, user_id="manager-123")
+        assert can_submit_for_user(manager, manager) is True
+
+    def test_manager_cannot_submit_for_unmanaged_user(self) -> None:
+        """Manager cannot submit for users they don't manage."""
+        manager = _make_user(UserRole.MANAGER, user_id="manager-123")
+        other_user = _make_user(UserRole.USER, user_id="other-user-id", username="other")
+        assert can_submit_for_user(manager, other_user) is False
 
     def test_user_can_submit_for_self(self) -> None:
         """User can submit jobs for themselves."""
         user = _make_user(UserRole.USER, user_id="user-123")
-        assert can_submit_for_user(user, "user-123") is True
+        assert can_submit_for_user(user, user) is True
 
     def test_user_cannot_submit_for_others(self) -> None:
         """User cannot submit jobs for others."""
         user = _make_user(UserRole.USER, user_id="user-123")
-        assert can_submit_for_user(user, "other-user-id") is False
+        other = _make_user(UserRole.USER, user_id="other-user-id", username="other")
+        assert can_submit_for_user(user, other) is False
 
 
 class TestCanManageUsers:
@@ -117,10 +148,10 @@ class TestCanManageUsers:
         admin = _make_user(UserRole.ADMIN)
         assert can_manage_users(admin) is True
 
-    def test_manager_cannot_manage_users(self) -> None:
-        """Manager cannot manage users."""
+    def test_manager_can_manage_users(self) -> None:
+        """Manager can manage users (creates managed users)."""
         manager = _make_user(UserRole.MANAGER)
-        assert can_manage_users(manager) is False
+        assert can_manage_users(manager) is True
 
     def test_user_cannot_manage_users(self) -> None:
         """Regular user cannot manage users."""

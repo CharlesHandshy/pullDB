@@ -112,12 +112,12 @@
                         {% elif item.queued_count > 5 %}
                         <span class="badge badge-warning" style="font-size: 0.625rem; margin-right: 0.5rem;">{{ item.queued_count }} queued</span>
                         {% endif %}
-                        <!-- Active/Capacity display -->
-                        <span style="font-weight: 600; color: {% if item.running_count >= item.capacity %}var(--danger-600){% elif item.running_count > 0 %}var(--primary-600){% else %}var(--gray-400){% endif %};">
+                        <!-- Running/Capacity display -->
+                        <span style="font-weight: 600; color: {% if item.running_count >= item.max_running_jobs %}var(--danger-600){% elif item.running_count > 0 %}var(--primary-600){% else %}var(--gray-400){% endif %};">
                             {{ item.running_count }}
                         </span>
                         <span style="color: var(--gray-400);">/</span>
-                        <span style="color: var(--gray-500);">{{ item.capacity }}</span>
+                        <span style="color: var(--gray-500);">{{ item.max_running_jobs }}</span>
                     </td>
                 </tr>
                 {% endfor %}

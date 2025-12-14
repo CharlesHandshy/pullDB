@@ -331,7 +331,7 @@ def hosts_list(json_out: bool) -> None:
         click.echo("No database hosts registered.")
         return
 
-    headers = ["HOSTNAME", "MAX_CONCURRENT", "ENABLED", "CREDENTIAL_REF"]
+    headers = ["HOSTNAME", "MAX_RUNNING", "MAX_ACTIVE", "ENABLED", "CREDENTIAL_REF"]
     rows_out: list[list[str]] = []
 
     for host in hosts:
@@ -341,7 +341,8 @@ def hosts_list(json_out: bool) -> None:
         rows_out.append(
             [
                 str(host.hostname),
-                str(host.max_concurrent_restores),
+                str(host.max_running_jobs),
+                str(host.max_active_jobs),
                 "Yes" if host.enabled else "No",
                 cred_ref,
             ]

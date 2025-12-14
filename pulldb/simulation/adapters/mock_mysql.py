@@ -416,6 +416,23 @@ class SimulatedJobRepository:
                 if j.status in (JobStatus.QUEUED, JobStatus.RUNNING)
             )
 
+    def count_active_jobs_for_host(self, hostname: str) -> int:
+        """Count active jobs (queued or running) for a specific host."""
+        with self.state.lock:
+            return sum(
+                1 for j in self.state.jobs.values() 
+                if j.dbhost == hostname 
+                and j.status in (JobStatus.QUEUED, JobStatus.RUNNING)
+            )
+
+    def count_running_jobs_for_host(self, hostname: str) -> int:
+        """Count running jobs for a specific host."""
+        with self.state.lock:
+            return sum(
+                1 for j in self.state.jobs.values() 
+                if j.dbhost == hostname and j.status == JobStatus.RUNNING
+            )
+
     def get_user_recent_jobs(self, user_id: str, limit: int = 10) -> list[Job]:
         """Get recent jobs for a specific user."""
         with self.state.lock:
@@ -848,10 +865,10 @@ class SimulatedUserRepository:
                             None
                         )
                         if host:
-                            hostname = host.host_alias or host.hostname
-                            allowed_hosts.append(hostname)
+                            # Use canonical hostname, not alias
+                            allowed_hosts.append(host.hostname)
                             if uh.get('is_default'):
-                                default_host = hostname
+                                default_host = host.hostname
 
                     # Return user with hosts populated
                     return replace(
@@ -882,10 +899,10 @@ class SimulatedUserRepository:
                     None
                 )
                 if host:
-                    hostname = host.host_alias or host.hostname
-                    allowed_hosts.append(hostname)
+                    # Use canonical hostname, not alias
+                    allowed_hosts.append(host.hostname)
                     if uh.get('is_default'):
-                        default_host = hostname
+                        default_host = host.hostname
 
             return replace(
                 user,
@@ -1147,6 +1164,23 @@ class SimulatedUserRepository:
             ))
             return matches[:limit]
 
+    def update_user_max_active_jobs(self, user_id: str, max_active_jobs: int | None) -> None:
+        """Update a user's max active jobs limit.
+        
+        Args:
+            user_id: The user ID to update.
+            max_active_jobs: New limit (None = system default, 0 = unlimited).
+        """
+        with self.state.lock:
+            user = self.state.users.get(user_id)
+            if not user:
+                raise ValueError(f"User not found: {user_id}")
+            
+            updated = replace(user, max_active_jobs=max_active_jobs)
+            self.state.users[user_id] = updated
+            if user.user_code in self.state.users_by_code:
+                self.state.users_by_code[user.user_code] = updated
+
 
 class SimulatedHostRepository:
     """In-memory implementation of HostRepository."""
@@ -1159,6 +1193,14 @@ class SimulatedHostRepository:
         """Get host by hostname."""
         with self.state.lock:
             return self.state.hosts.get(hostname)
+
+    def get_host_by_id(self, host_id: str) -> DBHost | None:
+        """Get host by ID."""
+        with self.state.lock:
+            for host in self.state.hosts.values():
+                if host.id == host_id:
+                    return host
+            return None
 
     def get_host_by_alias(self, alias: str) -> DBHost | None:
         """Get host by alias."""
@@ -1198,8 +1240,8 @@ class SimulatedHostRepository:
             port=3306
         )
 
-    def check_host_capacity(self, hostname: str) -> bool:
-        """Check if host has capacity for new jobs."""
+    def check_host_running_capacity(self, hostname: str) -> bool:
+        """Check if host has capacity for running jobs (worker enforcement)."""
         with self.state.lock:
             host = self.state.hosts.get(hostname)
             if not host or not host.enabled:
@@ -1209,25 +1251,115 @@ class SimulatedHostRepository:
                 1 for j in self.state.jobs.values() 
                 if j.dbhost == hostname and j.status == JobStatus.RUNNING
             )
-            return running < host.max_concurrent_restores
+            return running < host.max_running_jobs
+
+    def check_host_active_capacity(self, hostname: str) -> bool:
+        """Check if host has capacity for active jobs (API enforcement)."""
+        with self.state.lock:
+            host = self.state.hosts.get(hostname)
+            if not host or not host.enabled:
+                return False
+            
+            active = sum(
+                1 for j in self.state.jobs.values() 
+                if j.dbhost == hostname and j.status in (JobStatus.QUEUED, JobStatus.RUNNING)
+            )
+            return active < host.max_active_jobs
+
+    def update_host_limits(
+        self, hostname: str, max_active_jobs: int, max_running_jobs: int
+    ) -> None:
+        """Update job limits for a host."""
+        if max_active_jobs < 1:
+            raise ValueError("max_active_jobs must be at least 1")
+        if max_running_jobs < 1:
+            raise ValueError("max_running_jobs must be at least 1")
+        if max_running_jobs > max_active_jobs:
+            raise ValueError("max_running_jobs cannot exceed max_active_jobs")
+
+        with self.state.lock:
+            host = self.state.hosts.get(hostname)
+            if not host:
+                raise ValueError(f"Host not found: {hostname}")
+            
+            self.state.hosts[hostname] = replace(
+                host, 
+                max_active_jobs=max_active_jobs, 
+                max_running_jobs=max_running_jobs
+            )
 
     def add_host(
-        self, hostname: str, max_concurrent: int, credential_ref: str | None
-    ) -> None:
-        """Add a new host."""
+        self, hostname: str, max_concurrent: int, credential_ref: str | None,
+        *, host_id: str | None = None, host_alias: str | None = None,
+        max_running_jobs: int | None = None, max_active_jobs: int | None = None
+    ) -> str:
+        """Add a new host.
+        
+        Args:
+            hostname: Hostname of the database server.
+            max_concurrent: Maximum concurrent jobs allowed (legacy parameter).
+            credential_ref: AWS Secrets Manager reference.
+            host_id: Optional UUID for the host. If None, one is generated.
+            host_alias: Optional short alias for the host.
+            max_running_jobs: Optional max running jobs. Defaults to max_concurrent.
+            max_active_jobs: Optional max active jobs. Defaults to max_running_jobs * 10.
+            
+        Returns:
+            The host ID.
+        """
         with self.state.lock:
             if hostname in self.state.hosts:
                 raise ValueError(f"Host already exists: {hostname}")
             
+            # Use provided values or defaults
+            running = max_running_jobs if max_running_jobs is not None else max_concurrent
+            active = max_active_jobs if max_active_jobs is not None else running * 10
+            final_id = host_id or str(uuid.uuid4())
+            
             host = DBHost(
-                id=len(self.state.hosts) + 1,
+                id=final_id,
                 hostname=hostname,
+                host_alias=host_alias,
                 credential_ref=credential_ref or "mock:creds",
-                max_concurrent_restores=max_concurrent,
+                max_running_jobs=running,
+                max_active_jobs=active,
                 enabled=True,
                 created_at=datetime.now(UTC)
             )
             self.state.hosts[hostname] = host
+            return final_id
+
+    def update_host_config(
+        self, host_id: str, *, host_alias: str | None = None,
+        credential_ref: str | None = None,
+        max_running_jobs: int | None = None, max_active_jobs: int | None = None
+    ) -> None:
+        """Update host configuration by ID."""
+        with self.state.lock:
+            # Find host by ID
+            target_host = None
+            for host in self.state.hosts.values():
+                if host.id == host_id:
+                    target_host = host
+                    break
+            
+            if not target_host:
+                raise ValueError(f"Host not found: {host_id}")
+            
+            # Build replacement with updated fields
+            updates = {}
+            if host_alias is not None:
+                updates["host_alias"] = host_alias
+            if credential_ref is not None:
+                updates["credential_ref"] = credential_ref
+            if max_running_jobs is not None:
+                updates["max_running_jobs"] = max_running_jobs
+            if max_active_jobs is not None:
+                updates["max_active_jobs"] = max_active_jobs
+            
+            if updates:
+                updated_host = replace(target_host, **updates)
+                self.state.hosts[target_host.hostname] = updated_host
 
     def enable_host(self, hostname: str) -> None:
         """Enable a host."""
@@ -1617,8 +1749,8 @@ class SimulatedAuthRepository:
                     None
                 )
                 if host:
-                    hostname = host.host_alias or host.hostname
-                    result.append((host_id, hostname, bool(uh.get('is_default', False))))
+                    # Return canonical hostname for the tuple
+                    result.append((host_id, host.hostname, bool(uh.get('is_default', False))))
             return result
 
     def set_user_hosts(
@@ -1655,11 +1787,11 @@ class SimulatedAuthRepository:
                         None
                     )
                     if host:
-                        return host.host_alias or host.hostname
+                        return host.hostname
             return None
 
     def get_user_allowed_hosts(self, user_id: str) -> list[str]:
-        """Get list of hostnames a user is allowed to access."""
+        """Get list of canonical hostnames a user is allowed to access."""
         with self.state.lock:
             user_hosts = self.state.user_hosts.get(user_id, [])
             result: list[str] = []
@@ -1670,7 +1802,7 @@ class SimulatedAuthRepository:
                     None
                 )
                 if host:
-                    result.append(host.host_alias or host.hostname)
+                    result.append(host.hostname)
             return result
 
 

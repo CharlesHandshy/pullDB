@@ -25,11 +25,9 @@ templates = Jinja2Templates(directory="pulldb/web/templates")
 def _get_allowed_hosts_for_user(user: User, all_hosts: list) -> list:
     """Filter hosts based on user's allowed_hosts.
     
-    Admins get all hosts. Other users only get their allowed hosts.
+    All users (including admins) only get their assigned hosts.
+    Note: allowed_hosts stores canonical hostnames.
     """
-    if user.role == UserRole.ADMIN:
-        return all_hosts
-    
     if not user.allowed_hosts:
         return []
     
@@ -211,7 +209,7 @@ async def restore_submit(
     
     # === SERVER-SIDE HOST ENFORCEMENT ===
     # Block if user has no hosts at all
-    if not user.has_any_hosts and user.role != UserRole.ADMIN:
+    if not user.has_any_hosts:
         return templates.TemplateResponse(
             "features/restore/restore.html",
             {
@@ -236,7 +234,7 @@ async def restore_submit(
     allowed_hostnames = {h.hostname for h in allowed_hosts}
     
     # Block if selected host is not in allowed list
-    if dbhost and dbhost not in allowed_hostnames and user.role != UserRole.ADMIN:
+    if dbhost and dbhost not in allowed_hostnames:
         return templates.TemplateResponse(
             "features/restore/restore.html",
             {

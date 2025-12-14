@@ -232,6 +232,10 @@ class JobRepository:
         workers are running. The job is marked as 'running' within the same
         transaction, ensuring no two workers can claim the same job.
 
+        Only claims jobs where the target host has running capacity
+        (running jobs < max_running_jobs). This ensures per-host concurrency
+        limits are enforced at the worker level.
+
         This is the PREFERRED method for worker job acquisition. The older
         get_next_queued_job() + mark_job_running() pattern is NOT safe for
         multi-worker deployments.
@@ -242,7 +246,8 @@ class JobRepository:
                        Format: "hostname:pid" or similar unique identifier.
 
         Returns:
-            Claimed job (now in 'running' status) or None if queue empty.
+            Claimed job (now in 'running' status) or None if queue empty
+            or all hosts at running capacity.
 
         Example:
             >>> job = repo.claim_next_job(worker_id="worker-1:12345")
@@ -256,15 +261,23 @@ class JobRepository:
             # SELECT with FOR UPDATE SKIP LOCKED:
             # - FOR UPDATE: Locks the row until transaction commits
             # - SKIP LOCKED: If row already locked by another worker, skip it
+            # - JOIN with db_hosts to enforce per-host running capacity
+            # - Subquery counts running jobs per host
             # This prevents blocking and ensures each job claimed by exactly one worker
             cursor.execute(
                 """
-                SELECT id, owner_user_id, owner_username, owner_user_code, target,
-                       staging_name, dbhost, status, submitted_at, started_at,
-                       completed_at, options_json, retry_count, error_detail, worker_id
-                FROM jobs
-                WHERE status = 'queued'
-                ORDER BY submitted_at ASC
+                SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code, j.target,
+                       j.staging_name, j.dbhost, j.status, j.submitted_at, j.started_at,
+                       j.completed_at, j.options_json, j.retry_count, j.error_detail, j.worker_id
+                FROM jobs j
+                JOIN db_hosts h ON j.dbhost = h.hostname
+                WHERE j.status = 'queued'
+                  AND h.enabled = TRUE
+                  AND (
+                    SELECT COUNT(*) FROM jobs j2 
+                    WHERE j2.dbhost = j.dbhost AND j2.status = 'running'
+                  ) < h.max_running_jobs
+                ORDER BY j.submitted_at ASC
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
                 """
@@ -965,6 +978,52 @@ class JobRepository:
             row = cursor.fetchone()
             return row[0] if row else 0
 
+    def count_active_jobs_for_host(self, hostname: str) -> int:
+        """Count active jobs (queued or running) for a specific host.
+
+        Used for per-host active job limit enforcement at API layer.
+
+        Args:
+            hostname: Database host to count jobs for.
+
+        Returns:
+            Count of active jobs for the host.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM jobs
+                WHERE dbhost = %s AND status IN ('queued', 'running')
+                """,
+                (hostname,),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else 0
+
+    def count_running_jobs_for_host(self, hostname: str) -> int:
+        """Count running jobs for a specific host.
+
+        Used for per-host running job limit enforcement at worker layer.
+
+        Args:
+            hostname: Database host to count jobs for.
+
+        Returns:
+            Count of running jobs for the host.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM jobs
+                WHERE dbhost = %s AND status = 'running'
+                """,
+                (hostname,),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else 0
+
     def append_job_event(
         self, job_id: str, event_type: str, detail: str | None = None
     ) -> None:
@@ -1628,7 +1687,7 @@ class UserRepository:
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
-                       disabled_at, manager_id
+                       disabled_at, manager_id, max_active_jobs
                 FROM auth_users
                 WHERE username = %s
                 """,
@@ -1679,7 +1738,7 @@ class UserRepository:
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
-                       disabled_at, manager_id
+                       disabled_at, manager_id, max_active_jobs
                 FROM auth_users
                 WHERE user_id = %s
                 """,
@@ -2008,6 +2067,7 @@ class UserRepository:
             created_at=row["created_at"],
             manager_id=row.get("manager_id"),
             disabled_at=row.get("disabled_at"),
+            max_active_jobs=row.get("max_active_jobs"),
             allowed_hosts=row.get("allowed_hosts"),
             default_host=row.get("default_host"),
         )
@@ -2071,6 +2131,29 @@ class UserRepository:
             cursor.execute(
                 "UPDATE auth_users SET role = %s, is_admin = %s WHERE user_id = %s",
                 (role.value, role == UserRole.ADMIN, user_id),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"User not found: {user_id}")
+
+    def update_user_max_active_jobs(self, user_id: str, max_active_jobs: int | None) -> None:
+        """Update a user's max active jobs limit.
+
+        Args:
+            user_id: User ID to update.
+            max_active_jobs: New limit (None=system default, 0=unlimited, N>0=specific limit).
+
+        Raises:
+            ValueError: If user not found or limit invalid.
+        """
+        if max_active_jobs is not None and max_active_jobs < 0:
+            raise ValueError("max_active_jobs cannot be negative")
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE auth_users SET max_active_jobs = %s WHERE user_id = %s",
+                (max_active_jobs, user_id),
             )
             conn.commit()
             if cursor.rowcount == 0:
@@ -2418,12 +2501,35 @@ class HostRepository:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, hostname, host_alias, credential_ref, max_concurrent_restores,
-                       enabled, created_at
+                SELECT id, hostname, host_alias, credential_ref, max_running_jobs,
+                       max_active_jobs, enabled, created_at
                 FROM db_hosts
                 WHERE hostname = %s
                 """,
                 (hostname,),
+            )
+            row = cursor.fetchone()
+            return self._row_to_dbhost(row) if row else None
+
+    def get_host_by_id(self, host_id: str) -> DBHost | None:
+        """Get host configuration by ID.
+
+        Args:
+            host_id: UUID string of the host.
+
+        Returns:
+            DBHost instance if found, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, hostname, host_alias, credential_ref, max_running_jobs,
+                       max_active_jobs, enabled, created_at
+                FROM db_hosts
+                WHERE id = %s
+                """,
+                (host_id,),
             )
             row = cursor.fetchone()
             return self._row_to_dbhost(row) if row else None
@@ -2441,8 +2547,8 @@ class HostRepository:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, hostname, host_alias, credential_ref, max_concurrent_restores,
-                       enabled, created_at
+                SELECT id, hostname, host_alias, credential_ref, max_running_jobs,
+                       max_active_jobs, enabled, created_at
                 FROM db_hosts
                 WHERE host_alias = %s
                 """,
@@ -2486,8 +2592,8 @@ class HostRepository:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, hostname, host_alias, credential_ref, max_concurrent_restores,
-                       enabled, created_at
+                SELECT id, hostname, host_alias, credential_ref, max_running_jobs,
+                       max_active_jobs, enabled, created_at
                 FROM db_hosts
                 WHERE enabled = TRUE
                 ORDER BY hostname ASC
@@ -2506,8 +2612,8 @@ class HostRepository:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, hostname, host_alias, credential_ref, max_concurrent_restores,
-                       enabled, created_at
+                SELECT id, hostname, host_alias, credential_ref, max_running_jobs,
+                       max_active_jobs, enabled, created_at
                 FROM db_hosts
                 ORDER BY hostname ASC
                 """
@@ -2551,16 +2657,16 @@ class HostRepository:
         # Delegate to CredentialResolver (from Milestone 1.4)
         return self.credential_resolver.resolve(host.credential_ref)
 
-    def check_host_capacity(self, hostname: str) -> bool:
-        """Check if host has capacity for new restore job.
+    def check_host_running_capacity(self, hostname: str) -> bool:
+        """Check if host has capacity for running jobs (worker enforcement).
 
-        Compares count of running jobs against max_concurrent_restores limit.
+        Compares count of running jobs against max_running_jobs limit.
 
         Args:
             hostname: Hostname to check capacity for.
 
         Returns:
-            True if host has capacity (running < max), False otherwise.
+            True if host has capacity (running < max_running_jobs), False otherwise.
 
         Raises:
             ValueError: If host not found.
@@ -2584,7 +2690,76 @@ class HostRepository:
             else:
                 running_count = result[0]
 
-            return running_count < host.max_concurrent_restores
+            return running_count < host.max_running_jobs
+
+    def check_host_active_capacity(self, hostname: str) -> bool:
+        """Check if host has capacity for active jobs (API enforcement).
+
+        Compares count of active jobs (queued + running) against max_active_jobs limit.
+
+        Args:
+            hostname: Hostname to check capacity for.
+
+        Returns:
+            True if host has capacity (active < max_active_jobs), False otherwise.
+
+        Raises:
+            ValueError: If host not found.
+        """
+        host = self.get_host_by_hostname(hostname)
+        if host is None:
+            raise ValueError(f"Host '{hostname}' not found")
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM jobs
+                WHERE dbhost = %s AND status IN ('queued', 'running')
+                """,
+                (hostname,),
+            )
+            result = cursor.fetchone()
+            if result is None:
+                active_count: int = 0
+            else:
+                active_count = result[0]
+
+            return active_count < host.max_active_jobs
+
+    def update_host_limits(
+        self, hostname: str, max_active_jobs: int, max_running_jobs: int
+    ) -> None:
+        """Update job limits for a host.
+
+        Args:
+            hostname: Hostname to update.
+            max_active_jobs: Maximum active (queued + running) jobs.
+            max_running_jobs: Maximum concurrent running jobs.
+
+        Raises:
+            ValueError: If host not found or limits invalid.
+        """
+        if max_active_jobs < 1:
+            raise ValueError("max_active_jobs must be at least 1")
+        if max_running_jobs < 1:
+            raise ValueError("max_running_jobs must be at least 1")
+        if max_running_jobs > max_active_jobs:
+            raise ValueError("max_running_jobs cannot exceed max_active_jobs")
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE db_hosts 
+                SET max_active_jobs = %s, max_running_jobs = %s 
+                WHERE hostname = %s
+                """,
+                (max_active_jobs, max_running_jobs, hostname),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"Host not found: {hostname}")
 
     def add_host(
         self, hostname: str, max_concurrent: int, credential_ref: str | None
@@ -2670,8 +2845,8 @@ class HostRepository:
             search_pattern = f"%{query}%"
             cursor.execute(
                 """
-                SELECT id, hostname, host_alias, credential_ref, max_concurrent_restores,
-                       enabled, created_at
+                SELECT id, hostname, host_alias, credential_ref, max_running_jobs,
+                       max_active_jobs, enabled, created_at
                 FROM db_hosts
                 WHERE hostname LIKE %s OR host_alias LIKE %s
                 ORDER BY
@@ -2698,7 +2873,8 @@ class HostRepository:
             hostname=row["hostname"],
             host_alias=row.get("host_alias"),
             credential_ref=row["credential_ref"],
-            max_concurrent_restores=row["max_concurrent_restores"],
+            max_running_jobs=row["max_running_jobs"],
+            max_active_jobs=row["max_active_jobs"],
             enabled=bool(row["enabled"]),
             created_at=row["created_at"],
         )

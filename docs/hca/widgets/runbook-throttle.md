@@ -8,9 +8,10 @@ Use this guide to diagnose and resolve throttling-related issues (HTTP 429 respo
 
 pullDB enforces concurrency limits to prevent system overload:
 
-1. **Per-User Limit**: Maximum active jobs per user (`max_active_jobs_per_user`)
+1. **Per-User Limit**: Maximum active jobs per user (`auth_users.max_active_jobs` or `max_active_jobs_per_user` setting)
 2. **Global Limit**: Maximum active jobs system-wide (`max_active_jobs_global`)
-3. **Per-Host Limit**: Maximum concurrent restores per target host (`db_hosts.max_concurrent_restores`)
+3. **Per-Host Active Limit**: Maximum queued+running jobs per host (`db_hosts.max_active_jobs`) - enforced at API
+4. **Per-Host Running Limit**: Maximum concurrent restores per host (`db_hosts.max_running_jobs`) - enforced by Worker
 
 When any limit is reached, new job submissions return HTTP 429 "Too Many Requests".
 
@@ -124,14 +125,14 @@ LIMIT 10;
 
 **Problem**: Worker fails to start job; job stays in `queued` status.
 
-**Root Cause**: Target host has reached `max_concurrent_restores` limit.
+**Root Cause**: Target host has reached `max_running_jobs` limit (concurrent restores).
 
-**Note**: Per-host limits are enforced by the Worker, not the API. Jobs are accepted but wait in queue.
+**Note**: Per-host running limits are enforced by the Worker via SQL JOIN. Per-host active limits (queued+running) are enforced at the API.
 
 **Diagnostic Queries**:
 ```sql
 -- Check host configuration
-SELECT hostname, max_concurrent_restores, enabled 
+SELECT hostname, max_running_jobs, max_active_jobs, enabled 
 FROM db_hosts 
 WHERE hostname = '<target_host>';
 
@@ -150,10 +151,10 @@ ORDER BY submitted_at;
 
 **Solutions**:
 1. **Wait**: Jobs will proceed as capacity frees
-2. **Increase Host Capacity**: If host can handle more restores
+2. **Increase Host Capacity**: If host can handle more concurrent restores
    ```sql
    UPDATE db_hosts 
-   SET max_concurrent_restores = <new_value> 
+   SET max_running_jobs = <new_value> 
    WHERE hostname = '<target_host>';
    ```
 3. **Redirect**: Submit to alternate host (if applicable)
@@ -190,9 +191,11 @@ SELECT
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `max_active_jobs_per_user` | 0 | Per-user limit (0=unlimited) |
+| `max_active_jobs_per_user` | 0 | Per-user limit (0=unlimited, overridden by auth_users.max_active_jobs) |
 | `max_active_jobs_global` | 0 | System-wide limit (0=unlimited) |
-| `db_hosts.max_concurrent_restores` | per-host | Per-host running job limit |
+| `db_hosts.max_active_jobs` | 10 | Per-host active job limit (queued+running, API enforcement) |
+| `db_hosts.max_running_jobs` | 1 | Per-host concurrent restore limit (Worker enforcement) |
+| `auth_users.max_active_jobs` | NULL | Per-user override (NULL=use setting, 0=unlimited) |
 
 See `docs/concurrency-controls.md` for detailed configuration guidance.
 

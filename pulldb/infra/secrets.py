@@ -188,10 +188,19 @@ class CredentialResolver:
         elif credential_ref.startswith("aws-ssm:"):
             parameter_name = credential_ref[len("aws-ssm:") :]
             return self._resolve_from_ssm(parameter_name)
+        elif credential_ref.startswith("mock/"):
+            # Mock credentials for simulation mode - return fake but valid structure
+            logger.info(f"Using mock credentials for simulation: {credential_ref}")
+            return MySQLCredentials(
+                username="mock_user",
+                password="mock_password",
+                host="localhost",
+                port=3306,
+            )
         else:
             raise ValueError(
                 f"Unsupported credential reference format: {credential_ref}. "
-                f"Expected 'aws-secretsmanager:' or 'aws-ssm:' prefix."
+                f"Expected 'aws-secretsmanager:', 'aws-ssm:', or 'mock/' prefix."
             )
 
     def _resolve_from_secrets_manager(self, secret_id: str) -> MySQLCredentials:
@@ -386,6 +395,51 @@ class CredentialResolver:
                 f"Unexpected error resolving parameter {parameter_name}: {e}"
             ) from e
 
+    def get_secret_path(self, credential_ref: str) -> str | None:
+        """Extract secret path from credential_ref for display or AWS console linking.
+
+        Parses the credential reference URI and returns just the path portion,
+        suitable for building AWS console URLs or displaying in UI.
+
+        Args:
+            credential_ref: Credential reference in format:
+                - aws-secretsmanager:/pulldb/mysql/{db-name}
+                - aws-ssm:/pulldb/mysql/{param-name}
+
+        Returns:
+            The secret/parameter path (e.g., "/pulldb/mysql/dev-db-01"),
+            or None if the format is not recognized.
+
+        Examples:
+            >>> resolver = CredentialResolver()
+            >>> resolver.get_secret_path("aws-secretsmanager:/pulldb/mysql/dev-db-01")
+            '/pulldb/mysql/dev-db-01'
+            >>> resolver.get_secret_path("aws-ssm:/pulldb/mysql/param")
+            '/pulldb/mysql/param'
+            >>> resolver.get_secret_path("invalid")
+            None
+        """
+        if credential_ref.startswith("aws-secretsmanager:"):
+            return credential_ref[len("aws-secretsmanager:"):]
+        elif credential_ref.startswith("aws-ssm:"):
+            return credential_ref[len("aws-ssm:"):]
+        return None
+
+    def get_credential_type(self, credential_ref: str) -> str | None:
+        """Get the credential storage type from credential_ref.
+
+        Args:
+            credential_ref: Credential reference URI.
+
+        Returns:
+            "secretsmanager" or "ssm", or None if format not recognized.
+        """
+        if credential_ref.startswith("aws-secretsmanager:"):
+            return "secretsmanager"
+        elif credential_ref.startswith("aws-ssm:"):
+            return "ssm"
+        return None
+
 
 class CredentialResolutionError(Exception):
     """Exception raised when credential resolution fails.
@@ -402,6 +456,290 @@ class CredentialResolutionError(Exception):
     """
 
     pass
+
+
+class SecretExistsResult:
+    """Result of checking if a secret exists.
+
+    Attributes:
+        exists: Whether the secret exists.
+        secret_data: The secret data if exists and retrieved, else None.
+        error: Error message if check failed, else None.
+    """
+
+    def __init__(
+        self,
+        exists: bool,
+        secret_data: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> None:
+        self.exists = exists
+        self.secret_data = secret_data
+        self.error = error
+
+
+class SecretUpsertResult:
+    """Result of creating or updating a secret.
+
+    Attributes:
+        success: Whether the operation succeeded.
+        was_new: True if secret was created, False if updated.
+        secret_path: The secret path that was created/updated.
+        error: Error message if operation failed, else None.
+    """
+
+    def __init__(
+        self,
+        success: bool,
+        was_new: bool = False,
+        secret_path: str = "",
+        error: str | None = None,
+    ) -> None:
+        self.success = success
+        self.was_new = was_new
+        self.secret_path = secret_path
+        self.error = error
+
+
+def check_secret_exists(
+    secret_path: str,
+    aws_profile: str | None = None,
+    aws_region: str | None = None,
+    fetch_value: bool = False,
+) -> SecretExistsResult:
+    """Check if a secret exists in AWS Secrets Manager.
+
+    Uses describe_secret (lightweight) or get_secret_value based on fetch_value.
+    This is the "try settings first" check before creating new secrets.
+
+    Args:
+        secret_path: The secret path (e.g., /pulldb/mysql/dev-db-01).
+        aws_profile: AWS profile name. Defaults to PULLDB_AWS_PROFILE env var.
+        aws_region: AWS region. Defaults to PULLDB_AWS_REGION env var.
+        fetch_value: If True, also retrieves the secret value (requires decrypt permission).
+
+    Returns:
+        SecretExistsResult with exists=True/False and optional secret_data.
+
+    Examples:
+        >>> result = check_secret_exists("/pulldb/mysql/dev-db-01")
+        >>> if result.exists:
+        ...     print("Secret already exists, reusing")
+    """
+    try:
+        resolver = CredentialResolver(aws_profile=aws_profile, aws_region=aws_region)
+        client = resolver._get_secrets_manager_client()
+
+        if fetch_value:
+            # Get full secret value (requires decrypt permission)
+            response = client.get_secret_value(SecretId=secret_path)
+            secret_data = json.loads(response["SecretString"])
+            return SecretExistsResult(exists=True, secret_data=secret_data)
+        else:
+            # Just check existence (lightweight metadata call)
+            client.describe_secret(SecretId=secret_path)
+            return SecretExistsResult(exists=True)
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        if error_code == "ResourceNotFoundException":
+            return SecretExistsResult(exists=False)
+        elif error_code == "AccessDeniedException":
+            return SecretExistsResult(
+                exists=False,
+                error=f"Access denied checking secret {secret_path}. Check IAM permissions.",
+            )
+        else:
+            return SecretExistsResult(
+                exists=False, error=f"Error checking secret {secret_path}: {error_code}"
+            )
+    except Exception as e:
+        return SecretExistsResult(
+            exists=False, error=f"Unexpected error checking secret: {e}"
+        )
+
+
+def safe_upsert_single_secret(
+    secret_path: str,
+    secret_data: dict[str, Any],
+    aws_profile: str | None = None,
+    aws_region: str | None = None,
+    create_only: bool = False,
+    update_only: bool = False,
+) -> SecretUpsertResult:
+    """Safely create or update a single secret in AWS Secrets Manager.
+
+    SAFETY: This function only touches the single secret at secret_path.
+    It never deletes or modifies other secrets.
+
+    Args:
+        secret_path: The secret path (e.g., /pulldb/mysql/dev-db-01).
+        secret_data: Dict with secret values (host, password, username).
+        aws_profile: AWS profile name. Defaults to PULLDB_AWS_PROFILE env var.
+        aws_region: AWS region. Defaults to PULLDB_AWS_REGION env var.
+        create_only: If True, fail if secret already exists.
+        update_only: If True, fail if secret doesn't exist.
+
+    Returns:
+        SecretUpsertResult with success, was_new, and error info.
+
+    Examples:
+        >>> result = safe_upsert_single_secret(
+        ...     "/pulldb/mysql/dev-db-01",
+        ...     {"host": "db.example.com", "password": "secret", "username": "pulldb_loader"}
+        ... )
+        >>> if result.success:
+        ...     print(f"Secret {'created' if result.was_new else 'updated'}")
+    """
+    try:
+        resolver = CredentialResolver(aws_profile=aws_profile, aws_region=aws_region)
+        client = resolver._get_secrets_manager_client()
+
+        # Step 1: Check if secret exists (lightweight metadata call)
+        exists = True
+        try:
+            client.describe_secret(SecretId=secret_path)
+            logger.debug(f"Secret exists: {secret_path}")
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "ResourceNotFoundException":
+                exists = False
+                logger.debug(f"Secret does not exist: {secret_path}")
+            else:
+                raise
+
+        # Step 2: Apply safety constraints
+        if create_only and exists:
+            return SecretUpsertResult(
+                success=False,
+                was_new=False,
+                secret_path=secret_path,
+                error=f"Secret {secret_path} already exists (create_only=True)",
+            )
+        if update_only and not exists:
+            return SecretUpsertResult(
+                success=False,
+                was_new=False,
+                secret_path=secret_path,
+                error=f"Secret {secret_path} does not exist (update_only=True)",
+            )
+
+        # Step 3: Perform the operation
+        secret_string = json.dumps(secret_data)
+
+        if exists:
+            # Update existing secret
+            client.put_secret_value(SecretId=secret_path, SecretString=secret_string)
+            logger.info(f"Updated secret: {secret_path}")
+            return SecretUpsertResult(
+                success=True, was_new=False, secret_path=secret_path
+            )
+        else:
+            # Create new secret with required pulldb tag
+            client.create_secret(
+                Name=secret_path,
+                SecretString=secret_string,
+                Tags=[{"Key": "Service", "Value": "pulldb"}],
+            )
+            logger.info(f"Created secret: {secret_path}")
+            return SecretUpsertResult(
+                success=True, was_new=True, secret_path=secret_path
+            )
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        error_msg = e.response.get("Error", {}).get("Message", str(e))
+        if error_code == "AccessDeniedException":
+            return SecretUpsertResult(
+                success=False,
+                secret_path=secret_path,
+                error=f"Access denied for secret {secret_path}. Check IAM permissions for secretsmanager:CreateSecret and secretsmanager:PutSecretValue.",
+            )
+        else:
+            return SecretUpsertResult(
+                success=False,
+                secret_path=secret_path,
+                error=f"AWS error ({error_code}): {error_msg}",
+            )
+    except Exception as e:
+        return SecretUpsertResult(
+            success=False,
+            secret_path=secret_path,
+            error=f"Unexpected error: {e}",
+        )
+
+
+def delete_secret_if_new(
+    secret_path: str,
+    was_new: bool,
+    aws_profile: str | None = None,
+    aws_region: str | None = None,
+) -> bool:
+    """Delete a secret only if it was newly created (for rollback).
+
+    SAFETY: Only deletes if was_new=True. Pre-existing secrets are never deleted.
+    Uses 7-day recovery window for safety.
+
+    Args:
+        secret_path: The secret path to potentially delete.
+        was_new: Whether this secret was newly created in current operation.
+        aws_profile: AWS profile name.
+        aws_region: AWS region.
+
+    Returns:
+        True if deleted (or was_new=False so no action needed), False on error.
+    """
+    if not was_new:
+        logger.debug(f"Secret {secret_path} was pre-existing, not deleting")
+        return True
+
+    try:
+        resolver = CredentialResolver(aws_profile=aws_profile, aws_region=aws_region)
+        client = resolver._get_secrets_manager_client()
+
+        # Use recovery window for safety (can be recovered within 7 days)
+        client.delete_secret(
+            SecretId=secret_path,
+            RecoveryWindowInDays=7,
+        )
+        logger.info(f"Deleted newly-created secret (rollback): {secret_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to delete secret {secret_path} during rollback: {e}")
+        return False
+
+
+def generate_credential_ref(host_alias: str) -> str:
+    """Generate the credential_ref URI for a host alias.
+
+    Auto-generates the credential reference path that is stored with the host.
+    Users never see this - it's computed from the host alias.
+
+    Args:
+        host_alias: The host alias (e.g., "dev-db-01").
+
+    Returns:
+        Full credential_ref URI (e.g., "aws-secretsmanager:/pulldb/mysql/dev-db-01").
+    """
+    # Sanitize alias: lowercase, replace spaces/special chars with dashes
+    safe_alias = host_alias.lower().strip()
+    safe_alias = "".join(c if c.isalnum() or c == "-" else "-" for c in safe_alias)
+    safe_alias = "-".join(part for part in safe_alias.split("-") if part)  # Remove consecutive dashes
+
+    secret_path = f"/pulldb/mysql/{safe_alias}"
+    return f"aws-secretsmanager:{secret_path}"
+
+
+def get_secret_path_from_alias(host_alias: str) -> str:
+    """Get the secret path for a host alias (without the URI prefix).
+
+    Args:
+        host_alias: The host alias (e.g., "dev-db-01").
+
+    Returns:
+        Secret path (e.g., "/pulldb/mysql/dev-db-01").
+    """
+    credential_ref = generate_credential_ref(host_alias)
+    return credential_ref.replace("aws-secretsmanager:", "")
 
 
 # Example usage for testing

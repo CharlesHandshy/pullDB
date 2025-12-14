@@ -546,13 +546,13 @@ class AuthRepository:
             user_id: UUID of the user.
 
         Returns:
-            Hostname of default host, or None if no default set.
+            Canonical hostname of default host, or None if no default set.
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT h.hostname, h.host_alias
+                SELECT h.hostname
                 FROM user_hosts uh
                 JOIN db_hosts h ON h.id = uh.host_id
                 WHERE uh.user_id = %s AND uh.is_default = TRUE
@@ -562,23 +562,23 @@ class AuthRepository:
             )
             row = cursor.fetchone()
             if row:
-                return row["host_alias"] or row["hostname"]
+                return row["hostname"]
             return None
 
     def get_user_allowed_hosts(self, user_id: str) -> list[str]:
-        """Get list of hostnames a user is allowed to access.
+        """Get list of canonical hostnames a user is allowed to access.
 
         Args:
             user_id: UUID of the user.
 
         Returns:
-            List of hostnames the user can access.
+            List of canonical hostnames the user can access.
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT h.hostname, h.host_alias
+                SELECT h.hostname
                 FROM user_hosts uh
                 JOIN db_hosts h ON h.id = uh.host_id
                 WHERE uh.user_id = %s
@@ -587,4 +587,4 @@ class AuthRepository:
                 (user_id,),
             )
             rows = cursor.fetchall()
-            return [row["host_alias"] or row["hostname"] for row in rows]
+            return [row["hostname"] for row in rows]

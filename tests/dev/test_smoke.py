@@ -46,6 +46,9 @@ class _FakeUserRepository:
             is_admin=False,
             role=UserRole.USER,
             created_at=datetime(2025, 11, 3, 0, 0, tzinfo=UTC),
+            # Host authorization: user has access to the default dbhost
+            allowed_hosts=["dev-db-01"],
+            default_host="dev-db-01",
         )
 
 
@@ -132,6 +135,10 @@ class _FakeHostRepository:
     def resolve_hostname(self, name: str) -> str:
         """Returns the name as-is - no alias resolution in smoke test."""
         return name
+
+    def check_host_active_capacity(self, hostname: str) -> bool:
+        """Returns True - always has capacity in smoke test."""
+        return True
 
 
 class _ResponseProtocol(Protocol):

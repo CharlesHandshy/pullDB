@@ -104,6 +104,41 @@ def validate_job_request(req: JobRequest) -> None:
         )
 
 
+def check_host_active_capacity(state: APIState, hostname: str) -> None:
+    """Check if host has capacity for more active jobs.
+
+    Enforces per-host active job limit (queued + running).
+
+    Args:
+        state: API state with repositories.
+        hostname: Database host to check.
+
+    Raises:
+        HTTPException: 429 Too Many Requests if host at capacity.
+    """
+    if not state.host_repo.check_host_active_capacity(hostname):
+        host = state.host_repo.get_host_by_hostname(hostname)
+        active_count = state.job_repo.count_active_jobs_for_host(hostname)
+        max_active = host.max_active_jobs if host else 0
+        
+        emit_event(
+            "job_enqueue_rejected",
+            f"Host capacity reached for {hostname}: {active_count}/{max_active} active jobs",
+            labels=MetricLabels(
+                target="",
+                phase="enqueue",
+                status="rate_limited",
+            ),
+        )
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"Host '{hostname}' has {active_count} active jobs (limit: {max_active}). "
+                "Please wait for a job to finish or choose another host."
+            ),
+        )
+
+
 def check_concurrency_limits(state: APIState, user: User) -> None:
     """Check concurrency limits before enqueueing a job.
 
@@ -138,8 +173,13 @@ def check_concurrency_limits(state: APIState, user: User) -> None:
                 ),
             )
 
-    # Check per-user limit
-    per_user_limit = state.settings_repo.get_max_active_jobs_per_user()
+    # Check per-user limit (user-specific overrides system default)
+    # NULL = use system default, 0 = unlimited, N > 0 = specific limit
+    if user.max_active_jobs is not None:
+        per_user_limit = user.max_active_jobs
+    else:
+        per_user_limit = state.settings_repo.get_max_active_jobs_per_user()
+    
     if per_user_limit > 0:
         user_active = state.job_repo.count_active_jobs_for_user(user.user_id)
         if user_active >= per_user_limit:
@@ -158,7 +198,7 @@ def check_concurrency_limits(state: APIState, user: User) -> None:
             raise HTTPException(
                 status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=(
-                    f"User limit reached ({user_active}/{per_user_limit} active jobs). "
+                    f"You have {user_active} active jobs (limit: {per_user_limit}). "
                     "Please wait for a job to finish."
                 ),
             )
@@ -190,6 +230,9 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
 
     # Phase 2: Concurrency controls - check limits before job creation
     check_concurrency_limits(state, user)
+    
+    # Phase 3: Per-host capacity check - ensure host can accept more jobs
+    check_host_active_capacity(state, dbhost)
 
     job_id = str(uuid.uuid4())
     staging_name = generate_staging_name(target, job_id)

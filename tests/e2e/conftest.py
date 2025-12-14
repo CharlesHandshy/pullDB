@@ -123,23 +123,23 @@ class E2EAPIState:
                 state.users[user_id] = user
                 state.users_by_code[user_code] = user
 
-        # Create test hosts
+        # Create test hosts (using sequential readable UUIDs)
         hosts_data = [
-            (1, "db-prod-01", "prod-01", 3, True),
-            (2, "db-staging-01", "staging-01", 2, True),
+            ("00000000-0000-0000-0000-000000000001", "db-prod-01", "prod-01", 3, 10, True),
+            ("00000000-0000-0000-0000-000000000002", "db-staging-01", "staging-01", 2, 10, True),
         ]
 
         with state.lock:
-            for host_id, hostname, alias, max_concurrent, enabled in hosts_data:
+            for host_id, hostname, alias, max_running, max_active, enabled in hosts_data:
                 host = DBHost(
                     id=host_id,
                     hostname=hostname,
                     host_alias=alias,
                     credential_ref=f"mock/mysql/{alias}",
-                    max_concurrent_restores=max_concurrent,
+                    max_running_jobs=max_running,
+                    max_active_jobs=max_active,
                     enabled=enabled,
                     created_at=datetime(2024, 1, 1, tzinfo=UTC),
-                    disabled_at=None,
                 )
                 state.hosts[hostname] = host
                 state.hosts_by_alias[alias] = host

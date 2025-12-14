@@ -246,7 +246,8 @@ CREATE TABLE db_hosts (
     id CHAR(36) PRIMARY KEY,
     hostname VARCHAR(255) NOT NULL UNIQUE,
     credential_ref VARCHAR(512) NOT NULL,
-    max_concurrent_restores INT NOT NULL DEFAULT 1,
+    max_running_jobs INT NOT NULL DEFAULT 1,
+    max_active_jobs INT NOT NULL DEFAULT 10,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
 );
@@ -256,7 +257,8 @@ CREATE TABLE db_hosts (
 - `credential_ref`: Reference to credentials in AWS Secrets Manager or SSM Parameter Store
   - Format: `aws-secretsmanager:/pulldb/mysql/dev-db-01` (recommended)
   - Format: `aws-ssm:/pulldb/mysql/dev-db-01-credentials` (alternative)
-- `max_concurrent_restores`: Maximum number of simultaneous restore operations on this host
+- `max_running_jobs`: Maximum concurrent restore operations on this host (Worker enforcement)
+- `max_active_jobs`: Maximum queued+running jobs on this host (API enforcement)
 - `enabled`: Boolean flag to temporarily disable a host without deleting the record
 
 
@@ -318,19 +320,21 @@ Pre-populate `db_hosts` with a local sandbox plus the three legacy development d
 
 ```sql
 -- Local development sandbox (default)
-INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
+INSERT INTO db_hosts (id, hostname, credential_ref, max_running_jobs, max_active_jobs, enabled) VALUES
     ('550e8400-e29b-41d4-a716-446655440003',
      'localhost',
     'aws-secretsmanager:/pulldb/mysql/localhost-test',
      1,
+     10,
      TRUE);
 
 -- Development database server
-INSERT INTO db_hosts (id, hostname, credential_ref, max_concurrent_restores, enabled) VALUES
+INSERT INTO db_hosts (id, hostname, credential_ref, max_running_jobs, max_active_jobs, enabled) VALUES
     ('f869577c-752a-4fbd-b257-4e6f8930d77d',
      'dev-db-01',
      'aws-secretsmanager:/pulldb/mysql/dev-db-01',
      1,
+     10,
      TRUE);
 ```
 

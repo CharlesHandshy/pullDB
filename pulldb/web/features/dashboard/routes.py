@@ -181,7 +181,8 @@ def _build_admin_context(state: Any, user: User) -> dict:
             "active_restores": len(jobs_on_host),
             "queued_count": queued_count,
             "running_count": running_count,
-            "capacity": getattr(host, "max_concurrent_restores", 5),
+            "max_running_jobs": getattr(host, "max_running_jobs", 5),
+            "max_active_jobs": getattr(host, "max_active_jobs", 10),
             "enabled": getattr(host, "enabled", True),  # Pre-computed for template
         })
     

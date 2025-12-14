@@ -96,8 +96,8 @@ class TestPermissionsIntegration:
 
     def test_role_manager_permissions(self, manager_user: User) -> None:
         """User with role=MANAGER should have manager permissions."""
-        # Managers cannot manage users (only admins)
-        assert not can_manage_users(manager_user)
+        # Managers can manage users (they create managed users)
+        assert can_manage_users(manager_user)
         assert can_view_all_jobs(manager_user)
         # Managers cannot manage config
         assert not can_manage_config(manager_user)
@@ -126,14 +126,36 @@ class TestPermissionsIntegration:
         self, admin_user: User, manager_user: User, regular_user: User
     ) -> None:
         """Test logic for submitting jobs on behalf of others."""
-        target_user_id = "target_user_id"
+        # Create a target user (not managed by anyone)
+        target_user = User(
+            user_id="target-user-id",
+            username="target",
+            user_code="target",
+            is_admin=False,
+            role=UserRole.USER,
+            created_at=datetime.now(UTC),
+        )
+        # Create a user managed by the manager
+        managed_user = User(
+            user_id="managed-user-id",
+            username="managed",
+            user_code="manage",
+            is_admin=False,
+            role=UserRole.USER,
+            created_at=datetime.now(UTC),
+            manager_id="manager-1",  # Managed by manager_user
+        )
 
         # Admin can submit for anyone
-        assert can_submit_for_user(admin_user, target_user_id)
+        assert can_submit_for_user(admin_user, target_user)
 
-        # Manager can submit for anyone
-        assert can_submit_for_user(manager_user, target_user_id)
+        # Manager can submit for users they manage
+        assert can_submit_for_user(manager_user, managed_user)
+        # Manager cannot submit for unmanaged users
+        assert not can_submit_for_user(manager_user, target_user)
+        # Manager can submit for themselves
+        assert can_submit_for_user(manager_user, manager_user)
 
         # Regular user can only submit for themselves
-        assert can_submit_for_user(regular_user, regular_user.user_id)
-        assert not can_submit_for_user(regular_user, target_user_id)
+        assert can_submit_for_user(regular_user, regular_user)
+        assert not can_submit_for_user(regular_user, target_user)

@@ -45,6 +45,7 @@ class FakeUserRepository:
             is_admin=False,
             role=UserRole.USER,
             created_at=datetime(2025, 11, 3, 0, 0, tzinfo=UTC),
+            allowed_hosts=["dev-db-01"],  # Allow default host for tests
         )
 
 
@@ -84,6 +85,10 @@ class FakeJobRepository:
         """Count all active jobs."""
         return len(self.active)
 
+    def count_active_jobs_for_host(self, hostname: str) -> int:
+        """Count active jobs for a host."""
+        return sum(1 for j in self.active if j.dbhost == hostname)
+
     def has_active_jobs_for_target(self, target: str, dbhost: str) -> bool:
         """Check if there are active jobs for the same target on the same host."""
         return any(
@@ -119,10 +124,46 @@ class FakeSettingsRepository:
             return 0
 
 
+class FakeHostRepository:
+    """In-memory host repository stub for API tests."""
+
+    def __init__(self) -> None:
+        from pulldb.domain.models import DBHost
+
+        self.hosts: dict[str, DBHost] = {}
+        # Default: always have capacity
+        self._has_active_capacity = True
+
+    def get_host_by_hostname(self, hostname: str) -> Any:
+        """Return host or a mock with default limits."""
+        from pulldb.domain.models import DBHost
+
+        if hostname in self.hosts:
+            return self.hosts[hostname]
+        # Return a default host with sensible limits
+        return DBHost(
+            id="default-host-id",
+            hostname=hostname,
+            credential_ref="",
+            max_running_jobs=5,
+            max_active_jobs=10,
+            enabled=True,
+        )
+
+    def check_host_active_capacity(self, hostname: str) -> bool:
+        """Return whether host has capacity for more active jobs."""
+        return self._has_active_capacity
+
+    def set_has_active_capacity(self, value: bool) -> None:
+        """Test helper to control capacity check result."""
+        self._has_active_capacity = value
+
+
 class FakeRepos(NamedTuple):
     user_repo: FakeUserRepository
     job_repo: FakeJobRepository
     settings_repo: FakeSettingsRepository
+    host_repo: FakeHostRepository
 
 
 class ResponseProtocol(Protocol):
@@ -146,6 +187,7 @@ def fake_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRepos]:
     user_repo = FakeUserRepository()
     job_repo = FakeJobRepository()
     settings_repo = FakeSettingsRepository()
+    host_repo = FakeHostRepository()
     config = Config(
         mysql_host="coord-db",
         mysql_user="pulldb",
@@ -159,7 +201,7 @@ def fake_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRepos]:
         user_repo=cast(MySQLUserRepository, user_repo),
         job_repo=cast(MySQLJobRepository, job_repo),
         settings_repo=cast(MySQLSettingsRepository, settings_repo),
-        host_repo=cast(MySQLHostRepository, SimpleNamespace()),
+        host_repo=cast(MySQLHostRepository, host_repo),
     )
 
     def _override() -> APIState:
@@ -170,7 +212,10 @@ def fake_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRepos]:
         delattr(app.state, "api_state")
     try:
         yield FakeRepos(
-            user_repo=user_repo, job_repo=job_repo, settings_repo=settings_repo
+            user_repo=user_repo,
+            job_repo=job_repo,
+            settings_repo=settings_repo,
+            host_repo=host_repo,
         )
     finally:
         app.dependency_overrides.pop(get_api_state, None)
@@ -311,8 +356,9 @@ def test_submit_job_respects_per_user_limit(
 
     assert response.status_code == 429
     data = cast(dict[str, Any], response.json())
-    assert "User limit reached" in data["detail"]
+    # Error message format: "You have X active jobs (limit: Y). Please wait..."
     assert "2 active jobs" in data["detail"]
+    assert "limit: 2" in data["detail"]
 
 
 def test_submit_job_allows_under_per_user_limit(

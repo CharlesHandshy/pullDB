@@ -246,7 +246,7 @@
                                 <datalist id="staging-host-list">
                                     <option value="">All enabled hosts</option>
                                     {% for host in hosts %}
-                                    <option value="{{ host.hostname }}">{{ host.hostname }}</option>
+                                    <option value="{{ host.hostname }}">{{ host.host_alias or host.hostname }}</option>
                                     {% endfor %}
                                 </datalist>
                             </div>

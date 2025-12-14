@@ -97,13 +97,14 @@ def seed_dev_users(state: SimulationState) -> dict[str, User]:
     Returns:
         Dict mapping user_id to User for reference.
     """
-    # Host list for non-admin users (admins get all hosts implicitly)
+    # Host display names for non-admin users (admins get all hosts implicitly)
+    # These must match the aliases defined in seed_dev_hosts()
     dev_hosts = [
-        "mysql-staging-01.example.com",
-        "mysql-staging-02.example.com",
-        "mysql-staging-03.example.com",
+        "staging-01",
+        "staging-02",
+        "staging-03",
     ]
-    default_host = "mysql-staging-01.example.com"
+    default_host = "staging-01"
 
     # (user_id, username, user_code, role, manager_id, allowed_hosts)
     users_data = [
@@ -158,24 +159,27 @@ def seed_dev_hosts(state: SimulationState) -> list[DBHost]:
     Returns:
         List of created DBHost objects.
     """
+    # (id, hostname, alias, max_running, max_active, enabled)
+    # Using sequential readable UUIDs for deterministic test data
     hosts_data = [
-        (1, "mysql-staging-01.example.com", "staging-01", 3, True),
-        (2, "mysql-staging-02.example.com", "staging-02", 2, True),
-        (3, "mysql-staging-03.example.com", "staging-03", 2, True),
-        (4, "mysql-prod-01.example.com", "prod-01", 1, True),
-        (5, "mysql-dev.example.com", "dev", 1, False),  # Disabled
+        ("00000000-0000-0000-0000-000000000001", "mysql-staging-01.example.com", "staging-01", 3, 10, True),
+        ("00000000-0000-0000-0000-000000000002", "mysql-staging-02.example.com", "staging-02", 2, 10, True),
+        ("00000000-0000-0000-0000-000000000003", "mysql-staging-03.example.com", "staging-03", 2, 10, True),
+        ("00000000-0000-0000-0000-000000000004", "mysql-prod-01.example.com", "prod-01", 1, 5, True),
+        ("00000000-0000-0000-0000-000000000005", "mysql-dev.example.com", "dev", 1, 10, False),  # Disabled
     ]
 
     created_hosts: list[DBHost] = []
 
     with state.lock:
-        for host_id, hostname, alias, max_concurrent, enabled in hosts_data:
+        for host_id, hostname, alias, max_running, max_active, enabled in hosts_data:
             host = DBHost(
                 id=host_id,
                 hostname=hostname,
                 host_alias=alias,
                 credential_ref=f"mock/mysql/{alias}",
-                max_concurrent_restores=max_concurrent,
+                max_running_jobs=max_running,
+                max_active_jobs=max_active,
                 enabled=enabled,
                 created_at=datetime(2024, 1, 1, tzinfo=UTC),
             )
@@ -183,6 +187,51 @@ def seed_dev_hosts(state: SimulationState) -> list[DBHost]:
             created_hosts.append(host)
 
     return created_hosts
+
+
+def seed_user_host_assignments(state: SimulationState) -> None:
+    """Seed user-host assignments into state.user_hosts.
+
+    Links non-admin users to their allowed hosts via the user_hosts mapping.
+    This is required because the auth repository reads from state.user_hosts,
+    not from User.allowed_hosts directly.
+
+    Must be called AFTER seed_dev_users() and seed_dev_hosts().
+    """
+    # Host ID mapping: alias -> UUID
+    # Must match IDs from seed_dev_hosts()
+    host_id_by_alias = {
+        "staging-01": "00000000-0000-0000-0000-000000000001",
+        "staging-02": "00000000-0000-0000-0000-000000000002",
+        "staging-03": "00000000-0000-0000-0000-000000000003",
+        "prod-01": "00000000-0000-0000-0000-000000000004",
+        "dev": "00000000-0000-0000-0000-000000000005",
+    }
+
+    # User-host assignments: (user_id, host_aliases, default_host_alias)
+    # Admins don't need explicit assignments - they get all hosts implicitly
+    user_host_assignments = [
+        ("usr-001", ["staging-01", "staging-02", "staging-03"], "staging-01"),  # devuser
+        ("usr-003", ["staging-01", "staging-02", "staging-03"], "staging-01"),  # devmanager
+        # usr-002 (devadmin) skipped - admins access all hosts implicitly
+    ]
+
+    with state.lock:
+        for user_id, host_aliases, default_alias in user_host_assignments:
+            assignments: list[dict[str, t.Any]] = []
+            default_host_id = host_id_by_alias.get(default_alias)
+
+            for alias in host_aliases:
+                host_id = host_id_by_alias.get(alias)
+                if host_id:
+                    assignments.append({
+                        'host_id': host_id,
+                        'is_default': host_id == default_host_id,
+                        'assigned_at': datetime(2024, 1, 1, tzinfo=UTC),
+                        'assigned_by': 'system-seed',
+                    })
+
+            state.user_hosts[user_id] = assignments
 
 
 # =============================================================================
@@ -756,6 +805,7 @@ def seed_dev_scenario(
     # Always seed base data (users, hosts, settings)
     users = seed_dev_users(state)
     seed_dev_hosts(state)
+    seed_user_host_assignments(state)  # Link users to their allowed hosts
     seed_dev_settings(state)
     
     # Always seed orphan databases for admin maintenance testing
