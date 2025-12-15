@@ -351,7 +351,7 @@ def seed_dev_settings(state: SimulationState) -> None:
         "max_active_jobs_global": "0",  # 0 = unlimited
         "max_active_jobs_per_user": "5",
         "s3_bucket_path": "s3://pulldb-backups/production",
-        "work_dir": "/var/lib/pulldb/work",
+        "work_directory": "/var/lib/pulldb/work",
     }
 
     with state.lock:

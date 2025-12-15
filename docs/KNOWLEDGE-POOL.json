@@ -54,7 +54,7 @@
     "install_root": "/opt/pulldb.service",
     "venv": "/opt/pulldb.service/venv",
     "logs": "/opt/pulldb.service/logs",
-    "work_dir": "/opt/pulldb.service/work",
+    "work_directory": "/opt/pulldb.service/work",
     "systemd_api": "/etc/systemd/system/pulldb-api.service",
     "systemd_worker": "/etc/systemd/system/pulldb-worker.service"
   },

@@ -156,7 +156,7 @@ WantedBy=multi-user.target
 ```yaml
 worker:
   poll_interval: 10        # Seconds between polling
-  work_dir: /opt/pulldb.service/work
+  work_directory: /opt/pulldb.service/work
   max_concurrent_jobs: 2   # Per-worker limit
 
 coordination_db:

@@ -32,9 +32,9 @@
         </div>
         <div class="info-content">
             <p><strong>Settings Priority:</strong> 
-                <span class="source-badge database">🗄️ Database</span> &gt;
-                <span class="source-badge environment">🌐 Environment</span> &gt;
-                <span class="source-badge default">⚙️ Default</span>
+                <span class="source-badge database">🗄️ DB</span> &gt;
+                <span class="source-badge environment">🌐 ENV</span> &gt;
+                <span class="source-badge default">⚙️ DEF</span>
             </p>
             <p class="info-subtext">Changes saved here are stored in the database and take effect immediately (highest priority).</p>
         </div>
@@ -42,15 +42,21 @@
 
     <!-- Search Filter -->
     <div class="search-bar">
-        <input type="text" id="settings-search" class="search-input" placeholder="Search settings...">
+        <div class="search-wrapper">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="settings-search" class="search-input" placeholder="Search settings by key or description...">
+        </div>
     </div>
 
     <!-- Category Accordions -->
     {% for category in category_order %}
     {% set cat_settings = categories.get(category, []) %}
     {% if cat_settings %}
-    <div class="card settings-category" data-category="{{ category }}">
-        <div class="card-header category-header" onclick="toggleCategory(this)">
+    <div class="settings-category" data-category="{{ category }}">
+        <div class="category-header" onclick="toggleCategory(this)">
             <h3 class="card-title">
                 {% if category == "Job Limits" %}
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -92,7 +98,7 @@
             </svg>
         </div>
         
-        <div class="card-body category-content">
+        <div class="category-content">
             <div class="settings-list">
                 {% for setting in cat_settings %}
                 <div class="setting-row" 
@@ -103,7 +109,10 @@
                         <div class="setting-key-row">
                             <code class="setting-key">{{ setting.setting_key }}</code>
                             {% if setting.dangerous %}
-                            <span class="danger-badge" title="Changing this setting could break the system">⚠️ Dangerous</span>
+                            <span class="danger-badge" title="Changing this setting could break the system">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                                Dangerous
+                            </span>
                             {% endif %}
                         </div>
                         <div class="setting-description">{{ setting.description }}</div>
@@ -118,11 +127,14 @@
                             <div class="value-display">
                                 <code class="setting-value {% if setting.setting_type == 'directory' or setting.setting_type == 'path' or setting.setting_type == 'executable' %}path-value{% endif %}">{{ setting.setting_value or '(not set)' }}</code>
                                 <span class="source-badge {{ setting.source }}" title="Source: {{ setting.source }}">
-                                    {% if setting.source == 'database' %}🗄️{% elif setting.source == 'environment' %}🌐{% else %}⚙️{% endif %}
+                                    {% if setting.source == 'database' %}🗄️ DB{% elif setting.source == 'environment' %}🌐 ENV{% else %}⚙️ DEF{% endif %}
                                 </span>
                             </div>
                             {% if setting.default and setting.setting_value != setting.default %}
-                            <div class="default-hint">Default: <code>{{ setting.default }}</code></div>
+                            <div class="default-hint">
+                                <span>Default:</span>
+                                <code>{{ setting.default }}</code>
+                            </div>
                             {% endif %}
                         </div>
                         
@@ -143,8 +155,8 @@
                                        placeholder="{{ setting.default or '' }}">
                                 {% endif %}
                                 <div class="edit-actions">
-                                    <button type="submit" class="btn btn-primary btn-xs">Save</button>
                                     <button type="button" class="btn btn-secondary btn-xs" onclick="cancelEdit('{{ setting.setting_key }}')">Cancel</button>
+                                    <button type="submit" class="btn btn-primary btn-xs">Save Changes</button>
                                 </div>
                                 <div class="validation-message" data-key="{{ setting.setting_key }}"></div>
                             </form>
@@ -159,6 +171,7 @@
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-xs">
                                 <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
                             </svg>
+                            Edit
                         </button>
                         {% if setting.source == 'database' %}
                         <button type="button" 
@@ -169,6 +182,7 @@
                                 <polyline points="1 4 1 10 7 10"/>
                                 <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
                             </svg>
+                            Reset
                         </button>
                         {% endif %}
                     </div>
@@ -182,8 +196,8 @@
 
     <!-- Settings Audit History -->
     {% if audit_logs %}
-    <div class="card">
-        <div class="card-header" onclick="toggleCategory(this)">
+    <div class="settings-category">
+        <div class="category-header" onclick="toggleCategory(this)">
             <h3 class="card-title">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -195,11 +209,16 @@
                 <polyline points="6 9 12 15 18 9"/>
             </svg>
         </div>
-        <div class="card-body category-content">
+        <div class="category-content">
             <div class="audit-list">
                 {% for log in audit_logs %}
                 <div class="audit-entry">
-                    <div class="audit-actor">{{ log.actor_username or 'Unknown' }}</div>
+                    <div class="audit-actor">
+                        <div style="width: 24px; height: 24px; background: var(--primary-100); color: var(--primary-700); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; margin-right: 8px;">
+                            {{ (log.actor_username or 'U')[0]|upper }}
+                        </div>
+                        {{ log.actor_username or 'Unknown' }}
+                    </div>
                     <div class="audit-action">
                         {% if log.action == 'setting_updated' %}
                         <span class="action-badge updated">Updated</span>
@@ -226,8 +245,8 @@
     {% endif %}
 
     <!-- CLI Reference -->
-    <div class="card collapsed">
-        <div class="card-header" onclick="toggleCategory(this)">
+    <div class="settings-category collapsed">
+        <div class="category-header" onclick="toggleCategory(this)">
             <h3 class="card-title">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="4 17 10 11 4 5"/>
@@ -239,7 +258,7 @@
                 <polyline points="6 9 12 15 18 9"/>
             </svg>
         </div>
-        <div class="card-body category-content" style="display: none;">
+        <div class="category-content" style="display: none;">
             <div class="cli-examples">
                 <div class="cli-example">
                     <h4>List all settings</h4>
@@ -302,7 +321,12 @@
 <div id="toast-container"></div>
 
 <style>
-/* Info Banner */
+/* =================================================================
+   Admin Settings Page Styles
+   Modernized for better readability and UX
+   ================================================================= */
+
+/* --- Info Banner --- */
 .info-banner {
     display: flex;
     gap: var(--space-4);
@@ -310,11 +334,13 @@
     background: var(--info-50);
     border: 1px solid var(--info-200);
     border-radius: var(--radius-md);
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--space-6);
+    align-items: flex-start;
 }
 
 .info-icon {
     flex-shrink: 0;
+    padding-top: 2px;
 }
 
 .info-icon svg {
@@ -326,32 +352,66 @@
 .info-content p {
     margin: 0;
     font-size: 0.875rem;
-    color: var(--info-700);
+    color: var(--info-800);
+    line-height: 1.5;
 }
 
 .info-subtext {
-    margin-top: var(--space-1) !important;
+    margin-top: var(--space-2) !important;
     font-size: 0.8125rem !important;
-    color: var(--gray-500) !important;
+    color: var(--info-700) !important;
 }
 
-/* Search Bar */
+/* --- Search Bar --- */
 .search-bar {
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--space-6);
+}
+
+.search-wrapper {
+    position: relative;
+    max-width: 480px;
+}
+
+.search-icon {
+    position: absolute;
+    left: var(--space-3);
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    color: var(--gray-400);
+    pointer-events: none;
 }
 
 .search-input {
     width: 100%;
-    max-width: 400px;
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-10);
     border: 1px solid var(--gray-300);
     border-radius: var(--radius-md);
     font-size: 0.875rem;
+    transition: all var(--transition-fast);
+    background: white;
 }
 
-/* Category Cards */
+.search-input:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+/* --- Category Cards --- */
 .settings-category {
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--space-6);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    background: white;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    transition: box-shadow var(--transition-base);
+}
+
+.settings-category:hover {
+    box-shadow: var(--shadow-md);
 }
 
 .category-header {
@@ -360,18 +420,38 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding: var(--space-4) var(--space-5);
+    background: white;
+    border-bottom: 1px solid var(--gray-100);
+    transition: background-color var(--transition-fast);
 }
 
 .category-header:hover {
     background: var(--gray-50);
 }
 
+.card-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--gray-900);
+    margin: 0;
+}
+
+.card-title svg {
+    width: 20px;
+    height: 20px;
+    color: var(--gray-500);
+}
+
 .category-count {
-    background: var(--gray-200);
+    background: var(--gray-100);
     color: var(--gray-600);
     font-size: 0.75rem;
-    font-weight: 500;
-    padding: 0.125rem 0.5rem;
+    font-weight: 600;
+    padding: 2px 8px;
     border-radius: var(--radius-full);
     margin-left: var(--space-2);
 }
@@ -380,33 +460,39 @@
     width: 20px;
     height: 20px;
     color: var(--gray-400);
-    transition: transform 0.2s;
+    transition: transform var(--transition-base);
 }
 
 .collapsed .chevron-icon {
     transform: rotate(-90deg);
 }
 
+.collapsed .category-header {
+    border-bottom: none;
+}
+
 .category-content {
     padding: 0 !important;
+    background: white;
 }
 
 .collapsed .category-content {
     display: none;
 }
 
-/* Settings List */
+/* --- Settings List --- */
 .settings-list {
-    border-top: 1px solid var(--gray-200);
+    /* No border top needed as header has border bottom */
 }
 
 .setting-row {
     display: grid;
-    grid-template-columns: 1fr 1.2fr auto;
-    gap: var(--space-4);
-    padding: var(--space-4);
+    grid-template-columns: 280px 1fr auto;
+    gap: var(--space-6);
+    padding: var(--space-4) var(--space-5);
     border-bottom: 1px solid var(--gray-100);
     align-items: start;
+    transition: background-color var(--transition-fast);
 }
 
 .setting-row:last-child {
@@ -421,7 +507,13 @@
     display: none;
 }
 
-/* Setting Info */
+/* Setting Info Column */
+.setting-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
 .setting-key-row {
     display: flex;
     align-items: center;
@@ -431,118 +523,153 @@
 
 .setting-key {
     font-family: var(--font-mono);
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 600;
-    color: var(--gray-900);
+    color: var(--gray-700);
     background: var(--gray-100);
-    padding: 0.125rem 0.375rem;
+    padding: 2px 6px;
     border-radius: var(--radius-sm);
+    border: 1px solid var(--gray-200);
 }
 
 .danger-badge {
     font-size: 0.6875rem;
-    color: var(--danger-600);
+    color: var(--danger-700);
     background: var(--danger-50);
-    padding: 0.125rem 0.375rem;
+    padding: 2px 6px;
     border-radius: var(--radius-sm);
-    font-weight: 500;
+    font-weight: 600;
+    border: 1px solid var(--danger-200);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .setting-description {
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
     color: var(--gray-600);
+    line-height: 1.4;
     margin-top: var(--space-1);
 }
 
 .setting-meta {
-    margin-top: var(--space-1);
+    margin-top: var(--space-2);
 }
 
 .env-var {
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     color: var(--gray-400);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
-/* Setting Value */
+.env-var::before {
+    content: "ENV:";
+    font-weight: 600;
+    color: var(--gray-500);
+}
+
+/* Setting Value Column */
 .setting-value-col {
     min-width: 0;
+    padding-top: 2px; /* Align with key */
 }
 
 .value-display {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-3);
     flex-wrap: wrap;
 }
 
 .setting-value {
     font-family: var(--font-mono);
-    font-size: 0.8125rem;
-    background: var(--gray-100);
-    padding: 0.25rem 0.5rem;
-    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    color: var(--gray-900);
+    background: white;
+    padding: 0;
     word-break: break-all;
     max-width: 100%;
 }
 
 .setting-value.path-value {
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--gray-700);
 }
 
 .default-hint {
-    font-size: 0.6875rem;
-    color: var(--gray-400);
-    margin-top: var(--space-1);
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    margin-top: var(--space-2);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
 }
 
 .default-hint code {
+    font-family: var(--font-mono);
     background: var(--gray-100);
-    padding: 0.125rem 0.25rem;
+    padding: 1px 4px;
     border-radius: var(--radius-sm);
+    color: var(--gray-600);
 }
 
 /* Source Badges */
 .source-badge {
     font-size: 0.6875rem;
-    padding: 0.125rem 0.375rem;
+    padding: 2px 6px;
     border-radius: var(--radius-sm);
     white-space: nowrap;
+    font-weight: 500;
+    border: 1px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .source-badge.database {
-    background: var(--primary-100);
+    background: var(--primary-50);
     color: var(--primary-700);
+    border-color: var(--primary-200);
 }
 
 .source-badge.environment {
-    background: var(--warning-100);
+    background: var(--warning-50);
     color: var(--warning-700);
+    border-color: var(--warning-200);
 }
 
 .source-badge.default {
-    background: var(--gray-100);
+    background: var(--gray-50);
     color: var(--gray-600);
+    border-color: var(--gray-200);
 }
 
 /* Edit Form */
 .setting-edit {
     width: 100%;
+    background: var(--gray-50);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--gray-200);
 }
 
 .edit-form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-3);
 }
 
 .edit-input {
     width: 100%;
     padding: var(--space-2);
-    border: 1px solid var(--primary-300);
+    border: 1px solid var(--gray-300);
     border-radius: var(--radius-md);
     font-family: var(--font-mono);
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
+    background: white;
 }
 
 .edit-input:focus {
@@ -554,15 +681,20 @@
 .edit-actions {
     display: flex;
     gap: var(--space-2);
+    justify-content: flex-end;
 }
 
 .validation-message {
     font-size: 0.75rem;
     min-height: 1.25rem;
+    margin-top: var(--space-1);
 }
 
 .validation-message.error {
     color: var(--danger-600);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
 }
 
 .validation-message.warning {
@@ -571,23 +703,32 @@
 
 .validation-message.can-create {
     color: var(--info-600);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
 }
 
 /* Setting Actions */
 .setting-actions {
     display: flex;
-    gap: var(--space-1);
+    gap: var(--space-2);
     opacity: 0;
-    transition: opacity 0.15s;
+    transition: opacity 0.2s;
 }
 
-.setting-row:hover .setting-actions {
+.setting-row:hover .setting-actions,
+.setting-row:focus-within .setting-actions {
     opacity: 1;
 }
 
 .btn-xs {
     padding: 0.25rem 0.5rem;
     font-size: 0.75rem;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .icon-xs {
@@ -595,18 +736,18 @@
     height: 14px;
 }
 
-/* Audit List */
+/* --- Audit List --- */
 .audit-list {
-    border-top: 1px solid var(--gray-200);
+    /* No border top needed */
 }
 
 .audit-entry {
     display: grid;
-    grid-template-columns: 120px auto 1fr 140px;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
+    grid-template-columns: 140px auto 1fr 140px;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-5);
     border-bottom: 1px solid var(--gray-100);
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
     align-items: center;
 }
 
@@ -615,8 +756,11 @@
 }
 
 .audit-actor {
-    font-weight: 500;
+    font-weight: 600;
     color: var(--gray-700);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
 }
 
 .audit-action {
@@ -627,23 +771,26 @@
 
 .action-badge {
     font-size: 0.6875rem;
-    padding: 0.125rem 0.375rem;
+    padding: 2px 6px;
     border-radius: var(--radius-sm);
-    font-weight: 500;
+    font-weight: 600;
+    text-transform: uppercase;
 }
 
 .action-badge.updated {
-    background: var(--primary-100);
+    background: var(--primary-50);
     color: var(--primary-700);
+    border: 1px solid var(--primary-200);
 }
 
 .action-badge.reset {
-    background: var(--warning-100);
+    background: var(--warning-50);
     color: var(--warning-700);
+    border: 1px solid var(--warning-200);
 }
 
 .audit-detail {
-    color: var(--gray-500);
+    color: var(--gray-600);
     font-family: var(--font-mono);
     font-size: 0.75rem;
     overflow: hidden;
@@ -652,12 +799,12 @@
 }
 
 .audit-time {
-    color: var(--gray-400);
+    color: var(--gray-500);
     font-size: 0.75rem;
     text-align: right;
 }
 
-/* Modal */
+/* --- Modal --- */
 .modal {
     position: fixed;
     top: 0;
@@ -668,6 +815,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    backdrop-filter: blur(2px);
 }
 
 .modal-backdrop {
@@ -676,88 +824,108 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.4);
+    animation: fadeIn 0.2s;
 }
 
 .modal-content {
     position: relative;
     background: white;
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
     width: 100%;
-    max-width: 400px;
+    max-width: 480px;
     margin: var(--space-4);
+    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
 }
 
 .modal-header {
-    padding: var(--space-4);
-    border-bottom: 1px solid var(--gray-200);
+    padding: var(--space-5);
+    border-bottom: 1px solid var(--gray-100);
+    background: var(--gray-25);
 }
 
 .modal-header h3 {
     margin: 0;
-    font-size: 1rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--gray-900);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
 }
 
 .modal-body {
-    padding: var(--space-4);
+    padding: var(--space-6);
 }
 
 .modal-body p {
-    margin: 0 0 var(--space-2);
-    font-size: 0.875rem;
+    margin: 0 0 var(--space-4);
+    font-size: 0.9375rem;
     color: var(--gray-600);
+    line-height: 1.5;
 }
 
 .modal-detail, .modal-path {
     font-family: var(--font-mono);
     font-size: 0.8125rem;
-    background: var(--gray-100);
-    padding: var(--space-2);
-    border-radius: var(--radius-sm);
+    background: var(--gray-50);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--gray-200);
     word-break: break-all;
+    color: var(--gray-800);
 }
 
 .modal-footer {
-    padding: var(--space-4);
-    border-top: 1px solid var(--gray-200);
+    padding: var(--space-4) var(--space-6);
+    border-top: 1px solid var(--gray-100);
+    background: var(--gray-25);
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-2);
+    gap: var(--space-3);
 }
 
-/* CLI Examples */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* --- CLI Examples --- */
 .cli-examples {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: var(--space-4);
-    padding: var(--space-4);
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--space-6);
+    padding: var(--space-6);
 }
 
 .cli-example h4 {
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--gray-500);
     text-transform: uppercase;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.05em;
     margin-bottom: var(--space-2);
 }
 
 .cli-example pre {
-    background: var(--gray-800);
+    background: var(--gray-900);
     color: var(--gray-100);
-    padding: var(--space-3);
+    padding: var(--space-4);
     border-radius: var(--radius-md);
     font-size: 0.8125rem;
     margin: 0;
     overflow-x: auto;
+    border: 1px solid var(--gray-800);
 }
 
-.cli-example code {
-    font-family: var(--font-mono);
-}
-
-/* Toast */
+/* --- Toast --- */
 #toast-container {
     position: fixed;
     bottom: var(--space-6);
@@ -765,7 +933,7 @@
     z-index: 1001;
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-3);
 }
 
 .toast {
@@ -773,50 +941,48 @@
     border-radius: var(--radius-md);
     padding: var(--space-3) var(--space-4);
     box-shadow: var(--shadow-lg);
-    animation: slideIn 0.3s;
+    animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    min-width: 280px;
+    min-width: 300px;
+    border: 1px solid var(--gray-100);
 }
 
-.toast-success {
-    border-left: 4px solid var(--success-500);
-}
-
-.toast-error {
-    border-left: 4px solid var(--danger-500);
-}
-
-.toast-info {
-    border-left: 4px solid var(--primary-500);
-}
+.toast-success { border-left: 4px solid var(--success-500); }
+.toast-error { border-left: 4px solid var(--danger-500); }
+.toast-info { border-left: 4px solid var(--primary-500); }
 
 @keyframes slideIn {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
 }
 
-/* Responsive */
+/* --- Responsive --- */
 @media (max-width: 768px) {
     .setting-row {
         grid-template-columns: 1fr;
-        gap: var(--space-2);
+        gap: var(--space-3);
+    }
+    
+    .setting-value-col {
+        padding-left: 0;
     }
     
     .setting-actions {
         opacity: 1;
+        margin-top: var(--space-2);
     }
     
     .audit-entry {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
         gap: var(--space-2);
+        padding: var(--space-4);
+    }
+    
+    .audit-time {
+        text-align: left;
+        font-size: 0.6875rem;
     }
 }
 </style>
@@ -824,8 +990,16 @@
 <script>
 // Category toggle
 function toggleCategory(header) {
-    const card = header.closest('.card');
+    const card = header.closest('.settings-category');
     card.classList.toggle('collapsed');
+    
+    // Handle display toggle for animation
+    const content = card.querySelector('.category-content');
+    if (card.classList.contains('collapsed')) {
+        content.style.display = 'none';
+    } else {
+        content.style.display = 'block';
+    }
 }
 
 // Search filter
@@ -841,7 +1015,10 @@ document.getElementById('settings-search').addEventListener('input', function() 
     // Show/hide empty categories
     document.querySelectorAll('.settings-category').forEach(cat => {
         const visibleRows = cat.querySelectorAll('.setting-row:not(.hidden)').length;
-        cat.style.display = visibleRows > 0 ? '' : 'none';
+        // Don't hide CLI reference or Audit logs if they don't have setting-rows
+        if (cat.querySelector('.setting-row')) {
+            cat.style.display = visibleRows > 0 ? '' : 'none';
+        }
     });
 });
 

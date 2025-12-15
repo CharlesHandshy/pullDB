@@ -360,7 +360,7 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 
 -- Default working directory for downloads and extractions
 INSERT INTO settings (setting_key, setting_value) VALUES
-    ('work_dir', '/var/lib/pulldb/work/');
+    ('work_directory', '/var/lib/pulldb/work/');
 
 -- Concurrency limits (Phase 2 - v0.0.4)
 -- 0 = unlimited (default), any positive integer enforces the limit

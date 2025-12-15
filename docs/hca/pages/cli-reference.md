@@ -299,7 +299,7 @@ pulldb-admin settings push              # Sync: .env → database
 | `myloader_binary` | string | `/opt/pulldb.service/bin/myloader-0.19.3-3` | Path to myloader |
 | `myloader_threads` | int | `8` | Parallel restore threads |
 | `myloader_timeout_seconds` | int | `7200` | Max execution time |
-| `work_dir` | string | `/opt/pulldb.service/work` | Working directory |
+| `work_directory` | string | `/opt/pulldb.service/work` | Working directory |
 | `max_active_jobs_per_user` | int | `0` | Per-user limit (0=unlimited) |
 | `max_active_jobs_global` | int | `0` | System limit (0=unlimited) |
 
