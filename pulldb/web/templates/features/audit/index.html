@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+{% from 'partials/icons/_index.html' import icon %}
+
+{% block title %}Audit Logs - Admin - pullDB{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
+<style>
+/* Page Layout */
+.audit-page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: var(--space-6);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+/* Card fills remaining space */
+.audit-page .card {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Table container fills the card */
+.audit-page #audit-table-container {
+    flex: 1;
+    min-height: 0;
+}
+
+/* Page Header */
+.page-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-4);
+    gap: var(--space-4);
+}
+
+.page-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.back-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    color: var(--gray-500);
+    transition: all var(--transition-fast);
+}
+
+.back-btn:hover {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.page-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+/* Stats row */
+.stats-row {
+    display: flex;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    flex-wrap: wrap;
+}
+
+.stat-pill {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius-full);
+    font-size: 0.8125rem;
+}
+
+.stat-value {
+    font-weight: 600;
+    color: var(--gray-800);
+}
+
+.stat-label {
+    color: var(--gray-500);
+}
+
+/* Filter row */
+.filter-row {
+    display: flex;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.filter-label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--gray-600);
+}
+
+.filter-select {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    background: var(--white);
+    min-width: 160px;
+}
+
+.filter-select:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+.clear-filters-btn {
+    padding: var(--space-2) var(--space-3);
+    font-size: 0.8125rem;
+    color: var(--gray-600);
+    background: transparent;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.clear-filters-btn:hover {
+    background: var(--gray-100);
+    color: var(--gray-800);
+}
+
+/* Action badge colors */
+.action-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: lowercase;
+}
+
+.action-badge.create {
+    background: var(--success-50);
+    color: var(--success-700);
+}
+
+.action-badge.update,
+.action-badge.setting {
+    background: var(--info-50);
+    color: var(--info-700);
+}
+
+.action-badge.delete,
+.action-badge.cancel {
+    background: var(--danger-50);
+    color: var(--danger-700);
+}
+
+.action-badge.submit,
+.action-badge.password {
+    background: var(--warning-50);
+    color: var(--warning-700);
+}
+
+/* Detail cell */
+.detail-cell {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.detail-cell:hover {
+    white-space: normal;
+    overflow: visible;
+    position: relative;
+    z-index: 10;
+    background: var(--white);
+    box-shadow: var(--shadow-md);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+}
+
+/* Username link */
+.user-link {
+    color: var(--primary-600);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.user-link:hover {
+    text-decoration: underline;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="audit-page">
+    <!-- Header -->
+    <div class="page-header-row">
+        <div class="page-header-left">
+            <a href="/web/admin" class="back-btn" aria-label="Back to Admin">
+                {{ icon('chevron-left', size='20') }}
+            </a>
+            <h1 class="page-title">Audit Logs</h1>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+        <div class="stat-pill">
+            <span class="stat-value" id="stat-total">{{ total_count }}</span>
+            <span class="stat-label">total records</span>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-row">
+        <div class="filter-group">
+            <label class="filter-label" for="filter-actor">Actor:</label>
+            <select id="filter-actor" class="filter-select" onchange="applyFilters()">
+                <option value="">All actors</option>
+                {% for u in users_list %}
+                <option value="{{ u.user_id }}" {% if filter_actor_id == u.user_id %}selected{% endif %}>{{ u.username }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="filter-group">
+            <label class="filter-label" for="filter-target">Target:</label>
+            <select id="filter-target" class="filter-select" onchange="applyFilters()">
+                <option value="">All targets</option>
+                {% for u in users_list %}
+                <option value="{{ u.user_id }}" {% if filter_target_id == u.user_id %}selected{% endif %}>{{ u.username }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="filter-group">
+            <label class="filter-label" for="filter-action">Action:</label>
+            <select id="filter-action" class="filter-select" onchange="applyFilters()">
+                <option value="">All actions</option>
+                {% for action in action_types %}
+                <option value="{{ action }}">{{ action }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <button type="button" class="clear-filters-btn" onclick="clearFilters()">
+            {{ icon('x', size='14') }}
+            Clear filters
+        </button>
+    </div>
+
+    <!-- LazyTable Container -->
+    <div class="card">
+        <div id="audit-table-container"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=3"></script>
+<script>
+(function() {
+    // Current filters from URL
+    let currentActorId = '{{ filter_actor_id or "" }}';
+    let currentTargetId = '{{ filter_target_id or "" }}';
+    let currentAction = '';
+    
+    // Format timestamp for display
+    const formatTime = (val) => {
+        if (!val) return '-';
+        const d = new Date(val);
+        const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+        return `<span style="white-space: nowrap;">${date} ${time}</span>`;
+    };
+    
+    // Render actor username with link to filter
+    const renderActor = (val, row) => {
+        if (!val || val === '(unknown)') return '<span style="color: var(--gray-400);">-</span>';
+        return `<a href="/web/admin/audit?actor_id=${row.actor_user_id}" class="user-link">${val}</a>`;
+    };
+    
+    // Render target username with link to filter
+    const renderTarget = (val, row) => {
+        if (!val || val === '-') return '<span style="color: var(--gray-400);">-</span>';
+        return `<a href="/web/admin/audit?target_id=${row.target_user_id}" class="user-link">${val}</a>`;
+    };
+    
+    // Render action with badge color
+    const renderAction = (val) => {
+        if (!val) return '-';
+        
+        // Determine badge class based on action prefix
+        let badgeClass = '';
+        if (val.includes('create') || val.includes('add')) badgeClass = 'create';
+        else if (val.includes('update') || val.includes('change')) badgeClass = 'update';
+        else if (val.includes('delete') || val.includes('remove')) badgeClass = 'delete';
+        else if (val.includes('cancel')) badgeClass = 'cancel';
+        else if (val.includes('submit')) badgeClass = 'submit';
+        else if (val.includes('password') || val.includes('reset')) badgeClass = 'password';
+        else if (val.includes('setting')) badgeClass = 'setting';
+        
+        return `<span class="action-badge ${badgeClass}">${val}</span>`;
+    };
+    
+    // Render detail with truncation
+    const renderDetail = (val) => {
+        if (!val || val === '-') return '<span style="color: var(--gray-400);">-</span>';
+        return `<span class="detail-cell" title="${val}">${val}</span>`;
+    };
+    
+    // Column definitions
+    const columns = [
+        { 
+            key: 'created_at', 
+            label: 'Time', 
+            sortable: true,
+            width: '140px',
+            render: formatTime
+        },
+        { 
+            key: 'actor_username', 
+            label: 'Actor', 
+            sortable: true,
+            filterable: true,
+            width: '140px',
+            render: renderActor
+        },
+        { 
+            key: 'action', 
+            label: 'Action', 
+            sortable: true,
+            filterable: true,
+            width: '180px',
+            render: renderAction
+        },
+        { 
+            key: 'target_username', 
+            label: 'Target', 
+            sortable: true,
+            filterable: true,
+            width: '140px',
+            render: renderTarget
+        },
+        { 
+            key: 'detail', 
+            label: 'Detail', 
+            sortable: false,
+            filterable: true,
+            render: renderDetail
+        }
+    ];
+    
+    // Build fetch URL with current filters
+    function buildFetchUrl() {
+        let url = '/web/admin/audit/api/logs';
+        const params = new URLSearchParams();
+        
+        if (currentActorId) params.append('actor_id', currentActorId);
+        if (currentTargetId) params.append('target_id', currentTargetId);
+        if (currentAction) params.append('action', currentAction);
+        
+        const queryString = params.toString();
+        return queryString ? `${url}?${queryString}` : url;
+    }
+    
+    // Update stats from response
+    function updateStats(data) {
+        if (data.total !== undefined) {
+            document.getElementById('stat-total').textContent = data.total;
+        }
+    }
+    
+    // Initialize LazyTable
+    let table = new LazyTable({
+        container: document.getElementById('audit-table-container'),
+        columns: columns,
+        fetchUrl: buildFetchUrl(),
+        rowHeight: 44,
+        rowIdKey: 'audit_id',
+        emptyMessage: 'No audit logs found',
+        onDataLoaded: updateStats
+    });
+    
+    // Apply filters function
+    window.applyFilters = function() {
+        currentActorId = document.getElementById('filter-actor').value;
+        currentTargetId = document.getElementById('filter-target').value;
+        currentAction = document.getElementById('filter-action').value;
+        
+        // Update URL without reload (for bookmarking)
+        const params = new URLSearchParams();
+        if (currentActorId) params.append('actor_id', currentActorId);
+        if (currentTargetId) params.append('target_id', currentTargetId);
+        if (currentAction) params.append('action', currentAction);
+        
+        const newUrl = params.toString() 
+            ? `${window.location.pathname}?${params.toString()}`
+            : window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+        
+        // Re-initialize table with new URL
+        table.destroy();
+        table = new LazyTable({
+            container: document.getElementById('audit-table-container'),
+            columns: columns,
+            fetchUrl: buildFetchUrl(),
+            rowHeight: 44,
+            rowIdKey: 'audit_id',
+            emptyMessage: 'No audit logs found',
+            onDataLoaded: updateStats
+        });
+    };
+    
+    // Clear all filters
+    window.clearFilters = function() {
+        document.getElementById('filter-actor').value = '';
+        document.getElementById('filter-target').value = '';
+        document.getElementById('filter-action').value = '';
+        applyFilters();
+    };
+})();
+</script>
+{% endblock %}

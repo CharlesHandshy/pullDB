@@ -5,14 +5,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from pulldb.domain.models import JobStatus, User, UserRole
-from pulldb.web.dependencies import get_api_state, require_login
+from pulldb.web.dependencies import get_api_state, require_login, templates
 
 
 router = APIRouter(prefix="/web/jobs", tags=["web-jobs"])
-templates = Jinja2Templates(directory="pulldb/web/templates")
 
 
 @router.get("/", response_class=HTMLResponse)

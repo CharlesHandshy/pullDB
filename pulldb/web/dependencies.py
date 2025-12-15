@@ -124,11 +124,29 @@ def _get_logo_config() -> dict:
     return default_config
 
 
+def _get_admin_dark_mode() -> bool:
+    """Get the admin-configured dark mode default setting.
+    
+    Returns True if dark mode is enabled by admin, False otherwise.
+    Called by Jinja2 templates to set data-admin-theme-default attribute.
+    """
+    try:
+        from pulldb.api.main import get_api_state as _get_api_state
+        state = _get_api_state()
+        if state and hasattr(state, "settings_repo") and state.settings_repo:
+            dark_mode_str = state.settings_repo.get("dark_mode_enabled") or "false"
+            return dark_mode_str.lower() in ("true", "1", "yes")
+    except Exception:
+        pass
+    return False
+
+
 # Add simulation mode globals to Jinja2 environment
 # These are evaluated at template render time via callable
 templates.env.globals["simulation_mode"] = is_simulation_mode
 templates.env.globals["simulation_scenario_name"] = _get_active_scenario_name
 templates.env.globals["get_logo_config"] = _get_logo_config
+templates.env.globals["admin_dark_mode"] = _get_admin_dark_mode
 # Explicitly disable dev toolbar in production (defense in depth)
 templates.env.globals["dev_mode"] = False
 

@@ -1,0 +1,111 @@
+{# =================================================================
+   Pages Layer Icons - Entry Points/Navigation
+   HCA Layer: pages
+   
+   Icons: dashboard, home, login, logout, sun, moon, external-link,
+          sidebar, panel-left, panel-right, layout-grid, list,
+          activity, bar-chart, pie-chart, trending-up, trending-down
+   ================================================================= #}
+
+{% macro icon_pages(name, size='20', class='', stroke_width='1.5') %}
+{%- if name == 'dashboard' or name == 'layout-dashboard' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="dashboard">
+    <rect width="7" height="9" x="3" y="3" rx="1"/>
+    <rect width="7" height="5" x="14" y="3" rx="1"/>
+    <rect width="7" height="9" x="14" y="12" rx="1"/>
+    <rect width="7" height="5" x="3" y="16" rx="1"/>
+</svg>
+{%- elif name == 'home' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="home">
+    <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+    <polyline points="9 22 9 12 15 12 15 22"/>
+</svg>
+{%- elif name == 'login' or name == 'log-in' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="login">
+    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+    <polyline points="10 17 15 12 10 7"/>
+    <line x1="15" x2="3" y1="12" y2="12"/>
+</svg>
+{%- elif name == 'logout' or name == 'log-out' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="logout">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+    <polyline points="16 17 21 12 16 7"/>
+    <line x1="21" x2="9" y1="12" y2="12"/>
+</svg>
+{%- elif name == 'sun' or name == 'light-mode' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="sun">
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M12 2v2"/>
+    <path d="M12 20v2"/>
+    <path d="m4.93 4.93 1.41 1.41"/>
+    <path d="m17.66 17.66 1.41 1.41"/>
+    <path d="M2 12h2"/>
+    <path d="M20 12h2"/>
+    <path d="m6.34 17.66-1.41 1.41"/>
+    <path d="m19.07 4.93-1.41 1.41"/>
+</svg>
+{%- elif name == 'moon' or name == 'dark-mode' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="moon">
+    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+</svg>
+{%- elif name == 'external-link' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="external-link">
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+    <polyline points="15 3 21 3 21 9"/>
+    <line x1="10" x2="21" y1="14" y2="3"/>
+</svg>
+{%- elif name == 'sidebar' or name == 'panel-left' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="sidebar">
+    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+    <line x1="9" x2="9" y1="3" y2="21"/>
+</svg>
+{%- elif name == 'panel-right' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="panel-right">
+    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+    <line x1="15" x2="15" y1="3" y2="21"/>
+</svg>
+{%- elif name == 'layout-grid' or name == 'grid' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="layout-grid">
+    <rect width="7" height="7" x="3" y="3" rx="1"/>
+    <rect width="7" height="7" x="14" y="3" rx="1"/>
+    <rect width="7" height="7" x="14" y="14" rx="1"/>
+    <rect width="7" height="7" x="3" y="14" rx="1"/>
+</svg>
+{%- elif name == 'list' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="list">
+    <line x1="8" x2="21" y1="6" y2="6"/>
+    <line x1="8" x2="21" y1="12" y2="12"/>
+    <line x1="8" x2="21" y1="18" y2="18"/>
+    <line x1="3" x2="3.01" y1="6" y2="6"/>
+    <line x1="3" x2="3.01" y1="12" y2="12"/>
+    <line x1="3" x2="3.01" y1="18" y2="18"/>
+</svg>
+{%- elif name == 'activity' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="activity">
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+</svg>
+{%- elif name == 'bar-chart' or name == 'chart-bar' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="bar-chart">
+    <line x1="12" x2="12" y1="20" y2="10"/>
+    <line x1="18" x2="18" y1="20" y2="4"/>
+    <line x1="6" x2="6" y1="20" y2="16"/>
+</svg>
+{%- elif name == 'pie-chart' or name == 'chart-pie' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="pie-chart">
+    <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>
+    <path d="M22 12A10 10 0 0 0 12 2v10z"/>
+</svg>
+{%- elif name == 'trending-up' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="trending-up">
+    <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+    <polyline points="16 7 22 7 22 13"/>
+</svg>
+{%- elif name == 'trending-down' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="trending-down">
+    <polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/>
+    <polyline points="16 17 22 17 22 11"/>
+</svg>
+{%- else -%}
+{# Return empty string if icon not found in this layer #}
+{%- endif -%}
+{% endmacro %}

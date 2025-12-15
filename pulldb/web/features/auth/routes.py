@@ -4,13 +4,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from pulldb.domain.models import User
-from pulldb.web.dependencies import get_api_state, get_session_user
+from pulldb.web.dependencies import get_api_state, get_session_user, templates
 
 router = APIRouter(prefix="/web", tags=["web-auth"])
-templates = Jinja2Templates(directory="pulldb/web/templates")
 
 
 @router.get("/login", response_class=HTMLResponse)

@@ -36,6 +36,7 @@ class SettingCategory(str, Enum):
     MYLOADER = "Myloader Configuration"
     S3_BACKUP = "S3 & Backup"
     CLEANUP = "Cleanup & Retention"
+    APPEARANCE = "Appearance"
 
 
 @dataclass(frozen=True)
@@ -208,6 +209,38 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         category=SettingCategory.CLEANUP,
         dangerous=False,
         validators=["is_non_negative_integer"],
+    ),
+    # -------------------------------------------------------------------------
+    # Appearance
+    # -------------------------------------------------------------------------
+    "primary_color_hue": SettingMeta(
+        key="primary_color_hue",
+        env_var="PULLDB_PRIMARY_COLOR_HUE",
+        default="217",
+        description="Primary brand color hue (0-360 HSL)",
+        setting_type=SettingType.INTEGER,
+        category=SettingCategory.APPEARANCE,
+        dangerous=False,
+        validators=["is_non_negative_integer"],
+    ),
+    "accent_color_hue": SettingMeta(
+        key="accent_color_hue",
+        env_var="PULLDB_ACCENT_COLOR_HUE",
+        default="142",
+        description="Accent/success color hue (0-360 HSL)",
+        setting_type=SettingType.INTEGER,
+        category=SettingCategory.APPEARANCE,
+        dangerous=False,
+        validators=["is_non_negative_integer"],
+    ),
+    "dark_mode_enabled": SettingMeta(
+        key="dark_mode_enabled",
+        env_var="PULLDB_DARK_MODE_ENABLED",
+        default="false",
+        description="Enable dark mode by default",
+        setting_type=SettingType.BOOLEAN,
+        category=SettingCategory.APPEARANCE,
+        dangerous=False,
     ),
 }
 

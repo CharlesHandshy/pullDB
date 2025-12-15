@@ -5,80 +5,12 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
 <style>
-.exclude-btn {
-    width: 24px;
-    height: 24px;
-    border: none;
-    background: var(--gray-100);
-    border-radius: 4px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--gray-500);
-    font-size: 14px;
-    font-weight: bold;
-    line-height: 1;
-    transition: all 0.15s ease;
-}
-.exclude-btn:hover {
-    background: var(--danger-100);
-    color: var(--danger-600);
-}
-.exclude-btn.excluded {
-    background: var(--danger-100);
-    color: var(--danger-600);
-}
-.excluded-row .db-name-cell {
-    color: var(--danger-600) !important;
-    text-decoration: line-through;
-}
-.excluded-row {
-    opacity: 0.6;
-}
-.warning-box {
-    background: var(--danger-50);
-    border: 1px solid var(--danger-200);
-    border-radius: var(--radius-md);
-    padding: var(--space-4);
-    margin-bottom: var(--space-4);
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-3);
-}
-.warning-box svg {
-    flex-shrink: 0;
-    color: var(--danger-600);
-}
 .db-name {
     font-family: var(--font-mono);
     font-size: 0.85em;
     background: var(--gray-100);
     padding: 0.1em 0.4em;
     border-radius: 3px;
-}
-.reset-exclusions-btn {
-    display: inline-flex;
-    visibility: hidden;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border: 1px solid var(--gray-300);
-    background: var(--gray-50);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    align-items: center;
-    justify-content: center;
-    color: var(--gray-500);
-    transition: all 0.15s ease;
-}
-.reset-exclusions-btn:hover {
-    background: var(--gray-100);
-    color: var(--gray-700);
-    border-color: var(--gray-400);
-}
-.reset-exclusions-btn.visible {
-    visibility: visible;
 }
 </style>
 {% endblock %}
@@ -94,8 +26,8 @@
         <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
     </svg>
     <div>
-        <div style="font-weight: 600; color: var(--danger-700); margin-bottom: 0.25rem;">Destructive Operation</div>
-        <div style="color: var(--danger-600); font-size: 0.875rem;">
+        <div class="warning-box-title">Destructive Operation</div>
+        <div class="warning-box-text">
             This will permanently DROP staging databases from MySQL servers. Dropped databases cannot be recovered.
             Click the X button on any row to exclude it from deletion.
         </div>

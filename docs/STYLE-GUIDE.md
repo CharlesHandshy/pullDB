@@ -1,8 +1,8 @@
 # pullDB Web UI Style Guide
 
-> **Version**: 1.0.0  
-> **Last Updated**: December 4, 2025  
-> **Status**: Draft - Pending Review
+> **Version**: 1.1.0  
+> **Last Updated**: December 15, 2025  
+> **Status**: Stable
 
 This document establishes the design system and style standards for the pullDB web interface. It serves as the single source of truth for UI consistency.
 
@@ -16,8 +16,10 @@ This document establishes the design system and style standards for the pullDB w
 4. [Spacing & Layout](#spacing--layout)
 5. [Components](#components)
 6. [Patterns](#patterns)
-7. [Accessibility](#accessibility)
-8. [Implementation Status](#implementation-status)
+7. [Icon System](#icon-system)
+8. [Dark Mode](#dark-mode)
+9. [Accessibility](#accessibility)
+10. [Implementation Status](#implementation-status)
 
 ---
 
@@ -149,14 +151,15 @@ Based on [Laws of UX](https://lawsofux.com/) and [Nielsen's Heuristics](https://
 
 **Usage:** Failed jobs, errors, destructive actions
 
-#### Info (Blue - alias of primary)
+#### Info (Cyan)
 ```css
---info-50:  var(--primary-50);
---info-100: var(--primary-100);
---info-500: var(--primary-500);
+--info-50:  #ecfeff;
+--info-100: #cffafe;
+--info-500: #06b6d4;
+--info-600: #0891b2;
 ```
 
-**Usage:** Informational callouts, help text
+**Usage:** Informational callouts, help text, neutral highlights
 
 ### Neutral Grays
 
@@ -636,19 +639,17 @@ Based on 4px increments:
 #### Role Badge
 ```css
 .role-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.125rem 0.375rem;
+    display: inline-block;
+    padding: 2px 8px;
     border-radius: var(--radius-sm);
-    font-size: 0.625rem;
+    font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
 }
 
-.role-badge.admin    { background: var(--warning-100); color: var(--warning-600); }
-.role-badge.manager  { background: var(--primary-100); color: var(--primary-600); }
-.role-badge.developer { background: var(--gray-200);    color: var(--gray-600); }
+.role-badge.admin   { background: var(--warning-100); color: var(--warning-700); }
+.role-badge.manager { background: var(--info-100);    color: var(--info-700); }
+.role-badge.user    { background: var(--gray-100);    color: var(--gray-700); }
 ```
 
 ### Tables
@@ -962,6 +963,249 @@ tbody tr:hover {
 </div>
 ```
 
+### Toast Notifications
+
+```html
+<div class="toast-container">
+    <div class="toast toast-success">
+        <svg><!-- check icon --></svg>
+        <span>Success message here</span>
+    </div>
+</div>
+```
+
+```css
+.toast-container {
+    position: fixed;
+    bottom: var(--space-6);
+    right: var(--space-6);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.toast {
+    background: var(--color-surface, white);
+    border: 1px solid var(--color-border, var(--gray-200));
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-md);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 300px;
+    animation: slideIn 0.3s ease-out;
+}
+
+.toast-success { border-left: 4px solid var(--success-500); }
+.toast-error   { border-left: 4px solid var(--danger-500); }
+.toast-info    { border-left: 4px solid var(--primary-500); }
+```
+
+### Modal Dialog
+
+```html
+<div class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">Modal Title</h3>
+            <button class="modal-close" aria-label="Close">
+                <svg><!-- x icon --></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <!-- Content -->
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary">Cancel</button>
+            <button class="btn btn-primary">Confirm</button>
+        </div>
+    </div>
+</div>
+```
+
+```css
+.modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-hidden { display: none !important; }
+
+.modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    background: var(--color-surface, white);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+}
+
+.modal-content-wide { max-width: 640px; }
+.modal-content-lg   { max-width: 800px; }
+```
+
+### Breadcrumb Navigation
+
+```html
+<nav class="breadcrumb-nav">
+    <ol class="breadcrumb-list">
+        <li class="breadcrumb-item">
+            <a href="/" class="breadcrumb-link">Home</a>
+        </li>
+        <li class="breadcrumb-item">
+            <a href="/admin" class="breadcrumb-link">Admin</a>
+        </li>
+        <li class="breadcrumb-item">
+            <span class="breadcrumb-current">Users</span>
+        </li>
+    </ol>
+</nav>
+```
+
+```css
+.breadcrumb-nav { margin-bottom: var(--space-4); }
+
+.breadcrumb-list {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.breadcrumb-item { font-size: 0.875rem; }
+.breadcrumb-item:not(:last-child)::after {
+    content: "/";
+    color: var(--gray-400);
+    margin-left: var(--space-2);
+}
+
+.breadcrumb-link {
+    color: var(--gray-600);
+    text-decoration: none;
+}
+.breadcrumb-link:hover { color: var(--primary-600); }
+
+.breadcrumb-current {
+    color: var(--gray-900);
+    font-weight: 500;
+}
+```
+
+---
+
+## Icon System
+
+The pullDB icon system uses a macro-based approach following HCA principles.
+
+### Usage
+
+```jinja2
+{% from 'partials/icons/_index.html' import icon %}
+
+{{ icon('database') }}
+{{ icon('user', size='24', class='text-muted') }}
+{{ icon('check', stroke_width='2') }}
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `name` | (required) | Icon name |
+| `size` | `20` | Width/height in pixels |
+| `class` | `''` | Additional CSS classes |
+| `stroke_width` | `1.5` | SVG stroke width |
+
+### Available Icons by Layer
+
+**Shared** (universal icons):
+`chevron-down`, `chevron-left`, `chevron-right`, `chevron-up`, `x`, `check`, `plus`, `minus`, `search`, `menu`, `settings`, `info`, `alert-triangle`, `alert-circle`, `trash`, `edit`, `copy`, `external-link`, `download`, `upload`, `refresh`, `eye`, `eye-off`, `lock`, `unlock`, `home`, `logout`, `arrow-left`, `arrow-right`, `calendar`, `clock`, `filter`, `sort`
+
+**Entities** (domain model icons):
+`database`, `server`, `folder`, `file`, `table`
+
+**Features** (business feature icons):
+`user`, `users`, `key`, `shield`, `activity`, `terminal`, `zap`
+
+**Widgets** (orchestration icons):
+`loader`, `progress`, `chart`
+
+**Pages** (entry-point specific):
+`dashboard`, `backup`, `restore`
+
+### Fallback Behavior
+
+Unknown icons display a question mark circle with `data-icon="unknown:name"` attribute for debugging.
+
+---
+
+## Dark Mode
+
+Dark mode is implemented via CSS variables with the `[data-theme="dark"]` selector.
+
+### Activation
+
+Dark mode is controlled by three mechanisms (in priority order):
+
+1. **User localStorage** - Explicit user choice persists across sessions
+2. **Admin Default** - Server-configurable default via `data-admin-theme-default` attribute
+3. **System Preference** - Falls back to `prefers-color-scheme: dark`
+
+### Theme Toggle
+
+```html
+<button class="theme-toggle" aria-label="Toggle theme">
+    {{ icon('sun', class='theme-icon-light') }}
+    {{ icon('moon', class='theme-icon-dark') }}
+</button>
+```
+
+### Key CSS Variables
+
+Dark mode overrides these semantic variables in `dark-mode.css`:
+
+```css
+[data-theme="dark"] {
+    /* Surfaces */
+    --color-surface: #1f2937;
+    --color-surface-elevated: #374151;
+    
+    /* Text */
+    --color-text: #f9fafb;
+    --color-text-muted: #9ca3af;
+    
+    /* Borders */
+    --color-border: #4b5563;
+    
+    /* Gray scale adjustments */
+    --gray-50: #1f2937;
+    --gray-100: #374151;
+    --gray-900: #f9fafb;
+}
+```
+
+### Component Support
+
+All major components support dark mode through CSS variable fallbacks:
+- Cards, modals, dropdowns use `var(--color-surface, white)`
+- Borders use `var(--color-border, var(--gray-200))`
+- Form inputs, toasts, and tables adapt automatically
+
 ---
 
 ## Accessibility
@@ -1025,24 +1269,37 @@ All interactive elements must have visible focus states:
 - [x] Form inputs
 - [x] Alert components
 - [x] Navigation patterns
+- [x] Toast notifications
+- [x] Modal dialogs
+- [x] Breadcrumb navigation
+- [x] Icon macro system (HCA-compliant)
+- [x] Dark mode with CSS variables
+- [x] Theme toggle with admin defaults
+- [x] Extracted inline CSS from admin templates
 
 ### In Progress 🔄
 
-- [ ] Extract inline CSS from manager templates
-- [ ] Create separate component CSS files
-- [ ] Add missing focus states
+- [ ] Add missing focus states for dark mode
 
 ### Planned 📋
 
 - [ ] Skeleton loading states
-- [ ] Dark mode variables
 - [ ] Keyboard shortcuts
 - [ ] Skip links for accessibility
-- [ ] Component documentation page
+- [ ] Component documentation page (live preview)
 
 ---
 
 ## Changelog
+
+### v1.1.0 (December 15, 2025)
+- Added Toast, Modal, and Breadcrumb component documentation
+- Added Icon System section with macro usage and available icons
+- Added Dark Mode section with activation priority and CSS variables
+- Fixed Info color documentation (Cyan, not alias of Primary)
+- Fixed role badge class names (`.user` instead of `.developer`)
+- Updated manager badge color to Info (was Primary)
+- Updated Implementation Status to reflect GUI migration progress
 
 ### v1.0.0 (December 4, 2025)
 - Initial style guide created

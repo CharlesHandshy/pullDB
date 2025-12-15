@@ -532,6 +532,103 @@
         flex-shrink: 0;
         color: var(--danger-600);
     }
+    
+    /* Tab switching for Customer/QA Template */
+    .form-tabs {
+        display: flex;
+        gap: var(--space-2);
+        margin-bottom: var(--space-5);
+        padding: var(--space-1);
+        background: var(--gray-100);
+        border-radius: var(--radius-lg);
+    }
+    
+    .form-tab {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--space-2);
+        padding: var(--space-3) var(--space-4);
+        border: none;
+        background: transparent;
+        border-radius: var(--radius-md);
+        font-family: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--gray-600);
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    
+    .form-tab:hover {
+        color: var(--gray-900);
+    }
+    
+    .form-tab.active {
+        background: white;
+        color: var(--primary-600);
+        box-shadow: var(--shadow-sm);
+    }
+    
+    .form-tab svg {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+    
+    /* QA Template info banner */
+    .qa-template-info {
+        display: flex;
+        gap: var(--space-4);
+        padding: var(--space-4);
+        background: var(--primary-50);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--primary-100);
+        margin-bottom: var(--space-5);
+    }
+    
+    .qa-template-info .info-icon {
+        flex-shrink: 0;
+    }
+    
+    .qa-template-info .info-icon svg {
+        width: 24px;
+        height: 24px;
+        color: var(--primary-600);
+    }
+    
+    .qa-template-info h4 {
+        margin: 0 0 var(--space-1) 0;
+        font-size: 1rem;
+        color: var(--gray-900);
+    }
+    
+    .qa-template-info p {
+        margin: 0;
+        font-size: 0.875rem;
+        color: var(--gray-600);
+    }
+    
+    .qa-config-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--space-4);
+    }
+    
+    @media (max-width: 600px) {
+        .qa-config-row {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -574,24 +671,50 @@
                 <h2 class="restore-section-title">Source Selection</h2>
             </div>
             <div class="restore-section-body">
-                <!-- Environment selector -->
-                <div class="env-selector" role="radiogroup" aria-label="Environment">
-                    <label class="env-option {% if not form or form.s3env == 'both' %}is-selected{% endif %}">
-                        <input type="radio" name="s3env" value="both" {% if not form or form.s3env == 'both' %}checked{% endif %}>
-                        <span class="env-option-label">All Backups</span>
-                    </label>
-                    <label class="env-option {% if form and form.s3env == 'staging' %}is-selected{% endif %}">
-                        <input type="radio" name="s3env" value="staging" {% if form and form.s3env == 'staging' %}checked{% endif %}>
-                        <span class="env-option-label">Staging Only</span>
-                    </label>
-                    <label class="env-option {% if form and form.s3env == 'prod' %}is-selected{% endif %}">
-                        <input type="radio" name="s3env" value="prod" {% if form and form.s3env == 'prod' %}checked{% endif %}>
-                        <span class="env-option-label">Production Only</span>
-                    </label>
+                <!-- Tab Buttons -->
+                <div class="form-tabs">
+                    <button type="button" class="form-tab active" data-tab="customer">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                            <circle cx="9" cy="7" r="4"/>
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                        Customer Database
+                    </button>
+                    <button type="button" class="form-tab" data-tab="qatemplate">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                        </svg>
+                        QA Template
+                    </button>
                 </div>
                 
-                <!-- Customer search widget -->
-                <div class="customer-search-widget" id="customer-widget">
+                <!-- Hidden input for qatemplate mode -->
+                <input type="hidden" name="qatemplate" value="false" id="qatemplate-input">
+                
+                <!-- Customer Tab Content -->
+                <div class="tab-content active" id="tab-customer">
+                    <!-- Environment selector -->
+                    <div class="env-selector" role="radiogroup" aria-label="Environment">
+                        <label class="env-option {% if not form or form.s3env == 'both' %}is-selected{% endif %}">
+                            <input type="radio" name="s3env" value="both" {% if not form or form.s3env == 'both' %}checked{% endif %}>
+                            <span class="env-option-label">All Backups</span>
+                        </label>
+                        <label class="env-option {% if form and form.s3env == 'staging' %}is-selected{% endif %}">
+                            <input type="radio" name="s3env" value="staging" {% if form and form.s3env == 'staging' %}checked{% endif %}>
+                            <span class="env-option-label">Staging Only</span>
+                        </label>
+                        <label class="env-option {% if form and form.s3env == 'prod' %}is-selected{% endif %}">
+                            <input type="radio" name="s3env" value="prod" {% if form and form.s3env == 'prod' %}checked{% endif %}>
+                            <span class="env-option-label">Production Only</span>
+                        </label>
+                    </div>
+                    
+                    <!-- Customer search widget -->
+                    <div class="customer-search-widget" id="customer-widget">
                     <!-- Selected customer display (shown when customer is selected) -->
                     <div class="selected-display" id="selected-customer-display" style="display: none;">
                         <svg class="selected-display-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -665,6 +788,82 @@
                         </div>
                     </div>
                 </div>
+                </div><!-- End Customer Tab Content -->
+                
+                <!-- QA Template Tab Content -->
+                <div class="tab-content" id="tab-qatemplate">
+                    <div class="qa-template-info">
+                        <div class="info-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                            </svg>
+                        </div>
+                        <div class="info-content">
+                            <h4>QA Template Database</h4>
+                            <p>Restore the standardized QA template database for testing purposes.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="qa-config-row">
+                        <div class="form-group" style="margin: 0;">
+                            <label for="qa_extension" class="form-label">Target Extension <span style="color: var(--gray-400); font-weight: normal;">(optional)</span></label>
+                            <input 
+                                type="text" 
+                                id="qa_extension" 
+                                class="form-input"
+                                placeholder="ABC"
+                                maxlength="3"
+                                pattern="[A-Za-z]{0,3}"
+                                style="text-transform: uppercase;"
+                            >
+                            <p class="form-hint" id="qa-extension-hint">Target: {{ user.user_code }}qatemplate</p>
+                        </div>
+                        
+                        <div class="form-group" style="margin: 0;">
+                            <label for="qa_s3env" class="form-label">Source Environment</label>
+                            <select id="qa_s3env" class="form-select">
+                                <option value="both">All Backups</option>
+                                <option value="staging">Staging Only</option>
+                                <option value="prod">Production Only</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- QA Template backup list -->
+                    <div class="backup-list-container is-visible" id="qa-backup-list-container" style="margin-top: var(--space-5); border-top: 1px solid var(--gray-200); padding-top: var(--space-5);">
+                        <!-- Selected QA backup display -->
+                        <div class="selected-display" id="selected-qa-backup-display" style="display: none;">
+                            <svg class="selected-display-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                                <polyline points="22 4 12 14.01 9 11.01"/>
+                            </svg>
+                            <div class="selected-display-content">
+                                <div class="selected-display-name" id="selected-qa-backup-name"></div>
+                                <div class="selected-display-meta" id="selected-qa-backup-meta"></div>
+                            </div>
+                            <button type="button" class="selected-display-clear" id="clear-qa-backup-btn">Change</button>
+                        </div>
+                        
+                        <div id="qa-backup-search-container">
+                            <div class="backup-list-header">
+                                <span class="backup-list-title">Available QA Template Backups</span>
+                                <span class="backup-list-count" id="qa-backup-count">Loading...</span>
+                            </div>
+                            <div class="backup-list-scroll" id="qa-backup-list">
+                                <div class="backup-list-empty">
+                                    <svg class="backup-list-empty-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                                        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                                        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                                    </svg>
+                                    <div>Loading QA template backups...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div><!-- End QA Template Tab Content -->
             </div>
         </div>
 
@@ -848,6 +1047,171 @@
     let selectedCustomer = '{{ form.customer if form else '' }}';
     let selectedBackup = null;
     let abortController = null;
+    
+    // QA Template state
+    let isQaTemplateMode = false;
+    let selectedQaBackup = null;
+    const qaExtensionInput = document.getElementById('qa_extension');
+    const qaExtensionHint = document.getElementById('qa-extension-hint');
+    const qaS3envSelect = document.getElementById('qa_s3env');
+    const qaBackupList = document.getElementById('qa-backup-list');
+    const qaBackupCount = document.getElementById('qa-backup-count');
+    const qaTemplateInput = document.getElementById('qatemplate-input');
+    const formTabs = document.querySelectorAll('.form-tab');
+    const tabContents = document.querySelectorAll('.tab-content');
+    const selectedQaBackupDisplay = document.getElementById('selected-qa-backup-display');
+    const selectedQaBackupName = document.getElementById('selected-qa-backup-name');
+    const selectedQaBackupMeta = document.getElementById('selected-qa-backup-meta');
+    const clearQaBackupBtn = document.getElementById('clear-qa-backup-btn');
+    const qaBackupSearchContainer = document.getElementById('qa-backup-search-container');
+    
+    // Tab switching
+    formTabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const tabId = this.dataset.tab;
+            
+            // Update active tab
+            formTabs.forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+            
+            // Show corresponding content
+            tabContents.forEach(c => c.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            
+            // Update hidden input
+            qaTemplateInput.value = tabId === 'qatemplate' ? 'true' : 'false';
+            isQaTemplateMode = tabId === 'qatemplate';
+            
+            if (tabId === 'qatemplate') {
+                // QA Template mode
+                customerHidden.value = 'qatemplate';
+                loadQaTemplateBackups();
+                updateQaTargetPreview();
+            } else {
+                // Customer mode - restore previous customer value or clear
+                if (selectedCustomer && selectedCustomer !== 'qatemplate') {
+                    customerHidden.value = selectedCustomer;
+                } else {
+                    customerHidden.value = '';
+                }
+                updatePreview();
+            }
+            
+            updateSummary();
+        });
+    });
+    
+    // QA Extension input
+    if (qaExtensionInput) {
+        qaExtensionInput.addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+            updateQaTargetPreview();
+        });
+    }
+    
+    // QA S3 environment change
+    if (qaS3envSelect) {
+        qaS3envSelect.addEventListener('change', function() {
+            if (isQaTemplateMode) {
+                clearQaBackupSelection();
+                loadQaTemplateBackups();
+            }
+        });
+    }
+    
+    // Clear QA backup button
+    if (clearQaBackupBtn) {
+        clearQaBackupBtn.addEventListener('click', function() {
+            clearQaBackupSelection();
+        });
+    }
+    
+    function updateQaTargetPreview() {
+        if (!isQaTemplateMode) return;
+        
+        const ext = qaExtensionInput ? qaExtensionInput.value : '';
+        const userCode = userSelector ? userCodeMap[userSelector.value] : '{{ user.user_code }}';
+        
+        previewCustomer.textContent = 'qatemplate';
+        previewSuffix.textContent = ext ? ext.toLowerCase() : '';
+        previewUserCode.textContent = userCode;
+        targetPreview.style.display = 'block';
+        
+        // Update hint
+        if (qaExtensionHint) {
+            if (ext) {
+                qaExtensionHint.innerHTML = 'Target: <strong>' + userCode + 'qatemplate' + ext.toLowerCase() + '</strong>';
+            } else {
+                qaExtensionHint.textContent = 'Target: ' + userCode + 'qatemplate';
+            }
+        }
+    }
+    
+    function loadQaTemplateBackups() {
+        if (!qaBackupList) return;
+        
+        qaBackupList.innerHTML = '<div class="customer-results-message">Loading QA template backups...</div>';
+        qaBackupCount.textContent = 'Loading...';
+        
+        const env = qaS3envSelect ? qaS3envSelect.value : 'both';
+        
+        htmx.ajax('GET', '/web/restore/search-backups?customer=qatemplate&env=' + env, {
+            target: '#qa-backup-list'
+        }).then(() => {
+            const rows = qaBackupList.querySelectorAll('tbody tr');
+            qaBackupCount.textContent = rows.length + ' found';
+            updateSummary();
+        });
+    }
+    
+    function showSelectedQaBackup(key, env, date, size) {
+        selectedQaBackup = key;
+        selectedQaBackupName.textContent = date;
+        selectedQaBackupMeta.textContent = env + ' • ' + size;
+        
+        qaBackupSearchContainer.style.display = 'none';
+        selectedQaBackupDisplay.style.display = 'flex';
+        
+        // Set hidden field
+        let backupInput = document.getElementById('backup_key');
+        if (!backupInput) {
+            backupInput = document.createElement('input');
+            backupInput.type = 'hidden';
+            backupInput.id = 'backup_key';
+            backupInput.name = 'backup_key';
+            document.getElementById('restore-form').appendChild(backupInput);
+        }
+        backupInput.value = key;
+        
+        updateSummary();
+    }
+    
+    function clearQaBackupSelection() {
+        selectedQaBackup = null;
+        
+        qaBackupSearchContainer.style.display = 'block';
+        selectedQaBackupDisplay.style.display = 'none';
+        
+        // Clear hidden field
+        const backupInput = document.getElementById('backup_key');
+        if (backupInput) backupInput.value = '';
+        
+        // Clear row selection
+        document.querySelectorAll('#qa-backup-list .backup-table tbody tr').forEach(tr => {
+            tr.classList.remove('is-selected');
+        });
+        
+        updateSummary();
+    }
+    
+    // Global function for QA backup selection (called from partial)
+    window.selectQaBackup = function(backupKey, env, date, size) {
+        showSelectedQaBackup(backupKey, env, date, size || 'Unknown size');
+        
+        if (typeof showToast === 'function') {
+            showToast('QA backup selected: ' + date, 'success');
+        }
+    };
     
     // Initialize with pre-filled values
     if (selectedCustomer) {
@@ -1215,7 +1579,13 @@
     }
     
     function updateSummary() {
-        if (selectedCustomer && selectedBackup) {
+        if (isQaTemplateMode) {
+            if (selectedQaBackup) {
+                submitSummary.innerHTML = 'Ready to restore <strong>QA Template</strong>';
+            } else {
+                submitSummary.textContent = 'Select a QA template backup to continue';
+            }
+        } else if (selectedCustomer && selectedBackup) {
             submitSummary.innerHTML = 'Ready to restore <strong>' + escapeHtml(selectedCustomer) + '</strong>';
         } else if (selectedCustomer) {
             submitSummary.textContent = 'Select a backup to continue';
@@ -1250,16 +1620,31 @@
             return false;
         }
         
-        if (!selectedCustomer) {
-            e.preventDefault();
-            alertUser('Please select a customer');
-            return false;
-        }
-        
-        if (!selectedBackup) {
-            e.preventDefault();
-            alertUser('Please select a backup');
-            return false;
+        // Validate based on mode
+        if (isQaTemplateMode) {
+            if (!selectedQaBackup) {
+                e.preventDefault();
+                alertUser('Please select a QA template backup');
+                return false;
+            }
+            // Set customer to qatemplate for submission
+            customerHidden.value = 'qatemplate';
+            // Set suffix from qa_extension if provided
+            if (qaExtensionInput && qaExtensionInput.value) {
+                suffixInput.value = qaExtensionInput.value.toLowerCase();
+            }
+        } else {
+            if (!selectedCustomer) {
+                e.preventDefault();
+                alertUser('Please select a customer');
+                return false;
+            }
+            
+            if (!selectedBackup) {
+                e.preventDefault();
+                alertUser('Please select a backup');
+                return false;
+            }
         }
         
         // Confirm overwrite

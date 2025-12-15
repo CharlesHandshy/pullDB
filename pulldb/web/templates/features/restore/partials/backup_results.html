@@ -10,7 +10,11 @@
     <tbody>
         {% for backup in backups %}
         <tr data-backup-key="{{ backup.key }}" 
-            onclick="selectBackup('{{ backup.key }}', '{{ backup.environment }}', '{{ backup.timestamp.strftime('%Y-%m-%d %H:%M') }}', '{{ '%.1f'|format(backup.size_mb) }} MB')">
+            onclick="(function(el) {
+                var isQa = el.closest('#qa-backup-list') !== null;
+                var fn = isQa ? window.selectQaBackup : window.selectBackup;
+                if (fn) fn('{{ backup.key }}', '{{ backup.environment }}', '{{ backup.timestamp.strftime('%Y-%m-%d %H:%M') }}', '{{ '%.1f'|format(backup.size_mb) }} MB');
+            })(this)">
             <td>{{ backup.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
             <td>
                 <span class="badge {% if backup.environment == 'prod' %}badge-primary{% else %}badge-neutral{% endif %}">

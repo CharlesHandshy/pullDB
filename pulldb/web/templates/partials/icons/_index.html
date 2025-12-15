@@ -1,0 +1,52 @@
+{# =================================================================
+   Icon Macro System - Master Index
+   HCA Layer: shared (imported by all layers)
+   
+   Usage:
+     {% from 'partials/icons/_index.html' import icon %}
+     {{ icon('database', class='icon-md') }}
+     {{ icon('user', size='24', class='text-muted') }}
+   
+   Parameters:
+     name: Icon name (required)
+     size: Width/height in pixels (default: 20)
+     class: Additional CSS classes
+     stroke_width: SVG stroke width (default: 1.5)
+   ================================================================= #}
+
+{% from 'partials/icons/shared.html' import icon_shared %}
+{% from 'partials/icons/entities.html' import icon_entities %}
+{% from 'partials/icons/features.html' import icon_features %}
+{% from 'partials/icons/widgets.html' import icon_widgets %}
+{% from 'partials/icons/pages.html' import icon_pages %}
+
+{# Master icon dispatcher - routes to appropriate layer #}
+{% macro icon(name, size='20', class='', stroke_width='1.5') %}
+{%- set icon_content = none -%}
+
+{# Check each layer in order #}
+{%- set icon_content = icon_shared(name, size, class, stroke_width) -%}
+{%- if icon_content == '' -%}
+    {%- set icon_content = icon_entities(name, size, class, stroke_width) -%}
+{%- endif -%}
+{%- if icon_content == '' -%}
+    {%- set icon_content = icon_features(name, size, class, stroke_width) -%}
+{%- endif -%}
+{%- if icon_content == '' -%}
+    {%- set icon_content = icon_widgets(name, size, class, stroke_width) -%}
+{%- endif -%}
+{%- if icon_content == '' -%}
+    {%- set icon_content = icon_pages(name, size, class, stroke_width) -%}
+{%- endif -%}
+
+{# Fallback: unknown icon placeholder #}
+{%- if icon_content == '' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="unknown:{{ name }}">
+    <circle cx="12" cy="12" r="10"/>
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+    <line x1="12" y1="17" x2="12.01" y2="17"/>
+</svg>
+{%- else -%}
+{{ icon_content }}
+{%- endif -%}
+{% endmacro %}

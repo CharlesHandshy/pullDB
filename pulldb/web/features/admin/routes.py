@@ -4,13 +4,11 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from pulldb.domain.models import JobStatus, User
-from pulldb.web.dependencies import get_api_state, require_admin
+from pulldb.web.dependencies import get_api_state, require_admin, templates
 
 router = APIRouter(prefix="/web/admin", tags=["web-admin"])
-templates = Jinja2Templates(directory="pulldb/web/templates")
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -65,6 +63,7 @@ async def admin_page(
         "features/admin/admin.html",
         {
             "request": request,
+            "active_nav": "admin",
             "stats": stats,
             "user": user,
             "flash_message": flash_message,
@@ -138,6 +137,7 @@ async def list_users(
         "features/admin/users.html",
         {
             "request": request,
+            "active_nav": "admin",
             "user": user,
             "stats": stats,
             "managers": managers,
@@ -668,9 +668,10 @@ async def list_hosts(
         flash_type = "error"
     
     return templates.TemplateResponse(
-        "admin/hosts.html",
+        "features/admin/hosts.html",
         {
             "request": request,
+            "active_nav": "admin",
             "hosts": hosts,
             "stats": stats,
             "user": user,
@@ -845,9 +846,10 @@ async def host_detail(
         flash_type = "error"
 
     return templates.TemplateResponse(
-        "admin/host_detail.html",
+        "features/admin/host_detail.html",
         {
             "request": request,
+            "active_nav": "admin",
             "user": user,
             "host": enriched_host,
             "flash_message": flash_message,
@@ -1006,15 +1008,6 @@ async def update_host(
             url=f"/web/admin/hosts/{host_id}?error={error_msg}", status_code=303
         )
 
-        return RedirectResponse(
-            url=f"/web/admin/hosts/{host_id}?updated=1", status_code=303
-        )
-    except Exception as e:
-        error_msg = url_quote(str(e))
-        return RedirectResponse(
-            url=f"/web/admin/hosts/{host_id}?error={error_msg}", status_code=303
-        )
-
 
 @router.post("/hosts/{host_id}/delete")
 async def delete_host(
@@ -1057,7 +1050,7 @@ async def test_host_connection(
     host_id: str,
     state: Any = Depends(get_api_state),
     admin: User = Depends(require_admin),
-) -> dict:
+) -> dict[str, Any]:
     """Test MySQL connection to a host with comprehensive pre-flight checks.
     
     Returns JSON with connection status and setup validation:
@@ -1069,19 +1062,20 @@ async def test_host_connection(
     from pulldb.infra.secrets import CredentialResolver, CredentialResolutionError
     import mysql.connector
 
-    result = {
+    checks: dict[str, bool | str] = {
+        "credential_valid": False,
+        "credential_message": "",
+        "connection_valid": False,
+        "connection_message": "",
+        "pulldb_db_valid": False,
+        "pulldb_db_message": "",
+        "sproc_valid": False,
+        "sproc_message": "",
+    }
+    result: dict[str, Any] = {
         "success": False,
         "message": "",
-        "checks": {
-            "credential_valid": False,
-            "credential_message": "",
-            "connection_valid": False,
-            "connection_message": "",
-            "pulldb_db_valid": False,
-            "pulldb_db_message": "",
-            "sproc_valid": False,
-            "sproc_message": "",
-        }
+        "checks": checks,
     }
 
     try:
@@ -1118,10 +1112,10 @@ async def test_host_connection(
         creds = None
         try:
             creds = resolver.resolve(host_obj.credential_ref)
-            result["checks"]["credential_valid"] = True
-            result["checks"]["credential_message"] = "AWS secret resolved successfully"
+            checks["credential_valid"] = True
+            checks["credential_message"] = "AWS secret resolved successfully"
         except CredentialResolutionError as e:
-            result["checks"]["credential_message"] = f"Credential error: {e}"
+            checks["credential_message"] = f"Credential error: {e}"
             result["message"] = "Credential resolution failed"
             return result
 
@@ -1135,10 +1129,10 @@ async def test_host_connection(
                 password=creds.password,
                 connection_timeout=5,
             )
-            result["checks"]["connection_valid"] = True
-            result["checks"]["connection_message"] = f"Connected to {creds.host}:{creds.port}"
+            checks["connection_valid"] = True
+            checks["connection_message"] = f"Connected to {creds.host}:{creds.port}"
         except mysql.connector.Error as e:
-            result["checks"]["connection_message"] = f"Connection failed: {e}"
+            checks["connection_message"] = f"Connection failed: {e}"
             result["message"] = "MySQL connection failed"
             if test_conn:
                 test_conn.close()
@@ -1151,15 +1145,15 @@ async def test_host_connection(
             db_exists = cursor.fetchone()
             cursor.close()
             if db_exists:
-                result["checks"]["pulldb_db_valid"] = True
-                result["checks"]["pulldb_db_message"] = "pulldb database exists"
+                checks["pulldb_db_valid"] = True
+                checks["pulldb_db_message"] = "pulldb database exists"
             else:
-                result["checks"]["pulldb_db_message"] = "pulldb database not found - create with: CREATE DATABASE pulldb;"
+                checks["pulldb_db_message"] = "pulldb database not found - create with: CREATE DATABASE pulldb;"
         except mysql.connector.Error as e:
-            result["checks"]["pulldb_db_message"] = f"Could not check database: {e}"
+            checks["pulldb_db_message"] = f"Could not check database: {e}"
 
         # Check 4: Stored procedure exists (only if pulldb database exists)
-        if result["checks"]["pulldb_db_valid"]:
+        if checks["pulldb_db_valid"]:
             try:
                 cursor = test_conn.cursor()
                 cursor.execute("""
@@ -1171,23 +1165,23 @@ async def test_host_connection(
                 sproc_exists = cursor.fetchone()
                 cursor.close()
                 if sproc_exists:
-                    result["checks"]["sproc_valid"] = True
-                    result["checks"]["sproc_message"] = "pulldb_atomic_rename procedure found"
+                    checks["sproc_valid"] = True
+                    checks["sproc_message"] = "pulldb_atomic_rename procedure found"
                 else:
-                    result["checks"]["sproc_message"] = "Stored procedure not found - deploy with: python scripts/deploy_atomic_rename.py"
+                    checks["sproc_message"] = "Stored procedure not found - deploy with: python scripts/deploy_atomic_rename.py"
             except mysql.connector.Error as e:
-                result["checks"]["sproc_message"] = f"Could not check procedure: {e}"
+                checks["sproc_message"] = f"Could not check procedure: {e}"
         else:
-            result["checks"]["sproc_message"] = "Skipped - pulldb database required first"
+            checks["sproc_message"] = "Skipped - pulldb database required first"
 
         test_conn.close()
 
         # Determine overall success
         all_valid = all([
-            result["checks"]["credential_valid"],
-            result["checks"]["connection_valid"],
-            result["checks"]["pulldb_db_valid"],
-            result["checks"]["sproc_valid"],
+            checks["credential_valid"],
+            checks["connection_valid"],
+            checks["pulldb_db_valid"],
+            checks["sproc_valid"],
         ])
 
         if all_valid:
@@ -1196,9 +1190,9 @@ async def test_host_connection(
         else:
             # Build message about what's missing
             missing = []
-            if not result["checks"]["pulldb_db_valid"]:
+            if not checks["pulldb_db_valid"]:
                 missing.append("pulldb database")
-            if not result["checks"]["sproc_valid"]:
+            if not checks["sproc_valid"]:
                 missing.append("stored procedure")
             result["message"] = f"Connected successfully, but missing: {', '.join(missing)}"
 
@@ -1232,7 +1226,7 @@ async def check_host_alias(
     request: Request,
     state: Any = Depends(get_api_state),
     admin: User = Depends(require_admin),
-) -> dict:
+) -> dict[str, Any]:
     """Check if a host alias exists and if credentials already exist.
     
     Returns JSON for HTMX to update status badges:
@@ -1244,9 +1238,10 @@ async def check_host_alias(
     from pulldb.infra.secrets import check_secret_exists, get_secret_path_from_alias
     
     form_data = await request.form()
-    host_alias = form_data.get("host_alias", "").strip()
+    host_alias_val = form_data.get("host_alias", "")
+    host_alias = str(host_alias_val).strip() if host_alias_val else ""
     
-    result = {
+    result: dict[str, Any] = {
         "host_alias": host_alias,
         "host_exists": False,
         "host_id": None,
@@ -1319,26 +1314,36 @@ async def provision_host(
     )
     from pulldb.infra.mysql_provisioning import provision_host_full
     
-    # Parse form data
+    # Parse form data with proper type handling
     form_data = await request.form()
-    host_alias = form_data.get("host_alias", "").strip()
-    mysql_host = form_data.get("mysql_host", "").strip()
-    mysql_port = int(form_data.get("mysql_port", "3306"))
-    admin_username = form_data.get("admin_username", "").strip()
-    admin_password = form_data.get("admin_password", "")
-    max_running_jobs = int(form_data.get("max_running_jobs", "1"))
-    max_active_jobs = int(form_data.get("max_active_jobs", "10"))
     
-    result = {
+    def get_form_str(key: str, default: str = "") -> str:
+        val = form_data.get(key, default)
+        return str(val).strip() if val else default
+    
+    def get_form_int(key: str, default: int) -> int:
+        val = form_data.get(key, str(default))
+        return int(str(val)) if val else default
+    
+    host_alias = get_form_str("host_alias")
+    mysql_host = get_form_str("mysql_host")
+    mysql_port = get_form_int("mysql_port", 3306)
+    admin_username = get_form_str("admin_username")
+    admin_password = get_form_str("admin_password")
+    max_running_jobs = get_form_int("max_running_jobs", 1)
+    max_active_jobs = get_form_int("max_active_jobs", 10)
+    
+    steps: list[dict[str, Any]] = []
+    result: dict[str, Any] = {
         "success": False,
         "message": "",
         "host_id": None,
-        "steps": [],
+        "steps": steps,
         "rollback_performed": False,
     }
     
-    def add_step(name: str, success: bool, message: str, details: str | None = None):
-        result["steps"].append({
+    def add_step(name: str, success: bool, message: str, details: str | None = None) -> None:
+        steps.append({
             "name": name,
             "success": success,
             "message": message,
@@ -1451,8 +1456,10 @@ async def provision_host(
                 result["message"] = prov_result.message
             return result
         
-        loader_username = prov_result.data["loader_username"]
-        loader_password = prov_result.data["loader_password"]
+        # prov_result.data is guaranteed non-None after success check
+        prov_data = prov_result.data or {}
+        loader_username = prov_data.get("loader_username", "pulldb_loader")
+        loader_password = prov_data.get("loader_password", "")
         
         user_action = "created" if created_resources["user_created"] else "updated"
         db_action = "created" if created_resources["database_created"] else "exists"
@@ -1488,7 +1495,7 @@ async def provision_host(
                  f"Path: {secret_path}")
         
         # Step 5: Register or update host in database
-        host_id = result["host_id"] or str(uuid.uuid4())
+        host_id = str(result["host_id"]) if result["host_id"] else str(uuid.uuid4())
         
         if hasattr(state, "host_repo") and state.host_repo:
             if existing_host:
@@ -1634,6 +1641,7 @@ async def list_settings(
         SettingCategory.MYLOADER.value,
         SettingCategory.S3_BACKUP.value,
         SettingCategory.CLEANUP.value,
+        SettingCategory.APPEARANCE.value,
     ]
 
     for cat in category_order:
@@ -1658,9 +1666,10 @@ async def list_settings(
             pass  # Audit logs are optional
 
     return templates.TemplateResponse(
-        "admin/settings.html",
+        "features/admin/settings.html",
         {
             "request": request,
+            "active_nav": "admin",
             "categories": categories,
             "category_order": category_order,
             "settings": settings_list,  # Flat list for search
@@ -1879,6 +1888,7 @@ async def prune_logs_preview(
         "features/admin/prune_preview.html",
         {
             "request": request,
+            "active_nav": "admin",
             "user": user,
             "days": days,
             "breadcrumbs": [
@@ -2116,6 +2126,7 @@ async def cleanup_staging_preview(
         "features/admin/cleanup_preview.html",
         {
             "request": request,
+            "active_nav": "admin",
             "user": user,
             "days": days,
             "flash_message": flash_message,
@@ -2361,6 +2372,7 @@ async def orphan_preview_page(
         "features/admin/orphan_preview.html",
         {
             "request": request,
+            "active_nav": "admin",
             "user": user,
             "flash_message": flash_message,
             "flash_type": flash_type,
@@ -2377,7 +2389,7 @@ async def api_orphan_candidates(
     pageSize: int = 50,
     sortColumn: str | None = None,
     sortDirection: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Get paginated orphan candidates for LazyTable.
     
     Returns all orphans from all hosts in a flat list with dbhost included.
@@ -2387,7 +2399,7 @@ async def api_orphan_candidates(
     from datetime import datetime
 
     # Collect all orphans from all hosts
-    all_orphans = []
+    all_orphans: list[dict[str, Any]] = []
     if hasattr(state, "host_repo") and state.host_repo:
         hosts = state.host_repo.get_enabled_hosts()
         for host in hosts:
@@ -2399,14 +2411,14 @@ async def api_orphan_candidates(
             # Skip hosts with connection errors
             if isinstance(result, str):
                 continue
-            for orphan in result.orphans:
+            for oc in result.orphans:
                 all_orphans.append({
-                    "database_name": orphan.database_name,
-                    "dbhost": orphan.dbhost,
-                    "target_name": orphan.target_name,
-                    "job_id_prefix": orphan.job_id_prefix,
-                    "discovered_at": orphan.discovered_at.isoformat() if orphan.discovered_at else None,
-                    "size_mb": orphan.size_mb,
+                    "database_name": oc.database_name,
+                    "dbhost": oc.dbhost,
+                    "target_name": oc.target_name,
+                    "job_id_prefix": oc.job_id_prefix,
+                    "discovered_at": oc.discovered_at.isoformat() if oc.discovered_at else None,
+                    "size_mb": oc.size_mb,
                 })
 
     total_count = len(all_orphans)
@@ -2438,13 +2450,14 @@ async def api_orphan_candidates(
 
     # Apply filters
     if text_filters or date_after or date_before:
-        filtered_orphans = []
-        for orphan in all_orphans:
+        filtered_orphans: list[dict[str, Any]] = []
+        orphan_item: dict[str, Any]
+        for orphan_item in all_orphans:
             match = True
             
             # Check text filters (any of the values match)
             for col_key, filter_vals in text_filters.items():
-                cell_val = str(orphan.get(col_key, "")).lower()
+                cell_val = str(orphan_item.get(col_key, "")).lower()
                 if not any(fv in cell_val for fv in filter_vals):
                     match = False
                     break
@@ -2452,10 +2465,10 @@ async def api_orphan_candidates(
             # Check date after filters
             if match:
                 for col_key, after_val in date_after.items():
-                    cell_val = orphan.get(col_key)
-                    if cell_val:
+                    cell_val_date = orphan_item.get(col_key)
+                    if cell_val_date:
                         try:
-                            cell_date = datetime.fromisoformat(cell_val.replace('Z', '+00:00'))
+                            cell_date = datetime.fromisoformat(str(cell_val_date).replace('Z', '+00:00'))
                             after_date = datetime.fromisoformat(after_val)
                             if cell_date.date() < after_date.date():
                                 match = False
@@ -2466,10 +2479,10 @@ async def api_orphan_candidates(
             # Check date before filters
             if match:
                 for col_key, before_val in date_before.items():
-                    cell_val = orphan.get(col_key)
-                    if cell_val:
+                    cell_val_date = orphan_item.get(col_key)
+                    if cell_val_date:
                         try:
-                            cell_date = datetime.fromisoformat(cell_val.replace('Z', '+00:00'))
+                            cell_date = datetime.fromisoformat(str(cell_val_date).replace('Z', '+00:00'))
                             before_date = datetime.fromisoformat(before_val)
                             if cell_date.date() > before_date.date():
                                 match = False
@@ -2478,7 +2491,7 @@ async def api_orphan_candidates(
                             pass
             
             if match:
-                filtered_orphans.append(orphan)
+                filtered_orphans.append(orphan_item)
         
         all_orphans = filtered_orphans
 
@@ -2512,7 +2525,7 @@ async def get_orphan_distinct_values(
     column: str,
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
-) -> list:
+) -> list[str]:
     """Get distinct values for filter dropdowns.
     
     Applies current filters (excluding the requested column) so that
@@ -2520,7 +2533,7 @@ async def get_orphan_distinct_values(
     """
     from pulldb.worker.cleanup import detect_orphaned_databases
     
-    all_orphans = []
+    all_orphans: list[dict[str, Any]] = []
     if hasattr(state, "host_repo") and state.host_repo:
         hosts = state.host_repo.get_enabled_hosts()
         for host in hosts:
@@ -2531,11 +2544,11 @@ async def get_orphan_distinct_values(
             )
             if isinstance(result, str):
                 continue
-            for orphan in result.orphans:
+            for oc in result.orphans:
                 all_orphans.append({
-                    "database_name": orphan.database_name,
-                    "dbhost": orphan.dbhost,
-                    "target_name": orphan.target_name,
+                    "database_name": oc.database_name,
+                    "dbhost": oc.dbhost,
+                    "target_name": oc.target_name,
                 })
     
     # Extract filter params from query string (excluding the column we're getting distinct values for)
@@ -2552,21 +2565,22 @@ async def get_orphan_distinct_values(
     
     # Apply filters to narrow down distinct values
     if text_filters:
-        filtered_orphans = []
-        for orphan in all_orphans:
+        filtered_orphans: list[dict[str, Any]] = []
+        orphan_item: dict[str, Any]
+        for orphan_item in all_orphans:
             match = True
             for col_key, filter_vals in text_filters.items():
-                cell_val = str(orphan.get(col_key, "")).lower()
+                cell_val = str(orphan_item.get(col_key, "")).lower()
                 if not any(fv in cell_val for fv in filter_vals):
                     match = False
                     break
             if match:
-                filtered_orphans.append(orphan)
+                filtered_orphans.append(orphan_item)
         all_orphans = filtered_orphans
     
-    values = set()
-    for orphan in all_orphans:
-        val = orphan.get(column)
+    values: set[str] = set()
+    for orphan_item in all_orphans:
+        val = orphan_item.get(column)
         if val is not None:
             values.add(str(val))
     return sorted(values)
@@ -2706,3 +2720,118 @@ async def delete_orphans(
         )
     
     return RedirectResponse(url="/web/admin/", status_code=303)
+
+
+# =============================================================================
+# Theme CSS Endpoint
+# =============================================================================
+
+
+@router.get("/api/theme.css")
+async def get_theme_css(
+    state: Any = Depends(get_api_state),
+) -> HTMLResponse:
+    """Generate dynamic CSS custom properties from admin appearance settings.
+    
+    Returns CSS that overrides the default HSL color variables based on
+    admin-configured primary and accent color hues. This endpoint is
+    cached and served without authentication for performance.
+    
+    The CSS uses HSL (Hue-Saturation-Lightness) color model where:
+    - Hue: 0-360 degrees (red=0, green=120, blue=240)
+    - Saturation/Lightness: Fixed per shade for consistent design
+    
+    Returns:
+        text/css response with CSS custom properties for theming.
+    """
+    from fastapi.responses import Response
+    
+    # Get appearance settings from database (with defaults)
+    primary_hue = 217  # Default blue
+    accent_hue = 142   # Default green
+    dark_mode = False
+    
+    if hasattr(state, "settings_repo") and state.settings_repo:
+        try:
+            primary_hue = int(state.settings_repo.get("primary_color_hue") or 217)
+            accent_hue = int(state.settings_repo.get("accent_color_hue") or 142)
+            dark_mode_str = state.settings_repo.get("dark_mode_enabled") or "false"
+            dark_mode = dark_mode_str.lower() in ("true", "1", "yes")
+        except (ValueError, TypeError):
+            pass  # Use defaults on error
+    
+    # Clamp hues to valid range
+    primary_hue = max(0, min(360, primary_hue))
+    accent_hue = max(0, min(360, accent_hue))
+    
+    # Generate CSS with HSL color variables
+    # Primary color shades (50-900)
+    css = f"""/* pullDB Dynamic Theme - Generated from Admin Settings */
+:root {{
+    /* Primary Color (Hue: {primary_hue}) */
+    --primary-50:  hsl({primary_hue}, 100%, 97%);
+    --primary-100: hsl({primary_hue}, 96%, 90%);
+    --primary-200: hsl({primary_hue}, 94%, 80%);
+    --primary-300: hsl({primary_hue}, 90%, 66%);
+    --primary-400: hsl({primary_hue}, 86%, 55%);
+    --primary-500: hsl({primary_hue}, 84%, 47%);
+    --primary-600: hsl({primary_hue}, 83%, 41%);
+    --primary-700: hsl({primary_hue}, 78%, 35%);
+    --primary-800: hsl({primary_hue}, 70%, 29%);
+    --primary-900: hsl({primary_hue}, 64%, 24%);
+    
+    /* Success/Accent Color (Hue: {accent_hue}) */
+    --success-50:  hsl({accent_hue}, 76%, 97%);
+    --success-100: hsl({accent_hue}, 76%, 90%);
+    --success-200: hsl({accent_hue}, 70%, 78%);
+    --success-300: hsl({accent_hue}, 64%, 62%);
+    --success-400: hsl({accent_hue}, 56%, 46%);
+    --success-500: hsl({accent_hue}, 64%, 38%);
+    --success-600: hsl({accent_hue}, 72%, 30%);
+    --success-700: hsl({accent_hue}, 70%, 25%);
+    --success-800: hsl({accent_hue}, 64%, 21%);
+    --success-900: hsl({accent_hue}, 58%, 18%);
+}}
+"""
+    
+    # Add dark mode overrides if enabled
+    if dark_mode:
+        css += """
+/* Dark Mode Overrides */
+:root {
+    --gray-50:  hsl(220, 14%, 10%);
+    --gray-100: hsl(220, 14%, 15%);
+    --gray-200: hsl(220, 12%, 22%);
+    --gray-300: hsl(218, 10%, 35%);
+    --gray-400: hsl(216, 8%, 50%);
+    --gray-500: hsl(214, 8%, 65%);
+    --gray-600: hsl(212, 10%, 75%);
+    --gray-700: hsl(210, 12%, 85%);
+    --gray-800: hsl(210, 14%, 92%);
+    --gray-900: hsl(210, 16%, 97%);
+    
+    /* Background overrides */
+    --bg-base: var(--gray-50);
+    --bg-surface: var(--gray-100);
+    --text-base: var(--gray-900);
+    --text-muted: var(--gray-500);
+}
+
+body {
+    background: var(--bg-base);
+    color: var(--text-base);
+}
+
+.card, .modal-content {
+    background: var(--bg-surface);
+    border-color: var(--gray-200);
+}
+"""
+    
+    return Response(
+        content=css,
+        media_type="text/css",
+        headers={
+            "Cache-Control": "public, max-age=60",  # Cache for 1 minute
+        },
+    )

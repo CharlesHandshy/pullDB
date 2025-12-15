@@ -1,0 +1,509 @@
+<!-- Appearance Settings Partial
+     Provides visual color pickers for theme customization using HSL hue sliders.
+     Included in settings.html for the Appearance category.
+-->
+
+<div class="appearance-settings">
+    <!-- Color Preview -->
+    <div class="color-preview-card">
+        <h4 class="preview-title">Preview</h4>
+        <div class="preview-swatches">
+            <div class="swatch-group">
+                <label class="swatch-label">Primary</label>
+                <div class="swatch-row" id="primary-swatches">
+                    <div class="swatch" data-shade="50" style="background: hsl(var(--preview-primary-hue, 217), 100%, 97%)"></div>
+                    <div class="swatch" data-shade="100" style="background: hsl(var(--preview-primary-hue, 217), 96%, 90%)"></div>
+                    <div class="swatch" data-shade="200" style="background: hsl(var(--preview-primary-hue, 217), 94%, 80%)"></div>
+                    <div class="swatch" data-shade="300" style="background: hsl(var(--preview-primary-hue, 217), 90%, 66%)"></div>
+                    <div class="swatch" data-shade="400" style="background: hsl(var(--preview-primary-hue, 217), 86%, 55%)"></div>
+                    <div class="swatch swatch-lg" data-shade="500" style="background: hsl(var(--preview-primary-hue, 217), 84%, 47%)"></div>
+                    <div class="swatch" data-shade="600" style="background: hsl(var(--preview-primary-hue, 217), 83%, 41%)"></div>
+                    <div class="swatch" data-shade="700" style="background: hsl(var(--preview-primary-hue, 217), 78%, 35%)"></div>
+                    <div class="swatch" data-shade="800" style="background: hsl(var(--preview-primary-hue, 217), 70%, 29%)"></div>
+                    <div class="swatch" data-shade="900" style="background: hsl(var(--preview-primary-hue, 217), 64%, 24%)"></div>
+                </div>
+            </div>
+            <div class="swatch-group">
+                <label class="swatch-label">Accent</label>
+                <div class="swatch-row" id="accent-swatches">
+                    <div class="swatch" data-shade="50" style="background: hsl(var(--preview-accent-hue, 142), 76%, 97%)"></div>
+                    <div class="swatch" data-shade="100" style="background: hsl(var(--preview-accent-hue, 142), 76%, 90%)"></div>
+                    <div class="swatch" data-shade="200" style="background: hsl(var(--preview-accent-hue, 142), 70%, 78%)"></div>
+                    <div class="swatch" data-shade="300" style="background: hsl(var(--preview-accent-hue, 142), 64%, 62%)"></div>
+                    <div class="swatch" data-shade="400" style="background: hsl(var(--preview-accent-hue, 142), 56%, 46%)"></div>
+                    <div class="swatch swatch-lg" data-shade="500" style="background: hsl(var(--preview-accent-hue, 142), 64%, 38%)"></div>
+                    <div class="swatch" data-shade="600" style="background: hsl(var(--preview-accent-hue, 142), 72%, 30%)"></div>
+                    <div class="swatch" data-shade="700" style="background: hsl(var(--preview-accent-hue, 142), 70%, 25%)"></div>
+                    <div class="swatch" data-shade="800" style="background: hsl(var(--preview-accent-hue, 142), 64%, 21%)"></div>
+                    <div class="swatch" data-shade="900" style="background: hsl(var(--preview-accent-hue, 142), 58%, 18%)"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hue Sliders -->
+    <div class="hue-sliders">
+        <div class="hue-control">
+            <label class="hue-label" for="primary-hue-slider">
+                Primary Color Hue
+                <span class="hue-value" id="primary-hue-value">217°</span>
+            </label>
+            <div class="slider-wrapper">
+                <input type="range" 
+                       id="primary-hue-slider" 
+                       min="0" max="360" 
+                       value="217"
+                       class="hue-slider"
+                       style="background: linear-gradient(to right, 
+                           hsl(0, 84%, 47%), hsl(30, 84%, 47%), hsl(60, 84%, 47%), 
+                           hsl(90, 84%, 47%), hsl(120, 84%, 47%), hsl(150, 84%, 47%),
+                           hsl(180, 84%, 47%), hsl(210, 84%, 47%), hsl(240, 84%, 47%),
+                           hsl(270, 84%, 47%), hsl(300, 84%, 47%), hsl(330, 84%, 47%),
+                           hsl(360, 84%, 47%));">
+            </div>
+            <div class="hue-presets">
+                <button type="button" class="preset-btn" data-hue="217" data-target="primary" title="Blue (Default)">
+                    <span class="preset-swatch" style="background: hsl(217, 84%, 47%)"></span>
+                </button>
+                <button type="button" class="preset-btn" data-hue="262" data-target="primary" title="Purple">
+                    <span class="preset-swatch" style="background: hsl(262, 84%, 47%)"></span>
+                </button>
+                <button type="button" class="preset-btn" data-hue="330" data-target="primary" title="Pink">
+                    <span class="preset-swatch" style="background: hsl(330, 84%, 47%)"></span>
+                </button>
+                <button type="button" class="preset-btn" data-hue="0" data-target="primary" title="Red">
+                    <span class="preset-swatch" style="background: hsl(0, 84%, 47%)"></span>
+                </button>
+                <button type="button" class="preset-btn" data-hue="25" data-target="primary" title="Orange">
+                    <span class="preset-swatch" style="background: hsl(25, 84%, 47%)"></span>
+                </button>
+                <button type="button" class="preset-btn" data-hue="180" data-target="primary" title="Cyan">
+                    <span class="preset-swatch" style="background: hsl(180, 84%, 47%)"></span>
+                </button>
+            </div>
+        </div>
+
+        <div class="hue-control">
+            <label class="hue-label" for="accent-hue-slider">
+                Accent Color Hue
+                <span class="hue-value" id="accent-hue-value">142°</span>
+            </label>
+            <div class="slider-wrapper">
+                <input type="range" 
+                       id="accent-hue-slider" 
+                       min="0" max="360" 
+                       value="142"
+                       class="hue-slider"
+                       style="background: linear-gradient(to right, 
+                           hsl(0, 64%, 38%), hsl(30, 64%, 38%), hsl(60, 64%, 38%), 
+                           hsl(90, 64%, 38%), hsl(120, 64%, 38%), hsl(150, 64%, 38%),
+                           hsl(180, 64%, 38%), hsl(210, 64%, 38%), hsl(240, 64%, 38%),
+                           hsl(270, 64%, 38%), hsl(300, 64%, 38%), hsl(330, 64%, 38%),
+                           hsl(360, 64%, 38%));">
+            </div>
+            <div class="hue-presets">
+                <button type="button" class="preset-btn" data-hue="142" data-target="accent" title="Green (Default)">
+                    <span class="preset-swatch" style="background: hsl(142, 64%, 38%)"></span>
+                </button>
+                <button type="button" class="preset-btn" data-hue="200" data-target="accent" title="Teal">
+                    <span class="preset-swatch" style="background: hsl(200, 64%, 38%)"></span>
+                </button>
+                <button type="button" class="preset-btn" data-hue="280" data-target="accent" title="Violet">
+                    <span class="preset-swatch" style="background: hsl(280, 64%, 38%)"></span>
+                </button>
+                <button type="button" class="preset-btn" data-hue="45" data-target="accent" title="Gold">
+                    <span class="preset-swatch" style="background: hsl(45, 64%, 38%)"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dark Mode Toggle -->
+    <div class="dark-mode-control">
+        <label class="toggle-label">
+            <span class="toggle-text">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+                </svg>
+                Enable Dark Mode by Default
+            </span>
+            <input type="checkbox" id="dark-mode-toggle" class="toggle-checkbox">
+            <span class="toggle-switch"></span>
+        </label>
+        <p class="toggle-hint">When enabled, new sessions will start in dark mode. Users can still toggle individually.</p>
+    </div>
+
+    <!-- Save Button -->
+    <div class="appearance-actions">
+        <button type="button" class="btn btn-secondary" onclick="resetAppearance()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+            </svg>
+            Reset to Defaults
+        </button>
+        <button type="button" class="btn btn-primary" onclick="saveAppearance()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Save Theme
+        </button>
+    </div>
+</div>
+
+<style>
+/* Appearance Settings Styles */
+.appearance-settings {
+    padding: var(--space-4);
+}
+
+.color-preview-card {
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    margin-bottom: var(--space-5);
+}
+
+.preview-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--gray-700);
+    margin: 0 0 var(--space-3) 0;
+}
+
+.preview-swatches {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.swatch-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.swatch-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--gray-500);
+    width: 60px;
+    flex-shrink: 0;
+}
+
+.swatch-row {
+    display: flex;
+    gap: 2px;
+    flex: 1;
+}
+
+.swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(0,0,0,0.1);
+}
+
+.swatch.swatch-lg {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Hue Sliders */
+.hue-sliders {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    margin-bottom: var(--space-5);
+}
+
+.hue-control {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.hue-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--gray-700);
+}
+
+.hue-value {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    background: var(--gray-100);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+}
+
+.slider-wrapper {
+    position: relative;
+}
+
+.hue-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 12px;
+    border-radius: var(--radius-full);
+    outline: none;
+    cursor: pointer;
+}
+
+.hue-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: white;
+    border: 2px solid var(--gray-300);
+    box-shadow: var(--shadow-md);
+    cursor: grab;
+}
+
+.hue-slider::-webkit-slider-thumb:active {
+    cursor: grabbing;
+}
+
+.hue-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: white;
+    border: 2px solid var(--gray-300);
+    box-shadow: var(--shadow-md);
+    cursor: grab;
+}
+
+.hue-presets {
+    display: flex;
+    gap: var(--space-2);
+    margin-top: var(--space-1);
+}
+
+.preset-btn {
+    padding: 4px;
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.preset-btn:hover {
+    border-color: var(--gray-400);
+    transform: scale(1.1);
+}
+
+.preset-swatch {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+}
+
+/* Dark Mode Toggle */
+.dark-mode-control {
+    padding: var(--space-4);
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-5);
+}
+
+.toggle-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+}
+
+.toggle-text {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 500;
+    color: var(--gray-700);
+}
+
+.toggle-text svg {
+    color: var(--gray-500);
+}
+
+.toggle-checkbox {
+    display: none;
+}
+
+.toggle-switch {
+    width: 44px;
+    height: 24px;
+    background: var(--gray-300);
+    border-radius: var(--radius-full);
+    position: relative;
+    transition: background var(--transition-fast);
+}
+
+.toggle-switch::after {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    background: white;
+    border-radius: 50%;
+    top: 3px;
+    left: 3px;
+    transition: transform var(--transition-fast);
+    box-shadow: var(--shadow-sm);
+}
+
+.toggle-checkbox:checked + .toggle-switch {
+    background: var(--primary-500);
+}
+
+.toggle-checkbox:checked + .toggle-switch::after {
+    transform: translateX(20px);
+}
+
+.toggle-hint {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    margin: var(--space-2) 0 0 0;
+}
+
+/* Actions */
+.appearance-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-3);
+}
+</style>
+
+<script>
+(function() {
+    // Initialize from current settings
+    const primarySlider = document.getElementById('primary-hue-slider');
+    const accentSlider = document.getElementById('accent-hue-slider');
+    const primaryValue = document.getElementById('primary-hue-value');
+    const accentValue = document.getElementById('accent-hue-value');
+    const darkModeToggle = document.getElementById('dark-mode-toggle');
+    
+    // Update preview swatches
+    function updatePrimarySwatches(hue) {
+        document.documentElement.style.setProperty('--preview-primary-hue', hue);
+        document.querySelectorAll('#primary-swatches .swatch').forEach((swatch, i) => {
+            const shades = [
+                [100, 97], [96, 90], [94, 80], [90, 66], [86, 55],
+                [84, 47], [83, 41], [78, 35], [70, 29], [64, 24]
+            ];
+            swatch.style.background = `hsl(${hue}, ${shades[i][0]}%, ${shades[i][1]}%)`;
+        });
+    }
+    
+    function updateAccentSwatches(hue) {
+        document.documentElement.style.setProperty('--preview-accent-hue', hue);
+        document.querySelectorAll('#accent-swatches .swatch').forEach((swatch, i) => {
+            const shades = [
+                [76, 97], [76, 90], [70, 78], [64, 62], [56, 46],
+                [64, 38], [72, 30], [70, 25], [64, 21], [58, 18]
+            ];
+            swatch.style.background = `hsl(${hue}, ${shades[i][0]}%, ${shades[i][1]}%)`;
+        });
+    }
+    
+    // Slider event handlers
+    primarySlider.addEventListener('input', function() {
+        primaryValue.textContent = this.value + '°';
+        updatePrimarySwatches(this.value);
+    });
+    
+    accentSlider.addEventListener('input', function() {
+        accentValue.textContent = this.value + '°';
+        updateAccentSwatches(this.value);
+    });
+    
+    // Preset buttons
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const hue = this.dataset.hue;
+            const target = this.dataset.target;
+            if (target === 'primary') {
+                primarySlider.value = hue;
+                primaryValue.textContent = hue + '°';
+                updatePrimarySwatches(hue);
+            } else {
+                accentSlider.value = hue;
+                accentValue.textContent = hue + '°';
+                updateAccentSwatches(hue);
+            }
+        });
+    });
+    
+    // Load current values from settings if available
+    const primarySetting = document.querySelector('[data-key="primary_color_hue"] .setting-value');
+    const accentSetting = document.querySelector('[data-key="accent_color_hue"] .setting-value');
+    const darkModeSetting = document.querySelector('[data-key="dark_mode_enabled"] .setting-value');
+    
+    if (primarySetting) {
+        const val = parseInt(primarySetting.textContent) || 217;
+        primarySlider.value = val;
+        primaryValue.textContent = val + '°';
+        updatePrimarySwatches(val);
+    }
+    
+    if (accentSetting) {
+        const val = parseInt(accentSetting.textContent) || 142;
+        accentSlider.value = val;
+        accentValue.textContent = val + '°';
+        updateAccentSwatches(val);
+    }
+    
+    if (darkModeSetting) {
+        darkModeToggle.checked = darkModeSetting.textContent.trim().toLowerCase() === 'true';
+    }
+    
+    // Save function
+    window.saveAppearance = async function() {
+        const settings = [
+            { key: 'primary_color_hue', value: primarySlider.value },
+            { key: 'accent_color_hue', value: accentSlider.value },
+            { key: 'dark_mode_enabled', value: darkModeToggle.checked ? 'true' : 'false' }
+        ];
+        
+        try {
+            for (const setting of settings) {
+                const response = await fetch(`/web/admin/settings/${setting.key}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `value=${encodeURIComponent(setting.value)}`
+                });
+                if (!response.ok) throw new Error(`Failed to save ${setting.key}`);
+            }
+            
+            // Show success and reload to apply theme
+            showToast('Theme saved! Reloading...', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (err) {
+            showToast('Failed to save theme: ' + err.message, 'error');
+        }
+    };
+    
+    // Reset function
+    window.resetAppearance = function() {
+        primarySlider.value = 217;
+        primaryValue.textContent = '217°';
+        updatePrimarySwatches(217);
+        
+        accentSlider.value = 142;
+        accentValue.textContent = '142°';
+        updateAccentSwatches(142);
+        
+        darkModeToggle.checked = false;
+    };
+})();
+</script>

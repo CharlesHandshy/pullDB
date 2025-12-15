@@ -1,17 +1,17 @@
 <!-- Admin Dashboard - System health + administration -->
 
 <!-- System Overview Stats -->
-<div style="display: flex; gap: 1rem; margin-top: 1.5rem; flex-wrap: wrap;">
+<div class="dashboard-stats-row">
     <!-- Users Card -->
-    <div style="background: white; border: 1px solid var(--gray-200); border-radius: 0.5rem; padding: 1rem 1.25rem; min-width: 160px;">
-        <div style="font-size: 0.75rem; font-weight: 500; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Users</div>
-        <div style="display: flex; gap: 1rem; align-items: baseline;">
+    <div class="dashboard-stat-card">
+        <div class="dashboard-stat-label">Users</div>
+        <div class="dashboard-stat-row baseline">
             <div>
-                <span style="font-size: 1.75rem; font-weight: 700; color: var(--primary-600);">{{ system_stats.active_users }}</span>
-                <span style="font-size: 0.875rem; color: var(--gray-500); margin-left: 0.25rem;">active</span>
+                <span class="dashboard-stat-value text-primary-600">{{ system_stats.active_users }}</span>
+                <span class="dashboard-stat-suffix">active</span>
             </div>
             {% if system_stats.disabled_users > 0 %}
-            <div style="font-size: 0.875rem; color: var(--gray-400);">
+            <div class="dashboard-stat-secondary">
                 {{ system_stats.disabled_users }} disabled
             </div>
             {% endif %}
@@ -19,15 +19,15 @@
     </div>
     
     <!-- Hosts Card -->
-    <div style="background: white; border: 1px solid var(--gray-200); border-radius: 0.5rem; padding: 1rem 1.25rem; min-width: 160px;">
-        <div style="font-size: 0.75rem; font-weight: 500; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Hosts</div>
-        <div style="display: flex; gap: 1rem; align-items: baseline;">
+    <div class="dashboard-stat-card">
+        <div class="dashboard-stat-label">Hosts</div>
+        <div class="dashboard-stat-row baseline">
             <div>
-                <span style="font-size: 1.75rem; font-weight: 700; color: var(--success-600);">{{ system_stats.enabled_hosts }}</span>
-                <span style="font-size: 0.875rem; color: var(--gray-500); margin-left: 0.25rem;">enabled</span>
+                <span class="dashboard-stat-value text-success-600">{{ system_stats.enabled_hosts }}</span>
+                <span class="dashboard-stat-suffix">enabled</span>
             </div>
             {% if system_stats.disabled_hosts > 0 %}
-            <div style="font-size: 0.875rem; color: var(--gray-400);">
+            <div class="dashboard-stat-secondary">
                 {{ system_stats.disabled_hosts }} disabled
             </div>
             {% endif %}
@@ -35,43 +35,43 @@
     </div>
     
     <!-- System Jobs Card -->
-    <div style="background: white; border: 1px solid var(--gray-200); border-radius: 0.5rem; padding: 1rem 1.25rem; flex: 1; min-width: 300px;">
-        <div style="font-size: 0.75rem; font-weight: 500; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">System Jobs</div>
-        <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+    <div class="dashboard-stat-card flex-grow">
+        <div class="dashboard-stat-label">System Jobs</div>
+        <div class="dashboard-stat-row">
             <div>
-                <span style="font-size: 1.5rem; font-weight: 700; color: var(--warning-600);">{{ system_stats.queued_jobs }}</span>
-                <span style="font-size: 0.875rem; color: var(--gray-500); margin-left: 0.25rem;">queued</span>
+                <span class="dashboard-stat-value lg text-warning-600">{{ system_stats.queued_jobs }}</span>
+                <span class="dashboard-stat-suffix">queued</span>
             </div>
             <div>
-                <span style="font-size: 1.5rem; font-weight: 700; color: var(--primary-600);">{{ system_stats.running_jobs }}</span>
-                <span style="font-size: 0.875rem; color: var(--gray-500); margin-left: 0.25rem;">running</span>
+                <span class="dashboard-stat-value lg text-primary-600">{{ system_stats.running_jobs }}</span>
+                <span class="dashboard-stat-suffix">running</span>
             </div>
             <div>
-                <span style="font-size: 1.5rem; font-weight: 700; color: var(--success-600);">{{ system_stats.completed_jobs }}</span>
-                <span style="font-size: 0.875rem; color: var(--gray-500); margin-left: 0.25rem;">completed</span>
+                <span class="dashboard-stat-value lg text-success-600">{{ system_stats.completed_jobs }}</span>
+                <span class="dashboard-stat-suffix">completed</span>
             </div>
             <div>
-                <span style="font-size: 1.5rem; font-weight: 700; color: var(--danger-600);">{{ system_stats.failed_jobs }}</span>
-                <span style="font-size: 0.875rem; color: var(--gray-500); margin-left: 0.25rem;">failed</span>
+                <span class="dashboard-stat-value lg text-danger-600">{{ system_stats.failed_jobs }}</span>
+                <span class="dashboard-stat-suffix">failed</span>
             </div>
         </div>
     </div>
     
     <!-- My Active Jobs -->
-    <div style="background: white; border: 1px solid var(--gray-200); border-radius: 0.5rem; padding: 1rem 1.25rem;">
-        <div style="font-size: 0.75rem; font-weight: 500; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">My Active</div>
-        <span style="font-size: 1.75rem; font-weight: 700; color: var(--primary-600);">{{ my_active_count }}</span>
+    <div class="dashboard-stat-card">
+        <div class="dashboard-stat-label">My Active</div>
+        <span class="dashboard-stat-value text-primary-600">{{ my_active_count }}</span>
     </div>
 </div>
 
 <!-- Alerts Section (if failed jobs) -->
 {% if system_stats.failed_jobs > 0 %}
-<div style="background: var(--danger-50); border: 1px solid var(--danger-200); border-radius: 0.5rem; padding: 1rem 1.25rem; margin-top: var(--space-5); display: flex; align-items: center; justify-content: space-between;">
+<div class="alert alert-danger" style="margin-top: var(--space-5); display: flex; align-items: center; justify-content: space-between;">
     <div style="display: flex; align-items: center; gap: var(--space-3);">
-        <svg style="width: 20px; height: 20px; color: var(--danger-600);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
-        <span style="font-weight: 500; color: var(--danger-700);">{{ system_stats.failed_jobs }} failed job{% if system_stats.failed_jobs > 1 %}s{% endif %} require attention</span>
+        <span style="font-weight: 500;">{{ system_stats.failed_jobs }} failed job{% if system_stats.failed_jobs > 1 %}s{% endif %} require attention</span>
     </div>
     <a href="/web/jobs?view=history" 
        onclick="NavIntent.set({view: 'history', filters: {status: ['failed']}})" 
@@ -80,79 +80,77 @@
 {% endif %}
 
 <!-- Two Column Layout: Host Health + System Activity -->
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); margin-top: var(--space-6);">
+<div class="dashboard-grid-2">
     
     <!-- Host Health -->
     <div class="card card-padding">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
-            <h3 style="margin: 0; font-size: 1rem; color: var(--gray-700);">Host Health</h3>
+        <div class="section-header">
+            <h3 class="section-title">Host Health</h3>
             <a href="/web/admin/hosts" class="link-primary" style="font-size: 0.875rem;">Manage →</a>
         </div>
         {% if host_health %}
-        <table style="width: 100%; border-collapse: collapse;">
+        <table class="dashboard-table">
             <thead>
-                <tr style="border-bottom: 1px solid var(--gray-200);">
-                    <th style="text-align: left; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">Host</th>
-                    <th style="text-align: right; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">Active / Capacity</th>
+                <tr>
+                    <th>Host</th>
+                    <th class="text-right">Active / Capacity</th>
                 </tr>
             </thead>
             <tbody>
                 {% for item in host_health %}
-                <tr style="border-bottom: 1px solid var(--gray-100);">
-                    <td style="padding: var(--space-2) 0;">
-                        <div style="font-weight: 500; color: var(--gray-900);">{{ item.name }}</div>
+                <tr>
+                    <td>
+                        <div class="cell-primary">{{ item.name }}</div>
                         {% if not item.enabled %}
                         <span class="badge badge-neutral" style="font-size: 0.625rem;">disabled</span>
                         {% endif %}
                     </td>
-                    <td style="padding: var(--space-2) 0; text-align: right;">
-                        <!-- Queue depth warnings -->
+                    <td class="text-right">
                         {% if item.queued_count > 10 %}
                         <span class="badge badge-danger" style="font-size: 0.625rem; margin-right: 0.5rem;">{{ item.queued_count }} queued</span>
                         {% elif item.queued_count > 5 %}
                         <span class="badge badge-warning" style="font-size: 0.625rem; margin-right: 0.5rem;">{{ item.queued_count }} queued</span>
                         {% endif %}
-                        <!-- Running/Capacity display -->
-                        <span style="font-weight: 600; color: {% if item.running_count >= item.max_running_jobs %}var(--danger-600){% elif item.running_count > 0 %}var(--primary-600){% else %}var(--gray-400){% endif %};">
-                            {{ item.running_count }}
+                        <span class="capacity-indicator {% if item.running_count >= item.max_running_jobs %}capacity-at-limit{% elif item.running_count > 0 %}capacity-active{% else %}capacity-idle{% endif %}">
+                            <span class="current">{{ item.running_count }}</span>
+                            <span class="separator">/</span>
+                            <span class="max">{{ item.max_running_jobs }}</span>
                         </span>
-                        <span style="color: var(--gray-400);">/</span>
-                        <span style="color: var(--gray-500);">{{ item.max_running_jobs }}</span>
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         {% else %}
-        <p style="color: var(--gray-500); margin: 0;">No hosts configured.</p>
+        <p class="text-muted" style="margin: 0;">No hosts configured.</p>
         {% endif %}
     </div>
     
     <!-- System Recent Activity -->
     <div class="card card-padding">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
-            <h3 style="margin: 0; font-size: 1rem; color: var(--gray-700);">Recent Activity</h3>
+        <div class="section-header">
+            <h3 class="section-title">Recent Activity</h3>
             <a href="/web/jobs" class="link-primary" style="font-size: 0.875rem;">View All →</a>
         </div>
         {% if system_recent %}
-        <table style="width: 100%; border-collapse: collapse;">
+        <table class="dashboard-table">
             <thead>
-                <tr style="border-bottom: 1px solid var(--gray-200);">
-                    <th style="text-align: left; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">Job</th>
-                    <th style="text-align: left; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">User</th>
-                    <th style="text-align: left; padding: var(--space-2) 0; font-size: 0.75rem; color: var(--gray-500); text-transform: uppercase;">Status</th>
+                <tr>
+                    <th>Job</th>
+                    <th>User</th>
+                    <th>Status</th>
                 </tr>
             </thead>
             <tbody>
                 {% for job in system_recent %}
-                <tr style="border-bottom: 1px solid var(--gray-100);">
-                    <td style="padding: var(--space-2) 0;">
+                <tr>
+                    <td>
                         <a href="/web/jobs/{{ job.id }}" class="link-primary" style="font-weight: 500;">{{ job.target[:18] }}{% if job.target|length > 18 %}...{% endif %}</a>
                     </td>
-                    <td style="padding: var(--space-2) 0; font-size: 0.875rem; color: var(--gray-600);">
+                    <td class="text-muted" style="font-size: 0.875rem;">
                         {{ job.owner_user_code }}
                     </td>
-                    <td style="padding: var(--space-2) 0;">
+                    <td>
                         <span class="badge 
                             {% if job.status.value == 'complete' %}badge-success
                             {% elif job.status.value == 'failed' %}badge-danger
@@ -168,24 +166,24 @@
             </tbody>
         </table>
         {% else %}
-        <p style="color: var(--gray-500); margin: 0;">No recent activity.</p>
+        <p class="text-muted" style="margin: 0;">No recent activity.</p>
         {% endif %}
     </div>
 </div>
 
 <!-- My Last Job -->
 <div class="card card-padding" style="margin-top: var(--space-6);">
-    <h3 style="margin-top: 0; margin-bottom: var(--space-4); font-size: 1rem; color: var(--gray-700);">My Last Job</h3>
+    <h3 class="section-title" style="margin-bottom: var(--space-4);">My Last Job</h3>
     {% if last_job %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <div>
-            <div style="font-weight: 600; color: var(--gray-900);">{{ last_job.target }}</div>
-            <div style="font-size: 0.875rem; color: var(--gray-500); margin-top: 0.25rem;">
+    <div class="job-detail-row">
+        <div class="job-detail-info">
+            <div class="job-detail-target">{{ last_job.target }}</div>
+            <div class="job-detail-meta">
                 <span class="font-mono">{{ last_job.id[:8] }}</span>
                 · {{ last_job.submitted_at.strftime('%Y-%m-%d %H:%M') if last_job.submitted_at else '-' }}
             </div>
         </div>
-        <div style="display: flex; align-items: center; gap: var(--space-3);">
+        <div class="job-detail-actions">
             <span class="badge 
                 {% if last_job.status.value == 'complete' %}badge-success
                 {% elif last_job.status.value == 'failed' %}badge-danger
@@ -200,12 +198,12 @@
         </div>
     </div>
     {% else %}
-    <p style="color: var(--gray-500); margin: 0;">No jobs submitted yet. <a href="/web/restore" class="link-primary">Start a restore</a></p>
+    <p class="text-muted" style="margin: 0;">No jobs submitted yet. <a href="/web/restore" class="link-primary">Start a restore</a></p>
     {% endif %}
 </div>
 
 <!-- Quick Actions -->
-<div style="margin-top: var(--space-6); display: flex; gap: var(--space-3); flex-wrap: wrap;">
+<div class="quick-actions">
     <a href="/web/restore" class="btn btn-primary">New Restore Job</a>
     <a href="/web/admin/users" class="btn btn-secondary">Manage Users</a>
     <a href="/web/admin/hosts" class="btn btn-secondary">Manage Hosts</a>

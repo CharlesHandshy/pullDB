@@ -44,8 +44,8 @@ body {
 
 .app-header {
     grid-area: header;
-    background-color: white;
-    border-bottom: 1px solid var(--gray-200);
+    background-color: var(--color-surface, white);
+    border-bottom: 1px solid var(--color-border, var(--gray-200));
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -113,8 +113,8 @@ body {
 
 .app-footer {
     grid-area: footer;
-    background-color: white;
-    border-top: 1px solid var(--gray-200);
+    background-color: var(--color-surface, white);
+    border-top: 1px solid var(--color-border, var(--gray-200));
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -157,6 +157,12 @@ body {
 
 .sidebar-label {
     margin-left: var(--space-3);
+}
+
+.sidebar-footer {
+    margin-top: auto;
+    border-top: 1px solid var(--gray-700);
+    padding-top: var(--space-2);
 }
 
 /* Header Elements */

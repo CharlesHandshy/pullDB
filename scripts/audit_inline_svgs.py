@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Extract and catalog all inline SVGs from pullDB web templates.
+"""Extract and catalog all inline SVGs from pullDB web templates.
 
 This script analyzes all HTML templates to:
 1. Find inline SVG elements
@@ -175,19 +174,126 @@ def suggest_icon_name(svg: SVGInstance) -> str:
         if hint in context_lower:
             return name
 
-    # SVG content-based suggestions
+    # SVG content-based suggestions (path patterns from Heroicons/common icon sets)
     svg_hints = {
-        "M3 3h7v7H3": "dashboard",  # Grid pattern
-        "circle cx": "user",  # Head circle
-        "ellipse cx": "database",  # Database ellipse
-        "M21 21l-6-6": "search",  # Search diagonal
+        # Dashboard/Grid patterns
+        "M3 3h7v7H3": "dashboard",
+        "M3.375 19.5h17.25m-17.25": "table",  # Table with rows
+        # User patterns
+        "circle cx": "user",
+        # Database patterns
+        "ellipse cx": "database",
+        "M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125": "database",  # Database cylinder
+        # Search patterns
+        "M21 21l-6-6": "search",
+        "M21 21l-5.197-5.19": "search",  # Heroicons search
+        # Filter patterns
+        "M12 3c2.755 0 5.455.232 8.083.678": "filter",  # Heroicons filter funnel
+        # Navigation chevrons
         "M6 9l6 6 6-6": "chevron-down",
         "M9 18l6-6-6-6": "chevron-right",
         "M15 18l-6-6 6-6": "chevron-left",
-        "M18 6L6 18": "close",  # X pattern
+        "M4.5 15.75l7.5-7.5 7.5 7.5": "chevron-up",  # Heroicons sort indicator
+        "M8.25 4.5l7.5 7.5-7.5 7.5": "chevron-right",  # Heroicons
+        "M15.75 19.5L8.25 12l7.5-7.5": "chevron-left",  # Heroicons
+        "M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5": "chevron-double-left",  # First page
+        "M5.25 4.5l7.5 7.5-7.5 7.5m6-15l7.5 7.5-7.5 7.5": "chevron-double-right",  # Last page
+        # Close/Cancel patterns
+        "M18 6L6 18": "close",
+        "M6 18L18 6M6 6l12 12": "close",  # X mark
+        "M18.364 18.3": "x-circle",  # X in circle (canceled)
+        # Math operators
         "M5 12h14": "minus",
-        "M12 5v14": "plus",  # Plus vertical
+        "M12 5v14": "plus",
+        "M12 4.5v15m7.5-7.5h-15": "plus",  # Heroicons plus
         "polyline points=\"20 6 9 17 4 12\"": "check",
+        # Status indicators
+        "M9 12.75L11.25 15 15 9.75M21 12a9 9 0": "check-circle",  # Success
+        "M4.5 12.75l6 6 9-13.5": "check",  # Checkmark
+        "M12 9v3.75m-9.303 3.376": "warning-triangle",  # Alert triangle
+        "M12 9v3.75m9.303 3.376": "warning-triangle",  # Alert triangle (alt)
+        "M22 11.08V12a10 10 0 1 1-5.93-9.14": "check-circle",  # Success circle (Lucide)
+        "polyline points=\"22 4 12 14.01 9 11.01\"": "check",  # Success checkmark
+        # Actions
+        "M5.25 5.653c0-.856.917-1.398 1.667-.986": "play",  # Play button
+        "M5.25 7.5A2.25 2.25 0 017.5 5.25h9": "stop",  # Stop button (square)
+        # Time/Clock patterns
+        "M12 6v6h4.5m4.5 0a9 9 0 11-18 0": "clock",  # Clock with hands
+        "polyline points=\"12 6 12 12 16 14\"": "clock",  # Lucide clock
+        # Lightning/Quick action
+        "M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75": "lightning",  # Bolt
+        # Document patterns
+        "M4 7V4a2 2 0 0 1 2-2h8.5L20 7.5V20": "document",  # File with fold
+        "M19.5 14.25v-2.625a3.375": "document-stack",  # Multiple docs
+        # Logo/Brand
+        "M2.25 15a4.5 4.5 0 004.5 4.5H18": "pulldb-logo",  # Custom logo
+        # Arrow/Back patterns
+        "M9 15L3 9m0 0l6-6M3 9h12": "arrow-left",  # Back arrow
+        "M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18": "arrow-left-long",  # Long back
+        "M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3": "arrow-right",  # Forward arrow
+        "m15 18-6-6 6-6": "chevron-left",  # Lucide chevron-left
+        # Home
+        "M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12": "home",
+        # Info circle
+        "M11.25 11.25l.041-.02a.75.75 0": "info",
+        # External link
+        "M13.5 6H5.25A2.25": "external-link",
+        # Shield
+        "M9 12.75L11.25 15 15 9.75m-3-7.036A11.959": "shield-check",
+        # Empty state patterns
+        "M20.25 7.5l-.625 10.632": "inbox-empty",  # Empty inbox
+        # Chart/Analytics patterns
+        "M12 2a10 10 0 1 0 10 10H12V2z": "pie-chart",  # Pie chart
+        "M21.18 8.02c-1-2.3-2.85-4.17-5.16-5.18": "pie-chart",  # Pie chart segment
+        # Calendar/Grid patterns
+        "rect width=\"18\" height=\"18\" x=\"3\" y=\"4\"": "calendar",  # Calendar box
+        # Package/Box patterns
+        "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8": "package",  # 3D box
+        # Circle clock for summary
+        "circle cx=\"12\" cy=\"12\" r=\"10\"": "clock-circle",  # Circle + clock hands
+        # Success badge patterns
+        "M9 11l3 3L22 4": "check",  # Simple checkmark
+        # Logo/Brand patterns
+        "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5": "layers",  # Stacked layers logo
+        # Lock/Security patterns
+        "rect width=\"18\" height=\"11\" x=\"3\" y=\"11\"": "lock",  # Lock body
+        "M7 11V7a5 5 0 0 1 10 0v4": "lock",  # Lock shackle
+        # Error/Warning patterns
+        "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94": "error-triangle",  # Error triangle
+        "line x1=\"12\" x2=\"12\" y1=\"9\" y2=\"13\"": "error-triangle",  # Error line
+        # Info circle patterns
+        "M12 16v-4": "info-circle",  # Info text
+        "M12 8h.01": "info-circle",  # Info dot
+        # Document/File patterns
+        "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12": "document-text",  # Document with lines
+        "polyline points=\"14 2 14 8 20 8\"": "document-text",  # Document fold
+        # Database with modifier
+        "line x1=\"9\" x2=\"15\" y1=\"12\" y2=\"12\"": "database-minus",  # DB with minus
+        # Upload patterns
+        "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4": "upload",  # Upload base
+        "polyline points=\"17 8 12 3 7 8\"": "upload",  # Upload arrow
+        "line x1=\"12\" x2=\"12\" y1=\"3\" y2=\"15\"": "upload",  # Upload line
+        # Download patterns
+        "polyline points=\"7 10 12 15 17 10\"": "download",  # Download arrow
+        # Trash/Delete patterns
+        "M3 6h18": "trash",  # Trash top
+        "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6": "trash",  # Trash body
+        # Password/Requirements patterns
+        "M22 11.08V12a10 10": "check-requirement",  # Check requirement
+        # Briefcase/Role patterns
+        "rect width=\"20\" height=\"14\" x=\"2\" y=\"7\"": "briefcase",  # Briefcase body
+        "path d=\"M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16\"": "briefcase",  # Briefcase handle
+        # Loading/Spinner patterns
+        "M21 12a9 9 0 1 1-6.219-8.56": "spinner",  # Partial circle spinner
+        # Search clear icon (X)
+        "line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"": "close",  # X line 1
+        "line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"": "close",  # X line 2
+        # Eye/View patterns (Heroicons)
+        "M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5": "eye",  # Eye outer
+        "M15 12a3 3 0 11-6 0 3 3 0 016 0z": "eye",  # Eye pupil
+        # Circle with radius for search
+        "circle cx=\"11\" cy=\"11\" r=\"8\"": "search",  # Search circle
+        "m21 21-4.35-4.35": "search",  # Search handle
     }
 
     for hint, name in svg_hints.items():
@@ -213,7 +319,9 @@ def determine_hca_layer(icon_name: str) -> str:
         "key": "entities",
         "lock": "entities",
         "shield": "entities",
+        "shield-check": "entities",
         "layers": "entities",
+        "briefcase": "entities",
         # Features (Business logic)
         "search": "features",
         "download": "features",
@@ -224,24 +332,46 @@ def determine_hca_layer(icon_name: str) -> str:
         "plus": "features",
         "minus": "features",
         "check": "features",
+        "check-requirement": "features",
         "x-mark": "features",
+        "x-circle": "features",
         "lightning": "features",
         "clock": "features",
+        "clock-circle": "features",
         "activity": "features",
         "filter": "features",
+        "play": "features",
+        "stop": "features",
+        "table": "features",
+        "document": "features",
+        "document-text": "features",
+        "database-minus": "features",
+        "upload": "features",
+        "arrow-left": "features",
+        "arrow-left-long": "features",
+        "arrow-right": "features",
+        "pie-chart": "features",
+        "calendar": "features",
+        "package": "features",
+        "close": "features",
         # Widgets (UI components)
         "chevron-down": "widgets",
         "chevron-up": "widgets",
         "chevron-right": "widgets",
         "chevron-left": "widgets",
+        "chevron-double-left": "widgets",
+        "chevron-double-right": "widgets",
         "sort": "widgets",
-        "close": "widgets",
         "spinner": "widgets",
         "check-circle": "widgets",
         "warning": "widgets",
+        "warning-triangle": "widgets",
+        "error-triangle": "widgets",
         "info": "widgets",
+        "info-circle": "widgets",
         "hamburger": "widgets",
         "dots-vertical": "widgets",
+        "inbox-empty": "widgets",
         # Pages (Navigation)
         "dashboard": "pages",
         "document-stack": "pages",
@@ -251,6 +381,7 @@ def determine_hca_layer(icon_name: str) -> str:
         "sun": "pages",
         "moon": "pages",
         "external-link": "pages",
+        "pulldb-logo": "pages",
     }
     return layer_mapping.get(icon_name, "unknown")
 

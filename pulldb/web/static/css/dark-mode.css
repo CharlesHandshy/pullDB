@@ -1,0 +1,248 @@
+/* =================================================================
+   Dark Mode Theme
+   HCA Layer: shared (design tokens)
+   
+   Applied via [data-theme="dark"] on <html> or <body>
+   CSS variables override the defaults in design-system.css
+   ================================================================= */
+
+[data-theme="dark"] {
+    /* Background colors */
+    --color-bg-primary: #0f172a;      /* slate-900 */
+    --color-bg-secondary: #1e293b;    /* slate-800 */
+    --color-bg-tertiary: #334155;     /* slate-700 */
+    --color-bg-elevated: #1e293b;     /* cards, modals */
+    --color-bg-hover: #334155;
+    
+    /* Surface colors */
+    --color-surface: #1e293b;
+    --color-surface-hover: #334155;
+    --color-surface-active: #475569;
+    
+    /* Border colors */
+    --color-border: #334155;          /* slate-700 */
+    --color-border-light: #475569;    /* slate-600 */
+    --color-border-focus: #60a5fa;    /* blue-400 */
+    
+    /* Text colors */
+    --color-text-primary: #f1f5f9;    /* slate-100 */
+    --color-text-secondary: #94a3b8;  /* slate-400 */
+    --color-text-muted: #64748b;      /* slate-500 */
+    --color-text-inverse: #0f172a;    /* slate-900 */
+    
+    /* Status colors (adjusted for dark bg) */
+    --color-success: #4ade80;         /* green-400 */
+    --color-success-bg: rgba(74, 222, 128, 0.15);
+    --color-success-border: rgba(74, 222, 128, 0.3);
+    
+    --color-warning: #fbbf24;         /* amber-400 */
+    --color-warning-bg: rgba(251, 191, 36, 0.15);
+    --color-warning-border: rgba(251, 191, 36, 0.3);
+    
+    --color-error: #f87171;           /* red-400 */
+    --color-error-bg: rgba(248, 113, 113, 0.15);
+    --color-error-border: rgba(248, 113, 113, 0.3);
+    
+    --color-info: #60a5fa;            /* blue-400 */
+    --color-info-bg: rgba(96, 165, 250, 0.15);
+    --color-info-border: rgba(96, 165, 250, 0.3);
+    
+    /* Interactive colors */
+    --color-primary: #60a5fa;         /* blue-400 */
+    --color-primary-hover: #3b82f6;   /* blue-500 */
+    --color-primary-active: #2563eb;  /* blue-600 */
+    
+    --color-accent: #a78bfa;          /* violet-400 */
+    --color-accent-hover: #8b5cf6;    /* violet-500 */
+    
+    /* Links */
+    --color-link: #60a5fa;
+    --color-link-hover: #93c5fd;
+    --color-link-visited: #a78bfa;
+    
+    /* Form elements */
+    --color-input-bg: #1e293b;
+    --color-input-border: #475569;
+    --color-input-focus: #60a5fa;
+    --color-input-placeholder: #64748b;
+    
+    /* Shadows (more visible on dark bg) */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+    
+    /* Code/monospace blocks */
+    --color-code-bg: #1e293b;
+    --color-code-text: #e2e8f0;
+    --color-code-border: #334155;
+    
+    /* Table */
+    --color-table-header-bg: #1e293b;
+    --color-table-row-hover: #334155;
+    --color-table-row-stripe: rgba(255, 255, 255, 0.02);
+    
+    /* Scrollbar (WebKit) */
+    --scrollbar-track: #1e293b;
+    --scrollbar-thumb: #475569;
+    --scrollbar-thumb-hover: #64748b;
+}
+
+/* Dark mode scrollbar styling */
+[data-theme="dark"] ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: var(--radius-sm);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+
+/* Stat card icon backgrounds - dark mode */
+[data-theme="dark"] .stat-icon-primary {
+    background: rgba(96, 165, 250, 0.15);
+    color: var(--color-primary);
+}
+
+[data-theme="dark"] .stat-icon-success {
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--color-success);
+}
+
+[data-theme="dark"] .stat-icon-warning {
+    background: rgba(251, 191, 36, 0.15);
+    color: var(--color-warning);
+}
+
+[data-theme="dark"] .stat-icon-error {
+    background: rgba(248, 113, 113, 0.15);
+    color: var(--color-error);
+}
+
+/* Badge variants - dark mode */
+[data-theme="dark"] .badge-success {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+    border-color: var(--color-success-border);
+}
+
+[data-theme="dark"] .badge-warning {
+    background: var(--color-warning-bg);
+    color: var(--color-warning);
+    border-color: var(--color-warning-border);
+}
+
+[data-theme="dark"] .badge-error {
+    background: var(--color-error-bg);
+    color: var(--color-error);
+    border-color: var(--color-error-border);
+}
+
+[data-theme="dark"] .badge-info {
+    background: var(--color-info-bg);
+    color: var(--color-info);
+    border-color: var(--color-info-border);
+}
+
+/* Focus ring - more visible on dark */
+[data-theme="dark"] :focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+/* Selection highlight */
+[data-theme="dark"] ::selection {
+    background: rgba(96, 165, 250, 0.3);
+    color: var(--color-text-primary);
+}
+
+/* =================================================================
+   Component-Specific Dark Mode Overrides
+   ================================================================= */
+
+/* Form focus states - adjusted ring color for dark backgrounds */
+[data-theme="dark"] .form-input:focus,
+[data-theme="dark"] .form-select:focus,
+[data-theme="dark"] .search-input:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
+[data-theme="dark"] .manager-select:focus,
+[data-theme="dark"] .role-select:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+}
+
+/* Card hover state */
+[data-theme="dark"] .stat-card:hover,
+[data-theme="dark"] .card:hover {
+    border-color: var(--color-border-light);
+}
+
+/* Text color adjustments for components using gray tokens */
+[data-theme="dark"] .stat-pill .stat-value,
+[data-theme="dark"] .stat-card .stat-value {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .stat-pill .stat-label,
+[data-theme="dark"] .stat-card .stat-label {
+    color: var(--color-text-secondary);
+}
+
+/* Page title */
+[data-theme="dark"] .page-title {
+    color: var(--color-text-primary);
+}
+
+/* Dropdown menus */
+[data-theme="dark"] .dropdown-menu {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .dropdown-item:hover {
+    background: var(--color-surface-hover);
+}
+
+/* Toast variants */
+[data-theme="dark"] .toast-success {
+    border-left-color: var(--color-success);
+}
+
+[data-theme="dark"] .toast-error {
+    border-left-color: var(--color-error);
+}
+
+[data-theme="dark"] .toast-warning {
+    border-left-color: var(--color-warning);
+}
+
+/* Sidebar footer border */
+[data-theme="dark"] .sidebar-footer {
+    border-top-color: var(--gray-800);
+}
+
+/* Virtual table / LazyTable */
+[data-theme="dark"] .virtual-table-header {
+    background: var(--color-bg-secondary);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .virtual-table-row:hover {
+    background: var(--color-surface-hover);
+}
+
+[data-theme="dark"] .virtual-table-row:nth-child(even) {
+    background: var(--color-table-row-stripe);
+}

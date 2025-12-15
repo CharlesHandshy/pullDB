@@ -6,6 +6,540 @@
 
 ---
 
+## 2025-12-15 | PR 15: Audit Feature Implementation
+
+### Context
+PR 15 from GUI migration Phase 5 - implementing full audit log browsing functionality. Leverages existing `AuditRepository` and `audit_logs` table infrastructure.
+
+### What Was Done
+
+1. **Created audit feature module** at `pulldb/web/features/audit/`
+   - `__init__.py` - Module exports router
+   - `routes.py` - Two endpoints:
+     - `GET /web/admin/audit` - HTML page with LazyTable
+     - `GET /web/admin/audit/api/logs` - JSON API for pagination
+
+2. **Created audit template** at `pulldb/web/templates/features/audit/index.html`
+   - LazyTable with columns: Time, Actor, Action, Target, Detail
+   - Filter dropdowns: Actor, Target, Action type
+   - URL-based filtering (`?actor_id=...`, `?target_id=...`)
+   - Action badges with semantic colors (create=green, delete=red, etc.)
+   - Clickable usernames link to pre-filtered views
+
+3. **Added sidebar link** in `widgets/sidebar/sidebar.html`
+   - Admin-only visibility (same block as Admin link)
+   - Uses `file-text` icon for permanency/record semantics
+   - `active_nav == 'audit'` highlighting
+
+4. **Registered router** in `router_registry.py`
+   - Import `audit_router` from features/audit
+   - Include after admin_router
+
+### Rationale
+- **LazyTable with URL params**: Single template approach vs. separate `by_user.html`/`by_resource.html` — simpler, bookmarkable URLs
+- **`file-text` icon**: User chose permanency semantics over `clipboard` (ephemeral action log)
+- **Admin-only**: Audit logs contain sensitive action history
+
+### Files Created
+- `pulldb/web/features/audit/__init__.py`
+- `pulldb/web/features/audit/routes.py`
+- `pulldb/web/templates/features/audit/index.html`
+
+### Files Modified
+- `pulldb/web/templates/widgets/sidebar/sidebar.html` (sidebar link)
+- `pulldb/web/router_registry.py` (router registration)
+
+---
+
+## 2025-12-15 | PR 14: Accessibility & Icon Completion
+
+### Context
+Post-migration audit revealed accessibility gaps and remaining inline SVGs. PR 14 addresses skip links, icon-only button aria-labels, and inline SVG conversion to macros.
+
+### What Was Done
+
+1. **Added skip link to base.html**
+   - Inserted `<a href="#main-content" class="skip-link">Skip to main content</a>` before `<header>`
+   - Added `id="main-content"` to `<main>` element
+   - CSS already exists in design-system.css (sr-only until focused)
+
+2. **Converted base.html inline SVGs to icon macros**
+   - Added `{% from "partials/icons/_index.html" import icon %}`
+   - Sidebar toggle: menu icon
+   - Logo: layers icon (24px)
+   - Theme toggle: sun/moon icons with `.theme-icon-light`/`.theme-icon-dark` spans
+
+3. **Updated theme-toggle.js**
+   - Changed from direct SVG selectors to span wrapper queries
+   - Uses `.theme-icon-light` and `.theme-icon-dark` class selectors
+   - Display toggled via `flex`/`none` instead of `block`/`none`
+
+4. **Converted searchable_dropdown.html inline SVGs**
+   - Added icon import macro
+   - Converted 5 SVGs: search, spinner, x, chevron-down (2 instances)
+
+5. **Converted active_jobs.html inline SVGs**
+   - Added icon import macro
+   - Converted 3 SVGs: eye (view), x (cancel), refresh-cw (retry)
+   - Added aria-labels to all action buttons
+
+6. **Added aria-labels to icon-only buttons**
+   - hosts.html: "Add New Host" button
+   - users.html: 4 JS render functions (hosts modal, password reset variations)
+   - jobs.html: Cancel job button
+
+7. **Updated gui-migration documentation**
+   - README.md: Status now "Phase 1-4 Complete, Phase 5 In Progress"
+   - Added Phase 5 overview with PRs 14-20 descriptions
+   - 03-PR-BREAKDOWN.md: Added complete Phase 5 section with dependency graph
+
+### Rationale
+- **Skip link**: WCAG 2.4.1 requirement for keyboard users to bypass navigation
+- **aria-labels**: WCAG 4.1.2 requires accessible names for interactive elements
+- **Icon macros**: Maintainability - central icon system enables consistent updates
+- **Theme toggle spans**: More robust selector than direct SVG query
+
+### Files Modified
+- `pulldb/web/templates/base.html` (skip link, 4 icon conversions)
+- `pulldb/web/static/js/theme-toggle.js` (span-based selectors)
+- `pulldb/web/templates/partials/searchable_dropdown.html` (5 icon conversions)
+- `pulldb/web/templates/partials/active_jobs.html` (3 icons + aria-labels)
+- `pulldb/web/templates/features/admin/hosts.html` (aria-label)
+- `pulldb/web/templates/features/admin/users.html` (4 aria-labels)
+- `pulldb/web/templates/features/jobs.html` (aria-label)
+- `.pulldb/gui-migration/README.md` (Phase 5 status)
+- `.pulldb/gui-migration/03-PR-BREAKDOWN.md` (Phase 5 PRs)
+
+---
+
+## 2025-12-15 | PR 13: STYLE-GUIDE Sync
+
+### Context
+PR 13 from GUI migration plan - synchronizing documentation with actual CSS implementations after GUI migration work.
+
+### What Was Done
+
+1. **Updated header metadata** in [STYLE-GUIDE.md](docs/STYLE-GUIDE.md)
+   - Version: 1.0.0 → 1.1.0
+   - Date: December 4 → December 15, 2025
+   - Status: "Draft - Pending Review" → "Stable"
+
+2. **Fixed Info color documentation**
+   - Was incorrectly documented as "alias of primary" (blue)
+   - Corrected to show actual Cyan values: `#ecfeff`, `#cffafe`, `#06b6d4`, `#0891b2`
+
+3. **Fixed role badge class names**
+   - Changed `.developer` to `.user` (matches actual CSS)
+   - Updated manager badge color from `--primary-*` to `--info-*`
+   - Updated color variables from `-600` to `-700` (matches actual CSS)
+
+4. **Added new component sections**
+   - Toast notifications (container, variants, animation)
+   - Modal dialog (backdrop, content sizes, header/body/footer)
+   - Breadcrumb navigation (list, items, links, separator)
+
+5. **Added Icon System section**
+   - Macro usage examples with parameters
+   - Available icons organized by HCA layer (shared, entities, features, widgets, pages)
+   - Fallback behavior documentation
+
+6. **Added Dark Mode section**
+   - Activation priority: localStorage > admin default > system preference
+   - Theme toggle pattern
+   - Key CSS variable overrides
+   - Component support notes
+
+7. **Updated Table of Contents**
+   - Added Icon System (§7) and Dark Mode (§8) entries
+   - Renumbered Accessibility (§9) and Implementation Status (§10)
+
+8. **Updated Implementation Status**
+   - Moved completed items: Toast, Modal, Breadcrumb, Icon system, Dark mode, Theme toggle, Admin inline CSS extraction
+   - Removed "Create separate component CSS files" (already done in PR 8)
+   - Updated planned items
+
+### Rationale
+- **Single source of truth**: Style guide must reflect actual implementation
+- **Discoverability**: New developers need accurate component reference
+- **Versioned changelog**: Track documentation evolution alongside code changes
+
+### Files Modified
+- [docs/STYLE-GUIDE.md](docs/STYLE-GUIDE.md) - Major documentation sync
+
+---
+
+## 2025-12-15 | PR 12: Dark Mode Polish
+
+### Context
+PR 12 from GUI migration plan - enabling functional dark mode by replacing hardcoded `white` values with CSS variables and connecting admin settings to client-side theme toggle.
+
+### What Was Done
+
+1. **Replaced hardcoded `white` in [layout.css](pulldb/web/static/css/layout.css)**
+   - `.app-header` and `.app-footer` now use `var(--color-surface, white)`
+   - Border colors now use `var(--color-border, var(--gray-200))`
+
+2. **Replaced hardcoded `white` in [components.css](pulldb/web/static/css/components.css)** (13 occurrences)
+   - `.card`, `.stat-card`, `.stat-card-compact`, `.dashboard-stat-card` → `var(--color-surface, white)`
+   - `.form-input`, `.search-input`, `.role-select` → `var(--color-input-bg, white)`
+   - `.btn-secondary`, `.toast`, `.modal-content`, `.stat-pill` → `var(--color-surface, white)`
+   - Also updated border colors and text colors to use variables with fallbacks
+
+3. **Extended [dark-mode.css](pulldb/web/static/css/dark-mode.css)** (+70 lines)
+   - Form focus states with adjusted ring colors for dark backgrounds
+   - Card/stat-card hover states
+   - Text color adjustments for stat components
+   - Dropdown menu styling
+   - Toast variant border colors
+   - Sidebar footer border
+   - Virtual table / LazyTable row styling
+
+4. **Updated [theme-toggle.js](pulldb/web/static/js/theme-toggle.js)** to support admin default
+   - Added `getAdminDefault()` function to read `data-admin-theme-default` attribute
+   - Priority order: localStorage (user override) > admin default > system preference > light fallback
+
+5. **Added `admin_dark_mode()` global to Jinja2 environment**
+   - Created `_get_admin_dark_mode()` in [dependencies.py](pulldb/web/dependencies.py)
+   - Reads `dark_mode_enabled` setting from settings_repo
+   - Added to `templates.env.globals`
+
+6. **Updated [base.html](pulldb/web/templates/base.html)** to emit admin default attribute
+   - Conditionally adds `data-admin-theme-default="dark"` when admin setting is enabled
+
+### Rationale
+- **CSS variables with fallbacks**: `var(--color-surface, white)` ensures graceful degradation if variables aren't defined
+- **Split responsibility**: dark-mode.css handles component overrides, theme.css handles dynamic colors
+- **localStorage override**: Users can override admin default for personal preference
+- **Jinja2 global**: Avoids modifying every route handler to pass the setting
+
+### Files Modified
+- `pulldb/web/static/css/layout.css` (2 white → variable)
+- `pulldb/web/static/css/components.css` (13 white → variable, plus border/text color updates)
+- `pulldb/web/static/css/dark-mode.css` (+70 lines of component overrides)
+- `pulldb/web/static/js/theme-toggle.js` (admin default support)
+- `pulldb/web/dependencies.py` (+_get_admin_dark_mode function, +global)
+- `pulldb/web/templates/base.html` (data-admin-theme-default attribute)
+
+---
+
+## 2025-12-15 | PR 11: Navigation Polish
+
+### Context
+PR 11 from GUI migration plan - updating sidebar to use the centralized icon macro system and standardizing `active_nav` detection across all routes.
+
+### What Was Done
+
+1. **Refactored [sidebar.html](pulldb/web/templates/widgets/sidebar/sidebar.html) to use icon macros**
+   - Added `{% from 'partials/icons/_index.html' import icon %}` import
+   - Replaced 7 inline SVG blocks (~75 lines) with `{{ icon('name', size='20', stroke_width='2') }}` calls
+   - Icons used: dashboard, document, refresh, users-group, edit-pen, logout, login
+   - Reduced template from ~95 lines to ~68 lines
+
+2. **Standardized active nav detection**
+   - Changed Admin from `request.url.path.startswith('/web/admin')` to `active_nav == 'admin'`
+   - Changed Login from `request.url.path.startswith('/web/auth/login')` to `active_nav == 'login'`
+   - All 7 nav items now use consistent `active_nav == 'x'` pattern
+
+3. **Added `active_nav: "manager"` to manager routes**
+   - Updated [manager/routes.py](pulldb/web/features/manager/routes.py) (1 TemplateResponse)
+
+4. **Added `active_nav: "admin"` to admin routes**
+   - Updated [admin/routes.py](pulldb/web/features/admin/routes.py) (8 TemplateResponses)
+   - Covers: admin.html, users.html, hosts.html, host_detail.html, settings.html, prune_preview.html, cleanup_preview.html, orphan_preview.html
+
+5. **Extracted inline style to CSS class**
+   - Removed `style="margin-top: auto; border-top: 1px solid var(--gray-200); padding-top: 0.5rem;"` from logout container
+   - Added `.sidebar-footer` class to [layout.css](pulldb/web/static/css/layout.css)
+
+### Rationale
+- **Icon macros**: Single source of truth for SVG icons, easier to update, HCA-compliant
+- **Consistent active_nav**: Path-based detection was brittle and inconsistent with other nav items
+- **CSS extraction**: Inline styles violate design system principles
+
+### Files Modified
+- `pulldb/web/templates/widgets/sidebar/sidebar.html` (icon macros, active_nav standardization)
+- `pulldb/web/static/css/layout.css` (+5 lines for .sidebar-footer)
+- `pulldb/web/features/manager/routes.py` (+active_nav)
+- `pulldb/web/features/admin/routes.py` (+active_nav to 8 routes)
+
+---
+
+## 2025-12-15 | PR 8: Admin Theme GUI + CSS Extraction
+
+### Context
+Major PR implementing admin-configurable theming via HSL color sliders stored in MySQL settings, plus CSS extraction from admin templates.
+
+### What Was Done
+
+1. **Extracted ~380 lines of CSS to [components.css](pulldb/web/static/css/components.css)**
+   - Modal system: `.modal`, `.modal-backdrop`, `.modal-content`, `.modal-header/body/footer`, `.modal-close`, `.modal-hidden`, `.modal-content-wide/lg`
+   - Warning box: `.warning-box`, `.warning-box-title`, `.warning-box-text`
+   - Exclude button: `.exclude-btn`, `.exclude-btn.excluded`, `.excluded-row`, `.reset-exclusions-btn`
+   - User components: `.user-avatar`, `.role-badge` (admin/manager/user variants), `.stats-row`, `.stat-pill`, `.action-btn` (with danger/success/warning variants), `.manager-select`, `.role-select`
+   - Page header: `.page-header-row`, `.page-header-left`, `.back-btn`
+   - Utilities: `.d-inline`, `.d-none`, `.hidden`
+
+2. **Refactored 3 preview templates to use component classes**
+   - [cleanup_preview.html](pulldb/web/templates/features/admin/cleanup_preview.html): Removed ~70 lines of `<style>` block
+   - [prune_preview.html](pulldb/web/templates/features/admin/prune_preview.html): Removed ~65 lines of `<style>` block
+   - [orphan_preview.html](pulldb/web/templates/features/admin/orphan_preview.html): Removed ~70 lines of `<style>` block
+
+3. **Refactored [users.html](pulldb/web/templates/features/admin/users.html)**
+   - Reduced `<style>` block from ~500 lines to ~160 lines
+   - Extracted modal, badge, stats, action button styles to components.css
+   - Kept page-specific layout styles inline
+
+4. **Added APPEARANCE settings category**
+   - Extended `SettingCategory` enum in [settings.py](pulldb/domain/settings.py)
+   - Added 3 new settings to `SETTING_REGISTRY`:
+     - `primary_color_hue` (default: 217 - blue)
+     - `accent_color_hue` (default: 142 - green)
+     - `dark_mode_enabled` (default: false)
+   - Updated category_order in [routes.py](pulldb/web/features/admin/routes.py)
+
+5. **Created `/web/admin/api/theme.css` endpoint**
+   - Generates dynamic CSS custom properties from MySQL settings
+   - Returns HSL color variables for primary (50-900 shades) and accent colors
+   - Includes dark mode overrides when enabled
+   - 60-second cache header for performance
+
+6. **Built appearance UI partial**
+   - Created [_appearance.html](pulldb/web/templates/features/admin/partials/_appearance.html)
+   - HSL hue sliders (0-360) with live swatch preview
+   - Preset color buttons for quick selection
+   - Dark mode toggle switch
+   - Save/Reset buttons with async API calls
+
+7. **Integrated theme.css into [base.html](pulldb/web/templates/base.html)**
+   - Added `<link>` after design-system.css to override color tokens
+   - Allows admin to customize brand colors globally
+
+### Rationale
+- **HSL over RGB**: Hue-only customization keeps saturation/lightness consistent with design system
+- **MySQL storage**: Leverages existing settings infrastructure, persists across sessions
+- **Dynamic CSS endpoint**: Avoids template complexity, enables caching
+- **Preview swatches**: Users see color palette before saving
+
+### Results
+- components.css: 947 → 1326 lines (+379 lines of reusable components)
+- Remaining inline `style=` in admin templates: ~57 total (down from ~150+)
+- Templates still have `<style>` blocks for page-specific layout not suitable for extraction
+
+### Files Modified
+- `pulldb/web/static/css/components.css` (+379 lines)
+- `pulldb/domain/settings.py` (APPEARANCE category + 3 settings)
+- `pulldb/web/features/admin/routes.py` (+theme.css endpoint, category_order)
+- `pulldb/web/templates/base.html` (theme.css link)
+- `pulldb/web/templates/features/admin/settings.html` (Appearance icon + include)
+- `pulldb/web/templates/features/admin/cleanup_preview.html` (refactored)
+- `pulldb/web/templates/features/admin/prune_preview.html` (refactored)
+- `pulldb/web/templates/features/admin/orphan_preview.html` (refactored)
+- `pulldb/web/templates/features/admin/users.html` (refactored)
+
+### Files Created
+- `pulldb/web/templates/features/admin/partials/_appearance.html`
+
+---
+
+## 2025-12-15 | PR 3: Dashboard Inline CSS Cleanup
+
+### Context
+Continuing GUI migration per `.pulldb/gui-migration/README.md`. PR 3 targeted dashboard templates which had ~163 inline styles across 4 files.
+
+### What Was Done
+
+1. **Audited actual dashboard structure**
+   - Found 4 files (not `partials/` as earlier audit suggested):
+     - `dashboard.html` - Main wrapper with role-based includes
+     - `_admin_dashboard.html` - Admin role (215 lines, 84 inline styles)
+     - `_manager_dashboard.html` - Manager role (176 lines, 56 inline styles)
+     - `_user_dashboard.html` - User role (84 lines, 22 inline styles)
+
+2. **Added dashboard CSS classes to [components.css](pulldb/web/static/css/components.css)**
+   - Added ~150 lines of reusable dashboard styles:
+     - `.dashboard-stats-row`, `.dashboard-stat-card`, `.dashboard-stat-label/value/suffix`
+     - `.section-header`, `.section-title`
+     - `.dashboard-grid-2`, `.dashboard-table`
+     - `.quick-actions` button group
+     - `.job-detail-row` with `.detail-label/value`
+     - `.capacity-indicator` with `.capacity-bar/fill`
+     - Text color utilities: `.text-primary-600`, `.text-muted`, `.text-success`, `.text-warning`, `.text-danger`
+
+3. **Refactored all role-specific dashboards**
+   - Replaced inline styles with CSS classes
+   - Maintained all HTMX refresh functionality
+   - Preserved responsive design
+
+### Rationale
+- **HCA**: All dashboard templates remain in `features/dashboard/`
+- **DRY**: Reusable CSS classes reduce template complexity
+- **Maintainability**: Centralized styling in components.css
+
+### Results
+- Inline styles reduced from 163 to 45 (72% reduction)
+- Remaining 45 are contextual layout overrides (margins, flex alignments) not suitable for component extraction
+
+### Files Modified
+- `pulldb/web/static/css/components.css` (~150 lines added)
+- `pulldb/web/templates/features/dashboard/_admin_dashboard.html` (full refactor)
+- `pulldb/web/templates/features/dashboard/_manager_dashboard.html` (full refactor)
+- `pulldb/web/templates/features/dashboard/_user_dashboard.html` (full refactor)
+- `pulldb/web/templates/features/dashboard/dashboard.html` (1 inline style → class)
+
+---
+
+## 2025-12-15 | PR 7-9: Admin Template Migration + Type Fixes
+
+### Context
+Continuing GUI migration per `.pulldb/gui-migration/README.md`. Admin templates needed migration to `features/admin/` and routes.py had ~50 type errors. User requested CSS extraction to components.css and type fixes.
+
+### What Was Done
+
+1. **Admin template migration**
+   - Copied `hosts.html`, `host_detail.html`, `settings.html` to `features/admin/`
+   - Updated 3 TemplateResponse paths in [routes.py](pulldb/web/features/admin/routes.py):
+     - L671: `admin/hosts.html` → `features/admin/hosts.html`
+     - L848: `admin/host_detail.html` → `features/admin/host_detail.html`
+     - L1666: `admin/settings.html` → `features/admin/settings.html`
+   - Deleted legacy `admin/` directory (11 files total)
+
+2. **CSS extraction to [components.css](pulldb/web/static/css/components.css)**
+   - Added reusable components (~200 lines):
+     - `.alert`, `.alert-success/warning/danger/info` variants
+     - `.status-badge`, `.status-badge-success/neutral/danger/warning`
+     - `.status-bar`, `.status-item`, `.status-count`, `.status-divider` (host list summary)
+     - `.info-grid`, `.info-item` (detail page layouts)
+     - `.info-banner`, `.info-icon`, `.info-content`
+     - `.search-bar`, `.search-wrapper`, `.search-icon`, `.search-input`
+     - `.form-grid`, `.form-hint`, `.form-label.required`
+
+3. **Type error fixes in routes.py** (all 50+ errors resolved):
+   - Fixed `test_host_connection`: Extracted `checks` dict with explicit typing
+   - Fixed `check_host_alias`: Added `dict[str, Any]` annotations, safe string coercion
+   - Fixed `provision_host_wizard`: Created typed helper functions (`get_form_str`, `get_form_int`), typed `steps` list
+   - Fixed `prov_result.data` access: Added null-safe `.get()` pattern
+   - Removed duplicate try/except block (unreachable code at L1009)
+   - Fixed orphan candidate functions: Renamed loop vars to avoid type inference confusion, added explicit `list[dict[str, Any]]` annotations
+
+### Rationale
+- **HCA compliance**: All templates now under `features/{feature}/` hierarchy
+- **FAIL HARD**: Type annotations prevent silent runtime failures
+- **DRY**: Common CSS components extracted for reuse across admin pages
+- **Clean codebase**: No legacy `admin/` folder remaining
+
+### Files Modified
+- `pulldb/web/features/admin/routes.py` (type fixes + path updates)
+- `pulldb/web/static/css/components.css` (~200 lines added)
+
+### Files Created
+- `pulldb/web/templates/features/admin/hosts.html` (from legacy)
+- `pulldb/web/templates/features/admin/host_detail.html` (from legacy)
+- `pulldb/web/templates/features/admin/settings.html` (from legacy)
+
+### Files Deleted
+- `pulldb/web/templates/admin/` (entire directory, 11 files)
+
+---
+
+## 2025-12-15 | PR 1 + Legacy Template Cleanup (GUI Migration)
+
+### Context
+Continuing GUI migration. PR 1 stat-card CSS was incomplete, and PRs 4/6/10 (Jobs/Manager/Audit) were identified for migration but upon inspection, the `features/` templates were already in use — the legacy folders contained orphaned templates.
+
+### What Was Done
+
+1. **PR 1: stat-card CSS completion**
+   - Added to [components.css](pulldb/web/static/css/components.css):
+     - `.stats-grid` layout class
+     - `.stat-card` full-size base class
+     - `.stat-icon` base + variants (`-primary`, `-success`, `-warning`, `-danger`, `-info`)
+     - `.stat-content`, `.stat-value`, `.stat-label` classes
+   - Now matches STYLE-GUIDE.md canonical definitions
+
+2. **PR 4/6/10: Audit revealed templates already migrated**
+   - Routes already use `features/jobs/`, `features/manager/`, etc.
+   - Legacy root-level templates were orphaned (no routes pointing to them)
+
+3. **Legacy template cleanup** — Deleted orphaned files:
+   - `my_jobs.html`, `job_profile.html` (jobs legacy)
+   - `manager/` folder (5 templates)
+   - `audit/` folder (3 templates)
+   - Root-level: `dashboard.html`, `history.html`, `job_detail.html`, `job_search.html`, `restore.html`, `search.html`
+
+### Rationale
+- **HCA compliance**: Legacy templates outside `features/` violate HCA; deleting removes tech debt
+- **No functional impact**: All deleted templates had no routes — verified via grep before deletion
+- **Cleaner codebase**: Reduced template count by ~15 files, all orphaned
+
+### Files Deleted
+- `pulldb/web/templates/my_jobs.html`
+- `pulldb/web/templates/job_profile.html`
+- `pulldb/web/templates/manager/` (entire folder)
+- `pulldb/web/templates/audit/` (entire folder)
+- `pulldb/web/templates/dashboard.html`
+- `pulldb/web/templates/history.html`
+- `pulldb/web/templates/job_detail.html`
+- `pulldb/web/templates/job_search.html`
+- `pulldb/web/templates/restore.html`
+- `pulldb/web/templates/search.html`
+
+### Files Modified
+- [pulldb/web/static/css/components.css](pulldb/web/static/css/components.css) — Added stat-card CSS (~50 lines)
+
+### Remaining Work
+- PR 3: Dashboard inline CSS cleanup (deferred — larger scope)
+- PR 7-9: Admin template migration (`admin/` folder still has mixed `features/admin/` and `admin/` usage)
+
+---
+
+## 2025-12-15 | PR 5 QA Template Implementation (GUI Migration)
+
+### Context
+GUI migration audit identified that [features/restore/restore.html](pulldb/web/templates/features/restore/restore.html) was **completely missing** the QA Template tab functionality that existed in the legacy template. This was marked as a **CRITICAL GAP** — users could not create QA databases.
+
+### What Was Done
+
+1. **Added tab CSS** to `{% block extra_css %}`:
+   - `.form-tabs` container with pill-style layout
+   - `.form-tab` buttons with hover/active states
+   - `.tab-content` show/hide mechanism
+   - `.qa-template-info` info banner styling
+   - `.qa-config-row` responsive grid for extension + environment inputs
+
+2. **Added tab HTML structure**:
+   - Tab buttons: "Customer Database" (users icon) | "QA Template" (database icon)
+   - Hidden input `name="qatemplate"` to track mode
+   - Wrapped existing customer search in `#tab-customer`
+   - New `#tab-qatemplate` with info banner, extension input, S3 env selector, and backup list
+
+3. **Added JavaScript tab switching**:
+   - Tab click handlers that update active states
+   - `updateQaTargetPreview()` for target name preview
+   - `loadQaTemplateBackups()` HTMX loader
+   - `selectQaBackup()` / `clearQaBackupSelection()` functions
+   - Updated `updateSummary()` for QA mode messaging
+   - Updated form validation for QA vs Customer mode
+
+4. **Updated backend route**:
+   - Added `qatemplate: str | None = Form(None)` parameter
+   - When `qatemplate == 'true'`, override `customer = 'qatemplate'`
+
+5. **Updated backup_results partial**:
+   - Detect if in `#qa-backup-list` container
+   - Call `selectQaBackup` vs `selectBackup` accordingly
+
+### Rationale
+- **Feature parity**: Legacy restore page had QA Template tab; new page must too
+- **FAIL HARD principle**: Don't silently remove features during migration
+- **HCA compliance**: QA Template is part of restore feature, stays in features/restore/
+
+### Files Modified
+- [pulldb/web/templates/features/restore/restore.html](pulldb/web/templates/features/restore/restore.html) — Added ~165 lines (CSS + HTML + JS)
+- [pulldb/web/features/restore/routes.py](pulldb/web/features/restore/routes.py) — Added qatemplate parameter handling
+- [pulldb/web/templates/features/restore/partials/backup_results.html](pulldb/web/templates/features/restore/partials/backup_results.html) — QA backup selection support
+
+---
+
 ## 2025-12-15 | Unified GUI Design System Planning
 
 ### Context

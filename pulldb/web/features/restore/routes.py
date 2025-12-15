@@ -8,18 +8,16 @@ from typing import Any
 from fastapi import APIRouter, Depends, Form, Request, Query, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResponse
-from fastapi.templating import Jinja2Templates
 
 from pulldb.api.logic import enqueue_job
 from pulldb.api.schemas import JobRequest
 from pulldb.domain.models import User, UserRole
 from pulldb.domain.services.discovery import DiscoveryService
-from pulldb.web.dependencies import get_api_state, require_login
+from pulldb.web.dependencies import get_api_state, require_login, templates
 from pulldb.infra.s3 import S3Client, BACKUP_FILENAME_REGEX
 from pulldb.infra.factory import is_simulation_mode
 
 router = APIRouter(prefix="/web/restore", tags=["web-restore"])
-templates = Jinja2Templates(directory="pulldb/web/templates")
 
 
 def _get_allowed_hosts_for_user(user: User, all_hosts: list) -> list:
@@ -177,6 +175,7 @@ async def restore_submit(
     backup_key: str | None = Form(None),
     overwrite: str | None = Form(None),
     submit_as_user: str | None = Form(None),
+    qatemplate: str | None = Form(None),
     state: Any = Depends(get_api_state),
     user: User = Depends(require_login),
 ) -> Any:
@@ -184,7 +183,12 @@ async def restore_submit(
     
     Args:
         submit_as_user: Username to submit job on behalf of (managers/admins only).
+        qatemplate: If 'true', this is a QA Template restore.
     """
+    
+    # Handle QA Template mode - override customer to 'qatemplate'
+    if qatemplate == 'true':
+        customer = 'qatemplate'
     
     # Determine the effective user for this job
     effective_username = user.username

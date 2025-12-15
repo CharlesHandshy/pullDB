@@ -1,3 +1,4 @@
+{% from "partials/icons/_index.html" import icon %}
 {% if active_jobs %}
 <div class="table-container">
     <table>
@@ -34,16 +35,12 @@
                 </td>
                 <td>
                     <div class="action-buttons">
-                        <a href="/web/jobs/{{ job.id }}" class="btn-icon btn-icon-view" title="View details">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M13.125 12h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125M20.625 12c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5M12 14.625v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 14.625c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 0v1.5c0 .621-.504 1.125-1.125 1.125" />
-                            </svg>
+                        <a href="/web/jobs/{{ job.id }}" class="btn-icon btn-icon-view" title="View details" aria-label="View job details">
+                            {{ icon('table', size='18') }}
                         </a>
                         {% if job.status.value in ['queued', 'running'] %}
-                        <button class="btn-icon btn-icon-cancel" title="Cancel job" onclick="if(confirm('Are you sure you want to cancel this job?')) { htmx.ajax('POST', '/web/jobs/{{ job.id }}/cancel', {target:'body', swap:'none'}).then(() => location.reload()); }">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
-                            </svg>
+                        <button class="btn-icon btn-icon-cancel" title="Cancel job" aria-label="Cancel job" onclick="if(confirm('Are you sure you want to cancel this job?')) { htmx.ajax('POST', '/web/jobs/{{ job.id }}/cancel', {target:'body', swap:'none'}).then(() => location.reload()); }">
+                            {{ icon('stop', size='18') }}
                         </button>
                         {% endif %}
                     </div>
@@ -55,9 +52,7 @@
 </div>
 {% else %}
 <div class="empty-state">
-    <svg class="empty-state-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
+    <span class="empty-state-icon">{{ icon('check-circle', size='48') }}</span>
     <h3 class="empty-state-title">All clear!</h3>
     <p class="empty-state-text">No jobs are currently running or queued.</p>
 </div>

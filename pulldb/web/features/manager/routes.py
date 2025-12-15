@@ -4,13 +4,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from pulldb.domain.models import JobStatus, User
-from pulldb.web.dependencies import get_api_state, require_manager_or_above
+from pulldb.web.dependencies import get_api_state, require_manager_or_above, templates
 
 router = APIRouter(prefix="/web/manager", tags=["web-manager"])
-templates = Jinja2Templates(directory="pulldb/web/templates")
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -67,6 +65,7 @@ async def manager_page(
         "features/manager/manager.html",
         {
             "request": request,
+            "active_nav": "manager",
             "breadcrumbs": [
                 {"label": "Dashboard", "url": "/web/dashboard"},
                 {"label": "Manager", "url": None},

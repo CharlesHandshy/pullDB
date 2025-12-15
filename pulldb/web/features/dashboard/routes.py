@@ -4,13 +4,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 
 from pulldb.domain.models import User, UserRole, JobStatus
-from pulldb.web.dependencies import get_api_state, require_login
+from pulldb.web.dependencies import get_api_state, require_login, templates
 
 router = APIRouter(prefix="/web/dashboard", tags=["web-dashboard"])
-templates = Jinja2Templates(directory="pulldb/web/templates")
 
 
 def _get_user_last_job(state: Any, user_code: str) -> Any:

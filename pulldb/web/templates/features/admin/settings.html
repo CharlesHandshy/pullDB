@@ -84,6 +84,13 @@
                     <polyline points="3 6 5 6 21 6"/>
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                 </svg>
+                {% elif category == "Appearance" %}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 2a10 10 0 0 1 0 20 10 10 0 0 0 0-20"/>
+                    <circle cx="12" cy="12" r="6"/>
+                    <circle cx="12" cy="12" r="2"/>
+                </svg>
                 {% else %}
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="3"/>
@@ -99,6 +106,10 @@
         </div>
         
         <div class="category-content">
+            {% if category == "Appearance" %}
+            {# Special UI for Appearance settings with color sliders #}
+            {% include "features/admin/partials/_appearance.html" %}
+            {% else %}
             <div class="settings-list">
                 {% for setting in cat_settings %}
                 <div class="setting-row" 
@@ -189,6 +200,7 @@
                 </div>
                 {% endfor %}
             </div>
+            {% endif %}
         </div>
     </div>
     {% endif %}

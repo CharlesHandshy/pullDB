@@ -1,8 +1,9 @@
 # GUI Migration Project
 
-> **Status**: Planning Complete  
+> **Status**: Phase 1-4 Complete, Phase 5 In Progress  
 > **Created**: 2025-12-15  
-> **Scope**: 14 PRs, 45-55 hours estimated effort  
+> **Phase 1-4 Completed**: 2025-12-15  
+> **Scope**: 20 PRs, 70-85 hours estimated effort  
 > **Goal**: Unified HCA-compliant GUI with icon system, dark mode, and admin-configurable themes
 
 ---
@@ -14,7 +15,7 @@
 1. `00-CONTEXT.md` — What to load before any work
 2. `01-EXECUTIVE-SUMMARY.md` — Problem, solution, scope
 3. `02-ARCHITECTURE.md` — Decisions already made
-4. `03-PR-BREAKDOWN.md` — All 14 PRs with dependencies
+4. `03-PR-BREAKDOWN.md` — All 20 PRs with dependencies
 5. `04-IMPLEMENTATION.md` — Step-by-step instructions per PR
 6. `05-TESTING.md` — How to validate each PR
 7. `06-TROUBLESHOOTING.md` — Common issues and fixes
@@ -55,11 +56,28 @@
 
 ## Effort Summary
 
-| Phase | PRs | Effort |
-|-------|-----|--------|
-| Tooling | PR 0 | 2-4 hours |
-| Foundation | PR 1 | 6-8 hours |
-| Features | PR 2-6, 10 | 18-22 hours |
-| Admin | PR 7-9 | 12-17 hours |
-| Polish | PR 11-13 | 5-8 hours |
-| **Total** | **14 PRs** | **45-55 hours** |
+| Phase | PRs | Effort | Status |
+|-------|-----|--------|--------|
+| Tooling | PR 0 | 2-4 hours | ✅ Complete |
+| Foundation | PR 1 | 6-8 hours | ✅ Complete |
+| Features | PR 2-6, 10 | 18-22 hours | ✅ Complete |
+| Admin | PR 7-9 | 12-17 hours | ✅ Complete |
+| Polish | PR 11-13 | 5-8 hours | ✅ Complete |
+| Cleanup | PR 14-20 | 27-37 hours | 🔄 In Progress |
+| **Total** | **20 PRs** | **70-85 hours** | |
+
+---
+
+## Phase 5: Cleanup (Added 2025-12-15)
+
+Post-migration audit identified deferred items and technical debt.
+
+| PR | Description | Effort | Status |
+|----|-------------|--------|--------|
+| PR 14 | Accessibility & Icon Completion | 4-5 hours | 🔄 In Progress |
+| PR 15 | Audit Feature (Full Implementation) | 3-4 hours | ⬜ Pending |
+| PR 16 | JS Render Function CSS Classes | 3-4 hours | ⬜ Pending |
+| PR 17 | Skeleton Loading States (Shimmer) | 3-4 hours | ⬜ Pending |
+| PR 18 | Component Documentation Page (Admin-only) | 4-6 hours | ⬜ Pending |
+| PR 19 | Batch Style Block Extraction | 8-10 hours | ⬜ Pending |
+| PR 20 | File Cleanup & Archive | 1-2 hours | ⬜ Pending |
