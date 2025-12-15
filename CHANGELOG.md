@@ -5,6 +5,39 @@ Unreleased
 ---------
 - (no changes yet)
 
+v0.0.11 - 2025-12-15
+--------------------
+### GUI Migration Complete (PRs 14-20)
+
+This release completes the GUI migration project that began with v0.0.10's baseline.
+
+### Highlights
+- **~5,400 lines inline CSS** extracted to centralized `components.css`
+- **HCA-compliant template organization** with Layer 2 feature styles
+- **Accessibility improvements**: skip links, aria-labels, keyboard navigation
+- **Component documentation**: Live styleguide at `/admin/styleguide`
+- **Dark mode support**: Theme toggle with system preference detection
+- **Skeleton loading states**: Shimmer animations for async content
+
+### PR Summary
+- **PR 14**: Accessibility & skip link
+- **PR 15**: Audit feature with paginated log browser
+- **PR 16**: JS render function CSS classes
+- **PR 17**: Skeleton loading states with shimmer animation
+- **PR 18**: Component documentation page (`/admin/styleguide`)
+- **PR 19**: Batch style block extraction (~5,400 lines → components.css)
+- **PR 20**: File cleanup & archive
+
+### Breaking Changes
+- Error templates moved: `error.html` → `features/errors/error.html`
+- Migration docs deleted (preserved in git history at v0.0.10)
+- `archived/web2-legacy/` deleted
+
+### Files Changed
+- `components.css`: 1,512 → 5,186 lines (HCA Layer 2 features)
+- 14 templates: inline `<style>` blocks removed
+- New: `features/errors/404.html` dedicated 404 template
+
 v0.0.10 - 2025-12-15
 --------------------
 ### Pre-GUI Migration Baseline

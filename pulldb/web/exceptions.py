@@ -141,7 +141,7 @@ def render_error_page(
 
     return templates.TemplateResponse(
         request=request,
-        name="error.html",
+        name="features/errors/error.html",
         context={
             "user": user,
             "status_code": status_code,
