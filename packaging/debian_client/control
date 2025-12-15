@@ -1,5 +1,5 @@
 Package: pulldb-client
-Version: 0.0.7
+Version: 0.0.10
 Section: admin
 Priority: optional
 Architecture: amd64

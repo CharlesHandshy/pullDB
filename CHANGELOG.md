@@ -3,12 +3,33 @@ CHANGELOG
 
 Unreleased
 ---------
-- **BREAKING**: `PULLDB_MYSQL_USER` is deprecated and no longer supported
-  - Services must use per-service MySQL user environment variables:
-    - `PULLDB_API_MYSQL_USER` for API service
-    - `PULLDB_WORKER_MYSQL_USER` for Worker service
-  - This implements least-privilege MySQL access per service component
-  - See `design/mysql-user-separation.md` for full details
+- (no changes yet)
+
+v0.0.10 - 2025-12-15
+--------------------
+### Pre-GUI Migration Baseline
+
+This release establishes a stable baseline before the GUI migration project begins.
+Versions 0.0.8 and 0.0.9 were internal development iterations that were never formally
+released. This release consolidates all development work since v0.0.7.
+
+### Features
+- **GUI Migration Planning**: Complete 14-PR migration plan documented in `.pulldb/gui-migration/`
+  - Executive summary, architecture decisions, PR breakdown with dependencies
+  - Step-by-step implementation instructions per PR
+  - Testing protocol and troubleshooting guide
+  - Appendices with code samples (icon macros, theme endpoint, dark mode CSS)
+- **Audit Scripts**: Three new validation scripts in `scripts/`:
+  - `audit_inline_svgs.py` - Finds 101 unique icons across 354 instances
+  - `audit_inline_css.py` - Finds 10,193 lines inline CSS across 36 blocks
+  - `validate_template_paths.py` - Enforces HCA-compliant template paths
+- **E2E Tests in CI**: Playwright-based end-to-end tests now run in release workflow
+  - Added `playwright` and `pytest-playwright` to test dependencies
+  - Self-contained tests with simulation mode server
+
+### Infrastructure
+- **MySQL User Separation**: Per-service MySQL credentials (`PULLDB_API_MYSQL_USER`, `PULLDB_WORKER_MYSQL_USER`)
+- **Debian Package Sync**: Server and client packages now at v0.0.10
 
 v0.0.7 - 2025-11-29
 -------------------

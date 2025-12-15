@@ -6,6 +6,52 @@
 
 ---
 
+## 2025-12-15 | Unified GUI Design System Planning
+
+### Context
+User requested comprehensive web GUI audit and unified design plan. Goals:
+- Unified styling across all pages (day/night modes)
+- Status bars vs pills standardization
+- Clean styling with minimal clutter
+- No duplicated functions per page
+- Unified breadcrumb system
+- HCA-compliant template organization
+
+### What Was Done
+
+1. **Comprehensive GUI audit** via subagent research:
+   - Cataloged all 40+ templates across root, admin/, manager/, audit/, features/
+   - Identified ~600 lines inline CSS across major templates
+   - Found Bootstrap 5 dependency in login.html (external CSS)
+   - Documented 45 unique SVG icons used inline throughout
+
+2. **Architecture decisions made**:
+   - **Icons**: HCA layer organization (shared/entities/features/widgets/pages)
+   - **Theme storage**: Global admin settings (not per-user)
+   - **CSS injection**: Generated `/web/theme.css` endpoint (cacheable, scalable)
+
+3. **Created migration plan document**: `.pulldb/standards/gui-design-system.md`
+   - 12-PR phased approach with dependency graph
+   - Complete template migration mapping (source → target)
+   - Dark mode color mapping (inverted gray scale)
+   - Icon inventory by HCA category
+   - Settings schema additions for APPEARANCE category
+   - Acceptance criteria per PR
+
+### Rationale
+- **HCA compliance**: All templates must move to `features/{feature}/` structure
+- **Generated CSS endpoint over inline styles**: Browser caching, ETag invalidation, CDN-ready
+- **Global theme settings**: Single source of truth for organizational branding
+- **Icon macros**: Eliminate ~45 duplicate inline SVG definitions, enable consistent sizing
+
+### Files Created
+- `.pulldb/standards/gui-design-system.md` — Master planning document (900+ lines)
+
+### Estimated Effort
+14-15 days across 12 PRs, with critical path: PR1 → PR7 → PR8 → PR12
+
+---
+
 ## 2025-01-XX | Site-Wide Authentication Standardization
 
 ### Context
