@@ -1,0 +1,856 @@
+{% extends "base.html" %}
+{% from "partials/icons/_index.html" import icon %}
+
+{% block title %}Style Guide - pullDB Admin{% endblock %}
+
+{% block page_id %}admin-styleguide{% endblock %}
+
+{% block header_title %}Style Guide{% endblock %}
+{% block header_subtitle %}Visual component reference for pullDB UI{% endblock %}
+
+{% block content %}
+<div class="content-body">
+    <!-- Table of Contents -->
+    <nav class="styleguide-toc card card-padding">
+        <h3 class="styleguide-toc-title">Contents</h3>
+        <div class="styleguide-toc-links">
+            <a href="#colors" class="styleguide-toc-link">Colors</a>
+            <a href="#typography" class="styleguide-toc-link">Typography</a>
+            <a href="#spacing" class="styleguide-toc-link">Spacing</a>
+            <a href="#buttons" class="styleguide-toc-link">Buttons</a>
+            <a href="#badges" class="styleguide-toc-link">Badges</a>
+            <a href="#cards" class="styleguide-toc-link">Cards</a>
+            <a href="#tables" class="styleguide-toc-link">Tables</a>
+            <a href="#forms" class="styleguide-toc-link">Forms</a>
+            <a href="#alerts" class="styleguide-toc-link">Alerts</a>
+            <a href="#empty-states" class="styleguide-toc-link">Empty States</a>
+        </div>
+    </nav>
+
+    <!-- ============================================
+         SECTION 1: COLORS
+         ============================================ -->
+    <section id="colors" class="styleguide-section">
+        <h2 class="styleguide-section-title">Colors</h2>
+        <p class="styleguide-section-desc">Core color palette with CSS variable names.</p>
+        
+        <!-- Primary Colors -->
+        <h3 class="styleguide-subsection-title">Primary (Blue)</h3>
+        <div class="color-swatches">
+            <div class="color-swatch" style="background: var(--primary-50);">
+                <span class="color-label">--primary-50</span>
+            </div>
+            <div class="color-swatch" style="background: var(--primary-100);">
+                <span class="color-label">--primary-100</span>
+            </div>
+            <div class="color-swatch" style="background: var(--primary-200);">
+                <span class="color-label">--primary-200</span>
+            </div>
+            <div class="color-swatch" style="background: var(--primary-300);">
+                <span class="color-label">--primary-300</span>
+            </div>
+            <div class="color-swatch" style="background: var(--primary-400);">
+                <span class="color-label">--primary-400</span>
+            </div>
+            <div class="color-swatch" style="background: var(--primary-500); color: white;">
+                <span class="color-label">--primary-500</span>
+            </div>
+            <div class="color-swatch" style="background: var(--primary-600); color: white;">
+                <span class="color-label">--primary-600</span>
+            </div>
+            <div class="color-swatch" style="background: var(--primary-700); color: white;">
+                <span class="color-label">--primary-700</span>
+            </div>
+            <div class="color-swatch" style="background: var(--primary-800); color: white;">
+                <span class="color-label">--primary-800</span>
+            </div>
+            <div class="color-swatch" style="background: var(--primary-900); color: white;">
+                <span class="color-label">--primary-900</span>
+            </div>
+        </div>
+        
+        <!-- Success Colors -->
+        <h3 class="styleguide-subsection-title">Success (Green)</h3>
+        <div class="color-swatches">
+            <div class="color-swatch" style="background: var(--success-50);">
+                <span class="color-label">--success-50</span>
+            </div>
+            <div class="color-swatch" style="background: var(--success-100);">
+                <span class="color-label">--success-100</span>
+            </div>
+            <div class="color-swatch" style="background: var(--success-500); color: white;">
+                <span class="color-label">--success-500</span>
+            </div>
+            <div class="color-swatch" style="background: var(--success-600); color: white;">
+                <span class="color-label">--success-600</span>
+            </div>
+            <div class="color-swatch" style="background: var(--success-700); color: white;">
+                <span class="color-label">--success-700</span>
+            </div>
+        </div>
+        
+        <!-- Warning Colors -->
+        <h3 class="styleguide-subsection-title">Warning (Amber)</h3>
+        <div class="color-swatches">
+            <div class="color-swatch" style="background: var(--warning-50);">
+                <span class="color-label">--warning-50</span>
+            </div>
+            <div class="color-swatch" style="background: var(--warning-100);">
+                <span class="color-label">--warning-100</span>
+            </div>
+            <div class="color-swatch" style="background: var(--warning-500); color: white;">
+                <span class="color-label">--warning-500</span>
+            </div>
+            <div class="color-swatch" style="background: var(--warning-600); color: white;">
+                <span class="color-label">--warning-600</span>
+            </div>
+        </div>
+        
+        <!-- Danger Colors -->
+        <h3 class="styleguide-subsection-title">Danger (Red)</h3>
+        <div class="color-swatches">
+            <div class="color-swatch" style="background: var(--danger-50);">
+                <span class="color-label">--danger-50</span>
+            </div>
+            <div class="color-swatch" style="background: var(--danger-100);">
+                <span class="color-label">--danger-100</span>
+            </div>
+            <div class="color-swatch" style="background: var(--danger-500); color: white;">
+                <span class="color-label">--danger-500</span>
+            </div>
+            <div class="color-swatch" style="background: var(--danger-600); color: white;">
+                <span class="color-label">--danger-600</span>
+            </div>
+            <div class="color-swatch" style="background: var(--danger-700); color: white;">
+                <span class="color-label">--danger-700</span>
+            </div>
+        </div>
+        
+        <!-- Info Colors -->
+        <h3 class="styleguide-subsection-title">Info (Cyan)</h3>
+        <div class="color-swatches">
+            <div class="color-swatch" style="background: var(--info-50);">
+                <span class="color-label">--info-50</span>
+            </div>
+            <div class="color-swatch" style="background: var(--info-100);">
+                <span class="color-label">--info-100</span>
+            </div>
+            <div class="color-swatch" style="background: var(--info-500); color: white;">
+                <span class="color-label">--info-500</span>
+            </div>
+            <div class="color-swatch" style="background: var(--info-600); color: white;">
+                <span class="color-label">--info-600</span>
+            </div>
+        </div>
+        
+        <!-- Neutral Grays -->
+        <h3 class="styleguide-subsection-title">Neutral (Gray)</h3>
+        <div class="color-swatches">
+            <div class="color-swatch" style="background: var(--gray-50); border: 1px solid var(--gray-200);">
+                <span class="color-label">--gray-50</span>
+            </div>
+            <div class="color-swatch" style="background: var(--gray-100);">
+                <span class="color-label">--gray-100</span>
+            </div>
+            <div class="color-swatch" style="background: var(--gray-200);">
+                <span class="color-label">--gray-200</span>
+            </div>
+            <div class="color-swatch" style="background: var(--gray-300);">
+                <span class="color-label">--gray-300</span>
+            </div>
+            <div class="color-swatch" style="background: var(--gray-400); color: white;">
+                <span class="color-label">--gray-400</span>
+            </div>
+            <div class="color-swatch" style="background: var(--gray-500); color: white;">
+                <span class="color-label">--gray-500</span>
+            </div>
+            <div class="color-swatch" style="background: var(--gray-600); color: white;">
+                <span class="color-label">--gray-600</span>
+            </div>
+            <div class="color-swatch" style="background: var(--gray-700); color: white;">
+                <span class="color-label">--gray-700</span>
+            </div>
+            <div class="color-swatch" style="background: var(--gray-800); color: white;">
+                <span class="color-label">--gray-800</span>
+            </div>
+            <div class="color-swatch" style="background: var(--gray-900); color: white;">
+                <span class="color-label">--gray-900</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SECTION 2: TYPOGRAPHY
+         ============================================ -->
+    <section id="typography" class="styleguide-section">
+        <h2 class="styleguide-section-title">Typography</h2>
+        <p class="styleguide-section-desc">Font families, sizes, and weights.</p>
+        
+        <!-- Font Families -->
+        <h3 class="styleguide-subsection-title">Font Families</h3>
+        <div class="typography-samples card card-padding">
+            <div class="typography-sample">
+                <span class="typography-label">--font-sans (Inter)</span>
+                <p style="font-family: var(--font-sans); font-size: 1rem;">The quick brown fox jumps over the lazy dog.</p>
+            </div>
+            <div class="typography-sample">
+                <span class="typography-label">--font-mono (JetBrains Mono)</span>
+                <p style="font-family: var(--font-mono); font-size: 1rem;">const user = { id: 'usr-001', role: 'admin' };</p>
+            </div>
+        </div>
+        
+        <!-- Font Sizes -->
+        <h3 class="styleguide-subsection-title">Font Sizes</h3>
+        <div class="typography-samples card card-padding">
+            <div class="typography-sample">
+                <span class="typography-label">0.75rem (12px) - Caption, Labels</span>
+                <p style="font-size: 0.75rem;">Caption text for tables and labels</p>
+            </div>
+            <div class="typography-sample">
+                <span class="typography-label">0.875rem (14px) - Body, Default</span>
+                <p style="font-size: 0.875rem;">Default body text used throughout the UI</p>
+            </div>
+            <div class="typography-sample">
+                <span class="typography-label">1rem (16px) - Body Large</span>
+                <p style="font-size: 1rem;">Larger body text for emphasis</p>
+            </div>
+            <div class="typography-sample">
+                <span class="typography-label">1.25rem (20px) - Heading 3</span>
+                <p style="font-size: 1.25rem; font-weight: 600;">Section headings</p>
+            </div>
+            <div class="typography-sample">
+                <span class="typography-label">1.5rem (24px) - Heading 2</span>
+                <p style="font-size: 1.5rem; font-weight: 600;">Page section titles</p>
+            </div>
+            <div class="typography-sample">
+                <span class="typography-label">2rem (32px) - Heading 1</span>
+                <p style="font-size: 2rem; font-weight: 700;">Page titles</p>
+            </div>
+        </div>
+        
+        <!-- Font Weights -->
+        <h3 class="styleguide-subsection-title">Font Weights</h3>
+        <div class="typography-samples card card-padding">
+            <div class="typography-sample">
+                <span class="typography-label">font-weight: 400 (Normal)</span>
+                <p style="font-weight: 400;">Regular body text weight</p>
+            </div>
+            <div class="typography-sample">
+                <span class="typography-label">font-weight: 500 (Medium)</span>
+                <p style="font-weight: 500;">Medium weight for emphasis</p>
+            </div>
+            <div class="typography-sample">
+                <span class="typography-label">font-weight: 600 (Semibold)</span>
+                <p style="font-weight: 600;">Semibold for headings</p>
+            </div>
+            <div class="typography-sample">
+                <span class="typography-label">font-weight: 700 (Bold)</span>
+                <p style="font-weight: 700;">Bold for strong emphasis</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SECTION 3: SPACING
+         ============================================ -->
+    <section id="spacing" class="styleguide-section">
+        <h2 class="styleguide-section-title">Spacing</h2>
+        <p class="styleguide-section-desc">4px base unit spacing scale.</p>
+        
+        <div class="spacing-samples card card-padding">
+            <div class="spacing-sample">
+                <div class="spacing-box" style="width: var(--space-1); height: var(--space-1);"></div>
+                <span class="spacing-label">--space-1 (4px)</span>
+            </div>
+            <div class="spacing-sample">
+                <div class="spacing-box" style="width: var(--space-2); height: var(--space-2);"></div>
+                <span class="spacing-label">--space-2 (8px)</span>
+            </div>
+            <div class="spacing-sample">
+                <div class="spacing-box" style="width: var(--space-3); height: var(--space-3);"></div>
+                <span class="spacing-label">--space-3 (12px)</span>
+            </div>
+            <div class="spacing-sample">
+                <div class="spacing-box" style="width: var(--space-4); height: var(--space-4);"></div>
+                <span class="spacing-label">--space-4 (16px)</span>
+            </div>
+            <div class="spacing-sample">
+                <div class="spacing-box" style="width: var(--space-5); height: var(--space-5);"></div>
+                <span class="spacing-label">--space-5 (20px)</span>
+            </div>
+            <div class="spacing-sample">
+                <div class="spacing-box" style="width: var(--space-6); height: var(--space-6);"></div>
+                <span class="spacing-label">--space-6 (24px)</span>
+            </div>
+            <div class="spacing-sample">
+                <div class="spacing-box" style="width: var(--space-8); height: var(--space-8);"></div>
+                <span class="spacing-label">--space-8 (32px)</span>
+            </div>
+            <div class="spacing-sample">
+                <div class="spacing-box" style="width: var(--space-10); height: var(--space-10);"></div>
+                <span class="spacing-label">--space-10 (40px)</span>
+            </div>
+            <div class="spacing-sample">
+                <div class="spacing-box" style="width: var(--space-12); height: var(--space-12);"></div>
+                <span class="spacing-label">--space-12 (48px)</span>
+            </div>
+            <div class="spacing-sample">
+                <div class="spacing-box" style="width: var(--space-16); height: var(--space-16);"></div>
+                <span class="spacing-label">--space-16 (64px)</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SECTION 4: BUTTONS
+         ============================================ -->
+    <section id="buttons" class="styleguide-section">
+        <h2 class="styleguide-section-title">Buttons</h2>
+        <p class="styleguide-section-desc">Button variants and sizes.</p>
+        
+        <!-- Button Variants -->
+        <h3 class="styleguide-subsection-title">Variants</h3>
+        <div class="component-row card card-padding">
+            <div class="component-item">
+                <button type="button" class="btn btn-primary">Primary</button>
+                <span class="component-label">.btn-primary</span>
+            </div>
+            <div class="component-item">
+                <button type="button" class="btn btn-secondary">Secondary</button>
+                <span class="component-label">.btn-secondary</span>
+            </div>
+        </div>
+        
+        <!-- Button Sizes -->
+        <h3 class="styleguide-subsection-title">Sizes</h3>
+        <div class="component-row card card-padding">
+            <div class="component-item">
+                <button type="button" class="btn btn-primary">Default</button>
+                <span class="component-label">.btn</span>
+            </div>
+            <div class="component-item">
+                <button type="button" class="btn btn-primary btn-lg">Large</button>
+                <span class="component-label">.btn-lg</span>
+            </div>
+        </div>
+        
+        <!-- Button with Icons -->
+        <h3 class="styleguide-subsection-title">With Icons</h3>
+        <div class="component-row card card-padding">
+            <div class="component-item">
+                <button type="button" class="btn btn-primary">
+                    {{ icon('plus', size='16') }}
+                    <span>Add New</span>
+                </button>
+                <span class="component-label">Icon + Text</span>
+            </div>
+            <div class="component-item">
+                <button type="button" class="btn btn-secondary">
+                    {{ icon('refresh', size='16') }}
+                    <span>Refresh</span>
+                </button>
+                <span class="component-label">Icon + Text</span>
+            </div>
+        </div>
+        
+        <!-- Button States -->
+        <h3 class="styleguide-subsection-title">States</h3>
+        <div class="component-row card card-padding">
+            <div class="component-item">
+                <button type="button" class="btn btn-primary" disabled>Disabled</button>
+                <span class="component-label">disabled</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SECTION 5: BADGES
+         ============================================ -->
+    <section id="badges" class="styleguide-section">
+        <h2 class="styleguide-section-title">Badges</h2>
+        <p class="styleguide-section-desc">Status indicators and labels.</p>
+        
+        <!-- Basic Badges -->
+        <h3 class="styleguide-subsection-title">Basic Badges</h3>
+        <div class="component-row card card-padding">
+            <div class="component-item">
+                <span class="badge badge-primary">Primary</span>
+                <span class="component-label">.badge-primary</span>
+            </div>
+            <div class="component-item">
+                <span class="badge badge-success">Success</span>
+                <span class="component-label">.badge-success</span>
+            </div>
+            <div class="component-item">
+                <span class="badge badge-danger">Danger</span>
+                <span class="component-label">.badge-danger</span>
+            </div>
+            <div class="component-item">
+                <span class="badge badge-neutral">Neutral</span>
+                <span class="component-label">.badge-neutral</span>
+            </div>
+        </div>
+        
+        <!-- Status Badges -->
+        <h3 class="styleguide-subsection-title">Status Badges</h3>
+        <div class="component-row card card-padding">
+            <div class="component-item">
+                <span class="status-badge status-badge-success">
+                    {{ icon('check', size='14') }}
+                    Enabled
+                </span>
+                <span class="component-label">.status-badge-success</span>
+            </div>
+            <div class="component-item">
+                <span class="status-badge status-badge-neutral">
+                    {{ icon('x', size='14') }}
+                    Disabled
+                </span>
+                <span class="component-label">.status-badge-neutral</span>
+            </div>
+            <div class="component-item">
+                <span class="status-badge status-badge-danger">
+                    {{ icon('alert-circle', size='14') }}
+                    Error
+                </span>
+                <span class="component-label">.status-badge-danger</span>
+            </div>
+            <div class="component-item">
+                <span class="status-badge status-badge-warning">
+                    {{ icon('alert-triangle', size='14') }}
+                    Warning
+                </span>
+                <span class="component-label">.status-badge-warning</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SECTION 6: CARDS
+         ============================================ -->
+    <section id="cards" class="styleguide-section">
+        <h2 class="styleguide-section-title">Cards</h2>
+        <p class="styleguide-section-desc">Content containers and stat cards.</p>
+        
+        <!-- Basic Card -->
+        <h3 class="styleguide-subsection-title">Basic Card</h3>
+        <div class="card card-padding" style="max-width: 400px;">
+            <p>This is a basic card with <code>.card</code> and <code>.card-padding</code> classes.</p>
+        </div>
+        
+        <!-- Card with Header -->
+        <h3 class="styleguide-subsection-title">Card with Header</h3>
+        <div class="card" style="max-width: 400px;">
+            <div class="card-header">
+                <h3>Card Title</h3>
+            </div>
+            <div class="card-padding">
+                <p>Card content goes here.</p>
+            </div>
+        </div>
+        
+        <!-- Stat Cards -->
+        <h3 class="styleguide-subsection-title">Stat Cards</h3>
+        <div class="stats-grid" style="max-width: 600px;">
+            <div class="stat-card">
+                <div class="stat-icon stat-icon-primary">
+                    {{ icon('database', size='24') }}
+                </div>
+                <div class="stat-content">
+                    <div class="stat-value">42</div>
+                    <div class="stat-label">Total Jobs</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon stat-icon-success">
+                    {{ icon('check', size='24') }}
+                </div>
+                <div class="stat-content">
+                    <div class="stat-value">38</div>
+                    <div class="stat-label">Completed</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Compact Stat Cards -->
+        <h3 class="styleguide-subsection-title">Compact Stats</h3>
+        <div class="stats-row">
+            <div class="stat-card-compact">
+                <div class="stat-label">Users</div>
+                <div class="stat-value text-primary">12</div>
+            </div>
+            <div class="stat-card-compact">
+                <div class="stat-label">Active</div>
+                <div class="stat-value text-success">10</div>
+            </div>
+            <div class="stat-card-compact">
+                <div class="stat-label">Errors</div>
+                <div class="stat-value text-danger">2</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SECTION 7: TABLES
+         ============================================ -->
+    <section id="tables" class="styleguide-section">
+        <h2 class="styleguide-section-title">Tables</h2>
+        <p class="styleguide-section-desc">Data table styling.</p>
+        
+        <div class="card">
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="font-mono text-dark">usr-001</td>
+                            <td>johndoe</td>
+                            <td><span class="badge badge-primary">Admin</span></td>
+                            <td><span class="status-badge status-badge-success">Active</span></td>
+                            <td>2024-01-15</td>
+                        </tr>
+                        <tr>
+                            <td class="font-mono text-dark">usr-002</td>
+                            <td>janedoe</td>
+                            <td><span class="badge badge-neutral">Manager</span></td>
+                            <td><span class="status-badge status-badge-success">Active</span></td>
+                            <td>2024-02-20</td>
+                        </tr>
+                        <tr>
+                            <td class="font-mono text-dark">usr-003</td>
+                            <td>bobsmith</td>
+                            <td><span class="badge badge-neutral">User</span></td>
+                            <td><span class="status-badge status-badge-neutral">Disabled</span></td>
+                            <td>2024-03-10</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SECTION 8: FORMS
+         ============================================ -->
+    <section id="forms" class="styleguide-section">
+        <h2 class="styleguide-section-title">Forms</h2>
+        <p class="styleguide-section-desc">Form elements and inputs.</p>
+        
+        <div class="card card-padding" style="max-width: 500px;">
+            <div class="form-group">
+                <label class="form-label" for="demo-input">Text Input</label>
+                <input type="text" id="demo-input" class="form-input" placeholder="Enter text...">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label" for="demo-select">Select</label>
+                <select id="demo-select" class="form-select">
+                    <option value="">Choose an option...</option>
+                    <option value="1">Option 1</option>
+                    <option value="2">Option 2</option>
+                    <option value="3">Option 3</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label" for="demo-textarea">Textarea</label>
+                <textarea id="demo-textarea" class="form-input" rows="3" placeholder="Enter description..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Checkboxes</label>
+                <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                    <label style="display: flex; align-items: center; gap: var(--space-2);">
+                        <input type="checkbox" checked> Option A
+                    </label>
+                    <label style="display: flex; align-items: center; gap: var(--space-2);">
+                        <input type="checkbox"> Option B
+                    </label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Radio Buttons</label>
+                <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                    <label style="display: flex; align-items: center; gap: var(--space-2);">
+                        <input type="radio" name="demo-radio" checked> Choice 1
+                    </label>
+                    <label style="display: flex; align-items: center; gap: var(--space-2);">
+                        <input type="radio" name="demo-radio"> Choice 2
+                    </label>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SECTION 9: ALERTS
+         ============================================ -->
+    <section id="alerts" class="styleguide-section">
+        <h2 class="styleguide-section-title">Alerts</h2>
+        <p class="styleguide-section-desc">Notification and message styles.</p>
+        
+        <div style="max-width: 600px;">
+            <div class="alert alert-info">
+                {{ icon('info', size='20') }}
+                <div>
+                    <strong>Info:</strong> This is an informational message.
+                </div>
+            </div>
+            
+            <div class="alert alert-success">
+                {{ icon('check-circle', size='20') }}
+                <div>
+                    <strong>Success:</strong> Operation completed successfully.
+                </div>
+            </div>
+            
+            <div class="alert alert-warning">
+                {{ icon('alert-triangle', size='20') }}
+                <div>
+                    <strong>Warning:</strong> Please review before proceeding.
+                </div>
+            </div>
+            
+            <div class="alert alert-danger">
+                {{ icon('alert-circle', size='20') }}
+                <div>
+                    <strong>Error:</strong> Something went wrong. Please try again.
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         SECTION 10: EMPTY STATES
+         ============================================ -->
+    <section id="empty-states" class="styleguide-section">
+        <h2 class="styleguide-section-title">Empty States</h2>
+        <p class="styleguide-section-desc">Placeholder for empty data views.</p>
+        
+        <div class="card" style="max-width: 500px;">
+            <div class="empty-state">
+                <div class="empty-state-icon">
+                    {{ icon('inbox', size='48') }}
+                </div>
+                <h3 class="empty-state-title">No items found</h3>
+                <p class="empty-state-description">There are no items to display. Try adjusting your filters or create a new item.</p>
+                <button type="button" class="btn btn-primary">
+                    {{ icon('plus', size='16') }}
+                    <span>Create New</span>
+                </button>
+            </div>
+        </div>
+    </section>
+</div>
+
+<style>
+/* Styleguide-specific styles */
+.styleguide-toc {
+    margin-bottom: var(--space-8);
+}
+
+.styleguide-toc-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--space-3);
+}
+
+.styleguide-toc-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+}
+
+.styleguide-toc-link {
+    color: var(--primary-600);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.875rem;
+}
+
+.styleguide-toc-link:hover {
+    text-decoration: underline;
+}
+
+.styleguide-section {
+    margin-bottom: var(--space-12);
+    scroll-margin-top: var(--space-8);
+}
+
+.styleguide-section-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--gray-900);
+    margin-bottom: var(--space-2);
+    padding-bottom: var(--space-2);
+    border-bottom: 2px solid var(--primary-500);
+}
+
+.styleguide-section-desc {
+    color: var(--gray-500);
+    margin-bottom: var(--space-6);
+}
+
+.styleguide-subsection-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--gray-700);
+    margin-top: var(--space-6);
+    margin-bottom: var(--space-3);
+}
+
+/* Color swatches */
+.color-swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: var(--space-3);
+    margin-bottom: var(--space-6);
+}
+
+.color-swatch {
+    aspect-ratio: 1;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: var(--space-2);
+}
+
+.color-label {
+    font-size: 0.625rem;
+    font-family: var(--font-mono);
+    background: rgba(0, 0, 0, 0.3);
+    color: white;
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+}
+
+/* Typography samples */
+.typography-samples {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.typography-sample {
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.typography-sample:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.typography-label {
+    display: block;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    color: var(--gray-500);
+    margin-bottom: var(--space-1);
+}
+
+.typography-sample p {
+    margin: 0;
+    color: var(--gray-900);
+}
+
+/* Spacing samples */
+.spacing-samples {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-6);
+}
+
+.spacing-sample {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.spacing-box {
+    background: var(--primary-500);
+    border-radius: var(--radius-sm);
+}
+
+.spacing-label {
+    font-size: 0.625rem;
+    font-family: var(--font-mono);
+    color: var(--gray-500);
+    white-space: nowrap;
+}
+
+/* Component rows */
+.component-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-6);
+    align-items: flex-start;
+}
+
+.component-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+}
+
+.component-label {
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    color: var(--gray-500);
+}
+
+/* Empty state enhancements for demo */
+.empty-state-icon {
+    color: var(--gray-300);
+    margin-bottom: var(--space-4);
+}
+
+.empty-state-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--gray-700);
+    margin-bottom: var(--space-2);
+}
+
+.empty-state-description {
+    color: var(--gray-500);
+    margin-bottom: var(--space-4);
+    max-width: 300px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Dark mode adjustments */
+[data-theme="dark"] .color-label {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="dark"] .styleguide-section-title {
+    color: var(--color-text-primary, var(--gray-100));
+}
+
+[data-theme="dark"] .styleguide-subsection-title {
+    color: var(--color-text-primary, var(--gray-200));
+}
+
+[data-theme="dark"] .typography-sample p {
+    color: var(--color-text-primary, var(--gray-100));
+}
+</style>
+{% endblock %}

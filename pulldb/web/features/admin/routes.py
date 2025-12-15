@@ -11,6 +11,22 @@ from pulldb.web.dependencies import get_api_state, require_admin, templates
 router = APIRouter(prefix="/web/admin", tags=["web-admin"])
 
 
+@router.get("/styleguide", response_class=HTMLResponse)
+async def styleguide_page(
+    request: Request,
+    user: User = Depends(require_admin),
+) -> HTMLResponse:
+    """Render the component style guide page (admin-only)."""
+    return templates.TemplateResponse(
+        "features/admin/styleguide.html",
+        {
+            "request": request,
+            "active_nav": "admin",
+            "user": user,
+        },
+    )
+
+
 @router.get("/", response_class=HTMLResponse)
 async def admin_page(
     request: Request,
