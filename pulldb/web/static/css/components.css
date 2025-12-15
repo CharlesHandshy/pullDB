@@ -1246,6 +1246,98 @@
     height: 16px;
 }
 
+/* Action Button State Classes */
+.action-btn-primary {
+    color: var(--primary-600);
+}
+
+.action-btn-danger {
+    color: var(--danger-600);
+}
+
+.action-btn-muted {
+    color: var(--gray-500);
+}
+
+.action-btn-disabled {
+    color: var(--gray-400);
+    cursor: not-allowed;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* --- Cell Utilities (Table-agnostic) --- */
+
+/* Monospace + smaller size for codes/IDs */
+.cell-mono-sm {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+}
+
+/* Code-style cell (user codes, short IDs) */
+.cell-code {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    background: var(--color-bg-subtle, var(--gray-100));
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+}
+
+/* Prevent wrapping (timestamps, etc.) */
+.cell-nowrap {
+    white-space: nowrap;
+}
+
+/* Empty/placeholder value */
+.cell-empty {
+    color: var(--gray-400);
+}
+
+/* Emphasized text (username, primary cell) */
+.cell-primary {
+    font-weight: 500;
+}
+
+/* Action cell container */
+.cell-actions {
+    display: flex;
+    gap: 2px;
+    justify-content: flex-start;
+    align-items: center;
+}
+
+/* Cancel Job Button (mini inline) */
+.cancel-job-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    background: var(--danger-50);
+    color: var(--danger-600);
+    border: 1px solid var(--danger-200);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.cancel-job-btn:hover {
+    background: var(--danger-100);
+}
+
+.cancel-job-btn svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* Badge variant: strikethrough for cancel-pending */
+.badge-cancel-pending {
+    text-decoration: line-through;
+    background-color: var(--danger-100);
+    color: var(--danger-700);
+    border-color: var(--danger-200);
+}
+
 /* Manager/Role Select */
 .manager-select,
 .role-select {

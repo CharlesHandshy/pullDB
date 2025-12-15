@@ -292,18 +292,18 @@
         const d = new Date(val);
         const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-        return `<span style="white-space: nowrap;">${date} ${time}</span>`;
+        return `<span class="cell-nowrap">${date} ${time}</span>`;
     };
     
     // Render actor username with link to filter
     const renderActor = (val, row) => {
-        if (!val || val === '(unknown)') return '<span style="color: var(--gray-400);">-</span>';
+        if (!val || val === '(unknown)') return '<span class="cell-empty">-</span>';
         return `<a href="/web/admin/audit?actor_id=${row.actor_user_id}" class="user-link">${val}</a>`;
     };
     
     // Render target username with link to filter
     const renderTarget = (val, row) => {
-        if (!val || val === '-') return '<span style="color: var(--gray-400);">-</span>';
+        if (!val || val === '-') return '<span class="cell-empty">-</span>';
         return `<a href="/web/admin/audit?target_id=${row.target_user_id}" class="user-link">${val}</a>`;
     };
     
@@ -326,7 +326,7 @@
     
     // Render detail with truncation
     const renderDetail = (val) => {
-        if (!val || val === '-') return '<span style="color: var(--gray-400);">-</span>';
+        if (!val || val === '-') return '<span class="cell-empty">-</span>';
         return `<span class="detail-cell" title="${val}">${val}</span>`;
     };
     
