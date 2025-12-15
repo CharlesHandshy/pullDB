@@ -219,7 +219,6 @@ WHERE setting_key = 'setting_name';
 | `PULLDB_API_PORT` | env | `8080` | API server port |
 | `PULLDB_COORDINATION_SECRET` | env | `aws-secretsmanager:/pulldb/mysql/coordination-db` | Credential reference |
 | `PULLDB_AUTH_MODE` | env | `trusted` | Authentication mode |
-| `PULLDB_SECURE_COOKIES` | env | `false` | Use secure cookie flag |
 | `PULLDB_ENABLE_WEB_UI` | env | `false` | Enable web UI routes |
 
 ### Simulation Mode
@@ -301,7 +300,6 @@ PULLDB_AWS_PROFILE=production
 PULLDB_API_HOST=0.0.0.0
 PULLDB_API_PORT=8080
 PULLDB_AUTH_MODE=password
-PULLDB_SECURE_COOKIES=true
 PULLDB_ENABLE_WEB_UI=true
 
 # /etc/pulldb/worker.env

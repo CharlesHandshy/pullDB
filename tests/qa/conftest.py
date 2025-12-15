@@ -140,12 +140,17 @@ def swagger_page(page, api_base_url: str):
 
 @pytest.fixture(scope="session")
 def db_config() -> dict:
-    """Database configuration from environment."""
+    """Database configuration from environment.
+
+    Uses standard PULLDB_MYSQL_* vars for shared config,
+    with only PULLDB_API_MYSQL_USER being service-specific
+    (per least-privilege pattern).
+    """
     return {
-        "host": os.getenv("PULLDB_API_MYSQL_HOST", "localhost"),
-        "port": int(os.getenv("PULLDB_API_MYSQL_PORT", "3306")),
+        "host": os.getenv("PULLDB_MYSQL_HOST", "localhost"),
+        "port": int(os.getenv("PULLDB_MYSQL_PORT", "3306")),
         "user": os.getenv("PULLDB_API_MYSQL_USER", "pulldb_api"),
-        "database": os.getenv("PULLDB_API_MYSQL_DATABASE", "pulldb_service"),
+        "database": os.getenv("PULLDB_MYSQL_DATABASE", "pulldb_service"),
     }
 
 
@@ -156,22 +161,22 @@ def db_connection(db_config: dict):
         import mysql.connector
     except ImportError:
         pytest.skip("mysql-connector-python not installed")
-    
-    # Try to get password from AWS Secrets Manager
-    password = os.getenv("PULLDB_API_MYSQL_PASSWORD")
+
+    # Try to get password from environment or .env file
+    password = os.getenv("PULLDB_MYSQL_PASSWORD")
     if not password:
         # Attempt to load from .env
         env_file = os.path.join(PROJECT_ROOT, ".env")
         if os.path.exists(env_file):
             with open(env_file) as f:
                 for line in f:
-                    if line.startswith("PULLDB_API_MYSQL_PASSWORD="):
+                    if line.startswith("PULLDB_MYSQL_PASSWORD="):
                         password = line.split("=", 1)[1].strip()
                         break
-    
+
     if not password:
-        pytest.skip("MySQL password not configured")
-    
+        pytest.skip("MySQL password not configured (set PULLDB_MYSQL_PASSWORD)")
+
     conn = mysql.connector.connect(
         host=db_config["host"],
         port=db_config["port"],

@@ -14,6 +14,7 @@ from __future__ import annotations
 import contextvars
 import json
 import logging
+import os
 import sys
 from typing import Any, cast
 
@@ -85,7 +86,7 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_data)
 
 
-def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
+def get_logger(name: str, level: int | None = None) -> logging.Logger:
     """Get or create a structured JSON logger.
 
     Creates a logger with JSON formatting that writes to stdout. Repeated calls
@@ -93,7 +94,8 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
 
     Args:
         name: Logger name (typically module path like 'pulldb.worker.restore').
-        level: Minimum log level (default: INFO).
+        level: Minimum log level. If None, reads from PULLDB_LOG_LEVEL env var
+               (DEBUG, INFO, WARNING, ERROR). Defaults to INFO.
 
     Returns:
         Configured Logger instance with JSON formatter.
@@ -103,6 +105,11 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
         >>> logger.info("Starting restore", extra={"job_id": "abc123"})
         {"timestamp": "2025-11-01 10:30:00", "level": "INFO", ...}
     """
+    # Determine log level from parameter or environment
+    if level is None:
+        level_name = os.environ.get("PULLDB_LOG_LEVEL", "INFO").upper()
+        level = getattr(logging, level_name, logging.INFO)
+
     logger = logging.getLogger(name)
 
     # Only configure if not already configured (prevent duplicate handlers)
