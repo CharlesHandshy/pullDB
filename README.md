@@ -1,10 +1,10 @@
 # pullDB
 
-[![Release](https://img.shields.io/badge/version-0.0.8-blue)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/version-0.0.11-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-585%20total-success.svg)](pulldb/tests/)
-[![Index Updated](https://img.shields.io/badge/Index%20Updated-2025--12--12-blue)](docs/WORKSPACE-INDEX.md)
+[![Tests](https://img.shields.io/badge/tests-520%2B-success.svg)](pulldb/tests/)
+[![Index Updated](https://img.shields.io/badge/Index%20Updated-2025--12--15-blue)](docs/WORKSPACE-INDEX.md)
 
 > Pull production database backups from S3 and restore them into development environments.
 
@@ -66,7 +66,7 @@ See [Getting Started](docs/getting-started.md) for complete installation instruc
 
 ## Status (December 2025)
 
-**Version 0.0.8** - Phases 0-4 Complete
+**Version 0.0.11** - Phases 0-5 Complete
 
 | Phase | Features | Status |
 |-------|----------|--------|
@@ -75,8 +75,11 @@ See [Getting Started](docs/getting-started.md) for complete installation instruc
 | Phase 2 | Concurrency controls, host aliases | ✅ Complete |
 | Phase 3 | Multi-daemon support, atomic job claiming | ✅ Complete |
 | Phase 4 | QA template restore, post_sql validation | ✅ Complete |
+| Phase 5 | GUI migration, HCA CSS organization | ✅ Complete |
 
-**Test Suite:** 449 passing tests
+**GUI Features:** Centralized CSS (5,186 lines), dark mode, skeleton loading, accessibility, styleguide
+
+**Test Suite:** 520+ passing tests
 
 ## CLI Overview
 
