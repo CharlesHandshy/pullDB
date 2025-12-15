@@ -1417,3 +1417,96 @@
 .hidden {
     display: none !important;
 }
+/* =================================================================
+   Skeleton Loading States
+   Dark-mode compatible shimmer animation for loading placeholders
+   ================================================================= */
+
+@keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Base skeleton element */
+.skeleton {
+    background: linear-gradient(90deg, 
+        var(--color-bg-subtle, var(--gray-100)) 25%, 
+        var(--color-bg-muted, var(--gray-200)) 50%, 
+        var(--color-bg-subtle, var(--gray-100)) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+}
+
+/* Text placeholder - inline element */
+.skeleton-text {
+    display: inline-block;
+    height: 1em;
+    min-width: 60px;
+    background: linear-gradient(90deg, 
+        var(--color-bg-subtle, var(--gray-100)) 25%, 
+        var(--color-bg-muted, var(--gray-200)) 50%, 
+        var(--color-bg-subtle, var(--gray-100)) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+}
+
+/* Table cell placeholder */
+.skeleton-cell {
+    height: 1em;
+    width: 70%;
+    background: linear-gradient(90deg, 
+        var(--color-bg-subtle, var(--gray-100)) 25%, 
+        var(--color-bg-muted, var(--gray-200)) 50%, 
+        var(--color-bg-subtle, var(--gray-100)) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+}
+
+/* Card/box placeholder */
+.skeleton-card {
+    height: 100%;
+    min-height: 60px;
+    background: linear-gradient(90deg, 
+        var(--color-bg-subtle, var(--gray-100)) 25%, 
+        var(--color-bg-muted, var(--gray-200)) 50%, 
+        var(--color-bg-subtle, var(--gray-100)) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-md);
+}
+
+/* Stat value placeholder */
+.skeleton-stat {
+    display: inline-block;
+    height: 2rem;
+    width: 3rem;
+    background: linear-gradient(90deg, 
+        var(--color-bg-subtle, var(--gray-100)) 25%, 
+        var(--color-bg-muted, var(--gray-200)) 50%, 
+        var(--color-bg-subtle, var(--gray-100)) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+}
+
+/* Avatar placeholder */
+.skeleton-avatar {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(90deg, 
+        var(--color-bg-subtle, var(--gray-100)) 25%, 
+        var(--color-bg-muted, var(--gray-200)) 50%, 
+        var(--color-bg-subtle, var(--gray-100)) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: 50%;
+}

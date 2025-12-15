@@ -443,13 +443,13 @@ class LazyTable {
     // =========================================================================
 
     async fetchInitialData() {
-        this.showLoading();
+        // Show skeleton rows immediately for better perceived performance
+        this.renderSkeletonRows();
+        
         try {
             await this.fetchPage(0);
-            this.hideLoading();
             this.render();
         } catch (error) {
-            this.hideLoading();
             // Error already shown by fetchPage
         }
     }
@@ -697,6 +697,27 @@ class LazyTable {
         });
         
         return tr;
+    }
+
+    /**
+     * Render skeleton loading rows (shown during initial data fetch)
+     * Shows pageSize rows for consistent perceived loading state
+     */
+    renderSkeletonRows() {
+        const fragment = document.createDocumentFragment();
+        const rowCount = this.pageSize;
+        
+        for (let i = 0; i < rowCount; i++) {
+            fragment.appendChild(this.createPlaceholderRow(i));
+        }
+        
+        this.elements.tbody.innerHTML = '';
+        this.elements.tbody.appendChild(fragment);
+        
+        // Show "Loading..." in footer during skeleton state
+        this.elements.footerContent.innerHTML = `
+            <span class="lazy-table-footer-text">${this.config.i18n.loading}</span>
+        `;
     }
 
     renderActions(actions, row) {

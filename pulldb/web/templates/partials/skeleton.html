@@ -1,0 +1,77 @@
+{#
+    Skeleton Loading Macros
+    =======================
+    HCA Layer: widgets (Layer 3)
+    
+    Reusable skeleton loading placeholders for perceived performance.
+    Uses dark-mode compatible CSS variables.
+    
+    Usage:
+        {% from "partials/skeleton.html" import skeleton_text, skeleton_row, skeleton_card, skeleton_stat %}
+        
+        {{ skeleton_text(width='80%') }}
+        {{ skeleton_row(columns=6) }}
+        {{ skeleton_card() }}
+        {{ skeleton_stat() }}
+#}
+
+{#
+    Text placeholder - inline element for text content
+    @param width: CSS width value (default: '60px')
+    @param height: CSS height value (default: '1em')
+#}
+{% macro skeleton_text(width='60px', height='1em') -%}
+<span class="skeleton-text" style="width: {{ width }}; height: {{ height }};"></span>
+{%- endmacro %}
+
+{#
+    Table row placeholder - full row with shimmer cells
+    @param columns: number of columns (default: 4)
+    @param with_checkbox: include checkbox column (default: false)
+#}
+{% macro skeleton_row(columns=4, with_checkbox=false) -%}
+<tr class="skeleton-row">
+    {%- if with_checkbox %}
+    <td class="skeleton-checkbox-cell"></td>
+    {%- endif %}
+    {%- for i in range(columns) %}
+    <td><div class="skeleton-cell"></div></td>
+    {%- endfor %}
+</tr>
+{%- endmacro %}
+
+{#
+    Multiple skeleton rows for table loading state
+    @param rows: number of rows (default: 5)
+    @param columns: number of columns (default: 4)
+    @param with_checkbox: include checkbox column (default: false)
+#}
+{% macro skeleton_rows(rows=5, columns=4, with_checkbox=false) -%}
+{%- for r in range(rows) %}
+{{ skeleton_row(columns=columns, with_checkbox=with_checkbox) }}
+{%- endfor %}
+{%- endmacro %}
+
+{#
+    Card placeholder - for dashboard stat cards or content cards
+    @param height: CSS height value (default: '60px')
+#}
+{% macro skeleton_card(height='60px') -%}
+<div class="skeleton-card" style="height: {{ height }};"></div>
+{%- endmacro %}
+
+{#
+    Stat value placeholder - for numeric stats
+    @param width: CSS width value (default: '3rem')
+#}
+{% macro skeleton_stat(width='3rem') -%}
+<span class="skeleton-stat" style="width: {{ width }};"></span>
+{%- endmacro %}
+
+{#
+    Avatar placeholder - for user avatars
+    @param size: CSS size value (default: '32px')
+#}
+{% macro skeleton_avatar(size='32px') -%}
+<span class="skeleton-avatar" style="width: {{ size }}; height: {{ size }};"></span>
+{%- endmacro %}
