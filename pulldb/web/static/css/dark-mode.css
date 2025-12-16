@@ -666,3 +666,37 @@
 [data-theme="dark"] .qa-template-info p {
     color: var(--color-text-secondary);
 }
+
+/* ==========================================================================
+   Manager Page Dark Mode
+   ========================================================================== */
+
+[data-theme="dark"] .manager-container h1 {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .manager-stat-card {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .manager-stat-label {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .manager-stat-number {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .manager-stat-unit {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .manager-stat-subtext {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .manager-team-card {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}

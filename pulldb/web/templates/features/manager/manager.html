@@ -7,52 +7,53 @@
 {% endblock %}
 
 {% block content %}
+<!-- Manager page styles extracted to components.css (Manager Page section) -->
 <div class="manager-container">
-    <h1 style="font-size: 1.5rem; font-weight: 600; color: var(--gray-900); margin-bottom: var(--space-6);">Manager Dashboard</h1>
+    <h1>Manager Dashboard</h1>
 
     <!-- Stats Grid -->
-    <div class="card-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--space-6); margin-bottom: var(--space-8);">
+    <div class="manager-stats-grid">
         <!-- Team Size -->
-        <div class="card" style="background: white; padding: var(--space-6); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200);">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4);">
-                <h3 style="font-size: 0.875rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em;">My Team</h3>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--primary-500);">
+        <div class="manager-stat-card">
+            <div class="manager-stat-header">
+                <h3 class="manager-stat-label">My Team</h3>
+                <svg class="manager-stat-icon team" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
                     <circle cx="9" cy="7" r="4"></circle>
                     <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
                     <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                 </svg>
             </div>
-            <div style="display: flex; align-items: baseline; gap: var(--space-2);">
-                <span style="font-size: 2rem; font-weight: 700; color: var(--gray-900);">{{ stats.managed_users }}</span>
-                <span style="font-size: 0.875rem; color: var(--gray-500);">members</span>
+            <div class="manager-stat-value">
+                <span class="manager-stat-number">{{ stats.managed_users }}</span>
+                <span class="manager-stat-unit">members</span>
             </div>
-            <div style="margin-top: var(--space-2); font-size: 0.875rem; color: var(--gray-600);">
+            <div class="manager-stat-subtext">
                 {{ stats.active_users }} active
             </div>
         </div>
 
         <!-- Team Active Jobs -->
-        <div class="card" style="background: white; padding: var(--space-6); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200);">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4);">
-                <h3 style="font-size: 0.875rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em;">Team Jobs</h3>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--warning-500);">
+        <div class="manager-stat-card">
+            <div class="manager-stat-header">
+                <h3 class="manager-stat-label">Team Jobs</h3>
+                <svg class="manager-stat-icon jobs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
                 </svg>
             </div>
-            <div style="display: flex; align-items: baseline; gap: var(--space-2);">
-                <span style="font-size: 2rem; font-weight: 700; color: var(--gray-900);">{{ stats.my_team_active_jobs }}</span>
-                <span style="font-size: 0.875rem; color: var(--gray-500);">running</span>
+            <div class="manager-stat-value">
+                <span class="manager-stat-number">{{ stats.my_team_active_jobs }}</span>
+                <span class="manager-stat-unit">running</span>
             </div>
-            <div style="margin-top: var(--space-2); font-size: 0.875rem; color: var(--gray-600);">
+            <div class="manager-stat-subtext">
                 Across all team members
             </div>
         </div>
     </div>
 
     <!-- Managed Users LazyTable -->
-    <div class="card" style="background: white; border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200); overflow: hidden; margin-bottom: var(--space-8); height: calc(100vh - 400px); min-height: 300px;">
-        <div id="team-table-container" style="height: 100%;"></div>
+    <div class="manager-team-card">
+        <div id="team-table-container"></div>
     </div>
 </div>
 {% endblock %}
