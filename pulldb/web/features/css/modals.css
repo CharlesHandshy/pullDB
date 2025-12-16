@@ -478,3 +478,41 @@
         margin: 0;
     }
 }
+
+/* ===========================================
+   DARK MODE
+   Co-located dark theme overrides
+   =========================================== */
+
+[data-theme="dark"] .modal-content {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .modal-header,
+[data-theme="dark"] .modal__header {
+    background: var(--color-bg-secondary);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .modal-header h3,
+[data-theme="dark"] .modal__title {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .modal-footer,
+[data-theme="dark"] .modal__footer {
+    background: var(--color-bg-secondary);
+    border-top-color: var(--color-border);
+}
+
+[data-theme="dark"] .modal-body p {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .modal-detail,
+[data-theme="dark"] .modal-path {
+    background: var(--color-bg-tertiary);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+}

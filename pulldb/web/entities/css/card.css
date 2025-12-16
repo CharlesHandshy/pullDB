@@ -455,3 +455,53 @@
 .stat-pill .stat-label {
     color: var(--color-text-muted);
 }
+
+/* ===========================================
+   DARK MODE
+   Co-located dark theme overrides
+   =========================================== */
+
+/* Base card dark mode */
+[data-theme="dark"] .card {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .card:hover {
+    border-color: var(--color-border-light);
+}
+
+[data-theme="dark"] .card__header {
+    background: var(--color-bg-secondary);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .card__title {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .card__title svg {
+    color: var(--color-text-secondary);
+}
+
+/* Stat card dark mode */
+[data-theme="dark"] .card--stat,
+[data-theme="dark"] .stat-card {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .card--stat:hover,
+[data-theme="dark"] .stat-card:hover {
+    border-color: var(--color-border-light);
+}
+
+[data-theme="dark"] .stat-pill .stat-value,
+[data-theme="dark"] .stat-card .stat-value {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .stat-pill .stat-label,
+[data-theme="dark"] .stat-card .stat-label {
+    color: var(--color-text-secondary);
+}

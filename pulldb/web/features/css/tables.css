@@ -420,3 +420,68 @@
         font-size: var(--text-2xs);
     }
 }
+
+/* ===========================================
+   DARK MODE
+   Co-located dark theme overrides
+   =========================================== */
+
+/* Virtual table / LazyTable */
+[data-theme="dark"] .virtual-table-header {
+    background: var(--color-bg-secondary);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .virtual-table-row:hover {
+    background: var(--color-surface-hover);
+}
+
+[data-theme="dark"] .virtual-table-row:nth-child(even) {
+    background: var(--color-table-row-stripe);
+}
+
+/* Backup table dark mode */
+[data-theme="dark"] .backup-table th {
+    background: var(--color-bg-secondary);
+    border-bottom-color: var(--color-border);
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .backup-table td {
+    border-bottom-color: var(--color-border);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .backup-table tbody tr:hover {
+    background: var(--color-surface-hover);
+}
+
+[data-theme="dark"] .backup-table tbody tr.is-selected {
+    background: rgba(96, 165, 250, 0.15);
+}
+
+[data-theme="dark"] .backup-table tbody tr.is-selected td {
+    border-bottom-color: rgba(96, 165, 250, 0.3);
+}
+
+/* Audit entries dark mode */
+[data-theme="dark"] .audit-entry {
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .audit-actor {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .audit-avatar {
+    background: rgba(96, 165, 250, 0.15);
+    color: var(--color-primary);
+}
+
+[data-theme="dark"] .audit-detail {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .audit-time {
+    color: var(--color-text-muted);
+}

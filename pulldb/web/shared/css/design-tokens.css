@@ -261,28 +261,98 @@
 
 [data-theme="dark"],
 .dark {
-    /* Surfaces */
-    --color-surface: var(--gray-800);
-    --color-surface-hover: var(--gray-700);
-    --color-surface-subtle: var(--gray-900);
+    /* ===========================================
+       DARK MODE TOKEN OVERRIDES
+       Comprehensive overrides for dark theme
+       =========================================== */
     
-    /* Backgrounds */
-    --color-bg-primary: var(--gray-900);
-    --color-bg-secondary: var(--gray-800);
-    --color-bg-subtle: var(--gray-800);
-    --color-bg-muted: var(--gray-700);
+    /* Background colors */
+    --color-bg-primary: #0f172a;      /* slate-900 */
+    --color-bg-secondary: #1e293b;    /* slate-800 */
+    --color-bg-tertiary: #334155;     /* slate-700 */
+    --color-bg-elevated: #1e293b;     /* cards, modals */
+    --color-bg-hover: #334155;
+    --color-bg-subtle: #1e293b;
+    --color-bg-muted: #334155;
     
-    /* Text */
-    --color-text-primary: var(--gray-100);
-    --color-text-secondary: var(--gray-300);
-    --color-text-muted: var(--gray-400);
+    /* Surface colors */
+    --color-surface: #1e293b;
+    --color-surface-hover: #334155;
+    --color-surface-active: #475569;
+    --color-surface-subtle: #0f172a;
     
-    /* Borders */
-    --color-border: var(--gray-700);
-    --color-border-hover: var(--gray-600);
+    /* Widget surface colors (used by lazy_table, virtual_table) */
+    --surface-primary: #1e293b;
+    --surface-secondary: #334155;
+    --surface-hover: #475569;
     
-    /* Input */
-    --color-input-bg: var(--gray-800);
-    --color-input-border: var(--gray-600);
-    --color-input-focus-ring: rgba(59, 130, 246, 0.3);
+    /* Border colors */
+    --color-border: #334155;          /* slate-700 */
+    --color-border-light: #475569;    /* slate-600 */
+    --color-border-focus: #60a5fa;    /* blue-400 */
+    --color-border-hover: #475569;
+    
+    /* Text colors */
+    --color-text-primary: #f1f5f9;    /* slate-100 */
+    --color-text-secondary: #94a3b8;  /* slate-400 */
+    --color-text-muted: #64748b;      /* slate-500 */
+    --color-text-inverse: #0f172a;    /* slate-900 */
+    
+    /* Status colors (adjusted for dark bg) */
+    --color-success: #4ade80;         /* green-400 */
+    --color-success-bg: rgba(74, 222, 128, 0.15);
+    --color-success-border: rgba(74, 222, 128, 0.3);
+    
+    --color-warning: #fbbf24;         /* amber-400 */
+    --color-warning-bg: rgba(251, 191, 36, 0.15);
+    --color-warning-border: rgba(251, 191, 36, 0.3);
+    
+    --color-error: #f87171;           /* red-400 */
+    --color-error-bg: rgba(248, 113, 113, 0.15);
+    --color-error-border: rgba(248, 113, 113, 0.3);
+    
+    --color-info: #60a5fa;            /* blue-400 */
+    --color-info-bg: rgba(96, 165, 250, 0.15);
+    --color-info-border: rgba(96, 165, 250, 0.3);
+    
+    /* Interactive colors */
+    --color-primary: #60a5fa;         /* blue-400 */
+    --color-primary-hover: #3b82f6;   /* blue-500 */
+    --color-primary-active: #2563eb;  /* blue-600 */
+    
+    --color-accent: #a78bfa;          /* violet-400 */
+    --color-accent-hover: #8b5cf6;    /* violet-500 */
+    
+    /* Links */
+    --color-link: #60a5fa;
+    --color-link-hover: #93c5fd;
+    --color-link-visited: #a78bfa;
+    
+    /* Form elements */
+    --color-input-bg: #1e293b;
+    --color-input-border: #475569;
+    --color-input-focus: #60a5fa;
+    --color-input-placeholder: #64748b;
+    --color-input-focus-ring: rgba(96, 165, 250, 0.3);
+    
+    /* Shadows (more visible on dark bg) */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+    
+    /* Code/monospace blocks */
+    --color-code-bg: #1e293b;
+    --color-code-text: #e2e8f0;
+    --color-code-border: #334155;
+    
+    /* Table */
+    --color-table-header-bg: #1e293b;
+    --color-table-row-hover: #334155;
+    --color-table-row-stripe: rgba(255, 255, 255, 0.02);
+    
+    /* Scrollbar (WebKit) */
+    --scrollbar-track: #1e293b;
+    --scrollbar-thumb: #475569;
+    --scrollbar-thumb-hover: #64748b;
 }

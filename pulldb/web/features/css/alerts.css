@@ -568,3 +568,67 @@
     opacity: 1;
     visibility: visible;
 }
+
+/* ===========================================
+   DARK MODE
+   Co-located dark theme overrides
+   =========================================== */
+
+/* Toast variants dark mode */
+[data-theme="dark"] .toast-success {
+    border-left-color: var(--color-success);
+}
+
+[data-theme="dark"] .toast-error {
+    border-left-color: var(--color-error);
+}
+
+[data-theme="dark"] .toast-warning {
+    border-left-color: var(--color-warning);
+}
+
+/* Info banner dark mode */
+[data-theme="dark"] .info-banner,
+[data-theme="dark"] .settings-info-banner {
+    background: rgba(96, 165, 250, 0.1);
+    border-color: rgba(96, 165, 250, 0.3);
+}
+
+[data-theme="dark"] .info-icon svg {
+    color: var(--color-primary);
+}
+
+[data-theme="dark"] .info-content p,
+[data-theme="dark"] .settings-info-banner p {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .info-content strong,
+[data-theme="dark"] .settings-info-banner h4 {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .info-subtext {
+    color: var(--color-text-muted);
+}
+
+/* No hosts / error banner dark mode */
+[data-theme="dark"] .no-hosts-banner {
+    background: var(--color-warning-bg);
+    border-color: var(--color-warning-border);
+    color: var(--color-warning);
+}
+
+[data-theme="dark"] .no-hosts-banner-icon {
+    color: var(--color-warning);
+}
+
+[data-theme="dark"] .error-banner {
+    background: var(--color-error-bg);
+    border-color: var(--color-error-border);
+    color: var(--color-error);
+}
+
+[data-theme="dark"] .error-banner-icon {
+    color: var(--color-error);
+}

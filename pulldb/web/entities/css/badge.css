@@ -325,3 +325,105 @@
     color: var(--gray-600);
     border-radius: var(--radius-full);
 }
+
+/* ===========================================
+   DARK MODE
+   Co-located dark theme overrides
+   =========================================== */
+
+/* Semantic variant dark mode */
+[data-theme="dark"] .badge--success,
+[data-theme="dark"] .badge-success {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+    border-color: var(--color-success-border);
+}
+
+[data-theme="dark"] .badge--warning,
+[data-theme="dark"] .badge-warning {
+    background: var(--color-warning-bg);
+    color: var(--color-warning);
+    border-color: var(--color-warning-border);
+}
+
+[data-theme="dark"] .badge--danger,
+[data-theme="dark"] .badge-danger,
+[data-theme="dark"] .badge--error,
+[data-theme="dark"] .badge-error {
+    background: var(--color-error-bg);
+    color: var(--color-error);
+    border-color: var(--color-error-border);
+}
+
+[data-theme="dark"] .badge--info,
+[data-theme="dark"] .badge-info {
+    background: var(--color-info-bg);
+    color: var(--color-info);
+    border-color: var(--color-info-border);
+}
+
+[data-theme="dark"] .badge--primary,
+[data-theme="dark"] .badge-primary {
+    background: rgba(96, 165, 250, 0.15);
+    color: var(--color-primary);
+    border-color: rgba(96, 165, 250, 0.3);
+}
+
+[data-theme="dark"] .badge--neutral,
+[data-theme="dark"] .badge-neutral {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
+    border-color: var(--color-border);
+}
+
+/* Source badges dark mode */
+[data-theme="dark"] .badge--source-database,
+[data-theme="dark"] .source-badge.database {
+    background: rgba(96, 165, 250, 0.15);
+    color: var(--color-primary);
+    border-color: rgba(96, 165, 250, 0.3);
+}
+
+[data-theme="dark"] .badge--source-environment,
+[data-theme="dark"] .source-badge.environment {
+    background: rgba(251, 191, 36, 0.15);
+    color: var(--color-warning);
+    border-color: rgba(251, 191, 36, 0.3);
+}
+
+[data-theme="dark"] .badge--source-default,
+[data-theme="dark"] .source-badge.default {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
+    border-color: var(--color-border);
+}
+
+/* Action badges dark mode */
+[data-theme="dark"] .badge--action-updated,
+[data-theme="dark"] .action-badge.updated {
+    background: rgba(96, 165, 250, 0.15);
+    color: var(--color-primary);
+    border-color: rgba(96, 165, 250, 0.3);
+}
+
+[data-theme="dark"] .badge--action-reset,
+[data-theme="dark"] .action-badge.reset {
+    background: rgba(251, 191, 36, 0.15);
+    color: var(--color-warning);
+    border-color: rgba(251, 191, 36, 0.3);
+}
+
+/* Danger badge (inline warning) dark mode */
+[data-theme="dark"] .badge--danger-outline,
+[data-theme="dark"] .danger-badge {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--color-error);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Category count dark mode */
+[data-theme="dark"] .badge--count,
+[data-theme="dark"] .category-count {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
+}
