@@ -1,0 +1,316 @@
+/* =================================================================
+   pullDB Search Components
+   HCA Layer: features (Layer 2)
+   
+   Purpose: Search bars, search inputs, and search-related UI components
+            used throughout the application.
+   Depends: design-tokens.css, forms.css
+   ================================================================= */
+
+/* ===========================================
+   SEARCH BAR CONTAINER
+   Wrapper for search functionality
+   =========================================== */
+
+.search-bar {
+    margin-bottom: var(--space-6);
+}
+
+.search-bar--inline {
+    margin-bottom: 0;
+}
+
+/* ===========================================
+   SEARCH WRAPPER
+   Position context for icon + input
+   =========================================== */
+
+.search-wrapper {
+    position: relative;
+    max-width: 480px;
+}
+
+.search-wrapper--full {
+    max-width: 100%;
+}
+
+.search-wrapper--sm {
+    max-width: 280px;
+}
+
+/* ===========================================
+   SEARCH ICON
+   Positioned inside search input
+   =========================================== */
+
+.search-icon {
+    position: absolute;
+    left: var(--space-3);
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    color: var(--gray-400);
+    pointer-events: none;
+}
+
+.search-icon--right {
+    left: auto;
+    right: var(--space-3);
+}
+
+/* ===========================================
+   SEARCH INPUT
+   Text input with icon accommodation
+   =========================================== */
+
+.search-input {
+    width: 100%;
+    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-10);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    transition: all var(--transition-fast);
+    background: var(--color-input-bg);
+    color: var(--color-text-primary);
+}
+
+.search-input::placeholder {
+    color: var(--gray-400);
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+/* Variant without icon padding */
+.search-input--no-icon {
+    padding-left: var(--space-3);
+}
+
+/* ===========================================
+   SEARCH BOX
+   Flex container variant for filter bars
+   =========================================== */
+
+.search-box {
+    flex: 1;
+    min-width: 200px;
+    max-width: 400px;
+}
+
+.search-box input {
+    width: 100%;
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    font-size: var(--text-sm);
+}
+
+.search-box input:focus {
+    outline: none;
+    border-color: var(--primary-500);
+}
+
+.search-box input::placeholder {
+    color: var(--gray-400);
+}
+
+/* ===========================================
+   CUSTOMER SEARCH (Page-specific variant)
+   Specialized search for customer selection
+   =========================================== */
+
+.customer-search-input-wrapper {
+    position: relative;
+}
+
+.customer-search-input {
+    width: 100%;
+    padding: var(--space-3) var(--space-4) var(--space-3) var(--space-10);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-base);
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.customer-search-input:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+.customer-search-input::placeholder {
+    color: var(--gray-400);
+}
+
+.customer-search-icon {
+    position: absolute;
+    left: var(--space-3);
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    color: var(--gray-400);
+    pointer-events: none;
+}
+
+.customer-search-hint {
+    font-size: var(--text-xs);
+    color: var(--gray-500);
+    margin-top: var(--space-2);
+}
+
+/* ===========================================
+   SETTINGS SEARCH
+   Search input for settings page
+   =========================================== */
+
+.settings-search {
+    width: 100%;
+    max-width: 400px;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+}
+
+.settings-search:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+.settings-search::placeholder {
+    color: var(--gray-400);
+}
+
+/* ===========================================
+   FILTER CHIPS
+   Search result filter tags
+   =========================================== */
+
+.filter-chips {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+}
+
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    background: var(--primary-500);
+    color: white;
+    border-radius: var(--radius-full);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+}
+
+.filter-chip__remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.filter-chip__remove:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.filter-chip__remove svg {
+    width: 10px;
+    height: 10px;
+}
+
+/* ===========================================
+   DARK MODE
+   =========================================== */
+
+[data-theme="dark"] .search-input {
+    background: var(--color-input-bg);
+    border-color: var(--color-input-border);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .search-input:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
+[data-theme="dark"] .search-input::placeholder {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .search-icon {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .search-box input {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .search-box input:focus {
+    border-color: var(--color-primary);
+}
+
+[data-theme="dark"] .search-box input::placeholder {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .customer-search-input {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .customer-search-input:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
+[data-theme="dark"] .customer-search-input::placeholder {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .customer-search-icon {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .customer-search-hint {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .settings-search {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .settings-search:focus {
+    border-color: var(--color-primary);
+}
+
+[data-theme="dark"] .settings-search::placeholder {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .filter-chip {
+    background: var(--primary-600);
+}
