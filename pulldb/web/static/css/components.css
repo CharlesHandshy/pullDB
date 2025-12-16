@@ -2234,14 +2234,14 @@
 }
 
 .cli-example pre {
-    background: var(--gray-900);
-    color: var(--gray-100);
+    background: var(--gray-100);
+    color: var(--gray-800);
     padding: var(--space-4);
     border-radius: var(--radius-md);
     font-size: 0.8125rem;
     margin: 0;
     overflow-x: auto;
-    border: 1px solid var(--gray-800);
+    border: 1px solid var(--gray-200);
 }
 
 /* --- User Management --- */

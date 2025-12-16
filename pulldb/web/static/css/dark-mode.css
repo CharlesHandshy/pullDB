@@ -811,9 +811,13 @@
     color: var(--color-text-primary);
 }
 
-[data-theme="dark"] .path-value {
-    color: var(--color-text-primary);
-    background: var(--color-bg-tertiary, #334155);
+[data-theme="dark"] .path-value,
+[data-theme="dark"] .setting-value.path-value {
+    color: var(--color-text-secondary);
+    background: var(--color-surface);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border);
 }
 
 /* Audit History Section */
@@ -856,7 +860,9 @@
 }
 
 [data-theme="dark"] .cli-example pre {
-    background: var(--color-bg-tertiary, #334155);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    border-color: var(--color-border);
 }
 
 /* Info Banner */
@@ -1026,7 +1032,7 @@
 
 /* Dark Mode Toggle Control */
 [data-theme="dark"] .dark-mode-control {
-    background: var(--color-bg-tertiary, #334155);
+    background: var(--color-surface);
     border-color: var(--color-border);
 }
 
