@@ -19,6 +19,11 @@
     --color-surface-hover: #334155;
     --color-surface-active: #475569;
     
+    /* Widget surface colors (used by lazy_table, virtual_table) */
+    --surface-primary: #1e293b;
+    --surface-secondary: #334155;
+    --surface-hover: #475569;
+    
     /* Border colors */
     --color-border: #334155;          /* slate-700 */
     --color-border-light: #475569;    /* slate-600 */
