@@ -750,7 +750,9 @@ class LazyTable {
     }
 
     updateFooter() {
-        const showing = this.elements.footerContent.querySelector('.footer-showing');
+        const showing = this.elements.footerContent?.querySelector('.footer-showing');
+        if (!showing) return;  // Guard against missing element during skeleton state
+        
         const selectedCount = this.getSelectedCount();
         
         // Calculate visible row range based on scroll position

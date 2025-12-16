@@ -176,7 +176,8 @@ def create_dev_app():
     from pulldb.api.main import app, get_api_state
     
     # Initialize dev state using unified simulation infrastructure
-    dev_state = DevAPIState()
+    # Use "busy" scenario by default for testing (has active jobs and history)
+    dev_state = DevAPIState(scenario="busy")
     
     # Store dev state for access by dev-specific endpoints
     app.state.dev_api_state = dev_state
