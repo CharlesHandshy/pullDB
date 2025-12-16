@@ -320,3 +320,58 @@
         padding: var(--space-3);
     }
 }
+
+/* =================================================================
+   NO-SIDEBAR LAYOUT (Login page, public pages)
+   Merged from legacy layout.css
+   ================================================================= */
+
+body.no-sidebar .app-sidebar {
+    display: none;
+}
+
+body.no-sidebar #sidebar-toggle {
+    display: none;
+}
+
+/* =================================================================
+   BREADCRUMB NAVIGATION
+   Merged from legacy layout.css
+   ================================================================= */
+
+.breadcrumb-nav {
+    font-size: 0.75rem;
+}
+
+.breadcrumb-list {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.breadcrumb-item {
+    display: flex;
+    align-items: center;
+}
+
+.breadcrumb-item:not(:last-child)::after {
+    content: "/";
+    margin-left: 0.375rem;
+    color: var(--gray-300);
+}
+
+.breadcrumb-link {
+    color: var(--gray-400);
+    text-decoration: none;
+}
+
+.breadcrumb-link:hover {
+    color: var(--gray-500);
+}
+
+.breadcrumb-current {
+    color: var(--gray-400);
+}

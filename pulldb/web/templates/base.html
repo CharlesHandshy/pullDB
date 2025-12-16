@@ -5,10 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}pullDB{% endblock %}</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <!-- Design System Foundation (HCA shared layer) -->
+    <link rel="stylesheet" href="/static/css/shared/design-tokens.css">
+    <link rel="stylesheet" href="/static/css/shared/reset.css">
+    <link rel="stylesheet" href="/static/css/shared/utilities.css">
+    
+    <!-- Entity Components (HCA entities layer) -->
+    <link rel="stylesheet" href="/static/css/entities/badge.css">
+    <link rel="stylesheet" href="/static/css/entities/avatar.css">
+    <link rel="stylesheet" href="/static/css/entities/card.css">
+    
+    <!-- Feature Components (HCA features layer) -->
+    <link rel="stylesheet" href="/static/css/features/buttons.css">
+    <link rel="stylesheet" href="/static/css/features/forms.css">
+    <link rel="stylesheet" href="/static/css/features/tables.css">
+    <link rel="stylesheet" href="/static/css/features/modals.css">
+    <link rel="stylesheet" href="/static/css/features/alerts.css">
+    
+    <!-- Legacy CSS (transitional - migrate incrementally) -->
     <link rel="stylesheet" href="/static/css/design-system.css">
     <link rel="stylesheet" href="/web/admin/api/theme.css">
     <link rel="stylesheet" href="/static/css/dark-mode.css">
-    <link rel="stylesheet" href="/static/css/layout.css">
+    <link rel="stylesheet" href="/static/css/app-layout.css">
     <link rel="stylesheet" href="/static/css/components.css">
     <link rel="stylesheet" href="/static/css/sidebar.css">
     {% block extra_css %}{% endblock %}
@@ -21,7 +39,7 @@
     
     <!-- Header -->
     <header class="app-header">
-        <div class="header-left" style="display: flex; align-items: center; gap: var(--space-4);">
+        <div class="header-left flex items-center gap-4">
             <button id="sidebar-toggle" class="btn-icon" aria-label="Toggle sidebar">
                 {{ icon('menu', size='24', stroke_width='2') }}
             </button>
@@ -50,8 +68,8 @@
             <!-- User Profile / Actions -->
             <div class="user-profile">
                 {% if user %}
-                <a href="/web/auth/profile" class="link-neutral" style="display: flex; align-items: center; gap: 0.5rem; text-decoration: none;">
-                    <div style="width: 32px; height: 32px; background: var(--primary-100); color: var(--primary-700); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600;">
+                <a href="/web/auth/profile" class="link-neutral flex items-center gap-2" style="text-decoration: none;">
+                    <div class="avatar avatar--sm avatar--primary">
                         {{ user.username[0]|upper }}
                     </div>
                     <span>{{ user.username }}</span>

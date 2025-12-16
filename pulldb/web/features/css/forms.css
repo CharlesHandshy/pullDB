@@ -1,0 +1,566 @@
+/* =================================================================
+   pullDB Form Component
+   HCA Layer: features
+   
+   Purpose: Form inputs, labels, groups, validation, and layouts.
+   Depends: design-tokens.css
+   
+   BEM Structure:
+   - .form (Block)
+   - .form__group (Element)
+   - .form__label (Element)
+   - .form__input (Element)
+   - .form__select (Element)
+   - .form__hint (Element)
+   - .form__error (Element)
+   - .form__input--{variant} (Modifier: search, code, edit)
+   - .form__input.is-invalid (State)
+   - .form__input.is-valid (State)
+   
+   Legacy Compatibility:
+   - .form-group, .form-label, .form-input, .form-select, .form-hint
+   ================================================================= */
+
+/* ===========================================
+   FORM CONTAINER
+   =========================================== */
+
+.form,
+.form-container {
+    max-width: var(--content-max-xl);
+}
+
+/* ===========================================
+   FORM GROUP
+   =========================================== */
+
+.form__group,
+.form-group {
+    margin-bottom: var(--space-4);
+}
+
+.form__group.full-width,
+.form-group.full-width {
+    grid-column: 1 / -1;
+}
+
+/* ===========================================
+   FORM LABEL
+   =========================================== */
+
+.form__label,
+.form-label {
+    display: block;
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--gray-700);
+    margin-bottom: var(--space-2);
+}
+
+/* Required indicator */
+.form__label--required::after,
+.form-label.required::after {
+    content: ' *';
+    color: var(--danger-500);
+}
+
+/* ===========================================
+   FORM INPUT (Text, Email, Password, etc.)
+   =========================================== */
+
+.form__input,
+.form-input {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-input-border);
+    border-radius: var(--radius-md);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    color: var(--color-text-primary);
+    background-color: var(--color-input-bg);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form__input:focus,
+.form-input:focus {
+    outline: none;
+    border-color: var(--color-input-focus);
+    box-shadow: var(--shadow-focus);
+}
+
+.form__input::placeholder,
+.form-input::placeholder {
+    color: var(--color-text-muted);
+}
+
+/* ===========================================
+   FORM SELECT
+   =========================================== */
+
+.form__select,
+.form-select {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-input-border);
+    border-radius: var(--radius-md);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    color: var(--color-text-primary);
+    background-color: var(--color-input-bg);
+    cursor: pointer;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form__select:focus,
+.form-select:focus {
+    outline: none;
+    border-color: var(--color-input-focus);
+    box-shadow: var(--shadow-focus);
+}
+
+/* Compact select for tables */
+.form__select--compact,
+.manager-select,
+.role-select {
+    font-size: 0.8125rem;
+    padding: var(--space-0-5) var(--space-1-5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-input-bg);
+    color: var(--color-text-primary);
+    cursor: pointer;
+}
+
+.form__select--compact:hover,
+.manager-select:hover,
+.role-select:hover {
+    border-color: var(--gray-300);
+}
+
+.form__select--compact:focus,
+.manager-select:focus,
+.role-select:focus {
+    outline: none;
+    border-color: var(--primary-400);
+    box-shadow: 0 0 0 2px var(--primary-100);
+}
+
+.role-select {
+    text-transform: uppercase;
+    font-weight: var(--font-semibold);
+}
+
+.manager-select {
+    max-width: 120px;
+}
+
+/* ===========================================
+   FORM TEXTAREA
+   =========================================== */
+
+.form__textarea,
+.form-textarea {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-input-border);
+    border-radius: var(--radius-md);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    color: var(--color-text-primary);
+    background-color: var(--color-input-bg);
+    resize: vertical;
+    min-height: 80px;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form__textarea:focus,
+.form-textarea:focus {
+    outline: none;
+    border-color: var(--color-input-focus);
+    box-shadow: var(--shadow-focus);
+}
+
+/* ===========================================
+   INPUT VARIANTS
+   =========================================== */
+
+/* Search Input */
+.form__input--search,
+.search-input {
+    padding-left: var(--space-10);
+}
+
+/* Code/Mono Input */
+.form__input--code,
+.edit-input {
+    font-family: var(--font-mono);
+}
+
+/* ===========================================
+   FORM HINT / HELP TEXT
+   =========================================== */
+
+.form__hint,
+.form-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    margin-top: var(--space-1);
+}
+
+/* Default hint */
+.default-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    margin-top: var(--space-2);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.default-hint code {
+    font-family: var(--font-mono);
+    background: var(--gray-100);
+    padding: 1px 4px;
+    border-radius: var(--radius-sm);
+    color: var(--gray-600);
+}
+
+/* ===========================================
+   VALIDATION STATES
+   =========================================== */
+
+/* Invalid state */
+.form__input.is-invalid,
+.form__input--invalid,
+.form-input.is-invalid {
+    border-color: var(--danger-500);
+}
+
+.form__input.is-invalid:focus,
+.form__input--invalid:focus {
+    box-shadow: 0 0 0 3px var(--danger-100);
+}
+
+/* Valid state */
+.form__input.is-valid,
+.form__input--valid {
+    border-color: var(--success-500);
+}
+
+.form__input.is-valid:focus,
+.form__input--valid:focus {
+    box-shadow: 0 0 0 3px var(--success-100);
+}
+
+/* Error message */
+.form__error,
+.validation-message.error {
+    font-size: var(--text-xs);
+    color: var(--danger-600);
+    margin-top: var(--space-1);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* Warning message */
+.form__warning,
+.validation-message.warning {
+    font-size: var(--text-xs);
+    color: var(--warning-600);
+    margin-top: var(--space-1);
+}
+
+/* Can create message */
+.validation-message.can-create {
+    font-size: var(--text-xs);
+    color: var(--info-600);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+}
+
+/* Validation message container */
+.validation-message {
+    font-size: var(--text-xs);
+    min-height: 1.25rem;
+    margin-top: var(--space-1);
+}
+
+/* ===========================================
+   FORM LAYOUTS
+   =========================================== */
+
+/* Two-column grid */
+.form__grid,
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+}
+
+/* Form row */
+.form__row,
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+}
+
+/* Form section */
+.form__section,
+.form-section {
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.form__section:last-of-type,
+.form-section:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.form__section-title,
+.form-section-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--gray-700);
+    margin-bottom: var(--space-3);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+/* Form note */
+.form__note,
+.form-note {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    background: var(--info-50);
+    border: 1px solid var(--info-100);
+    border-radius: var(--radius-md);
+    font-size: 0.8125rem;
+    color: var(--info-700);
+    line-height: var(--leading-normal);
+}
+
+.form__note svg,
+.form-note svg {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    margin-top: 0.125rem;
+    color: var(--info-500);
+}
+
+.form__note code,
+.form-note code {
+    padding: 0.125rem 0.375rem;
+    background: var(--info-100);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+}
+
+/* ===========================================
+   SEARCH BAR
+   =========================================== */
+
+.search-bar {
+    margin-bottom: var(--space-6);
+}
+
+.search-wrapper {
+    position: relative;
+    max-width: 480px;
+}
+
+.search-icon {
+    position: absolute;
+    left: var(--space-3);
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    color: var(--gray-400);
+    pointer-events: none;
+}
+
+/* ===========================================
+   SETTINGS EDIT INPUT
+   =========================================== */
+
+.setting-edit {
+    width: 100%;
+    background: var(--gray-50);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--gray-200);
+}
+
+.edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+/* ===========================================
+   PASSWORD FORM
+   =========================================== */
+
+.password-form {
+    max-width: 400px;
+}
+
+/* Password Requirements */
+.password-requirements {
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    margin: var(--space-4) 0;
+}
+
+.password-requirements h4 {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--gray-700);
+    margin: 0 0 var(--space-3) 0;
+}
+
+.requirements-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-2);
+}
+
+@media (max-width: 480px) {
+    .requirements-list {
+        grid-template-columns: 1fr;
+    }
+}
+
+.requirement {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.8125rem;
+    color: var(--gray-500);
+    transition: color var(--transition-fast);
+}
+
+.requirement-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--gray-200);
+    color: var(--gray-400);
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.requirement-icon svg {
+    width: 12px;
+    height: 12px;
+}
+
+.requirement.valid {
+    color: var(--success-700);
+}
+
+.requirement.valid .requirement-icon {
+    background: var(--success-100);
+    color: var(--success-600);
+}
+
+/* ===========================================
+   INFO GRID (Detail pages)
+   =========================================== */
+
+.info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.info-item.full-width {
+    grid-column: 1 / -1;
+}
+
+.info-item label {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.info-item .value {
+    font-size: var(--text-base);
+    color: var(--color-text-primary);
+}
+
+/* ===========================================
+   CHECKBOX & RADIO
+   =========================================== */
+
+.form__checkbox,
+.form__radio {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+}
+
+.form__checkbox input[type="checkbox"],
+.form__radio input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary-500);
+    cursor: pointer;
+}
+
+/* Host item checkbox/radio */
+.host-item-auth input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary-500);
+}
+
+.host-item-default input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--warning-500);
+}
+
+/* ===========================================
+   RESPONSIVE
+   =========================================== */
+
+@media (max-width: 768px) {
+    .form__grid,
+    .form-grid,
+    .form__row,
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: var(--space-3);
+    }
+}
