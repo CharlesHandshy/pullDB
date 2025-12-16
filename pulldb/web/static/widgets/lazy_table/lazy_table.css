@@ -3,8 +3,12 @@
  * =======================
  * HCA Layer: widgets (Layer 3)
  * 
- * Modular CSS for the LazyTable widget.
- * Uses CSS custom properties from the design system.
+ * Modular CSS for the LazyTable widget with lazy loading.
+ * Extends: features/css/tables.css (.table--virtualized base)
+ * Depends: shared/css/design-tokens.css
+ * 
+ * This widget provides infinite scroll / lazy loading for large datasets.
+ * Uses CSS custom properties from the design system for consistency.
  */
 
 /* =========================================================================

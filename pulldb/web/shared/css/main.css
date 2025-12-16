@@ -88,3 +88,16 @@
 
 /* Lazy table widget */
 @import url('/static/widgets/lazy_table/lazy_table.css');
+
+/* ===========================================
+   LAYER 5: PAGES (Page-specific)
+   Import only on relevant pages via extra_css block.
+   Listed here for reference.
+   =========================================== */
+
+/* Page-specific imports - uncomment as needed or use in extra_css block:
+@import url('/static/css/pages/restore.css');
+@import url('/static/css/pages/job-details.css');
+@import url('/static/css/pages/admin.css');
+@import url('/static/css/pages/profile.css');
+*/

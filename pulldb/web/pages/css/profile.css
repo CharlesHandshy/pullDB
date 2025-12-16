@@ -1,0 +1,315 @@
+/* =================================================================
+   pullDB Profile & Auth Pages Styles
+   HCA Layer: pages (Layer 4)
+   
+   Purpose: Page-specific styles for auth pages (profile, login, password).
+   Depends: design-tokens.css, forms.css, cards.css
+   ================================================================= */
+
+/* ===========================================
+   PROFILE PAGE
+   =========================================== */
+
+.profile-page {
+    max-width: var(--content-max-lg);
+    margin: 0 auto;
+}
+
+.profile-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    margin-bottom: var(--space-6);
+}
+
+.profile-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: var(--radius-full);
+    background: linear-gradient(135deg, var(--primary-400), var(--primary-600));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-3xl);
+    font-weight: var(--font-bold);
+    color: white;
+    flex-shrink: 0;
+}
+
+.profile-info h1 {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+    margin: 0 0 var(--space-1) 0;
+}
+
+.profile-info .profile-role {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+}
+
+/* ===========================================
+   PROFILE SECTIONS
+   =========================================== */
+
+.profile-section {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-5);
+    overflow: hidden;
+}
+
+.profile-section-header {
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--gray-50);
+}
+
+.profile-section-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0;
+}
+
+.profile-section-title svg {
+    width: 16px;
+    height: 16px;
+    color: var(--gray-500);
+}
+
+.profile-section-body {
+    padding: var(--space-5);
+}
+
+/* ===========================================
+   PROFILE INFO GRID
+   =========================================== */
+
+.profile-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-4);
+}
+
+.profile-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.profile-info-item.full-width {
+    grid-column: 1 / -1;
+}
+
+.profile-info-label {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.profile-info-value {
+    font-size: var(--text-sm);
+    color: var(--color-text-primary);
+}
+
+@media (max-width: 480px) {
+    .profile-info-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ===========================================
+   HOST PERMISSIONS LIST
+   =========================================== */
+
+.host-permissions-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.host-permission-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--gray-50);
+    border-radius: var(--radius-md);
+}
+
+.host-permission-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    background: var(--primary-100);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.host-permission-icon svg {
+    width: 16px;
+    height: 16px;
+    color: var(--primary-600);
+}
+
+.host-permission-info {
+    flex: 1;
+}
+
+.host-permission-name {
+    font-weight: var(--font-medium);
+    color: var(--color-text-primary);
+}
+
+.host-permission-detail {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+}
+
+.host-permission-default {
+    padding: var(--space-1) var(--space-2);
+    background: var(--warning-100);
+    color: var(--warning-700);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+}
+
+/* ===========================================
+   CHANGE PASSWORD PAGE
+   =========================================== */
+
+.change-password-page {
+    max-width: var(--content-max-md);
+    margin: 0 auto;
+}
+
+.change-password-form {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+}
+
+/* ===========================================
+   LOGIN PAGE (if using custom login)
+   =========================================== */
+
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    background: var(--color-bg-primary);
+}
+
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-8);
+}
+
+.login-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-6);
+}
+
+.login-logo svg {
+    width: 32px;
+    height: 32px;
+    color: var(--primary-600);
+}
+
+.login-logo span {
+    font-size: var(--text-xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+}
+
+.login-title {
+    text-align: center;
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-6);
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.login-footer {
+    margin-top: var(--space-6);
+    text-align: center;
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+}
+
+.login-footer a {
+    color: var(--primary-600);
+    text-decoration: none;
+}
+
+.login-footer a:hover {
+    text-decoration: underline;
+}
+
+/* ===========================================
+   AUTH LAYOUT (no sidebar)
+   =========================================== */
+
+.auth-layout {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.auth-layout .app-main {
+    margin-left: 0;
+}
+
+/* ===========================================
+   DARK MODE
+   =========================================== */
+
+[data-theme="dark"] .profile-section {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .profile-section-header {
+    background: var(--gray-800);
+}
+
+[data-theme="dark"] .host-permission-item {
+    background: var(--gray-800);
+}
+
+[data-theme="dark"] .login-card {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
