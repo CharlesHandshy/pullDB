@@ -715,9 +715,10 @@ class LazyTable {
         this.elements.tbody.appendChild(fragment);
         
         // Show "Loading..." in footer during skeleton state
-        this.elements.footerContent.innerHTML = `
-            <span class="lazy-table-footer-text">${this.config.i18n.loading}</span>
-        `;
+        const showing = this.elements.footerContent.querySelector('.footer-showing');
+        if (showing) {
+            showing.textContent = this.config.i18n.loading;
+        }
     }
 
     renderActions(actions, row) {
