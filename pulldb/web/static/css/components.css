@@ -811,6 +811,41 @@
 .text-gray-400 { color: var(--gray-400); }
 .text-gray-500 { color: var(--gray-500); }
 .text-muted { color: var(--gray-500); }
+.text-dark { color: var(--gray-900); font-weight: 500; }
+.text-xs { font-size: 0.75rem; }
+.text-capitalize { text-transform: capitalize; }
+.font-italic { font-style: italic; }
+.mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }
+.mt-6 { margin-top: var(--space-6); }
+
+/* Host access list (profile page) */
+.host-access-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.host-access-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) 0;
+    font-size: 0.875rem;
+}
+
+.host-star {
+    color: var(--warning-500);
+}
+
+.host-star-placeholder {
+    color: transparent;
+}
+
+/* Password form max-width */
+.password-form {
+    max-width: 400px;
+}
 
 /* Section headers for dashboard cards */
 .section-header {
