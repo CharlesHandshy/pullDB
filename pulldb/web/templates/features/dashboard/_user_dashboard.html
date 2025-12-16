@@ -1,16 +1,16 @@
-<!-- User Dashboard - Personal productivity focus -->
+{# User Dashboard - Personal productivity focus #}
 
 <!-- My Stats - Compact badges -->
-<div class="dashboard-stats-row" style="align-items: center;">
-    <div class="dashboard-stat-card" style="display: inline-flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem;">
-        <span class="dashboard-stat-label" style="margin-bottom: 0;">My Active Jobs</span>
+<div class="dashboard-stats-row items-center">
+    <div class="dashboard-stat-card inline-flex items-center gap-3 compact">
+        <span class="dashboard-stat-label m-0">My Active Jobs</span>
         <span class="dashboard-stat-value lg text-primary-600">{{ my_active_count }}</span>
     </div>
 </div>
 
 <!-- My Last Job -->
-<div class="card card-padding" style="margin-top: var(--space-6);">
-    <h3 class="section-title" style="margin-bottom: var(--space-4);">My Last Job</h3>
+<div class="card card-padding mt-6">
+    <h3 class="section-title mb-4">My Last Job</h3>
     {% if last_job %}
     <div class="job-detail-row">
         <div class="job-detail-info">
@@ -27,22 +27,21 @@
                 {% elif last_job.status.value == 'running' %}badge-primary
                 {% elif last_job.status.value == 'queued' %}badge-neutral
                 {% elif last_job.status.value == 'canceled' %}badge-neutral
-                {% else %}badge-neutral{% endif %}
-            ">
+                {% else %}badge-neutral{% endif %}">
                 {{ last_job.status.value }}
             </span>
-            <a href="/web/jobs/{{ last_job.id }}" class="btn btn-secondary" style="font-size: 0.875rem;">View Details</a>
+            <a href="/web/jobs/{{ last_job.id }}" class="btn btn-secondary btn-sm">View Details</a>
         </div>
     </div>
     {% else %}
-    <p class="text-muted" style="margin: 0;">No jobs submitted yet. <a href="/web/restore" class="link-primary">Start a restore</a></p>
+    <p class="text-muted m-0">No jobs submitted yet. <a href="/web/restore" class="link-primary">Start a restore</a></p>
     {% endif %}
 </div>
 
 <!-- My Recent Jobs -->
 {% if recent_jobs %}
-<div class="card card-padding" style="margin-top: var(--space-6);">
-    <h3 class="section-title" style="margin-bottom: var(--space-4);">My Recent Jobs</h3>
+<div class="card card-padding mt-6">
+    <h3 class="section-title mb-4">My Recent Jobs</h3>
     <table class="dashboard-table">
         <thead>
             <tr>
@@ -55,20 +54,19 @@
             {% for job in recent_jobs %}
             <tr>
                 <td>
-                    <a href="/web/jobs/{{ job.id }}" class="link-primary" style="font-weight: 500;">{{ job.target }}</a>
+                    <a href="/web/jobs/{{ job.id }}" class="link-primary font-medium">{{ job.target }}</a>
                 </td>
                 <td>
-                    <span class="badge 
+                    <span class="badge text-xs
                         {% if job.status.value == 'complete' %}badge-success
                         {% elif job.status.value == 'failed' %}badge-danger
                         {% elif job.status.value == 'running' %}badge-primary
                         {% elif job.status.value == 'queued' %}badge-neutral
-                        {% else %}badge-neutral{% endif %}
-                    " style="font-size: 0.75rem;">
+                        {% else %}badge-neutral{% endif %}">
                         {{ job.status.value }}
                     </span>
                 </td>
-                <td class="text-muted" style="font-size: 0.875rem;">
+                <td class="text-muted text-sm">
                     {{ job.submitted_at.strftime('%m/%d %H:%M') if job.submitted_at else '-' }}
                 </td>
             </tr>

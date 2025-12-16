@@ -141,29 +141,45 @@ html.app-layout body {
    UTILITY CLASSES
    ================================================================= */
 
+/* Text utilities */
 .text-muted { color: var(--gray-500); }
 .text-sm { font-size: 0.875rem; }
 .text-xs { font-size: 0.75rem; }
+.text-2xs { font-size: 0.625rem; }
 .font-mono { font-family: var(--font-mono); }
 .font-medium { font-weight: 500; }
 .font-semibold { font-weight: 600; }
 .font-bold { font-weight: 700; }
+.text-center { text-align: center; }
 
+/* Margin utilities */
+.m-0 { margin: 0; }
 .mt-1 { margin-top: var(--space-1); }
 .mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }
 .mt-4 { margin-top: var(--space-4); }
+.mt-5 { margin-top: var(--space-5); }
 .mt-6 { margin-top: var(--space-6); }
 .mb-2 { margin-bottom: var(--space-2); }
+.mb-3 { margin-bottom: var(--space-3); }
 .mb-4 { margin-bottom: var(--space-4); }
 .mb-6 { margin-bottom: var(--space-6); }
 .mb-8 { margin-bottom: var(--space-8); }
+.mr-2 { margin-right: var(--space-2); }
 
+/* Flex utilities */
 .flex { display: flex; }
+.inline-flex { display: inline-flex; }
+.flex-col { flex-direction: column; }
 .items-center { align-items: center; }
+.items-baseline { align-items: baseline; }
 .justify-between { justify-content: space-between; }
 .gap-2 { gap: var(--space-2); }
 .gap-3 { gap: var(--space-3); }
 .gap-4 { gap: var(--space-4); }
+
+/* Layout utilities */
+.w-full { width: 100%; }
 
 /* =================================================================
    HTMX LOADING STATES

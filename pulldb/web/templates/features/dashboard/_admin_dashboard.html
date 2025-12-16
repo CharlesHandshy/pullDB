@@ -1,4 +1,5 @@
-<!-- Admin Dashboard - System health + administration -->
+{# Admin Dashboard - System health + administration #}
+{% from 'partials/icons/_index.html' import icon %}
 
 <!-- System Overview Stats -->
 <div class="dashboard-stats-row">
@@ -66,16 +67,14 @@
 
 <!-- Alerts Section (if failed jobs) -->
 {% if system_stats.failed_jobs > 0 %}
-<div class="alert alert-danger" style="margin-top: var(--space-5); display: flex; align-items: center; justify-content: space-between;">
-    <div style="display: flex; align-items: center; gap: var(--space-3);">
-        <svg style="width: 20px; height: 20px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
-        <span style="font-weight: 500;">{{ system_stats.failed_jobs }} failed job{% if system_stats.failed_jobs > 1 %}s{% endif %} require attention</span>
+<div class="alert alert-danger alert-action mt-5">
+    <div class="alert-content">
+        {{ icon('warning', size='20') }}
+        <span class="font-medium">{{ system_stats.failed_jobs }} failed job{% if system_stats.failed_jobs > 1 %}s{% endif %} require attention</span>
     </div>
     <a href="/web/jobs?view=history" 
        onclick="NavIntent.set({view: 'history', filters: {status: ['failed']}})" 
-       class="btn btn-danger" style="font-size: 0.875rem;">View Failed Jobs</a>
+       class="btn btn-danger btn-sm">View Failed Jobs</a>
 </div>
 {% endif %}
 
@@ -86,7 +85,7 @@
     <div class="card card-padding">
         <div class="section-header">
             <h3 class="section-title">Host Health</h3>
-            <a href="/web/admin/hosts" class="link-primary" style="font-size: 0.875rem;">Manage →</a>
+            <a href="/web/admin/hosts" class="link-primary text-sm">Manage →</a>
         </div>
         {% if host_health %}
         <table class="dashboard-table">
@@ -102,14 +101,14 @@
                     <td>
                         <div class="cell-primary">{{ item.name }}</div>
                         {% if not item.enabled %}
-                        <span class="badge badge-neutral" style="font-size: 0.625rem;">disabled</span>
+                        <span class="badge badge-neutral text-2xs">disabled</span>
                         {% endif %}
                     </td>
                     <td class="text-right">
                         {% if item.queued_count > 10 %}
-                        <span class="badge badge-danger" style="font-size: 0.625rem; margin-right: 0.5rem;">{{ item.queued_count }} queued</span>
+                        <span class="badge badge-danger text-2xs mr-2">{{ item.queued_count }} queued</span>
                         {% elif item.queued_count > 5 %}
-                        <span class="badge badge-warning" style="font-size: 0.625rem; margin-right: 0.5rem;">{{ item.queued_count }} queued</span>
+                        <span class="badge badge-warning text-2xs mr-2">{{ item.queued_count }} queued</span>
                         {% endif %}
                         <span class="capacity-indicator {% if item.running_count >= item.max_running_jobs %}capacity-at-limit{% elif item.running_count > 0 %}capacity-active{% else %}capacity-idle{% endif %}">
                             <span class="current">{{ item.running_count }}</span>
@@ -122,7 +121,7 @@
             </tbody>
         </table>
         {% else %}
-        <p class="text-muted" style="margin: 0;">No hosts configured.</p>
+        <p class="text-muted m-0">No hosts configured.</p>
         {% endif %}
     </div>
     
@@ -130,7 +129,7 @@
     <div class="card card-padding">
         <div class="section-header">
             <h3 class="section-title">Recent Activity</h3>
-            <a href="/web/jobs" class="link-primary" style="font-size: 0.875rem;">View All →</a>
+            <a href="/web/jobs" class="link-primary text-sm">View All →</a>
         </div>
         {% if system_recent %}
         <table class="dashboard-table">
@@ -145,19 +144,18 @@
                 {% for job in system_recent %}
                 <tr>
                     <td>
-                        <a href="/web/jobs/{{ job.id }}" class="link-primary" style="font-weight: 500;">{{ job.target[:18] }}{% if job.target|length > 18 %}...{% endif %}</a>
+                        <a href="/web/jobs/{{ job.id }}" class="link-primary font-medium">{{ job.target[:18] }}{% if job.target|length > 18 %}...{% endif %}</a>
                     </td>
-                    <td class="text-muted" style="font-size: 0.875rem;">
+                    <td class="text-muted text-sm">
                         {{ job.owner_user_code }}
                     </td>
                     <td>
-                        <span class="badge 
+                        <span class="badge text-xs
                             {% if job.status.value == 'complete' %}badge-success
                             {% elif job.status.value == 'failed' %}badge-danger
                             {% elif job.status.value == 'running' %}badge-primary
                             {% elif job.status.value == 'queued' %}badge-neutral
-                            {% else %}badge-neutral{% endif %}
-                        " style="font-size: 0.75rem;">
+                            {% else %}badge-neutral{% endif %}">
                             {{ job.status.value }}
                         </span>
                     </td>
@@ -166,14 +164,14 @@
             </tbody>
         </table>
         {% else %}
-        <p class="text-muted" style="margin: 0;">No recent activity.</p>
+        <p class="text-muted m-0">No recent activity.</p>
         {% endif %}
     </div>
 </div>
 
 <!-- My Last Job -->
-<div class="card card-padding" style="margin-top: var(--space-6);">
-    <h3 class="section-title" style="margin-bottom: var(--space-4);">My Last Job</h3>
+<div class="card card-padding mt-6">
+    <h3 class="section-title mb-4">My Last Job</h3>
     {% if last_job %}
     <div class="job-detail-row">
         <div class="job-detail-info">
@@ -190,15 +188,14 @@
                 {% elif last_job.status.value == 'running' %}badge-primary
                 {% elif last_job.status.value == 'queued' %}badge-neutral
                 {% elif last_job.status.value == 'canceled' %}badge-neutral
-                {% else %}badge-neutral{% endif %}
-            ">
+                {% else %}badge-neutral{% endif %}">
                 {{ last_job.status.value }}
             </span>
-            <a href="/web/jobs/{{ last_job.id }}" class="btn btn-secondary" style="font-size: 0.875rem;">View Details</a>
+            <a href="/web/jobs/{{ last_job.id }}" class="btn btn-secondary btn-sm">View Details</a>
         </div>
     </div>
     {% else %}
-    <p class="text-muted" style="margin: 0;">No jobs submitted yet. <a href="/web/restore" class="link-primary">Start a restore</a></p>
+    <p class="text-muted m-0">No jobs submitted yet. <a href="/web/restore" class="link-primary">Start a restore</a></p>
     {% endif %}
 </div>
 
