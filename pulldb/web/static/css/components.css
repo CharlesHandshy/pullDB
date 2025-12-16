@@ -6063,3 +6063,22 @@
 .manager-team-card #team-table-container {
     height: 100%;
 }
+
+/* ==========================================================================
+   Settings Page - Audit Avatar
+   ========================================================================== */
+
+.audit-avatar {
+    width: 24px;
+    height: 24px;
+    background: var(--primary-100);
+    color: var(--primary-700);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-right: 8px;
+    flex-shrink: 0;
+}

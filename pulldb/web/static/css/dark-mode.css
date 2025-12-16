@@ -700,3 +700,234 @@
     background: var(--color-surface);
     border-color: var(--color-border);
 }
+
+/* ==========================================================================
+   Settings Page Dark Mode
+   ========================================================================== */
+
+/* Settings Category Accordion */
+[data-theme="dark"] .settings-category {
+    border-color: var(--color-border);
+    background: var(--color-surface);
+}
+
+[data-theme="dark"] .category-header {
+    background: var(--color-surface);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .category-header:hover {
+    background: var(--color-surface-hover);
+}
+
+[data-theme="dark"] .category-count {
+    background: var(--color-bg-tertiary, #334155);
+    color: var(--color-text-secondary);
+}
+
+/* Setting Rows */
+[data-theme="dark"] .setting-row {
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .setting-row:hover {
+    background: var(--color-surface-hover);
+}
+
+[data-theme="dark"] .setting-key {
+    background: var(--color-bg-tertiary, #334155);
+    color: var(--color-text-primary);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .setting-description {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .setting-meta {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .env-var {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .env-var::before {
+    color: var(--color-text-secondary);
+}
+
+/* Setting Edit Form */
+[data-theme="dark"] .setting-edit {
+    background: var(--color-bg-secondary, #0f172a);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .edit-input {
+    background: var(--color-input-bg);
+    border-color: var(--color-input-border);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .edit-input:focus {
+    border-color: var(--color-primary);
+}
+
+[data-theme="dark"] .default-hint {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .default-hint code {
+    background: var(--color-bg-tertiary, #334155);
+    color: var(--color-text-secondary);
+}
+
+/* Source Badges */
+[data-theme="dark"] .source-badge.database {
+    background: rgba(96, 165, 250, 0.15);
+    color: var(--color-primary);
+    border-color: rgba(96, 165, 250, 0.3);
+}
+
+[data-theme="dark"] .source-badge.environment {
+    background: rgba(251, 191, 36, 0.15);
+    color: var(--color-warning);
+    border-color: rgba(251, 191, 36, 0.3);
+}
+
+[data-theme="dark"] .source-badge.default {
+    background: var(--color-bg-tertiary, #334155);
+    color: var(--color-text-secondary);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .danger-badge {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--color-error);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Setting Value Display */
+[data-theme="dark"] .setting-value {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .path-value {
+    color: var(--color-text-primary);
+    background: var(--color-bg-tertiary, #334155);
+}
+
+/* Audit History Section */
+[data-theme="dark"] .audit-entry {
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .audit-actor {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .audit-avatar {
+    background: rgba(96, 165, 250, 0.15);
+    color: var(--color-primary);
+}
+
+[data-theme="dark"] .audit-detail {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .audit-time {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .action-badge.updated {
+    background: rgba(96, 165, 250, 0.15);
+    color: var(--color-primary);
+    border-color: rgba(96, 165, 250, 0.3);
+}
+
+[data-theme="dark"] .action-badge.reset {
+    background: rgba(251, 191, 36, 0.15);
+    color: var(--color-warning);
+    border-color: rgba(251, 191, 36, 0.3);
+}
+
+/* CLI Reference Section */
+[data-theme="dark"] .cli-example h4 {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .cli-example pre {
+    background: var(--color-bg-tertiary, #334155);
+}
+
+/* Info Banner */
+[data-theme="dark"] .settings-info-banner {
+    background: rgba(96, 165, 250, 0.1);
+    border-color: rgba(96, 165, 250, 0.3);
+}
+
+[data-theme="dark"] .settings-info-banner h4 {
+    color: var(--color-primary);
+}
+
+[data-theme="dark"] .settings-info-banner p {
+    color: var(--color-text-secondary);
+}
+
+/* Search Input */
+[data-theme="dark"] .settings-search {
+    background: var(--color-input-bg);
+    border-color: var(--color-input-border);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .settings-search:focus {
+    border-color: var(--color-primary);
+}
+
+[data-theme="dark"] .settings-search::placeholder {
+    color: var(--color-text-muted);
+}
+
+/* Modals */
+[data-theme="dark"] .modal-content {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .modal-header {
+    background: var(--color-bg-secondary, #0f172a);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .modal-header h3 {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .modal-footer {
+    background: var(--color-bg-secondary, #0f172a);
+    border-top-color: var(--color-border);
+}
+
+[data-theme="dark"] .modal-body p {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .modal-detail,
+[data-theme="dark"] .modal-path {
+    background: var(--color-bg-tertiary, #334155);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+}
+
+/* Validation Messages */
+[data-theme="dark"] .validation-message {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .validation-message.error {
+    color: var(--color-error);
+}
+
+[data-theme="dark"] .validation-message.success {
+    color: var(--color-success);
+}
