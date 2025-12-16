@@ -106,7 +106,8 @@ PULLDB_COORDINATION_SECRET="aws-ssm:/pulldb/mysql/coordination-db"
 | `qa_template_after_sql_dir` | path | (code default) | Post-SQL scripts for QA templates |
 | `max_active_jobs_per_user` | int | `0` | Max concurrent jobs per user (0=unlimited) |
 | `max_active_jobs_global` | int | `0` | Max concurrent jobs system-wide (0=unlimited) |
-| `staging_cleanup_retention_days` | int | `7` | Days before orphaned staging cleanup |
+| `staging_retention_days` | int | `7` | Days before orphaned staging cleanup |
+| `job_log_retention_days` | int | `30` | Days before job logs are pruned |
 | `myloader_binary` | path | (code default) | myloader executable path |
 | `myloader_default_args` | string | (code default) | Default myloader arguments |
 | `myloader_extra_args` | string | (empty) | Additional myloader arguments |

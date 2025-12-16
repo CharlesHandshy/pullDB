@@ -345,9 +345,8 @@ def seed_dev_settings(state: SimulationState) -> None:
     settings = {
         "myloader_threads": "4",
         "myloader_overwrite": "true",
-        "retention_days": "90",
         "staging_retention_days": "7",
-        "staging_cleanup_retention_days": "7",
+        "job_log_retention_days": "30",
         "max_active_jobs_global": "0",  # 0 = unlimited
         "max_active_jobs_per_user": "5",
         "s3_bucket_path": "s3://pulldb-backups/production",

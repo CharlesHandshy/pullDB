@@ -245,11 +245,21 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
     # -------------------------------------------------------------------------
     # Cleanup & Retention
     # -------------------------------------------------------------------------
-    "staging_cleanup_retention_days": SettingMeta(
-        key="staging_cleanup_retention_days",
-        env_var="PULLDB_STAGING_CLEANUP_RETENTION_DAYS",
+    "staging_retention_days": SettingMeta(
+        key="staging_retention_days",
+        env_var="PULLDB_STAGING_RETENTION_DAYS",
         default="7",
         description="Days before staging databases are cleaned up",
+        setting_type=SettingType.INTEGER,
+        category=SettingCategory.CLEANUP,
+        dangerous=False,
+        validators=["is_non_negative_integer"],
+    ),
+    "job_log_retention_days": SettingMeta(
+        key="job_log_retention_days",
+        env_var="PULLDB_JOB_LOG_RETENTION_DAYS",
+        default="30",
+        description="Days before job logs are pruned",
         setting_type=SettingType.INTEGER,
         category=SettingCategory.CLEANUP,
         dangerous=False,

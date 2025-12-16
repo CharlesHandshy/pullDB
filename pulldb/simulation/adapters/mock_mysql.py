@@ -1460,19 +1460,33 @@ class SimulatedSettingsRepository:
                 return True
             return False
 
-    def get_staging_cleanup_retention_days(self) -> int:
+    def get_staging_retention_days(self) -> int:
         """Get number of days before staging databases are eligible for cleanup.
 
         Returns:
             Retention days. 7 is the default. 0 means cleanup is disabled.
         """
-        val = self.get_setting("staging_cleanup_retention_days")
+        val = self.get_setting("staging_retention_days")
         if val is None:
             return 7  # Default: 7 days
         try:
             return max(0, int(val))  # Ensure non-negative
         except ValueError:
             return 7  # Default: 7 days if setting is invalid
+
+    def get_job_log_retention_days(self) -> int:
+        """Get number of days before job logs are eligible for pruning.
+
+        Returns:
+            Retention days. 30 is the default. 0 means pruning is disabled.
+        """
+        val = self.get_setting("job_log_retention_days")
+        if val is None:
+            return 30  # Default: 30 days
+        try:
+            return max(0, int(val))  # Ensure non-negative
+        except ValueError:
+            return 30  # Default: 30 days if setting is invalid
 
     def get_all_settings_with_metadata(self) -> list[dict[str, str | None]]:
         """Get all settings with their metadata (description, updated_at).

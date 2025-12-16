@@ -1089,7 +1089,7 @@ def run_scheduled_cleanup(
     # Resolve retention days from settings if not provided
     if retention_days is None:
         if settings_repo is not None:
-            retention_days = settings_repo.get_staging_cleanup_retention_days()
+            retention_days = settings_repo.get_staging_retention_days()
         else:
             retention_days = DEFAULT_RETENTION_DAYS
 

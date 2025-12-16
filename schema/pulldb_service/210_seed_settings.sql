@@ -20,4 +20,8 @@ INSERT INTO settings (setting_key, setting_value, description) VALUES
 
 -- Phase 1: Staging Cleanup
 INSERT INTO settings (setting_key, setting_value, description) VALUES
-    ('staging_cleanup_retention_days', '7', 'Days before abandoned staging databases are eligible for cleanup. 0=disabled.');
+    ('staging_retention_days', '7', 'Days before abandoned staging databases are eligible for cleanup. 0=disabled.');
+
+-- Job Log Retention
+INSERT INTO settings (setting_key, setting_value, description) VALUES
+    ('job_log_retention_days', '30', 'Days before job logs are eligible for pruning. 0=disabled.');

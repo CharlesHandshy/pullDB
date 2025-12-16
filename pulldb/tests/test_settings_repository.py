@@ -64,36 +64,36 @@ class TestSettingsRepository:
             (key1, key2),
         )
 
-    def test_get_staging_cleanup_retention_days_default(self, mysql_pool: Any) -> None:
+    def test_get_staging_retention_days_default(self, mysql_pool: Any) -> None:
         """Test cleanup retention returns default 7 when not set."""
         repo = SettingsRepository(mysql_pool)
-        key = "staging_cleanup_retention_days"
+        key = "staging_retention_days"
         self._cleanup(mysql_pool, "DELETE FROM settings WHERE setting_key = %s", (key,))
-        assert repo.get_staging_cleanup_retention_days() == 7
+        assert repo.get_staging_retention_days() == 7
 
-    def test_get_staging_cleanup_retention_days_custom(self, mysql_pool: Any) -> None:
+    def test_get_staging_retention_days_custom(self, mysql_pool: Any) -> None:
         """Test cleanup retention returns configured value."""
         repo = SettingsRepository(mysql_pool)
-        key = "staging_cleanup_retention_days"
+        key = "staging_retention_days"
         self._cleanup(mysql_pool, "DELETE FROM settings WHERE setting_key = %s", (key,))
         repo.set_setting(key, "14", description="Custom retention")
-        assert repo.get_staging_cleanup_retention_days() == 14
+        assert repo.get_staging_retention_days() == 14
         self._cleanup(mysql_pool, "DELETE FROM settings WHERE setting_key = %s", (key,))
 
-    def test_get_staging_cleanup_retention_days_disabled(self, mysql_pool: Any) -> None:
+    def test_get_staging_retention_days_disabled(self, mysql_pool: Any) -> None:
         """Test cleanup retention returns 0 when disabled."""
         repo = SettingsRepository(mysql_pool)
-        key = "staging_cleanup_retention_days"
+        key = "staging_retention_days"
         self._cleanup(mysql_pool, "DELETE FROM settings WHERE setting_key = %s", (key,))
         repo.set_setting(key, "0", description="Disabled")
-        assert repo.get_staging_cleanup_retention_days() == 0
+        assert repo.get_staging_retention_days() == 0
         self._cleanup(mysql_pool, "DELETE FROM settings WHERE setting_key = %s", (key,))
 
-    def test_get_staging_cleanup_retention_days_invalid(self, mysql_pool: Any) -> None:
+    def test_get_staging_retention_days_invalid(self, mysql_pool: Any) -> None:
         """Test cleanup retention returns default 7 for invalid values."""
         repo = SettingsRepository(mysql_pool)
-        key = "staging_cleanup_retention_days"
+        key = "staging_retention_days"
         self._cleanup(mysql_pool, "DELETE FROM settings WHERE setting_key = %s", (key,))
         repo.set_setting(key, "not_a_number", description="Invalid")
-        assert repo.get_staging_cleanup_retention_days() == 7
+        assert repo.get_staging_retention_days() == 7
         self._cleanup(mysql_pool, "DELETE FROM settings WHERE setting_key = %s", (key,))

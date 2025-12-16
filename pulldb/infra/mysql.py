@@ -2970,19 +2970,33 @@ class SettingsRepository:
         except ValueError:
             return 0  # Default: unlimited if setting is invalid
 
-    def get_staging_cleanup_retention_days(self) -> int:
+    def get_staging_retention_days(self) -> int:
         """Get number of days before staging databases are eligible for cleanup.
 
         Returns:
             Retention days. 7 is the default. 0 means cleanup is disabled.
         """
-        value = self.get_setting("staging_cleanup_retention_days")
+        value = self.get_setting("staging_retention_days")
         if value is None:
             return 7  # Default: 7 days
         try:
             return max(0, int(value))  # Ensure non-negative
         except ValueError:
             return 7  # Default: 7 days if setting is invalid
+
+    def get_job_log_retention_days(self) -> int:
+        """Get number of days before job logs are eligible for pruning.
+
+        Returns:
+            Retention days. 30 is the default. 0 means pruning is disabled.
+        """
+        value = self.get_setting("job_log_retention_days")
+        if value is None:
+            return 30  # Default: 30 days
+        try:
+            return max(0, int(value))  # Ensure non-negative
+        except ValueError:
+            return 30  # Default: 30 days if setting is invalid
 
     def set_setting(self, key: str, value: str, description: str | None = None) -> None:
         """Set setting value (INSERT or UPDATE).
