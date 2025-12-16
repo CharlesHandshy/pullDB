@@ -353,3 +353,30 @@
 [data-theme="dark"] .password-toggle:hover {
     color: var(--color-text-secondary);
 }
+/* Password Requirements Dark Mode */
+[data-theme="dark"] .password-requirements {
+    background: var(--color-bg-secondary);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .password-requirements h4 {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .requirement {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .requirement-icon {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .requirement.valid {
+    color: var(--color-success);
+}
+
+[data-theme="dark"] .requirement.valid .requirement-icon {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+}

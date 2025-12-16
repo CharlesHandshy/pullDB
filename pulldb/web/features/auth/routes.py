@@ -127,30 +127,34 @@ def validate_password_policy(password: str) -> tuple[bool, str]:
 async def change_password_page(
     request: Request,
     error: str | None = None,
+    success: str | None = None,
     user: User | None = Depends(get_session_user),
     state: Any = Depends(get_api_state),
 ) -> Any:
-    """Render the forced password change page.
+    """Render the change password page.
     
-    This page is shown to users who have the force_password_reset flag set.
-    They cannot navigate away until they set a new password.
+    This page is accessible to all authenticated users. When a user has
+    password_reset_at set, they are forced here and cannot navigate away
+    until they change their password.
     """
     if not user:
         return RedirectResponse(url="/web/login", status_code=303)
     
-    # Check if user actually needs to change password
+    # Check if password reset is required (for UI messaging)
     reset_required = False
     if hasattr(state, "auth_repo") and state.auth_repo:
         if hasattr(state.auth_repo, "is_password_reset_required"):
             reset_required = state.auth_repo.is_password_reset_required(user.user_id)
     
-    # If no reset required, redirect to dashboard
-    if not reset_required:
-        return RedirectResponse(url="/web/dashboard/", status_code=303)
-    
     return templates.TemplateResponse(
         "features/auth/change_password.html",
-        {"request": request, "user": user, "error": error},
+        {
+            "request": request,
+            "user": user,
+            "error": error,
+            "success": success,
+            "reset_required": reset_required,
+        },
     )
 
 
@@ -162,26 +166,26 @@ async def change_password_submit(
     state: Any = Depends(get_api_state),
     user: User | None = Depends(get_session_user),
 ) -> Any:
-    """Handle forced password change submission."""
+    """Handle password change submission.
+    
+    Works for both forced password reset and voluntary password changes.
+    """
     from pulldb.auth.password import hash_password
     
     if not user:
         return RedirectResponse(url="/web/login", status_code=303)
     
-    # Verify user needs to change password
+    # Check if this is a forced reset (for UI context)
     reset_required = False
     if hasattr(state, "auth_repo") and state.auth_repo:
         if hasattr(state.auth_repo, "is_password_reset_required"):
             reset_required = state.auth_repo.is_password_reset_required(user.user_id)
     
-    if not reset_required:
-        return RedirectResponse(url="/web/dashboard/", status_code=303)
-    
     # Validate passwords match
     if new_password != confirm_password:
         return templates.TemplateResponse(
             "features/auth/change_password.html",
-            {"request": request, "user": user, "error": "Passwords do not match"},
+            {"request": request, "user": user, "error": "Passwords do not match", "reset_required": reset_required},
             status_code=400,
         )
     
@@ -190,7 +194,7 @@ async def change_password_submit(
     if not is_valid:
         return templates.TemplateResponse(
             "features/auth/change_password.html",
-            {"request": request, "user": user, "error": error_msg},
+            {"request": request, "user": user, "error": error_msg, "reset_required": reset_required},
             status_code=400,
         )
     
@@ -199,11 +203,11 @@ async def change_password_submit(
     if hasattr(state.auth_repo, "set_password_hash"):
         state.auth_repo.set_password_hash(user.user_id, new_hash)
     
-    # Clear the password reset flag
-    if hasattr(state.auth_repo, "clear_password_reset"):
+    # Clear the password reset flag if it was set
+    if reset_required and hasattr(state.auth_repo, "clear_password_reset"):
         state.auth_repo.clear_password_reset(user.user_id)
     
-    # Redirect to dashboard
+    # Redirect to dashboard with success
     return RedirectResponse(url="/web/dashboard/", status_code=303)
 
 
