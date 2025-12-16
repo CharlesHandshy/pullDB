@@ -313,3 +313,278 @@
     background: var(--color-surface);
     border-color: var(--color-border);
 }
+
+/* ===========================================
+   AUTH CONTAINER (base_auth.html layout)
+   Uses .auth-* prefix for standalone auth pages
+   =========================================== */
+
+.auth-container {
+    width: 100%;
+    max-width: 420px;
+}
+
+.auth-card {
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--space-8);
+    box-shadow: var(--shadow-lg);
+}
+
+[data-theme="dark"] .auth-card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: var(--space-6);
+}
+
+.auth-header .auth-icon {
+    width: 64px;
+    height: 64px;
+    background: var(--primary-100);
+    color: var(--primary-600);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto var(--space-4);
+}
+
+[data-theme="dark"] .auth-header .auth-icon {
+    background: linear-gradient(135deg, var(--primary-600), var(--primary-700));
+    color: var(--white);
+}
+
+/* Warning variant for forced password reset */
+.auth-header .auth-icon--warning {
+    background: linear-gradient(135deg, var(--warning-500), var(--danger-500));
+    color: var(--white);
+}
+
+.auth-header h1 {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--gray-900);
+    margin-bottom: var(--space-2);
+}
+
+[data-theme="dark"] .auth-header h1 {
+    color: var(--white);
+}
+
+.auth-header p {
+    font-size: var(--font-size-sm);
+    color: var(--gray-500);
+    line-height: 1.5;
+}
+
+[data-theme="dark"] .auth-header p {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* ===========================================
+   AUTH FORM STYLES
+   =========================================== */
+
+.auth-form .form-group {
+    margin-bottom: var(--space-4);
+}
+
+.auth-form label {
+    display: block;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--gray-700);
+    margin-bottom: var(--space-2);
+}
+
+[data-theme="dark"] .auth-form label {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.auth-form input {
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--font-size-base);
+    background: var(--white);
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-md);
+    color: var(--gray-900);
+    transition: border-color var(--transition-base), box-shadow var(--transition-base);
+}
+
+.auth-form input:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+[data-theme="dark"] .auth-form input {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: var(--white);
+}
+
+[data-theme="dark"] .auth-form input:focus {
+    border-color: var(--primary-400);
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
+[data-theme="dark"] .auth-form input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* ===========================================
+   AUTH MESSAGES & ALERTS
+   =========================================== */
+
+.auth-error {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background: var(--danger-50);
+    border: 1px solid var(--danger-200);
+    border-radius: var(--radius-md);
+    color: var(--danger-700);
+    margin-bottom: var(--space-4);
+    font-size: var(--font-size-sm);
+}
+
+.auth-error svg {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+}
+
+[data-theme="dark"] .auth-error {
+    background: rgba(220, 38, 38, 0.15);
+    border-color: rgba(220, 38, 38, 0.3);
+    color: var(--danger-300);
+}
+
+.auth-success {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background: var(--success-50);
+    border: 1px solid var(--success-200);
+    border-radius: var(--radius-md);
+    color: var(--success-700);
+    margin-bottom: var(--space-4);
+    font-size: var(--font-size-sm);
+}
+
+[data-theme="dark"] .auth-success {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: var(--success-300);
+}
+
+/* ===========================================
+   AUTH BUTTONS
+   =========================================== */
+
+.auth-form .btn-primary {
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--font-size-base);
+    font-weight: 500;
+}
+
+/* ===========================================
+   AUTH FOOTER / LINKS
+   =========================================== */
+
+.auth-footer {
+    text-align: center;
+    margin-top: var(--space-5);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--gray-200);
+    font-size: var(--font-size-sm);
+    color: var(--gray-500);
+}
+
+[data-theme="dark"] .auth-footer {
+    border-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.auth-footer a {
+    color: var(--primary-600);
+    text-decoration: none;
+}
+
+.auth-footer a:hover {
+    text-decoration: underline;
+}
+
+[data-theme="dark"] .auth-footer a {
+    color: var(--primary-400);
+}
+
+/* ===========================================
+   AUTH PAGE BODY STYLES
+   Applied when using base_auth.html template
+   =========================================== */
+
+body.auth-body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--gray-100);
+    padding: var(--space-4);
+}
+
+[data-theme="dark"] body.auth-body {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+}
+
+/* ===========================================
+   PASSWORD STRENGTH INDICATOR
+   =========================================== */
+
+.password-strength {
+    margin-top: var(--space-2);
+}
+
+.password-strength-bar {
+    height: 4px;
+    background: var(--gray-200);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+.password-strength-fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.password-strength-fill.is-weak {
+    background: var(--danger-500);
+    width: 33%;
+}
+
+.password-strength-fill.is-medium {
+    background: var(--warning-500);
+    width: 66%;
+}
+
+.password-strength-fill.is-strong {
+    background: var(--success-500);
+    width: 100%;
+}
+
+.password-strength-text {
+    font-size: var(--font-size-xs);
+    margin-top: var(--space-1);
+    color: var(--gray-500);
+}

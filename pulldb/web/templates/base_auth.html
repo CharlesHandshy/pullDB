@@ -4,165 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}pullDB{% endblock %}</title>
+    
+    <!-- Design System Foundation (HCA shared layer) -->
+    <link rel="stylesheet" href="/static/css/shared/design-tokens.css">
+    <link rel="stylesheet" href="/static/css/shared/reset.css">
+    <link rel="stylesheet" href="/static/css/shared/utilities.css">
+    
+    <!-- Feature Components (HCA features layer) -->
+    <link rel="stylesheet" href="/static/css/features/buttons.css">
+    <link rel="stylesheet" href="/static/css/features/forms.css">
+    <link rel="stylesheet" href="/static/css/features/alerts.css">
+    
+    <!-- Page-specific CSS (HCA pages layer) -->
+    <link rel="stylesheet" href="/static/css/pages/profile.css">
+    
+    <!-- Legacy CSS (transitional) -->
     <link rel="stylesheet" href="/static/css/design-system.css">
     <link rel="stylesheet" href="/static/css/dark-mode.css">
+    
     <style>
-        /* Auth page specific styles */
-        body {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--gray-100);
-            padding: var(--space-4);
-        }
-        
-        [data-theme="dark"] body {
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
-        }
-        
-        .auth-container {
-            width: 100%;
-            max-width: 420px;
-        }
-        
-        .auth-card {
-            background: var(--white);
-            border: 1px solid var(--gray-200);
-            border-radius: var(--radius-lg);
-            padding: var(--space-8);
-            box-shadow: var(--shadow-lg);
-        }
-        
-        [data-theme="dark"] .auth-card {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .auth-header {
-            text-align: center;
-            margin-bottom: var(--space-6);
-        }
-        
-        .auth-header .auth-icon {
-            width: 64px;
-            height: 64px;
-            background: var(--primary-100);
-            color: var(--primary-600);
-            border-radius: var(--radius-full);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto var(--space-4);
-        }
-        
-        [data-theme="dark"] .auth-header .auth-icon {
-            background: linear-gradient(135deg, var(--primary-600), var(--primary-700));
-            color: var(--white);
-        }
-        
-        /* Warning variant for forced password reset */
-        .auth-header .auth-icon--warning {
-            background: linear-gradient(135deg, var(--warning-500), var(--danger-500));
-            color: var(--white);
-        }
-        
-        .auth-header h1 {
-            font-size: var(--font-size-xl);
-            font-weight: 600;
-            color: var(--gray-900);
-            margin-bottom: var(--space-2);
-        }
-        
-        [data-theme="dark"] .auth-header h1 {
-            color: var(--white);
-        }
-        
-        .auth-header p {
-            font-size: var(--font-size-sm);
-            color: var(--gray-500);
-            line-height: 1.5;
-        }
-        
-        [data-theme="dark"] .auth-header p {
-            color: rgba(255, 255, 255, 0.6);
-        }
-        
-        /* Form styles */
-        .auth-form .form-group {
-            margin-bottom: var(--space-4);
-        }
-        
-        .auth-form label {
-            display: block;
-            font-size: var(--font-size-sm);
-            font-weight: 500;
-            color: var(--gray-700);
-            margin-bottom: var(--space-2);
-        }
-        
-        [data-theme="dark"] .auth-form label {
-            color: rgba(255, 255, 255, 0.8);
-        }
-        
-        .auth-form input {
-            width: 100%;
-            padding: var(--space-3) var(--space-4);
-            font-size: var(--font-size-base);
-            background: var(--white);
-            border: 1px solid var(--gray-300);
-            border-radius: var(--radius-md);
-            color: var(--gray-900);
-            transition: border-color var(--transition-base), box-shadow var(--transition-base);
-        }
-        
-        .auth-form input:focus {
-            outline: none;
-            border-color: var(--primary-500);
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
-        }
-        
-        [data-theme="dark"] .auth-form input {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(255, 255, 255, 0.15);
-            color: var(--white);
-        }
-        
-        [data-theme="dark"] .auth-form input:focus {
-            border-color: var(--primary-400);
-            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
-        }
-        
-        [data-theme="dark"] .auth-form input::placeholder {
-            color: rgba(255, 255, 255, 0.4);
-        }
-        
-        /* Error message */
-        .auth-error {
-            display: flex;
-            align-items: center;
-            gap: var(--space-2);
-            padding: var(--space-3) var(--space-4);
-            background: var(--danger-50);
-            border: 1px solid var(--danger-200);
-            border-radius: var(--radius-md);
-            color: var(--danger-700);
-            font-size: var(--font-size-sm);
-            margin-bottom: var(--space-4);
-        }
-        
-        [data-theme="dark"] .auth-error {
-            background: rgba(239, 68, 68, 0.15);
-            border-color: rgba(239, 68, 68, 0.3);
-            color: #f87171;
-        }
-        
-        .auth-error svg {
-            flex-shrink: 0;
-        }
-        
-        /* Submit button */
+        /* Minimal auth page styles - most moved to profile.css HCA layer */
+        /* Auth submit button (legacy - migrate to .btn-primary) */
         .auth-submit {
             width: 100%;
             display: flex;
@@ -179,33 +41,18 @@
             cursor: pointer;
             transition: background-color var(--transition-base), transform var(--transition-base);
         }
+        .auth-submit:hover { background: var(--primary-700); }
+        .auth-submit:active { transform: translateY(1px); }
+        .auth-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         
-        .auth-submit:hover {
-            background: var(--primary-700);
-        }
-        
-        .auth-submit:active {
-            transform: translateY(1px);
-        }
-        
-        .auth-submit:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        /* Password requirements */
+        /* Password requirements list (specific to forced-reset) */
         .auth-requirements {
             background: var(--gray-50);
             border-radius: var(--radius-md);
             padding: var(--space-4);
             margin-bottom: var(--space-6);
         }
-        
-        [data-theme="dark"] .auth-requirements {
-            background: rgba(255, 255, 255, 0.05);
-        }
-        
+        [data-theme="dark"] .auth-requirements { background: rgba(255, 255, 255, 0.05); }
         .auth-requirements h3 {
             font-size: var(--font-size-xs);
             font-weight: 600;
@@ -214,17 +61,8 @@
             letter-spacing: 0.5px;
             margin-bottom: var(--space-3);
         }
-        
-        [data-theme="dark"] .auth-requirements h3 {
-            color: rgba(255, 255, 255, 0.6);
-        }
-        
-        .auth-requirements ul {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-        }
-        
+        [data-theme="dark"] .auth-requirements h3 { color: rgba(255, 255, 255, 0.6); }
+        .auth-requirements ul { list-style: none; margin: 0; padding: 0; }
         .auth-requirements li {
             display: flex;
             align-items: center;
@@ -234,45 +72,17 @@
             padding: var(--space-1) 0;
             transition: color var(--transition-base);
         }
+        [data-theme="dark"] .auth-requirements li { color: rgba(255, 255, 255, 0.4); }
+        .auth-requirements li.valid { color: var(--success-600); }
+        [data-theme="dark"] .auth-requirements li.valid { color: #4ade80; }
+        .auth-requirements li svg { flex-shrink: 0; }
         
-        [data-theme="dark"] .auth-requirements li {
-            color: rgba(255, 255, 255, 0.4);
-        }
-        
-        .auth-requirements li.valid {
-            color: var(--success-600);
-        }
-        
-        [data-theme="dark"] .auth-requirements li.valid {
-            color: #4ade80;
-        }
-        
-        .auth-requirements li svg {
-            flex-shrink: 0;
-        }
-        
-        /* Footer note */
-        .auth-footer {
-            text-align: center;
-            margin-top: var(--space-4);
-            font-size: var(--font-size-xs);
-            color: var(--gray-400);
-        }
-        
-        [data-theme="dark"] .auth-footer {
-            color: rgba(255, 255, 255, 0.4);
-        }
-        
-        /* Theme toggle positioned in corner */
-        .auth-theme-toggle {
-            position: fixed;
-            top: var(--space-4);
-            right: var(--space-4);
-        }
+        /* Theme toggle position */
+        .auth-theme-toggle { position: fixed; top: var(--space-4); right: var(--space-4); }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body class="auth-body">
     <!-- Theme Toggle -->
     <div class="auth-theme-toggle">
         <button id="theme-toggle" class="btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
