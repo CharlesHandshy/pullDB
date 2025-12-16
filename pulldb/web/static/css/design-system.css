@@ -180,6 +180,7 @@ html.app-layout body {
 
 /* Layout utilities */
 .w-full { width: 100%; }
+.h-full { height: 100%; }
 
 /* =================================================================
    HTMX LOADING STATES

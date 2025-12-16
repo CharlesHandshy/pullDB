@@ -4294,6 +4294,12 @@
     padding: var(--space-6);
 }
 
+/* Table card with dynamic height for jobs list */
+.jobs-table-card {
+    height: calc(100vh - 280px);
+    min-height: 400px;
+}
+
 .tabs {
     display: flex;
     border-bottom: 1px solid var(--gray-200);
