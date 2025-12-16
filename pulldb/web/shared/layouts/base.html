@@ -1,0 +1,51 @@
+{#
+    HCA Layer 0: Document Base
+    ==========================
+    Purpose: Extends _skeleton.html with common configuration for all app layouts.
+    
+    This provides:
+    - Dark mode data attributes
+    - Admin theme preference handling
+    - Common head_styles block setup
+    
+    Layouts extending this:
+    - app_layout.html (authenticated pages with sidebar)
+    - auth_layout.html (login/logout pages)
+    - error.html (error pages)
+    
+    Size: ~30 lines (HCA compliant)
+#}
+{% extends "shared/layouts/_skeleton.html" %}
+
+{% block body_class %}{% block layout_class %}{% endblock %}{% endblock %}
+
+{% block head_meta %}
+{# Dark mode initial state to prevent flash #}
+<script>
+    (function() {
+        var theme = localStorage.getItem('theme');
+        if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
+    })();
+</script>
+{% block extra_meta %}{% endblock %}
+{% endblock %}
+
+{% block head_styles %}
+{% block layout_styles %}{% endblock %}
+{% endblock %}
+
+{% block head_scripts %}
+{% block layout_scripts %}{% endblock %}
+{% endblock %}
+
+{% block body_content %}
+{% block layout_content %}{% endblock %}
+{% endblock %}
+
+{% block body_scripts %}
+{% block layout_body_scripts %}{% endblock %}
+{% endblock %}

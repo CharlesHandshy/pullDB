@@ -1,5 +1,5 @@
 {#
-    HCA Layer 0: App Layout (Authenticated Pages)
+    HCA Layer 1: App Layout (Authenticated Pages)
     =============================================
     Purpose: Main application shell with sidebar, header, and footer.
     Extends: shared/layouts/base.html
@@ -9,32 +9,63 @@
     - Provides: Sidebar navigation, header, content area, footer
     - Expects: content block for page-specific content
     
-    Blocks (inherited):
-    - title, head_meta, head_links, head_scripts, body_scripts
+    Blocks (inherited from base.html → _skeleton.html):
+    - title, head_meta, head_links, body_scripts
     
     Blocks (new):
     - header_title: Page title in header
     - header_subtitle: Optional subtitle
     - header_actions: Buttons/controls in header
     - content: Main page content
+    - extra_css: Page-specific CSS
+    - extra_js: Page-specific JS
     
-    CSS Dependencies:
-    - /static/css/design-system.css
-    - /static/css/app-layout.css
-    - /static/css/sidebar.css
+    CSS Dependencies (HCA hierarchy):
+    - shared/design-tokens.css
+    - shared/reset.css
+    - shared/utilities.css
+    - shared/layout.css
+    - entities/*.css
+    - features/*.css
     
-    Size: ~200 lines (HCA compliant)
+    Size: ~150 lines (HCA compliant)
 #}
 {% extends "shared/layouts/base.html" %}
 
-{% block head_styles %}
+{% block layout_styles %}
+<!-- HCA Shared Layer (Layer 0) -->
+<link rel="stylesheet" href="/static/css/shared/design-tokens.css">
+<link rel="stylesheet" href="/static/css/shared/reset.css">
+<link rel="stylesheet" href="/static/css/shared/utilities.css">
+<link rel="stylesheet" href="/static/css/shared/layout.css">
+
+<!-- HCA Entities Layer (Layer 1) -->
+<link rel="stylesheet" href="/static/css/entities/badge.css">
+<link rel="stylesheet" href="/static/css/entities/avatar.css">
+<link rel="stylesheet" href="/static/css/entities/card.css">
+
+<!-- HCA Features Layer (Layer 2) -->
+<link rel="stylesheet" href="/static/css/features/buttons.css">
+<link rel="stylesheet" href="/static/css/features/forms.css">
+<link rel="stylesheet" href="/static/css/features/tables.css">
+<link rel="stylesheet" href="/static/css/features/modals.css">
+<link rel="stylesheet" href="/static/css/features/alerts.css">
+<link rel="stylesheet" href="/static/css/features/status.css">
+<link rel="stylesheet" href="/static/css/features/dashboard.css">
+<link rel="stylesheet" href="/static/css/features/search.css">
+
+<!-- Legacy compatibility (transitional) -->
 <link rel="stylesheet" href="/static/css/design-system.css">
-<link rel="stylesheet" href="/static/css/app-layout.css">
-<link rel="stylesheet" href="/static/css/sidebar.css">
+<link rel="stylesheet" href="/web/admin/api/theme.css">
+<link rel="stylesheet" href="/static/css/dark-mode.css">
+<link rel="stylesheet" href="/static/css/layout.css">
 <link rel="stylesheet" href="/static/css/components.css">
+<link rel="stylesheet" href="/static/css/sidebar.css">
+
+{% block extra_css %}{% endblock %}
 {% endblock %}
 
-{% block head_scripts %}
+{% block layout_scripts %}
 <script>
     // Session expiration handling for HTMX requests
     document.addEventListener('htmx:responseError', function(event) {
@@ -56,52 +87,95 @@
 </script>
 {% endblock %}
 
-{% block body_class %}app-layout{% endblock %}
+{% block layout_class %}{% endblock %}
 
-{% block body_content %}
-<div class="app-layout">
-    {# 3px Attention Strip #}
-    <div class="attention-strip"></div>
-    
-    {# Main App Container #}
-    <div class="app-main">
-        {# Page Header Bar #}
-        <header class="page-header-bar">
-            {% include "header/header_logo.html" %}
-            <div class="page-header-divider"></div>
-            <div class="page-header-content">
-                <div class="page-header-titles">
-                    <h1 class="page-title">{% block header_title %}pullDB{% endblock %}</h1>
-                    {% block header_subtitle %}<p class="page-subtitle"></p>{% endblock %}
-                </div>
-                <div class="header-actions">
-                    {% block header_actions %}{% endblock %}
-                </div>
-            </div>
-        </header>
-        
-        {# Body: Sidebar + Content #}
-        <div class="app-body">
-            {# Sidebar - Included as partial #}
-            {% include "sidebar/sidebar.html" %}
-            
-            {# Main Content #}
-            <main class="main-content">
-                {% block content %}{% endblock %}
-            </main>
+{% block layout_content %}
+{% from "partials/icons/_index.html" import icon %}
+
+{# Accessibility: Skip link for keyboard navigation #}
+<a href="#main-content" class="skip-link">Skip to main content</a>
+
+<!-- Header -->
+<header class="app-header">
+    <div class="header-left flex items-center gap-4">
+        <button id="sidebar-toggle" class="btn-icon" aria-label="Toggle sidebar">
+            {{ icon('menu', size='24', stroke_width='2') }}
+        </button>
+        <div class="header-logo">
+            {{ icon('layers', size='24', stroke_width='2') }}
+            <span>pullDB</span>
         </div>
-        
-        {# Footer #}
-        <footer class="app-footer">
-            <div class="footer-left">
-                <span>© 2025 pullDB</span>
-                <span>•</span>
-                <span>v0.0.9</span>
-            </div>
-            <div class="footer-right">
-                <span>Service Titan / Field Routes</span>
-            </div>
-        </footer>
     </div>
-</div>
+    <div class="header-center">
+        {% include "partials/breadcrumbs.html" %}
+    </div>
+    <div class="header-actions">
+        <!-- Theme Toggle -->
+        <button id="theme-toggle" class="btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+            {# Sun icon (shown in dark mode - click to go light) #}
+            <span class="theme-icon-light hidden">
+                {{ icon('sun', size='20') }}
+            </span>
+            {# Moon icon (shown in light mode - click to go dark) #}
+            <span class="theme-icon-dark">
+                {{ icon('moon', size='20') }}
+            </span>
+        </button>
+        
+        {% block header_actions %}
+        <!-- User Profile / Actions -->
+        <div class="user-profile">
+            {% if user %}
+            <a href="/web/auth/profile" class="link-neutral flex items-center gap-2 no-underline">
+                <div class="avatar avatar--sm avatar--primary">
+                    {{ user.username[0]|upper }}
+                </div>
+                <span>{{ user.username }}</span>
+            </a>
+            {% else %}
+            <span>Guest</span>
+            {% endif %}
+        </div>
+        {% endblock %}
+    </div>
+</header>
+
+<!-- Sidebar Trigger Strip -->
+<div class="sidebar-trigger" id="sidebar-trigger"></div>
+
+<!-- Sidebar -->
+<nav class="app-sidebar" id="app-sidebar">
+    {% block sidebar %}
+    {% include "widgets/sidebar/sidebar.html" %}
+    {% endblock %}
+</nav>
+
+<!-- Main Content -->
+<main class="app-main" id="main-content">
+    {% block content %}{% endblock %}
+</main>
+
+<div id="toast-container" class="toast-container"></div>
+
+<!-- Footer -->
+<footer class="app-footer">
+    <div class="footer-left">
+        &copy; 2025 pullDB
+    </div>
+    <div class="footer-right">
+        v0.0.9
+    </div>
+</footer>
+{% endblock %}
+
+{% block layout_body_scripts %}
+<script src="/static/js/navigation.js"></script>
+<script src="/static/js/main.js"></script>
+<script src="/static/js/theme-toggle.js"></script>
+{% block extra_js %}{% endblock %}
+
+{# Dev toolbar - only injected when dev_extensions is defined (dev_server.py) #}
+{% if dev_extensions is defined %}
+{{ dev_extensions | safe }}
+{% endif %}
 {% endblock %}

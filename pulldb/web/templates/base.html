@@ -1,126 +1,26 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="light"{% if admin_dark_mode() %} data-admin-theme-default="dark"{% endif %}>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}pullDB{% endblock %}</title>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <!-- Design System Foundation (HCA shared layer) -->
-    <link rel="stylesheet" href="/static/css/shared/design-tokens.css">
-    <link rel="stylesheet" href="/static/css/shared/reset.css">
-    <link rel="stylesheet" href="/static/css/shared/utilities.css">
+{#
+    HCA Migration Wrapper: base.html → shared/layouts/app_layout.html
+    ==================================================================
     
-    <!-- Entity Components (HCA entities layer) -->
-    <link rel="stylesheet" href="/static/css/entities/badge.css">
-    <link rel="stylesheet" href="/static/css/entities/avatar.css">
-    <link rel="stylesheet" href="/static/css/entities/card.css">
+    This template now extends the HCA-compliant app_layout.html.
+    All 19 feature templates that extend "base.html" automatically
+    inherit the HCA structure without modification.
     
-    <!-- Feature Components (HCA features layer) -->
-    <link rel="stylesheet" href="/static/css/features/buttons.css">
-    <link rel="stylesheet" href="/static/css/features/forms.css">
-    <link rel="stylesheet" href="/static/css/features/tables.css">
-    <link rel="stylesheet" href="/static/css/features/modals.css">
-    <link rel="stylesheet" href="/static/css/features/alerts.css">
-    <link rel="stylesheet" href="/static/css/features/status.css">
-    <link rel="stylesheet" href="/static/css/features/dashboard.css">
-    <link rel="stylesheet" href="/static/css/features/search.css">
+    Block Mapping:
+    - title → title (inherited)
+    - content → content (inherited)
+    - extra_css → extra_css (inherited)
+    - extra_js → extra_js (inherited)
+    - header_actions → header_actions (inherited)
+    - body_class → layout_class (mapped)
+    - sidebar → sidebar (inherited)
     
-    <!-- Legacy CSS (TRANSITIONAL - used by base.html until migrated to app_layout.html) -->
-    <!-- These will be removed once base.html extends shared/layouts/app_layout.html -->
-    <link rel="stylesheet" href="/static/css/design-system.css">
-    <link rel="stylesheet" href="/web/admin/api/theme.css">
-    <link rel="stylesheet" href="/static/css/dark-mode.css">
-    <link rel="stylesheet" href="/static/css/layout.css">
-    <link rel="stylesheet" href="/static/css/components.css">
-    <link rel="stylesheet" href="/static/css/sidebar.css">
-    {% block extra_css %}{% endblock %}
-</head>
-<body class="{% block body_class %}{% endblock %}">
-    {% from "partials/icons/_index.html" import icon %}
+    Migration Complete: All pages now use HCA template hierarchy:
+    _skeleton.html → base.html → app_layout.html → feature templates
     
-    {# Accessibility: Skip link for keyboard navigation #}
-    <a href="#main-content" class="skip-link">Skip to main content</a>
-    
-    <!-- Header -->
-    <header class="app-header">
-        <div class="header-left flex items-center gap-4">
-            <button id="sidebar-toggle" class="btn-icon" aria-label="Toggle sidebar">
-                {{ icon('menu', size='24', stroke_width='2') }}
-            </button>
-            <div class="header-logo">
-                {{ icon('layers', size='24', stroke_width='2') }}
-                <span>pullDB</span>
-            </div>
-        </div>
-        <div class="header-center">
-            {% include "partials/breadcrumbs.html" %}
-        </div>
-        <div class="header-actions">
-            <!-- Theme Toggle -->
-            <button id="theme-toggle" class="btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
-                {# Sun icon (shown in dark mode - click to go light) #}
-                <span class="theme-icon-light hidden">
-                    {{ icon('sun', size='20') }}
-                </span>
-                {# Moon icon (shown in light mode - click to go dark) #}
-                <span class="theme-icon-dark">
-                    {{ icon('moon', size='20') }}
-                </span>
-            </button>
-            
-            {% block header_actions %}
-            <!-- User Profile / Actions -->
-            <div class="user-profile">
-                {% if user %}
-                <a href="/web/auth/profile" class="link-neutral flex items-center gap-2 no-underline">
-                    <div class="avatar avatar--sm avatar--primary">
-                        {{ user.username[0]|upper }}
-                    </div>
-                    <span>{{ user.username }}</span>
-                </a>
-                {% else %}
-                <span>Guest</span>
-                {% endif %}
-            </div>
-            {% endblock %}
-        </div>
-    </header>
+    Size: ~10 lines (HCA compliant - thin wrapper)
+#}
+{% extends "shared/layouts/app_layout.html" %}
 
-    <!-- Sidebar Trigger Strip -->
-    <div class="sidebar-trigger" id="sidebar-trigger"></div>
-
-    <!-- Sidebar -->
-    <nav class="app-sidebar" id="app-sidebar">
-        {% block sidebar %}
-        {% include "widgets/sidebar/sidebar.html" %}
-        {% endblock %}
-    </nav>
-
-    <!-- Main Content -->
-    <main class="app-main" id="main-content">
-        {% block content %}{% endblock %}
-    </main>
-
-    <div id="toast-container" class="toast-container"></div>
-
-    <!-- Footer -->
-    <footer class="app-footer">
-        <div class="footer-left">
-            &copy; 2025 pullDB
-        </div>
-        <div class="footer-right">
-            v0.0.9
-        </div>
-    </footer>
-
-    <script src="/static/js/navigation.js"></script>
-    <script src="/static/js/main.js"></script>
-    <script src="/static/js/theme-toggle.js"></script>
-    {% block extra_js %}{% endblock %}
-    
-    {# Dev toolbar - only injected when dev_extensions is defined (dev_server.py) #}
-    {% if dev_extensions is defined %}
-    {{ dev_extensions | safe }}
-    {% endif %}
-</body>
-</html>
+{# Map body_class to layout_class for backward compatibility #}
+{% block layout_class %}{% block body_class %}{% endblock %}{% endblock %}
