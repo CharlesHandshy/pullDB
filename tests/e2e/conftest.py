@@ -142,7 +142,8 @@ class E2EAPIState:
                     created_at=datetime(2024, 1, 1, tzinfo=UTC),
                 )
                 state.hosts[hostname] = host
-                state.hosts_by_alias[alias] = host
+                # Also index by alias if the state supports it
+                # (hosts_by_alias was removed, lookup by hostname is canonical)
 
         # Create test jobs (matching original e2e expectations)
         base_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
@@ -177,7 +178,7 @@ class E2EAPIState:
             (
                 "job-003",
                 "admin_prodcopy",
-                JobStatus.COMPLETED,
+                JobStatus.COMPLETE,
                 "usr-002",
                 "admin",
                 "admin",
@@ -308,14 +309,23 @@ def create_test_app() -> FastAPI:
     # Include web routers
     app.include_router(web_router)
 
-    # Mount static files
-    web_static_dir = Path("pulldb/web/static")
-    if web_static_dir.exists():
-        app.mount(
-            "/static/web",
-            StaticFiles(directory=str(web_static_dir)),
-            name="static_web",
-        )
+    # Mount static files in the same way as dev_server.py
+    base_dir = Path(__file__).parent.parent.parent
+    
+    # Mount widgets directory first (must be before /static)
+    widgets_dir = base_dir / "pulldb" / "web" / "static" / "widgets"
+    if widgets_dir.exists():
+        app.mount("/static/widgets", StaticFiles(directory=str(widgets_dir)), name="widgets")
+    
+    # Mount images from pulldb/images
+    images_dir = base_dir / "pulldb" / "images"
+    if images_dir.exists():
+        app.mount("/static/images", StaticFiles(directory=str(images_dir)), name="static-images")
+
+    # Mount static files (CSS, JS, etc.) - unified location
+    static_dir = base_dir / "pulldb" / "web" / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     return app
 

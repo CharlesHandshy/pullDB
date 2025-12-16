@@ -1410,6 +1410,10 @@ class SimulatedSettingsRepository:
         """Initialize the repository with shared simulation state."""
         self.state = get_simulation_state()
 
+    def get(self, key: str) -> str | None:
+        """Get a setting value (alias for get_setting)."""
+        return self.get_setting(key)
+
     def get_setting(self, key: str) -> str | None:
         """Get a setting value."""
         with self.state.lock:
