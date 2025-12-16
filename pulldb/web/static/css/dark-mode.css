@@ -88,6 +88,34 @@
     --scrollbar-thumb-hover: #64748b;
 }
 
+/* =================================================================
+   Main Layout Dark Mode
+   ================================================================= */
+
+[data-theme="dark"] body {
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .app-header {
+    background-color: var(--color-surface);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .app-footer {
+    background-color: var(--color-surface);
+    border-top-color: var(--color-border);
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .app-main {
+    background-color: var(--color-bg-primary);
+}
+
+[data-theme="dark"] .header-logo {
+    color: var(--color-primary);
+}
+
 /* Dark mode scrollbar styling */
 [data-theme="dark"] ::-webkit-scrollbar {
     width: 8px;
