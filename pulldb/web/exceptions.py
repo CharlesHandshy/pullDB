@@ -103,6 +103,59 @@ def create_password_reset_required_handler() -> t.Callable[[Request, PasswordRes
     return handler
 
 
+def create_http_exception_handler(
+    templates: Jinja2Templates,
+) -> t.Callable[[Request, Exception], t.Awaitable[Response]]:
+    """Create exception handler for HTTPException that renders HTML for web routes.
+
+    For requests to /web/* paths, renders a user-friendly error page.
+    For API requests, returns standard JSON error response.
+    """
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+    from fastapi.responses import JSONResponse
+
+    async def handler(request: Request, exc: StarletteHTTPException) -> Response:
+        # Only render HTML for web routes
+        if not request.url.path.startswith("/web"):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+            )
+
+        # Map status codes to user-friendly messages
+        error_messages = {
+            404: ("Page Not Found", "The page you're looking for doesn't exist or has been moved."),
+            403: ("Access Denied", "You don't have permission to access this resource."),
+            500: ("Server Error", "Something went wrong on our end. Please try again later."),
+        }
+
+        title, message = error_messages.get(
+            exc.status_code,
+            ("Error", str(exc.detail) if exc.detail else "An error occurred"),
+        )
+
+        suggestions = None
+        if exc.status_code == 404:
+            suggestions = [
+                "Check the URL for typos",
+                "Use the navigation menu to find what you're looking for",
+                "Go back to the dashboard and start fresh",
+            ]
+
+        return render_error_page(
+            request=request,
+            templates=templates,
+            user=None,  # No user context available in exception handler
+            status_code=exc.status_code,
+            title=title,
+            message=message,
+            detail=str(exc.detail) if exc.detail and exc.status_code != 404 else None,
+            suggestions=suggestions,
+        )
+
+    return handler
+
+
 def render_error_page(
     request: Request,
     templates: Jinja2Templates,

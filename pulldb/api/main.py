@@ -56,17 +56,21 @@ app = fastapi.FastAPI(title="pullDB API Service", version="0.0.1.dev0")
 
 # Mount unified web UI router
 try:
+    from starlette.exceptions import HTTPException as StarletteHTTPException
     from pulldb.web import (
         router as web_router,
+        templates as web_templates,
         SessionExpiredError,
         PasswordResetRequiredError,
         create_session_expired_handler,
         create_password_reset_required_handler,
+        create_http_exception_handler,
     )
-    
+
     app.include_router(web_router)
     app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
     app.add_exception_handler(PasswordResetRequiredError, create_password_reset_required_handler())
+    app.add_exception_handler(StarletteHTTPException, create_http_exception_handler(web_templates))
 except ImportError:
     pass  # Web UI module not installed
 
