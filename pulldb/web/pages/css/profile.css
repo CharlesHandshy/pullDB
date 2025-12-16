@@ -813,3 +813,109 @@ body.auth-body {
     margin-top: var(--space-1);
     color: var(--gray-500);
 }
+
+/* ===========================================
+   AUTH SUBMIT BUTTON (legacy, migrate to .btn-primary)
+   =========================================== */
+
+.auth-submit {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-6);
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    color: var(--white);
+    background: var(--primary-600);
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background-color var(--transition-base), transform var(--transition-base);
+}
+
+.auth-submit:hover {
+    background: var(--primary-700);
+}
+
+.auth-submit:active {
+    transform: translateY(1px);
+}
+
+.auth-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ===========================================
+   PASSWORD REQUIREMENTS LIST
+   Used on forced-reset page
+   =========================================== */
+
+.auth-requirements {
+    background: var(--gray-50);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    margin-bottom: var(--space-6);
+}
+
+[data-theme="dark"] .auth-requirements {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.auth-requirements h3 {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--space-3);
+}
+
+[data-theme="dark"] .auth-requirements h3 {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.auth-requirements ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.auth-requirements li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
+    color: var(--gray-400);
+    padding: var(--space-1) 0;
+    transition: color var(--transition-base);
+}
+
+[data-theme="dark"] .auth-requirements li {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.auth-requirements li.valid {
+    color: var(--success-600);
+}
+
+[data-theme="dark"] .auth-requirements li.valid {
+    color: #4ade80;
+}
+
+.auth-requirements li svg {
+    flex-shrink: 0;
+}
+
+/* ===========================================
+   AUTH THEME TOGGLE POSITION
+   =========================================== */
+
+.auth-theme-toggle {
+    position: fixed;
+    top: var(--space-4);
+    right: var(--space-4);
+}
