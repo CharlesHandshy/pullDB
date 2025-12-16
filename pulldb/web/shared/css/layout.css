@@ -453,3 +453,55 @@ body.no-sidebar #sidebar-toggle {
 [data-theme="dark"] .breadcrumb-current {
     color: var(--gray-500);
 }
+
+/* =================================================================
+   SECTION HEADERS & PAGE HEADERS (IN-CONTENT)
+   Used within page content for sectioning
+   ================================================================= */
+
+.page-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+}
+
+.page-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-4);
+}
+
+.section-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: var(--font-semibold);
+    color: var(--gray-700);
+}
+
+.section-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--gray-400);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+/* ===========================================
+   DARK MODE - SECTION HEADERS
+   =========================================== */
+
+[data-theme="dark"] .section-title {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .section-label {
+    color: var(--gray-500);
+}

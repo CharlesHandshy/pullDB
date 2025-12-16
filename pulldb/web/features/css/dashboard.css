@@ -408,3 +408,117 @@
 [data-theme="dark"] .text-dark {
     color: var(--color-text-primary);
 }
+
+/* ===========================================
+   MANAGER DASHBOARD
+   Team/Manager specific dashboard styles
+   =========================================== */
+
+.manager-container {
+    padding: var(--space-6);
+}
+
+.manager-container h1 {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-6);
+}
+
+/* Manager Stats Grid */
+.manager-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: var(--space-6);
+    margin-bottom: var(--space-8);
+}
+
+/* Manager Stat Card */
+.manager-stat-card {
+    background: var(--color-surface);
+    padding: var(--space-6);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--color-border);
+}
+
+.manager-stat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+}
+
+.manager-stat-label {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.manager-stat-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.manager-stat-icon.team {
+    color: var(--primary-500);
+}
+
+.manager-stat-icon.jobs {
+    color: var(--warning-500);
+}
+
+.manager-stat-value {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+}
+
+.manager-stat-number {
+    font-size: var(--text-4xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+}
+
+.manager-stat-unit {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+}
+
+.manager-stat-subtext {
+    margin-top: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+}
+
+/* Manager Team Table Container */
+.manager-team-card {
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--color-border);
+    overflow: hidden;
+    margin-bottom: var(--space-8);
+    height: calc(100vh - 400px);
+    min-height: 300px;
+}
+
+.manager-team-card #team-table-container {
+    height: 100%;
+}
+
+/* ===========================================
+   DARK MODE - MANAGER
+   =========================================== */
+
+[data-theme="dark"] .manager-stat-card {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .manager-team-card {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}

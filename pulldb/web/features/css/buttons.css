@@ -606,3 +606,73 @@
 [data-theme="dark"] .btn-secondary:hover {
     background-color: var(--gray-700);
 }
+
+/* ===========================================
+   SPECIALIZED ACTION BUTTONS
+   Queue and batch action buttons
+   =========================================== */
+
+/* Queue button - for adding items to queue */
+.btn-queue {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: var(--primary-600);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-queue:hover {
+    background: var(--primary-700);
+}
+
+.btn-queue:disabled {
+    background: var(--gray-400);
+    cursor: not-allowed;
+}
+
+/* Cancel all button - for batch cancellation */
+.btn-cancel-all {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: var(--danger-100);
+    color: var(--danger-700);
+    border: 1px solid var(--danger-200);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-cancel-all:hover {
+    background: var(--danger-200);
+    border-color: var(--danger-300);
+}
+
+.btn-cancel-all:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ===========================================
+   DARK MODE - SPECIALIZED BUTTONS
+   =========================================== */
+
+[data-theme="dark"] .btn-cancel-all {
+    background: rgba(var(--danger-500-rgb), 0.1);
+    color: var(--danger-400);
+    border-color: var(--danger-800);
+}
+
+[data-theme="dark"] .btn-cancel-all:hover {
+    background: rgba(var(--danger-500-rgb), 0.2);
+}

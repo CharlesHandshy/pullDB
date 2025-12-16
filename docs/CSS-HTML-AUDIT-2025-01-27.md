@@ -189,8 +189,39 @@ These represent HCA scaffolding that may be used in future development.
 
 ## Next Steps
 
-1. **Create `_archived/` directory structure**
-2. **Move Phase 1 files** (zero-risk archives)
-3. **Test all pages** visually
+1. ~~**Create `_archived/` directory structure**~~
+2. ~~**Move Phase 1 files** (zero-risk archives)~~
+3. **Test all pages** visually ← **CURRENT STEP**
 4. **Proceed with Phase 2** if tests pass
 5. **Document decisions** in SESSION-LOG.md
+
+---
+
+## Migration Completed (2025-01-27)
+
+### Summary
+All 188 legacy-only CSS classes have been migrated to HCA-compliant files:
+
+| HCA File | Classes Added |
+|----------|---------------|
+| `pages/admin.css` | 46 (action-*, quick-*, setting-*, audit-*, host-*, etc.) |
+| `pages/restore.css` | 32 (backup-*, customer-*, target-*, overwrite-*, qa-*, etc.) |
+| `features/forms.css` | 23 (searchable-dropdown-*, tabs, required-mark) |
+| `pages/job-details.css` | 14 (event-*, job-detail-*, detail-cell) |
+| `shared/utilities.css` | 12 (capacity-*, link-primary, is-*, separator) |
+| `pages/profile.css` | 11 (profile-*, password-*) |
+| `features/dashboard.css` | 11 (manager-*) |
+| `features/alerts.css` | 9 (error-container, error-card, etc.) |
+| `features/search.css` | 10 (filter-*, clear-filters-btn, advanced-filter-bar) |
+| `features/buttons.css` | 2 (btn-queue, btn-cancel-all) |
+| `shared/layout.css` | 5 (page-header-row, section-header, etc.) |
+| `entities/card.css` | 4 (info, info-label, info-value, stat-row) |
+
+### Verification
+- ✅ All 188 classes verified present in HCA CSS via grep
+- ✅ All HCA CSS files have balanced braces (syntax valid)
+- ✅ All HCA CSS files served correctly via HTTP
+
+### Status
+Legacy CSS files remain loaded as fallback but are marked deprecated in `app_layout.html`.
+Ready for visual verification of all pages before final removal.

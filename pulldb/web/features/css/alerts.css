@@ -632,3 +632,131 @@
 [data-theme="dark"] .error-banner-icon {
     color: var(--color-error);
 }
+
+/* ===========================================
+   ERROR PAGE
+   Full-page error display
+   =========================================== */
+
+.error-container {
+    max-width: 600px;
+    margin: var(--space-8) auto;
+    padding: 0 var(--space-4);
+}
+
+.error-card {
+    background: var(--color-surface);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-8);
+    text-align: center;
+}
+
+.error-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto var(--space-6);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.error-icon svg {
+    width: 40px;
+    height: 40px;
+}
+
+.error-icon.warning {
+    background: var(--warning-100);
+    color: var(--warning-600);
+}
+
+.error-icon.error {
+    background: var(--danger-100);
+    color: var(--danger-600);
+}
+
+.error-icon.info {
+    background: var(--primary-100);
+    color: var(--primary-600);
+}
+
+.error-content {
+    margin-bottom: var(--space-6);
+}
+
+.error-code {
+    font-size: 4rem;
+    font-weight: var(--font-bold);
+    color: var(--gray-300);
+    margin: 0 0 var(--space-2);
+    line-height: 1;
+}
+
+.error-message {
+    font-size: var(--text-lg);
+    color: var(--color-text-muted);
+    margin: 0;
+}
+
+.error-detail {
+    margin-top: var(--space-4);
+    padding: var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius-md);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+}
+
+.error-actions {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-3);
+    margin-top: var(--space-6);
+}
+
+.error-suggestions {
+    margin-top: var(--space-6);
+    text-align: left;
+}
+
+.error-suggestions h3 {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-3);
+}
+
+.error-suggestions ul {
+    list-style: disc;
+    padding-left: var(--space-5);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+}
+
+.error-suggestions li {
+    margin-bottom: var(--space-2);
+}
+
+.error-suggestions li:last-child {
+    margin-bottom: 0;
+}
+
+/* ===========================================
+   DARK MODE - ERROR PAGE
+   =========================================== */
+
+[data-theme="dark"] .error-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+}
+
+[data-theme="dark"] .error-code {
+    color: var(--gray-600);
+}
+
+[data-theme="dark"] .error-detail {
+    background: var(--gray-800);
+}

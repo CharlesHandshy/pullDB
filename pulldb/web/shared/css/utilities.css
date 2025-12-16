@@ -477,3 +477,79 @@
 
 /* Inline display for forms */
 .d-inline { display: inline !important; }
+
+/* ===========================================
+   ADDITIONAL UTILITIES (Legacy Compatibility)
+   =========================================== */
+
+/* Text transform */
+.text-capitalize { text-transform: capitalize; }
+
+/* Font style */
+.font-italic { font-style: italic; }
+
+/* Link styles */
+.link-primary {
+    color: var(--primary-600);
+    text-decoration: none;
+}
+
+.link-primary:hover {
+    text-decoration: underline;
+}
+
+/* State utilities */
+.is-visible { display: block !important; }
+.is-error { color: var(--danger-600) !important; }
+
+/* Separator (used between inline items) */
+.separator {
+    color: var(--gray-400);
+    margin: 0 var(--space-1);
+}
+
+/* Capacity indicator (dashboard) */
+.capacity-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.capacity-indicator .current {
+    font-weight: var(--font-semibold);
+}
+
+.capacity-indicator .separator {
+    color: var(--gray-400);
+}
+
+.capacity-indicator .max {
+    color: var(--color-text-muted);
+}
+
+.capacity-at-limit .current {
+    color: var(--danger-600);
+}
+
+.capacity-active .current {
+    color: var(--primary-600);
+}
+
+.capacity-idle .current {
+    color: var(--gray-400);
+}
+
+/* Value display utility */
+.value-display {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
+/* Icon utilities for dropdown/search */
+.icon-search,
+.icon-loading,
+.icon-clear {
+    display: none;
+}
