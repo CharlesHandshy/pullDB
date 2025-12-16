@@ -205,6 +205,7 @@ def create_dev_app():
         ("/static/css/shared", web_dir / "shared" / "css", "css-shared"),
         ("/static/css/entities", web_dir / "entities" / "css", "css-entities"),
         ("/static/css/features", web_dir / "features" / "css", "css-features"),
+        ("/static/css/widgets", web_dir / "widgets" / "css", "css-widgets"),
         ("/static/css/pages", web_dir / "pages" / "css", "css-pages"),
     ]
     for mount_path, mount_dir, mount_name in hca_mounts:
