@@ -57,7 +57,7 @@
             <!-- Theme Toggle -->
             <button id="theme-toggle" class="btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
                 {# Sun icon (shown in dark mode - click to go light) #}
-                <span class="theme-icon-light" style="display: none;">
+                <span class="theme-icon-light hidden">
                     {{ icon('sun', size='20') }}
                 </span>
                 {# Moon icon (shown in light mode - click to go dark) #}
@@ -70,7 +70,7 @@
             <!-- User Profile / Actions -->
             <div class="user-profile">
                 {% if user %}
-                <a href="/web/auth/profile" class="link-neutral flex items-center gap-2" style="text-decoration: none;">
+                <a href="/web/auth/profile" class="link-neutral flex items-center gap-2 no-underline">
                     <div class="avatar avatar--sm avatar--primary">
                         {{ user.username[0]|upper }}
                     </div>

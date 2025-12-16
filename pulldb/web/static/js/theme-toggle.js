@@ -71,11 +71,11 @@
             
             if (lightIcon && darkIcon) {
                 if (theme === DARK) {
-                    lightIcon.style.display = 'flex';
-                    darkIcon.style.display = 'none';
+                    lightIcon.classList.remove('hidden');
+                    darkIcon.classList.add('hidden');
                 } else {
-                    lightIcon.style.display = 'none';
-                    darkIcon.style.display = 'flex';
+                    lightIcon.classList.add('hidden');
+                    darkIcon.classList.remove('hidden');
                 }
             }
         }
@@ -118,8 +118,8 @@
             const darkIcon = toggleBtn.querySelector('.theme-icon-dark') || toggleBtn.querySelector('[data-icon="moon"]');
             
             if (lightIcon && darkIcon) {
-                lightIcon.style.display = theme === DARK ? 'flex' : 'none';
-                darkIcon.style.display = theme === DARK ? 'none' : 'flex';
+                lightIcon.classList.toggle('hidden', theme !== DARK);
+                darkIcon.classList.toggle('hidden', theme === DARK);
             }
         }
     });
