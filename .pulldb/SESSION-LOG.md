@@ -6,6 +6,43 @@
 
 ---
 
+## 2025-12-22 | Visual Testing & Page-Level CSS Fixes
+
+### Context
+Continuing CSS/HTML audit Phase 3 (visual testing) to validate HCA CSS migration before marking complete.
+
+### What Was Done
+
+1. **Visual testing via Playwright browser automation**:
+   - ✅ Login page - forms, buttons, dark mode toggle
+   - ✅ Dashboard - stats cards, tables, badges (both light/dark)
+   - ✅ Restore page - forms, tabs, alerts, buttons
+   - ✅ Jobs page - headers OK (virtual table data issue is JS, not CSS)
+   - ✅ Users Admin - stats pills, table headers
+   - ✅ Hosts Admin - table, Enabled/Disabled badges
+   - ✅ Profile page - fixed, now renders correctly
+   - ✅ Job Details - fixed, now renders correctly
+   - ✅ Settings - accordions, badges, forms, sliders
+   - ✅ 404 Error page - rendering correctly
+
+2. **Fixed missing page-level CSS includes**:
+   - Added `{% block extra_css %}` to `profile.html` for `profile.css`
+   - Added `{% block extra_css %}` to `details.html` for `job-details.css`
+
+3. **Updated audit document** with visual testing results and Phase 2 completion status
+
+### Rationale
+- **HCA Design**: Page-level CSS is loaded via `extra_css` block, not globally
+- **Testing First**: Visual testing required before declaring legacy CSS removal complete
+- **FAIL HARD**: Identified and fixed missing CSS includes immediately
+
+### Files Modified
+- `pulldb/web/templates/features/auth/profile.html` (added extra_css block)
+- `pulldb/web/templates/features/jobs/details.html` (added extra_css block)
+- `docs/CSS-HTML-AUDIT-2025-01-27.md` (visual testing results)
+
+---
+
 ## 2025-12-16 | Legacy CSS Removal & Archive
 
 ### Context

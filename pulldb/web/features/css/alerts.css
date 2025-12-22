@@ -272,6 +272,8 @@
 }
 
 .no-hosts-banner svg {
+    width: 20px;
+    height: 20px;
     color: var(--warning-500);
     flex-shrink: 0;
 }

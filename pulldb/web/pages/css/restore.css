@@ -856,6 +856,38 @@
    DARK MODE OVERRIDES
    =========================================== */
 
+/* Form tabs dark mode */
+[data-theme="dark"] .form-tabs {
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .form-tab {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .form-tab:hover {
+    background: var(--gray-700);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .form-tab.active {
+    background: var(--primary-900);
+    color: var(--primary-400);
+}
+
+/* Selected display "Change" button - needs better contrast in dark mode */
+[data-theme="dark"] .selected-display-clear {
+    background: var(--gray-700);
+    border-color: var(--success-500);
+    color: var(--success-200);
+}
+
+[data-theme="dark"] .selected-display-clear:hover {
+    background: var(--gray-600);
+    border-color: var(--success-500);
+    color: var(--success-100);
+}
+
 [data-theme="dark"] .restore-section {
     background: var(--color-surface);
     border-color: var(--color-border);

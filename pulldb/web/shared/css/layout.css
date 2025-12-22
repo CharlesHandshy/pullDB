@@ -22,6 +22,81 @@
     position: relative;
 }
 
+/* =================================================================
+   APP HEADER - Primary navigation header
+   ================================================================= */
+
+.app-header {
+    background-color: var(--color-surface, white);
+    border-bottom: 1px solid var(--color-border, var(--gray-200));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space-4);
+    height: var(--header-height, 56px);
+    z-index: 200; /* Above sidebar */
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.header-logo {
+    font-weight: 700;
+    font-size: 1.25rem;
+    color: var(--primary-600);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.header-center {
+    flex: 1;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-right: var(--space-4);
+}
+
+.header-center .breadcrumb-nav {
+    font-size: 0.75rem;
+}
+
+.header-center .breadcrumb-list {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.header-center .breadcrumb-item {
+    display: flex;
+    align-items: center;
+}
+
+.header-center .breadcrumb-item:not(:last-child)::after {
+    content: "/";
+    margin-left: 0.375rem;
+    color: var(--gray-300);
+}
+
+.header-center .breadcrumb-link {
+    color: var(--gray-400);
+    text-decoration: none;
+}
+
+.header-center .breadcrumb-link:hover {
+    color: var(--gray-500);
+}
+
+.header-center .breadcrumb-current {
+    color: var(--gray-400);
+}
+
 /* 3px attention strip */
 .attention-strip {
     position: fixed;
@@ -321,6 +396,24 @@
 }
 
 /* =================================================================
+   PAGE HEADER - In-content header for page titles
+   ================================================================= */
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-6);
+}
+
+.page-header .page-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--gray-900);
+    margin: 0;
+}
+
+/* =================================================================
    NO-SIDEBAR LAYOUT (Login page, public pages)
    Merged from legacy layout.css
    ================================================================= */
@@ -378,6 +471,15 @@ body.no-sidebar #sidebar-toggle {
 /* =================================================================
    DARK MODE
    ================================================================= */
+
+[data-theme="dark"] .app-header {
+    background: var(--color-surface);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .header-logo {
+    color: var(--color-primary);
+}
 
 [data-theme="dark"] .page-header-bar {
     background: var(--color-surface);

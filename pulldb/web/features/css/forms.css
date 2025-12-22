@@ -570,6 +570,16 @@
    Co-located dark theme overrides
    =========================================== */
 
+/* Form inputs base dark mode - ensure proper background */
+[data-theme="dark"] .form-input,
+[data-theme="dark"] .form-select,
+[data-theme="dark"] .form__input,
+[data-theme="dark"] .form__select {
+    background-color: var(--color-input-bg);
+    border-color: var(--color-input-border);
+    color: var(--color-text-primary);
+}
+
 /* Input focus states - adjusted ring for dark backgrounds */
 [data-theme="dark"] .form-input:focus,
 [data-theme="dark"] .form-select:focus,
@@ -577,6 +587,19 @@
 [data-theme="dark"] .form__select:focus {
     border-color: var(--color-primary);
     box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
+/* Browser autofill override - prevent white backgrounds */
+[data-theme="dark"] .form-input:-webkit-autofill,
+[data-theme="dark"] .form-input:-webkit-autofill:hover,
+[data-theme="dark"] .form-input:-webkit-autofill:focus,
+[data-theme="dark"] .form__input:-webkit-autofill,
+[data-theme="dark"] .form__input:-webkit-autofill:hover,
+[data-theme="dark"] .form__input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px var(--color-input-bg) inset !important;
+    -webkit-text-fill-color: var(--color-text-primary) !important;
+    border-color: var(--color-input-border);
+    transition: background-color 5000s ease-in-out 0s;
 }
 
 [data-theme="dark"] .manager-select:focus,

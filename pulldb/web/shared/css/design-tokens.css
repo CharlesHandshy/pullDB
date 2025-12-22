@@ -226,6 +226,8 @@
        =========================================== */
     
     --sidebar-width: 220px;
+    --sidebar-width-expanded: 240px;
+    --sidebar-width-icons: 64px;
     --sidebar-collapsed: 3px;
     --header-height: 56px;
     --page-header-height: 52px;

@@ -2,6 +2,10 @@
 
 {% block title %}Job {{ job.id[:8] }} - pullDB{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/pages/job-details.css">
+{% endblock %}
+
 {% block content %}
 <div class="job-details-container" hx-get="{{ request.url.path }}" hx-trigger="every 5s" hx-select=".job-details-container" hx-swap="outerHTML">
     {% if flash_message %}

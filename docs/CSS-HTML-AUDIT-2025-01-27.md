@@ -153,17 +153,15 @@ _archived/
         └── sidebar.html      # Duplicate of widgets/sidebar/
 ```
 
-### Phase 2: Legacy CSS Removal (After Testing)
+### Phase 2: Legacy CSS Removal ✅ COMPLETED
 
-**Requires testing each page first:**
+**Legacy CSS files have been archived to `_archived/css/legacy/`:**
+- `components.css` (6,083 lines)
+- `dark-mode.css` (1,065 lines)  
+- `design-system.css` (483 lines)
+- `layout.css` (~150 lines)
 
-1. Remove from `app_layout.html`:
-   - `static/css/design-system.css`
-   - `static/css/dark-mode.css`
-   - `static/css/components.css`
-   - `static/css/layout.css`
-
-2. Archive removed files to `_archived/css/legacy/`
+**app_layout.html now loads only HCA CSS files.**
 
 ### Phase 3: Unused HCA Components (Future Decision)
 
@@ -182,7 +180,7 @@ These represent HCA scaffolding that may be used in future development.
 |--------|------|--------|
 | Archive orphaned templates | ✅ None | No code references |
 | Archive main.css | ✅ None | Never imported |
-| Remove legacy CSS | ⚠️ Medium | May break edge cases |
+| Remove legacy CSS | ✅ Complete | Tested, working |
 | Archive unused HCA | ⚠️ Low | Loses scaffold work |
 
 ---
@@ -191,8 +189,8 @@ These represent HCA scaffolding that may be used in future development.
 
 1. ~~**Create `_archived/` directory structure**~~
 2. ~~**Move Phase 1 files** (zero-risk archives)~~
-3. **Test all pages** visually ← **CURRENT STEP**
-4. **Proceed with Phase 2** if tests pass
+3. ~~**Test all pages visually**~~ ✅ COMPLETED (2025-12-22)
+4. ~~**Proceed with Phase 2**~~ ✅ COMPLETED (legacy CSS already archived)
 5. **Document decisions** in SESSION-LOG.md
 
 ---
@@ -225,3 +223,34 @@ All 188 legacy-only CSS classes have been migrated to HCA-compliant files:
 ### Status
 Legacy CSS files remain loaded as fallback but are marked deprecated in `app_layout.html`.
 Ready for visual verification of all pages before final removal.
+
+---
+
+## Visual Testing Completed (2025-12-22)
+
+### Pages Tested
+| Page | Status | Notes |
+|------|--------|-------|
+| Login | ✅ Pass | Forms, buttons, dark mode toggle working |
+| Dashboard | ✅ Pass | Stats cards, tables, badges all rendered correctly |
+| Restore | ✅ Pass | Forms, tabs, alerts, buttons working |
+| Jobs (Active/History) | ⚠️ Partial | Table headers OK, virtual table data issue (JS, not CSS) |
+| Users Admin | ✅ Pass | Stats pills, table headers, Add User button working |
+| Hosts Admin | ✅ Pass | Table, Enabled/Disabled badges, icons working |
+| Profile | ✅ Pass | Fixed: Added extra_css block for profile.css |
+| Job Details | ✅ Pass | Fixed: Added extra_css block for job-details.css |
+| Settings | ✅ Pass | Accordion sections, badges, forms, sliders working |
+| 404 Error | ✅ Pass | Error page rendering correctly |
+
+### Fixes Applied During Testing
+1. **profile.html**: Added `{% block extra_css %}` to load `profile.css`
+2. **details.html**: Added `{% block extra_css %}` to load `job-details.css`
+
+### Light/Dark Mode
+- ✅ Both themes tested and working correctly
+- ✅ Theme toggle functional on all pages
+
+### Issues Found (Non-CSS)
+- Virtual table in Jobs/Users pages shows "Showing 1-0 of N items" - JavaScript data loading issue
+- Some sidebar links (Search Backups, Logo, Cleanup) return 404 - routes not implemented
+

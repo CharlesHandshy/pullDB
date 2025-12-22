@@ -140,6 +140,7 @@
     </div>
 </header>
 
+{% if user %}
 <!-- Sidebar Trigger Strip -->
 <div class="sidebar-trigger" id="sidebar-trigger"></div>
 
@@ -149,6 +150,7 @@
     {% include "widgets/sidebar/sidebar.html" %}
     {% endblock %}
 </nav>
+{% endif %}
 
 <!-- Main Content -->
 <main class="app-main" id="main-content">
