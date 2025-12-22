@@ -4,7 +4,11 @@
  * HCA Layer: widgets (Layer 3)
  * 
  * Modular CSS for the VirtualTable widget.
- * Include this file to style the virtual table component.
+ * Extends: features/css/tables.css (.table--virtualized base)
+ * Depends: shared/css/design-tokens.css
+ * 
+ * This widget provides virtualized scrolling for large datasets.
+ * Uses CSS custom properties from the design system for consistency.
  */
 
 /* =========================================================================

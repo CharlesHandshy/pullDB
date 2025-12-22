@@ -311,11 +311,24 @@ def create_test_app() -> FastAPI:
 
     # Mount static files in the same way as dev_server.py
     base_dir = Path(__file__).parent.parent.parent
+    web_dir = base_dir / "pulldb" / "web"
     
     # Mount widgets directory first (must be before /static)
     widgets_dir = base_dir / "pulldb" / "web" / "static" / "widgets"
     if widgets_dir.exists():
         app.mount("/static/widgets", StaticFiles(directory=str(widgets_dir)), name="widgets")
+    
+    # Mount HCA CSS directories
+    hca_mounts = [
+        ("/static/css/shared", web_dir / "shared" / "css", "css-shared"),
+        ("/static/css/entities", web_dir / "entities" / "css", "css-entities"),
+        ("/static/css/features", web_dir / "features" / "css", "css-features"),
+        ("/static/css/widgets", web_dir / "widgets" / "css", "css-widgets"),
+        ("/static/css/pages", web_dir / "pages" / "css", "css-pages"),
+    ]
+    for mount_path, mount_dir, mount_name in hca_mounts:
+        if mount_dir.exists():
+            app.mount(mount_path, StaticFiles(directory=str(mount_dir)), name=mount_name)
     
     # Mount images from pulldb/images
     images_dir = base_dir / "pulldb" / "images"

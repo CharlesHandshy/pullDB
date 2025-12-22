@@ -3,6 +3,10 @@
 
 {% block title %}Profile - pullDB{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/pages/profile.css">
+{% endblock %}
+
 {% block content %}
 <!-- Styles extracted to components.css - Profile Page Feature (PR 19) -->
 
@@ -133,7 +137,7 @@
                     <input type="password" id="current_password" name="current_password" class="form-input" required autocomplete="current-password">
                     <button type="button" class="password-toggle" onclick="togglePassword('current_password', this)" aria-label="Toggle password visibility">
                         {{ icon('eye', size='20', class='eye-open') }}
-                        <span class="eye-closed" style="display: none;">{{ icon('eye-off', size='20') }}</span>
+                        <span class="eye-closed hidden">{{ icon('eye-off', size='20') }}</span>
                     </button>
                 </div>
             </div>
@@ -144,7 +148,7 @@
                     <input type="password" id="new_password" name="new_password" class="form-input" required minlength="8" autocomplete="new-password">
                     <button type="button" class="password-toggle" onclick="togglePassword('new_password', this)" aria-label="Toggle password visibility">
                         {{ icon('eye', size='20', class='eye-open') }}
-                        <span class="eye-closed" style="display: none;">{{ icon('eye-off', size='20') }}</span>
+                        <span class="eye-closed hidden">{{ icon('eye-off', size='20') }}</span>
                     </button>
                 </div>
                 <div class="form-hint">Must be at least 8 characters long</div>
@@ -156,7 +160,7 @@
                     <input type="password" id="confirm_password" name="confirm_password" class="form-input" required autocomplete="new-password">
                     <button type="button" class="password-toggle" onclick="togglePassword('confirm_password', this)" aria-label="Toggle password visibility">
                         {{ icon('eye', size='20', class='eye-open') }}
-                        <span class="eye-closed" style="display: none;">{{ icon('eye-off', size='20') }}</span>
+                        <span class="eye-closed hidden">{{ icon('eye-off', size='20') }}</span>
                     </button>
                 </div>
             </div>
@@ -178,12 +182,12 @@ function togglePassword(inputId, button) {
     
     if (input.type === 'password') {
         input.type = 'text';
-        eyeOpen.style.display = 'none';
-        eyeClosed.style.display = 'inline';
+        eyeOpen.classList.add('hidden');
+        eyeClosed.classList.remove('hidden');
     } else {
         input.type = 'password';
-        eyeOpen.style.display = 'inline';
-        eyeClosed.style.display = 'none';
+        eyeOpen.classList.remove('hidden');
+        eyeClosed.classList.add('hidden');
     }
 }
 

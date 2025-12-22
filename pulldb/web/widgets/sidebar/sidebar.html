@@ -5,29 +5,30 @@
     Included by: shared/layouts/app_layout.html
     
     Contract:
-    - Requires: user object in context
+    - Requires: user object in context (can be None for error pages)
     - Requires: request object for active state detection
     - Provides: Navigation menu with admin section if user.is_admin
     
     Size: ~100 lines (HCA compliant)
 #}
+{% if user %}
 <aside class="sidebar" id="sidebar">
     <div class="sidebar-inner">
         <nav class="sidebar-nav">
             {# Main Navigation #}
             <div class="nav-section">
                 <div class="nav-section-title">Main</div>
-                <a href="/web/dashboard" class="nav-link {% if request.url.path == '/web/dashboard' %}active{% endif %}">
+                <a href="/web/dashboard" class="nav-link {% if request.url.path == '/web/dashboard' %}active{% endif %}" title="Dashboard">
                     {% include "shared/ui/icons/dashboard.svg" %}
-                    <span>Dashboard</span>
+                    <span class="nav-label">Dashboard</span>
                 </a>
-                <a href="/web/restore" class="nav-link {% if request.url.path == '/web/restore' %}active{% endif %}">
+                <a href="/web/restore" class="nav-link {% if request.url.path == '/web/restore' %}active{% endif %}" title="New Restore">
                     {% include "shared/ui/icons/restore.svg" %}
-                    <span>New Restore</span>
+                    <span class="nav-label">New Restore</span>
                 </a>
-                <a href="/web/search" class="nav-link {% if request.url.path == '/web/search' %}active{% endif %}">
+                <a href="/web/search" class="nav-link {% if request.url.path == '/web/search' %}active{% endif %}" title="Search Backups">
                     {% include "shared/ui/icons/search.svg" %}
-                    <span>Search Backups</span>
+                    <span class="nav-label">Search Backups</span>
                 </a>
             </div>
             
@@ -35,29 +36,29 @@
             {% if user.is_admin %}
             <div class="nav-section">
                 <div class="nav-section-title">Administration</div>
-                <a href="/web/admin/jobs" class="nav-link {% if request.url.path == '/web/admin/jobs' %}active{% endif %}">
+                <a href="/web/admin/jobs" class="nav-link {% if request.url.path == '/web/admin/jobs' %}active{% endif %}" title="All Jobs">
                     {% include "shared/ui/icons/jobs.svg" %}
-                    <span>All Jobs</span>
+                    <span class="nav-label">All Jobs</span>
                 </a>
-                <a href="/web/admin/users" class="nav-link {% if '/web/admin/users' in request.url.path %}active{% endif %}">
+                <a href="/web/admin/users" class="nav-link {% if '/web/admin/users' in request.url.path %}active{% endif %}" title="Users">
                     {% include "shared/ui/icons/users.svg" %}
-                    <span>Users</span>
+                    <span class="nav-label">Users</span>
                 </a>
-                <a href="/web/admin/hosts" class="nav-link {% if request.url.path == '/web/admin/hosts' %}active{% endif %}">
+                <a href="/web/admin/hosts" class="nav-link {% if request.url.path == '/web/admin/hosts' %}active{% endif %}" title="Hosts">
                     {% include "shared/ui/icons/hosts.svg" %}
-                    <span>Hosts</span>
+                    <span class="nav-label">Hosts</span>
                 </a>
-                <a href="/web/admin/settings" class="nav-link {% if request.url.path == '/web/admin/settings' %}active{% endif %}">
+                <a href="/web/admin/settings" class="nav-link {% if request.url.path == '/web/admin/settings' %}active{% endif %}" title="Settings">
                     {% include "shared/ui/icons/settings.svg" %}
-                    <span>Settings</span>
+                    <span class="nav-label">Settings</span>
                 </a>
-                <a href="/web/admin/logo" class="nav-link {% if request.url.path == '/web/admin/logo' %}active{% endif %}">
+                <a href="/web/admin/logo" class="nav-link {% if request.url.path == '/web/admin/logo' %}active{% endif %}" title="Logo">
                     {% include "shared/ui/icons/image.svg" %}
-                    <span>Logo</span>
+                    <span class="nav-label">Logo</span>
                 </a>
-                <a href="/web/admin/cleanup" class="nav-link {% if request.url.path == '/web/admin/cleanup' %}active{% endif %}">
+                <a href="/web/admin/cleanup" class="nav-link {% if request.url.path == '/web/admin/cleanup' %}active{% endif %}" title="Cleanup">
                     {% include "shared/ui/icons/trash.svg" %}
-                    <span>Cleanup</span>
+                    <span class="nav-label">Cleanup</span>
                 </a>
             </div>
             {% endif %}
@@ -80,3 +81,4 @@
         </div>
     </div>
 </aside>
+{% endif %}

@@ -1,0 +1,103 @@
+/* =================================================================
+   pullDB Main CSS Bundle
+   HCA Layer: Root import file
+   
+   Purpose: Single entry point that imports all CSS in correct order.
+   This file should be the only CSS import in base.html.
+   
+   Import Order (HCA hierarchy):
+   1. shared/     - Design tokens, reset, utilities (Layer 0)
+   2. entities/   - Base UI primitives (Layer 1)
+   3. features/   - Feature-specific components (Layer 2)
+   4. widgets/    - Complex widgets (Layer 3)
+   5. pages/      - Page-specific overrides (Layer 4)
+   
+   Note: The existing static/css files are kept for backward compatibility
+   during migration. Once all templates are updated, they can be removed.
+   ================================================================= */
+
+/* ===========================================
+   LAYER 0: SHARED (Foundation)
+   =========================================== */
+
+/* Design Tokens - CSS custom properties */
+@import url('/static/css/shared/design-tokens.css');
+
+/* CSS Reset - Browser normalization */
+@import url('/static/css/shared/reset.css');
+
+/* Utility Classes - Single-purpose helpers */
+@import url('/static/css/shared/utilities.css');
+
+/* ===========================================
+   LAYER 1: ENTITIES (UI Primitives)
+   =========================================== */
+
+/* Badge - Status badges, role badges */
+@import url('/static/css/entities/badge.css');
+
+/* Avatar - User avatars, initials */
+@import url('/static/css/entities/avatar.css');
+
+/* Card - Content containers */
+@import url('/static/css/entities/card.css');
+
+/* ===========================================
+   LAYER 2: FEATURES (Business Logic UI)
+   =========================================== */
+
+/* Buttons - All button variants */
+@import url('/static/css/features/buttons.css');
+
+/* Forms - Inputs, labels, validation */
+@import url('/static/css/features/forms.css');
+
+/* Tables - Data tables, layouts */
+@import url('/static/css/features/tables.css');
+
+/* Modals - Dialogs, overlays */
+@import url('/static/css/features/modals.css');
+
+/* Alerts - Notifications, toasts, banners */
+@import url('/static/css/features/alerts.css');
+
+/* ===========================================
+   LAYER 3: LAYOUT
+   =========================================== */
+
+/* App Layout - Header, footer, sidebar container */
+@import url('/static/css/app-layout.css');
+
+/* Sidebar - Navigation sidebar widget */
+@import url('/static/css/sidebar.css');
+
+/* ===========================================
+   LAYER 4: LEGACY COMPATIBILITY
+   These imports are temporary during migration.
+   Components are gradually moved to the new structure.
+   =========================================== */
+
+/* Legacy components (gradually deprecate) */
+/* @import url('/static/css/components.css'); */
+
+/* Dark mode overrides */
+@import url('/static/css/dark-mode.css');
+
+/* Virtual table widget */
+@import url('/static/widgets/virtual_table/virtual_table.css');
+
+/* Lazy table widget */
+@import url('/static/widgets/lazy_table/lazy_table.css');
+
+/* ===========================================
+   LAYER 5: PAGES (Page-specific)
+   Import only on relevant pages via extra_css block.
+   Listed here for reference.
+   =========================================== */
+
+/* Page-specific imports - uncomment as needed or use in extra_css block:
+@import url('/static/css/pages/restore.css');
+@import url('/static/css/pages/job-details.css');
+@import url('/static/css/pages/admin.css');
+@import url('/static/css/pages/profile.css');
+*/

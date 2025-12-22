@@ -31,7 +31,12 @@ IMAGES_DIR = WEB_DIR.parent / "images"
 LOGO_CONFIG_PATH = IMAGES_DIR / "logo_config.json"
 
 # Create loader that searches multiple directories
+# Order matters: templates (backward compat) first, then HCA layouts
 _loader = ChoiceLoader([
+    # Legacy templates first (for backward compatibility with {% extends "base.html" %})
+    FileSystemLoader(str(TEMPLATES_DIR)),
+    # Web root (allows shared/layouts/... paths)
+    FileSystemLoader(str(WEB_DIR)),
     # Feature-specific pages
     FileSystemLoader(str(FEATURES_DIR / "auth" / "pages")),
     FileSystemLoader(str(FEATURES_DIR / "dashboard" / "pages")),
@@ -41,10 +46,8 @@ _loader = ChoiceLoader([
     FileSystemLoader(str(FEATURES_DIR / "admin" / "pages")),
     # Widgets
     FileSystemLoader(str(WEB_DIR / "widgets")),
-    # Shared layouts
+    # Shared layouts (direct access without shared/layouts/ prefix)
     FileSystemLoader(str(SHARED_DIR / "layouts")),
-    # Legacy templates (fallback)
-    FileSystemLoader(str(TEMPLATES_DIR)),
 ])
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))

@@ -1,0 +1,249 @@
+/* =================================================================
+   pullDB Styleguide Page Styles
+   HCA Layer: pages (Layer 4)
+   
+   Purpose: Styles specific to the design system styleguide page.
+            Documentation-only styles for displaying components.
+   Depends: design-tokens.css
+   ================================================================= */
+
+/* ===========================================
+   TABLE OF CONTENTS
+   =========================================== */
+
+.styleguide-toc {
+    margin-bottom: var(--space-8);
+}
+
+.styleguide-toc-title {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--space-3);
+}
+
+.styleguide-toc-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+}
+
+.styleguide-toc-link {
+    color: var(--primary-600);
+    text-decoration: none;
+    font-weight: var(--font-medium);
+    font-size: var(--text-sm);
+}
+
+.styleguide-toc-link:hover {
+    text-decoration: underline;
+}
+
+/* ===========================================
+   SECTIONS
+   =========================================== */
+
+.styleguide-section {
+    margin-bottom: var(--space-12);
+    scroll-margin-top: var(--space-8);
+}
+
+.styleguide-section-title {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--gray-900);
+    margin-bottom: var(--space-2);
+    padding-bottom: var(--space-2);
+    border-bottom: 2px solid var(--primary-500);
+}
+
+.styleguide-section-desc {
+    color: var(--gray-500);
+    margin-bottom: var(--space-6);
+}
+
+.styleguide-subsection-title {
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
+    color: var(--gray-700);
+    margin-top: var(--space-6);
+    margin-bottom: var(--space-3);
+}
+
+/* ===========================================
+   COLOR SWATCHES
+   =========================================== */
+
+.color-swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: var(--space-3);
+    margin-bottom: var(--space-6);
+}
+
+.color-swatch {
+    aspect-ratio: 1;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: var(--space-2);
+}
+
+.color-label {
+    font-size: 0.625rem;
+    font-family: var(--font-mono);
+    background: rgba(0, 0, 0, 0.3);
+    color: white;
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+}
+
+/* ===========================================
+   TYPOGRAPHY SAMPLES
+   =========================================== */
+
+.typography-samples {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.typography-sample {
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.typography-sample:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.typography-label {
+    display: block;
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    color: var(--gray-500);
+    margin-bottom: var(--space-1);
+}
+
+.typography-sample p {
+    margin: 0;
+    color: var(--gray-900);
+}
+
+/* ===========================================
+   SPACING SAMPLES
+   =========================================== */
+
+.spacing-samples {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-6);
+}
+
+.spacing-sample {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.spacing-box {
+    background: var(--primary-500);
+    border-radius: var(--radius-sm);
+}
+
+.spacing-label {
+    font-size: 0.625rem;
+    font-family: var(--font-mono);
+    color: var(--gray-500);
+    white-space: nowrap;
+}
+
+/* ===========================================
+   COMPONENT DISPLAY
+   =========================================== */
+
+.component-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-6);
+    align-items: flex-start;
+}
+
+.component-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+}
+
+.component-label {
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    color: var(--gray-500);
+}
+
+/* ===========================================
+   EMPTY STATE DEMO
+   =========================================== */
+
+.empty-state-icon {
+    color: var(--gray-300);
+    margin-bottom: var(--space-4);
+}
+
+.empty-state-title {
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    color: var(--gray-700);
+    margin-bottom: var(--space-2);
+}
+
+.empty-state-description {
+    color: var(--gray-500);
+    margin-bottom: var(--space-4);
+    max-width: 300px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* ===========================================
+   DARK MODE
+   =========================================== */
+
+[data-theme="dark"] .color-label {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="dark"] .styleguide-section-title {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .styleguide-subsection-title {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .typography-sample {
+    border-color: var(--gray-700);
+}
+
+[data-theme="dark"] .typography-sample p {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .styleguide-toc-link {
+    color: var(--primary-400);
+}
+
+[data-theme="dark"] .empty-state-title {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .empty-state-description {
+    color: var(--color-text-secondary);
+}

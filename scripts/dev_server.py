@@ -199,6 +199,20 @@ def create_dev_app():
         if "widgets" not in [r.name for r in app.routes if hasattr(r, 'name')]:
             app.mount("/static/widgets", StaticFiles(directory=str(widgets_dir)), name="widgets")
     
+    # Mount HCA CSS directories (symlinks don't work with StaticFiles)
+    web_dir = Path(__file__).parent.parent / "pulldb" / "web"
+    hca_mounts = [
+        ("/static/css/shared", web_dir / "shared" / "css", "css-shared"),
+        ("/static/css/entities", web_dir / "entities" / "css", "css-entities"),
+        ("/static/css/features", web_dir / "features" / "css", "css-features"),
+        ("/static/css/widgets", web_dir / "widgets" / "css", "css-widgets"),
+        ("/static/css/pages", web_dir / "pages" / "css", "css-pages"),
+    ]
+    for mount_path, mount_dir, mount_name in hca_mounts:
+        if mount_dir.exists():
+            if mount_name not in [r.name for r in app.routes if hasattr(r, 'name')]:
+                app.mount(mount_path, StaticFiles(directory=str(mount_dir)), name=mount_name)
+
     # Mount images from pulldb/images
     images_dir = Path(__file__).parent.parent / "pulldb" / "images"
     if images_dir.exists():

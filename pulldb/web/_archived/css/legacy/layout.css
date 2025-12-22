@@ -1,4 +1,14 @@
-/* pulldb/web/static/css/layout.css */
+/* =================================================================
+   pullDB Legacy Layout Styles
+   TRANSITIONAL - Used by base.html until migrated to app_layout.html
+   
+   NOTE: This file coexists with pulldb/web/shared/css/layout.css
+   which is the HCA-compliant layout for app_layout.html template.
+   
+   Classes: .app-header, .app-sidebar, .app-main, .app-footer
+   Used by: base.html (legacy template)
+   ================================================================= */
+
 :root {
     --header-height: 60px;
     --footer-height: 40px;

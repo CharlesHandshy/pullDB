@@ -1,104 +1,26 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="light"{% if admin_dark_mode() %} data-admin-theme-default="dark"{% endif %}>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}pullDB{% endblock %}</title>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <link rel="stylesheet" href="/static/css/design-system.css">
-    <link rel="stylesheet" href="/web/admin/api/theme.css">
-    <link rel="stylesheet" href="/static/css/dark-mode.css">
-    <link rel="stylesheet" href="/static/css/layout.css">
-    <link rel="stylesheet" href="/static/css/components.css">
-    <link rel="stylesheet" href="/static/css/sidebar.css">
-    {% block extra_css %}{% endblock %}
-</head>
-<body class="{% block body_class %}{% endblock %}">
-    {% from "partials/icons/_index.html" import icon %}
+{#
+    HCA Migration Wrapper: base.html → shared/layouts/app_layout.html
+    ==================================================================
     
-    {# Accessibility: Skip link for keyboard navigation #}
-    <a href="#main-content" class="skip-link">Skip to main content</a>
+    This template now extends the HCA-compliant app_layout.html.
+    All 19 feature templates that extend "base.html" automatically
+    inherit the HCA structure without modification.
     
-    <!-- Header -->
-    <header class="app-header">
-        <div class="header-left" style="display: flex; align-items: center; gap: var(--space-4);">
-            <button id="sidebar-toggle" class="btn-icon" aria-label="Toggle sidebar">
-                {{ icon('menu', size='24', stroke_width='2') }}
-            </button>
-            <div class="header-logo">
-                {{ icon('layers', size='24', stroke_width='2') }}
-                <span>pullDB</span>
-            </div>
-        </div>
-        <div class="header-center">
-            {% include "partials/breadcrumbs.html" %}
-        </div>
-        <div class="header-actions">
-            <!-- Theme Toggle -->
-            <button id="theme-toggle" class="btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
-                {# Sun icon (shown in dark mode - click to go light) #}
-                <span class="theme-icon-light" style="display: none;">
-                    {{ icon('sun', size='20') }}
-                </span>
-                {# Moon icon (shown in light mode - click to go dark) #}
-                <span class="theme-icon-dark">
-                    {{ icon('moon', size='20') }}
-                </span>
-            </button>
-            
-            {% block header_actions %}
-            <!-- User Profile / Actions -->
-            <div class="user-profile">
-                {% if user %}
-                <a href="/web/auth/profile" class="link-neutral" style="display: flex; align-items: center; gap: 0.5rem; text-decoration: none;">
-                    <div style="width: 32px; height: 32px; background: var(--primary-100); color: var(--primary-700); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600;">
-                        {{ user.username[0]|upper }}
-                    </div>
-                    <span>{{ user.username }}</span>
-                </a>
-                {% else %}
-                <span>Guest</span>
-                {% endif %}
-            </div>
-            {% endblock %}
-        </div>
-    </header>
-
-    <!-- Sidebar Trigger Strip -->
-    <div class="sidebar-trigger" id="sidebar-trigger"></div>
-
-    <!-- Sidebar -->
-    <nav class="app-sidebar" id="app-sidebar">
-        {% block sidebar %}
-        {% include "widgets/sidebar/sidebar.html" %}
-        {% endblock %}
-    </nav>
-
-    <!-- Main Content -->
-    <main class="app-main" id="main-content">
-        {% block content %}{% endblock %}
-    </main>
-
-    <div id="toast-container" class="toast-container"></div>
-
-    <!-- Footer -->
-    <footer class="app-footer">
-        <div class="footer-left">
-            &copy; 2025 pullDB
-        </div>
-        <div class="footer-right">
-            v0.0.9
-        </div>
-    </footer>
-
-    <script src="/static/js/navigation.js"></script>
-    <script src="/static/js/main.js"></script>
-    <script src="/static/js/theme-toggle.js"></script>
-    {% block extra_js %}{% endblock %}
+    Block Mapping:
+    - title → title (inherited)
+    - content → content (inherited)
+    - extra_css → extra_css (inherited)
+    - extra_js → extra_js (inherited)
+    - header_actions → header_actions (inherited)
+    - body_class → layout_class (mapped)
+    - sidebar → sidebar (inherited)
     
-    {# Dev toolbar - only injected when dev_extensions is defined (dev_server.py) #}
-    {% if dev_extensions is defined %}
-    {{ dev_extensions | safe }}
-    {% endif %}
-</body>
-</html>
+    Migration Complete: All pages now use HCA template hierarchy:
+    _skeleton.html → base.html → app_layout.html → feature templates
+    
+    Size: ~10 lines (HCA compliant - thin wrapper)
+#}
+{% extends "shared/layouts/app_layout.html" %}
+
+{# Map body_class to layout_class for backward compatibility #}
+{% block layout_class %}{% block body_class %}{% endblock %}{% endblock %}

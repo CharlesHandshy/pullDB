@@ -1,0 +1,487 @@
+/* =================================================================
+   pullDB Table Component
+   HCA Layer: features
+   
+   Purpose: Data tables, dashboard tables, and table utilities.
+   Depends: design-tokens.css
+   
+   BEM Structure:
+   - .table (Block)
+   - .table__header (Element)
+   - .table__row (Element)
+   - .table__cell (Element)
+   - .table--{variant} (Modifier: data, dashboard, compact)
+   - .table__row.is-selected (State)
+   - .table__row.is-excluded (State)
+   
+   Legacy Compatibility:
+   - .data-table maps to .table--data
+   - .dashboard-table maps to .table--dashboard
+   ================================================================= */
+
+/* ===========================================
+   TABLE CONTAINER
+   =========================================== */
+
+.table-container {
+    overflow-x: auto;
+}
+
+/* ===========================================
+   BASE TABLE
+   =========================================== */
+
+.table,
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+/* ===========================================
+   TABLE HEADER
+   =========================================== */
+
+.table__header th,
+.data-table th {
+    padding: var(--space-3) var(--space-6);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background-color: var(--gray-50);
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+}
+
+.table__header th.text-right,
+.data-table th.text-right {
+    text-align: right;
+}
+
+.table__header th.text-center,
+.data-table th.text-center {
+    text-align: center;
+}
+
+/* ===========================================
+   TABLE CELLS
+   =========================================== */
+
+.table__cell,
+.data-table td {
+    padding: var(--space-4) var(--space-6);
+    border-bottom: 1px solid var(--gray-100);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    vertical-align: middle;
+}
+
+.table__row:last-child .table__cell,
+.data-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* Cell alignment */
+.table__cell.text-right,
+.data-table td.text-right {
+    text-align: right;
+}
+
+.table__cell.text-center,
+.data-table td.text-center {
+    text-align: center;
+}
+
+/* ===========================================
+   TABLE ROW STATES
+   =========================================== */
+
+/* Selected row */
+.table__row.is-selected,
+.data-table tr.is-selected {
+    background-color: var(--primary-50);
+}
+
+/* Excluded row (cleanup preview) */
+.table__row.is-excluded,
+.excluded-row {
+    opacity: 0.6;
+}
+
+.table__row.is-excluded .cell-primary,
+.excluded-row .db-name-cell,
+.excluded-row .job-id-cell {
+    color: var(--danger-600) !important;
+    text-decoration: line-through;
+}
+
+/* Hover state */
+.table__row:hover,
+.data-table tr:hover {
+    background-color: var(--gray-50);
+}
+
+/* ===========================================
+   CELL UTILITIES
+   =========================================== */
+
+/* Primary cell (emphasized) */
+.cell-primary {
+    font-weight: var(--font-medium);
+    color: var(--color-text-primary);
+}
+
+/* Secondary cell */
+.cell-secondary {
+    font-size: var(--text-xs);
+    color: var(--gray-400);
+}
+
+/* Monospace cell */
+.cell-mono-sm {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+}
+
+/* Code style cell */
+.cell-code {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    background: var(--color-bg-subtle);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+}
+
+/* No-wrap cell */
+.cell-nowrap {
+    white-space: nowrap;
+}
+
+/* Empty/placeholder value */
+.cell-empty {
+    color: var(--gray-400);
+}
+
+/* Date value */
+.date-value {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    white-space: nowrap;
+}
+
+/* ===========================================
+   DASHBOARD TABLE
+   =========================================== */
+
+.table--dashboard,
+.dashboard-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table--dashboard th,
+.dashboard-table th {
+    text-align: left;
+    padding: var(--space-2) 0;
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.table--dashboard th.text-right,
+.dashboard-table th.text-right {
+    text-align: right;
+}
+
+.table--dashboard td,
+.dashboard-table td {
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.table--dashboard td.text-right,
+.dashboard-table td.text-right {
+    text-align: right;
+}
+
+/* ===========================================
+   COLUMN WIDTH CLASSES
+   =========================================== */
+
+.col-count { width: 60px; text-align: center; }
+.col-status { width: 100px; }
+.col-date { width: 100px; }
+.col-actions { width: 60px; }
+
+/* ===========================================
+   EMPTY STATE
+   =========================================== */
+
+.table__empty,
+.empty-state {
+    padding: var(--space-8);
+    text-align: center;
+    color: var(--color-text-muted);
+}
+
+/* ===========================================
+   HOST CELL (Special compound cell)
+   =========================================== */
+
+.host-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    text-decoration: none;
+    color: inherit;
+    white-space: nowrap;
+}
+
+.host-cell:hover .host-alias {
+    color: var(--primary-600);
+}
+
+.host-icon-sm {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, var(--primary-100), var(--primary-200));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.host-icon-sm svg {
+    width: 18px;
+    height: 18px;
+    color: var(--primary-600);
+}
+
+.host-icon-sm.disabled {
+    background: var(--gray-100);
+}
+
+.host-icon-sm.disabled svg {
+    color: var(--gray-400);
+}
+
+.host-alias {
+    font-weight: var(--font-medium);
+    color: var(--color-text-primary);
+}
+
+.hostname-code {
+    position: relative;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    background: var(--gray-100);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    color: var(--gray-700);
+}
+
+.job-count {
+    font-family: var(--font-mono);
+    font-weight: var(--font-medium);
+}
+
+/* ===========================================
+   SKELETON TABLE LOADING
+   =========================================== */
+
+.skeleton-cell {
+    height: 1em;
+    width: 70%;
+    background: linear-gradient(90deg, 
+        var(--color-bg-subtle, var(--gray-100)) 25%, 
+        var(--color-bg-muted, var(--gray-200)) 50%, 
+        var(--color-bg-subtle, var(--gray-100)) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+}
+
+/* Skeleton stat value */
+.skeleton-stat {
+    display: inline-block;
+    height: 2rem;
+    width: 3rem;
+    background: linear-gradient(90deg, 
+        var(--color-bg-subtle, var(--gray-100)) 25%, 
+        var(--color-bg-muted, var(--gray-200)) 50%, 
+        var(--color-bg-subtle, var(--gray-100)) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+}
+
+/* Skeleton text */
+.skeleton-text {
+    display: inline-block;
+    height: 1em;
+    min-width: 60px;
+    background: linear-gradient(90deg, 
+        var(--color-bg-subtle, var(--gray-100)) 25%, 
+        var(--color-bg-muted, var(--gray-200)) 50%, 
+        var(--color-bg-subtle, var(--gray-100)) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+}
+
+/* ===========================================
+   SHARED TABLE BASE (For virtual/lazy tables)
+   =========================================== */
+
+.table--virtualized {
+    /* Common styles for virtualized tables */
+    width: 100%;
+    table-layout: fixed;
+}
+
+.table--virtualized th {
+    position: sticky;
+    top: 0;
+    background: var(--color-surface);
+    z-index: 10;
+    border-bottom: 2px solid var(--color-border);
+}
+
+.table--virtualized td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ===========================================
+   AUDIT LOG TABLE
+   =========================================== */
+
+.audit-entry {
+    display: grid;
+    grid-template-columns: 140px auto 1fr 140px;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-5);
+    border-bottom: 1px solid var(--gray-100);
+    font-size: var(--text-sm);
+    align-items: center;
+}
+
+.audit-entry:last-child {
+    border-bottom: none;
+}
+
+.audit-actor {
+    font-weight: var(--font-semibold);
+    color: var(--gray-700);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.audit-action {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.audit-detail {
+    color: var(--gray-600);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.audit-time {
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+    text-align: right;
+}
+
+@media (max-width: 768px) {
+    .audit-entry {
+        grid-template-columns: 1fr;
+        gap: var(--space-2);
+        padding: var(--space-4);
+    }
+    
+    .audit-time {
+        text-align: left;
+        font-size: var(--text-2xs);
+    }
+}
+
+/* ===========================================
+   DARK MODE
+   Co-located dark theme overrides
+   =========================================== */
+
+/* Virtual table / LazyTable */
+[data-theme="dark"] .virtual-table-header {
+    background: var(--color-bg-secondary);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .virtual-table-row:hover {
+    background: var(--color-surface-hover);
+}
+
+[data-theme="dark"] .virtual-table-row:nth-child(even) {
+    background: var(--color-table-row-stripe);
+}
+
+/* Backup table dark mode */
+[data-theme="dark"] .backup-table th {
+    background: var(--color-bg-secondary);
+    border-bottom-color: var(--color-border);
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .backup-table td {
+    border-bottom-color: var(--color-border);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .backup-table tbody tr:hover {
+    background: var(--color-surface-hover);
+}
+
+[data-theme="dark"] .backup-table tbody tr.is-selected {
+    background: rgba(96, 165, 250, 0.15);
+}
+
+[data-theme="dark"] .backup-table tbody tr.is-selected td {
+    border-bottom-color: rgba(96, 165, 250, 0.3);
+}
+
+/* Audit entries dark mode */
+[data-theme="dark"] .audit-entry {
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .audit-actor {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .audit-avatar {
+    background: rgba(96, 165, 250, 0.15);
+    color: var(--color-primary);
+}
+
+[data-theme="dark"] .audit-detail {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .audit-time {
+    color: var(--color-text-muted);
+}
