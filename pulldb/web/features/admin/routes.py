@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Request, Form
+from fastapi import APIRouter, Depends, Request, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pulldb.domain.models import JobStatus, User
@@ -472,8 +472,8 @@ async def api_users_paginated(
     request: Request,
     state: Any = Depends(get_api_state),
     admin: User = Depends(require_admin),
-    pageIndex: int = 0,
-    pageSize: int = 50,
+    page: int = Query(0, ge=0, description="Page number (0-indexed)"),
+    pageSize: int = Query(50, ge=10, le=200, description="Page size"),
     sortColumn: str | None = None,
     sortDirection: str | None = None,
 ) -> dict:
@@ -568,14 +568,14 @@ async def api_users_paginated(
         )
     
     # Paginate
-    start = pageIndex * pageSize
+    start = page * pageSize
     page_users = all_users[start:start + pageSize]
     
     return {
         "rows": page_users,
         "totalCount": total_count,
         "filteredCount": filtered_count,
-        "pageIndex": pageIndex,
+        "page": page,
         "pageSize": pageSize,
         "managers": [{"user_id": m.user_id, "username": m.username} for m in managers],
         "stats": stats,
@@ -713,6 +713,111 @@ def _enrich_host(host: Any, job_repo: Any) -> dict:
     }
 
 
+@router.get("/api/hosts/paginated")
+async def api_hosts_paginated(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+    page: int = Query(0, ge=0, description="Page number (0-indexed)"),
+    pageSize: int = Query(50, ge=10, le=200, description="Page size"),
+    sortColumn: str | None = None,
+    sortDirection: str | None = None,
+) -> dict:
+    """Get paginated hosts for LazyTable."""
+    hosts = []
+    if hasattr(state, "host_repo") and state.host_repo and hasattr(state.host_repo, "list_hosts"):
+        raw_hosts = state.host_repo.list_hosts()
+        hosts = [_enrich_host(h, state.job_repo) for h in raw_hosts]
+    
+    total_count = len(hosts)
+    
+    # Compute stats before filtering
+    stats = {
+        "total": total_count,
+        "enabled": len([h for h in hosts if h["enabled"]]),
+        "disabled": len([h for h in hosts if not h["enabled"]]),
+        "active_restores": sum(h["active_restores"] for h in hosts),
+    }
+    
+    # Serialize hosts for JSON (convert datetime)
+    all_hosts = []
+    for h in hosts:
+        all_hosts.append({
+            "id": str(h["id"]),
+            "hostname": h["hostname"],
+            "host_alias": h["host_alias"],
+            "display_name": h["host_alias"] or h["hostname"],
+            "credential_ref": h["credential_ref"],
+            "max_running_jobs": h["max_running_jobs"],
+            "max_active_jobs": h["max_active_jobs"],
+            "enabled": h["enabled"],
+            "created_at": h["created_at"].isoformat() if h["created_at"] else None,
+            "running_count": h["running_count"],
+            "queued_count": h["queued_count"],
+            "active_restores": h["active_restores"],
+            "total_restores": h["total_restores"],
+        })
+    
+    # Apply filters
+    text_filters: dict[str, list[str]] = {}
+    for key, value in request.query_params.items():
+        if key.startswith("filter_") and value:
+            col_key = key[7:]
+            text_filters[col_key] = [v.strip().lower() for v in value.split(',') if v.strip()]
+    
+    if text_filters:
+        filtered = []
+        for h in all_hosts:
+            match = True
+            for col, vals in text_filters.items():
+                if col == "status":
+                    status = "enabled" if h["enabled"] else "disabled"
+                    if not any(v in status for v in vals):
+                        match = False
+                        break
+                elif col == "hostname":
+                    # Search both hostname and alias
+                    combined = f"{h['hostname']} {h['host_alias'] or ''}".lower()
+                    if not any(v in combined for v in vals):
+                        match = False
+                        break
+                else:
+                    cell = str(h.get(col, "")).lower()
+                    if not any(v in cell for v in vals):
+                        match = False
+                        break
+            if match:
+                filtered.append(h)
+        all_hosts = filtered
+    
+    filtered_count = len(all_hosts)
+    
+    # Apply sorting
+    sortable_cols = ("display_name", "hostname", "enabled", "running_count", "active_restores", "total_restores", "created_at")
+    if sortColumn in sortable_cols:
+        reverse = sortDirection == "desc"
+        if sortColumn in ("running_count", "active_restores", "total_restores"):
+            all_hosts.sort(key=lambda h: h.get(sortColumn) or 0, reverse=reverse)
+        else:
+            all_hosts.sort(
+                key=lambda h: (h.get(sortColumn) is None, str(h.get(sortColumn) or "").lower()),
+                reverse=reverse
+            )
+    
+    # Paginate
+    start = page * pageSize
+    page_hosts = all_hosts[start:start + pageSize]
+    
+    return {
+        "rows": page_hosts,
+        "totalCount": total_count,
+        "filteredCount": filtered_count,
+        "page": page,
+        "pageSize": pageSize,
+        "stats": stats,
+    }
+
+
 @router.get("/hosts", response_class=HTMLResponse)
 async def list_hosts(
     request: Request,
@@ -721,13 +826,13 @@ async def list_hosts(
     error: str | None = None,
     deleted: int | None = None,
 ) -> HTMLResponse:
-    """List all database hosts with enriched stats."""
+    """List all database hosts - page shell for LazyTable."""
+    # Get initial stats for server-side render
     hosts = []
     if hasattr(state, "host_repo") and state.host_repo and hasattr(state.host_repo, "list_hosts"):
         raw_hosts = state.host_repo.list_hosts()
         hosts = [_enrich_host(h, state.job_repo) for h in raw_hosts]
     
-    # Calculate stats
     stats = {
         "total": len(hosts),
         "enabled": len([h for h in hosts if h["enabled"]]),
@@ -750,7 +855,6 @@ async def list_hosts(
         {
             "request": request,
             "active_nav": "admin",
-            "hosts": hosts,
             "stats": stats,
             "user": user,
             "flash_message": flash_message,
@@ -767,7 +871,7 @@ async def enable_host(
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> RedirectResponse:
-    """Enable a database host."""
+    """Enable a database host (form POST redirect)."""
     if hasattr(state.host_repo, "enable_host"):
         state.host_repo.enable_host(hostname)
     return RedirectResponse(url="/web/admin/hosts", status_code=303)
@@ -783,6 +887,36 @@ async def disable_host(
     if hasattr(state.host_repo, "disable_host"):
         state.host_repo.disable_host(hostname)
     return RedirectResponse(url="/web/admin/hosts", status_code=303)
+
+
+@router.post("/api/hosts/{host_id}/toggle")
+async def api_toggle_host(
+    host_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Toggle host enabled/disabled status. Returns JSON for LazyTable actions."""
+    try:
+        # Find host by ID
+        host = None
+        if hasattr(state, "host_repo") and state.host_repo:
+            if hasattr(state.host_repo, "get_host_by_id"):
+                host = state.host_repo.get_host_by_id(host_id)
+        
+        if not host:
+            return {"success": False, "message": "Host not found"}
+        
+        # Toggle status
+        if getattr(host, "enabled", True):
+            if hasattr(state.host_repo, "disable_host"):
+                state.host_repo.disable_host(host.hostname)
+            return {"success": True, "message": f"Host '{host.hostname}' disabled", "enabled": False}
+        else:
+            if hasattr(state.host_repo, "enable_host"):
+                state.host_repo.enable_host(host.hostname)
+            return {"success": True, "message": f"Host '{host.hostname}' enabled", "enabled": True}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 
 # =============================================================================
@@ -1981,8 +2115,8 @@ async def prune_logs_preview(
 async def get_prune_candidates(
     request: Request,
     days: int = 90,
-    page: int = 1,
-    pageSize: int = 50,
+    page: int = Query(0, ge=0, description="Page number (0-indexed)"),
+    pageSize: int = Query(50, ge=10, le=200, description="Page size"),
     sortColumn: Optional[str] = None,
     sortDirection: str = "asc",
     state: Any = Depends(get_api_state),
@@ -2260,8 +2394,8 @@ async def cleanup_staging_preview(
 async def get_cleanup_candidates(
     request: Request,
     days: int = 7,
-    page: int = 1,
-    pageSize: int = 50,
+    page: int = Query(0, ge=0, description="Page number (0-indexed)"),
+    pageSize: int = Query(50, ge=10, le=200, description="Page size"),
     sortColumn: Optional[str] = None,
     sortDirection: str = "asc",
     state: Any = Depends(get_api_state),
@@ -2545,8 +2679,8 @@ async def api_orphan_candidates(
     request: Request,
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
-    pageIndex: int = 0,
-    pageSize: int = 50,
+    page: int = Query(0, ge=0, description="Page number (0-indexed)"),
+    pageSize: int = Query(50, ge=10, le=200, description="Page size"),
     sortColumn: str | None = None,
     sortDirection: str | None = None,
 ) -> dict[str, Any]:
@@ -2666,7 +2800,7 @@ async def api_orphan_candidates(
         )
     
     # Apply pagination
-    start = pageIndex * pageSize
+    start = page * pageSize
     end = start + pageSize
     page_orphans = all_orphans[start:end]
 

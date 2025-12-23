@@ -343,10 +343,13 @@ class LazyTable {
             </button>
         ` : '';
         
+        // Add tooltip to label if provided
+        const labelTitle = col.tooltip ? ` title="${col.tooltip}"` : '';
+        
         // Order: filter icon, label, sort icons - no gaps
         return `
             <div class="th-content">
-                ${filterIcon}<span class="th-label">${col.label != null ? col.label : col.key}</span>${sortIcon}
+                ${filterIcon}<span class="th-label"${labelTitle}>${col.label != null ? col.label : col.key}</span>${sortIcon}
             </div>
         `;
     }

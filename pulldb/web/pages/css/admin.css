@@ -747,18 +747,40 @@
     font-size: var(--text-xl);
 }
 
-.user-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: var(--radius-full);
-    background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+.user-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.user-icon-sm {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, var(--primary-100), var(--primary-200));
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: var(--font-semibold);
-    font-size: var(--text-xs);
-    color: white;
     flex-shrink: 0;
+}
+
+.user-icon-sm svg {
+    width: 18px;
+    height: 18px;
+    color: var(--primary-600);
+}
+
+.user-icon-sm.disabled {
+    background: var(--gray-100);
+}
+
+.user-icon-sm.disabled svg {
+    color: var(--gray-400);
+}
+
+.user-name {
+    font-weight: var(--font-medium);
+    color: var(--color-text-primary);
 }
 
 .user-link {
@@ -789,6 +811,288 @@
 /* ===========================================
    HOST MANAGEMENT
    =========================================== */
+
+/* Hosts Page Layout */
+.hosts-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--space-6);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+.hosts-page .card {
+    height: calc(100vh - 280px);
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+}
+
+.hosts-page .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+
+.hosts-page .card-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.hosts-page .card-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.hosts-page #hosts-table-container {
+    flex: 1;
+    min-height: 0;
+}
+
+/* Status Bar (shared by hosts, users) */
+.status-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--gray-200);
+}
+
+[data-theme="dark"] .status-bar {
+    background: var(--gray-800);
+    border-color: var(--gray-700);
+}
+
+.status-item {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--gray-500);
+    font-size: 0.8125rem;
+}
+
+.status-item svg {
+    width: 14px;
+    height: 14px;
+}
+
+.status-count {
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+.status-enabled {
+    color: var(--success-600);
+}
+
+.status-disabled {
+    color: var(--gray-400);
+}
+
+.status-active {
+    color: var(--primary-600);
+}
+
+.status-divider {
+    width: 1px;
+    height: 16px;
+    background: var(--gray-300);
+}
+
+[data-theme="dark"] .status-divider {
+    background: var(--gray-600);
+}
+
+/* Status bar tooltips - positioned below */
+.status-item[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    white-space: nowrap;
+    color: white;
+    background: var(--gray-800);
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.15s ease;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.status-item[data-tooltip]::before {
+    content: '';
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-bottom-color: var(--gray-800);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.15s ease;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.status-item[data-tooltip]:hover::after,
+.status-item[data-tooltip]:hover::before {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Status Badge (shared) */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-badge svg {
+    width: 12px;
+    height: 12px;
+}
+
+.status-badge.enabled {
+    background: var(--success-100);
+    color: var(--success-700);
+}
+
+.status-badge.disabled {
+    background: var(--gray-100);
+    color: var(--gray-600);
+}
+
+[data-theme="dark"] .status-badge.enabled {
+    background: var(--success-900);
+    color: var(--success-300);
+}
+
+[data-theme="dark"] .status-badge.disabled {
+    background: var(--gray-700);
+    color: var(--gray-400);
+}
+
+.status-badge.clickable {
+    position: relative;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s ease;
+}
+
+.status-badge.clickable:hover {
+    transform: scale(1.05);
+}
+
+.status-badge.enabled.clickable:hover {
+    background: var(--success-200);
+}
+
+.status-badge.disabled.clickable:hover {
+    background: var(--gray-200);
+}
+
+[data-theme="dark"] .status-badge.enabled.clickable:hover {
+    background: var(--success-800);
+}
+
+[data-theme="dark"] .status-badge.disabled.clickable:hover {
+    background: var(--gray-600);
+}
+
+/* Status badge tooltips */
+.status-badge.clickable[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    white-space: nowrap;
+    color: white;
+    background: var(--gray-800);
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.15s ease;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.status-badge.clickable[data-tooltip]::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: var(--gray-800);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.15s ease;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.status-badge.clickable[data-tooltip]:hover::after,
+.status-badge.clickable[data-tooltip]:hover::before {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Job Count (shared) */
+.job-count {
+    font-family: var(--font-mono);
+    font-weight: 500;
+}
+
+/* Icon Button (card header) */
+.btn-icon {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-md);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.btn-icon-primary {
+    background: var(--primary-500);
+    color: white;
+}
+
+.btn-icon-primary:hover {
+    background: var(--primary-600);
+    transform: scale(1.05);
+}
 
 .host-access-list {
     display: flex;
@@ -1315,6 +1619,14 @@
 }
 
 [data-theme="dark"] .host-icon-sm svg {
+    color: var(--primary-300);
+}
+
+[data-theme="dark"] .user-icon-sm {
+    background: linear-gradient(135deg, var(--primary-800), var(--primary-700));
+}
+
+[data-theme="dark"] .user-icon-sm svg {
     color: var(--primary-300);
 }
 

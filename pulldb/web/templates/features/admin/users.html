@@ -209,10 +209,13 @@
         return opts;
     }
     
+    // User icon SVG for blocked icon display (matches host icon style)
+    const userIconSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+    
     // Column renderers
     const renderUsername = (val, row) => {
-        const initial = val ? val[0].toUpperCase() : '?';
-        return `<span class="user-avatar">${initial}</span><span class="cell-primary">${val}</span>`;
+        const disabledClass = row.disabled ? ' disabled' : '';
+        return `<span class="user-cell"><div class="user-icon-sm${disabledClass}">${userIconSvg}</div><span class="user-name">${val || '-'}</span></span>`;
     };
     
     const renderUserCode = (val) => `<code class="cell-code">${val}</code>`;

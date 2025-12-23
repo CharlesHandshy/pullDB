@@ -700,6 +700,19 @@ tbody tr:hover {
 }
 ```
 
+#### Table Cell Standards
+
+**Username columns** in `lazy_table` components display text only—no avatar or monogram elements. This keeps tables scannable and information-dense.
+
+```javascript
+// Standard: username columns use text only
+const renderUsername = (val, row) => {
+    return `<span class="cell-primary">${val || '-'}</span>`;
+};
+```
+
+> **Rationale:** Avatars/monograms add visual noise without providing actionable information in data tables. Reserve avatars for profile areas (sidebar, user cards) where identity emphasis is appropriate.
+
 ### Forms
 
 #### Form Group

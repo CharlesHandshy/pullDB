@@ -1,0 +1,358 @@
+/* =================================================================
+   pullDB Admin Hosts Page Styles
+   HCA Layer: pages (Layer 4)
+   
+   Purpose: Page-specific styles for hosts management page.
+   Depends: admin.css (shared admin styles), lazy_table.css
+   ================================================================= */
+
+/* ===========================================
+   HOST CELL (Table cell with icon + name)
+   =========================================== */
+
+/* Host cell tooltip */
+.host-cell[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    white-space: nowrap;
+    color: white;
+    background: var(--gray-800);
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.15s ease;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.host-cell[data-tooltip]::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: var(--gray-800);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.15s ease;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.host-cell[data-tooltip]:hover::after,
+.host-cell[data-tooltip]:hover::before {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ===========================================
+   PROVISIONING STATUS (Add Host Modal)
+   =========================================== */
+
+.provision-status {
+    margin-top: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--gray-200);
+}
+
+[data-theme="dark"] .provision-status {
+    border-color: var(--gray-700);
+}
+
+.provision-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-height: 180px;
+    overflow-y: auto;
+    padding: var(--space-2);
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+}
+
+[data-theme="dark"] .provision-steps {
+    background: var(--gray-800);
+    border-color: var(--gray-700);
+}
+
+.provision-step {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+}
+
+[data-theme="dark"] .provision-step {
+    background: var(--gray-800);
+}
+
+.provision-step.pending {
+    color: var(--gray-500);
+}
+
+.provision-step.running {
+    background: var(--blue-50);
+    color: var(--blue-700);
+}
+
+[data-theme="dark"] .provision-step.running {
+    background: var(--blue-900);
+    color: var(--blue-300);
+}
+
+.provision-step.success {
+    background: var(--success-50);
+    color: var(--success-700);
+}
+
+[data-theme="dark"] .provision-step.success {
+    background: var(--success-900);
+    color: var(--success-300);
+}
+
+.provision-step.error {
+    background: var(--danger-50);
+    color: var(--danger-700);
+}
+
+[data-theme="dark"] .provision-step.error {
+    background: var(--danger-900);
+    color: var(--danger-300);
+}
+
+.provision-step-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.provision-step-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.provision-step.running .provision-step-icon svg {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.provision-step-text {
+    flex: 1;
+}
+
+.provision-step-details {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+}
+
+.provision-message {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+}
+
+.provision-message.success {
+    background: var(--success-50);
+    color: var(--success-700);
+    border: 1px solid var(--success-200);
+}
+
+[data-theme="dark"] .provision-message.success {
+    background: var(--success-900);
+    color: var(--success-300);
+    border-color: var(--success-700);
+}
+
+.provision-message.error {
+    background: var(--danger-50);
+    color: var(--danger-700);
+    border: 1px solid var(--danger-200);
+}
+
+[data-theme="dark"] .provision-message.error {
+    background: var(--danger-900);
+    color: var(--danger-300);
+    border-color: var(--danger-700);
+}
+
+/* ===========================================
+   INPUT STATUS (Alias check indicator)
+   =========================================== */
+
+.input-with-status {
+    position: relative;
+}
+
+.input-status {
+    position: absolute;
+    right: var(--space-3);
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.input-status.status-new {
+    color: var(--success-600);
+}
+
+.input-status.status-existing {
+    color: var(--blue-600);
+}
+
+.input-status.status-credentials {
+    color: var(--amber-600);
+}
+
+/* ===========================================
+   FORM SECTION (Add Host Modal)
+   =========================================== */
+
+.form-section {
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--gray-100);
+}
+
+[data-theme="dark"] .form-section {
+    border-color: var(--gray-700);
+}
+
+.form-section:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.form-section-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--gray-700);
+    margin-bottom: var(--space-3);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+[data-theme="dark"] .form-section-title {
+    color: var(--gray-300);
+}
+
+.form-section-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--gray-500);
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.form-section-hint svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Form Row Variants */
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+}
+
+.form-group-wide {
+    flex: 2;
+}
+
+.form-group-narrow {
+    flex: 1;
+    max-width: 120px;
+}
+
+.form-row-small {
+    grid-template-columns: 1fr 1fr;
+    max-width: 280px;
+}
+
+/* ===========================================
+   BUTTON LOADING STATE
+   =========================================== */
+
+.btn.loading {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.btn.loading svg {
+    animation: spin 1s linear infinite;
+}
+
+/* ===========================================
+   RESPONSIVE MODAL
+   =========================================== */
+
+@media (max-width: 640px) {
+    .modal-content-wide {
+        max-width: 95vw;
+        margin: var(--space-3);
+    }
+    
+    .modal-body {
+        padding: var(--space-4);
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: var(--space-3);
+    }
+    
+    .form-row-small {
+        grid-template-columns: 1fr 1fr;
+        max-width: none;
+    }
+    
+    .form-group-narrow {
+        max-width: none;
+    }
+    
+    .modal-footer {
+        padding: var(--space-4);
+    }
+}
+
+@media (max-width: 480px) {
+    .modal-content {
+        max-height: 100vh;
+        border-radius: 0;
+        margin: 0;
+    }
+    
+    .modal-content-wide {
+        max-width: 100vw;
+        margin: 0;
+    }
+    
+    .form-row-small {
+        grid-template-columns: 1fr 1fr;
+    }
+}
