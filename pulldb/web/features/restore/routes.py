@@ -16,6 +16,7 @@ from pulldb.domain.services.discovery import DiscoveryService
 from pulldb.web.dependencies import get_api_state, require_login, templates
 from pulldb.infra.s3 import S3Client, BACKUP_FILENAME_REGEX
 from pulldb.infra.factory import is_simulation_mode
+from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
 router = APIRouter(prefix="/web/restore", tags=["web-restore"])
 
@@ -94,10 +95,7 @@ async def restore_page(
         "features/restore/restore.html",
         {
             "request": request,
-            "breadcrumbs": [
-                {"label": "Dashboard", "url": "/web/dashboard"},
-                {"label": "New Restore Job", "url": None},
-            ],
+            "breadcrumbs": get_breadcrumbs("restore"),
             "allowed_hosts": allowed_hosts,
             "default_host": default_host,
             "user": user,

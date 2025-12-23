@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pulldb.domain.models import JobStatus, User, UserRole
 from pulldb.web.dependencies import get_api_state, require_login, templates
+from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
 
 router = APIRouter(prefix="/web/jobs", tags=["web-jobs"])
@@ -94,10 +95,7 @@ async def jobs_page(
         "features/jobs/jobs.html",
         {
             "request": request,
-            "breadcrumbs": [
-                {"label": "Dashboard", "url": "/web/dashboard"},
-                {"label": "Jobs", "url": None},
-            ],
+            "breadcrumbs": get_breadcrumbs("my_jobs"),
             "jobs": jobs,
             "user": user,
             "active_nav": "jobs",
@@ -196,11 +194,7 @@ async def job_details(
         "features/jobs/details.html",
         {
             "request": request,
-            "breadcrumbs": [
-                {"label": "Dashboard", "url": "/web/dashboard"},
-                {"label": "Jobs", "url": "/web/jobs"},
-                {"label": job_id[:8], "url": None},
-            ],
+            "breadcrumbs": get_breadcrumbs("job_detail", job=job_id[:8]),
             "job": job,
             "logs": logs,
             "profile": profile,

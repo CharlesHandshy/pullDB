@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 
 from pulldb.domain.models import User
 from pulldb.web.dependencies import get_api_state, require_admin, templates
+from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
 router = APIRouter(prefix="/web/admin/audit", tags=["web-admin-audit"])
 
@@ -70,6 +71,7 @@ async def audit_page(
             "filter_actor_id": actor_id,
             "filter_target_id": target_id,
             "total_count": total_count,
+            "breadcrumbs": get_breadcrumbs("audit_logs"),
         },
     )
 

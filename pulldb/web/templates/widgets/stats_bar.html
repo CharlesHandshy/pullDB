@@ -1,0 +1,39 @@
+{# =================================================================
+   Stats Bar Widget - Compact horizontal stat display
+   HCA Layer: widgets (Layer 3)
+   
+   Purpose: Unified stats bar for dashboard pages showing key metrics
+            in a compact, scannable format with icons.
+   
+   Usage:
+     {% from 'widgets/stats_bar.html' import stats_bar, stat_item %}
+     
+     {% call stats_bar() %}
+       {{ stat_item('users-group', 'Users', [(3, 'Ena', 'primary'), (0, 'Dis', 'gray')], 'primary') }}
+       {{ stat_item('server', 'Hosts', [(4, 'Ena', 'success'), (1, 'Dis', 'gray')], 'success') }}
+       {{ stat_item('jobs', 'Jobs', [(0, 'Q', 'warning'), (5, 'R', 'primary'), (10, 'C', 'success'), (2, 'F', 'danger')], 'gray') }}
+       {{ stat_item('lightning', 'My Active', [(5, '', 'primary')], 'primary') }}
+     {% endcall %}
+   ================================================================= #}
+
+{% from 'partials/icons/_index.html' import icon %}
+
+{# Stats bar container - wraps all stat items #}
+{% macro stats_bar(class='') %}
+<div class="stats-bar {{ class }}">
+    {{ caller() }}
+</div>
+{% endmacro %}
+
+{# Individual stat item with icon and list of (value, suffix, color) tuples #}
+{% macro stat_item(icon_name, label, values, icon_color='gray') %}
+<div class="stats-bar__item">
+    <span class="stats-bar__icon text-{{ icon_color }}-600">{{ icon(icon_name, size='16') }}</span>
+    <span class="stats-bar__label">{{ label }}</span>
+    <div class="stats-bar__values">
+        {%- for val, suffix, color in values -%}
+        <span class="stats-bar__value text-{{ color }}-600">{{ val }}{% if suffix %}<span class="stats-bar__suffix">{{ suffix }}</span>{% endif %}</span>
+        {%- endfor -%}
+    </div>
+</div>
+{% endmacro %}

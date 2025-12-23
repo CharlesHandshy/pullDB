@@ -1,12 +1,10 @@
 {# User Dashboard - Personal productivity focus #}
+{% from 'widgets/stats_bar.html' import stats_bar, stat_item %}
 
-<!-- My Stats - Compact badges -->
-<div class="dashboard-stats-row items-center">
-    <div class="dashboard-stat-card inline-flex items-center gap-3 compact">
-        <span class="dashboard-stat-label m-0">My Active Jobs</span>
-        <span class="dashboard-stat-value lg text-primary-600">{{ my_active_count }}</span>
-    </div>
-</div>
+<!-- My Stats -->
+{% call stats_bar() %}
+    {{ stat_item('lightning', 'My Active Jobs', [(my_active_count, '', 'primary')], 'primary') }}
+{% endcall %}
 
 <!-- My Last Job -->
 <div class="card card-padding mt-6">

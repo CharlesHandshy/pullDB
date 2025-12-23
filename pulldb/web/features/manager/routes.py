@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pulldb.domain.models import JobStatus, User
 from pulldb.web.dependencies import get_api_state, require_manager_or_above, templates
+from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
 router = APIRouter(prefix="/web/manager", tags=["web-manager"])
 
@@ -66,10 +67,7 @@ async def manager_page(
         {
             "request": request,
             "active_nav": "manager",
-            "breadcrumbs": [
-                {"label": "Dashboard", "url": "/web/dashboard"},
-                {"label": "Manager", "url": None},
-            ],
+            "breadcrumbs": get_breadcrumbs("manager"),
             "user": user,
             "managed_users": managed_users,
             "user_active_jobs": user_active_jobs,

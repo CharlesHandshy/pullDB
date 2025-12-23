@@ -1,0 +1,44 @@
+/**
+ * pullDB CSS Manifest
+ * ===================
+ * Single entry point for all HCA-layered CSS.
+ * Import order follows HCA hierarchy: shared → entities → features → widgets
+ * 
+ * Usage: <link rel="stylesheet" href="/static/css/shared/manifest.css">
+ * 
+ * Note: Page-specific CSS (Layer 4) loaded via {% block extra_css %}
+ */
+
+/* ============================================
+   Layer 0: Shared (Infrastructure)
+   ============================================ */
+@import url("fonts.css");
+@import url("design-tokens.css");
+@import url("reset.css");
+@import url("utilities.css");
+@import url("layout.css");
+
+/* ============================================
+   Layer 1: Entities (Data Models)
+   ============================================ */
+@import url("../entities/badge.css");
+@import url("../entities/avatar.css");
+@import url("../entities/card.css");
+
+/* ============================================
+   Layer 2: Features (Business Logic)
+   ============================================ */
+@import url("../features/buttons.css");
+@import url("../features/forms.css");
+@import url("../features/tables.css");
+@import url("../features/modals.css");
+@import url("../features/alerts.css");
+@import url("../features/status.css");
+@import url("../features/dashboard.css");
+@import url("../features/search.css");
+
+/* ============================================
+   Layer 3: Widgets (Orchestration)
+   ============================================ */
+@import url("../widgets/sidebar.css");
+@import url("../widgets/stats-bar.css");

@@ -33,31 +33,8 @@
 {% extends "shared/layouts/base.html" %}
 
 {% block layout_styles %}
-<!-- HCA Shared Layer (Layer 0) -->
-<link rel="stylesheet" href="/static/css/shared/design-tokens.css">
-<link rel="stylesheet" href="/static/css/shared/reset.css">
-<link rel="stylesheet" href="/static/css/shared/utilities.css">
-<link rel="stylesheet" href="/static/css/shared/layout.css">
-
-<!-- HCA Entities Layer (Layer 1) -->
-<link rel="stylesheet" href="/static/css/entities/badge.css">
-<link rel="stylesheet" href="/static/css/entities/avatar.css">
-<link rel="stylesheet" href="/static/css/entities/card.css">
-
-<!-- HCA Features Layer (Layer 2) -->
-<link rel="stylesheet" href="/static/css/features/buttons.css">
-<link rel="stylesheet" href="/static/css/features/forms.css">
-<link rel="stylesheet" href="/static/css/features/tables.css">
-<link rel="stylesheet" href="/static/css/features/modals.css">
-<link rel="stylesheet" href="/static/css/features/alerts.css">
-<link rel="stylesheet" href="/static/css/features/status.css">
-<link rel="stylesheet" href="/static/css/features/dashboard.css">
-<link rel="stylesheet" href="/static/css/features/search.css">
-
-<!-- HCA Widgets Layer (Layer 3) -->
-<link rel="stylesheet" href="/static/css/widgets/sidebar.css">
-
-<!-- HCA Pages Layer (Layer 4) - loaded per-page via extra_css block -->
+<!-- HCA CSS Manifest (Layers 0-3) -->
+<link rel="stylesheet" href="/static/css/shared/manifest.css">
 
 <!-- Dynamic theme -->
 <link rel="stylesheet" href="/web/admin/api/theme.css">

@@ -417,7 +417,8 @@ class LazyTable {
 
     calculateViewport() {
         const containerHeight = this.elements.bodyContainer.clientHeight;
-        this.visibleRowCount = Math.ceil(containerHeight / this.rowHeight);
+        // Guard against zero height (container not yet laid out in DOM)
+        this.visibleRowCount = Math.max(1, Math.ceil(containerHeight / this.rowHeight));
         this.pageSize = Math.max(50, this.visibleRowCount * this.bufferMultiplier);
     }
 

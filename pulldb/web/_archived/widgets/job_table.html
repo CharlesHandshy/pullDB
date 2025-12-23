@@ -12,10 +12,11 @@
     
     Size: ~60 lines (HCA compliant)
 #}
+{% from "partials/icons/_index.html" import icon %}
 <div class="card">
     <div class="card-header">
         <h3 class="card-title">
-            {% include "shared/ui/icons/jobs.svg" %}
+            {{ icon('jobs', size='20') }}
             {{ table_title|default('Jobs') }}
         </h3>
         <span class="results-count" id="results-count">{{ jobs|length }} jobs</span>

@@ -4,6 +4,10 @@
 
 {% block page_id %}admin-host-detail{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/pages/admin.css') }}">
+{% endblock %}
+
 {% block header_title %}{{ host.host_alias or host.hostname }}{% endblock %}
 {% block header_subtitle %}Database Host Configuration{% endblock %}
 

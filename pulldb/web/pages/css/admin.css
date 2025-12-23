@@ -731,8 +731,9 @@
 }
 
 .users-page .card {
-    flex: 1;
-    min-height: 0;
+    /* Explicit height for LazyTable virtual scrolling */
+    height: calc(100vh - 280px);
+    min-height: 400px;
     display: flex;
     flex-direction: column;
 }

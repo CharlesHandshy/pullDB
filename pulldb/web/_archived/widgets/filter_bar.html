@@ -12,6 +12,7 @@
     
     Size: ~80 lines (HCA compliant)
 #}
+{% from "partials/icons/_index.html" import icon %}
 <div class="card filters-card">
     <div class="filters-row">
         {# Status Filter #}
@@ -70,7 +71,7 @@
         
         {# Clear Button #}
         <button type="button" class="btn btn-ghost" onclick="clearFilters()">
-            {% include "shared/ui/icons/x.svg" %}
+            {{ icon('close', size='16') }}
             Clear
         </button>
     </div>

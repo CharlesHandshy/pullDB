@@ -11,6 +11,7 @@
     
     Size: ~100 lines (HCA compliant)
 #}
+{% from "partials/icons/_index.html" import icon %}
 {% if user %}
 <aside class="sidebar" id="sidebar">
     <div class="sidebar-inner">
@@ -19,45 +20,48 @@
             <div class="nav-section">
                 <div class="nav-section-title">Main</div>
                 <a href="/web/dashboard" class="nav-link {% if request.url.path == '/web/dashboard' %}active{% endif %}" title="Dashboard">
-                    {% include "shared/ui/icons/dashboard.svg" %}
+                    {{ icon('dashboard', size='20') }}
                     <span class="nav-label">Dashboard</span>
                 </a>
                 <a href="/web/restore" class="nav-link {% if request.url.path == '/web/restore' %}active{% endif %}" title="New Restore">
-                    {% include "shared/ui/icons/restore.svg" %}
+                    {{ icon('restore', size='20') }}
                     <span class="nav-label">New Restore</span>
                 </a>
-                <a href="/web/search" class="nav-link {% if request.url.path == '/web/search' %}active{% endif %}" title="Search Backups">
-                    {% include "shared/ui/icons/search.svg" %}
-                    <span class="nav-label">Search Backups</span>
+            </div>
+            
+            {# Manager Navigation (conditional - managers only, not admins) #}
+            {% if user.is_manager_or_above and not user.is_admin %}
+            <div class="nav-section">
+                <div class="nav-section-title">Management</div>
+                <a href="/web/manager" class="nav-link {% if request.url.path == '/web/manager' %}active{% endif %}" title="My Team">
+                    {{ icon('users', size='20') }}
+                    <span class="nav-label">My Team</span>
                 </a>
             </div>
+            {% endif %}
             
             {# Admin Navigation (conditional) #}
             {% if user.is_admin %}
             <div class="nav-section">
                 <div class="nav-section-title">Administration</div>
-                <a href="/web/admin/jobs" class="nav-link {% if request.url.path == '/web/admin/jobs' %}active{% endif %}" title="All Jobs">
-                    {% include "shared/ui/icons/jobs.svg" %}
+                <a href="/web/jobs" class="nav-link {% if request.url.path == '/web/jobs' %}active{% endif %}" title="All Jobs">
+                    {{ icon('jobs', size='20') }}
                     <span class="nav-label">All Jobs</span>
                 </a>
                 <a href="/web/admin/users" class="nav-link {% if '/web/admin/users' in request.url.path %}active{% endif %}" title="Users">
-                    {% include "shared/ui/icons/users.svg" %}
+                    {{ icon('users', size='20') }}
                     <span class="nav-label">Users</span>
                 </a>
                 <a href="/web/admin/hosts" class="nav-link {% if request.url.path == '/web/admin/hosts' %}active{% endif %}" title="Hosts">
-                    {% include "shared/ui/icons/hosts.svg" %}
+                    {{ icon('hosts', size='20') }}
                     <span class="nav-label">Hosts</span>
                 </a>
                 <a href="/web/admin/settings" class="nav-link {% if request.url.path == '/web/admin/settings' %}active{% endif %}" title="Settings">
-                    {% include "shared/ui/icons/settings.svg" %}
+                    {{ icon('settings', size='20') }}
                     <span class="nav-label">Settings</span>
                 </a>
-                <a href="/web/admin/logo" class="nav-link {% if request.url.path == '/web/admin/logo' %}active{% endif %}" title="Logo">
-                    {% include "shared/ui/icons/image.svg" %}
-                    <span class="nav-label">Logo</span>
-                </a>
-                <a href="/web/admin/cleanup" class="nav-link {% if request.url.path == '/web/admin/cleanup' %}active{% endif %}" title="Cleanup">
-                    {% include "shared/ui/icons/trash.svg" %}
+                <a href="/web/admin/cleanup-staging/preview" class="nav-link {% if request.url.path == '/web/admin/cleanup-staging/preview' %}active{% endif %}" title="Cleanup">
+                    {{ icon('trash', size='20') }}
                     <span class="nav-label">Cleanup</span>
                 </a>
             </div>

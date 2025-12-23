@@ -48,7 +48,11 @@ BREADCRUMB_PATHS: dict[str, list[tuple[str, str | None]]] = {
     "audit": [("Dashboard", "/web/dashboard"), ("Audit Logs", None)],
 
     # Job detail
-    "job_detail": [("Dashboard", "/web/dashboard"), ("Job", None)],
+    "job_detail": [
+        ("Dashboard", "/web/dashboard"),
+        ("Jobs", "/web/jobs"),
+        ("Job", None),  # Replace with job_id[:8] via get_breadcrumbs(..., job="abc123")
+    ],
 
     # Team Management section
     "manager": [("Dashboard", "/web/dashboard"), ("Team Management", None)],
@@ -105,12 +109,49 @@ BREADCRUMB_PATHS: dict[str, list[tuple[str, str | None]]] = {
     "admin_cleanup": [
         ("Dashboard", "/web/dashboard"),
         ("Administration", "/web/admin"),
-        ("Cleanup", None),
+        ("Cleanup Staging", None),
     ],
     "admin_maintenance": [
         ("Dashboard", "/web/dashboard"),
         ("Administration", "/web/admin"),
         ("Maintenance", None),
+    ],
+    "admin_styleguide": [
+        ("Dashboard", "/web/dashboard"),
+        ("Administration", "/web/admin"),
+        ("Style Guide", None),
+    ],
+    "admin_prune": [
+        ("Dashboard", "/web/dashboard"),
+        ("Administration", "/web/admin"),
+        ("Prune Logs", None),
+    ],
+    "admin_orphans": [
+        ("Dashboard", "/web/dashboard"),
+        ("Administration", "/web/admin"),
+        ("Orphan Databases", None),
+    ],
+    "admin_host_detail": [
+        ("Dashboard", "/web/dashboard"),
+        ("Administration", "/web/admin"),
+        ("Hosts", "/web/admin/hosts"),
+        ("Host", None),  # Replace with hostname via get_breadcrumbs(..., host="hostname")
+    ],
+    # Audit section
+    "audit_logs": [
+        ("Dashboard", "/web/dashboard"),
+        ("Administration", "/web/admin"),
+        ("Audit Logs", None),
+    ],
+    # Profile section
+    "profile": [
+        ("Dashboard", "/web/dashboard"),
+        ("Profile", None),
+    ],
+    "change_password": [
+        ("Dashboard", "/web/dashboard"),
+        ("Profile", "/web/auth/profile"),
+        ("Change Password", None),
     ],
 }
 

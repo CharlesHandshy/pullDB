@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 
 from pulldb.domain.models import User, UserRole, JobStatus
 from pulldb.web.dependencies import get_api_state, require_login, templates
+from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
 router = APIRouter(prefix="/web/dashboard", tags=["web-dashboard"])
 
@@ -231,9 +232,7 @@ async def dashboard(
         "features/dashboard/dashboard.html",
         {
             "request": request,
-            "breadcrumbs": [
-                {"label": "Dashboard", "url": None},
-            ],
+            "breadcrumbs": get_breadcrumbs("dashboard"),
             "user": user,
             "active_nav": "dashboard",
             **context,

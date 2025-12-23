@@ -1,0 +1,71 @@
+/**
+ * Self-hosted Fonts
+ * =================
+ * Inter: Primary UI font (300-700 weights)
+ * JetBrains Mono: Code/monospace font (400-500 weights)
+ * 
+ * Font files located in: /static/fonts/
+ */
+
+/* Inter - Light (300) */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 300;
+    font-display: swap;
+    src: url('/static/fonts/inter-v20-latin-300.woff2') format('woff2');
+}
+
+/* Inter - Regular (400) */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/static/fonts/inter-v20-latin-regular.woff2') format('woff2');
+}
+
+/* Inter - Medium (500) */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/static/fonts/inter-v20-latin-500.woff2') format('woff2');
+}
+
+/* Inter - SemiBold (600) */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/static/fonts/inter-v20-latin-600.woff2') format('woff2');
+}
+
+/* Inter - Bold (700) */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/static/fonts/inter-v20-latin-700.woff2') format('woff2');
+}
+
+/* JetBrains Mono - Regular (400) */
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/static/fonts/jetbrains-mono-v24-latin-regular.woff2') format('woff2');
+}
+
+/* JetBrains Mono - Medium (500) */
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/static/fonts/jetbrains-mono-v24-latin-500.woff2') format('woff2');
+}

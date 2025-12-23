@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pulldb.domain.models import User
 from pulldb.web.dependencies import get_api_state, get_session_user, templates
+from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
 router = APIRouter(prefix="/web", tags=["web-auth"])
 
@@ -225,11 +226,6 @@ async def profile_page(
     if not user:
         return RedirectResponse(url="/web/login", status_code=303)
 
-    breadcrumbs = [
-        {"label": "Dashboard", "url": "/web/dashboard"},
-        {"label": "Profile", "url": None},
-    ]
-
     # Get manager username if user has a manager
     manager_username = None
     if user.manager_id and hasattr(state, "user_repo") and state.user_repo:
@@ -246,7 +242,7 @@ async def profile_page(
             "request": request,
             "user": user,
             "active_nav": "profile",
-            "breadcrumbs": breadcrumbs,
+            "breadcrumbs": get_breadcrumbs("profile"),
             "manager_username": manager_username,
             "member_since": member_since,
         },

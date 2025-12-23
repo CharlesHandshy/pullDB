@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pulldb.domain.models import JobStatus, User
 from pulldb.web.dependencies import get_api_state, require_admin, templates
+from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
 router = APIRouter(prefix="/web/admin", tags=["web-admin"])
 
@@ -23,6 +24,7 @@ async def styleguide_page(
             "request": request,
             "active_nav": "admin",
             "user": user,
+            "breadcrumbs": get_breadcrumbs("admin_styleguide"),
         },
     )
 
@@ -84,6 +86,7 @@ async def admin_page(
             "user": user,
             "flash_message": flash_message,
             "flash_type": flash_type,
+            "breadcrumbs": get_breadcrumbs("admin"),
         },
     )
 
@@ -157,6 +160,7 @@ async def list_users(
             "user": user,
             "stats": stats,
             "managers": managers,
+            "breadcrumbs": get_breadcrumbs("admin_users"),
         },
     )
 
@@ -694,6 +698,7 @@ async def list_hosts(
             "flash_message": flash_message,
             "flash_type": flash_type,
             "aws_create_secret_url": get_secrets_manager_create_url(),
+            "breadcrumbs": get_breadcrumbs("admin_hosts"),
         },
     )
 
@@ -871,6 +876,7 @@ async def host_detail(
             "flash_message": flash_message,
             "flash_type": flash_type,
             "aws_create_secret_url": get_secrets_manager_create_url(),
+            "breadcrumbs": get_breadcrumbs("admin_host_detail", host=enriched_host.get("hostname", "Host")),
         },
     )
 
@@ -1691,6 +1697,7 @@ async def list_settings(
             "settings": settings_list,  # Flat list for search
             "audit_logs": audit_logs,
             "user": user,
+            "breadcrumbs": get_breadcrumbs("admin_settings"),
         },
     )
 
@@ -1907,11 +1914,7 @@ async def prune_logs_preview(
             "active_nav": "admin",
             "user": user,
             "days": days,
-            "breadcrumbs": [
-                {"label": "Dashboard", "url": "/web/dashboard"},
-                {"label": "Admin", "url": "/web/admin/"},
-                {"label": "Prune Logs", "url": None},
-            ],
+            "breadcrumbs": get_breadcrumbs("admin_prune"),
         },
     )
 
@@ -2147,11 +2150,7 @@ async def cleanup_staging_preview(
             "days": days,
             "flash_message": flash_message,
             "flash_type": flash_type,
-            "breadcrumbs": [
-                {"label": "Dashboard", "url": "/web/dashboard"},
-                {"label": "Admin", "url": "/web/admin/"},
-                {"label": "Cleanup Staging", "url": None},
-            ],
+            "breadcrumbs": get_breadcrumbs("admin_cleanup"),
         },
     )
 
@@ -2392,6 +2391,7 @@ async def orphan_preview_page(
             "user": user,
             "flash_message": flash_message,
             "flash_type": flash_type,
+            "breadcrumbs": get_breadcrumbs("admin_orphans"),
         },
     )
 

@@ -3,6 +3,7 @@
 {% block title %}Users - Admin - pullDB{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/pages/admin.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
 {% endblock %}
 
@@ -52,7 +53,7 @@
     </div>
 
     <!-- LazyTable Container -->
-    <div class="card">
+    <div class="card" style="height: calc(100vh - 280px); min-height: 400px;">
         <div id="users-table-container"></div>
     </div>
 </div>
