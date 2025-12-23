@@ -73,28 +73,22 @@
                     <thead>
                         <tr>
                             <th class="sortable" data-sort="alias" onclick="sortTable('alias')">
-                                Host
-                                <svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg>
+                                <span class="th-content"><span class="th-label">Host</span><span class="sort-btn"><svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg></span></span>
                             </th>
                             <th class="sortable col-status" data-sort="status" onclick="sortTable('status')">
-                                Status
-                                <svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg>
+                                <span class="th-content"><span class="th-label">Status</span><span class="sort-btn"><svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg></span></span>
                             </th>
                             <th class="sortable col-count" data-sort="running" onclick="sortTable('running')">
-                                Run
-                                <svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg>
+                                <span class="th-content"><span class="th-label">Run</span><span class="sort-btn"><svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg></span></span>
                             </th>
                             <th class="sortable col-count" data-sort="active" onclick="sortTable('active')">
-                                Act
-                                <svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg>
+                                <span class="th-content"><span class="th-label">Act</span><span class="sort-btn"><svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg></span></span>
                             </th>
                             <th class="sortable col-count" data-sort="total" onclick="sortTable('total')">
-                                Tot
-                                <svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg>
+                                <span class="th-content"><span class="th-label">Tot</span><span class="sort-btn"><svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg></span></span>
                             </th>
                             <th class="sortable col-date" data-sort="created" onclick="sortTable('created')">
-                                Added
-                                <svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg>
+                                <span class="th-content"><span class="th-label">Added</span><span class="sort-btn"><svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg></span></span>
                             </th>
                         </tr>
                     </thead>
@@ -456,11 +450,29 @@
     color: var(--primary-600);
 }
 
+/* Table header content - title+sort inline, no spacing */
+.th-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    white-space: nowrap;
+}
+
+.th-label {
+    /* Title at natural width */
+}
+
+.sort-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+}
+
 .sort-icon {
     width: 14px;
     height: 14px;
-    vertical-align: middle;
-    margin-left: var(--space-1);
     color: var(--gray-400);
 }
 

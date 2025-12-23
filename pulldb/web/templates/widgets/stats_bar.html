@@ -9,11 +9,17 @@
      {% from 'widgets/stats_bar.html' import stats_bar, stat_item %}
      
      {% call stats_bar() %}
-       {{ stat_item('users-group', 'Users', [(3, 'Ena', 'primary'), (0, 'Dis', 'gray')], 'primary') }}
-       {{ stat_item('server', 'Hosts', [(4, 'Ena', 'success'), (1, 'Dis', 'gray')], 'success') }}
-       {{ stat_item('jobs', 'Jobs', [(0, 'Q', 'warning'), (5, 'R', 'primary'), (10, 'C', 'success'), (2, 'F', 'danger')], 'gray') }}
+       {{ stat_item('users-group', 'Users', [(3, 'Ena', 'primary', 'Enabled'), (0, 'Dis', 'gray', 'Disabled')], 'primary') }}
+       {{ stat_item('server', 'Hosts', [(4, 'Ena', 'success', 'Enabled'), (1, 'Dis', 'gray', 'Disabled')], 'success') }}
+       {{ stat_item('jobs', 'Jobs', [(0, 'Q', 'warning', 'Queued'), (5, 'R', 'primary', 'Running'), (10, 'C', 'success', 'Completed'), (2, 'F', 'danger', 'Failed')], 'gray') }}
        {{ stat_item('lightning', 'My Active', [(5, '', 'primary')], 'primary') }}
      {% endcall %}
+     
+   Values format: (value, suffix, color[, tooltip])
+     - value: The numeric value to display
+     - suffix: Short abbreviation (Q, R, C, F, Ena, Dis, etc.)
+     - color: Color scheme (primary, success, warning, danger, gray)
+     - tooltip: Optional hover text explaining the abbreviation
    ================================================================= #}
 
 {% from 'partials/icons/_index.html' import icon %}
@@ -25,14 +31,18 @@
 </div>
 {% endmacro %}
 
-{# Individual stat item with icon and list of (value, suffix, color) tuples #}
+{# Individual stat item with icon and list of (value, suffix, color[, tooltip]) tuples #}
 {% macro stat_item(icon_name, label, values, icon_color='gray') %}
 <div class="stats-bar__item">
     <span class="stats-bar__icon text-{{ icon_color }}-600">{{ icon(icon_name, size='16') }}</span>
     <span class="stats-bar__label">{{ label }}</span>
     <div class="stats-bar__values">
-        {%- for val, suffix, color in values -%}
-        <span class="stats-bar__value text-{{ color }}-600">{{ val }}{% if suffix %}<span class="stats-bar__suffix">{{ suffix }}</span>{% endif %}</span>
+        {%- for item in values -%}
+        {%- set val = item[0] -%}
+        {%- set suffix = item[1] -%}
+        {%- set color = item[2] -%}
+        {%- set tooltip = item[3] if item|length > 3 else none -%}
+        <span class="stats-bar__value text-{{ color }}-600"{% if tooltip %} title="{{ tooltip }}"{% endif %}>{{ val }}{% if suffix %}<span class="stats-bar__suffix"{% if tooltip %} title="{{ tooltip }}"{% endif %}>{{ suffix }}</span>{% endif %}</span>
         {%- endfor -%}
     </div>
 </div>

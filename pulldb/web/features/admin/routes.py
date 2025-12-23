@@ -584,30 +584,88 @@ async def api_users_paginated(
 
 @router.get("/api/users/distinct")
 async def api_users_distinct(
+    request: Request,
     column: str,
+    filter_order: str | None = None,
     state: Any = Depends(get_api_state),
     admin: User = Depends(require_admin),
 ) -> list:
-    """Get distinct values for user filter dropdowns."""
+    """Get distinct values for user filter dropdowns.
+    
+    Supports cascading filters:
+    - If column is NOT in filter_order: apply ALL filters
+    - If column IS in filter_order: only apply filters preceding it
+    """
+    from pulldb.infra.filter_utils import parse_multi_value_filter
+    
     raw_users = []
     if hasattr(state.user_repo, "list_users"):
         raw_users = state.user_repo.list_users()
     
     user_map = {u.user_id: u for u in raw_users}
-    values = set()
     
+    # Parse filter order and determine which filters should apply
+    order_list = [c.strip() for c in filter_order.split(",") if c.strip()] if filter_order else []
+    column_in_order = column in order_list
+    column_idx = order_list.index(column) if column_in_order else -1
+    
+    # If column is in order, only apply prior filters; otherwise apply ALL filters
+    if column_in_order:
+        applicable_cols = set(order_list[:column_idx]) if column_idx > 0 else set()
+    else:
+        applicable_cols = set(order_list)
+    
+    # Extract filter params from request
+    filters: dict[str, list[str]] = {}
+    for key, value in request.query_params.items():
+        if key.startswith("filter_") and value and key != "filter_order":
+            col_key = key[7:]
+            if col_key in applicable_cols:
+                filters[col_key] = parse_multi_value_filter(value)
+    
+    # Build user dicts for filtering
+    users_data = []
     for u in raw_users:
+        manager_username = ""
+        if u.manager_id and u.manager_id in user_map:
+            manager_username = user_map[u.manager_id].username
+        users_data.append({
+            "username": u.username,
+            "user_code": u.user_code,
+            "role": u.role.value,
+            "status": "disabled" if u.disabled_at else "enabled",
+            "manager_username": manager_username,
+            "_user": u,  # Keep reference to original
+        })
+    
+    # Apply cascading filters
+    if filters:
+        filtered = []
+        for ud in users_data:
+            match = True
+            for col_key, filter_vals in filters.items():
+                cell_val = str(ud.get(col_key, "")).lower()
+                if not any(fv in cell_val for fv in filter_vals):
+                    match = False
+                    break
+            if match:
+                filtered.append(ud)
+        users_data = filtered
+    
+    # Collect distinct values
+    values = set()
+    for ud in users_data:
         if column == "role":
-            values.add(u.role.value)
+            values.add(ud["role"])
         elif column == "status":
-            values.add("disabled" if u.disabled_at else "enabled")
+            values.add(ud["status"])
         elif column == "manager_username":
-            if u.manager_id and u.manager_id in user_map:
-                values.add(user_map[u.manager_id].username)
+            if ud["manager_username"]:
+                values.add(ud["manager_username"])
         elif column == "username":
-            values.add(u.username)
+            values.add(ud["username"])
         elif column == "user_code":
-            values.add(u.user_code)
+            values.add(ud["user_code"])
     
     return sorted(values)
 
@@ -2039,16 +2097,59 @@ async def get_prune_candidates(
 
 @router.get("/api/prune-candidates/distinct")
 async def get_prune_distinct_values(
+    request: Request,
     column: str,
     days: int = 90,
+    filter_order: str | None = None,
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> list:
-    """Get distinct values for filter dropdowns."""
+    """Get distinct values for filter dropdowns.
+    
+    Supports cascading filters:
+    - If column is NOT in filter_order: apply ALL filters
+    - If column IS in filter_order: only apply filters preceding it
+    """
+    from pulldb.infra.filter_utils import parse_multi_value_filter
+    
     if not hasattr(state.job_repo, "get_prune_candidates"):
         return []
     result = state.job_repo.get_prune_candidates(retention_days=days, offset=0, limit=10000)
     rows = result.get("rows", [])
+    
+    # Parse filter order and determine which filters should apply
+    order_list = [c.strip() for c in filter_order.split(",") if c.strip()] if filter_order else []
+    column_in_order = column in order_list
+    column_idx = order_list.index(column) if column_in_order else -1
+    
+    # If column is in order, only apply prior filters; otherwise apply ALL filters
+    if column_in_order:
+        applicable_cols = set(order_list[:column_idx]) if column_idx > 0 else set()
+    else:
+        applicable_cols = set(order_list)
+    
+    # Extract filter params from request
+    filters: dict[str, list[str]] = {}
+    for key, value in request.query_params.items():
+        if key.startswith("filter_") and value and key != "filter_order":
+            col_key = key[7:]
+            if col_key in applicable_cols:
+                filters[col_key] = parse_multi_value_filter(value)
+    
+    # Apply cascading filters
+    if filters:
+        filtered = []
+        for row in rows:
+            match = True
+            for col_key, filter_vals in filters.items():
+                cell_val = str(row.get(col_key, "")).lower()
+                if not any(fv in cell_val for fv in filter_vals):
+                    match = False
+                    break
+            if match:
+                filtered.append(row)
+        rows = filtered
+    
     values = set()
     for row in rows:
         val = row.get(column)
@@ -2274,16 +2375,59 @@ async def get_cleanup_candidates(
 
 @router.get("/api/cleanup-candidates/distinct")
 async def get_cleanup_distinct_values(
+    request: Request,
     column: str,
     days: int = 7,
+    filter_order: str | None = None,
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> list:
-    """Get distinct values for filter dropdowns."""
+    """Get distinct values for filter dropdowns.
+    
+    Supports cascading filters:
+    - If column is NOT in filter_order: apply ALL filters
+    - If column IS in filter_order: only apply filters preceding it
+    """
+    from pulldb.infra.filter_utils import parse_multi_value_filter
+    
     if not hasattr(state.job_repo, "get_cleanup_candidates"):
         return []
     result = state.job_repo.get_cleanup_candidates(retention_days=days, offset=0, limit=10000)
     rows = result.get("rows", [])
+    
+    # Parse filter order and determine which filters should apply
+    order_list = [c.strip() for c in filter_order.split(",") if c.strip()] if filter_order else []
+    column_in_order = column in order_list
+    column_idx = order_list.index(column) if column_in_order else -1
+    
+    # If column is in order, only apply prior filters; otherwise apply ALL filters
+    if column_in_order:
+        applicable_cols = set(order_list[:column_idx]) if column_idx > 0 else set()
+    else:
+        applicable_cols = set(order_list)
+    
+    # Extract filter params from request
+    filters: dict[str, list[str]] = {}
+    for key, value in request.query_params.items():
+        if key.startswith("filter_") and value and key != "filter_order":
+            col_key = key[7:]
+            if col_key in applicable_cols:
+                filters[col_key] = parse_multi_value_filter(value)
+    
+    # Apply cascading filters
+    if filters:
+        filtered = []
+        for row in rows:
+            match = True
+            for col_key, filter_vals in filters.items():
+                cell_val = str(row.get(col_key, "")).lower()
+                if not any(fv in cell_val for fv in filter_vals):
+                    match = False
+                    break
+            if match:
+                filtered.append(row)
+        rows = filtered
+    
     values = set()
     for row in rows:
         val = row.get(column)
@@ -2539,14 +2683,17 @@ async def api_orphan_candidates(
 async def get_orphan_distinct_values(
     request: Request,
     column: str,
+    filter_order: str | None = None,
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
 ) -> list[str]:
     """Get distinct values for filter dropdowns.
     
-    Applies current filters (excluding the requested column) so that
-    filter options update based on other active filters.
+    Supports cascading filters:
+    - If column is NOT in filter_order: apply ALL filters
+    - If column IS in filter_order: only apply filters preceding it
     """
+    from pulldb.infra.filter_utils import parse_multi_value_filter
     from pulldb.worker.cleanup import detect_orphaned_databases
     
     all_orphans: list[dict[str, Any]] = []
@@ -2567,19 +2714,30 @@ async def get_orphan_distinct_values(
                     "target_name": oc.target_name,
                 })
     
-    # Extract filter params from query string (excluding the column we're getting distinct values for)
+    # Parse filter order and determine which filters should apply
+    order_list = [c.strip() for c in filter_order.split(",") if c.strip()] if filter_order else []
+    column_in_order = column in order_list
+    column_idx = order_list.index(column) if column_in_order else -1
+    
+    # If column is in order, only apply prior filters; otherwise apply ALL filters
+    if column_in_order:
+        applicable_cols = set(order_list[:column_idx]) if column_idx > 0 else set()
+    else:
+        applicable_cols = set(order_list)
+    
+    # Extract filter params (only from applicable columns)
     text_filters: dict[str, list[str]] = {}
     for key, value in request.query_params.items():
-        if key.startswith("filter_") and value:
+        if key.startswith("filter_") and value and key != "filter_order":
             col_key = key[7:]  # Remove "filter_" prefix
-            # Skip date range suffixes and the column being queried
+            # Skip date range suffixes
             if col_key.endswith("_after") or col_key.endswith("_before"):
                 continue
-            if col_key == column:
-                continue
-            text_filters[col_key] = [v.strip().lower() for v in value.split(',') if v.strip()]
+            # Only include filters from applicable columns
+            if col_key in applicable_cols:
+                text_filters[col_key] = parse_multi_value_filter(value)
     
-    # Apply filters to narrow down distinct values
+    # Apply cascading filters
     if text_filters:
         filtered_orphans: list[dict[str, Any]] = []
         orphan_item: dict[str, Any]

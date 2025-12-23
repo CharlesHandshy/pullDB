@@ -104,6 +104,7 @@ class LazyTable {
         this.sortColumn = null;
         this.sortDirection = null;  // 'asc' | 'desc' | null
         this.columnFilters = {};    // { columnKey: Set<values> }
+        this.filterOrder = [];      // Column keys in order of selection (for cascading)
         
         // Apply initial filters if provided (only on first load)
         if (this.config.initialFilters) {
@@ -162,6 +163,11 @@ class LazyTable {
             this.elements.selectionBar = this.createSelectionBar();
             this.elements.wrapper.appendChild(this.elements.selectionBar);
         }
+
+        // Filter chips container (shows active filters in selection order)
+        this.elements.filterChipsContainer = document.createElement('div');
+        this.elements.filterChipsContainer.className = 'lazy-table-filter-chips hidden';
+        this.elements.wrapper.appendChild(this.elements.filterChipsContainer);
 
         // Header container (fixed)
         this.elements.headerContainer = document.createElement('div');
@@ -351,6 +357,7 @@ class LazyTable {
         footer.innerHTML = `
             <div class="footer-info">
                 <span class="footer-showing"></span>
+                <button type="button" class="footer-clear-filters-btn hidden">Clear Filters</button>
             </div>
             <div class="footer-spacer"></div>
             <div class="footer-actions"></div>
@@ -409,6 +416,10 @@ class LazyTable {
         // Error retry button
         const retryBtn = this.elements.errorOverlay.querySelector('.error-retry-btn');
         retryBtn?.addEventListener('click', () => this.refresh());
+        
+        // Footer clear filters button
+        const clearFiltersBtn = this.elements.footerContent.querySelector('.footer-clear-filters-btn');
+        clearFiltersBtn?.addEventListener('click', () => this.clearAllFilters());
     }
 
     // =========================================================================
@@ -980,6 +991,9 @@ class LazyTable {
         const values = (cached && cached.values) ? cached.values : [];
         const selectedValues = this.columnFilters[column] || new Set();
         
+        // Store values array for retrieval by data-index (avoids HTML escaping issues)
+        const valuesArray = [...values];
+        
         // Create dropdown
         const dropdown = document.createElement('div');
         dropdown.className = 'lazy-table-filter-dropdown';
@@ -988,10 +1002,10 @@ class LazyTable {
                 <input type="text" class="filter-search-input" placeholder="${this.config.i18n.search}">
             </div>
             <div class="filter-dropdown-options">
-                ${values.map(val => `
+                ${valuesArray.map((val, idx) => `
                     <label class="filter-option">
-                        <input type="checkbox" value="${val}" ${selectedValues.has(val) ? 'checked' : ''}>
-                        <span>${val}</span>
+                        <input type="checkbox" data-index="${idx}" ${selectedValues.has(val) ? 'checked' : ''}>
+                        <span>${this.escapeHtml(val)}</span>
                     </label>
                 `).join('')}
             </div>
@@ -1028,7 +1042,10 @@ class LazyTable {
         dropdown.querySelector('.filter-apply-btn').addEventListener('click', () => {
             const selected = new Set();
             dropdown.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
-                selected.add(cb.value);
+                const idx = parseInt(cb.dataset.index, 10);
+                if (!isNaN(idx) && valuesArray[idx] !== undefined) {
+                    selected.add(valuesArray[idx]);
+                }
             });
             this.applyFilter(column, selected);
             this.closeFilterDropdown();
@@ -1096,7 +1113,7 @@ class LazyTable {
         
         const textInput = dropdown.querySelector('.filter-text-input');
         
-        // Clear button - immediately clears and applies
+        // Clear button - clears this column's filter
         dropdown.querySelector('.filter-clear-btn').addEventListener('click', () => {
             this.applyFilter(column, new Set());
             this.closeFilterDropdown();
@@ -1205,7 +1222,7 @@ class LazyTable {
             return localDate.toISOString();
         };
         
-        // Clear button
+        // Clear button - clears this column's filter
         dropdown.querySelector('.filter-clear-btn').addEventListener('click', () => {
             this.applyFilter(column, new Set());
             this.closeFilterDropdown();
@@ -1260,20 +1277,45 @@ class LazyTable {
             distinctUrl.search = baseUrl.search;
             distinctUrl.searchParams.set('column', column);
             
-            // Pass current filters for cascading behavior (excluding the column being queried)
+            // CASCADING FILTER LOGIC:
+            // - If column is NOT in filterOrder yet: apply ALL active filters (show narrowed options)
+            // - If column IS in filterOrder: only apply filters from columns BEFORE it
+            // This enables hierarchical filtering where:
+            //   1. Unfiltered columns show options narrowed by all active filters
+            //   2. Already-filtered columns show options narrowed only by prior filters
+            const columnIdx = this.filterOrder.indexOf(column);
+            const isColumnInOrder = columnIdx !== -1;
+            
+            // Determine which filters to apply
+            let applicableFilters;
+            if (isColumnInOrder) {
+                // Column is already in order - only apply filters from columns BEFORE it
+                const priorColumns = columnIdx > 0 ? this.filterOrder.slice(0, columnIdx) : [];
+                applicableFilters = priorColumns;
+            } else {
+                // Column not yet filtered - apply ALL active filters to narrow its options
+                applicableFilters = this.filterOrder;
+            }
+            
             Object.entries(this.columnFilters).forEach(([filterColumn, filterValues]) => {
-                if (filterColumn !== column && filterValues && filterValues.size > 0) {
-                    // For multi-value filters, use first value (API expects single value)
-                    const value = Array.from(filterValues)[0];
-                    distinctUrl.searchParams.set(`filter_${filterColumn}`, value);
+                // Include filters from applicable columns
+                if (applicableFilters.includes(filterColumn) && filterValues && filterValues.size > 0) {
+                    // Send ALL filter values (comma-separated) for proper multi-value filtering
+                    const valueStr = Array.from(filterValues).join(',');
+                    distinctUrl.searchParams.set(`filter_${filterColumn}`, valueStr);
                 }
             });
+            
+            // Send filter order so backend knows the cascade sequence
+            if (this.filterOrder.length > 0) {
+                distinctUrl.searchParams.set('filter_order', this.filterOrder.join(','));
+            }
             
             const response = await fetch(distinctUrl.toString());
             if (response.ok) {
                 const data = await response.json();
-                // Cache with filter signature to detect when to invalidate
-                const filterSig = this.getFilterSignature(column);
+                // Cache with filter signature based on ORDER-AWARE prior filters
+                const filterSig = this.getCascadingFilterSignature(column);
                 this.distinctValues[column] = {
                     values: Array.isArray(data) ? data : (data.values || []),
                     filterSignature: filterSig
@@ -1283,6 +1325,37 @@ class LazyTable {
             console.error('LazyTable: error fetching distinct values', error);
             this.distinctValues[column] = { values: [], filterSignature: '' };
         }
+    }
+    
+    /**
+     * Generate a signature of filters that apply to a column.
+     * Used for cascading cache invalidation - cache is valid only if applicable filters unchanged.
+     * @param {string} column - Column to generate signature for
+     * @returns {string}
+     */
+    getCascadingFilterSignature(column) {
+        const parts = [];
+        const columnIdx = this.filterOrder.indexOf(column);
+        const isColumnInOrder = columnIdx !== -1;
+        
+        // Match the logic in fetchDistinctValues
+        let applicableFilters;
+        if (isColumnInOrder) {
+            applicableFilters = columnIdx > 0 ? this.filterOrder.slice(0, columnIdx) : [];
+        } else {
+            // Column not in order - all active filters apply
+            applicableFilters = this.filterOrder;
+        }
+        
+        applicableFilters.forEach(col => {
+            const vals = this.columnFilters[col];
+            if (vals && vals.size > 0) {
+                parts.push(`${col}:${Array.from(vals).sort().join(',')}`);
+            }
+        });
+        // Include the filter order itself in the signature
+        parts.push(`order:${this.filterOrder.join(',')}`);
+        return parts.join('|');
     }
     
     /**
@@ -1305,29 +1378,82 @@ class LazyTable {
     }
     
     /**
-     * Check if cached distinct values are still valid for current filters.
+     * Check if cached distinct values are still valid for current cascading filter state.
      * @param {string} column - Column to check
      * @returns {boolean}
      */
     isDistinctCacheValid(column) {
         const cached = this.distinctValues[column];
         if (!cached || !cached.values) return false;
-        return cached.filterSignature === this.getFilterSignature(column);
+        return cached.filterSignature === this.getCascadingFilterSignature(column);
     }
 
     applyFilter(column, values) {
         if (values.size === 0) {
             delete this.columnFilters[column];
+            // Remove from filter order
+            this.filterOrder = this.filterOrder.filter(c => c !== column);
         } else {
             this.columnFilters[column] = values;
+            // Add to filter order if not already present
+            if (!this.filterOrder.includes(column)) {
+                this.filterOrder.push(column);
+            }
         }
+        
+        // Invalidate distinct values cache for columns AFTER this one in order
+        this.invalidateCascadingCaches(column);
         
         // Reset scroll position when filter changes
         this.scrollTop = 0;
         this.elements.bodyContainer.scrollTop = 0;
         
         this.updateFilterIndicators();
+        this.renderFilterChips();
         this.refresh();
+    }
+
+    /**
+     * Clear all column filters and refresh the table.
+     * Resets scroll position, filter order, and updates all filter indicators.
+     */
+    clearAllFilters() {
+        this.columnFilters = {};
+        this.filterOrder = [];  // Reset filter selection order
+        
+        // Reset scroll position
+        this.scrollTop = 0;
+        this.elements.bodyContainer.scrollTop = 0;
+        
+        // Clear distinct values cache so filters re-fetch on next open
+        this.distinctValues = {};
+        
+        this.updateFilterIndicators();
+        this.renderFilterChips();
+        this.refresh();
+    }
+
+    /**
+     * Invalidate distinct values cache for columns affected by a filter change.
+     * Clears caches for: columns AFTER the changed one in order, and unfiltered columns.
+     * @param {string} changedColumn - The column whose filter just changed
+     */
+    invalidateCascadingCaches(changedColumn) {
+        const idx = this.filterOrder.indexOf(changedColumn);
+        
+        // Clear caches for columns AFTER this one in the order
+        if (idx !== -1) {
+            for (let i = idx + 1; i < this.filterOrder.length; i++) {
+                delete this.distinctValues[this.filterOrder[i]];
+            }
+        }
+        
+        // Also clear caches for columns NOT in filterOrder (they depend on all filters)
+        Object.keys(this.distinctValues).forEach(col => {
+            if (!this.filterOrder.includes(col)) {
+                delete this.distinctValues[col];
+            }
+        });
     }
 
     updateFilterIndicators() {
@@ -1338,6 +1464,103 @@ class LazyTable {
             const hasFilter = !!(filterSet && filterSet.size > 0);
             btn.classList.toggle('filter-active', hasFilter);
         });
+        
+        // Show/hide footer Clear Filters button based on active filters
+        const hasAnyFilter = Object.keys(this.columnFilters).length > 0;
+        const clearFiltersBtn = this.elements.footerContent?.querySelector('.footer-clear-filters-btn');
+        if (clearFiltersBtn) {
+            clearFiltersBtn.classList.toggle('hidden', !hasAnyFilter);
+        }
+    }
+
+    /**
+     * Render filter chips showing active filters in selection order.
+     * Each chip displays: order number, column label, value count.
+     * Clicking a chip opens its filter dropdown; × removes the filter.
+     */
+    renderFilterChips() {
+        const container = this.elements.filterChipsContainer;
+        if (!container) return;
+        
+        // Hide if no filters active
+        if (this.filterOrder.length === 0) {
+            container.classList.add('hidden');
+            container.innerHTML = '';
+            return;
+        }
+        
+        container.classList.remove('hidden');
+        
+        // Build chip HTML for each filter in selection order
+        const chipsHtml = this.filterOrder.map((column, index) => {
+            const filterSet = this.columnFilters[column];
+            if (!filterSet || filterSet.size === 0) return '';
+            
+            // Get column label from config
+            const colDef = this.getColumnDef(column);
+            const label = colDef ? (colDef.label || column) : column;
+            const count = filterSet.size;
+            const orderNum = index + 1;
+            
+            // Format values preview (show first 2, then +N more)
+            const valuesArr = Array.from(filterSet);
+            let valuesPreview;
+            if (valuesArr.length <= 2) {
+                valuesPreview = valuesArr.map(v => this.escapeHtml(v)).join(', ');
+            } else {
+                valuesPreview = `${this.escapeHtml(valuesArr[0])}, ${this.escapeHtml(valuesArr[1])} +${valuesArr.length - 2}`;
+            }
+            
+            return `
+                <div class="filter-chip" data-column="${column}" title="${label}: ${valuesArr.map(v => this.escapeHtml(v)).join(', ')}">
+                    <span class="filter-chip-number">${orderNum}</span>
+                    <span class="filter-chip-label">${this.escapeHtml(label)}</span>
+                    <span class="filter-chip-values">${valuesPreview}</span>
+                    <button type="button" class="filter-chip-remove" data-column="${column}" title="Remove filter">
+                        <svg viewBox="0 0 24 24" width="14" height="14">
+                            <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                    </button>
+                </div>
+            `;
+        }).filter(Boolean).join('');
+        
+        // Add "Clear All" button at the end
+        container.innerHTML = chipsHtml + `
+            <button type="button" class="filter-chips-clear-all" title="Clear all filters">
+                Clear All
+            </button>
+        `;
+        
+        // Bind chip click events
+        container.querySelectorAll('.filter-chip').forEach(chip => {
+            // Click on chip (not the remove button) opens filter dropdown
+            chip.addEventListener('click', (e) => {
+                if (e.target.closest('.filter-chip-remove')) return;
+                const column = chip.dataset.column;
+                const filterBtn = this.elements.headerTable.querySelector(`.filter-btn[data-column="${column}"]`);
+                if (filterBtn) {
+                    this.showFilterDropdown(column, filterBtn).catch(err => {
+                        console.error('LazyTable: error showing filter dropdown from chip', err);
+                    });
+                }
+            });
+        });
+        
+        // Bind remove button events
+        container.querySelectorAll('.filter-chip-remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const column = btn.dataset.column;
+                this.applyFilter(column, new Set());  // Clear this filter
+            });
+        });
+        
+        // Bind clear all button
+        const clearAllBtn = container.querySelector('.filter-chips-clear-all');
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', () => this.clearAllFilters());
+        }
     }
 
     // =========================================================================
@@ -1474,9 +1697,9 @@ class LazyTable {
     }
 
     /**
-     * Get current table state for persistence (sort, filters).
+     * Get current table state for persistence (sort, filters, filter order).
      * Selection and distinctValues are NOT included - they are cleared on state restore.
-     * @returns {{ sortColumn: string|null, sortDirection: string|null, columnFilters: Object }}
+     * @returns {{ sortColumn: string|null, sortDirection: string|null, columnFilters: Object, filterOrder: string[] }}
      */
     getState() {
         const filters = {};
@@ -1486,7 +1709,8 @@ class LazyTable {
         return {
             sortColumn: this.sortColumn,
             sortDirection: this.sortDirection,
-            columnFilters: filters
+            columnFilters: filters,
+            filterOrder: [...this.filterOrder]
         };
     }
 
@@ -1500,6 +1724,7 @@ class LazyTable {
             this.sortColumn = state.sortColumn || null;
             this.sortDirection = state.sortDirection || null;
             this.columnFilters = {};
+            this.filterOrder = state.filterOrder ? [...state.filterOrder] : [];
             if (state.columnFilters) {
                 Object.entries(state.columnFilters).forEach(([key, values]) => {
                     this.columnFilters[key] = new Set(values);
@@ -1509,6 +1734,7 @@ class LazyTable {
             this.sortColumn = null;
             this.sortDirection = null;
             this.columnFilters = {};
+            this.filterOrder = [];
         }
         
         // Clear selection and distinct values cache on state change
@@ -1522,6 +1748,7 @@ class LazyTable {
         // Update visual indicators
         this.updateSortIndicators();
         this.updateFilterIndicators();
+        this.renderFilterChips();
     }
 
     /**
@@ -1596,6 +1823,19 @@ class LazyTable {
             clearTimeout(timeoutId);
             timeoutId = setTimeout(() => fn.apply(this, args), delay);
         };
+    }
+
+    /**
+     * Escape HTML special characters to prevent XSS and attribute breakage.
+     * @param {string} str - String to escape
+     * @returns {string} - Escaped string safe for HTML insertion
+     */
+    escapeHtml(str) {
+        if (str == null) return '';
+        const text = String(str);
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 }
 

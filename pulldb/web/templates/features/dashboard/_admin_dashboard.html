@@ -6,7 +6,7 @@
 {% call stats_bar() %}
     {{ stat_item('users-group', 'Users', [(system_stats.active_users, 'Ena', 'primary'), (system_stats.disabled_users, 'Dis', 'gray')], 'primary') }}
     {{ stat_item('server', 'Hosts', [(system_stats.enabled_hosts, 'Ena', 'success'), (system_stats.disabled_hosts, 'Dis', 'gray')], 'success') }}
-    {{ stat_item('jobs', 'System Jobs', [(system_stats.queued_jobs, 'Q', 'warning'), (system_stats.running_jobs, 'R', 'primary'), (system_stats.completed_jobs, 'C', 'success'), (system_stats.failed_jobs, 'F', 'danger')], 'gray') }}
+    {{ stat_item('jobs', 'System Jobs', [(system_stats.queued_jobs, 'Q', 'warning', 'Queued'), (system_stats.running_jobs, 'R', 'primary', 'Running'), (system_stats.completed_jobs, 'C', 'success', 'Completed'), (system_stats.failed_jobs, 'F', 'danger', 'Failed')], 'gray') }}
     {{ stat_item('lightning', 'My Active', [(my_active_count, '', 'primary')], 'primary') }}
 {% endcall %}
 
@@ -45,15 +45,15 @@
                 <tr>
                     <td>
                         <div class="cell-primary">{{ item.name }}</div>
-                        {% if not item.enabled %}
-                        <span class="badge badge-neutral text-2xs">disabled</span>
-                        {% endif %}
                     </td>
                     <td class="text-right">
                         {% if item.queued_count > 10 %}
                         <span class="badge badge-danger text-2xs mr-2">{{ item.queued_count }} queued</span>
                         {% elif item.queued_count > 5 %}
                         <span class="badge badge-warning text-2xs mr-2">{{ item.queued_count }} queued</span>
+                        {% endif %}
+                        {% if not item.enabled %}
+                        <span class="badge badge-neutral text-2xs mr-2">disabled</span>
                         {% endif %}
                         <span class="capacity-indicator {% if item.running_count >= item.max_running_jobs %}capacity-at-limit{% elif item.running_count > 0 %}capacity-active{% else %}capacity-idle{% endif %}">
                             <span class="current">{{ item.running_count }}</span>

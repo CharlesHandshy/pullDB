@@ -789,8 +789,13 @@ def _get_paginated_jobs(
     days: int,
     user: User | None = None,
 ) -> PaginatedJobsResponse:
-    """Get paginated jobs for LazyTable."""
+    """Get paginated jobs for LazyTable.
+    
+    Multi-value filters (comma-separated) use OR logic within each column.
+    Different columns use AND logic between them.
+    """
     from pulldb.domain.permissions import can_cancel_job
+    from pulldb.infra.filter_utils import parse_multi_value_filter
 
     # Determine statuses based on view
     if view == "history":
@@ -798,21 +803,38 @@ def _get_paginated_jobs(
     else:
         statuses = [JobStatus.QUEUED.value, JobStatus.RUNNING.value]
 
-    # Apply status filter
-    if status_filter and status_filter in [s.value for s in JobStatus]:
-        statuses = [status_filter]
+    # Apply status filter (supports multiple comma-separated statuses with OR logic)
+    status_values = parse_multi_value_filter(status_filter)
+    if status_values:
+        # Filter to only valid statuses that match the filter AND are valid for view
+        valid_statuses = [s for s in status_values if s in statuses]
+        if valid_statuses:
+            statuses = valid_statuses
 
     # Get jobs
     all_jobs = state.job_repo.get_recent_jobs(limit=1000, statuses=statuses)
 
+    # Parse multi-value filters (comma-separated values use OR logic within column)
+    host_values = parse_multi_value_filter(host_filter)
+    user_values = parse_multi_value_filter(user_filter)
+    target_values = parse_multi_value_filter(target_filter)
+
     # Apply filters in memory (for simulation mode compatibility)
+    # Multi-value filters: match if ANY value matches (OR within column)
+    # Different columns: AND logic between them
     filtered_jobs = list(all_jobs)
-    if host_filter:
-        filtered_jobs = [j for j in filtered_jobs if j.dbhost == host_filter]
-    if user_filter:
-        filtered_jobs = [j for j in filtered_jobs if j.owner_user_code == user_filter]
-    if target_filter:
-        filtered_jobs = [j for j in filtered_jobs if target_filter.lower() in (j.target or "").lower()]
+    if host_values:
+        host_set = set(v.lower() for v in host_values)
+        filtered_jobs = [j for j in filtered_jobs if j.dbhost and j.dbhost.lower() in host_set]
+    if user_values:
+        user_set = set(v.lower() for v in user_values)
+        filtered_jobs = [j for j in filtered_jobs if j.owner_user_code and j.owner_user_code.lower() in user_set]
+    if target_values:
+        # Target uses substring matching - match if ANY target value is found
+        filtered_jobs = [
+            j for j in filtered_jobs 
+            if j.target and any(tv in j.target.lower() for tv in target_values)
+        ]
     
     # Text-based wildcard filter for Job ID
     if id_filter:
@@ -910,6 +932,7 @@ async def get_paginated_jobs(
     filter_status: str | None = fastapi.Query(None, alias="filter_status", description="Filter by status"),
     filter_dbhost: str | None = fastapi.Query(None, alias="filter_dbhost", description="Filter by host"),
     filter_user_code: str | None = fastapi.Query(None, alias="filter_user_code", description="Filter by user"),
+    filter_owner_user_code: str | None = fastapi.Query(None, alias="filter_owner_user_code", description="Filter by user (alias for owner_user_code column)"),
     filter_target: str | None = fastapi.Query(None, alias="filter_target", description="Filter by target"),
     filter_id: str | None = fastapi.Query(None, alias="filter_id", description="Filter by job ID (wildcards: *)"),
     filter_submitted_at: str | None = fastapi.Query(None, alias="filter_submitted_at", description="Filter by date (MM/DD/YYYY, wildcards: *)"),
@@ -934,6 +957,9 @@ async def get_paginated_jobs(
     except Exception:
         pass  # Continue without user for unauthenticated requests
 
+    # Merge filter_owner_user_code with filter_user_code (column key is owner_user_code)
+    effective_user_filter = filter_user_code or filter_owner_user_code
+    
     return await run_in_threadpool(
         _get_paginated_jobs,
         state,
@@ -944,7 +970,7 @@ async def get_paginated_jobs(
         sortDirection,
         filter_status,
         filter_dbhost,
-        filter_user_code,
+        effective_user_filter,
         filter_target,
         filter_id,
         filter_submitted_at,
@@ -957,38 +983,70 @@ async def get_paginated_jobs(
 async def get_distinct_values(
     column: str = fastapi.Query(..., description="Column to get distinct values for"),
     view: str = fastapi.Query("active", description="View: 'active' or 'history'"),
-    filter_status: str | None = fastapi.Query(None, description="Filter by status"),
-    filter_dbhost: str | None = fastapi.Query(None, description="Filter by host"),
-    filter_user_code: str | None = fastapi.Query(None, description="Filter by user"),
-    filter_target: str | None = fastapi.Query(None, description="Filter by target"),
+    filter_status: str | None = fastapi.Query(None, description="Filter by status (comma-separated)"),
+    filter_dbhost: str | None = fastapi.Query(None, description="Filter by host (comma-separated)"),
+    filter_user_code: str | None = fastapi.Query(None, description="Filter by user (comma-separated)"),
+    filter_owner_user_code: str | None = fastapi.Query(None, description="Filter by user (alias)"),
+    filter_target: str | None = fastapi.Query(None, description="Filter by target (comma-separated)"),
+    filter_order: str | None = fastapi.Query(None, description="Comma-separated filter order for cascading"),
     state: APIState = fastapi.Depends(get_api_state),
 ) -> list[str]:
     """Get distinct values for a column (for cascading filter dropdowns).
 
-    When other filters are applied, only returns values that exist in the
-    filtered dataset. This enables cascading filter behavior where selecting
-    one filter narrows the options available in other filter dropdowns.
+    Supports order-aware cascading filters:
+    - If column is NOT in filter_order: apply ALL filters (narrowed options)
+    - If column IS in filter_order: only apply filters that precede it
+    
+    Filters support comma-separated multi-values (OR within column).
     """
+    from pulldb.infra.filter_utils import parse_multi_value_filter
+    
+    # Parse filter order and determine which filters should apply
+    order_list = [c.strip() for c in filter_order.split(",") if c.strip()] if filter_order else []
+    column_in_order = column in order_list
+    column_idx = order_list.index(column) if column_in_order else -1
+    
+    # If column is in order, only apply prior filters; otherwise apply ALL filters
+    if column_in_order:
+        applicable_cols = set(order_list[:column_idx]) if column_idx > 0 else set()
+    else:
+        applicable_cols = set(order_list)  # All active filters apply
+    
     if view == "history":
         statuses = [JobStatus.COMPLETE.value, JobStatus.FAILED.value, JobStatus.CANCELED.value]
     else:
         statuses = [JobStatus.QUEUED.value, JobStatus.RUNNING.value]
 
-    # Apply status filter if not querying status column
-    if filter_status and filter_status in [s.value for s in JobStatus] and column != "status":
-        statuses = [filter_status]
+    # Parse multi-value filters
+    status_values = parse_multi_value_filter(filter_status)
+    dbhost_values = parse_multi_value_filter(filter_dbhost)
+    user_values = parse_multi_value_filter(filter_user_code or filter_owner_user_code)
+    target_values = parse_multi_value_filter(filter_target)
+    
+    # Apply status filter if applicable
+    if status_values and "status" in applicable_cols:
+        # Filter to only statuses that match the filter AND are valid for view
+        valid_statuses = [s for s in status_values if s in statuses]
+        if valid_statuses:
+            statuses = valid_statuses
 
     jobs = state.job_repo.get_recent_jobs(limit=1000, statuses=statuses)
 
-    # Apply other filters (except the one being queried)
+    # Apply filters only for applicable columns
     filtered_jobs = list(jobs)
-    if filter_dbhost and column != "dbhost":
-        filtered_jobs = [j for j in filtered_jobs if j.dbhost == filter_dbhost]
-    if filter_user_code and column != "user_code":
-        filtered_jobs = [j for j in filtered_jobs if j.owner_user_code == filter_user_code]
-    if filter_target and column != "target":
+    
+    if dbhost_values and "dbhost" in applicable_cols:
+        dbhost_set = set(v.lower() for v in dbhost_values)
+        filtered_jobs = [j for j in filtered_jobs if j.dbhost and j.dbhost.lower() in dbhost_set]
+    
+    if user_values and ("user_code" in applicable_cols or "owner_user_code" in applicable_cols):
+        user_set = set(v.lower() for v in user_values)
+        filtered_jobs = [j for j in filtered_jobs if j.owner_user_code and j.owner_user_code.lower() in user_set]
+    
+    if target_values and "target" in applicable_cols:
         filtered_jobs = [
-            j for j in filtered_jobs if filter_target.lower() in (j.target or "").lower()
+            j for j in filtered_jobs 
+            if j.target and any(tv in j.target.lower() for tv in target_values)
         ]
 
     values: set[str] = set()
@@ -1751,21 +1809,61 @@ async def get_paginated_team(
 async def get_team_distinct_values(
     user: ManagerUser,
     column: str = fastapi.Query(..., description="Column to get distinct values for"),
+    filter_username: str | None = fastapi.Query(None, description="Filter by username (comma-separated)"),
+    filter_user_code: str | None = fastapi.Query(None, description="Filter by user code (comma-separated)"),
+    filter_status: str | None = fastapi.Query(None, description="Filter by status (comma-separated)"),
+    filter_order: str | None = fastapi.Query(None, description="Comma-separated filter order for cascading"),
     state: APIState = fastapi.Depends(get_api_state),
 ) -> list[str]:
     """Get distinct values for a column in the team table.
 
-    Used for populating filter dropdowns in the manager team view.
+    Supports cascading filters:
+    - If column is NOT in filter_order: apply ALL filters (narrowed options)
+    - If column IS in filter_order: only apply filters preceding it
     Requires manager or admin role.
     """
+    from pulldb.infra.filter_utils import parse_multi_value_filter
+    
+    # Parse filter order and determine which filters should apply
+    order_list = [c.strip() for c in filter_order.split(",") if c.strip()] if filter_order else []
+    column_in_order = column in order_list
+    column_idx = order_list.index(column) if column_in_order else -1
+    
+    # If column is in order, only apply prior filters; otherwise apply ALL filters
+    if column_in_order:
+        applicable_cols = set(order_list[:column_idx]) if column_idx > 0 else set()
+    else:
+        applicable_cols = set(order_list)
 
     # Get users managed by this user
     managed_users = []
     if hasattr(state.user_repo, "get_users_managed_by"):
         managed_users = state.user_repo.get_users_managed_by(user.user_id)
+    
+    # Parse multi-value filters
+    username_values = parse_multi_value_filter(filter_username) if "username" in applicable_cols else []
+    user_code_values = parse_multi_value_filter(filter_user_code) if "user_code" in applicable_cols else []
+    status_values = parse_multi_value_filter(filter_status) if "status" in applicable_cols else []
+    
+    # Apply cascading filters
+    filtered_users = list(managed_users)
+    
+    if username_values:
+        username_set = set(username_values)
+        filtered_users = [u for u in filtered_users if u.username and u.username.lower() in username_set]
+    
+    if user_code_values:
+        user_code_set = set(user_code_values)
+        filtered_users = [u for u in filtered_users if u.user_code and u.user_code.lower() in user_code_set]
+    
+    if status_values:
+        filtered_users = [
+            u for u in filtered_users
+            if ("disabled" if u.disabled_at else "active").lower() in status_values
+        ]
 
     values: set[str] = set()
-    for u in managed_users:
+    for u in filtered_users:
         if column == "username" and u.username:
             values.add(u.username)
         elif column == "user_code" and u.user_code:
