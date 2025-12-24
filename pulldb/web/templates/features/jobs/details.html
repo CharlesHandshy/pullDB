@@ -19,7 +19,7 @@
         {% if job.status.value in ['queued', 'running'] and can_cancel and not cancel_requested_at %}
         <form method="POST" action="/web/jobs/{{ job.id }}/cancel" 
               onsubmit="if(confirm('Are you sure you want to cancel this job?')) { this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Canceling...'; return true; } return false;">
-            <button type="submit" class="btn btn-danger">Cancel Job</button>
+            <button type="submit" class="btn btn-danger" aria-label="Cancel this restore job">Cancel Job</button>
         </form>
         {% elif cancel_requested_at and job.status.value == 'running' %}
         <span class="badge badge-warning">Cancellation Pending</span>

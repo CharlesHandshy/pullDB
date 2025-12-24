@@ -70,3 +70,17 @@ fi
 
 dpkg-deb --build "$WORKDIR" "$PKGNAME"
 echo "Built $PKGNAME (Version=${VERSION})"
+
+# GPG sign the package (if GPG_KEY_ID is set)
+if [[ -n "${GPG_KEY_ID:-}" ]]; then
+    if command -v dpkg-sig &>/dev/null; then
+        echo "Signing package with GPG key: ${GPG_KEY_ID}"
+        dpkg-sig --sign builder -k "${GPG_KEY_ID}" "$PKGNAME"
+        echo "Package signed successfully"
+    else
+        echo "[WARNING] dpkg-sig not found, skipping package signing"
+        echo "Install with: sudo apt-get install dpkg-sig"
+    fi
+else
+    echo "[INFO] GPG_KEY_ID not set, skipping package signing"
+fi

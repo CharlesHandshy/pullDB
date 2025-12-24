@@ -78,10 +78,6 @@ jobs:
         env:
           PULLDB_MODE: SIMULATION
 
-      - name: Build Debian package
-        run: |
-          bash scripts/build_deb.sh
-
       - name: Extract version from tag
         id: version
         run: |
@@ -89,36 +85,85 @@ jobs:
           echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
           echo "version=${TAG_NAME#v}" >> $GITHUB_OUTPUT
 
+      - name: Build Debian package
+        run: |
+          bash scripts/build_deb.sh
+
+      - name: Build Client Debian package
+        run: |
+          bash scripts/build_client_deb.sh
+
+      - name: Import GPG key
+        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --list-secret-keys --keyid-format LONG
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+
+      - name: Sign packages
+        if: ${{ secrets.GPG_KEY_ID != '' }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y dpkg-sig
+          SERVER_DEB="pulldb_${{ steps.version.outputs.version }}_amd64.deb"
+          CLIENT_DEB="pulldb-client_${{ steps.version.outputs.version }}_amd64.deb"
+          dpkg-sig --sign builder -k "$GPG_KEY_ID" "$SERVER_DEB"
+          dpkg-sig --sign builder -k "$GPG_KEY_ID" "$CLIENT_DEB"
+          echo "Packages signed successfully"
+        env:
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+
       - name: Generate checksums
         id: checksums
         run: |
-          DEB_FILE="pulldb_${{ steps.version.outputs.version }}_amd64.deb"
-          if [[ ! -f "$DEB_FILE" ]]; then
-            echo "ERROR: Expected .deb file not found: $DEB_FILE"
+          SERVER_DEB="pulldb_${{ steps.version.outputs.version }}_amd64.deb"
+          CLIENT_DEB="pulldb-client_${{ steps.version.outputs.version }}_amd64.deb"
+          
+          if [[ ! -f "$SERVER_DEB" ]]; then
+            echo "ERROR: Expected server .deb file not found: $SERVER_DEB"
+            exit 1
+          fi
+          if [[ ! -f "$CLIENT_DEB" ]]; then
+            echo "ERROR: Expected client .deb file not found: $CLIENT_DEB"
             exit 1
           fi
 
-          SHA256=$(sha256sum "$DEB_FILE" | awk '{print $1}')
-          MD5=$(md5sum "$DEB_FILE" | awk '{print $1}')
+          SERVER_SHA256=$(sha256sum "$SERVER_DEB" | awk '{print $1}')
+          SERVER_MD5=$(md5sum "$SERVER_DEB" | awk '{print $1}')
+          CLIENT_SHA256=$(sha256sum "$CLIENT_DEB" | awk '{print $1}')
+          CLIENT_MD5=$(md5sum "$CLIENT_DEB" | awk '{print $1}')
 
-          echo "sha256=${SHA256}" >> $GITHUB_OUTPUT
-          echo "md5=${MD5}" >> $GITHUB_OUTPUT
-          echo "filename=${DEB_FILE}" >> $GITHUB_OUTPUT
+          echo "server_sha256=${SERVER_SHA256}" >> $GITHUB_OUTPUT
+          echo "server_md5=${SERVER_MD5}" >> $GITHUB_OUTPUT
+          echo "server_filename=${SERVER_DEB}" >> $GITHUB_OUTPUT
+          echo "client_sha256=${CLIENT_SHA256}" >> $GITHUB_OUTPUT
+          echo "client_md5=${CLIENT_MD5}" >> $GITHUB_OUTPUT
+          echo "client_filename=${CLIENT_DEB}" >> $GITHUB_OUTPUT
 
           echo "### Checksums"
-          echo "- SHA256: ${SHA256}"
-          echo "- MD5: ${MD5}"
+          echo "Server: ${SERVER_DEB}"
+          echo "- SHA256: ${SERVER_SHA256}"
+          echo "- MD5: ${SERVER_MD5}"
+          echo "Client: ${CLIENT_DEB}"
+          echo "- SHA256: ${CLIENT_SHA256}"
+          echo "- MD5: ${CLIENT_MD5}"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.checksums.outputs.filename }}
+          files: |
+            ${{ steps.checksums.outputs.server_filename }}
+            ${{ steps.checksums.outputs.client_filename }}
           body: |
             ## Checksums
 
-            **${{ steps.checksums.outputs.filename }}**
-            - SHA256: `${{ steps.checksums.outputs.sha256 }}`
-            - MD5: `${{ steps.checksums.outputs.md5 }}`
+            **${{ steps.checksums.outputs.server_filename }}** (Server)
+            - SHA256: `${{ steps.checksums.outputs.server_sha256 }}`
+            - MD5: `${{ steps.checksums.outputs.server_md5 }}`
+
+            **${{ steps.checksums.outputs.client_filename }}** (Client CLI)
+            - SHA256: `${{ steps.checksums.outputs.client_sha256 }}`
+            - MD5: `${{ steps.checksums.outputs.client_md5 }}`
 
             See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ steps.version.outputs.tag }}/CHANGELOG.md) for complete release notes.
           draft: false
@@ -129,5 +174,6 @@ jobs:
       - name: Report success
         run: |
           echo "✅ Release ${{ steps.version.outputs.tag }} built and published successfully"
-          echo "📦 Package: ${{ steps.checksums.outputs.filename }}"
+          echo "📦 Server: ${{ steps.checksums.outputs.server_filename }}"
+          echo "📦 Client: ${{ steps.checksums.outputs.client_filename }}"
           echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}"

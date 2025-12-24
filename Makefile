@@ -1,18 +1,21 @@
 PYTHON ?= python3
 PIP ?= pip
 
-.PHONY: all wheel client server clean help
+.PHONY: all wheel client server server-signed client-signed all-signed clean help
 
 help:
 	@echo "pullDB Build System"
 	@echo "==================="
 	@echo ""
 	@echo "Targets:"
-	@echo "  make all      - Build wheel + both .deb packages (server + client)"
-	@echo "  make wheel    - Build Python wheel only"
-	@echo "  make server   - Build server .deb (full install with services)"
-	@echo "  make client   - Build client .deb (CLI only)"
-	@echo "  make clean    - Remove all build artifacts"
+	@echo "  make all           - Build wheel + both .deb packages (server + client)"
+	@echo "  make wheel         - Build Python wheel only"
+	@echo "  make server        - Build server .deb (full install with services)"
+	@echo "  make client        - Build client .deb (CLI only)"
+	@echo "  make server-signed - Build signed server .deb (requires GPG_KEY_ID)"
+	@echo "  make client-signed - Build signed client .deb (requires GPG_KEY_ID)"
+	@echo "  make all-signed    - Build wheel + both signed .deb packages"
+	@echo "  make clean         - Remove all build artifacts"
 	@echo ""
 	@echo "Version is read from pyproject.toml (or PULLDB_VERSION env var for CI)."
 	@echo ""
@@ -41,6 +44,20 @@ client: wheel
 all: wheel server client
 	@echo ""
 	@echo "=== Build Complete ==="
+	@ls -la *.deb 2>/dev/null || true
+
+# Signed build targets (requires GPG_KEY_ID environment variable)
+server-signed: wheel
+	@echo "=== Building Signed Server Package (Debian) ==="
+	GPG_KEY_ID=$(GPG_KEY_ID) ./scripts/build_deb.sh
+
+client-signed: wheel
+	@echo "=== Building Signed Client Package (Debian) ==="
+	GPG_KEY_ID=$(GPG_KEY_ID) ./scripts/build_client_deb.sh
+
+all-signed: wheel server-signed client-signed
+	@echo ""
+	@echo "=== Signed Build Complete ==="
 	@ls -la *.deb 2>/dev/null || true
 
 clean:

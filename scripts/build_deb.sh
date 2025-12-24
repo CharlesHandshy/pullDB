@@ -112,7 +112,12 @@ if [ -f "scripts/install-dbmate.sh" ]; then
 fi
 
 # Copy documentation and example config files to package root
-cp docs/AWS-SETUP.md "$APP_ROOT/"
+# AWS-SETUP.md is optional (may be archived)
+if [ -f "docs/AWS-SETUP.md" ]; then
+    cp docs/AWS-SETUP.md "$APP_ROOT/"
+elif [ -f "docs/archived/AWS-SETUP.md" ]; then
+    cp docs/archived/AWS-SETUP.md "$APP_ROOT/"
+fi
 cp packaging/SERVICE-README.md "$APP_ROOT/"
 cp packaging/INSTALL-UPGRADE.md "$APP_ROOT/"
 cp packaging/env.example "$APP_ROOT/"
@@ -129,7 +134,12 @@ fi
 # Install documentation to /usr/share/doc/pulldb
 DOC_DIR="$WORKDIR/usr/share/doc/pulldb"
 mkdir -p "$DOC_DIR"
-cp docs/AWS-SETUP.md "$DOC_DIR/"
+# AWS-SETUP.md is optional (may be archived)
+if [ -f "docs/AWS-SETUP.md" ]; then
+    cp docs/AWS-SETUP.md "$DOC_DIR/"
+elif [ -f "docs/archived/AWS-SETUP.md" ]; then
+    cp docs/archived/AWS-SETUP.md "$DOC_DIR/"
+fi
 cp packaging/SERVICE-README.md "$DOC_DIR/"
 cp packaging/INSTALL-UPGRADE.md "$DOC_DIR/"
 # Create a basic copyright file if none exists (Debian policy)
@@ -146,3 +156,17 @@ fi
 
 dpkg-deb --build "$WORKDIR" "$PKGNAME"
 echo "Built $PKGNAME (Version=${VERSION})"
+
+# GPG sign the package (if GPG_KEY_ID is set)
+if [[ -n "${GPG_KEY_ID:-}" ]]; then
+    if command -v dpkg-sig &>/dev/null; then
+        echo "Signing package with GPG key: ${GPG_KEY_ID}"
+        dpkg-sig --sign builder -k "${GPG_KEY_ID}" "$PKGNAME"
+        echo "Package signed successfully"
+    else
+        echo "[WARNING] dpkg-sig not found, skipping package signing"
+        echo "Install with: sudo apt-get install dpkg-sig"
+    fi
+else
+    echo "[INFO] GPG_KEY_ID not set, skipping package signing"
+fi

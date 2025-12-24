@@ -1,6 +1,6 @@
 # pullDB Installation & Upgrade Guide
 
-> **Version**: 0.0.4 | **Last Updated**: November 28, 2025
+> **Version**: 0.0.11 | **Last Updated**: December 24, 2025
 
 This guide covers installing and upgrading pullDB on a database server.
 
@@ -24,7 +24,7 @@ This guide covers installing and upgrading pullDB on a database server.
 ### Step 1: Install the Package
 
 ```bash
-sudo dpkg -i pulldb_0.0.4_amd64.deb
+sudo dpkg -i pulldb_0.0.11_amd64.deb
 ```
 
 The package will:

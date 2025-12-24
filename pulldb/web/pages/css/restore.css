@@ -606,7 +606,7 @@
     gap: var(--space-4);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
     .target-config-grid {
         grid-template-columns: 1fr;
     }
@@ -775,7 +775,7 @@
     gap: var(--space-4);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
     .qa-config-row {
         grid-template-columns: 1fr;
     }
@@ -958,4 +958,82 @@
 [data-theme="dark"] .overwrite-warning {
     background: var(--gray-800);
     border-color: var(--warning-700);
+}
+
+/* ===========================================
+   UTILITY CLASSES FOR INLINE STYLE EXTRACTION
+   =========================================== */
+
+/* Optional label styling for form hints */
+.label-optional {
+    color: var(--gray-400);
+    font-weight: var(--font-normal);
+}
+
+/* Section divider with border */
+.section-divider {
+    margin-top: var(--space-5);
+    border-top: 1px solid var(--gray-200);
+    padding-top: var(--space-5);
+}
+
+[data-theme="dark"] .section-divider {
+    border-top-color: var(--gray-700);
+}
+
+/* Highlighted restore section (manager submitting as user) */
+.restore-section--highlight {
+    background: var(--primary-50);
+    border-color: var(--primary-200);
+}
+
+.restore-section--highlight .restore-section-header {
+    border-bottom-color: var(--primary-200);
+}
+
+.restore-section--highlight .restore-section-title {
+    color: var(--primary-700);
+}
+
+.restore-section--highlight .section-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--primary-600);
+}
+
+[data-theme="dark"] .restore-section--highlight {
+    background: var(--primary-950);
+    border-color: var(--primary-800);
+}
+
+[data-theme="dark"] .restore-section--highlight .restore-section-header {
+    border-bottom-color: var(--primary-800);
+}
+
+[data-theme="dark"] .restore-section--highlight .restore-section-title {
+    color: var(--primary-300);
+}
+
+[data-theme="dark"] .restore-section--highlight .section-icon {
+    color: var(--primary-400);
+}
+
+/* Form hint text */
+.form-hint-sm {
+    font-size: var(--text-sm);
+    color: var(--gray-500);
+    margin-top: var(--space-2);
+}
+
+[data-theme="dark"] .form-hint-sm {
+    color: var(--gray-400);
+}
+
+/* Error message styling for customer search */
+.customer-results-message--error {
+    color: var(--danger-600);
+}
+
+[data-theme="dark"] .customer-results-message--error {
+    color: var(--danger-400);
 }

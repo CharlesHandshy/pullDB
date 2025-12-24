@@ -324,8 +324,8 @@
    =========================================== */
 
 .z-0 { z-index: var(--z-base); }
-.z-10 { z-index: 10; }
-.z-20 { z-index: 20; }
+.z-10 { z-index: var(--z-base); }
+.z-20 { z-index: var(--z-base); }
 .z-50 { z-index: var(--z-dropdown); }
 .z-100 { z-index: var(--z-sticky); }
 

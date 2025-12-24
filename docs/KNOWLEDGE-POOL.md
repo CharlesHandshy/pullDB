@@ -6,8 +6,8 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 
 **Related:** [Deployment](deployment.md) · [policies/](policies/) · [terraform/](terraform/)
 
-Last updated: 2025-12-12
-Current version: v0.0.8
+Last updated: 2025-12-24
+Current version: v0.0.11
 Phases complete: 0-4
 
 ---

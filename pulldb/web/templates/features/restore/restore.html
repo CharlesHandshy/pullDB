@@ -182,15 +182,14 @@
                     
                     <div class="qa-config-row">
                         <div class="form-group m-0">
-                            <label for="qa_extension" class="form-label">Target Extension <span style="color: var(--gray-400); font-weight: normal;">(optional)</span></label>
+                            <label for="qa_extension" class="form-label">Target Extension <span class="label-optional">(optional)</span></label>
                             <input 
                                 type="text" 
                                 id="qa_extension" 
-                                class="form-input"
+                                class="form-input uppercase"
                                 placeholder="ABC"
                                 maxlength="3"
                                 pattern="[A-Za-z]{0,3}"
-                                style="text-transform: uppercase;"
                             >
                             <p class="form-hint" id="qa-extension-hint">Target: {{ user.user_code }}qatemplate</p>
                         </div>
@@ -206,7 +205,7 @@
                     </div>
                     
                     <!-- QA Template backup list -->
-                    <div class="backup-list-container is-visible" id="qa-backup-list-container" style="margin-top: var(--space-5); border-top: 1px solid var(--gray-200); padding-top: var(--space-5);">
+                    <div class="backup-list-container is-visible section-divider" id="qa-backup-list-container">
                         <!-- Selected QA backup display -->
                         <div class="selected-display js-hidden" id="selected-qa-backup-display">
                             <svg class="selected-display-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -243,15 +242,15 @@
 
         {% if show_user_selector and managed_users %}
         <!-- User Selector (Manager/Admin submitting for user) -->
-        <div class="restore-section" style="background: var(--primary-50); border-color: var(--primary-200);">
-            <div class="restore-section-header" style="border-bottom-color: var(--primary-200);">
-                <svg style="width: 20px; height: 20px; color: var(--primary-600);" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <div class="restore-section restore-section--highlight">
+            <div class="restore-section-header">
+                <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
                     <circle cx="9" cy="7" r="4"/>
                     <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
                     <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
-                <h2 class="restore-section-title" style="color: var(--primary-700);">Submit as User</h2>
+                <h2 class="restore-section-title">Submit as User</h2>
             </div>
             <div class="restore-section-body">
                 <div class="form-group m-0">
@@ -264,7 +263,7 @@
                         {% endif %}
                         {% endfor %}
                     </select>
-                    <p style="font-size: 0.875rem; color: var(--gray-500); margin-top: var(--space-2);">
+                    <p class="form-hint-sm">
                         The job will be submitted on behalf of this user and appear in their job list.
                     </p>
                 </div>
@@ -302,15 +301,14 @@
                     
                     <!-- Suffix -->
                     <div class="form-group m-0">
-                        <label for="suffix" class="form-label">Suffix <span style="color: var(--gray-400); font-weight: normal;">(optional)</span></label>
+                        <label for="suffix" class="form-label">Suffix <span class="label-optional">(optional)</span></label>
                         <input type="text" 
                                id="suffix" 
                                name="suffix" 
-                               class="form-input" 
+                               class="form-input lowercase" 
                                placeholder="abc"
                                pattern="[a-z]{0,3}"
                                maxlength="3"
-                               style="text-transform: lowercase;"
                                value="{{ form.suffix if form else '' }}">
                     </div>
                 </div>
@@ -889,7 +887,7 @@
     }
 
     function showError(message) {
-        customerResults.innerHTML = '<div class="customer-results-message" style="color: var(--danger-600);">' + escapeHtml(message) + '</div>';
+        customerResults.innerHTML = '<div class="customer-results-message customer-results-message--error">' + escapeHtml(message) + '</div>';
         customerResultsCount.textContent = 'Error';
         openResults();
     }

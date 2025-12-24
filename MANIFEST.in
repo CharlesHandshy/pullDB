@@ -1,3 +1,18 @@
 # Myloader binary - unified to 0.19.3-3 for all backup formats
 # Legacy backups are supported via metadata synthesis
 include pulldb/binaries/myloader-0.19.3-3
+
+# Exclude test fixtures from distribution
+global-exclude pulldb/binaries/*.tar
+prune pulldb/binaries/dumps
+prune pulldb/binaries/actiontermiteaz
+prune pulldb/binaries/appalachian
+
+# Exclude test auth credentials
+exclude pulldb/binaries/pullDB-auth
+exclude pulldb/binaries/pullQA-auth
+
+# Exclude documentation/example files from binaries
+global-exclude pulldb/binaries/*.example
+global-exclude pulldb/binaries/*.txt
+global-exclude pulldb/binaries/*.log

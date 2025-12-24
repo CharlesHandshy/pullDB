@@ -457,11 +457,11 @@
 }
 
 [data-theme="dark"] .backup-table tbody tr.is-selected {
-    background: rgba(96, 165, 250, 0.15);
+    background: color-mix(in srgb, var(--primary-400) 15%, transparent);
 }
 
 [data-theme="dark"] .backup-table tbody tr.is-selected td {
-    border-bottom-color: rgba(96, 165, 250, 0.3);
+    border-bottom-color: color-mix(in srgb, var(--primary-400) 30%, transparent);
 }
 
 /* Audit entries dark mode */
@@ -474,7 +474,7 @@
 }
 
 [data-theme="dark"] .audit-avatar {
-    background: rgba(96, 165, 250, 0.15);
+    background: color-mix(in srgb, var(--primary-400) 15%, transparent);
     color: var(--color-primary);
 }
 
