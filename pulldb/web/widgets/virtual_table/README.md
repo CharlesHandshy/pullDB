@@ -137,18 +137,18 @@ The widget uses CSS custom properties for theming:
 ```css
 :root {
     /* Surfaces */
-    --surface-primary: #ffffff;
-    --surface-secondary: #f8f9fa;
-    --surface-hover: #f3f4f6;
+    --color-surface-primary: #ffffff;
+    --color-surface-secondary: #f8f9fa;
+    --color-surface-hover: #f3f4f6;
     
     /* Text */
-    --text-primary: #111827;
-    --text-secondary: #374151;
-    --text-muted: #6b7280;
+    --color-text-primary: #111827;
+    --color-text-secondary: #374151;
+    --color-text-muted: #6b7280;
     
     /* Borders */
-    --border-primary: #e5e7eb;
-    --border-secondary: #f3f4f6;
+    --color-border-primary: #e5e7eb;
+    --color-border-secondary: #f3f4f6;
     
     /* Primary color */
     --primary-50: #eff6ff;

@@ -559,9 +559,21 @@ def create_dev_app():
         """Start the background queue runner on app startup."""
         asyncio.create_task(queue_runner_loop())
 
+    async def ensure_theme_files() -> None:
+        """Ensure theme CSS files exist on startup."""
+        from pulldb.web.features.admin.theme_generator import ensure_theme_files_exist
+        try:
+            state: DevAPIState = app.state.dev_api_state
+            settings_repo = getattr(state, 'settings_repo', None)
+            version = ensure_theme_files_exist(settings_repo)
+            print(f"  [Theme] CSS files ready (version: {version})")
+        except Exception as e:
+            print(f"  [Theme] Warning: Could not generate theme files: {e}")
+
     # Use app.router.on_startup.append() instead of @app.on_event("startup")
     # to avoid FastAPI deprecation warning about lifespan event handlers
     app.router.on_startup.append(start_queue_runner)
+    app.router.on_startup.append(ensure_theme_files)
 
     return app
 

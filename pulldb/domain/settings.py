@@ -268,25 +268,25 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
     # -------------------------------------------------------------------------
     # Appearance
     # -------------------------------------------------------------------------
-    "primary_color_hue": SettingMeta(
-        key="primary_color_hue",
-        env_var="PULLDB_PRIMARY_COLOR_HUE",
-        default="217",
-        description="Primary brand color hue (0-360 HSL)",
-        setting_type=SettingType.INTEGER,
+    # Appearance - Theme Schemas (JSON)
+    # -------------------------------------------------------------------------
+    "light_theme_schema": SettingMeta(
+        key="light_theme_schema",
+        env_var="PULLDB_LIGHT_THEME_SCHEMA",
+        default=None,  # Will use LIGHT_PRESETS["Default"] from color_schemas
+        description="Light mode color schema (JSON)",
+        setting_type=SettingType.STRING,
         category=SettingCategory.APPEARANCE,
         dangerous=False,
-        validators=["is_non_negative_integer"],
     ),
-    "accent_color_hue": SettingMeta(
-        key="accent_color_hue",
-        env_var="PULLDB_ACCENT_COLOR_HUE",
-        default="142",
-        description="Accent/success color hue (0-360 HSL)",
-        setting_type=SettingType.INTEGER,
+    "dark_theme_schema": SettingMeta(
+        key="dark_theme_schema",
+        env_var="PULLDB_DARK_THEME_SCHEMA",
+        default=None,  # Will use DARK_PRESETS["Default"] from color_schemas
+        description="Dark mode color schema (JSON)",
+        setting_type=SettingType.STRING,
         category=SettingCategory.APPEARANCE,
         dangerous=False,
-        validators=["is_non_negative_integer"],
     ),
     "dark_mode_enabled": SettingMeta(
         key="dark_mode_enabled",

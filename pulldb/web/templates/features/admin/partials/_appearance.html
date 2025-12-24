@@ -1,144 +1,196 @@
-<!-- Appearance Settings Partial
-     Provides visual color pickers for theme customization using HSL hue sliders.
-     Included in settings.html for the Appearance category.
+<!-- Appearance Settings Partial - Color Schema Editor
+     Dual-pane UI for Light/Dark mode color schemas with preset selection
+     and live preview. All colors stored in database as JSON schemas.
 -->
 
 <div class="appearance-settings">
-    <!-- Color Preview -->
-    <div class="color-preview-card">
-        <h4 class="preview-title">Preview</h4>
-        <div class="preview-swatches">
-            <div class="swatch-group">
-                <label class="swatch-label">Primary</label>
-                <div class="swatch-row" id="primary-swatches">
-                    <div class="swatch" data-shade="50" style="background: hsl(var(--preview-primary-hue, 217), 100%, 97%)"></div>
-                    <div class="swatch" data-shade="100" style="background: hsl(var(--preview-primary-hue, 217), 96%, 90%)"></div>
-                    <div class="swatch" data-shade="200" style="background: hsl(var(--preview-primary-hue, 217), 94%, 80%)"></div>
-                    <div class="swatch" data-shade="300" style="background: hsl(var(--preview-primary-hue, 217), 90%, 66%)"></div>
-                    <div class="swatch" data-shade="400" style="background: hsl(var(--preview-primary-hue, 217), 86%, 55%)"></div>
-                    <div class="swatch swatch-lg" data-shade="500" style="background: hsl(var(--preview-primary-hue, 217), 84%, 47%)"></div>
-                    <div class="swatch" data-shade="600" style="background: hsl(var(--preview-primary-hue, 217), 83%, 41%)"></div>
-                    <div class="swatch" data-shade="700" style="background: hsl(var(--preview-primary-hue, 217), 78%, 35%)"></div>
-                    <div class="swatch" data-shade="800" style="background: hsl(var(--preview-primary-hue, 217), 70%, 29%)"></div>
-                    <div class="swatch" data-shade="900" style="background: hsl(var(--preview-primary-hue, 217), 64%, 24%)"></div>
-                </div>
+    <!-- Mode Tabs -->
+    <div class="mode-tabs">
+        <button type="button" class="mode-tab active" data-mode="light" onclick="switchMode('light')">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            </svg>
+            Light Mode
+        </button>
+        <button type="button" class="mode-tab" data-mode="dark" onclick="switchMode('dark')">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            Dark Mode
+        </button>
+    </div>
+
+    <!-- Preset Selector -->
+    <div class="preset-selector">
+        <label for="preset-select">Color Preset:</label>
+        <select id="preset-select" onchange="loadPreset(this.value)">
+            <optgroup label="Light Mode" id="light-presets">
+                <option value="light:Default">Default</option>
+                <option value="light:Warm">Warm</option>
+                <option value="light:Cool">Cool</option>
+            </optgroup>
+            <optgroup label="Dark Mode" id="dark-presets">
+                <option value="dark:Default">Default</option>
+                <option value="dark:Midnight Blue">Midnight Blue</option>
+                <option value="dark:OLED Black">OLED Black</option>
+                <option value="dark:Solarized Dark">Solarized Dark</option>
+            </optgroup>
+        </select>
+        <span class="preset-hint">Selecting a preset overwrites current values</span>
+    </div>
+
+    <!-- Color Editor Panels -->
+    <div class="color-panels">
+        <!-- Surfaces -->
+        <div class="color-panel">
+            <h4 class="panel-title">Surfaces</h4>
+            <div class="color-row">
+                <label>Base</label>
+                <input type="color" data-token="surface.base" class="color-picker">
+                <input type="text" data-token="surface.base" class="color-text">
             </div>
-            <div class="swatch-group">
-                <label class="swatch-label">Accent</label>
-                <div class="swatch-row" id="accent-swatches">
-                    <div class="swatch" data-shade="50" style="background: hsl(var(--preview-accent-hue, 142), 76%, 97%)"></div>
-                    <div class="swatch" data-shade="100" style="background: hsl(var(--preview-accent-hue, 142), 76%, 90%)"></div>
-                    <div class="swatch" data-shade="200" style="background: hsl(var(--preview-accent-hue, 142), 70%, 78%)"></div>
-                    <div class="swatch" data-shade="300" style="background: hsl(var(--preview-accent-hue, 142), 64%, 62%)"></div>
-                    <div class="swatch" data-shade="400" style="background: hsl(var(--preview-accent-hue, 142), 56%, 46%)"></div>
-                    <div class="swatch swatch-lg" data-shade="500" style="background: hsl(var(--preview-accent-hue, 142), 64%, 38%)"></div>
-                    <div class="swatch" data-shade="600" style="background: hsl(var(--preview-accent-hue, 142), 72%, 30%)"></div>
-                    <div class="swatch" data-shade="700" style="background: hsl(var(--preview-accent-hue, 142), 70%, 25%)"></div>
-                    <div class="swatch" data-shade="800" style="background: hsl(var(--preview-accent-hue, 142), 64%, 21%)"></div>
-                    <div class="swatch" data-shade="900" style="background: hsl(var(--preview-accent-hue, 142), 58%, 18%)"></div>
-                </div>
+            <div class="color-row">
+                <label>Hover</label>
+                <input type="color" data-token="surface.hover" class="color-picker">
+                <input type="text" data-token="surface.hover" class="color-text">
+            </div>
+            <div class="color-row">
+                <label>Active</label>
+                <input type="color" data-token="surface.active" class="color-picker">
+                <input type="text" data-token="surface.active" class="color-text">
+            </div>
+        </div>
+
+        <!-- Backgrounds -->
+        <div class="color-panel">
+            <h4 class="panel-title">Backgrounds</h4>
+            <div class="color-row">
+                <label>Primary</label>
+                <input type="color" data-token="background.primary" class="color-picker">
+                <input type="text" data-token="background.primary" class="color-text">
+            </div>
+            <div class="color-row">
+                <label>Secondary</label>
+                <input type="color" data-token="background.secondary" class="color-picker">
+                <input type="text" data-token="background.secondary" class="color-text">
+            </div>
+            <div class="color-row">
+                <label>Elevated</label>
+                <input type="color" data-token="background.elevated" class="color-picker">
+                <input type="text" data-token="background.elevated" class="color-text">
+            </div>
+        </div>
+
+        <!-- Text -->
+        <div class="color-panel">
+            <h4 class="panel-title">Text</h4>
+            <div class="color-row">
+                <label>Primary</label>
+                <input type="color" data-token="text.primary" class="color-picker">
+                <input type="text" data-token="text.primary" class="color-text">
+            </div>
+            <div class="color-row">
+                <label>Secondary</label>
+                <input type="color" data-token="text.secondary" class="color-picker">
+                <input type="text" data-token="text.secondary" class="color-text">
+            </div>
+            <div class="color-row">
+                <label>Muted</label>
+                <input type="color" data-token="text.muted" class="color-picker">
+                <input type="text" data-token="text.muted" class="color-text">
+            </div>
+        </div>
+
+        <!-- Borders -->
+        <div class="color-panel">
+            <h4 class="panel-title">Borders</h4>
+            <div class="color-row">
+                <label>Default</label>
+                <input type="color" data-token="border.default" class="color-picker">
+                <input type="text" data-token="border.default" class="color-text">
+            </div>
+            <div class="color-row">
+                <label>Hover</label>
+                <input type="color" data-token="border.hover" class="color-picker">
+                <input type="text" data-token="border.hover" class="color-text">
+            </div>
+            <div class="color-row">
+                <label>Focus</label>
+                <input type="color" data-token="border.focus" class="color-picker">
+                <input type="text" data-token="border.focus" class="color-text">
+            </div>
+        </div>
+
+        <!-- Interactive -->
+        <div class="color-panel">
+            <h4 class="panel-title">Interactive</h4>
+            <div class="color-row">
+                <label>Primary</label>
+                <input type="color" data-token="interactive.primary" class="color-picker">
+                <input type="text" data-token="interactive.primary" class="color-text">
+            </div>
+            <div class="color-row">
+                <label>Hover</label>
+                <input type="color" data-token="interactive.primary_hover" class="color-picker">
+                <input type="text" data-token="interactive.primary_hover" class="color-text">
+            </div>
+            <div class="color-row">
+                <label>Danger</label>
+                <input type="color" data-token="interactive.danger" class="color-picker">
+                <input type="text" data-token="interactive.danger" class="color-text">
+            </div>
+        </div>
+
+        <!-- Status -->
+        <div class="color-panel">
+            <h4 class="panel-title">Status Colors</h4>
+            <div class="color-row">
+                <label>Success</label>
+                <input type="color" data-token="status.success" class="color-picker">
+                <input type="text" data-token="status.success" class="color-text">
+            </div>
+            <div class="color-row">
+                <label>Warning</label>
+                <input type="color" data-token="status.warning" class="color-picker">
+                <input type="text" data-token="status.warning" class="color-text">
+            </div>
+            <div class="color-row">
+                <label>Error</label>
+                <input type="color" data-token="status.error" class="color-picker">
+                <input type="text" data-token="status.error" class="color-text">
+            </div>
+            <div class="color-row">
+                <label>Info</label>
+                <input type="color" data-token="status.info" class="color-picker">
+                <input type="text" data-token="status.info" class="color-text">
             </div>
         </div>
     </div>
 
-    <!-- Hue Sliders -->
-    <div class="hue-sliders">
-        <div class="hue-control">
-            <label class="hue-label" for="primary-hue-slider">
-                Primary Color Hue
-                <span class="hue-value" id="primary-hue-value">217°</span>
-            </label>
-            <div class="slider-wrapper">
-                <input type="range" 
-                       id="primary-hue-slider" 
-                       min="0" max="360" 
-                       value="217"
-                       class="hue-slider"
-                       style="background: linear-gradient(to right, 
-                           hsl(0, 84%, 47%), hsl(30, 84%, 47%), hsl(60, 84%, 47%), 
-                           hsl(90, 84%, 47%), hsl(120, 84%, 47%), hsl(150, 84%, 47%),
-                           hsl(180, 84%, 47%), hsl(210, 84%, 47%), hsl(240, 84%, 47%),
-                           hsl(270, 84%, 47%), hsl(300, 84%, 47%), hsl(330, 84%, 47%),
-                           hsl(360, 84%, 47%));">
-            </div>
-            <div class="hue-presets">
-                <button type="button" class="preset-btn" data-hue="217" data-target="primary" title="Blue (Default)">
-                    <span class="preset-swatch" style="background: hsl(217, 84%, 47%)"></span>
-                </button>
-                <button type="button" class="preset-btn" data-hue="262" data-target="primary" title="Purple">
-                    <span class="preset-swatch" style="background: hsl(262, 84%, 47%)"></span>
-                </button>
-                <button type="button" class="preset-btn" data-hue="330" data-target="primary" title="Pink">
-                    <span class="preset-swatch" style="background: hsl(330, 84%, 47%)"></span>
-                </button>
-                <button type="button" class="preset-btn" data-hue="0" data-target="primary" title="Red">
-                    <span class="preset-swatch" style="background: hsl(0, 84%, 47%)"></span>
-                </button>
-                <button type="button" class="preset-btn" data-hue="25" data-target="primary" title="Orange">
-                    <span class="preset-swatch" style="background: hsl(25, 84%, 47%)"></span>
-                </button>
-                <button type="button" class="preset-btn" data-hue="180" data-target="primary" title="Cyan">
-                    <span class="preset-swatch" style="background: hsl(180, 84%, 47%)"></span>
-                </button>
-            </div>
-        </div>
-
-        <div class="hue-control">
-            <label class="hue-label" for="accent-hue-slider">
-                Accent Color Hue
-                <span class="hue-value" id="accent-hue-value">142°</span>
-            </label>
-            <div class="slider-wrapper">
-                <input type="range" 
-                       id="accent-hue-slider" 
-                       min="0" max="360" 
-                       value="142"
-                       class="hue-slider"
-                       style="background: linear-gradient(to right, 
-                           hsl(0, 64%, 38%), hsl(30, 64%, 38%), hsl(60, 64%, 38%), 
-                           hsl(90, 64%, 38%), hsl(120, 64%, 38%), hsl(150, 64%, 38%),
-                           hsl(180, 64%, 38%), hsl(210, 64%, 38%), hsl(240, 64%, 38%),
-                           hsl(270, 64%, 38%), hsl(300, 64%, 38%), hsl(330, 64%, 38%),
-                           hsl(360, 64%, 38%));">
-            </div>
-            <div class="hue-presets">
-                <button type="button" class="preset-btn" data-hue="142" data-target="accent" title="Green (Default)">
-                    <span class="preset-swatch" style="background: hsl(142, 64%, 38%)"></span>
-                </button>
-                <button type="button" class="preset-btn" data-hue="200" data-target="accent" title="Teal">
-                    <span class="preset-swatch" style="background: hsl(200, 64%, 38%)"></span>
-                </button>
-                <button type="button" class="preset-btn" data-hue="280" data-target="accent" title="Violet">
-                    <span class="preset-swatch" style="background: hsl(280, 64%, 38%)"></span>
-                </button>
-                <button type="button" class="preset-btn" data-hue="45" data-target="accent" title="Gold">
-                    <span class="preset-swatch" style="background: hsl(45, 64%, 38%)"></span>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Dark Mode Toggle -->
+    <!-- Dark Mode Default Toggle -->
     <div class="dark-mode-control">
         <label class="toggle-label">
             <span class="toggle-text">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                 </svg>
                 Enable Dark Mode by Default
             </span>
             <input type="checkbox" id="dark-mode-toggle" class="toggle-checkbox">
             <span class="toggle-switch"></span>
         </label>
-        <p class="toggle-hint">When enabled, new sessions will start in dark mode. Users can still toggle individually.</p>
+        <p class="toggle-hint">New sessions start in dark mode. Users can still toggle.</p>
     </div>
 
-    <!-- Save Button -->
+    <!-- Actions -->
     <div class="appearance-actions">
         <button type="button" class="btn btn-secondary" onclick="resetAppearance()">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                <path d="M3 3v5h5"/>
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
             </svg>
             Reset to Defaults
         </button>
@@ -149,130 +201,280 @@
             Save Theme
         </button>
     </div>
+
+    <!-- Component Demo Gallery -->
+    <div class="demo-gallery">
+        <h4 class="demo-title">Component Preview</h4>
+        <div class="demo-grid">
+            <div class="demo-section">
+                <h5>Buttons</h5>
+                <div class="demo-row">
+                    <button class="btn btn-primary btn-sm">Primary</button>
+                    <button class="btn btn-secondary btn-sm">Secondary</button>
+                    <button class="btn btn-danger btn-sm">Danger</button>
+                </div>
+            </div>
+            <div class="demo-section">
+                <h5>Status Badges</h5>
+                <div class="demo-row">
+                    <span class="badge badge-success">Success</span>
+                    <span class="badge badge-warning">Warning</span>
+                    <span class="badge badge-danger">Error</span>
+                    <span class="badge badge-info">Info</span>
+                </div>
+            </div>
+            <div class="demo-section">
+                <h5>Form Input</h5>
+                <input type="text" class="form-input" placeholder="Text input" style="width: 150px;">
+            </div>
+            <div class="demo-section">
+                <h5>Card</h5>
+                <div class="demo-card">
+                    <div class="demo-card-header">Header</div>
+                    <div class="demo-card-body">Content</div>
+                </div>
+            </div>
+            <div class="demo-section demo-section-wide">
+                <h5>Alerts</h5>
+                <div class="demo-alert demo-alert-success">Success message</div>
+                <div class="demo-alert demo-alert-warning">Warning message</div>
+                <div class="demo-alert demo-alert-error">Error message</div>
+            </div>
+        </div>
+    </div>
 </div>
 
-<!-- Styles moved to pages/css/admin.css (HCA Layer 4) -->
+<style>
+.appearance-settings { padding: var(--space-4); }
+.mode-tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); border-bottom: 1px solid var(--color-border); padding-bottom: var(--space-2); }
+.mode-tab { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-4); border: none; background: transparent; color: var(--color-text-secondary); cursor: pointer; border-radius: var(--radius-md); transition: all var(--transition-fast); }
+.mode-tab:hover { background: var(--color-bg-hover, var(--color-surface-hover)); }
+.mode-tab.active { background: var(--color-primary); color: white; }
+.preset-selector { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-bg-subtle, var(--color-bg-secondary)); border-radius: var(--radius-md); }
+.preset-selector label { font-weight: var(--font-medium); }
+.preset-selector select { padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); }
+.preset-hint { font-size: var(--text-xs); color: var(--color-text-muted); }
+.color-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
+.color-panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3); }
+.panel-title { font-size: var(--text-sm); font-weight: var(--font-semibold); margin-bottom: var(--space-3); }
+.color-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.color-row label { flex: 0 0 70px; font-size: var(--text-sm); color: var(--color-text-secondary); }
+.color-picker { width: 32px; height: 32px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer; }
+.color-text { flex: 1; padding: var(--space-1) var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-input-bg); }
+.dark-mode-control { padding: var(--space-4); background: var(--color-bg-subtle, var(--color-bg-secondary)); border-radius: var(--radius-md); margin-bottom: var(--space-4); }
+.toggle-label { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+.toggle-text { display: flex; align-items: center; gap: var(--space-2); font-weight: var(--font-medium); }
+.toggle-checkbox { display: none; }
+.toggle-switch { width: 44px; height: 24px; background: var(--color-border); border-radius: var(--radius-full); position: relative; transition: background var(--transition-fast); }
+.toggle-switch::after { content: ''; position: absolute; width: 20px; height: 20px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: transform var(--transition-fast); }
+.toggle-checkbox:checked + .toggle-switch { background: var(--color-primary); }
+.toggle-checkbox:checked + .toggle-switch::after { transform: translateX(20px); }
+.toggle-hint { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted); }
+.appearance-actions { display: flex; gap: var(--space-3); justify-content: flex-end; padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
+.appearance-actions .btn-primary .spin { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* Demo Gallery - Isolated Preview Area */
+.demo-gallery { margin-top: var(--space-6); padding: var(--space-4); border-radius: var(--radius-lg); border: 2px dashed var(--color-border); }
+.demo-gallery[data-preview-mode="light"] { background: var(--demo-bg-primary, #f9fafb); }
+.demo-gallery[data-preview-mode="dark"] { background: var(--demo-bg-primary, #0f172a); }
+.demo-title { font-size: var(--text-md); font-weight: var(--font-semibold); margin-bottom: var(--space-4); color: var(--demo-text-primary, var(--color-text-primary)); }
+.demo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-4); }
+.demo-section h5 { font-size: var(--text-xs); text-transform: uppercase; color: var(--demo-text-muted, var(--color-text-muted)); margin-bottom: var(--space-2); }
+.demo-section-wide { grid-column: span 2; }
+.demo-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+/* Demo components use --demo-* variables for isolated preview */
+.demo-gallery .btn-primary { background: var(--demo-primary, var(--color-primary)); color: white; }
+.demo-gallery .btn-primary:hover { background: var(--demo-primary-hover, var(--color-primary-hover)); }
+.demo-gallery .btn-secondary { background: var(--demo-surface, var(--color-surface)); color: var(--demo-text-primary, var(--color-text-primary)); border: 1px solid var(--demo-border, var(--color-border)); }
+.demo-gallery .btn-danger { background: var(--demo-danger, var(--color-danger)); color: white; }
+.demo-gallery .badge-success { background: rgba(22,163,74,0.1); color: var(--demo-success, var(--color-success)); }
+.demo-gallery .badge-warning { background: rgba(217,119,6,0.1); color: var(--demo-warning, var(--color-warning)); }
+.demo-gallery .badge-danger { background: rgba(220,38,38,0.1); color: var(--demo-error, var(--color-error)); }
+.demo-gallery .badge-info { background: rgba(8,145,178,0.1); color: var(--demo-info, var(--color-info)); }
+.demo-gallery .form-input { background: var(--demo-surface, var(--color-surface)); border: 1px solid var(--demo-border, var(--color-border)); color: var(--demo-text-primary, var(--color-text-primary)); }
+.demo-card { border: 1px solid var(--demo-border, var(--color-border)); border-radius: var(--radius-md); background: var(--demo-surface, var(--color-surface)); overflow: hidden; }
+.demo-card-header { padding: var(--space-2) var(--space-3); background: var(--demo-bg-secondary, var(--color-bg-secondary)); font-weight: var(--font-medium); font-size: var(--text-sm); color: var(--demo-text-primary, var(--color-text-primary)); }
+.demo-card-body { padding: var(--space-3); font-size: var(--text-sm); color: var(--demo-text-secondary, var(--color-text-secondary)); }
+.demo-alert { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font-size: var(--text-sm); margin-bottom: var(--space-2); }
+.demo-alert-success { background: rgba(22,163,74,0.1); color: var(--demo-success, var(--color-success)); border: 1px solid rgba(22,163,74,0.2); }
+.demo-alert-warning { background: rgba(217,119,6,0.1); color: var(--demo-warning, var(--color-warning)); border: 1px solid rgba(217,119,6,0.2); }
+.demo-alert-error { background: rgba(220,38,38,0.1); color: var(--demo-error, var(--color-error)); border: 1px solid rgba(220,38,38,0.2); }
+
+/* Toast Notifications */
+.toast-notification { position: fixed; bottom: 20px; right: 20px; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium); box-shadow: var(--shadow-lg); z-index: var(--z-toast, 800); transform: translateY(100px); opacity: 0; transition: all 0.3s ease; }
+.toast-notification.toast-visible { transform: translateY(0); opacity: 1; }
+.toast-success { background: #16a34a; color: white; }
+.toast-error { background: #dc2626; color: white; }
+.toast-info { background: #0891b2; color: white; }
+.toast-icon { font-size: var(--text-lg); }
+</style>
 
 <script>
 (function() {
-    // Initialize from current settings
-    const primarySlider = document.getElementById('primary-hue-slider');
-    const accentSlider = document.getElementById('accent-hue-slider');
-    const primaryValue = document.getElementById('primary-hue-value');
-    const accentValue = document.getElementById('accent-hue-value');
-    const darkModeToggle = document.getElementById('dark-mode-toggle');
-    
-    // Update preview swatches
-    function updatePrimarySwatches(hue) {
-        document.documentElement.style.setProperty('--preview-primary-hue', hue);
-        document.querySelectorAll('#primary-swatches .swatch').forEach((swatch, i) => {
-            const shades = [
-                [100, 97], [96, 90], [94, 80], [90, 66], [86, 55],
-                [84, 47], [83, 41], [78, 35], [70, 29], [64, 24]
-            ];
-            swatch.style.background = `hsl(${hue}, ${shades[i][0]}%, ${shades[i][1]}%)`;
+    let currentMode = 'light';
+    let lightSchema = { surface: { base: '#ffffff', hover: '#f9fafb', active: '#f3f4f6' }, background: { primary: '#f9fafb', secondary: '#f3f4f6', elevated: '#ffffff' }, text: { primary: '#111827', secondary: '#4b5563', muted: '#6b7280' }, border: { default: '#e5e7eb', hover: '#d1d5db', focus: '#3b82f6' }, interactive: { primary: '#2563eb', primary_hover: '#1d4ed8', danger: '#dc2626' }, status: { success: '#16a34a', warning: '#d97706', error: '#dc2626', info: '#0891b2' } };
+    let darkSchema = { surface: { base: '#1e293b', hover: '#334155', active: '#475569' }, background: { primary: '#0f172a', secondary: '#1e293b', elevated: '#1e293b' }, text: { primary: '#f1f5f9', secondary: '#94a3b8', muted: '#64748b' }, border: { default: '#334155', hover: '#475569', focus: '#60a5fa' }, interactive: { primary: '#60a5fa', primary_hover: '#3b82f6', danger: '#f87171' }, status: { success: '#4ade80', warning: '#fbbf24', error: '#f87171', info: '#60a5fa' } };
+    const defaultLight = JSON.parse(JSON.stringify(lightSchema));
+    const defaultDark = JSON.parse(JSON.stringify(darkSchema));
+
+    function getVal(obj, path) { return path.split('.').reduce((o, k) => o && o[k], obj); }
+    function setVal(obj, path, val) { const keys = path.split('.'); const last = keys.pop(); keys.reduce((o, k) => o[k] = o[k] || {}, obj)[last] = val; }
+
+    function updateUI() {
+        const schema = currentMode === 'light' ? lightSchema : darkSchema;
+        document.querySelectorAll('.color-picker, .color-text').forEach(input => {
+            const val = getVal(schema, input.dataset.token);
+            if (val) input.value = val;
         });
+        document.querySelectorAll('.mode-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.mode === currentMode));
+        // Update preset selector to show relevant presets
+        document.getElementById('preset-select').value = currentMode + ':' + schema.name;
+        // Update demo gallery preview (isolated to demo area only)
+        updateDemoPreview();
     }
-    
-    function updateAccentSwatches(hue) {
-        document.documentElement.style.setProperty('--preview-accent-hue', hue);
-        document.querySelectorAll('#accent-swatches .swatch').forEach((swatch, i) => {
-            const shades = [
-                [76, 97], [76, 90], [70, 78], [64, 62], [56, 46],
-                [64, 38], [72, 30], [70, 25], [64, 21], [58, 18]
-            ];
-            swatch.style.background = `hsl(${hue}, ${shades[i][0]}%, ${shades[i][1]}%)`;
-        });
-    }
-    
-    // Slider event handlers
-    primarySlider.addEventListener('input', function() {
-        primaryValue.textContent = this.value + '°';
-        updatePrimarySwatches(this.value);
-    });
-    
-    accentSlider.addEventListener('input', function() {
-        accentValue.textContent = this.value + '°';
-        updateAccentSwatches(this.value);
-    });
-    
-    // Preset buttons
-    document.querySelectorAll('.preset-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const hue = this.dataset.hue;
-            const target = this.dataset.target;
-            if (target === 'primary') {
-                primarySlider.value = hue;
-                primaryValue.textContent = hue + '°';
-                updatePrimarySwatches(hue);
-            } else {
-                accentSlider.value = hue;
-                accentValue.textContent = hue + '°';
-                updateAccentSwatches(hue);
-            }
-        });
-    });
-    
-    // Load current values from settings if available
-    const primarySetting = document.querySelector('[data-key="primary_color_hue"] .setting-value');
-    const accentSetting = document.querySelector('[data-key="accent_color_hue"] .setting-value');
-    const darkModeSetting = document.querySelector('[data-key="dark_mode_enabled"] .setting-value');
-    
-    if (primarySetting) {
-        const val = parseInt(primarySetting.textContent) || 217;
-        primarySlider.value = val;
-        primaryValue.textContent = val + '°';
-        updatePrimarySwatches(val);
-    }
-    
-    if (accentSetting) {
-        const val = parseInt(accentSetting.textContent) || 142;
-        accentSlider.value = val;
-        accentValue.textContent = val + '°';
-        updateAccentSwatches(val);
-    }
-    
-    if (darkModeSetting) {
-        darkModeToggle.checked = darkModeSetting.textContent.trim().toLowerCase() === 'true';
-    }
-    
-    // Save function
-    window.saveAppearance = async function() {
-        const settings = [
-            { key: 'primary_color_hue', value: primarySlider.value },
-            { key: 'accent_color_hue', value: accentSlider.value },
-            { key: 'dark_mode_enabled', value: darkModeToggle.checked ? 'true' : 'false' }
-        ];
+
+    function updateDemoPreview() {
+        // Apply preview ONLY to the demo gallery, not the global UI
+        const schema = currentMode === 'light' ? lightSchema : darkSchema;
+        const gallery = document.querySelector('.demo-gallery');
+        if (!gallery) return;
         
+        // Set CSS variables scoped to the demo gallery only
+        gallery.style.setProperty('--demo-surface', schema.surface?.base || '#ffffff');
+        gallery.style.setProperty('--demo-surface-hover', schema.surface?.hover || '#f9fafb');
+        gallery.style.setProperty('--demo-bg-primary', schema.background?.primary || '#f9fafb');
+        gallery.style.setProperty('--demo-bg-secondary', schema.background?.secondary || '#f3f4f6');
+        gallery.style.setProperty('--demo-text-primary', schema.text?.primary || '#111827');
+        gallery.style.setProperty('--demo-text-secondary', schema.text?.secondary || '#4b5563');
+        gallery.style.setProperty('--demo-text-muted', schema.text?.muted || '#6b7280');
+        gallery.style.setProperty('--demo-border', schema.border?.default || '#e5e7eb');
+        gallery.style.setProperty('--demo-primary', schema.interactive?.primary || '#2563eb');
+        gallery.style.setProperty('--demo-primary-hover', schema.interactive?.primary_hover || '#1d4ed8');
+        gallery.style.setProperty('--demo-danger', schema.interactive?.danger || '#dc2626');
+        gallery.style.setProperty('--demo-success', schema.status?.success || '#16a34a');
+        gallery.style.setProperty('--demo-warning', schema.status?.warning || '#d97706');
+        gallery.style.setProperty('--demo-error', schema.status?.error || '#dc2626');
+        gallery.style.setProperty('--demo-info', schema.status?.info || '#0891b2');
+        
+        // Update mode indicator in demo
+        gallery.setAttribute('data-preview-mode', currentMode);
+    }
+
+    window.switchMode = function(mode) {
+        currentMode = mode;
+        updateUI();
+        // Do NOT apply global preview - keep UI unchanged until save
+    };
+
+    window.loadPreset = async function(value) {
+        const [mode, name] = value.split(':');
         try {
-            for (const setting of settings) {
-                const response = await fetch(`/web/admin/settings/${setting.key}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `value=${encodeURIComponent(setting.value)}`
-                });
-                if (!response.ok) throw new Error(`Failed to save ${setting.key}`);
-            }
+            const r = await fetch(`/web/admin/api/color-preset?mode=${mode}&name=${encodeURIComponent(name)}`);
+            const data = await r.json();
+            if (mode === 'light') lightSchema = data; else darkSchema = data;
+        } catch(e) {
+            if (mode === 'light') lightSchema = JSON.parse(JSON.stringify(defaultLight));
+            else darkSchema = JSON.parse(JSON.stringify(defaultDark));
+        }
+        currentMode = mode;
+        updateUI();
+    };
+
+    document.querySelectorAll('.color-picker').forEach(p => p.addEventListener('input', function() {
+        const schema = currentMode === 'light' ? lightSchema : darkSchema;
+        setVal(schema, this.dataset.token, this.value);
+        const txt = document.querySelector(`.color-text[data-token="${this.dataset.token}"]`);
+        if (txt) txt.value = this.value;
+        updateDemoPreview();
+    }));
+
+    document.querySelectorAll('.color-text').forEach(t => t.addEventListener('change', function() {
+        const schema = currentMode === 'light' ? lightSchema : darkSchema;
+        setVal(schema, this.dataset.token, this.value);
+        const p = document.querySelector(`.color-picker[data-token="${this.dataset.token}"]`);
+        if (p && /^#[0-9a-fA-F]{6}$/.test(this.value)) p.value = this.value;
+        updateDemoPreview();
+    }));
+
+    window.saveAppearance = async function() {
+        const saveBtn = document.querySelector('.appearance-actions .btn-primary');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<svg class="spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Saving...';
+        }
+        try {
+            // Save both light and dark schemas to database
+            await fetch('/web/admin/settings/light_theme_schema', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `value=${encodeURIComponent(JSON.stringify(lightSchema))}`
+            });
+            await fetch('/web/admin/settings/dark_theme_schema', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `value=${encodeURIComponent(JSON.stringify(darkSchema))}`
+            });
+            await fetch('/web/admin/settings/dark_mode_enabled', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `value=${document.getElementById('dark-mode-toggle').checked ? 'true' : 'false'}`
+            });
             
-            // Show success and reload to apply theme
-            showToast('Theme saved! Reloading...', 'success');
-            setTimeout(() => window.location.reload(), 1000);
+            // Generate new static CSS files
+            const genResponse = await fetch('/web/admin/api/generate-manifest', { method: 'POST' });
+            const genResult = await genResponse.json();
+            
+            if (genResult.success) {
+                // Reload the theme CSS with new version
+                if (window.reloadThemeCSS) {
+                    window.reloadThemeCSS(genResult.version);
+                }
+                showToast('Theme saved successfully!', 'success');
+            } else {
+                throw new Error('Failed to generate theme files');
+            }
         } catch (err) {
             showToast('Failed to save theme: ' + err.message, 'error');
+        } finally {
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Save Theme';
+            }
         }
     };
-    
-    // Reset function
+
     window.resetAppearance = function() {
-        primarySlider.value = 217;
-        primaryValue.textContent = '217°';
-        updatePrimarySwatches(217);
-        
-        accentSlider.value = 142;
-        accentValue.textContent = '142°';
-        updateAccentSwatches(142);
-        
-        darkModeToggle.checked = false;
+        lightSchema = JSON.parse(JSON.stringify(defaultLight));
+        darkSchema = JSON.parse(JSON.stringify(defaultDark));
+        document.getElementById('dark-mode-toggle').checked = false;
+        updateUI();
     };
+
+    // Toast notification function
+    function showToast(message, type = 'info') {
+        // Remove existing toasts
+        document.querySelectorAll('.toast-notification').forEach(t => t.remove());
+        
+        const toast = document.createElement('div');
+        toast.className = `toast-notification toast-${type}`;
+        toast.innerHTML = `
+            <span class="toast-icon">${type === 'success' ? '✓' : type === 'error' ? '✗' : 'ℹ'}</span>
+            <span class="toast-message">${message}</span>
+        `;
+        document.body.appendChild(toast);
+        
+        // Animate in
+        requestAnimationFrame(() => toast.classList.add('toast-visible'));
+        
+        // Auto-dismiss after 3 seconds
+        setTimeout(() => {
+            toast.classList.remove('toast-visible');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    updateUI();
 })();
 </script>

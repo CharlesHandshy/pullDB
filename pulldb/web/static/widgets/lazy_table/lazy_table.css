@@ -19,7 +19,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--surface-primary, #fff);
+    background: var(--color-surface-primary, #fff);
     border-radius: var(--radius-lg, 8px);
     overflow: hidden;
     position: relative;
@@ -61,7 +61,7 @@
     padding: var(--space-1, 4px) var(--space-2, 8px);
     border: 1px solid var(--primary-300, #93c5fd);
     border-radius: var(--radius-md, 6px);
-    background: var(--surface-primary, #fff);
+    background: var(--color-surface-primary, #fff);
     color: var(--primary-600, #2563eb);
     font-size: 0.75rem;
     cursor: pointer;
@@ -82,8 +82,8 @@
     align-items: center;
     gap: var(--space-2, 8px);
     padding: var(--space-2, 8px) var(--space-4, 16px);
-    background: var(--surface-secondary, #f9fafb);
-    border-bottom: 1px solid var(--border-secondary, #e5e7eb);
+    background: var(--color-surface-secondary, #f9fafb);
+    border-bottom: 1px solid var(--color-border-secondary, #e5e7eb);
 }
 
 .lazy-table-filter-chips.hidden {
@@ -167,8 +167,8 @@
     padding: var(--space-1, 4px) var(--space-2, 8px);
     border: 1px solid var(--gray-300, #d1d5db);
     border-radius: var(--radius-md, 6px);
-    background: var(--surface-primary, #fff);
-    color: var(--text-secondary, #6b7280);
+    background: var(--color-surface-primary, #fff);
+    color: var(--color-text-secondary, #6b7280);
     font-size: 0.75rem;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -176,7 +176,7 @@
 
 .filter-chips-clear-all:hover {
     background: var(--gray-100, #f3f4f6);
-    color: var(--text-primary, #111827);
+    color: var(--color-text-primary, #111827);
     border-color: var(--gray-400, #9ca3af);
 }
 
@@ -186,8 +186,8 @@
 
 .lazy-table-header-container {
     flex-shrink: 0;
-    background: var(--surface-secondary, #f9fafb);
-    border-bottom: 2px solid var(--border-primary, #e5e7eb);
+    background: var(--color-surface-secondary, #f9fafb);
+    border-bottom: 2px solid var(--color-border-primary, #e5e7eb);
     overflow: hidden;
 }
 
@@ -204,8 +204,8 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--text-secondary, #6b7280);
-    background: var(--surface-secondary, #f9fafb);
+    color: var(--color-text-secondary, #6b7280);
+    background: var(--color-surface-secondary, #f9fafb);
     white-space: nowrap;
     position: relative;
     height: 40px; /* Pre-size for icon buttons in header */
@@ -250,14 +250,14 @@
     border: none;
     border-radius: var(--radius-sm, 4px);
     background: transparent;
-    color: var(--text-muted, #9ca3af);
+    color: var(--color-text-muted, #9ca3af);
     cursor: pointer;
     transition: all 0.15s ease;
 }
 
 .sort-btn:hover {
-    background: var(--surface-hover, #e5e7eb);
-    color: var(--text-primary, #111827);
+    background: var(--color-surface-hover, #e5e7eb);
+    color: var(--color-text-primary, #111827);
 }
 
 /* Both arrows visible by default, stacked */
@@ -279,7 +279,7 @@
 }
 
 .sort-btn.sort-asc .sort-icon-desc {
-    color: var(--text-muted, #9ca3af);
+    color: var(--color-text-muted, #9ca3af);
 }
 
 /* Sorted descending - bottom arrow blue */
@@ -288,7 +288,7 @@
 }
 
 .sort-btn.sort-desc .sort-icon-asc {
-    color: var(--text-muted, #9ca3af);
+    color: var(--color-text-muted, #9ca3af);
 }
 
 .sort-btn.sort-desc .sort-icon-desc {
@@ -307,14 +307,14 @@
     border: none;
     border-radius: var(--radius-sm, 4px);
     background: transparent;
-    color: var(--text-muted, #9ca3af);
+    color: var(--color-text-muted, #9ca3af);
     cursor: pointer;
     transition: all 0.15s ease;
 }
 
 .filter-btn:hover {
-    background: var(--surface-hover, #e5e7eb);
-    color: var(--text-primary, #111827);
+    background: var(--color-surface-hover, #e5e7eb);
+    color: var(--color-text-primary, #111827);
 }
 
 .filter-btn.filter-active {
@@ -360,12 +360,12 @@
    ========================================================================= */
 
 .lazy-table-row {
-    border-bottom: 1px solid var(--border-secondary, #f3f4f6);
+    border-bottom: 1px solid var(--color-border-secondary, #f3f4f6);
     transition: background 0.15s ease;
 }
 
 .lazy-table-row:hover {
-    background: var(--surface-hover, #f9fafb);
+    background: var(--color-surface-hover, #f9fafb);
 }
 
 .lazy-table-row.selected {
@@ -379,7 +379,7 @@
 .lazy-table-td {
     padding: 8px 8px 8px 0;
     font-size: 0.875rem;
-    color: var(--text-primary, #111827);
+    color: var(--color-text-primary, #111827);
     vertical-align: middle;
 }
 
@@ -452,7 +452,7 @@
     height: 18px;
     border: 2px solid var(--gray-300, #d1d5db);
     border-radius: var(--radius-sm, 4px);
-    background: var(--surface-primary, #fff);
+    background: var(--color-surface-primary, #fff);
     transition: all 0.15s ease;
 }
 
@@ -502,14 +502,14 @@
     border: none;
     border-radius: var(--radius-md, 6px);
     background: transparent;
-    color: var(--text-secondary, #6b7280);
+    color: var(--color-text-secondary, #6b7280);
     cursor: pointer;
     transition: all 0.15s ease;
 }
 
 .action-btn:hover {
-    background: var(--surface-hover, #f3f4f6);
-    color: var(--text-primary, #111827);
+    background: var(--color-surface-hover, #f3f4f6);
+    color: var(--color-text-primary, #111827);
 }
 
 .action-btn-primary {
@@ -559,8 +559,8 @@
 
 .lazy-table-footer-container {
     flex-shrink: 0;
-    border-top: 1px solid var(--border-primary, #e5e7eb);
-    background: var(--surface-secondary, #f9fafb);
+    border-top: 1px solid var(--color-border-primary, #e5e7eb);
+    background: var(--color-surface-secondary, #f9fafb);
 }
 
 .lazy-table-footer {
@@ -574,15 +574,15 @@
     align-items: center;
     gap: var(--space-3, 12px);
     font-size: 0.8125rem;
-    color: var(--text-secondary, #6b7280);
+    color: var(--color-text-secondary, #6b7280);
 }
 
 .footer-clear-filters-btn {
     padding: var(--space-1, 4px) var(--space-3, 12px);
-    border: 1px solid var(--border-primary, #e5e7eb);
+    border: 1px solid var(--color-border-primary, #e5e7eb);
     border-radius: var(--radius-md, 6px);
-    background: var(--surface-primary, #fff);
-    color: var(--text-secondary, #6b7280);
+    background: var(--color-surface-primary, #fff);
+    color: var(--color-text-secondary, #6b7280);
     font-size: 0.75rem;
     font-weight: 500;
     cursor: pointer;
@@ -590,8 +590,8 @@
 }
 
 .footer-clear-filters-btn:hover {
-    background: var(--surface-hover, #f3f4f6);
-    border-color: var(--border-secondary, #d1d5db);
+    background: var(--color-surface-hover, #f3f4f6);
+    border-color: var(--color-border-secondary, #d1d5db);
 }
 
 .footer-clear-filters-btn.hidden {
@@ -646,7 +646,7 @@
 
 .lazy-table-loading span {
     font-size: 0.875rem;
-    color: var(--text-secondary, #6b7280);
+    color: var(--color-text-secondary, #6b7280);
 }
 
 /* =========================================================================
@@ -680,7 +680,7 @@
 .lazy-table-error .error-message {
     font-size: 0.9375rem;
     font-weight: 500;
-    color: var(--text-primary, #111827);
+    color: var(--color-text-primary, #111827);
 }
 
 .lazy-table-error .error-retry-btn {
@@ -710,8 +710,8 @@
 .lazy-table-filter-dropdown {
     min-width: 220px;
     max-width: 300px;
-    background: var(--surface-primary, #fff);
-    border: 1px solid var(--border-primary, #e5e7eb);
+    background: var(--color-surface-primary, #fff);
+    border: 1px solid var(--color-border-primary, #e5e7eb);
     border-radius: var(--radius-lg, 8px);
     box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1));
     z-index: 1000;
@@ -720,13 +720,13 @@
 
 .filter-dropdown-search {
     padding: var(--space-3, 12px);
-    border-bottom: 1px solid var(--border-secondary, #f3f4f6);
+    border-bottom: 1px solid var(--color-border-secondary, #f3f4f6);
 }
 
 .filter-search-input {
     width: 100%;
     padding: var(--space-2, 8px) var(--space-3, 12px);
-    border: 1px solid var(--border-primary, #e5e7eb);
+    border: 1px solid var(--color-border-primary, #e5e7eb);
     border-radius: var(--radius-md, 6px);
     font-size: 0.875rem;
     outline: none;
@@ -754,7 +754,7 @@
 }
 
 .filter-option:hover {
-    background: var(--surface-hover, #f9fafb);
+    background: var(--color-surface-hover, #f9fafb);
 }
 
 .filter-option input[type="checkbox"] {
@@ -765,7 +765,7 @@
 
 .filter-option span {
     font-size: 0.875rem;
-    color: var(--text-primary, #111827);
+    color: var(--color-text-primary, #111827);
 }
 
 .filter-dropdown-actions {
@@ -773,8 +773,8 @@
     justify-content: flex-end;
     gap: var(--space-2, 8px);
     padding: var(--space-3, 12px);
-    border-top: 1px solid var(--border-secondary, #f3f4f6);
-    background: var(--surface-secondary, #f9fafb);
+    border-top: 1px solid var(--color-border-secondary, #f3f4f6);
+    background: var(--color-surface-secondary, #f9fafb);
 }
 
 .filter-clear-btn,
@@ -788,13 +788,13 @@
 }
 
 .filter-clear-btn {
-    border: 1px solid var(--border-primary, #e5e7eb);
-    background: var(--surface-primary, #fff);
-    color: var(--text-secondary, #6b7280);
+    border: 1px solid var(--color-border-primary, #e5e7eb);
+    background: var(--color-surface-primary, #fff);
+    color: var(--color-text-secondary, #6b7280);
 }
 
 .filter-clear-btn:hover {
-    background: var(--surface-hover, #f3f4f6);
+    background: var(--color-surface-hover, #f3f4f6);
 }
 
 .filter-apply-btn {
@@ -819,7 +819,7 @@
 .filter-text-input {
     width: 100%;
     padding: var(--space-2, 8px) var(--space-3, 12px);
-    border: 1px solid var(--border-primary, #e5e7eb);
+    border: 1px solid var(--color-border-primary, #e5e7eb);
     border-radius: var(--radius-md, 6px);
     font-size: 0.875rem;
     font-family: var(--font-mono, monospace);
@@ -863,19 +863,19 @@
     width: 45px;
     font-size: 0.8125rem;
     font-weight: 500;
-    color: var(--text-secondary, #6b7280);
+    color: var(--color-text-secondary, #6b7280);
 }
 
 .filter-date-input {
     flex: 1;
     padding: var(--space-2, 8px) var(--space-3, 12px);
-    border: 1px solid var(--border-primary, #e5e7eb);
+    border: 1px solid var(--color-border-primary, #e5e7eb);
     border-radius: var(--radius-md, 6px);
     font-size: 0.875rem;
     outline: none;
     transition: border-color 0.15s ease;
-    background: var(--surface-primary, #fff);
-    color: var(--text-primary, #111827);
+    background: var(--color-surface-primary, #fff);
+    color: var(--color-text-primary, #111827);
 }
 
 .filter-date-input:focus {
@@ -894,7 +894,7 @@
     justify-content: center;
     padding: var(--space-12, 48px);
     text-align: center;
-    color: var(--text-muted, #9ca3af);
+    color: var(--color-text-muted, #9ca3af);
 }
 
 .lazy-table-empty svg {

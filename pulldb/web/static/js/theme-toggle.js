@@ -4,6 +4,7 @@
  * 
  * Handles theme persistence via localStorage and system preference detection.
  * Toggles data-theme attribute on <html> element.
+ * Dynamically swaps between manifest-light.css and manifest-dark.css.
  * 
  * Priority order:
  * 1. localStorage (user's explicit preference override)
@@ -16,6 +17,7 @@
     'use strict';
 
     const THEME_KEY = 'pulldb-theme';
+    const THEME_VERSION_KEY = 'pulldb-theme-version';
     const DARK = 'dark';
     const LIGHT = 'light';
 
@@ -56,11 +58,35 @@
     }
 
     /**
+     * Get current theme version for cache-busting
+     */
+    function getThemeVersion() {
+        return localStorage.getItem(THEME_VERSION_KEY) || Date.now();
+    }
+
+    /**
+     * Swap the theme CSS file based on mode
+     */
+    function swapThemeCSS(theme) {
+        const themeLink = document.getElementById('theme-css');
+        if (themeLink) {
+            const version = getThemeVersion();
+            const newHref = `/static/css/generated/manifest-${theme}.css?v=${version}`;
+            if (themeLink.href !== newHref) {
+                themeLink.href = newHref;
+            }
+        }
+    }
+
+    /**
      * Apply theme to the document
      */
     function applyTheme(theme) {
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem(THEME_KEY, theme);
+        
+        // Swap the CSS file to the correct mode
+        swapThemeCSS(theme);
         
         // Update toggle button icon if it exists
         const toggleBtn = document.getElementById('theme-toggle');
@@ -103,8 +129,47 @@
         });
     }
 
-    // Expose toggle function globally
+    /**
+     * Reload theme CSS from server (call after saving appearance settings)
+     * Uses cache-busting to force browser to fetch fresh CSS
+     * @param {number} version - Optional version number from generate-manifest response
+     */
+    function reloadThemeCSS(version) {
+        const newVersion = version || Date.now();
+        localStorage.setItem(THEME_VERSION_KEY, newVersion);
+        
+        const currentTheme = document.documentElement.getAttribute('data-theme') || LIGHT;
+        const themeLink = document.getElementById('theme-css');
+        
+        if (themeLink) {
+            // Force reload with new version
+            themeLink.href = `/static/css/generated/manifest-${currentTheme}.css?v=${newVersion}`;
+        }
+    }
+
+    /**
+     * Apply preview CSS variables without persisting (DEPRECATED)
+     * Preview is now isolated to demo gallery only - this is kept for backwards compatibility
+     */
+    function applyPreviewCSS(cssText) {
+        console.warn('applyPreviewCSS is deprecated - preview is now isolated to demo gallery');
+    }
+
+    /**
+     * Clear preview CSS (DEPRECATED - kept for backwards compatibility)
+     */
+    function clearPreviewCSS() {
+        const previewStyle = document.getElementById('theme-preview-style');
+        if (previewStyle) {
+            previewStyle.remove();
+        }
+    }
+
+    // Expose functions globally
     window.toggleTheme = toggleTheme;
+    window.reloadThemeCSS = reloadThemeCSS;
+    window.applyPreviewCSS = applyPreviewCSS;
+    window.clearPreviewCSS = clearPreviewCSS;
 
     // Auto-bind to theme toggle button when DOM is ready
     document.addEventListener('DOMContentLoaded', function() {

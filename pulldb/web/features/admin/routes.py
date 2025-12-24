@@ -3,7 +3,7 @@
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Request, Form, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from pulldb.domain.models import JobStatus, User
 from pulldb.web.dependencies import get_api_state, require_admin, templates
@@ -2808,7 +2808,7 @@ async def api_orphan_candidates(
         "rows": page_orphans,
         "totalCount": total_count,
         "filteredCount": filtered_count,
-        "pageIndex": pageIndex,
+        "pageIndex": page,
         "pageSize": pageSize,
     }
 
@@ -3038,102 +3038,70 @@ async def delete_orphans(
 @router.get("/api/theme.css")
 async def get_theme_css(
     state: Any = Depends(get_api_state),
-) -> HTMLResponse:
+) -> Response:
     """Generate dynamic CSS custom properties from admin appearance settings.
     
-    Returns CSS that overrides the default HSL color variables based on
-    admin-configured primary and accent color hues. This endpoint is
-    cached and served without authentication for performance.
+    Returns CSS with both light and dark mode variables, populated from
+    JSON color schemas stored in the database. Falls back to default
+    presets if no custom schemas are configured.
     
-    The CSS uses HSL (Hue-Saturation-Lightness) color model where:
-    - Hue: 0-360 degrees (red=0, green=120, blue=240)
-    - Saturation/Lightness: Fixed per shade for consistent design
+    The response includes:
+    - :root { /* light mode variables */ }
+    - [data-theme="dark"] { /* dark mode variables */ }
+    
+    All color tokens follow the --color-* naming convention.
     
     Returns:
         text/css response with CSS custom properties for theming.
     """
-    from fastapi.responses import Response
+    from pulldb.domain.color_schemas import (
+        ColorSchema,
+        LIGHT_PRESETS,
+        DARK_PRESETS,
+    )
     
-    # Get appearance settings from database (with defaults)
-    primary_hue = 217  # Default blue
-    accent_hue = 142   # Default green
-    dark_mode = False
+    # Load schemas from database, falling back to defaults
+    light_schema = LIGHT_PRESETS["Default"]
+    dark_schema = DARK_PRESETS["Default"]
     
     if hasattr(state, "settings_repo") and state.settings_repo:
         try:
-            primary_hue = int(state.settings_repo.get("primary_color_hue") or 217)
-            accent_hue = int(state.settings_repo.get("accent_color_hue") or 142)
-            dark_mode_str = state.settings_repo.get("dark_mode_enabled") or "false"
-            dark_mode = dark_mode_str.lower() in ("true", "1", "yes")
-        except (ValueError, TypeError):
-            pass  # Use defaults on error
+            light_json = state.settings_repo.get("light_theme_schema")
+            if light_json:
+                light_schema = ColorSchema.from_json(light_json)
+        except (ValueError, TypeError, KeyError):
+            pass  # Use default on error
+        
+        try:
+            dark_json = state.settings_repo.get("dark_theme_schema")
+            if dark_json:
+                dark_schema = ColorSchema.from_json(dark_json)
+        except (ValueError, TypeError, KeyError):
+            pass  # Use default on error
     
-    # Clamp hues to valid range
-    primary_hue = max(0, min(360, primary_hue))
-    accent_hue = max(0, min(360, accent_hue))
+    # Generate CSS variables for both modes
+    light_vars = light_schema.to_css_variables()
+    dark_vars = dark_schema.to_css_variables()
     
-    # Generate CSS with HSL color variables
-    # Primary color shades (50-900)
-    css = f"""/* pullDB Dynamic Theme - Generated from Admin Settings */
+    # Build light mode CSS
+    light_css_lines = [f"    {name}: {value};" for name, value in light_vars.items()]
+    light_css = "\n".join(light_css_lines)
+    
+    # Build dark mode CSS
+    dark_css_lines = [f"    {name}: {value};" for name, value in dark_vars.items()]
+    dark_css = "\n".join(dark_css_lines)
+    
+    css = f"""/* pullDB Dynamic Theme - Generated from Database Settings */
+/* Light Theme: {light_schema.name} | Dark Theme: {dark_schema.name} */
+
 :root {{
-    /* Primary Color (Hue: {primary_hue}) */
-    --primary-50:  hsl({primary_hue}, 100%, 97%);
-    --primary-100: hsl({primary_hue}, 96%, 90%);
-    --primary-200: hsl({primary_hue}, 94%, 80%);
-    --primary-300: hsl({primary_hue}, 90%, 66%);
-    --primary-400: hsl({primary_hue}, 86%, 55%);
-    --primary-500: hsl({primary_hue}, 84%, 47%);
-    --primary-600: hsl({primary_hue}, 83%, 41%);
-    --primary-700: hsl({primary_hue}, 78%, 35%);
-    --primary-800: hsl({primary_hue}, 70%, 29%);
-    --primary-900: hsl({primary_hue}, 64%, 24%);
-    
-    /* Success/Accent Color (Hue: {accent_hue}) */
-    --success-50:  hsl({accent_hue}, 76%, 97%);
-    --success-100: hsl({accent_hue}, 76%, 90%);
-    --success-200: hsl({accent_hue}, 70%, 78%);
-    --success-300: hsl({accent_hue}, 64%, 62%);
-    --success-400: hsl({accent_hue}, 56%, 46%);
-    --success-500: hsl({accent_hue}, 64%, 38%);
-    --success-600: hsl({accent_hue}, 72%, 30%);
-    --success-700: hsl({accent_hue}, 70%, 25%);
-    --success-800: hsl({accent_hue}, 64%, 21%);
-    --success-900: hsl({accent_hue}, 58%, 18%);
+{light_css}
 }}
-"""
-    
-    # Add dark mode overrides if enabled
-    if dark_mode:
-        css += """
-/* Dark Mode Overrides */
-:root {
-    --gray-50:  hsl(220, 14%, 10%);
-    --gray-100: hsl(220, 14%, 15%);
-    --gray-200: hsl(220, 12%, 22%);
-    --gray-300: hsl(218, 10%, 35%);
-    --gray-400: hsl(216, 8%, 50%);
-    --gray-500: hsl(214, 8%, 65%);
-    --gray-600: hsl(212, 10%, 75%);
-    --gray-700: hsl(210, 12%, 85%);
-    --gray-800: hsl(210, 14%, 92%);
-    --gray-900: hsl(210, 16%, 97%);
-    
-    /* Background overrides */
-    --bg-base: var(--gray-50);
-    --bg-surface: var(--gray-100);
-    --text-base: var(--gray-900);
-    --text-muted: var(--gray-500);
-}
 
-body {
-    background: var(--bg-base);
-    color: var(--text-base);
-}
-
-.card, .modal-content {
-    background: var(--bg-surface);
-    border-color: var(--gray-200);
-}
+[data-theme="dark"],
+.dark {{
+{dark_css}
+}}
 """
     
     return Response(
@@ -3143,3 +3111,129 @@ body {
             "Cache-Control": "public, max-age=60",  # Cache for 1 minute
         },
     )
+
+
+@router.get("/api/color-preset")
+async def get_color_preset(
+    mode: str,
+    name: str,
+    state: Any = Depends(get_api_state),
+) -> dict:
+    """Get a color preset schema by mode and name.
+    
+    Args:
+        mode: 'light' or 'dark'
+        name: Preset name (e.g., 'Default', 'Midnight Blue')
+        
+    Returns:
+        JSON schema object with color values.
+    """
+    from pulldb.domain.color_schemas import LIGHT_PRESETS, DARK_PRESETS
+    
+    presets = LIGHT_PRESETS if mode == "light" else DARK_PRESETS
+    schema = presets.get(name)
+    
+    if not schema:
+        # Fall back to default
+        schema = presets.get("Default")
+    
+    if not schema:
+        return {"error": "Preset not found"}
+    
+    # Return simplified schema for frontend
+    return {
+        "name": schema.name,
+        "surface": {
+            "base": schema.surface.base,
+            "hover": schema.surface.hover,
+            "active": schema.surface.active,
+        },
+        "background": {
+            "primary": schema.background.primary,
+            "secondary": schema.background.secondary,
+            "elevated": schema.background.elevated,
+        },
+        "text": {
+            "primary": schema.text.primary,
+            "secondary": schema.text.secondary,
+            "muted": schema.text.muted,
+        },
+        "border": {
+            "default": schema.border.default,
+            "hover": schema.border.hover,
+            "focus": schema.border.focus,
+        },
+        "interactive": {
+            "primary": schema.interactive.primary,
+            "primary_hover": schema.interactive.primary_hover,
+            "danger": schema.interactive.danger,
+        },
+        "status": {
+            "success": schema.status.success,
+            "warning": schema.status.warning,
+            "error": schema.status.error,
+            "info": schema.status.info,
+        },
+    }
+
+
+# =============================================================================
+# Theme File Generation Endpoints
+# =============================================================================
+
+
+@router.post("/api/generate-manifest")
+async def generate_manifest(
+    state: Any = Depends(get_api_state),
+) -> dict:
+    """Generate static CSS files from saved theme schemas.
+    
+    Reads light_theme_schema and dark_theme_schema from database,
+    generates manifest-light.css and manifest-dark.css in the
+    static/css/generated/ directory.
+    
+    Returns:
+        Dict with version timestamp for cache-busting.
+    """
+    from pulldb.domain.color_schemas import (
+        ColorSchema,
+        LIGHT_PRESETS,
+        DARK_PRESETS,
+    )
+    from pulldb.web.features.admin.theme_generator import write_theme_files
+    
+    # Load schemas from database, falling back to defaults
+    light_schema = LIGHT_PRESETS["Default"]
+    dark_schema = DARK_PRESETS["Default"]
+    
+    if hasattr(state, "settings_repo") and state.settings_repo:
+        try:
+            light_json = state.settings_repo.get("light_theme_schema")
+            if light_json:
+                light_schema = ColorSchema.from_json(light_json)
+        except (ValueError, TypeError, KeyError):
+            pass
+        
+        try:
+            dark_json = state.settings_repo.get("dark_theme_schema")
+            if dark_json:
+                dark_schema = ColorSchema.from_json(dark_json)
+        except (ValueError, TypeError, KeyError):
+            pass
+    
+    # Generate and write theme files
+    result = write_theme_files(light_schema, dark_schema)
+    
+    return {"success": True, "version": result["version"]}
+
+
+@router.get("/api/theme-version")
+async def get_theme_version() -> dict:
+    """Get current theme CSS version for cache-busting.
+    
+    Returns:
+        Dict with version timestamp.
+    """
+    from pulldb.web.features.admin.theme_generator import get_theme_version as get_version
+    
+    return {"version": get_version()}

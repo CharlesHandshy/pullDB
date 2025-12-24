@@ -36,8 +36,9 @@
 <!-- HCA CSS Manifest (Layers 0-3) -->
 <link rel="stylesheet" href="/static/css/shared/manifest.css">
 
-<!-- Dynamic theme -->
-<link rel="stylesheet" href="/web/admin/api/theme.css">
+<!-- Theme CSS - Single mode loaded based on current theme preference -->
+<!-- Light/Dark mode CSS files are generated on theme save -->
+<link id="theme-css" rel="stylesheet" href="/static/css/generated/manifest-light.css">
 
 {% block extra_css %}{% endblock %}
 {% endblock %}

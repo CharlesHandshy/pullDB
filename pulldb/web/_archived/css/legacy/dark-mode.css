@@ -20,9 +20,9 @@
     --color-surface-active: #475569;
     
     /* Widget surface colors (used by lazy_table, virtual_table) */
-    --surface-primary: #1e293b;
-    --surface-secondary: #334155;
-    --surface-hover: #475569;
+    --color-surface-primary: #1e293b;
+    --color-surface-secondary: #334155;
+    --color-surface-hover: #475569;
     
     /* Border colors */
     --color-border: #334155;          /* slate-700 */
@@ -88,9 +88,9 @@
     --color-table-row-stripe: rgba(255, 255, 255, 0.02);
     
     /* Scrollbar (WebKit) */
-    --scrollbar-track: #1e293b;
-    --scrollbar-thumb: #475569;
-    --scrollbar-thumb-hover: #64748b;
+    --color-scrollbar-track: #1e293b;
+    --color-scrollbar-thumb: #475569;
+    --color-scrollbar-thumb-hover: #64748b;
 }
 
 /* =================================================================
@@ -128,16 +128,16 @@
 }
 
 [data-theme="dark"] ::-webkit-scrollbar-track {
-    background: var(--scrollbar-track);
+    background: var(--color-scrollbar-track);
 }
 
 [data-theme="dark"] ::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
+    background: var(--color-scrollbar-thumb);
     border-radius: var(--radius-sm);
 }
 
 [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-    background: var(--scrollbar-thumb-hover);
+    background: var(--color-scrollbar-thumb-hover);
 }
 
 /* Stat card icon backgrounds - dark mode */

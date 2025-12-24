@@ -1,0 +1,71 @@
+/* pullDB Theme - Custom
+ * Generated: 2025-12-23 23:47:03
+ * This file is auto-generated. Do not edit directly.
+ */
+
+:root {
+    --color-surface: #1e293b;
+    --color-surface-hover: #334155;
+    --color-surface-active: #475569;
+    --color-surface-subtle: #fcfcfd;
+    --color-surface-primary: #ffffff;
+    --color-surface-secondary: #f3f4f6;
+    --color-bg-primary: #0f172a;
+    --color-bg-secondary: #1e293b;
+    --color-bg-tertiary: #e5e7eb;
+    --color-bg-elevated: #1e293b;
+    --color-bg-hover: #f3f4f6;
+    --color-bg-subtle: #f3f4f6;
+    --color-bg-muted: #e5e7eb;
+    --color-text-primary: #f1f5f9;
+    --color-text-secondary: #94a3b8;
+    --color-text-muted: #64748b;
+    --color-text-inverse: #ffffff;
+    --color-text-base: #111827;
+    --color-border: #334155;
+    --color-border-light: #f3f4f6;
+    --color-border-hover: #475569;
+    --color-border-focus: #60a5fa;
+    --color-border-primary: #e5e7eb;
+    --color-border-secondary: #d1d5db;
+    --color-success: #4ade80;
+    --color-success-bg: rgba(22, 163, 74, 0.1);
+    --color-success-border: rgba(22, 163, 74, 0.2);
+    --color-warning: #fbbf24;
+    --color-warning-bg: rgba(217, 119, 6, 0.1);
+    --color-warning-border: rgba(217, 119, 6, 0.2);
+    --color-error: #f87171;
+    --color-error-bg: rgba(220, 38, 38, 0.1);
+    --color-error-border: rgba(220, 38, 38, 0.2);
+    --color-info: #60a5fa;
+    --color-info-bg: rgba(8, 145, 178, 0.1);
+    --color-info-border: rgba(8, 145, 178, 0.2);
+    --color-primary: #60a5fa;
+    --color-primary-hover: #3b82f6;
+    --color-primary-active: #1e40af;
+    --color-accent: #7c3aed;
+    --color-accent-hover: #6d28d9;
+    --color-danger: #f87171;
+    --color-danger-hover: #b91c1c;
+    --color-input-bg: #ffffff;
+    --color-input-border: #d1d5db;
+    --color-input-focus: #3b82f6;
+    --color-input-focus-ring: rgba(59, 130, 246, 0.2);
+    --color-input-placeholder: #9ca3af;
+    --color-link: #2563eb;
+    --color-link-hover: #1d4ed8;
+    --color-link-visited: #7c3aed;
+    --color-code-bg: #f3f4f6;
+    --color-code-text: #1f2937;
+    --color-code-border: #e5e7eb;
+    --color-table-header-bg: #f9fafb;
+    --color-table-row-hover: #f3f4f6;
+    --color-table-row-stripe: rgba(0, 0, 0, 0.02);
+    --color-scrollbar-track: #f3f4f6;
+    --color-scrollbar-thumb: #d1d5db;
+    --color-scrollbar-thumb-hover: #9ca3af;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
