@@ -1,9 +1,27 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}pullDB{% endblock %}</title>
+    
+    <!-- Early theme detection to prevent flash -->
+    <script>
+        (function() {
+            var THEME_KEY = 'pulldb-theme';
+            var stored = localStorage.getItem(THEME_KEY);
+            var theme;
+            if (stored === 'dark' || stored === 'light') {
+                theme = stored;
+            } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                theme = 'dark';
+            } else {
+                theme = 'light';
+            }
+            document.documentElement.setAttribute('data-theme', theme);
+            document.cookie = 'pulldb_theme=' + theme + ';path=/;max-age=31536000;SameSite=Lax';
+        })();
+    </script>
     
     <!-- HCA Shared Layer (Layer 0) -->
     <link rel="stylesheet" href="/static/css/shared/design-tokens.css">

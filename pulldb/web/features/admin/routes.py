@@ -3177,6 +3177,72 @@ async def get_color_preset(
     }
 
 
+def _schema_to_dict(schema: Any) -> dict:
+    """Convert ColorSchema to frontend-compatible dict."""
+    return {
+        "name": schema.name,
+        "surface": {
+            "base": schema.surface.base,
+            "hover": schema.surface.hover,
+            "active": schema.surface.active,
+        },
+        "background": {
+            "primary": schema.background.primary,
+            "secondary": schema.background.secondary,
+            "elevated": schema.background.elevated,
+        },
+        "text": {
+            "primary": schema.text.primary,
+            "secondary": schema.text.secondary,
+            "muted": schema.text.muted,
+        },
+        "border": {
+            "default": schema.border.default,
+            "hover": schema.border.hover,
+            "focus": schema.border.focus,
+        },
+        "interactive": {
+            "primary": schema.interactive.primary,
+            "primary_hover": schema.interactive.primary_hover,
+            "danger": schema.interactive.danger,
+        },
+        "status": {
+            "success": schema.status.success,
+            "warning": schema.status.warning,
+            "error": schema.status.error,
+            "info": schema.status.info,
+        },
+    }
+
+
+@router.get("/api/color-presets")
+async def get_all_color_presets(
+    state: Any = Depends(get_api_state),
+) -> dict:
+    """Get all color presets for both light and dark modes.
+    
+    Returns all presets in a single request, eliminating the need
+    for multiple sequential API calls. This is the preferred endpoint
+    for loading preset options in the appearance settings UI.
+    
+    Returns:
+        Dict with 'light' and 'dark' keys, each containing a dict
+        of preset name -> schema.
+    """
+    from pulldb.domain.color_schemas import LIGHT_PRESETS, DARK_PRESETS
+    
+    return {
+        "light": {
+            name: _schema_to_dict(schema)
+            for name, schema in LIGHT_PRESETS.items()
+        },
+        "dark": {
+            name: _schema_to_dict(schema)
+            for name, schema in DARK_PRESETS.items()
+        },
+    }
+
+
 # =============================================================================
 # Theme File Generation Endpoints
 # =============================================================================

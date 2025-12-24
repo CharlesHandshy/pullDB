@@ -36,9 +36,18 @@
 <!-- HCA CSS Manifest (Layers 0-3) -->
 <link rel="stylesheet" href="/static/css/shared/manifest.css">
 
-<!-- Theme CSS - Single mode loaded based on current theme preference -->
-<!-- Light/Dark mode CSS files are generated on theme save -->
-<link id="theme-css" rel="stylesheet" href="/static/css/generated/manifest-light.css">
+<!-- Theme CSS - Dynamically selected based on detected theme preference -->
+<!-- Uses window.__pulldb_theme set by early script in base.html -->
+<script>
+    (function() {
+        var theme = window.__pulldb_theme || 'light';
+        var version = window.__pulldb_theme_version || Date.now();
+        document.write('<link id="theme-css" rel="stylesheet" href="/static/css/generated/manifest-' + theme + '.css?v=' + version + '">');
+    })();
+</script>
+<noscript>
+    <link id="theme-css" rel="stylesheet" href="/static/css/generated/manifest-light.css">
+</noscript>
 
 {% block extra_css %}{% endblock %}
 {% endblock %}

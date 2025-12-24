@@ -9,7 +9,7 @@
 {% block content %}
 <div class="job-details-container" hx-get="{{ request.url.path }}" hx-trigger="every 5s" hx-select=".job-details-container" hx-swap="outerHTML">
     {% if flash_message %}
-    <div class="alert alert-{{ flash_type or 'info' }}" style="margin-bottom: 1rem;">
+    <div class="alert alert-{{ flash_type or 'info' }} mb-4">
         {{ flash_message }}
     </div>
     {% endif %}

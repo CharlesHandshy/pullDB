@@ -19,7 +19,8 @@ This document establishes the design system and style standards for the pullDB w
 7. [Icon System](#icon-system)
 8. [Dark Mode](#dark-mode)
 9. [Accessibility](#accessibility)
-10. [Implementation Status](#implementation-status)
+10. [Browser Support & CSS Strategy](#browser-support--css-strategy)
+11. [Implementation Status](#implementation-status)
 
 ---
 
@@ -1265,6 +1266,53 @@ All interactive elements must have visible focus states:
 - Include `aria-label` for icon-only buttons
 - Use `aria-live` for dynamic content updates
 - Status badges should include hidden text
+
+---
+
+## Browser Support & CSS Strategy
+
+### Baseline Requirements
+
+pullDB targets **modern evergreen browsers** with CSS Custom Properties (CSS Variables) support:
+
+| Browser | Minimum Version | CSS Variables Support |
+|---------|-----------------|----------------------|
+| Chrome | 49+ | ✅ Native |
+| Firefox | 31+ | ✅ Native |
+| Safari | 9.1+ | ✅ Native |
+| Edge | 15+ | ✅ Native |
+
+### CSS Variable Fallback Strategy
+
+Some CSS files (notably `lazy-tables.css`) include fallback values alongside CSS variables:
+
+```css
+/* Pattern with fallback */
+background: var(--color-surface-primary, #fff);
+```
+
+**Rationale**: Fallbacks provide graceful degradation if design tokens fail to load, but create maintenance overhead. The current approach is:
+
+1. **Keep fallbacks** in complex feature files (tables, dashboards) for resilience
+2. **Omit fallbacks** in simple utility classes where failure would be obvious
+3. **Document intent** in CSS comments when fallbacks are intentional
+
+### JS-Controlled Visibility Pattern
+
+For elements that need to be hidden on page load and revealed via JavaScript, use the `.js-hidden` utility class instead of inline `style="display: none"`:
+
+```html
+<!-- ✅ Correct: Use utility class -->
+<div class="modal js-hidden" id="confirm-modal">
+
+<!-- ❌ Avoid: Inline styles -->
+<div class="modal" id="confirm-modal" style="display: none;">
+```
+
+**Exception**: Jinja conditionals may still use inline styles when the visibility state is server-rendered:
+```html
+<span {% if count == 0 %}class="js-hidden"{% endif %}>
+```
 
 ---
 

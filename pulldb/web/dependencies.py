@@ -144,12 +144,27 @@ def _get_admin_dark_mode() -> bool:
     return False
 
 
+def _get_theme_version() -> int:
+    """Get the current theme CSS version for cache-busting.
+    
+    Returns the timestamp when theme CSS was last generated.
+    """
+    try:
+        version_file = WEB_DIR / "static" / "css" / "generated" / ".theme-version"
+        if version_file.exists():
+            return int(version_file.read_text().strip())
+    except Exception:
+        pass
+    return int(Path(WEB_DIR / "static" / "css" / "generated" / "manifest-light.css").stat().st_mtime)
+
+
 # Add simulation mode globals to Jinja2 environment
 # These are evaluated at template render time via callable
 templates.env.globals["simulation_mode"] = is_simulation_mode
 templates.env.globals["simulation_scenario_name"] = _get_active_scenario_name
 templates.env.globals["get_logo_config"] = _get_logo_config
 templates.env.globals["admin_dark_mode"] = _get_admin_dark_mode
+templates.env.globals["theme_version"] = _get_theme_version
 # Explicitly disable dev toolbar in production (defense in depth)
 templates.env.globals["dev_mode"] = False
 

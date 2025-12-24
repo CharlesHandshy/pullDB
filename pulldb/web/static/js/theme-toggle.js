@@ -18,8 +18,25 @@
 
     const THEME_KEY = 'pulldb-theme';
     const THEME_VERSION_KEY = 'pulldb-theme-version';
+    const THEME_COOKIE = 'pulldb_theme';
     const DARK = 'dark';
     const LIGHT = 'light';
+
+    /**
+     * Set a cookie with the given name and value
+     */
+    function setCookie(name, value, days) {
+        const maxAge = days ? days * 24 * 60 * 60 : 31536000; // Default 1 year
+        document.cookie = name + '=' + value + ';path=/;max-age=' + maxAge + ';SameSite=Lax';
+    }
+
+    /**
+     * Get a cookie value by name
+     */
+    function getCookie(name) {
+        const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+        return match ? match[2] : null;
+    }
 
     /**
      * Get the admin-configured default theme from data attribute
@@ -70,11 +87,17 @@
     function swapThemeCSS(theme) {
         const themeLink = document.getElementById('theme-css');
         if (themeLink) {
+            // Check if we're already on the correct theme file (ignore version query param)
+            const currentHref = themeLink.href || '';
+            const expectedFile = `manifest-${theme}.css`;
+            if (currentHref.includes(expectedFile)) {
+                // Already on correct theme CSS, no swap needed
+                return;
+            }
+            
             const version = getThemeVersion();
             const newHref = `/static/css/generated/manifest-${theme}.css?v=${version}`;
-            if (themeLink.href !== newHref) {
-                themeLink.href = newHref;
-            }
+            themeLink.href = newHref;
         }
     }
 
@@ -84,6 +107,9 @@
     function applyTheme(theme) {
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem(THEME_KEY, theme);
+        
+        // Sync to cookie for server-side detection
+        setCookie(THEME_COOKIE, theme);
         
         // Swap the CSS file to the correct mode
         swapThemeCSS(theme);

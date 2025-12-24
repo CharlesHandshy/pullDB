@@ -90,7 +90,7 @@
                     <!-- Customer search widget -->
                     <div class="customer-search-widget" id="customer-widget">
                     <!-- Selected customer display (shown when customer is selected) -->
-                    <div class="selected-display" id="selected-customer-display" style="display: none;">
+                    <div class="selected-display js-hidden" id="selected-customer-display">
                         <svg class="selected-display-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
                             <polyline points="22 4 12 14.01 9 11.01"/>
@@ -132,7 +132,7 @@
                 <!-- Backup list (shown after customer selection) -->
                 <div class="backup-list-container" id="backup-list-container">
                     <!-- Selected backup display (shown when backup is selected) -->
-                    <div class="selected-display" id="selected-backup-display" style="display: none;">
+                    <div class="selected-display js-hidden" id="selected-backup-display">
                         <svg class="selected-display-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
                             <polyline points="22 4 12 14.01 9 11.01"/>
@@ -181,7 +181,7 @@
                     </div>
                     
                     <div class="qa-config-row">
-                        <div class="form-group" style="margin: 0;">
+                        <div class="form-group m-0">
                             <label for="qa_extension" class="form-label">Target Extension <span style="color: var(--gray-400); font-weight: normal;">(optional)</span></label>
                             <input 
                                 type="text" 
@@ -195,7 +195,7 @@
                             <p class="form-hint" id="qa-extension-hint">Target: {{ user.user_code }}qatemplate</p>
                         </div>
                         
-                        <div class="form-group" style="margin: 0;">
+                        <div class="form-group m-0">
                             <label for="qa_s3env" class="form-label">Source Environment</label>
                             <select id="qa_s3env" class="form-select">
                                 <option value="both">All Backups</option>
@@ -208,7 +208,7 @@
                     <!-- QA Template backup list -->
                     <div class="backup-list-container is-visible" id="qa-backup-list-container" style="margin-top: var(--space-5); border-top: 1px solid var(--gray-200); padding-top: var(--space-5);">
                         <!-- Selected QA backup display -->
-                        <div class="selected-display" id="selected-qa-backup-display" style="display: none;">
+                        <div class="selected-display js-hidden" id="selected-qa-backup-display">
                             <svg class="selected-display-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
                                 <polyline points="22 4 12 14.01 9 11.01"/>
@@ -254,7 +254,7 @@
                 <h2 class="restore-section-title" style="color: var(--primary-700);">Submit as User</h2>
             </div>
             <div class="restore-section-body">
-                <div class="form-group" style="margin: 0;">
+                <div class="form-group m-0">
                     <label for="submit_as_user" class="form-label">Select User</label>
                     <select id="submit_as_user" name="submit_as_user" class="form-select">
                         <option value="{{ user.username }}">{{ user.username }} (myself)</option>
@@ -281,7 +281,7 @@
             <div class="restore-section-body">
                 <div class="target-config-grid">
                     <!-- Database Host -->
-                    <div class="form-group" style="margin: 0;">
+                    <div class="form-group m-0">
                         <label for="dbhost" class="form-label">Database Host</label>
                         {% if user.has_any_hosts %}
                         <select id="dbhost" name="dbhost" class="form-select" required>
@@ -301,7 +301,7 @@
                     </div>
                     
                     <!-- Suffix -->
-                    <div class="form-group" style="margin: 0;">
+                    <div class="form-group m-0">
                         <label for="suffix" class="form-label">Suffix <span style="color: var(--gray-400); font-weight: normal;">(optional)</span></label>
                         <input type="text" 
                                id="suffix" 
@@ -340,7 +340,7 @@
                 </div>
                 
                 <!-- Target preview -->
-                <div class="target-preview" id="target-preview" style="display: none;">
+                <div class="target-preview js-hidden" id="target-preview">
                     <div class="target-preview-label">Target Database Name</div>
                     <div class="target-preview-value">
                         <span id="preview-user-code">{{ user.user_code }}</span><span id="preview-customer" class="preview-customer"></span><span id="preview-suffix" class="preview-suffix"></span>

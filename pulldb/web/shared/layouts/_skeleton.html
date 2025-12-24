@@ -36,14 +36,14 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/static/images/favicon-16x16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/images/apple-touch-icon.png">
     
+    {# Early theme detection - MUST run before any CSS loads #}
+    {% block head_meta %}{% endblock %}
+    
     {# HTMX for live updates (self-hosted) #}
     <script src="/static/js/vendor/htmx.min.js"></script>
     
     {# Design System CSS - Loaded by layouts that need it #}
     {% block head_styles %}{% endblock %}
-    
-    {# Additional meta tags #}
-    {% block head_meta %}{% endblock %}
     
     {# Additional CSS links #}
     {% block head_links %}{% endblock %}

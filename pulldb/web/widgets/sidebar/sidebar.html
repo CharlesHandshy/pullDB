@@ -29,8 +29,8 @@
                 </a>
             </div>
             
-            {# Manager Navigation (conditional - managers only, not admins) #}
-            {% if user.is_manager_or_above and not user.is_admin %}
+            {# Manager Navigation (conditional - managers and admins) #}
+            {% if user.is_manager_or_above %}
             <div class="nav-section">
                 <div class="nav-section-title">Management</div>
                 <a href="/web/manager" class="nav-link {% if request.url.path == '/web/manager' %}active{% endif %}" title="My Team">

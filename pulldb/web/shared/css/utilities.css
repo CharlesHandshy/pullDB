@@ -20,6 +20,11 @@
 .grid { display: grid; }
 .hidden, .d-none { display: none !important; }
 
+/* JS-hydration visibility toggle: Use this instead of inline style="display: none"
+   for elements that are hidden on load and shown via JavaScript.
+   Semantic naming distinguishes JS-controlled visibility from layout-hidden elements. */
+.js-hidden { display: none !important; }
+
 /* ===========================================
    FLEXBOX
    =========================================== */

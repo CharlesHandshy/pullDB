@@ -154,7 +154,7 @@
                         </div>
                         
                         <!-- Edit Mode (hidden by default) -->
-                        <div class="setting-edit" data-key="{{ setting.setting_key }}" style="display: none;">
+                        <div class="setting-edit js-hidden" data-key="{{ setting.setting_key }}">
                             <form class="edit-form" onsubmit="return saveSetting(event, '{{ setting.setting_key }}')">
                                 {% if setting.setting_type == 'integer' %}
                                 <input type="number" 
@@ -274,7 +274,7 @@
                 <polyline points="6 9 12 15 18 9"/>
             </svg>
         </div>
-        <div class="category-content" style="display: none;">
+        <div class="category-content js-hidden">
             <div class="cli-examples">
                 <div class="cli-example">
                     <h4>List all settings</h4>
@@ -298,7 +298,7 @@
 </div>
 
 <!-- Confirmation Modal for Dangerous Settings -->
-<div id="confirm-modal" class="modal" style="display: none;">
+<div id="confirm-modal" class="modal js-hidden">
     <div class="modal-backdrop" onclick="closeConfirmModal()"></div>
     <div class="modal-content">
         <div class="modal-header">
@@ -316,7 +316,7 @@
 </div>
 
 <!-- Create Directory Modal -->
-<div id="create-dir-modal" class="modal" style="display: none;">
+<div id="create-dir-modal" class="modal js-hidden">
     <div class="modal-backdrop" onclick="closeCreateDirModal()"></div>
     <div class="modal-content">
         <div class="modal-header">

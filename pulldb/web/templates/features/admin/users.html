@@ -9,52 +9,71 @@
 
 {% block content %}
 <div class="users-page">
-    <!-- Header -->
-    <div class="page-header-row">
-        <div class="page-header-left">
-            <a href="/web/admin" class="back-btn">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="15 18 9 12 15 6"></polyline>
-                </svg>
-            </a>
-            <h1 class="page-title">Users</h1>
+    <!-- Users Card with LazyTable -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-left">
+                <h3 class="card-title">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    All Users
+                </h3>
+                <button class="btn-icon btn-icon-primary" onclick="showAddUserModal()" title="Add New User" aria-label="Add new user">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" x2="12" y1="5" y2="19"/>
+                        <line x1="5" x2="19" y1="12" y2="12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="status-bar">
+                <span class="status-item" title="Total Users">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    <span class="status-count" id="stat-total">{{ stats.total }}</span>
+                </span>
+                <span class="status-divider"></span>
+                <span class="status-item status-admin" title="Admins">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span class="status-count" id="stat-admins">{{ stats.admins }}</span>
+                </span>
+                <span class="status-item status-manager" title="Managers">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    <span class="status-count" id="stat-managers">{{ stats.managers }}</span>
+                </span>
+                <span class="status-divider"></span>
+                <span class="status-item status-enabled" title="Active Users">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    <span class="status-count" id="stat-active">{{ stats.active }}</span>
+                </span>
+                <span class="status-item status-disabled" title="Disabled Users">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/>
+                    </svg>
+                    <span class="status-count" id="stat-disabled">{{ stats.disabled }}</span>
+                </span>
+            </div>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="showAddUserModal()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
-                <line x1="12" x2="12" y1="5" y2="19"></line>
-                <line x1="5" x2="19" y1="12" y2="12"></line>
-            </svg>
-            Add User
-        </button>
-    </div>
-
-    <!-- Stats -->
-    <div class="stats-row">
-        <div class="stat-pill">
-            <span class="stat-value" id="stat-total">{{ stats.total }}</span>
-            <span class="stat-label">total</span>
+        <div class="card-body no-padding">
+            <div id="users-table-container"></div>
         </div>
-        <div class="stat-pill">
-            <span class="stat-value" id="stat-admins">{{ stats.admins }}</span>
-            <span class="stat-label">admins</span>
-        </div>
-        <div class="stat-pill">
-            <span class="stat-value" id="stat-managers">{{ stats.managers }}</span>
-            <span class="stat-label">managers</span>
-        </div>
-        <div class="stat-pill">
-            <span class="stat-value" id="stat-active">{{ stats.active }}</span>
-            <span class="stat-label">active</span>
-        </div>
-        <div class="stat-pill">
-            <span class="stat-value" id="stat-disabled">{{ stats.disabled }}</span>
-            <span class="stat-label">disabled</span>
-        </div>
-    </div>
-
-    <!-- LazyTable Container -->
-    <div class="card" style="height: calc(100vh - 280px); min-height: 400px;">
-        <div id="users-table-container"></div>
     </div>
 </div>
 

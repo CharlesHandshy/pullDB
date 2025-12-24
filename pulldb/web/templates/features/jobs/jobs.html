@@ -32,7 +32,7 @@
     </div>
 
     <!-- LazyTable Container -->
-    <div class="card jobs-table-card">
+    <div class="card lazy-table-height-viewport">
         <div id="jobs-table-container" class="h-full"></div>
     </div>
 </div>
@@ -319,7 +319,7 @@
         container: document.getElementById('jobs-table-container'),
         columns: getColumnsForView(currentView),
         fetchUrl: '/api/jobs/paginated?view=' + currentView,
-        rowHeight: 52,
+        rowHeight: 48,
         rowIdKey: 'id',
         emptyMessage: 'No jobs found.',
         initialFilters: initialFilters

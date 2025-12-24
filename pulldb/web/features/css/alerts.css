@@ -87,19 +87,25 @@
 /* Danger */
 .alert--danger,
 .alert-danger {
-    background: var(--danger-50);
-    border-color: var(--danger-200);
+    background: var(--danger-100);
+    border-color: var(--danger-300);
     color: var(--danger-800);
 }
 
 .alert--danger svg,
 .alert-danger svg {
-    color: var(--danger-500);
+    color: var(--danger-600);
 }
 
 .alert--danger a,
 .alert-danger a {
     color: var(--danger-700);
+}
+
+/* Buttons inside alerts should retain their own colors */
+.alert--danger .btn,
+.alert-danger .btn {
+    color: white;
 }
 
 /* Info */
@@ -575,6 +581,60 @@
    DARK MODE
    Co-located dark theme overrides
    =========================================== */
+
+/* Alert variants dark mode - use semantic color tokens from generated theme */
+[data-theme="dark"] .alert--success,
+[data-theme="dark"] .alert-success {
+    background: var(--color-success-bg);
+    border-color: var(--color-success-border);
+    color: var(--success-300);
+}
+
+[data-theme="dark"] .alert--success svg,
+[data-theme="dark"] .alert-success svg {
+    color: var(--color-success);
+}
+
+[data-theme="dark"] .alert--warning,
+[data-theme="dark"] .alert-warning {
+    background: var(--color-warning-bg);
+    border-color: var(--color-warning-border);
+    color: var(--warning-300);
+}
+
+[data-theme="dark"] .alert--warning svg,
+[data-theme="dark"] .alert-warning svg {
+    color: var(--color-warning);
+}
+
+[data-theme="dark"] .alert--danger,
+[data-theme="dark"] .alert-danger {
+    background: var(--color-error-bg);
+    border-color: var(--color-error-border);
+    color: var(--danger-300);
+}
+
+[data-theme="dark"] .alert--danger svg,
+[data-theme="dark"] .alert-danger svg {
+    color: var(--color-error);
+}
+
+[data-theme="dark"] .alert--danger a,
+[data-theme="dark"] .alert-danger a {
+    color: var(--danger-300);
+}
+
+[data-theme="dark"] .alert--info,
+[data-theme="dark"] .alert-info {
+    background: var(--color-info-bg);
+    border-color: var(--color-info-border);
+    color: var(--info-300);
+}
+
+[data-theme="dark"] .alert--info svg,
+[data-theme="dark"] .alert-info svg {
+    color: var(--color-info);
+}
 
 /* Toast variants dark mode */
 [data-theme="dark"] .toast-success {

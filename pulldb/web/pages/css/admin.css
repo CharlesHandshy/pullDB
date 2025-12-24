@@ -738,6 +738,26 @@
     flex-direction: column;
 }
 
+.users-page .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+
+.users-page .card-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.users-page .card-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
 .users-page #users-table-container {
     flex: 1;
     min-height: 0;
@@ -794,6 +814,52 @@
 }
 
 /* ===========================================
+   MANAGER PAGE
+   =========================================== */
+
+.manager-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--space-6);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+.manager-page .card {
+    height: calc(100vh - 200px);
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+}
+
+.manager-page .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+
+.manager-page .card-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.manager-page .card-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.manager-page #team-table-container {
+    flex: 1;
+    min-height: 0;
+}
+
+/* ===========================================
    JOBS PAGE
    =========================================== */
 
@@ -801,11 +867,6 @@
     max-width: 1200px;
     margin: 0 auto;
     padding: var(--space-6);
-}
-
-.jobs-table-card {
-    height: calc(100vh - 280px);
-    min-height: 400px;
 }
 
 /* ===========================================
@@ -900,6 +961,14 @@
 
 .status-active {
     color: var(--primary-600);
+}
+
+.status-admin {
+    color: var(--danger-500);
+}
+
+.status-manager {
+    color: var(--warning-600);
 }
 
 .status-divider {
@@ -1115,6 +1184,111 @@
 .host-star-placeholder {
     width: 16px;
 }
+
+/* ===========================================
+   ENTITY CELL UTILITIES
+   Generic reusable cell styles for LazyTable columns
+   =========================================== */
+
+.entity-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    text-decoration: none;
+    color: inherit;
+    white-space: nowrap;
+}
+
+.entity-cell-name {
+    font-weight: var(--font-medium, 500);
+    color: var(--color-text-primary, var(--gray-900));
+}
+
+.entity-cell-code {
+    font-size: 0.75rem;
+    background: var(--gray-100);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--gray-700);
+    font-family: var(--font-mono);
+}
+
+.entity-cell-count {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary, var(--gray-600));
+}
+
+.entity-icon-sm {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md, 6px);
+    background: linear-gradient(135deg, var(--primary-100), var(--primary-200));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.entity-icon-sm svg {
+    width: 18px;
+    height: 18px;
+    color: var(--primary-600);
+}
+
+.entity-icon-sm.disabled {
+    background: var(--gray-100);
+}
+
+.entity-icon-sm.disabled svg {
+    color: var(--gray-400);
+}
+
+/* Status badges for team/user actions */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-badge-active {
+    background: var(--success-50);
+    color: var(--success-700);
+}
+
+.status-badge-disabled {
+    background: var(--gray-100);
+    color: var(--gray-600);
+}
+
+/* Team action button styling */
+.team-action-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.team-action-btn.action-btn-danger {
+    color: var(--danger-600);
+}
+
+.team-action-btn.action-btn-muted {
+    color: var(--gray-500);
+}
+
+.team-action-btn:hover.action-btn-muted {
+    color: var(--gray-700);
+}
+
+/* ===========================================
+   HOST CELLS (extends entity-cell)
+   =========================================== */
 
 .host-cell {
     position: relative;

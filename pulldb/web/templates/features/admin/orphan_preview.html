@@ -27,7 +27,7 @@
 </div>
 
 <!-- Info Panel -->
-<div class="card card-padding" style="margin-bottom: var(--space-4);">
+<div class="card card-padding mb-4">
     <div style="display: flex; gap: var(--space-4); align-items: center; justify-content: space-between;">
         <div style="color: var(--gray-600); font-size: 0.875rem;">
             Orphan databases match the staging naming pattern but have no associated job record.
@@ -46,11 +46,11 @@
     </div>
 
     <!-- LazyTable Container -->
-    <div id="orphan-table-container" style="height: 400px;"></div>
+    <div id="orphan-table-container" class="lazy-table-height-fixed"></div>
 </div>
 
 <!-- Hidden Execute Form -->
-<form id="execute-form" method="POST" action="/web/admin/orphans/execute" style="display: none;">
+<form id="execute-form" method="POST" action="/web/admin/orphans/execute" class="js-hidden">
     <input type="hidden" name="selected_orphans" id="selected-orphans" value="">
 </form>
 {% endblock %}
@@ -149,7 +149,7 @@
             container: document.getElementById('orphan-table-container'),
             columns: columns,
             fetchUrl: '/web/admin/api/orphan-candidates',
-            rowHeight: 40,
+            rowHeight: 48,
             pageSize: 50,
             footerSlot: `
                 <a href="/web/admin/" class="btn btn-secondary">Cancel</a>

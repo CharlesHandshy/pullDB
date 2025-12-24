@@ -20,15 +20,30 @@
 {% block body_class %}{% block layout_class %}{% endblock %}{% endblock %}
 
 {% block head_meta %}
-{# Dark mode initial state to prevent flash #}
+{# Dark mode initial state to prevent flash - runs synchronously before CSS load #}
 <script>
     (function() {
-        var theme = localStorage.getItem('theme');
-        if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.setAttribute('data-theme', 'dark');
+        var THEME_KEY = 'pulldb-theme';
+        var VERSION_KEY = 'pulldb-theme-version';
+        var stored = localStorage.getItem(THEME_KEY);
+        var theme;
+        
+        if (stored === 'dark' || stored === 'light') {
+            theme = stored;
+        } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            theme = 'dark';
         } else {
-            document.documentElement.setAttribute('data-theme', 'light');
+            theme = 'light';
         }
+        
+        document.documentElement.setAttribute('data-theme', theme);
+        
+        // Store for CSS file selection in app_layout.html
+        window.__pulldb_theme = theme;
+        window.__pulldb_theme_version = localStorage.getItem(VERSION_KEY) || Date.now();
+        
+        // Sync to cookie for potential server-side rendering
+        document.cookie = 'pulldb_theme=' + theme + ';path=/;max-age=31536000;SameSite=Lax';
     })();
 </script>
 {% block extra_meta %}{% endblock %}

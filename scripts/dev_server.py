@@ -531,6 +531,7 @@ def create_dev_app():
         """Background task that processes queued jobs periodically."""
         from pulldb.simulation import SimulatedJobRepository
         from pulldb.simulation.core.queue_runner import MockQueueRunner, MockRunnerConfig
+        from pulldb.domain.models import JobStatus
 
         job_repo = SimulatedJobRepository()
         # 10% failure rate for realistic simulation
@@ -542,6 +543,23 @@ def create_dev_app():
         while True:
             await asyncio.sleep(15)
             try:
+                # First: Check for running jobs with cancellation requested and cancel them
+                with job_repo.state.lock:
+                    running_jobs = [
+                        j for j in job_repo.state.jobs.values() 
+                        if j.status == JobStatus.RUNNING
+                    ]
+                
+                for job in running_jobs:
+                    if job_repo.is_cancellation_requested(job.id):
+                        job_repo.mark_job_canceled(job.id, "Canceled by user request")
+                        print(f"  [Queue Runner] ⊘ Job {job.id[:8]} -> canceled (was running)")
+                
+                # Then: Process next queued job
+                queued_count = len([j for j in job_repo.state.jobs.values() if j.status == JobStatus.QUEUED])
+                if queued_count > 0:
+                    print(f"  [Queue Runner] {queued_count} job(s) in queue, processing...")
+                
                 job = runner.process_next()
                 if job:
                     status_emoji = {
@@ -553,7 +571,9 @@ def create_dev_app():
                         f"  [Queue Runner] {status_emoji} Job {job.id[:8]} -> {job.status.value}"
                     )
             except Exception as e:
+                import traceback
                 print(f"  [Queue Runner] Error: {e}")
+                traceback.print_exc()
 
     async def start_queue_runner() -> None:
         """Start the background queue runner on app startup."""

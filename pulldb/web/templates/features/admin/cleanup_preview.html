@@ -27,7 +27,7 @@
 </div>
 
 <!-- Config Panel -->
-<div class="card card-padding" style="margin-bottom: var(--space-4);">
+<div class="card card-padding mb-4">
     <form id="config-form" style="display: flex; gap: var(--space-4); align-items: flex-end;">
         <div>
             <label class="form-label">Delete databases from jobs completed more than</label>
@@ -50,11 +50,11 @@
     </div>
 
     <!-- LazyTable Container -->
-    <div id="cleanup-table-container" style="height: 400px;"></div>
+    <div id="cleanup-table-container" class="lazy-table-height-fixed"></div>
 </div>
 
 <!-- Hidden Execute Form -->
-<form id="execute-form" method="POST" action="/web/admin/cleanup-staging/execute" style="display: none;">
+<form id="execute-form" method="POST" action="/web/admin/cleanup-staging/execute" class="js-hidden">
     <input type="hidden" name="days" id="form-days" value="{{ days }}">
     <input type="hidden" name="include_ids" id="include-ids" value="">
 </form>
@@ -150,7 +150,7 @@
             container: document.getElementById('cleanup-table-container'),
             columns: columns,
             fetchUrl: '/web/admin/api/cleanup-candidates?days=' + days,
-            rowHeight: 40,
+            rowHeight: 48,
             pageSize: 50,
             footerSlot: `
                 <a href="/web/admin/" class="btn btn-secondary">Cancel</a>

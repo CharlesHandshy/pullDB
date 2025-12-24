@@ -314,23 +314,25 @@
 <script>
 (function() {
     let currentMode = 'light';
-    let lightSchema = { surface: { base: '#ffffff', hover: '#f9fafb', active: '#f3f4f6' }, background: { primary: '#f9fafb', secondary: '#f3f4f6', elevated: '#ffffff' }, text: { primary: '#111827', secondary: '#4b5563', muted: '#6b7280' }, border: { default: '#e5e7eb', hover: '#d1d5db', focus: '#3b82f6' }, interactive: { primary: '#2563eb', primary_hover: '#1d4ed8', danger: '#dc2626' }, status: { success: '#16a34a', warning: '#d97706', error: '#dc2626', info: '#0891b2' } };
-    let darkSchema = { surface: { base: '#1e293b', hover: '#334155', active: '#475569' }, background: { primary: '#0f172a', secondary: '#1e293b', elevated: '#1e293b' }, text: { primary: '#f1f5f9', secondary: '#94a3b8', muted: '#64748b' }, border: { default: '#334155', hover: '#475569', focus: '#60a5fa' }, interactive: { primary: '#60a5fa', primary_hover: '#3b82f6', danger: '#f87171' }, status: { success: '#4ade80', warning: '#fbbf24', error: '#f87171', info: '#60a5fa' } };
-    const defaultLight = JSON.parse(JSON.stringify(lightSchema));
-    const defaultDark = JSON.parse(JSON.stringify(darkSchema));
+    let lightSchema = null;
+    let darkSchema = null;
+    let allPresets = { light: {}, dark: {} };
+    let defaultLight = null;
+    let defaultDark = null;
 
     function getVal(obj, path) { return path.split('.').reduce((o, k) => o && o[k], obj); }
     function setVal(obj, path, val) { const keys = path.split('.'); const last = keys.pop(); keys.reduce((o, k) => o[k] = o[k] || {}, obj)[last] = val; }
 
     function updateUI() {
         const schema = currentMode === 'light' ? lightSchema : darkSchema;
+        if (!schema) return;
         document.querySelectorAll('.color-picker, .color-text').forEach(input => {
             const val = getVal(schema, input.dataset.token);
             if (val) input.value = val;
         });
         document.querySelectorAll('.mode-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.mode === currentMode));
         // Update preset selector to show relevant presets
-        document.getElementById('preset-select').value = currentMode + ':' + schema.name;
+        document.getElementById('preset-select').value = currentMode + ':' + (schema.name || 'Default');
         // Update demo gallery preview (isolated to demo area only)
         updateDemoPreview();
     }
@@ -368,19 +370,36 @@
         // Do NOT apply global preview - keep UI unchanged until save
     };
 
-    window.loadPreset = async function(value) {
+    window.loadPreset = function(value) {
         const [mode, name] = value.split(':');
-        try {
-            const r = await fetch(`/web/admin/api/color-preset?mode=${mode}&name=${encodeURIComponent(name)}`);
-            const data = await r.json();
-            if (mode === 'light') lightSchema = data; else darkSchema = data;
-        } catch(e) {
-            if (mode === 'light') lightSchema = JSON.parse(JSON.stringify(defaultLight));
-            else darkSchema = JSON.parse(JSON.stringify(defaultDark));
+        const preset = allPresets[mode]?.[name];
+        if (preset) {
+            if (mode === 'light') lightSchema = JSON.parse(JSON.stringify(preset));
+            else darkSchema = JSON.parse(JSON.stringify(preset));
         }
         currentMode = mode;
         updateUI();
     };
+
+    // Load all presets from server on init
+    async function initPresets() {
+        try {
+            const r = await fetch('/web/admin/api/color-presets');
+            allPresets = await r.json();
+            
+            // Set defaults from server data
+            defaultLight = allPresets.light?.['Default'] || null;
+            defaultDark = allPresets.dark?.['Default'] || null;
+            
+            // Initialize schemas with defaults
+            lightSchema = JSON.parse(JSON.stringify(defaultLight));
+            darkSchema = JSON.parse(JSON.stringify(defaultDark));
+            
+            updateUI();
+        } catch(e) {
+            console.error('Failed to load color presets:', e);
+        }
+    }
 
     document.querySelectorAll('.color-picker').forEach(p => p.addEventListener('input', function() {
         const schema = currentMode === 'light' ? lightSchema : darkSchema;
@@ -446,8 +465,8 @@
     };
 
     window.resetAppearance = function() {
-        lightSchema = JSON.parse(JSON.stringify(defaultLight));
-        darkSchema = JSON.parse(JSON.stringify(defaultDark));
+        if (defaultLight) lightSchema = JSON.parse(JSON.stringify(defaultLight));
+        if (defaultDark) darkSchema = JSON.parse(JSON.stringify(defaultDark));
         document.getElementById('dark-mode-toggle').checked = false;
         updateUI();
     };
@@ -475,6 +494,7 @@
         }, 3000);
     }
 
-    updateUI();
+    // Initialize: load presets from server
+    initPresets();
 })();
 </script>

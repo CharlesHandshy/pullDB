@@ -932,3 +932,24 @@
         height: 14px;
     }
 }
+
+/* =========================================================================
+   Container Height Utilities
+   ========================================================================= */
+
+/**
+ * Standard height classes for LazyTable containers.
+ * Use these on the parent container element to ensure consistent table heights.
+ * 
+ * .lazy-table-height-viewport: Full viewport height minus header/nav space
+ * .lazy-table-height-fixed: Fixed 400px height for preview/modal contexts
+ */
+
+.lazy-table-height-viewport {
+    height: calc(100vh - 280px);
+    min-height: 400px;
+}
+
+.lazy-table-height-fixed {
+    height: 400px;
+}
