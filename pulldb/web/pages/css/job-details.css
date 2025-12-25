@@ -7,6 +7,203 @@
    ================================================================= */
 
 /* ===========================================
+   PAGE HEADER ACTIONS
+   =========================================== */
+
+.page-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+/* ===========================================
+   LOGS HEADER
+   =========================================== */
+
+.logs-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+}
+
+.logs-header .card-header {
+    margin-bottom: 0;
+}
+
+/* ===========================================
+   PHASE STEPPER
+   =========================================== */
+
+.phase-stepper {
+    margin-bottom: var(--space-6);
+    overflow-x: auto;
+}
+
+.phase-stepper-track {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    min-width: 700px;
+    padding: var(--space-2) 0;
+}
+
+.phase-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+    width: 80px;
+}
+
+.phase-step-indicator {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    transition: all 0.2s ease;
+}
+
+.phase-step-indicator svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Pending state */
+.phase-step--pending .phase-step-indicator {
+    background: var(--gray-100);
+    color: var(--gray-400);
+    border: 2px solid var(--gray-300);
+}
+
+/* Active state */
+.phase-step--active .phase-step-indicator {
+    background: var(--primary-100);
+    color: var(--primary-600);
+    border: 2px solid var(--primary-500);
+    box-shadow: 0 0 0 4px var(--primary-100);
+}
+
+/* Complete state */
+.phase-step--complete .phase-step-indicator {
+    background: var(--success-500);
+    color: white;
+    border: 2px solid var(--success-500);
+}
+
+/* Failed state */
+.phase-step--failed .phase-step-indicator {
+    background: var(--danger-500);
+    color: white;
+    border: 2px solid var(--danger-500);
+}
+
+.phase-step-label {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--gray-500);
+    text-align: center;
+    white-space: nowrap;
+}
+
+.phase-step--active .phase-step-label {
+    color: var(--primary-700);
+    font-weight: var(--font-semibold);
+}
+
+.phase-step--complete .phase-step-label {
+    color: var(--success-700);
+}
+
+.phase-step--failed .phase-step-label {
+    color: var(--danger-700);
+}
+
+/* Connector line between steps */
+.phase-step-connector {
+    flex: 1;
+    height: 2px;
+    margin-top: 15px;  /* Align with center of indicator */
+    min-width: 20px;
+}
+
+.phase-step-connector--complete {
+    background: var(--success-500);
+}
+
+.phase-step-connector--pending {
+    background: var(--gray-300);
+}
+
+/* Spinner animation for active phase */
+.phase-step-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--primary-200);
+    border-top-color: var(--primary-600);
+    border-radius: 50%;
+    animation: phase-spin 0.8s linear infinite;
+}
+
+@keyframes phase-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+    .phase-step--pending .phase-step-indicator {
+        background: var(--gray-800);
+        color: var(--gray-500);
+        border-color: var(--gray-600);
+    }
+    
+    .phase-step--active .phase-step-indicator {
+        background: var(--primary-900);
+        box-shadow: 0 0 0 4px var(--primary-900);
+    }
+    
+    .phase-step-connector--pending {
+        background: var(--gray-600);
+    }
+}
+
+[data-theme="dark"] .phase-step--pending .phase-step-indicator {
+    background: var(--gray-800);
+    color: var(--gray-500);
+    border-color: var(--gray-600);
+}
+
+[data-theme="dark"] .phase-step--active .phase-step-indicator {
+    background: var(--primary-900);
+    box-shadow: 0 0 0 4px var(--primary-900);
+}
+
+[data-theme="dark"] .phase-step-connector--pending {
+    background: var(--gray-600);
+}
+
+/* ===========================================
+   LOG ENTRY HIGHLIGHT
+   =========================================== */
+
+.log-entry--highlight {
+    background: rgba(var(--primary-500-rgb, 59, 130, 246), 0.15);
+    padding: var(--space-2);
+    margin: var(--space-1) calc(-1 * var(--space-2));
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--primary-500);
+}
+
+.log-event-type {
+    font-weight: var(--font-medium);
+}
+
+/* ===========================================
    PAGE LAYOUT
    =========================================== */
 

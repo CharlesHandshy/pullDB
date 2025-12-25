@@ -95,7 +95,9 @@ class DiscoveryService:
             "homeservices",
         ]
         query_lower = query.lower()
-        matches = [c for c in mock_customers if query_lower in c.lower()]
+        # Filter: only include customers with lowercase letters only (a-z)
+        matches = [c for c in mock_customers 
+                   if query_lower in c.lower() and c.isalpha() and c.islower()]
         return sorted(matches)[:limit]
 
     def _search_customers_s3(self, query: str, limit: int) -> list[str]:
@@ -116,8 +118,11 @@ class DiscoveryService:
                         )
 
         query_lower = query.lower()
+        # Filter: only include customers with lowercase letters only (a-z)
+        # Exclude any customers with uppercase, numbers, symbols, etc.
         matches = sorted(
-            [c for c in customer_set if query_lower in c.lower()],
+            [c for c in customer_set 
+             if query_lower in c.lower() and c.isalpha() and c.islower()],
             key=lambda x: (not x.lower().startswith(query_lower), x),
         )[:limit]
 

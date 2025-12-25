@@ -62,17 +62,28 @@ class TestDeriveBackupLookupTarget:
         return job
 
     def test_strips_user_code_prefix(self, sample_job: MagicMock) -> None:
-        """Strips user_code prefix from target."""
+        """Strips user_code prefix from target when no customer_id in options."""
         sample_job.target = "charleqatemplate"
         sample_job.owner_user_code = "charle"
+        sample_job.options_json = {}  # No customer_id, fall back to prefix stripping
 
         result = derive_backup_lookup_target(sample_job)
         assert result == "qatemplate"
 
     def test_uses_customer_id_from_options(self, sample_job: MagicMock) -> None:
-        """Falls back to customer_id from options_json."""
+        """Uses customer_id from options_json as primary source."""
+        sample_job.target = "charleantexzzz"  # target with user_code prefix and suffix
+        sample_job.owner_user_code = "charle"
+        sample_job.options_json = {"customer_id": "antex"}  # Clean customer name
+
+        result = derive_backup_lookup_target(sample_job)
+        # customer_id takes priority - returns clean customer name
+        assert result == "antex"
+
+    def test_customer_id_sanitized(self, sample_job: MagicMock) -> None:
+        """customer_id is sanitized to lowercase alpha only."""
         sample_job.target = "charleqatemplate"
-        sample_job.owner_user_code = ""
+        sample_job.owner_user_code = "charle"
         sample_job.options_json = {"customer_id": "My-Customer-123"}
 
         result = derive_backup_lookup_target(sample_job)

@@ -284,10 +284,12 @@ async def restore_submit(
     
     env_val = s3env if s3env in ("staging", "prod") else None
     overwrite_val = overwrite == "true"
+    is_qatemplate = qatemplate == 'true'
 
     req = JobRequest(
         user=effective_username,
-        customer=customer,
+        customer=customer if not is_qatemplate else None,
+        qatemplate=is_qatemplate,
         env=env_val,
         dbhost=dbhost if dbhost else None,
         suffix=suffix if suffix else None,

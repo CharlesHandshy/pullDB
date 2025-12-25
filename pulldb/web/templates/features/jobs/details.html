@@ -7,7 +7,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="job-details-container" hx-get="{{ request.url.path }}" hx-trigger="every 5s" hx-select=".job-details-container" hx-swap="outerHTML">
+<div class="job-details-container" id="job-details-container" hx-get="{{ request.url.path }}" {% if job.status.value == 'running' %}hx-trigger="every 5s"{% endif %} hx-select=".job-details-container" hx-swap="outerHTML">
     {% if flash_message %}
     <div class="alert alert-{{ flash_type or 'info' }} mb-4">
         {{ flash_message }}
@@ -16,15 +16,44 @@
     
     <div class="page-header">
         <h1 class="page-title">Job Details: <span class="font-mono" title="{{ job.id }}">{{ job.id[:8] }}</span></h1>
-        {% if job.status.value in ['queued', 'running'] and can_cancel and not cancel_requested_at %}
-        <form method="POST" action="/web/jobs/{{ job.id }}/cancel" 
-              onsubmit="if(confirm('Are you sure you want to cancel this job?')) { this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Canceling...'; return true; } return false;">
-            <button type="submit" class="btn btn-danger" aria-label="Cancel this restore job">Cancel Job</button>
-        </form>
-        {% elif cancel_requested_at and job.status.value == 'running' %}
-        <span class="badge badge-warning">Cancellation Pending</span>
-        {% endif %}
+        <div class="page-header-actions">
+            {% if job.status.value in ['queued', 'running'] and can_cancel and not cancel_requested_at %}
+            <form method="POST" action="/web/jobs/{{ job.id }}/cancel" style="display: inline;"
+                  onsubmit="if(confirm('Are you sure you want to cancel this job?')) { this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Canceling...'; return true; } return false;">
+                <button type="submit" class="btn btn-danger" aria-label="Cancel this restore job">Cancel Job</button>
+            </form>
+            {% elif cancel_requested_at and job.status.value == 'running' %}
+            <span class="badge badge-warning">Cancellation Pending</span>
+            {% endif %}
+        </div>
     </div>
+
+    <!-- Phase Progress Indicator -->
+    {% if phase_list %}
+    <div class="phase-stepper card card-padding">
+        <div class="phase-stepper-track">
+            {% for phase in phase_list %}
+            <div class="phase-step phase-step--{{ phase.state }}" data-phase="{{ phase.id }}">
+                <div class="phase-step-indicator">
+                    {% if phase.state == 'complete' %}
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                    {% elif phase.state == 'active' %}
+                    <div class="phase-step-spinner"></div>
+                    {% elif phase.state == 'failed' %}
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                    {% else %}
+                    <span class="phase-step-number">{{ loop.index }}</span>
+                    {% endif %}
+                </div>
+                <div class="phase-step-label">{{ phase.label }}</div>
+            </div>
+            {% if not loop.last %}
+            <div class="phase-step-connector phase-step-connector--{{ 'complete' if phase.state == 'complete' else 'pending' }}"></div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 
     <div class="card card-padding">
         <div class="grid-2-col" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6);">
@@ -100,11 +129,19 @@
     {% endif %}
 
     <div class="card card-padding">
-        <h3 class="card-header">Logs</h3>
-        <div class="logs-container" style="background: var(--gray-900); color: var(--gray-100); padding: var(--space-4); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 0.875rem; max-height: 400px; overflow-y: auto;">
+        <div class="logs-header">
+            <h3 class="card-header">Logs</h3>
+            {% if job.status.value == 'running' %}
+            <button type="button" class="btn btn-secondary btn-sm" id="auto-refresh-toggle" onclick="toggleAutoRefresh()">
+                <span id="refresh-icon">⏸</span> <span id="refresh-label">Pause</span>
+            </button>
+            {% endif %}
+        </div>
+        <div class="logs-container" id="logs-container" style="background: var(--gray-900); color: var(--gray-100); padding: var(--space-4); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 0.875rem; max-height: 400px; overflow-y: auto;">
             {% for log in logs %}
-            <div class="log-entry">
+            <div class="log-entry {% if log.event_type == 'backup_selected' %}log-entry--highlight{% endif %}">
                 <span style="color: var(--gray-500);">{{ log.logged_at.strftime('%H:%M:%S') }}</span>
+                <span class="log-event-type" style="color: var(--primary-400);">[{{ log.event_type }}]</span>
                 <span>{{ log.detail }}</span>
             </div>
             {% else %}
@@ -113,4 +150,65 @@
         </div>
     </div>
 </div>
+
+{% if job.status.value == 'running' %}
+<script>
+(function() {
+    const STORAGE_KEY = 'pulldb_job_autorefresh';
+    const container = document.getElementById('job-details-container');
+    
+    // Initialize from localStorage
+    function initAutoRefresh() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        const isPaused = saved === 'paused';
+        
+        if (isPaused) {
+            pauseRefresh();
+        } else {
+            resumeRefresh();
+        }
+    }
+    
+    function pauseRefresh() {
+        if (container) {
+            container.removeAttribute('hx-trigger');
+            htmx.process(container);
+        }
+        updateButton(true);
+        localStorage.setItem(STORAGE_KEY, 'paused');
+    }
+    
+    function resumeRefresh() {
+        if (container) {
+            container.setAttribute('hx-trigger', 'every 5s');
+            htmx.process(container);
+        }
+        updateButton(false);
+        localStorage.setItem(STORAGE_KEY, 'active');
+    }
+    
+    function updateButton(isPaused) {
+        const icon = document.getElementById('refresh-icon');
+        const label = document.getElementById('refresh-label');
+        if (icon && label) {
+            icon.textContent = isPaused ? '▶' : '⏸';
+            label.textContent = isPaused ? 'Resume' : 'Pause';
+        }
+    }
+    
+    // Expose toggle function globally
+    window.toggleAutoRefresh = function() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved === 'paused') {
+            resumeRefresh();
+        } else {
+            pauseRefresh();
+        }
+    };
+    
+    // Initialize on load
+    initAutoRefresh();
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -48,7 +48,10 @@ def _construct_target(user: User, req: JobRequest) -> str:
     - Web UI level (JavaScript validation + input filtering)
     """
     if req.qatemplate:
-        return f"{user.user_code}qatemplate"
+        target = f"{user.user_code}qatemplate"
+        if req.suffix:
+            target = f"{target}{req.suffix}"
+        return target
 
     customer_value = req.customer or ""
     sanitized = _letters_only(customer_value)

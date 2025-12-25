@@ -144,6 +144,24 @@
                         <button type="button" class="selected-display-clear" id="clear-backup-btn">Change</button>
                     </div>
                     
+                    <!-- Target database preview (shown after backup is selected) -->
+                    <div class="target-callout js-hidden" id="target-callout">
+                        <div class="target-callout-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                            </svg>
+                        </div>
+                        <div class="target-callout-content">
+                            <div class="target-callout-label">This backup will restore to your personal database:</div>
+                            <div class="target-callout-value">
+                                <span id="callout-user-code">{{ user.user_code }}</span><span id="callout-customer" class="callout-customer"></span><span id="callout-suffix" class="callout-suffix"></span>
+                            </div>
+                            <div class="target-callout-note">The original <span id="callout-original-name"></span> database will NOT be affected.</div>
+                        </div>
+                    </div>
+                    
                     <!-- Backup search container (hidden when backup is selected) -->
                     <div id="backup-search-container">
                         <div class="backup-list-header">
@@ -176,36 +194,28 @@
                         </div>
                         <div class="info-content">
                             <h4>QA Template Database</h4>
-                            <p>Restore the standardized QA template database for testing purposes.</p>
+                            <p>Select a QA template backup to restore to your personal QA database.</p>
                         </div>
                     </div>
                     
-                    <div class="qa-config-row">
-                        <div class="form-group m-0">
-                            <label for="qa_extension" class="form-label">Target Extension <span class="label-optional">(optional)</span></label>
-                            <input 
-                                type="text" 
-                                id="qa_extension" 
-                                class="form-input uppercase"
-                                placeholder="ABC"
-                                maxlength="3"
-                                pattern="[A-Za-z]{0,3}"
-                            >
-                            <p class="form-hint" id="qa-extension-hint">Target: {{ user.user_code }}qatemplate</p>
-                        </div>
-                        
-                        <div class="form-group m-0">
-                            <label for="qa_s3env" class="form-label">Source Environment</label>
-                            <select id="qa_s3env" class="form-select">
-                                <option value="both">All Backups</option>
-                                <option value="staging">Staging Only</option>
-                                <option value="prod">Production Only</option>
-                            </select>
-                        </div>
+                    <!-- Environment selector for QA -->
+                    <div class="env-selector" role="radiogroup" aria-label="Environment">
+                        <label class="env-option is-selected">
+                            <input type="radio" name="s3env" value="both" checked>
+                            <span class="env-option-label">All Backups</span>
+                        </label>
+                        <label class="env-option">
+                            <input type="radio" name="s3env" value="staging">
+                            <span class="env-option-label">Staging Only</span>
+                        </label>
+                        <label class="env-option">
+                            <input type="radio" name="s3env" value="prod">
+                            <span class="env-option-label">Production Only</span>
+                        </label>
                     </div>
                     
-                    <!-- QA Template backup list -->
-                    <div class="backup-list-container is-visible section-divider" id="qa-backup-list-container">
+                    <!-- QA Template backup list (always visible) -->
+                    <div class="backup-list-container is-visible" id="qa-backup-list-container">
                         <!-- Selected QA backup display -->
                         <div class="selected-display js-hidden" id="selected-qa-backup-display">
                             <svg class="selected-display-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -219,17 +229,34 @@
                             <button type="button" class="selected-display-clear" id="clear-qa-backup-btn">Change</button>
                         </div>
                         
+                        <!-- QA Target database preview (shown after QA backup is selected) -->
+                        <div class="target-callout js-hidden" id="qa-target-callout">
+                            <div class="target-callout-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                                </svg>
+                            </div>
+                            <div class="target-callout-content">
+                                <div class="target-callout-label">This backup will restore to your QA template database:</div>
+                                <div class="target-callout-value">
+                                    <span id="qa-callout-user-code">{{ user.user_code }}</span><span class="callout-customer">qatemplate</span><span id="qa-callout-suffix" class="callout-suffix"></span>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div id="qa-backup-search-container">
                             <div class="backup-list-header">
-                                <span class="backup-list-title">Available QA Template Backups</span>
+                                <span class="backup-list-title" id="qa-backup-list-title">QA Template Backups</span>
                                 <span class="backup-list-count" id="qa-backup-count">Loading...</span>
                             </div>
                             <div class="backup-list-scroll" id="qa-backup-list">
                                 <div class="backup-list-empty">
                                     <svg class="backup-list-empty-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <ellipse cx="12" cy="5" rx="9" ry="3"/>
-                                        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
-                                        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                                        <line x1="12" y1="22.08" x2="12" y2="12"/>
                                     </svg>
                                     <div>Loading QA template backups...</div>
                                 </div>
@@ -392,6 +419,16 @@
     const targetPreview = document.getElementById('target-preview');
     const previewUserCode = document.getElementById('preview-user-code');
     const previewCustomer = document.getElementById('preview-customer');
+    
+    // DOM elements - Target Callout (shows after backup selection)
+    const targetCallout = document.getElementById('target-callout');
+    const calloutUserCode = document.getElementById('callout-user-code');
+    const calloutCustomer = document.getElementById('callout-customer');
+    const calloutSuffix = document.getElementById('callout-suffix');
+    const calloutOriginalName = document.getElementById('callout-original-name');
+    const qaTargetCallout = document.getElementById('qa-target-callout');
+    const qaCalloutSuffix = document.getElementById('qa-callout-suffix');
+    const qaCalloutUserCode = document.getElementById('qa-callout-user-code');
     const previewSuffix = document.getElementById('preview-suffix');
     const submitSummary = document.getElementById('submit-summary');
     const submitBtn = document.getElementById('submit-btn');
@@ -423,9 +460,6 @@
     // QA Template state
     let isQaTemplateMode = false;
     let selectedQaBackup = null;
-    const qaExtensionInput = document.getElementById('qa_extension');
-    const qaExtensionHint = document.getElementById('qa-extension-hint');
-    const qaS3envSelect = document.getElementById('qa_s3env');
     const qaBackupList = document.getElementById('qa-backup-list');
     const qaBackupCount = document.getElementById('qa-backup-count');
     const qaTemplateInput = document.getElementById('qatemplate-input');
@@ -455,9 +489,9 @@
             isQaTemplateMode = tabId === 'qatemplate';
             
             if (tabId === 'qatemplate') {
-                // QA Template mode
+                // QA Template mode - auto-load qatemplate backups
                 customerHidden.value = 'qatemplate';
-                loadQaTemplateBackups();
+                loadQaBackups();
                 updateQaTargetPreview();
             } else {
                 // Customer mode - restore previous customer value or clear
@@ -473,23 +507,19 @@
         });
     });
     
-    // QA Extension input
-    if (qaExtensionInput) {
-        qaExtensionInput.addEventListener('input', function(e) {
-            e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
-            updateQaTargetPreview();
-        });
-    }
-    
-    // QA S3 environment change
-    if (qaS3envSelect) {
-        qaS3envSelect.addEventListener('change', function() {
+    // QA environment selector styling
+    const qaEnvOptions = document.querySelectorAll('#tab-qatemplate .env-option input[type="radio"]');
+    qaEnvOptions.forEach(radio => {
+        radio.addEventListener('change', function() {
+            document.querySelectorAll('#tab-qatemplate .env-option').forEach(opt => {
+                opt.classList.toggle('is-selected', opt.querySelector('input').checked);
+            });
             if (isQaTemplateMode) {
                 clearQaBackupSelection();
-                loadQaTemplateBackups();
+                loadQaBackups();
             }
         });
-    }
+    });
     
     // Clear QA backup button
     if (clearQaBackupBtn) {
@@ -498,34 +528,31 @@
         });
     }
     
+    function getQaS3Env() {
+        const checkedRadio = document.querySelector('#tab-qatemplate input[name="s3env"]:checked');
+        return checkedRadio ? checkedRadio.value : 'both';
+    }
+    
     function updateQaTargetPreview() {
         if (!isQaTemplateMode) return;
         
-        const ext = qaExtensionInput ? qaExtensionInput.value : '';
         const userCode = userSelector ? userCodeMap[userSelector.value] : '{{ user.user_code }}';
+        const suffix = suffixInput ? suffixInput.value : '';
         
         previewCustomer.textContent = 'qatemplate';
-        previewSuffix.textContent = ext ? ext.toLowerCase() : '';
+        previewSuffix.textContent = suffix;
         previewUserCode.textContent = userCode;
         targetPreview.style.display = 'block';
-        
-        // Update hint
-        if (qaExtensionHint) {
-            if (ext) {
-                qaExtensionHint.innerHTML = 'Target: <strong>' + userCode + 'qatemplate' + ext.toLowerCase() + '</strong>';
-            } else {
-                qaExtensionHint.textContent = 'Target: ' + userCode + 'qatemplate';
-            }
-        }
+        updateSummary();
     }
     
-    function loadQaTemplateBackups() {
+    function loadQaBackups() {
         if (!qaBackupList) return;
         
         qaBackupList.innerHTML = '<div class="customer-results-message">Loading QA template backups...</div>';
         qaBackupCount.textContent = 'Loading...';
         
-        const env = qaS3envSelect ? qaS3envSelect.value : 'both';
+        const env = getQaS3Env();
         
         htmx.ajax('GET', '/web/restore/search-backups?customer=qatemplate&env=' + env, {
             target: '#qa-backup-list'
@@ -544,6 +571,9 @@
         qaBackupSearchContainer.style.display = 'none';
         selectedQaBackupDisplay.style.display = 'flex';
         
+        // Show QA target callout
+        updateQaTargetCallout();
+        
         // Set hidden field
         let backupInput = document.getElementById('backup_key');
         if (!backupInput) {
@@ -558,11 +588,28 @@
         updateSummary();
     }
     
+    function updateQaTargetCallout() {
+        if (!selectedQaBackup) {
+            if (qaTargetCallout) qaTargetCallout.style.display = 'none';
+            return;
+        }
+        
+        const userCode = userSelector ? userCodeMap[userSelector.value] : '{{ user.user_code }}';
+        const suffix = suffixInput ? suffixInput.value : '';
+        
+        if (qaCalloutUserCode) qaCalloutUserCode.textContent = userCode;
+        if (qaCalloutSuffix) qaCalloutSuffix.textContent = suffix;
+        if (qaTargetCallout) qaTargetCallout.style.display = 'flex';
+    }
+    
     function clearQaBackupSelection() {
         selectedQaBackup = null;
         
         qaBackupSearchContainer.style.display = 'block';
         selectedQaBackupDisplay.style.display = 'none';
+        
+        // Hide QA target callout
+        if (qaTargetCallout) qaTargetCallout.style.display = 'none';
         
         // Clear hidden field
         const backupInput = document.getElementById('backup_key');
@@ -676,7 +723,13 @@
     // Suffix input
     suffixInput.addEventListener('input', function(e) {
         e.target.value = e.target.value.toLowerCase().replace(/[^a-z]/g, '');
-        updatePreview();
+        if (isQaTemplateMode) {
+            updateQaTargetPreview();
+            updateQaTargetCallout();
+        } else {
+            updatePreview();
+            updateTargetCallout();
+        }
     });
     
     // Overwrite checkbox
@@ -850,6 +903,9 @@
         backupSearchContainer.style.display = 'none';
         selectedBackupDisplay.style.display = 'flex';
         
+        // Show target callout with reassuring message
+        updateTargetCallout();
+        
         // Set hidden field
         let backupInput = document.getElementById('backup_key');
         if (!backupInput) {
@@ -864,11 +920,30 @@
         updateSummary();
     }
     
+    function updateTargetCallout() {
+        if (!selectedCustomer || !selectedBackup) {
+            if (targetCallout) targetCallout.style.display = 'none';
+            return;
+        }
+        
+        const userCode = userSelector ? userCodeMap[userSelector.value] : '{{ user.user_code }}';
+        const suffix = suffixInput ? suffixInput.value : '';
+        
+        if (calloutUserCode) calloutUserCode.textContent = userCode;
+        if (calloutCustomer) calloutCustomer.textContent = selectedCustomer;
+        if (calloutSuffix) calloutSuffix.textContent = suffix;
+        if (calloutOriginalName) calloutOriginalName.textContent = selectedCustomer;
+        if (targetCallout) targetCallout.style.display = 'flex';
+    }
+    
     function clearBackupSelection() {
         selectedBackup = null;
         
         backupSearchContainer.style.display = 'block';
         selectedBackupDisplay.style.display = 'none';
+        
+        // Hide target callout
+        if (targetCallout) targetCallout.style.display = 'none';
         
         // Clear hidden field
         const backupInput = document.getElementById('backup_key');
@@ -959,12 +1034,18 @@
     function updateSummary() {
         if (isQaTemplateMode) {
             if (selectedQaBackup) {
-                submitSummary.innerHTML = 'Ready to restore <strong>QA Template</strong>';
+                const userCode = userSelector ? userCodeMap[userSelector.value] : '{{ user.user_code }}';
+                const suffix = suffixInput ? suffixInput.value : '';
+                const qaTargetName = userCode + 'qatemplate' + suffix;
+                submitSummary.innerHTML = 'Ready to restore QA template as <strong>' + escapeHtml(qaTargetName) + '</strong>';
             } else {
                 submitSummary.textContent = 'Select a QA template backup to continue';
             }
         } else if (selectedCustomer && selectedBackup) {
-            submitSummary.innerHTML = 'Ready to restore <strong>' + escapeHtml(selectedCustomer) + '</strong>';
+            const userCode = userSelector ? userCodeMap[userSelector.value] : '{{ user.user_code }}';
+            const suffix = suffixInput ? suffixInput.value : '';
+            const targetName = userCode + selectedCustomer + suffix;
+            submitSummary.innerHTML = 'Ready to restore <strong>' + escapeHtml(selectedCustomer) + '</strong> as <strong>' + escapeHtml(targetName) + '</strong>';
         } else if (selectedCustomer) {
             submitSummary.textContent = 'Select a backup to continue';
         } else {
@@ -1005,12 +1086,8 @@
                 alertUser('Please select a QA template backup');
                 return false;
             }
-            // Set customer to qatemplate for submission
+            // Set customer to qatemplate for submission (target database name)
             customerHidden.value = 'qatemplate';
-            // Set suffix from qa_extension if provided
-            if (qaExtensionInput && qaExtensionInput.value) {
-                suffixInput.value = qaExtensionInput.value.toLowerCase();
-            }
         } else {
             if (!selectedCustomer) {
                 e.preventDefault();

@@ -132,6 +132,80 @@ def _get_managed_user_codes(state: Any, user: User) -> list[str]:
     return managed_codes
 
 
+# Phase definitions for job progress display
+JOB_PHASES = [
+    ("queued", "Queued"),
+    ("discovery", "Discovery"),
+    ("download", "Download"),
+    ("extraction", "Extraction"),
+    ("myloader", "Loading"),
+    ("post_sql", "Post-SQL"),
+    ("atomic_rename", "Rename"),
+    ("complete", "Complete"),
+]
+
+# Map event types to phases
+EVENT_TO_PHASE: dict[str, str] = {
+    "queued": "queued",
+    "running": "discovery",
+    "backup_selected": "discovery",
+    "download_started": "download",
+    "download_progress": "download",
+    "download_complete": "download",
+    "extraction_complete": "extraction",
+    "format_detected": "extraction",
+    "restore_started": "myloader",
+    "restore_progress": "myloader",
+    "restore_complete": "atomic_rename",
+    "staging_cleanup": "atomic_rename",
+    "complete": "complete",
+    "failed": "failed",
+    "canceled": "canceled",
+}
+
+
+def _derive_current_phase(
+    logs: list[Any], job_status: str
+) -> tuple[str, list[dict[str, Any]]]:
+    """Derive current phase from job events and build phase list with states.
+
+    Returns:
+        Tuple of (current_phase_id, phase_list) where phase_list has
+        entries with 'id', 'label', and 'state' (pending/active/complete/failed).
+    """
+    current_phase = "queued"
+    for event in reversed(logs):
+        event_type = getattr(event, "event_type", "")
+        if event_type in EVENT_TO_PHASE:
+            current_phase = EVENT_TO_PHASE[event_type]
+            break
+
+    # Override for terminal states
+    if job_status == "complete":
+        current_phase = "complete"
+    elif job_status == "failed":
+        current_phase = "failed"
+    elif job_status == "canceled":
+        current_phase = "canceled"
+
+    # Build phase list with states
+    phase_list = []
+    found_current = False
+    for phase_id, phase_label in JOB_PHASES:
+        if phase_id == current_phase:
+            state = "active" if job_status == "running" else "complete"
+            if job_status == "failed":
+                state = "failed"
+            found_current = True
+        elif found_current:
+            state = "pending"
+        else:
+            state = "complete"
+        phase_list.append({"id": phase_id, "label": phase_label, "state": state})
+
+    return current_phase, phase_list
+
+
 @router.get("/{job_id}", response_class=HTMLResponse)
 async def job_details(
     request: Request,
@@ -148,11 +222,16 @@ async def job_details(
     logs = []
     profile = None
     job_can_cancel = False
+    current_phase = "queued"
+    phase_list: list[dict[str, Any]] = []
 
     if hasattr(state, "job_repo") and state.job_repo:
         job = state.job_repo.get_job_by_id(job_id)
         if job:
             logs = state.job_repo.get_job_events(job_id)
+
+            # Derive current phase for progress indicator
+            current_phase, phase_list = _derive_current_phase(logs, job.status.value)
 
             # Compute can_cancel for this user
             job_owner = state.user_repo.get_user_by_id(job.owner_user_id)
@@ -204,6 +283,8 @@ async def job_details(
             "cancel_requested_at": cancel_requested_at,
             "flash_message": flash_message,
             "flash_type": flash_type,
+            "current_phase": current_phase,
+            "phase_list": phase_list,
         },
     )
 

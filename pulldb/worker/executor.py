@@ -60,25 +60,27 @@ DEFAULT_POST_SQL_TIMEOUT_SECONDS = 600
 def derive_backup_lookup_target(job: Job) -> str:
     """Return the canonical S3 target name for a job.
 
-    Customer restores store backups under the sanitized customer token while
-    target databases prepend the operator's user_code. This helper strips the
-    user_code prefix (when present) and falls back to the options snapshot so
-    discovery queries the correct S3 key namespace.
-    """
-    user_code = job.owner_user_code or ""
-    target = job.target or ""
-    if user_code and target.startswith(user_code):
-        suffix = target[len(user_code) :]
-        if suffix:
-            return suffix
+    S3 backups are stored under the original customer name (e.g., "antex"),
+    not the target database name which includes user_code prefix and optional
+    suffix (e.g., "charleantexzzz"). This function extracts the clean customer
+    name for S3 lookup.
 
+    Priority order:
+    1. customer_id from options_json (cleanest source - original request value)
+    2. is_qatemplate flag -> returns "qatemplate"
+    3. Strip user_code prefix from target (legacy fallback)
+    4. job.target as last resort
+    """
     options = job.options_json or {}
+
+    # Priority 1: Use customer_id from options - this is the clean original value
     raw_customer = options.get("customer_id")
     if isinstance(raw_customer, str):
         sanitized = "".join(ch for ch in raw_customer.lower() if ch.isalpha())
         if sanitized:
             return sanitized
 
+    # Priority 2: Check for qatemplate restore
     raw_qatemplate = options.get("is_qatemplate", "")
     if isinstance(raw_qatemplate, str) and raw_qatemplate.strip().lower() in {
         "1",
@@ -87,6 +89,15 @@ def derive_backup_lookup_target(job: Job) -> str:
     }:
         return "qatemplate"
 
+    # Priority 3: Strip user_code prefix from target (for legacy jobs without options)
+    user_code = job.owner_user_code or ""
+    target = job.target or ""
+    if user_code and target.startswith(user_code):
+        remainder = target[len(user_code):]
+        if remainder:
+            return remainder
+
+    # Priority 4: Fall back to raw target
     logger.warning(
         "Unable to derive S3 backup target; defaulting to job.target",
         extra={"job_id": job.id, "target": job.target},

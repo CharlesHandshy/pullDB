@@ -711,6 +711,76 @@
 }
 
 /* ===========================================
+   TARGET CALLOUT (Post-backup selection)
+   Provides reassurance about target DB name
+   =========================================== */
+
+.target-callout {
+    display: none;
+    align-items: flex-start;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+    padding: var(--space-4);
+    background: linear-gradient(135deg, var(--success-50) 0%, var(--primary-50) 100%);
+    border: 2px solid var(--success-200);
+    border-radius: var(--radius-lg);
+}
+
+.target-callout-icon {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    color: var(--success-600);
+}
+
+.target-callout-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.target-callout-content {
+    flex: 1;
+}
+
+.target-callout-label {
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-2);
+}
+
+.target-callout-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-surface);
+    border-radius: var(--radius-md);
+    display: inline-block;
+    border: 1px solid var(--color-border);
+}
+
+.target-callout-value .callout-customer {
+    color: var(--primary-600);
+}
+
+.target-callout-value .callout-suffix {
+    color: var(--success-600);
+}
+
+.target-callout-note {
+    font-size: var(--text-xs);
+    color: var(--success-700);
+    font-weight: var(--font-medium);
+}
+
+.target-callout-note span {
+    font-weight: var(--font-bold);
+}
+
+/* ===========================================
    SUBMIT SECTION
    =========================================== */
 
@@ -944,6 +1014,20 @@
 [data-theme="dark"] .target-preview {
     background: var(--gray-800);
     border-color: var(--color-border);
+}
+
+[data-theme="dark"] .target-callout {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(59, 130, 246, 0.15) 100%);
+    border-color: var(--success-700);
+}
+
+[data-theme="dark"] .target-callout-value {
+    background: var(--gray-800);
+    border-color: var(--gray-600);
+}
+
+[data-theme="dark"] .target-callout-note {
+    color: var(--success-400);
 }
 
 [data-theme="dark"] .submit-section {
