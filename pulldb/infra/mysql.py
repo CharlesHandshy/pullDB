@@ -640,6 +640,26 @@ class JobRepository:
             row = cursor.fetchone()
             return bool(row and row[0])
 
+    def get_cancel_requested_at(self, job_id: str) -> datetime | None:
+        """Get the timestamp when cancellation was requested for a job.
+
+        Used by web UI to show when a cancellation was requested.
+
+        Args:
+            job_id: UUID of job.
+
+        Returns:
+            Datetime when cancellation was requested, or None if not requested.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT cancel_requested_at FROM jobs WHERE id = %s",
+                (job_id,),
+            )
+            row = cursor.fetchone()
+            return row["cancel_requested_at"] if row else None
+
     def get_active_jobs(self) -> list[Job]:
         """Get all active jobs (queued or running).
 
@@ -1023,6 +1043,86 @@ class JobRepository:
             )
             row = cursor.fetchone()
             return row[0] if row else 0
+
+    def count_jobs_by_host(self, hostname: str) -> int:
+        """Count total jobs (all statuses) for a specific host.
+
+        Used for admin dashboard to show total restores per host.
+
+        Args:
+            hostname: Database host to count jobs for.
+
+        Returns:
+            Total count of all jobs for the host.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM jobs
+                WHERE dbhost = %s
+                """,
+                (hostname,),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else 0
+
+    def get_cleanup_candidates(
+        self,
+        retention_days: int = 7,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, t.Any]:
+        """Get jobs with completed staging databases eligible for cleanup.
+
+        Returns jobs that completed more than retention_days ago and still
+        have staging databases that haven't been cleaned up.
+
+        Args:
+            retention_days: Only include jobs completed before this many days ago.
+            offset: Pagination offset.
+            limit: Maximum rows to return.
+
+        Returns:
+            Dict with 'rows' list and 'total_count' integer.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            # Count total candidates
+            cursor.execute(
+                """
+                SELECT COUNT(*) as cnt FROM jobs
+                WHERE status IN ('completed', 'failed', 'canceled')
+                  AND completed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
+                  AND staging_name IS NOT NULL
+                  AND staging_cleaned_at IS NULL
+                """,
+                (retention_days,),
+            )
+            count_row = cursor.fetchone()
+            total_count = count_row["cnt"] if count_row else 0
+
+            # Get paginated rows
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, target, staging_name,
+                       dbhost, status, completed_at
+                FROM jobs
+                WHERE status IN ('completed', 'failed', 'canceled')
+                  AND completed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
+                  AND staging_name IS NOT NULL
+                  AND staging_cleaned_at IS NULL
+                ORDER BY completed_at ASC
+                LIMIT %s OFFSET %s
+                """,
+                (retention_days, limit, offset),
+            )
+            rows = cursor.fetchall()
+            # Convert datetime objects for JSON serialization
+            for row in rows:
+                if row.get("completed_at"):
+                    row["completed_at"] = row["completed_at"].isoformat()
+            return {"rows": rows, "total_count": total_count}
 
     def append_job_event(
         self, job_id: str, event_type: str, detail: str | None = None
@@ -1714,10 +1814,11 @@ class UserRepository:
             allowed_hosts: list[str] = []
             default_host: str | None = None
             for hr in host_rows:
-                hostname = hr["host_alias"] or hr["hostname"]
-                allowed_hosts.append(hostname)
+                # allowed_hosts stores canonical hostnames for authorization checks
+                allowed_hosts.append(hr["hostname"])
                 if hr["is_default"]:
-                    default_host = hostname
+                    # default_host stores canonical hostname for consistency
+                    default_host = hr["hostname"]
 
             row["allowed_hosts"] = allowed_hosts if allowed_hosts else None
             row["default_host"] = default_host
@@ -1764,15 +1865,35 @@ class UserRepository:
             allowed_hosts: list[str] = []
             default_host: str | None = None
             for hr in host_rows:
-                hostname = hr["host_alias"] or hr["hostname"]
-                allowed_hosts.append(hostname)
+                # allowed_hosts stores canonical hostnames for authorization checks
+                allowed_hosts.append(hr["hostname"])
                 if hr["is_default"]:
-                    default_host = hostname
+                    # default_host stores canonical hostname for consistency
+                    default_host = hr["hostname"]
 
             row["allowed_hosts"] = allowed_hosts if allowed_hosts else None
             row["default_host"] = default_host
 
             return self._row_to_user(row)
+
+    def list_users(self) -> list[User]:
+        """Get all users.
+
+        Returns:
+            List of User instances.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT user_id, username, user_code, is_admin, role, created_at,
+                       disabled_at, manager_id, max_active_jobs
+                FROM auth_users
+                ORDER BY username
+                """
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_user(row) for row in rows]
 
     def create_user(self, username: str, user_code: str, manager_id: str | None = None) -> User:
         """Create new user with generated UUID.
@@ -2000,6 +2121,44 @@ class UserRepository:
             conn.commit()
             if cursor.rowcount == 0:
                 raise ValueError(f"User not found: {username}")
+
+    def enable_user_by_id(self, user_id: str) -> None:
+        """Enable a user by user_id.
+
+        Args:
+            user_id: User UUID to enable.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE auth_users SET disabled_at = NULL WHERE user_id = %s",
+                (user_id,),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"User not found: {user_id}")
+
+    def disable_user_by_id(self, user_id: str) -> None:
+        """Disable a user by user_id.
+
+        Args:
+            user_id: User UUID to disable.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE auth_users SET disabled_at = UTC_TIMESTAMP(6) WHERE user_id = %s",
+                (user_id,),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"User not found: {user_id}")
 
     def get_user_detail(self, username: str) -> UserDetail | None:
         """Get detailed user statistics.
@@ -2740,11 +2899,11 @@ class HostRepository:
         Raises:
             ValueError: If host not found or limits invalid.
         """
-        if max_active_jobs < 1:
-            raise ValueError("max_active_jobs must be at least 1")
+        if max_active_jobs < 0:
+            raise ValueError("max_active_jobs cannot be negative")
         if max_running_jobs < 1:
             raise ValueError("max_running_jobs must be at least 1")
-        if max_running_jobs > max_active_jobs:
+        if max_active_jobs > 0 and max_running_jobs > max_active_jobs:
             raise ValueError("max_running_jobs cannot exceed max_active_jobs")
 
         with self.pool.connection() as conn:
@@ -2774,15 +2933,17 @@ class HostRepository:
         Raises:
             ValueError: If host already exists.
         """
+        import uuid
+        host_id = str(uuid.uuid4())
         try:
             with self.pool.connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO db_hosts (hostname, max_concurrent_jobs, enabled, credential_reference)
-                        VALUES (%s, %s, TRUE, %s)
+                        INSERT INTO db_hosts (id, hostname, max_running_jobs, enabled, credential_ref)
+                        VALUES (%s, %s, %s, TRUE, %s)
                         """,
-                        (hostname, max_concurrent, credential_ref),
+                        (host_id, hostname, max_concurrent, credential_ref),
                     )
                     conn.commit()
         except mysql.connector.IntegrityError as e:
@@ -2828,6 +2989,28 @@ class HostRepository:
             if cursor.rowcount == 0:
                 raise ValueError(f"Host not found: {hostname}")
 
+    def hard_delete_host(self, host_id: str) -> None:
+        """Permanently delete a database host record.
+
+        WARNING: This is a hard delete - the record cannot be recovered.
+        Use this only after cleaning up associated resources (MySQL user, AWS secret).
+        
+        Args:
+            host_id: UUID of host to delete.
+
+        Raises:
+            ValueError: If host not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM db_hosts WHERE id = %s",
+                (host_id,),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"Host not found: {host_id}")
+
     def search_hosts(self, query: str, limit: int = 10) -> list[DBHost]:
         """Search for hosts by hostname or alias.
 
@@ -2858,6 +3041,74 @@ class HostRepository:
             )
             rows = cursor.fetchall()
             return [self._row_to_dbhost(row) for row in rows]
+
+    def update_host_config(
+        self,
+        host_id: str,
+        *,
+        host_alias: str | None = None,
+        credential_ref: str | None = None,
+        max_running_jobs: int | None = None,
+        max_active_jobs: int | None = None,
+    ) -> None:
+        """Update host configuration by ID.
+
+        Updates only the fields that are explicitly provided (non-None).
+
+        Args:
+            host_id: UUID string of the host to update.
+            host_alias: New alias (use empty string to clear, None to skip).
+            credential_ref: New credential reference (None to skip).
+            max_running_jobs: New max running jobs (None to skip).
+            max_active_jobs: New max active jobs (None to skip).
+
+        Raises:
+            ValueError: If host not found or limits invalid.
+        """
+        updates = []
+        params: list[t.Any] = []
+
+        if host_alias is not None:
+            updates.append("host_alias = %s")
+            params.append(host_alias or None)  # Empty string -> NULL
+        if credential_ref is not None:
+            updates.append("credential_ref = %s")
+            params.append(credential_ref)
+        if max_running_jobs is not None:
+            if max_running_jobs < 1:
+                raise ValueError("max_running_jobs must be at least 1")
+            updates.append("max_running_jobs = %s")
+            params.append(max_running_jobs)
+        if max_active_jobs is not None:
+            if max_active_jobs < 0:
+                raise ValueError("max_active_jobs cannot be negative")
+            updates.append("max_active_jobs = %s")
+            params.append(max_active_jobs)
+
+        if not updates:
+            return  # Nothing to update
+
+        # Validate running <= active if both are being updated (and active > 0)
+        if max_running_jobs is not None and max_active_jobs is not None:
+            if max_active_jobs > 0 and max_running_jobs > max_active_jobs:
+                raise ValueError("max_running_jobs cannot exceed max_active_jobs")
+
+        params.append(host_id)
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"UPDATE db_hosts SET {', '.join(updates)} WHERE id = %s",
+                tuple(params),
+            )
+            conn.commit()
+            # rowcount == 0 can mean either "host not found" OR "no values changed"
+            # MySQL default is to return affected rows, not matched rows
+            # If rowcount is 0, verify the host actually exists before reporting error
+            if cursor.rowcount == 0:
+                cursor.execute("SELECT 1 FROM db_hosts WHERE id = %s", (host_id,))
+                if cursor.fetchone() is None:
+                    raise ValueError(f"Host not found: {host_id}")
 
     def _row_to_dbhost(self, row: dict[str, t.Any]) -> DBHost:
         """Convert database row to DBHost dataclass.
