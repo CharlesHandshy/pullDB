@@ -73,18 +73,36 @@
                 <div class="tab-content active" id="tab-customer">
                     <!-- Environment selector -->
                     <div class="env-selector" role="radiogroup" aria-label="Environment">
-                        <label class="env-option {% if not form or form.s3env == 'both' %}is-selected{% endif %}">
-                            <input type="radio" name="s3env" value="both" {% if not form or form.s3env == 'both' %}checked{% endif %}>
-                            <span class="env-option-label">All Backups</span>
+                        <label class="env-option {% if not form or form.s3env == 'prod' %}is-selected{% endif %}">
+                            <input type="radio" name="s3env" value="prod" {% if not form or form.s3env == 'prod' %}checked{% endif %}>
+                            <span class="env-option-label">Production Only</span>
                         </label>
                         <label class="env-option {% if form and form.s3env == 'staging' %}is-selected{% endif %}">
                             <input type="radio" name="s3env" value="staging" {% if form and form.s3env == 'staging' %}checked{% endif %}>
                             <span class="env-option-label">Staging Only</span>
                         </label>
-                        <label class="env-option {% if form and form.s3env == 'prod' %}is-selected{% endif %}">
-                            <input type="radio" name="s3env" value="prod" {% if form and form.s3env == 'prod' %}checked{% endif %}>
-                            <span class="env-option-label">Production Only</span>
+                        <label class="env-option {% if form and form.s3env == 'both' %}is-selected{% endif %}">
+                            <input type="radio" name="s3env" value="both" {% if form and form.s3env == 'both' %}checked{% endif %}>
+                            <span class="env-option-label">All Backups</span>
                         </label>
+                    </div>
+                    
+                    <!-- Date filter -->
+                    <div class="date-filter" id="date-filter">
+                        <label class="form-label">Backups From</label>
+                        <div class="date-filter-row">
+                            <input type="date" 
+                                   id="date-from" 
+                                   name="date_from" 
+                                   class="form-input date-input">
+                            <button type="button" class="btn btn-secondary btn-sm" id="reset-date-btn" title="Reset to last 7 days">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                                    <path d="M3 3v5h5"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="form-hint-sm">Shows backups from this date onwards (default: last 7 days)</p>
                     </div>
                     
                     <!-- Customer search widget -->
@@ -201,17 +219,34 @@
                     <!-- Environment selector for QA -->
                     <div class="env-selector" role="radiogroup" aria-label="Environment">
                         <label class="env-option is-selected">
-                            <input type="radio" name="s3env" value="both" checked>
-                            <span class="env-option-label">All Backups</span>
+                            <input type="radio" name="s3env" value="prod" checked>
+                            <span class="env-option-label">Production Only</span>
                         </label>
                         <label class="env-option">
                             <input type="radio" name="s3env" value="staging">
                             <span class="env-option-label">Staging Only</span>
                         </label>
                         <label class="env-option">
-                            <input type="radio" name="s3env" value="prod">
-                            <span class="env-option-label">Production Only</span>
+                            <input type="radio" name="s3env" value="both">
+                            <span class="env-option-label">All Backups</span>
                         </label>
+                    </div>
+                    
+                    <!-- Date filter for QA -->
+                    <div class="date-filter" id="qa-date-filter">
+                        <label class="form-label">Backups From</label>
+                        <div class="date-filter-row">
+                            <input type="date" 
+                                   id="qa-date-from" 
+                                   class="form-input date-input">
+                            <button type="button" class="btn btn-secondary btn-sm" id="qa-reset-date-btn" title="Reset to last 7 days">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                                    <path d="M3 3v5h5"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="form-hint-sm">Shows backups from this date onwards (default: last 7 days)</p>
                     </div>
                     
                     <!-- QA Template backup list (always visible) -->
@@ -416,6 +451,12 @@
     const overwriteCheckbox = document.getElementById('overwrite');
     const overwriteWarning = document.getElementById('overwrite-warning');
     
+    // Date filter elements
+    const dateFromInput = document.getElementById('date-from');
+    const resetDateBtn = document.getElementById('reset-date-btn');
+    const qaDateFromInput = document.getElementById('qa-date-from');
+    const qaResetDateBtn = document.getElementById('qa-reset-date-btn');
+    
     const targetPreview = document.getElementById('target-preview');
     const previewUserCode = document.getElementById('preview-user-code');
     const previewCustomer = document.getElementById('preview-customer');
@@ -553,12 +594,21 @@
         qaBackupCount.textContent = 'Loading...';
         
         const env = getQaS3Env();
+        // Get date_from value and convert YYYY-MM-DD to YYYYMMDD
+        const dateValue = qaDateFromInput ? qaDateFromInput.value : '';
+        const dateFrom = dateValue ? dateValue.replace(/-/g, '') : '';
         
-        htmx.ajax('GET', '/web/restore/search-backups?customer=qatemplate&env=' + env, {
+        let url = '/web/restore/search-backups?customer=qatemplate&env=' + env;
+        if (dateFrom) {
+            url += '&date_from=' + dateFrom;
+        }
+        
+        htmx.ajax('GET', url, {
             target: '#qa-backup-list'
         }).then(() => {
             const rows = qaBackupList.querySelectorAll('tbody tr');
-            qaBackupCount.textContent = rows.length + ' found';
+            const totalCount = qaBackupList.dataset.totalCount || rows.length;
+            qaBackupCount.textContent = rows.length + ' of ' + totalCount + ' found';
             updateSummary();
         });
     }
@@ -632,6 +682,52 @@
         }
     };
     
+    // Helper function to get default date (7 days ago)
+    function getDefaultDate() {
+        const date = new Date();
+        date.setDate(date.getDate() - 7);
+        return date.toISOString().split('T')[0]; // YYYY-MM-DD format
+    }
+    
+    // Initialize date pickers with default value (7 days ago)
+    function initializeDatePicker(input, resetBtn) {
+        if (!input) return;
+        input.value = getDefaultDate();
+        
+        // Reset button handler
+        if (resetBtn) {
+            resetBtn.addEventListener('click', function() {
+                input.value = getDefaultDate();
+                // Trigger reload if customer is selected
+                if (selectedCustomer && input === dateFromInput) {
+                    clearBackupSelection();
+                    loadBackups();
+                } else if (isQaTemplateMode && input === qaDateFromInput) {
+                    clearQaBackupSelection();
+                    loadQaBackups();
+                }
+            });
+        }
+        
+        // On change, reload backups (never allow empty = reset to default)
+        input.addEventListener('change', function() {
+            if (!this.value) {
+                this.value = getDefaultDate();
+            }
+            if (input === dateFromInput && selectedCustomer) {
+                clearBackupSelection();
+                loadBackups();
+            } else if (input === qaDateFromInput && isQaTemplateMode) {
+                clearQaBackupSelection();
+                loadQaBackups();
+            }
+        });
+    }
+    
+    // Initialize both date pickers
+    initializeDatePicker(dateFromInput, resetDateBtn);
+    initializeDatePicker(qaDateFromInput, qaResetDateBtn);
+    
     // Initialize with pre-filled values
     if (selectedCustomer) {
         showSelectedCustomer(selectedCustomer);
@@ -662,13 +758,21 @@
         
         if (debounceTimer) clearTimeout(debounceTimer);
         
-        if (query.length < MIN_CHARS) {
-            showTypeHint(query.length);
+        // Check for explicit wildcard pattern from user
+        const hasExplicitWildcard = query.includes('*') || query.includes('?');
+        
+        if (query.length < 1) {
+            showTypeHint(0);
             return;
         }
         
+        // Always use wildcard search - default to prefix matching (query*)
+        // If user provided explicit wildcard, use their pattern as-is
+        const searchPattern = hasExplicitWildcard ? query : query + '*';
+        customerHint.textContent = hasExplicitWildcard ? 'Searching with wildcard pattern...' : 'Searching...';
+        
         debounceTimer = setTimeout(() => {
-            searchCustomers(query);
+            searchCustomers(searchPattern, true);
         }, DEBOUNCE_MS);
     });
     
@@ -743,13 +847,16 @@
     }
     
     // Customer search functions
-    async function searchCustomers(query) {
-        const prefix = query.substring(0, MIN_CHARS).toLowerCase();
-        
-        if (customerCache.has(prefix)) {
-            currentOptions = filterOptions(customerCache.get(prefix), query);
-            renderOptions(query);
-            return;
+    async function searchCustomers(query, isWildcard = false) {
+        // For wildcards, don't use prefix caching
+        if (!isWildcard) {
+            const prefix = query.substring(0, MIN_CHARS).toLowerCase();
+            
+            if (customerCache.has(prefix)) {
+                currentOptions = filterOptions(customerCache.get(prefix), query);
+                renderOptions(query);
+                return;
+            }
         }
         
         setLoading(true);
@@ -758,7 +865,9 @@
         abortController = new AbortController();
         
         try {
-            const url = '/web/restore/search-customers?q=' + encodeURIComponent(prefix) + '&limit=100';
+            // Use full query for wildcards, prefix for regular search
+            const searchQuery = isWildcard ? query : query.substring(0, MIN_CHARS).toLowerCase();
+            const url = '/web/restore/search-customers?q=' + encodeURIComponent(searchQuery) + '&limit=100';
             const response = await fetch(url, {
                 signal: abortController.signal,
                 headers: { 'Accept': 'application/json' }
@@ -769,8 +878,15 @@
             const data = await response.json();
             const results = data.results || [];
             
-            customerCache.set(prefix, results);
-            currentOptions = filterOptions(results, query);
+            // Only cache non-wildcard searches
+            if (!isWildcard && query.length >= MIN_CHARS) {
+                const prefix = query.substring(0, MIN_CHARS).toLowerCase();
+                customerCache.set(prefix, results);
+                currentOptions = filterOptions(results, query);
+            } else {
+                // For wildcards, use results directly (already filtered by pattern)
+                currentOptions = results.slice(0, 20);
+            }
             renderOptions(query);
             
         } catch (err) {
@@ -1002,13 +1118,22 @@
         }
         
         const env = document.querySelector('.env-option input:checked').value;
+        // Get date_from value and convert YYYY-MM-DD to YYYYMMDD
+        const dateValue = dateFromInput ? dateFromInput.value : '';
+        const dateFrom = dateValue ? dateValue.replace(/-/g, '') : '';
         
-        htmx.ajax('GET', '/web/restore/search-backups?customer=' + encodeURIComponent(selectedCustomer) + '&env=' + env, {
+        let url = '/web/restore/search-backups?customer=' + encodeURIComponent(selectedCustomer) + '&env=' + env;
+        if (dateFrom) {
+            url += '&date_from=' + dateFrom;
+        }
+        
+        htmx.ajax('GET', url, {
             target: '#backup-list'
         }).then(() => {
             // Count backups after load - no auto-select, user must click
             const rows = backupList.querySelectorAll('tbody tr');
-            backupCount.textContent = rows.length + ' found';
+            const totalCount = backupList.dataset.totalCount || rows.length;
+            backupCount.textContent = rows.length + ' of ' + totalCount + ' found';
             updateSummary();
         });
     }

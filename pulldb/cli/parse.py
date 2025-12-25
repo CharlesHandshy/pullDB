@@ -5,15 +5,16 @@ Validation rules (strict FAIL HARD semantics):
  - Username must contain at least 6 alphabetic characters (letters only after
    sanitization) used for user_code derivation
  - Exactly one of ``customer=<id>`` or literal ``qatemplate`` must appear
- - Optional ``ext=<ABC>`` token for qatemplate extension suffix (letters only)
+ - Optional ``suffix=<abc>`` token for target database suffix (1-3 lowercase letters)
  - Optional ``dbhost=<hostname>`` token
  - Optional ``date=<YYYY-MM-DD>`` token for specific backup date
  - Optional ``s3env=<staging|prod>`` token to specify S3 environment
  - Optional ``overwrite`` flag token
  - Unknown tokens produce a validation error (never ignored)
- - Target length constraint: ``<user_code><sanitized_customer>`` <= 51 chars
+ - Customer must be lowercase letters only (a-z), max 42 chars
+ - Target length constraint: ``<user_code><customer><suffix>`` <= 51 chars
    (reserves 13 for staging suffix). For qatemplate the target becomes
-   ``<user_code>qatemplate`` or ``<user_code>qatemplate_<ext>``.
+   ``<user_code>qatemplate`` or ``<user_code>qatemplate<suffix>``.
 
 Supported option syntax styles:
  - option=value
@@ -34,6 +35,8 @@ from datetime import datetime
 
 USER_CODE_LEN = 6
 MAX_TARGET_LEN = 51  # Without staging suffix; see architecture docs
+MAX_SUFFIX_LEN = 3  # Suffix: 1-3 lowercase letters
+MAX_CUSTOMER_LEN = 42  # MAX_TARGET_LEN - USER_CODE_LEN - MAX_SUFFIX_LEN
 
 
 class CLIParseError(ValueError):
@@ -54,7 +57,7 @@ class RestoreCLIOptions:
         username: Raw username if provided via user= token (None if auto-detect).
         customer_id: Raw customer identifier if provided (None for qatemplate).
         is_qatemplate: True when qatemplate restore requested.
-        ext: Optional extension suffix for qatemplate (letters only, e.g., 'DEV').
+        suffix: Optional suffix for target database (1-3 lowercase letters, e.g., 'dev').
         dbhost: Optional explicit database host override.
         date: Optional specific backup date in YYYY-MM-DD format.
         s3env: Optional S3 environment (staging or prod).
@@ -65,7 +68,7 @@ class RestoreCLIOptions:
     username: str | None
     customer_id: str | None
     is_qatemplate: bool
-    ext: str | None
+    suffix: str | None
     dbhost: str | None
     date: str | None
     s3env: str | None
@@ -73,11 +76,11 @@ class RestoreCLIOptions:
 
 
 _TOKEN_USER = re.compile(r"^(?:--)?user=([A-Za-z0-9_.-]+)$")
-_TOKEN_CUSTOMER = re.compile(r"^(?:--)?customer=([A-Za-z0-9_.-]+)$")
+_TOKEN_CUSTOMER = re.compile(r"^(?:--)?customer=([a-z]+)$")
 _TOKEN_DBHOST = re.compile(r"^(?:--)?dbhost=([A-Za-z0-9_.-]+)$")
 _TOKEN_DATE = re.compile(r"^(?:--)?date=(\d{4}-\d{2}-\d{2})$")
 _TOKEN_S3ENV = re.compile(r"^(?:--)?s3env=(staging|prod)$")
-_TOKEN_EXT = re.compile(r"^(?:--)?ext=([A-Za-z]+)$")
+_TOKEN_SUFFIX = re.compile(r"^(?:--)?suffix=([a-z]{1,3})$")
 
 
 def _tokenize(
@@ -91,12 +94,12 @@ def _tokenize(
     - --option value (space-separated)
     
     Returns:
-        Tuple of (username, customer_id, is_qatemplate, ext, dbhost, date, s3env, overwrite)
+        Tuple of (username, customer_id, is_qatemplate, suffix, dbhost, date, s3env, overwrite)
     """
     username: str | None = None
     customer_id: str | None = None
     is_qatemplate = False
-    ext: str | None = None
+    suffix: str | None = None
     dbhost: str | None = None
     date: str | None = None
     s3env: str | None = None
@@ -139,6 +142,17 @@ def _tokenize(
                     raise CLIParseError("Cannot specify both customer and qatemplate")
                 if customer_id is not None:
                     raise CLIParseError("customer specified more than once")
+                # Validate: lowercase letters only
+                if not re.match(r"^[a-z]+$", opt_value):
+                    raise CLIParseError(
+                        f"customer must contain only lowercase letters (a-z). Got: '{opt_value}'. "
+                        "Use lowercase letters only, e.g., 'acme' instead of 'Acme123'."
+                    )
+                if len(opt_value) > MAX_CUSTOMER_LEN:
+                    raise CLIParseError(
+                        f"customer exceeds maximum length of {MAX_CUSTOMER_LEN} characters "
+                        f"(got {len(opt_value)}). Shorten the customer name."
+                    )
                 customer_id = opt_value
                 i += 2
                 continue
@@ -169,12 +183,20 @@ def _tokenize(
                 s3env = opt_value
                 i += 2
                 continue
-            elif opt_name == "ext":
-                if ext is not None:
-                    raise CLIParseError("ext specified more than once")
-                if not re.match(r"^[A-Za-z]+$", opt_value):
-                    raise CLIParseError(f"ext must contain only letters. Got: {opt_value}")
-                ext = opt_value.upper()
+            elif opt_name == "suffix":
+                if suffix is not None:
+                    raise CLIParseError("suffix specified more than once")
+                if not re.match(r"^[a-z]{1,3}$", opt_value):
+                    if len(opt_value) > MAX_SUFFIX_LEN:
+                        raise CLIParseError(
+                            f"suffix must be 1-3 lowercase letters (a-z). Got: '{opt_value}' "
+                            f"({len(opt_value)} chars). Maximum is {MAX_SUFFIX_LEN} characters, e.g., 'dev'."
+                        )
+                    raise CLIParseError(
+                        f"suffix must be 1-3 lowercase letters (a-z). Got: '{opt_value}'. "
+                        "Use lowercase letters only, e.g., 'dev' instead of 'DEV'."
+                    )
+                suffix = opt_value
                 i += 2
                 continue
             else:
@@ -191,9 +213,8 @@ def _tokenize(
             i += 1
             continue
 
-        # Check customer= token
-        m_cust = _TOKEN_CUSTOMER.match(tok)
-        if m_cust:
+        # Check customer= token - must be lowercase letters only
+        if tok.lstrip("-").startswith("customer="):
             if is_qatemplate:
                 raise CLIParseError(
                     "Cannot specify both customer=<id> and qatemplate. Choose one."
@@ -202,7 +223,19 @@ def _tokenize(
                 raise CLIParseError(
                     f"customer specified more than once ('{customer_id}', '{tok}')."
                 )
-            customer_id = m_cust.group(1)
+            # Extract value after customer=
+            cust_value = tok.split("=", 1)[1] if "=" in tok else ""
+            if not re.match(r"^[a-z]+$", cust_value):
+                raise CLIParseError(
+                    f"customer must contain only lowercase letters (a-z). Got: '{cust_value}'. "
+                    "Use lowercase letters only, e.g., 'acme' instead of 'Acme123'."
+                )
+            if len(cust_value) > MAX_CUSTOMER_LEN:
+                raise CLIParseError(
+                    f"customer exceeds maximum length of {MAX_CUSTOMER_LEN} characters "
+                    f"(got {len(cust_value)}). Shorten the customer name."
+                )
+            customer_id = cust_value
             i += 1
             continue
 
@@ -247,20 +280,30 @@ def _tokenize(
             i += 1
             continue
 
-        # Check ext= token
-        m_ext = _TOKEN_EXT.match(tok)
-        if m_ext:
-            if ext is not None:
+        # Check suffix= token - must be 1-3 lowercase letters
+        if tok.lstrip("-").startswith("suffix="):
+            if suffix is not None:
                 raise CLIParseError(
-                    f"ext specified more than once ('{ext}', '{tok}')."
+                    f"suffix specified more than once ('{suffix}', '{tok}')."
                 )
-            ext = m_ext.group(1).upper()
+            suffix_value = tok.split("=", 1)[1] if "=" in tok else ""
+            if not re.match(r"^[a-z]{1,3}$", suffix_value):
+                if len(suffix_value) > MAX_SUFFIX_LEN:
+                    raise CLIParseError(
+                        f"suffix must be 1-3 lowercase letters (a-z). Got: '{suffix_value}' "
+                        f"({len(suffix_value)} chars). Maximum is {MAX_SUFFIX_LEN} characters, e.g., 'dev'."
+                    )
+                raise CLIParseError(
+                    f"suffix must be 1-3 lowercase letters (a-z). Got: '{suffix_value}'. "
+                    "Use lowercase letters only, e.g., 'dev' instead of 'DEV'."
+                )
+            suffix = suffix_value
             i += 1
             continue
 
         raise CLIParseError(f"Unrecognized token: '{tok}'")
 
-    return username, customer_id, is_qatemplate, ext, dbhost, date, s3env, overwrite
+    return username, customer_id, is_qatemplate, suffix, dbhost, date, s3env, overwrite
 
 
 def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
@@ -283,7 +326,7 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
         )
 
     # Parse all tokens
-    username, customer_id, is_qatemplate, ext, dbhost, date, s3env, overwrite = _tokenize(tokens)
+    username, customer_id, is_qatemplate, suffix, dbhost, date, s3env, overwrite = _tokenize(tokens)
 
     # Enforce exactly one of customer or qatemplate specified
     if customer_id is None and not is_qatemplate:
@@ -295,19 +338,13 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
         raise CLIParseError(
             "Cannot specify both customer=<id> and qatemplate. Choose one."
         )
-    
-    # ext is only valid with qatemplate
-    if ext is not None and not is_qatemplate:
-        raise CLIParseError(
-            "ext= option is only valid with qatemplate. Remove ext= or use qatemplate instead of customer=."
-        )
 
     return RestoreCLIOptions(
         raw_tokens=tuple(tokens),
         username=username,
         customer_id=customer_id,
         is_qatemplate=is_qatemplate,
-        ext=ext,
+        suffix=suffix,
         dbhost=dbhost,
         date=date,
         s3env=s3env,

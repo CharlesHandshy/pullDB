@@ -36,6 +36,11 @@ cleanup_systemd() {
 remove_keeping_config() {
     echo "Removing pullDB (preserving configuration)..."
     
+    # Remove symlinks from /usr/local/bin
+    rm -f /usr/local/bin/pulldb 2>/dev/null || true
+    rm -f /usr/local/bin/pulldb-admin 2>/dev/null || true
+    echo "  Removed symlinks: /usr/local/bin/pulldb, /usr/local/bin/pulldb-admin"
+    
     if [ ! -d "${INSTALL_PREFIX}" ]; then
         return 0
     fi
@@ -81,6 +86,10 @@ remove_keeping_config() {
 # Remove everything including config and user account
 purge_all() {
     echo "Purging pullDB (removing all files, configuration, and user account)..."
+    
+    # Remove symlinks from /usr/local/bin
+    rm -f /usr/local/bin/pulldb 2>/dev/null || true
+    rm -f /usr/local/bin/pulldb-admin 2>/dev/null || true
     
     # Remove the entire install directory
     if [ -d "${INSTALL_PREFIX}" ]; then

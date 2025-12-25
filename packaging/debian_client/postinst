@@ -27,9 +27,6 @@ if [ "$1" = "configure" ]; then
     # Ensure user exists
     create_group_and_user
     
-    # Ensure directory ownership
-    chown -R "${SYSTEM_USER}:${SYSTEM_GROUP}" "${INSTALL_PREFIX}"
-    
     # Create venv if not exists
     if [ ! -d "${INSTALL_PREFIX}/venv" ]; then
         python3 -m venv "${INSTALL_PREFIX}/venv"
@@ -44,10 +41,19 @@ if [ "$1" = "configure" ]; then
         echo "Warning: No wheel found in ${INSTALL_PREFIX}/dist/"
     fi
     
-    # Fix ownership after install
+    # Ensure ownership and permissions for system-wide CLI access
     chown -R "${SYSTEM_USER}:${SYSTEM_GROUP}" "${INSTALL_PREFIX}"
+    
+    # Make install directory and venv world-readable/executable
+    chmod 755 "${INSTALL_PREFIX}"
+    chmod 755 "${INSTALL_PREFIX}/venv"
+    chmod 755 "${INSTALL_PREFIX}/venv/bin"
+    chmod 755 "${INSTALL_PREFIX}/venv/lib"
+    find "${INSTALL_PREFIX}/venv/lib" -type d -exec chmod 755 {} \;
+    find "${INSTALL_PREFIX}/venv/lib" -type f -exec chmod 644 {} \;
+    chmod 755 "${INSTALL_PREFIX}/venv/bin/pulldb" 2>/dev/null || true
 
-    # Symlink binary (readable/executable by all)
+    # Symlink binary for system-wide access
     ln -sf "${INSTALL_PREFIX}/venv/bin/pulldb" "${BIN_DIR}/pulldb"
     
     echo ""

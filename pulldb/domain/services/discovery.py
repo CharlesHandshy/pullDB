@@ -53,6 +53,21 @@ class BackupInfo:
 
 
 @dataclass
+class BackupSearchResult:
+    """Result of backup search with pagination info."""
+
+    backups: list[BackupInfo]
+    total: int
+    offset: int
+    limit: int
+
+    @property
+    def has_more(self) -> bool:
+        """Check if there are more results beyond current page."""
+        return self.offset + len(self.backups) < self.total
+
+
+@dataclass
 class SearchContext:
     """Context for backup search operations."""
 
@@ -128,6 +143,111 @@ class DiscoveryService:
 
         return matches
 
+    def search_customers_pattern(self, pattern: str, limit: int = 100) -> list[str]:
+        """Search for customers using wildcard pattern.
+
+        Args:
+            pattern: Pattern with * and/or ? wildcards (e.g., 'action*', '*pest').
+            limit: Max results to return.
+
+        Returns:
+            List of matching customer names.
+        """
+        if is_simulation_mode():
+            return self._search_customers_pattern_simulation(pattern, limit)
+        return self._search_customers_pattern_s3(pattern, limit)
+
+    def _search_customers_pattern_simulation(self, pattern: str, limit: int) -> list[str]:
+        mock_customers = [
+            "actionpest",
+            "actionplumbing",
+            "acmehvac",
+            "bigcorp",
+            "cleanpro",
+            "deltaplumbing",
+            "eliteelectric",
+            "fastfix",
+            "greenscapes",
+            "homeservices",
+        ]
+        matching = [
+            c for c in mock_customers
+            if fnmatch.fnmatch(c.lower(), pattern.lower())
+        ]
+        return sorted(matching)[:limit]
+
+    def _search_customers_pattern_s3(self, pattern: str, limit: int) -> list[str]:
+        """Search S3 for customers matching wildcard pattern."""
+        raw_locations = os.getenv("PULLDB_S3_BACKUP_LOCATIONS")
+        if not raw_locations:
+            return []
+
+        s3_profile = (
+            os.getenv("PULLDB_S3_AWS_PROFILE") or os.getenv("PULLDB_AWS_PROFILE")
+        )
+        s3 = S3Client(profile=s3_profile)
+        customer_set: set[str] = set()
+
+        # Extract prefix before wildcard for efficient S3 listing
+        wildcard_pos = min(
+            (pattern.find(c) for c in "*?" if c in pattern),
+            default=len(pattern),
+        )
+        search_prefix = pattern[:wildcard_pos].lower()
+
+        with contextlib.suppress(Exception):
+            payload = json.loads(raw_locations)
+            if isinstance(payload, list):
+                for entry in payload:
+                    if isinstance(entry, dict):
+                        self._collect_pattern_customers(
+                            entry, search_prefix, pattern, s3, customer_set
+                        )
+
+        # Filter by pattern and return
+        matching = sorted([
+            c for c in customer_set
+            if fnmatch.fnmatch(c.lower(), pattern.lower())
+            and c.isalpha() and c.islower()
+        ])[:limit]
+
+        return matching
+
+    def _collect_pattern_customers(
+        self,
+        entry: dict,
+        search_prefix: str,
+        pattern: str,
+        s3: S3Client,
+        customer_set: set[str],
+    ) -> None:
+        """Collect customers matching pattern from a single S3 location."""
+        bucket_path = entry.get("bucket_path", "")
+        profile = entry.get("profile")
+
+        if not bucket_path.startswith("s3://"):
+            return
+
+        path = bucket_path[5:]
+        if "/" in path:
+            bucket = path.split("/")[0]
+            prefix = "/".join(path.split("/")[1:])
+            if not prefix.endswith("/"):
+                prefix += "/"
+        else:
+            bucket = path
+            prefix = ""
+
+        try:
+            # List all prefixes starting with search_prefix
+            s3_prefix = f"{prefix}{search_prefix}"
+            customers = s3.list_prefixes(
+                bucket, s3_prefix, profile=profile, max_results=500
+            )
+            customer_set.update(customers)
+        except Exception:
+            pass
+
     def _get_cached_customers(
         self, bucket: str, prefix: str
     ) -> list[str] | None:
@@ -197,34 +317,37 @@ class DiscoveryService:
         environment: str = "both",
         date_from: str | None = None,
         limit: int = 5,
-    ) -> list[BackupInfo]:
+        offset: int = 0,
+    ) -> BackupSearchResult:
         """Search for backups for a customer.
 
         Args:
             customer: Customer name or pattern.
             environment: 'staging', 'prod', or 'both'.
             date_from: Optional YYYYMMDD string.
-            limit: Max results.
+            limit: Max results per page.
+            offset: Number of results to skip for pagination.
 
         Returns:
-            List of BackupInfo objects.
+            BackupSearchResult with backups, total count, and pagination info.
         """
         if is_simulation_mode():
-            return self._search_backups_simulation(customer, environment, limit)
-        return self._search_backups_s3(customer, environment, date_from, limit)
+            return self._search_backups_simulation(customer, environment, limit, offset)
+        return self._search_backups_s3(customer, environment, date_from, limit, offset)
 
     def _search_backups_simulation(
-        self, customer: str, environment: str, limit: int
-    ) -> list[BackupInfo]:
-        results = []
-        for i in range(limit):
+        self, customer: str, environment: str, limit: int, offset: int = 0
+    ) -> BackupSearchResult:
+        all_results = []
+        # Generate more mock results for pagination testing
+        for i in range(20):
             ts = datetime.now()
             env = "staging" if i % 2 == 0 else "prod"
             if environment not in ("both", env):
                 continue
 
             size_bytes = 1024 * 1024 * 1024 + i * 100 * 1024 * 1024  # ~1GB
-            results.append(
+            all_results.append(
                 BackupInfo(
                     customer=customer,
                     timestamp=ts,
@@ -236,7 +359,9 @@ class DiscoveryService:
                     bucket="mock-bucket",
                 )
             )
-        return results
+        total = len(all_results)
+        page = all_results[offset:offset + limit]
+        return BackupSearchResult(backups=page, total=total, offset=offset, limit=limit)
 
     def _get_backup_locations(self) -> list[tuple[str, str, str, str | None]]:
         raw_locations = os.getenv("PULLDB_S3_BACKUP_LOCATIONS")
@@ -294,7 +419,8 @@ class DiscoveryService:
         environment: str,
         date_from: str | None,
         limit: int,
-    ) -> list[BackupInfo]:
+        offset: int = 0,
+    ) -> BackupSearchResult:
         all_locations = self._get_backup_locations()
 
         # Filter by environment
@@ -310,7 +436,7 @@ class DiscoveryService:
                 buckets.append((loc_name, bucket, prefix, profile))
 
         if not buckets:
-            return []
+            return BackupSearchResult(backups=[], total=0, offset=offset, limit=limit)
 
         filter_date: datetime | None = None
         if date_from:
@@ -335,7 +461,9 @@ class DiscoveryService:
             self._search_in_bucket(ctx, customer, all_backups)
 
         all_backups.sort(key=lambda x: x.timestamp, reverse=True)
-        return all_backups[:limit]
+        total = len(all_backups)
+        page = all_backups[offset:offset + limit]
+        return BackupSearchResult(backups=page, total=total, offset=offset, limit=limit)
 
     def _search_in_bucket(
         self, ctx: SearchContext, customer: str, results: list[BackupInfo]

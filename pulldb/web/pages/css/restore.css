@@ -1121,3 +1121,56 @@
 [data-theme="dark"] .customer-results-message--error {
     color: var(--danger-400);
 }
+
+/* ===========================================
+   DATE FILTER
+   =========================================== */
+
+.date-filter {
+    margin-bottom: var(--space-4);
+}
+
+.date-filter-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.date-input {
+    max-width: 180px;
+}
+
+.date-filter .btn-sm {
+    padding: var(--space-2);
+    min-width: auto;
+}
+
+.date-filter .btn-sm svg {
+    display: block;
+}
+
+/* ===========================================
+   LOAD MORE BUTTON
+   =========================================== */
+
+.backup-load-more {
+    padding: var(--space-3);
+    text-align: center;
+    border-top: 1px solid var(--color-border);
+}
+
+.load-more-btn {
+    min-width: 200px;
+}
+
+.load-more-btn .htmx-indicator {
+    display: none;
+}
+
+.load-more-btn.htmx-request .btn-text {
+    display: none;
+}
+
+.load-more-btn.htmx-request .htmx-indicator {
+    display: inline;
+}

@@ -21,13 +21,18 @@ from pulldb.cli.parse import CLIParseError, parse_restore_args
 
 # Load .env file from standard locations
 # Priority: /opt/pulldb.service/.env (installed), then .env (dev)
+# Note: .env loading is optional - CLI should work without it (using API URL from env or defaults)
 _installed_env = "/opt/pulldb.service/.env"
 _repo_env = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 
-if os.path.exists(_installed_env):
-    load_dotenv(_installed_env)
-elif os.path.exists(_repo_env):
-    load_dotenv(_repo_env)
+try:
+    if os.path.exists(_installed_env) and os.access(_installed_env, os.R_OK):
+        load_dotenv(_installed_env)
+    elif os.path.exists(_repo_env) and os.access(_repo_env, os.R_OK):
+        load_dotenv(_repo_env)
+except PermissionError:
+    # Ignore permission errors - CLI will use defaults or explicit env vars
+    pass
 
 
 DEFAULT_API_URL = "http://localhost:8080"
@@ -490,25 +495,26 @@ def restore_cmd(options: tuple[str, ...]) -> None:
 
     \b
     REQUIRED:
-      customer=<id>       Customer database to restore
+      customer=<id>       Customer database to restore (lowercase letters only, max 42 chars)
         OR
       qatemplate          Restore the QA template database
 
     \b
     OPTIONS:
-      ext=<ABC>             Extension suffix for qatemplate (letters only)
+      suffix=<abc>          Suffix for target database (1-3 lowercase letters)
       dbhost=<hostname>     Target database host (default: localhost)
       date=<YYYY-MM-DD>     Specific backup date (default: latest)
       s3env=<staging|prod>  S3 environment (default: PULLDB_S3ENV_DEFAULT or both)
-      overwrite             Allow overwriting existing staging database
+      overwrite             Allow overwriting existing database
       user=<username>       Override user (admin only)
 
     \b
     EXAMPLES:
       pulldb restore customer=actionpest
       pulldb restore customer=actionpest date=2025-11-25
+      pulldb restore customer=actionpest suffix=dev
       pulldb restore qatemplate
-      pulldb restore qatemplate ext=DEV
+      pulldb restore qatemplate suffix=dev
       pulldb restore customer=bigcorp dbhost=db2.example.com
       pulldb restore customer=acme overwrite
       pulldb restore customer=acme s3env=prod
@@ -531,7 +537,7 @@ def restore_cmd(options: tuple[str, ...]) -> None:
         "user": username,
         "customer": parsed.customer_id,
         "qatemplate": parsed.is_qatemplate,
-        "ext": parsed.ext,
+        "suffix": parsed.suffix,
         "dbhost": parsed.dbhost,
         "date": parsed.date,
         "overwrite": parsed.overwrite,
@@ -560,11 +566,11 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     # Display job info with customer and target prominently
     if parsed.customer_id:
         customer_display = parsed.customer_id
-    elif parsed.ext:
-        customer_display = f"qatemplate (ext={parsed.ext})"
+    elif parsed.suffix:
+        customer_display = f"qatemplate (suffix={parsed.suffix})"
     else:
         customer_display = "qatemplate"
-    click.echo("Job submitted successfully!")
+    click.echo("Job queued successfully!")
     click.echo(f"  customer:     {customer_display}")
     click.echo(f"  target:       {target}")
     click.echo(f"  staging_name: {staging_name}")

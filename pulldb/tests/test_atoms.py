@@ -34,13 +34,13 @@ from pulldb.worker.staging import (
 # --- Atom: cp_tokens ---
 def test_atom_cp_tokens() -> None:
     """Verify tokenization loop logic."""
-    # Case 1: Customer with dbhost and overwrite
-    user, cust, is_qa, ext, host, date, s3env, over = _tokenize(
-        ["customer=Acme", "dbhost=db1", "overwrite"]
+    # Case 1: Customer with dbhost and overwrite (lowercase only)
+    user, cust, is_qa, suffix, host, date, s3env, over = _tokenize(
+        ["customer=acme", "dbhost=db1", "overwrite"]
     )
-    assert cust == "Acme"
+    assert cust == "acme"
     assert not is_qa
-    assert ext is None
+    assert suffix is None
     assert host == "db1"
     assert date is None
     assert s3env is None
@@ -48,10 +48,10 @@ def test_atom_cp_tokens() -> None:
     assert user is None
 
     # Case 2: QA Template
-    user, cust, is_qa, ext, host, date, s3env, over = _tokenize(["qatemplate"])
+    user, cust, is_qa, suffix, host, date, s3env, over = _tokenize(["qatemplate"])
     assert cust is None
     assert is_qa
-    assert ext is None
+    assert suffix is None
     assert host is None
     assert date is None
     assert s3env is None

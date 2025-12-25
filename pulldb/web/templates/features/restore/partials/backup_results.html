@@ -1,4 +1,5 @@
 {% if backups %}
+<div data-total-count="{{ total_count }}" data-offset="{{ offset }}" data-limit="{{ limit }}">
 <table class="backup-table">
     <thead>
         <tr>
@@ -27,9 +28,24 @@
         {% endfor %}
     </tbody>
 </table>
+</div>
+
+{% if has_more %}
+<div class="backup-load-more">
+    <button type="button" 
+            class="btn btn-secondary btn-sm load-more-btn"
+            hx-get="/web/restore/search-backups?customer={{ customer }}&env={{ env }}&date_from={{ date_from }}&offset={{ offset + limit }}&limit={{ limit }}"
+            hx-target="closest .backup-list-scroll"
+            hx-swap="innerHTML"
+            hx-indicator=".load-more-btn">
+        <span class="btn-text">Load More ({{ total_count - (offset + limit) }} remaining)</span>
+        <span class="htmx-indicator">Loading...</span>
+    </button>
+</div>
+{% endif %}
 {% else %}
 <div class="alert alert-warning" style="margin-top: 1rem; padding: 1rem; background: var(--warning-50); border: 1px solid var(--warning-200); border-radius: var(--radius-md); color: var(--warning-700);">
     <strong>No backups found.</strong>
-    <p style="margin: 0.5rem 0 0 0;">No backups are available for this customer in the selected environment.</p>
+    <p style="margin: 0.5rem 0 0 0;">No backups are available for this customer in the selected environment within the date range.</p>
 </div>
 {% endif %}

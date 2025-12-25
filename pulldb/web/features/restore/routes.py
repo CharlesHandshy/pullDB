@@ -2,7 +2,7 @@
 
 import os
 import typing as t
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request, Query, HTTPException
@@ -109,17 +109,34 @@ async def restore_page(
 @router.get("/search-customers", response_class=JSONResponse)
 async def search_customers(
     request: Request,
-    q: str = Query(..., min_length=3),
+    q: str = Query(..., min_length=1),
     limit: int = Query(100, ge=1, le=500),
     state: Any = Depends(get_api_state),
 ) -> JSONResponse:
-    """JSON endpoint to search customers with caching support.
+    """JSON endpoint to search customers with caching and wildcard support.
     
-    Returns a list of customers matching the query prefix.
+    Returns a list of customers matching the query prefix or pattern.
+    Supports wildcard patterns (* and ?) when detected in query.
     The frontend caches results by 3-character prefix and filters client-side.
     """
     service = DiscoveryService()
-    matches = await run_in_threadpool(service.search_customers, q, limit)
+    
+    # Check for wildcard pattern
+    is_pattern = '*' in q or '?' in q
+    
+    if is_pattern:
+        # Use pattern search for wildcards
+        matches = await run_in_threadpool(service.search_customers_pattern, q, limit)
+    else:
+        # Regular search requires at least 3 chars
+        if len(q) < 3:
+            return JSONResponse({
+                "results": [],
+                "total": 0,
+                "prefix": q,
+                "error": "Query must be at least 3 characters for non-wildcard search"
+            })
+        matches = await run_in_threadpool(service.search_customers, q, limit)
 
     results = [{"value": c, "label": c} for c in matches]
 
@@ -127,6 +144,7 @@ async def search_customers(
         "results": results,
         "total": len(results),
         "prefix": q[:3] if len(q) >= 3 else q,
+        "is_pattern": is_pattern,
     })
 
 
@@ -135,14 +153,30 @@ async def search_backups(
     request: Request,
     customer: str = Query(...),
     env: str = Query("both"),
+    date_from: str | None = Query(None),
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
 ) -> HTMLResponse:
-    """HTMX endpoint to search backups for a customer."""
+    """HTMX endpoint to search backups for a customer.
+    
+    Args:
+        customer: Customer name or pattern.
+        env: Environment filter ('both', 'staging', 'prod').
+        date_from: Start date filter in YYYYMMDD format. Defaults to 7 days ago.
+        limit: Max results per page.
+        offset: Pagination offset.
+    """
+    # Default to 7 days ago if no date provided
+    if not date_from:
+        default_date = datetime.now() - timedelta(days=7)
+        date_from = default_date.strftime("%Y%m%d")
+    
     service = DiscoveryService()
-    domain_backups = await run_in_threadpool(
-        service.search_backups, customer, env, None, 10
+    result = await run_in_threadpool(
+        service.search_backups, customer, env, date_from, limit, offset
     )
 
-    # Convert to dicts for template, sorted by timestamp (most recent first)
+    # Convert to dicts for template (already sorted DESC by timestamp in service)
     backup_list = [
         {
             "customer": b.customer,
@@ -154,13 +188,22 @@ async def search_backups(
             "key": b.key,
             "bucket": b.bucket,
         }
-        for b in domain_backups
+        for b in result.backups
     ]
-    backup_list.sort(key=lambda x: x["timestamp"], reverse=True)  # type: ignore[arg-type, return-value]
 
     return templates.TemplateResponse(
         "features/restore/partials/backup_results.html",
-        {"request": request, "backups": backup_list}
+        {
+            "request": request,
+            "backups": backup_list,
+            "has_more": result.has_more,
+            "total_count": result.total,
+            "offset": result.offset,
+            "limit": result.limit,
+            "customer": customer,
+            "env": env,
+            "date_from": date_from,
+        }
     )
 
 

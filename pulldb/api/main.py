@@ -2672,7 +2672,7 @@ def _search_backups(
     This runs on the API server which has AWS credentials.
     """
     service = DiscoveryService()
-    domain_backups = service.search_backups(customer, environment, date_from, limit)
+    result = service.search_backups(customer, environment, date_from, limit)
 
     # Convert domain dataclasses to Pydantic models
     backups = [
@@ -2685,12 +2685,12 @@ def _search_backups(
             key=b.key,
             bucket=b.bucket,
         )
-        for b in domain_backups
+        for b in result.backups
     ]
 
     return BackupSearchResponse(
         backups=backups,
-        total=len(backups),
+        total=result.total,
         query=customer,
         environment=environment,
     )

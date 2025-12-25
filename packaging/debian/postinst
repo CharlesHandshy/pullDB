@@ -49,8 +49,9 @@ create_user_and_group() {
         echo "  Created user: ${SYSTEM_USER}"
     fi
     
-    # Ensure base install directory exists
-    install -d -o "${SYSTEM_USER}" -g "${SYSTEM_GROUP}" -m 0750 "${INSTALL_PREFIX}"
+    # Ensure base install directory exists (755 so CLI symlinks work for all users)
+    install -d -o "${SYSTEM_USER}" -g "${SYSTEM_GROUP}" -m 0755 "${INSTALL_PREFIX}"
+    # Sensitive directories stay restricted
     for dir in scripts systemd dist logs work after_sql; do
         install -d -o "${SYSTEM_USER}" -g "${SYSTEM_GROUP}" -m 0750 "${INSTALL_PREFIX}/${dir}"
     done
@@ -286,6 +287,19 @@ install_python_package() {
     
     # Ensure ownership
     chown -R "${SYSTEM_USER}:${SYSTEM_GROUP}" "${INSTALL_PREFIX}" || true
+    
+    # Make venv world-readable/executable so any user can run pulldb CLI
+    chmod 755 "${VENV_DIR}"
+    chmod 755 "${VENV_DIR}/bin"
+    chmod 755 "${VENV_DIR}/lib"
+    find "${VENV_DIR}/lib" -type d -exec chmod 755 {} \;
+    find "${VENV_DIR}/lib" -type f -exec chmod 644 {} \;
+    chmod 755 "${VENV_DIR}/bin/pulldb" "${VENV_DIR}/bin/pulldb-admin" 2>/dev/null || true
+    
+    # Create symlinks in /usr/local/bin for system-wide access
+    ln -sf "${VENV_DIR}/bin/pulldb" /usr/local/bin/pulldb
+    ln -sf "${VENV_DIR}/bin/pulldb-admin" /usr/local/bin/pulldb-admin
+    echo "  Created symlinks: /usr/local/bin/pulldb, /usr/local/bin/pulldb-admin"
 }
 
 check_database_schema() {

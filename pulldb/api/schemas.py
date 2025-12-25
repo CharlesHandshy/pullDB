@@ -17,7 +17,11 @@ class JobRequest(pydantic.BaseModel):
     date: str | None = None  # Specific backup date in YYYY-MM-DD format
     env: str | None = None  # S3 environment: "staging" or "prod"
     overwrite: bool = False
-    suffix: str | None = None  # Optional 1-3 lowercase letter suffix for target DB
+    suffix: str | None = pydantic.Field(
+        default=None,
+        pattern=r"^[a-z]{1,3}$",
+        description="Optional suffix for target database (1-3 lowercase letters)",
+    )
 
 
 class JobResponse(pydantic.BaseModel):
