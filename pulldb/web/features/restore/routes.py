@@ -5,6 +5,7 @@ import typing as t
 from datetime import datetime, timedelta
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, Form, Request, Query, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResponse
@@ -12,13 +13,15 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResp
 from pulldb.api.logic import enqueue_job
 from pulldb.api.schemas import JobRequest
 from pulldb.domain.models import User, UserRole
-from pulldb.domain.services.discovery import DiscoveryService
 from pulldb.web.dependencies import get_api_state, require_login, templates
 from pulldb.infra.s3 import S3Client, BACKUP_FILENAME_REGEX
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
 router = APIRouter(prefix="/web/restore", tags=["web-restore"])
+
+# API base URL for internal calls (UI calls API for all search operations)
+_API_BASE_URL = os.getenv("PULLDB_API_URL", "http://localhost:8080")
 
 
 def _get_allowed_hosts_for_user(user: User, all_hosts: list) -> list:
@@ -113,38 +116,40 @@ async def search_customers(
     limit: int = Query(100, ge=1, le=500),
     state: Any = Depends(get_api_state),
 ) -> JSONResponse:
-    """JSON endpoint to search customers with caching and wildcard support.
-    
+    """JSON endpoint to search customers via API.
+
+    Proxies to /api/customers/search for unified search behavior.
     Returns a list of customers matching the query prefix or pattern.
     Supports wildcard patterns (* and ?) when detected in query.
-    The frontend caches results by 3-character prefix and filters client-side.
     """
-    service = DiscoveryService()
-    
-    # Check for wildcard pattern
-    is_pattern = '*' in q or '?' in q
-    
-    if is_pattern:
-        # Use pattern search for wildcards
-        matches = await run_in_threadpool(service.search_customers_pattern, q, limit)
-    else:
-        # Regular search requires at least 3 chars
-        if len(q) < 3:
-            return JSONResponse({
-                "results": [],
-                "total": 0,
-                "prefix": q,
-                "error": "Query must be at least 3 characters for non-wildcard search"
-            })
-        matches = await run_in_threadpool(service.search_customers, q, limit)
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                f"{_API_BASE_URL}/api/customers/search",
+                params={"q": q, "limit": limit},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as e:
+        return JSONResponse(
+            {"results": [], "total": 0, "prefix": q, "error": f"API error: {e.response.status_code}"},
+            status_code=200,  # Return 200 to frontend, error in payload
+        )
+    except httpx.RequestError as e:
+        return JSONResponse(
+            {"results": [], "total": 0, "prefix": q, "error": f"Connection error: {e}"},
+            status_code=200,
+        )
 
-    results = [{"value": c, "label": c} for c in matches]
+    # Transform API response for frontend compatibility
+    customers = data.get("customers", [])
+    results = [{"value": c, "label": c} for c in customers]
 
     return JSONResponse({
         "results": results,
-        "total": len(results),
+        "total": data.get("total", 0),
         "prefix": q[:3] if len(q) >= 3 else q,
-        "is_pattern": is_pattern,
+        "is_pattern": data.get("is_pattern", False),
     })
 
 
@@ -157,52 +162,103 @@ async def search_backups(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> HTMLResponse:
-    """HTMX endpoint to search backups for a customer.
-    
+    """HTMX endpoint to search backups via API.
+
+    Proxies to /api/backups/search for unified search behavior.
+    The API handles the 7-day date default.
+
     Args:
         customer: Customer name or pattern.
         env: Environment filter ('both', 'staging', 'prod').
-        date_from: Start date filter in YYYYMMDD format. Defaults to 7 days ago.
+        date_from: Start date filter in YYYYMMDD format. API defaults to 7 days ago.
         limit: Max results per page.
         offset: Pagination offset.
     """
-    # Default to 7 days ago if no date provided
-    if not date_from:
-        default_date = datetime.now() - timedelta(days=7)
-        date_from = default_date.strftime("%Y%m%d")
-    
-    service = DiscoveryService()
-    result = await run_in_threadpool(
-        service.search_backups, customer, env, date_from, limit, offset
-    )
-
-    # Convert to dicts for template (already sorted DESC by timestamp in service)
-    backup_list = [
-        {
-            "customer": b.customer,
-            "timestamp": b.timestamp,
-            "date": b.date,
-            "size_mb": b.size_mb,
-            "size_display": b.size_display,
-            "environment": b.environment,
-            "key": b.key,
-            "bucket": b.bucket,
+    try:
+        params: dict[str, t.Any] = {
+            "customer": customer,
+            "environment": env,
+            "limit": limit,
+            "offset": offset,
         }
-        for b in result.backups
-    ]
+        if date_from:
+            params["date_from"] = date_from
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                f"{_API_BASE_URL}/api/backups/search",
+                params=params,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as e:
+        # Return empty results with error message
+        return templates.TemplateResponse(
+            "features/restore/partials/backup_results.html",
+            {
+                "request": request,
+                "backups": [],
+                "has_more": False,
+                "total_count": 0,
+                "offset": 0,
+                "limit": limit,
+                "customer": customer,
+                "env": env,
+                "date_from": date_from,
+                "error": f"API error: {e.response.status_code}",
+            }
+        )
+    except httpx.RequestError as e:
+        return templates.TemplateResponse(
+            "features/restore/partials/backup_results.html",
+            {
+                "request": request,
+                "backups": [],
+                "has_more": False,
+                "total_count": 0,
+                "offset": 0,
+                "limit": limit,
+                "customer": customer,
+                "env": env,
+                "date_from": date_from,
+                "error": f"Connection error: {e}",
+            }
+        )
+
+    # Transform API response for template
+    backup_list = []
+    for b in data.get("backups", []):
+        # Parse ISO timestamp back to datetime for template
+        ts = b.get("timestamp")
+        if isinstance(ts, str):
+            try:
+                ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except ValueError:
+                ts = None
+
+        backup_list.append({
+            "customer": b.get("customer", ""),
+            "timestamp": ts,
+            "date": b.get("date", ""),
+            "size_mb": b.get("size_mb", 0),
+            "size_display": b.get("size_display", f"{b.get('size_mb', 0):.1f} MB"),
+            "environment": b.get("environment", ""),
+            "key": b.get("key", ""),
+            "bucket": b.get("bucket", ""),
+        })
 
     return templates.TemplateResponse(
         "features/restore/partials/backup_results.html",
         {
             "request": request,
             "backups": backup_list,
-            "has_more": result.has_more,
-            "total_count": result.total,
-            "offset": result.offset,
-            "limit": result.limit,
+            "has_more": data.get("has_more", False),
+            "total_count": data.get("total", 0),
+            "offset": data.get("offset", 0),
+            "limit": data.get("limit", limit),
             "customer": customer,
             "env": env,
-            "date_from": date_from,
+            "date_from": date_from or data.get("date_from"),
         }
     )
 

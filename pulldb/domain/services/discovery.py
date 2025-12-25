@@ -241,9 +241,12 @@ class DiscoveryService:
         try:
             # List all prefixes starting with search_prefix
             s3_prefix = f"{prefix}{search_prefix}"
-            customers = s3.list_prefixes(
+            # list_prefixes returns suffixes after s3_prefix, reconstruct full names
+            suffixes = s3.list_prefixes(
                 bucket, s3_prefix, profile=profile, max_results=500
             )
+            # Reconstruct full customer names by prepending the search prefix
+            customers = [f"{search_prefix}{suffix}" for suffix in suffixes]
             customer_set.update(customers)
         except Exception:
             pass
@@ -295,10 +298,15 @@ class DiscoveryService:
         try:
             # Use list_prefixes for efficient folder discovery
             # Search with query prefix for faster results
-            search_prefix = f"{prefix}{query.lower()}"
-            customers = s3.list_prefixes(
+            query_lower = query.lower()
+            search_prefix = f"{prefix}{query_lower}"
+            
+            # list_prefixes returns suffixes after search_prefix, reconstruct full names
+            suffixes = s3.list_prefixes(
                 bucket, search_prefix, profile=profile, max_results=500
             )
+            # Reconstruct full customer names by prepending the query prefix
+            customers = [f"{query_lower}{suffix}" for suffix in suffixes]
             customer_set.update(customers)
 
             # If query is short (3-4 chars), also cache the full list

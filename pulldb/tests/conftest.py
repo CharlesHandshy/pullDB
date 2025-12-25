@@ -82,12 +82,18 @@ try:
     # Load from repository root first (development environment)
     _repo_env = _PROJECT_ROOT / ".env"
     if _path_exists_safe(_repo_env):
-        load_dotenv(_repo_env)
+        try:
+            load_dotenv(_repo_env)
+        except PermissionError:
+            pass  # File exists but not readable, skip
 
     # Load from installed location (production/staging)
     _installed_env = Path("/opt/pulldb.service/.env")
     if _path_exists_safe(_installed_env):
-        load_dotenv(_installed_env, override=False)  # Don't override repo settings
+        try:
+            load_dotenv(_installed_env, override=False)  # Don't override repo settings
+        except PermissionError:
+            pass  # File exists but not readable, skip
 
 except ImportError:
     pass  # dotenv not installed, use environment as-is

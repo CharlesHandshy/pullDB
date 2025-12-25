@@ -2659,6 +2659,18 @@ class BackupSearchResponse(pydantic.BaseModel):
     total: int
     query: str
     environment: str
+    offset: int = 0
+    limit: int = 5
+    has_more: bool = False
+
+
+class CustomerSearchResponse(pydantic.BaseModel):
+    """Response from customer search endpoint."""
+
+    customers: list[str]
+    total: int
+    query: str
+    is_pattern: bool = False
 
 
 def _search_backups(
@@ -2666,13 +2678,21 @@ def _search_backups(
     environment: str,
     date_from: str | None,
     limit: int,
+    offset: int = 0,
 ) -> BackupSearchResponse:
     """Search S3 for backups matching customer pattern.
 
     This runs on the API server which has AWS credentials.
+    Default date_from is 7 days ago if not provided.
     """
+    # Default to 7 days ago if no date provided
+    if not date_from:
+        from datetime import timedelta
+        default_date = datetime.now() - timedelta(days=7)
+        date_from = default_date.strftime("%Y%m%d")
+
     service = DiscoveryService()
-    result = service.search_backups(customer, environment, date_from, limit)
+    result = service.search_backups(customer, environment, date_from, limit, offset)
 
     # Convert domain dataclasses to Pydantic models
     backups = [
@@ -2693,30 +2713,71 @@ def _search_backups(
         total=result.total,
         query=customer,
         environment=environment,
+        offset=offset,
+        limit=limit,
+        has_more=result.has_more,
     )
 
 
 
 
 
+@app.get("/api/customers/search", response_model=CustomerSearchResponse)
+async def search_customers_api(
+    q: str = fastapi.Query(..., min_length=1, description="Search query or wildcard pattern"),
+    limit: int = fastapi.Query(100, ge=1, le=500, description="Max results"),
+) -> CustomerSearchResponse:
+    """Search for customers matching query.
+
+    Supports wildcard patterns (* and ?) when detected in query.
+    Non-wildcard searches require minimum 3 characters.
+    Customer names must be lowercase letters only (a-z).
+
+    Args:
+        q: Search query or wildcard pattern (e.g., "action" or "action*")
+        limit: Maximum number of results (default 100, max 500)
+
+    Returns:
+        CustomerSearchResponse with matching customer names
+    """
+    service = DiscoveryService()
+    is_pattern = '*' in q or '?' in q
+
+    if is_pattern:
+        customers = service.search_customers_pattern(q, limit)
+    else:
+        if len(q) < 3:
+            return CustomerSearchResponse(customers=[], total=0, query=q, is_pattern=False)
+        customers = service.search_customers(q, limit)
+
+    return CustomerSearchResponse(
+        customers=customers,
+        total=len(customers),
+        query=q,
+        is_pattern=is_pattern,
+    )
+
+
 @app.get("/api/backups/search", response_model=BackupSearchResponse)
 async def search_backups(
     customer: str = fastapi.Query(..., min_length=1, description="Customer name or pattern (supports * and ? wildcards)"),
     environment: str = fastapi.Query("both", description="S3 environment: staging, prod, or both"),
-    date_from: str | None = fastapi.Query(None, description="Filter backups from date (YYYYMMDD)"),
-    limit: int = fastapi.Query(5, ge=1, le=100, description="Max results"),
+    date_from: str | None = fastapi.Query(None, description="Filter backups from date (YYYYMMDD). Default: 7 days ago"),
+    limit: int = fastapi.Query(5, ge=1, le=100, description="Max results per page"),
+    offset: int = fastapi.Query(0, ge=0, description="Pagination offset"),
 ) -> BackupSearchResponse:
     """Search for available backups in S3.
-    
+
     This endpoint searches the configured S3 backup locations for
-    backups matching the customer pattern.
-    
+    backups matching the customer pattern. Default date filter is 7 days ago.
+
     Args:
         customer: Customer name or wildcard pattern (e.g., "actionpest" or "action*")
         environment: S3 environment to search (staging, prod, or both)
-        date_from: Optional start date filter in YYYYMMDD format
-        limit: Maximum number of results (default 5, max 100)
-    
+        date_from: Start date filter in YYYYMMDD format (default: 7 days ago)
+        limit: Maximum number of results per page (default 5, max 100)
+        offset: Number of results to skip for pagination
+
     Returns:
         BackupSearchResponse with matching backups sorted by date (newest first)
     """
@@ -2725,8 +2786,8 @@ async def search_backups(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"environment must be staging, prod, or both. Got: {environment}",
         )
-    
-    return await run_in_threadpool(_search_backups, customer, environment, date_from, limit)
+
+    return await run_in_threadpool(_search_backups, customer, environment, date_from, limit, offset)
 
 
 def main(argv: list[str] | None = None) -> int:
