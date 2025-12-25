@@ -240,12 +240,17 @@ async def add_user(
     
     # Validate username format
     username = username.strip().lower()
-    if not username or len(username) < 3 or len(username) > 50:
-        return {"success": False, "message": "Username must be 3-50 characters"}
+    if not username or len(username) < 6 or len(username) > 50:
+        return {"success": False, "message": "Username must be 6-50 characters"}
     
     import re
     if not re.match(r'^[a-z0-9_-]+$', username):
         return {"success": False, "message": "Username can only contain lowercase letters, numbers, underscore, and hyphen"}
+    
+    # Count letters to ensure at least 6 for user code generation
+    letter_count = sum(1 for c in username if c.isalpha())
+    if letter_count < 6:
+        return {"success": False, "message": f"Username must contain at least 6 letters (found {letter_count})"}
     
     # Check if username already exists
     existing = None
@@ -257,7 +262,10 @@ async def add_user(
     # Generate user code
     user_code = username[:6].upper()
     if hasattr(state.user_repo, "generate_user_code"):
-        user_code = state.user_repo.generate_user_code(username)
+        try:
+            user_code = state.user_repo.generate_user_code(username)
+        except ValueError as e:
+            return {"success": False, "message": str(e)}
     
     # Create user
     actual_manager_id = manager_id if manager_id else None
@@ -516,6 +524,7 @@ async def api_users_paginated(
             "manager_username": manager_username,
             "created_at": u.created_at.isoformat() if u.created_at else None,
             "disabled": u.disabled_at is not None,
+            "status": "disabled" if u.disabled_at else "enabled",
             "password_reset_pending": password_reset_pending,
             "active_jobs": job_counts.get(u.user_code, 0),
         })
@@ -543,9 +552,11 @@ async def api_users_paginated(
         for u in all_users:
             match = True
             for col, vals in text_filters.items():
-                if col == "status":
-                    status = "disabled" if u["disabled"] else "enabled"
-                    if not any(v in status for v in vals):
+                # Special handling for manager_username "None" filter
+                if col == "manager_username":
+                    cell_val = u.get(col) or ""
+                    cell_lower = cell_val.lower() if cell_val else "none"
+                    if not any(v in cell_lower for v in vals):
                         match = False
                         break
                 else:
@@ -560,7 +571,7 @@ async def api_users_paginated(
     filtered_count = len(all_users)
     
     # Apply sorting
-    if sortColumn in ("username", "user_code", "role", "manager_username", "created_at", "disabled"):
+    if sortColumn in ("username", "user_code", "role", "manager_username", "created_at", "disabled", "status"):
         reverse = sortDirection == "desc"
         all_users.sort(
             key=lambda u: (u.get(sortColumn) is None, str(u.get(sortColumn) or "").lower()),
@@ -662,6 +673,8 @@ async def api_users_distinct(
         elif column == "manager_username":
             if ud["manager_username"]:
                 values.add(ud["manager_username"])
+            else:
+                values.add("None")
         elif column == "username":
             values.add(ud["username"])
         elif column == "user_code":
@@ -751,6 +764,7 @@ async def api_hosts_paginated(
             "max_running_jobs": h["max_running_jobs"],
             "max_active_jobs": h["max_active_jobs"],
             "enabled": h["enabled"],
+            "status": "enabled" if h["enabled"] else "disabled",
             "created_at": h["created_at"].isoformat() if h["created_at"] else None,
             "running_count": h["running_count"],
             "queued_count": h["queued_count"],
@@ -770,12 +784,12 @@ async def api_hosts_paginated(
         for h in all_hosts:
             match = True
             for col, vals in text_filters.items():
-                if col == "status":
-                    status = "enabled" if h["enabled"] else "disabled"
+                if col in ("enabled", "status"):
+                    status = h["status"]
                     if not any(v in status for v in vals):
                         match = False
                         break
-                elif col == "hostname":
+                elif col == "hostname" or col == "display_name":
                     # Search both hostname and alias
                     combined = f"{h['hostname']} {h['host_alias'] or ''}".lower()
                     if not any(v in combined for v in vals):
@@ -793,7 +807,7 @@ async def api_hosts_paginated(
     filtered_count = len(all_hosts)
     
     # Apply sorting
-    sortable_cols = ("display_name", "hostname", "enabled", "running_count", "active_restores", "total_restores", "created_at")
+    sortable_cols = ("display_name", "hostname", "enabled", "status", "running_count", "active_restores", "total_restores", "created_at")
     if sortColumn in sortable_cols:
         reverse = sortDirection == "desc"
         if sortColumn in ("running_count", "active_restores", "total_restores"):
@@ -816,6 +830,44 @@ async def api_hosts_paginated(
         "pageSize": pageSize,
         "stats": stats,
     }
+
+
+@router.get("/api/hosts/paginated/distinct")
+async def api_hosts_distinct(
+    request: Request,
+    column: str,
+    filter_order: str | None = None,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> list:
+    """Get distinct values for host filter dropdowns."""
+    hosts = []
+    if hasattr(state, "host_repo") and state.host_repo and hasattr(state.host_repo, "list_hosts"):
+        raw_hosts = state.host_repo.list_hosts()
+        hosts = [_enrich_host(h, state.job_repo) for h in raw_hosts]
+    
+    # Build host data with status field
+    hosts_data = []
+    for h in hosts:
+        hosts_data.append({
+            "display_name": h["host_alias"] or h["hostname"],
+            "hostname": h["hostname"],
+            "host_alias": h["host_alias"],
+            "enabled": h["enabled"],
+            "status": "enabled" if h["enabled"] else "disabled",
+        })
+    
+    # Collect distinct values based on column
+    values = set()
+    for h in hosts_data:
+        if column in ("enabled", "status"):
+            values.add(h["status"])
+        elif column == "display_name":
+            values.add(h["display_name"])
+        elif column == "hostname":
+            values.add(h["hostname"])
+    
+    return sorted(values)
 
 
 @router.get("/hosts", response_class=HTMLResponse)
@@ -860,6 +912,7 @@ async def list_hosts(
             "flash_message": flash_message,
             "flash_type": flash_type,
             "aws_create_secret_url": get_secrets_manager_create_url(),
+            "credential_secrets": list_mysql_credential_secrets(),
             "breadcrumbs": get_breadcrumbs("admin_hosts"),
         },
     )
@@ -965,6 +1018,49 @@ def get_secrets_manager_create_url(region: str | None = None) -> str:
     return f"https://{region}.console.aws.amazon.com/secretsmanager/newsecret?region={region}"
 
 
+def list_mysql_credential_secrets(prefix: str = "/pulldb/mysql/") -> list[dict[str, str]]:
+    """List available MySQL credential secrets from AWS Secrets Manager.
+
+    Args:
+        prefix: Secret name prefix to filter (default: /pulldb/mysql/).
+
+    Returns:
+        List of dicts with 'name' (full path) and 'display' (short name) keys.
+    """
+    import boto3
+
+    # Secrets to exclude (service credentials, not host credentials)
+    EXCLUDED_NAMES = {"coordination-db", "worker", "loader", "api"}
+
+    try:
+        region = get_aws_region()
+        client = boto3.client("secretsmanager", region_name=region)
+        
+        secrets = []
+        paginator = client.get_paginator("list_secrets")
+        
+        for page in paginator.paginate(
+            Filters=[{"Key": "name", "Values": [prefix]}],
+            SortOrder="asc",
+        ):
+            for secret in page.get("SecretList", []):
+                name = secret["Name"]
+                # Create display name (last part of path)
+                display = name.split("/")[-1] if "/" in name else name
+                # Skip service credentials
+                if display.lower() in EXCLUDED_NAMES:
+                    continue
+                secrets.append({
+                    "name": f"aws-secretsmanager:{name}",
+                    "display": display,
+                })
+        
+        return secrets
+    except Exception:
+        # Fail gracefully - return empty list if AWS access fails
+        return []
+
+
 @router.post("/hosts/add")
 async def add_host(
     request: Request,
@@ -981,10 +1077,17 @@ async def add_host(
         # Validate limits
         if max_running_jobs < 1:
             raise ValueError("max_running_jobs must be at least 1")
-        if max_active_jobs < 1:
-            raise ValueError("max_active_jobs must be at least 1")
-        if max_running_jobs > max_active_jobs:
+        if max_active_jobs < 0:
+            raise ValueError("max_active_jobs cannot be negative")
+        if max_active_jobs > 0 and max_running_jobs > max_active_jobs:
             raise ValueError("max_running_jobs cannot exceed max_active_jobs")
+
+        # Check if hostname already exists (pre-validation)
+        if hasattr(state, "host_repo") and state.host_repo:
+            if hasattr(state.host_repo, "get_host_by_hostname"):
+                existing = state.host_repo.get_host_by_hostname(hostname)
+                if existing:
+                    raise ValueError(f"Host '{hostname}' already exists. Use a different hostname.")
 
         # Generate UUID for new host
         host_id = str(uuid.uuid4())
@@ -1020,6 +1123,7 @@ async def host_detail(
     user: User = Depends(require_admin),
     added: int | None = None,
     updated: int | None = None,
+    secret_updated: int | None = None,
     error: str | None = None,
 ) -> HTMLResponse:
     """Render host detail/edit page."""
@@ -1033,7 +1137,7 @@ async def host_detail(
 
     if not host_obj:
         return templates.TemplateResponse(
-            "errors/404.html",
+            "features/errors/404.html",
             {"request": request, "user": user, "message": "Host not found"},
             status_code=404,
         )
@@ -1053,6 +1157,9 @@ async def host_detail(
         flash_type = "success"
     elif updated:
         flash_message = "Host updated successfully"
+        flash_type = "success"
+    elif secret_updated:
+        flash_message = "AWS secret updated successfully"
         flash_type = "success"
     elif error:
         flash_message = error
@@ -1094,11 +1201,12 @@ def _enrich_host_detail(host: dict, state: Any) -> dict:
     if state.job_repo and hasattr(state.job_repo, "count_jobs_by_host"):
         total_restores = state.job_repo.count_jobs_by_host(host["hostname"])
 
-    # Resolve credential_ref to get actual host URI
+    # Resolve credential_ref to get actual host URI and credential data
     resolved_host_uri = None
     credential_error = None
     secret_path = None
     aws_secret_url = None
+    credential_data = None  # For editing AWS secret values
 
     credential_ref = host.get("credential_ref")
     if credential_ref:
@@ -1108,10 +1216,16 @@ def _enrich_host_detail(host: dict, state: Any) -> dict:
             if secret_path:
                 aws_secret_url = get_secrets_manager_console_url(secret_path)
 
-            # Try to resolve credentials to get actual host URI
+            # Try to resolve credentials to get actual host URI and full data
             try:
                 creds = resolver.resolve(credential_ref)
                 resolved_host_uri = creds.host
+                # Store credential data for editing (password masked)
+                credential_data = {
+                    "host": creds.host,
+                    "port": creds.port,
+                    "username": creds.username or "",
+                }
             except CredentialResolutionError as e:
                 credential_error = str(e)
         except Exception as e:
@@ -1159,6 +1273,7 @@ def _enrich_host_detail(host: dict, state: Any) -> dict:
         "total_restores": total_restores,
         "resolved_host_uri": resolved_host_uri,
         "credential_error": credential_error,
+        "credential_data": credential_data,
         "secret_path": secret_path,
         "aws_secret_url": aws_secret_url,
         "assigned_users": assigned_users,
@@ -1180,13 +1295,19 @@ async def update_host(
         # Validate limits
         if max_running_jobs < 1:
             raise ValueError("max_running_jobs must be at least 1")
-        if max_active_jobs < 1:
-            raise ValueError("max_active_jobs must be at least 1")
-        if max_running_jobs > max_active_jobs:
+        if max_active_jobs < 0:
+            raise ValueError("max_active_jobs cannot be negative")
+        if max_active_jobs > 0 and max_running_jobs > max_active_jobs:
             raise ValueError("max_running_jobs cannot exceed max_active_jobs")
 
         if hasattr(state, "host_repo") and state.host_repo:
-            # Use update_host_config if available (simulated), else fall back to raw SQL
+            # First verify host exists
+            if hasattr(state.host_repo, "get_host_by_id"):
+                existing = state.host_repo.get_host_by_id(host_id)
+                if not existing:
+                    raise ValueError(f"Host not found: {host_id}")
+            
+            # Use update_host_config if available, else fall back to raw SQL
             if hasattr(state.host_repo, "update_host_config"):
                 state.host_repo.update_host_config(
                     host_id,
@@ -1210,11 +1331,172 @@ async def update_host(
                          max_active_jobs, host_id),
                     )
                     conn.commit()
-                    if cursor.rowcount == 0:
-                        raise ValueError("Host not found")
 
         return RedirectResponse(
             url=f"/web/admin/hosts/{host_id}?updated=1", status_code=303
+        )
+    except Exception as e:
+        error_msg = url_quote(str(e))
+        return RedirectResponse(
+            url=f"/web/admin/hosts/{host_id}?error={error_msg}", status_code=303
+        )
+
+
+@router.post("/hosts/{host_id}/update-secret")
+async def update_host_secret(
+    host_id: str,
+    secret_host: str = Form(...),
+    secret_port: int = Form(3306),
+    secret_username: str = Form(...),
+    secret_password: str = Form(None),
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Update MySQL credentials - syncs both MySQL server and AWS Secrets Manager.
+    
+    This endpoint:
+    1. Validates current credentials can connect to MySQL
+    2. Checks for duplicate MySQL host (no two hosts can point to same server)
+    3. Detects what changed (password, username, or both)
+    4. Updates MySQL server first (ALTER USER or CREATE/DROP for rename)
+    5. Updates AWS Secrets Manager only after MySQL succeeds
+    
+    FAIL HARD: If MySQL update succeeds but AWS fails, returns error with
+    manual fix instructions (no automatic rollback).
+    """
+    from pulldb.infra.secrets import (
+        CredentialResolver,
+        safe_upsert_single_secret,
+    )
+    from pulldb.infra.mysql_provisioning import sync_mysql_credentials
+
+    try:
+        # Get host to find its credential_ref
+        host = None
+        if hasattr(state, "host_repo") and state.host_repo:
+            if hasattr(state.host_repo, "get_host_by_id"):
+                host = state.host_repo.get_host_by_id(host_id)
+
+        if not host:
+            raise ValueError("Host not found")
+
+        credential_ref = host.credential_ref
+        if not credential_ref or not credential_ref.startswith("aws-secretsmanager:"):
+            raise ValueError("Host does not have an AWS Secrets Manager credential reference")
+
+        # Extract secret path from credential_ref
+        resolver = CredentialResolver()
+        secret_path = resolver.get_secret_path(credential_ref)
+        if not secret_path:
+            raise ValueError("Could not determine secret path from credential reference")
+
+        # Get existing credentials - REQUIRED for sync
+        try:
+            existing_creds = resolver.resolve(credential_ref)
+        except Exception as e:
+            raise ValueError(
+                f"Cannot read current credentials from AWS: {e}. "
+                "Fix the secret in AWS console first, or re-provision the host."
+            )
+
+        # Determine what changed
+        current_username = existing_creds.username
+        current_password = existing_creds.password
+        current_host = existing_creds.host
+        current_port = existing_creds.port
+
+        # Detect changes
+        host_changed = secret_host != current_host
+        port_changed = secret_port != current_port
+
+        # Check for duplicate MySQL host if host/port changed
+        if host_changed or port_changed:
+            # Get all other hosts and check their credentials
+            all_hosts = state.host_repo.get_all_hosts()
+            for other_host in all_hosts:
+                if other_host.id == host_id:
+                    continue  # Skip self
+                if not other_host.credential_ref:
+                    continue
+                try:
+                    other_creds = resolver.resolve(other_host.credential_ref)
+                    if other_creds.host == secret_host and other_creds.port == secret_port:
+                        raise ValueError(
+                            f"MySQL server {secret_host}:{secret_port} is already in use "
+                            f"by host '{other_host.hostname}'. Each host must point to a unique MySQL server."
+                        )
+                except ValueError:
+                    # Re-raise our duplicate error
+                    raise
+                except Exception:
+                    # Skip hosts with unresolvable credentials
+                    continue
+
+        username_changed = secret_username != current_username
+        password_changed = bool(secret_password) and secret_password != current_password
+
+        # If username or password changed, sync to MySQL first
+        if username_changed or password_changed:
+            # Sync MySQL credentials
+            sync_result = sync_mysql_credentials(
+                mysql_host=current_host,  # Use current host to connect
+                mysql_port=current_port,
+                current_username=current_username,
+                current_password=current_password,
+                new_username=secret_username if username_changed else None,
+                new_password=secret_password if password_changed else None,
+            )
+
+            if not sync_result.success:
+                error_detail = sync_result.error or sync_result.message
+                suggestions = sync_result.suggestions or []
+                raise ValueError(
+                    f"MySQL credential update failed: {error_detail}. "
+                    f"Suggestions: {'; '.join(suggestions)}"
+                )
+
+        # Build secret data for AWS
+        password_to_use = secret_password if secret_password else current_password
+        secret_data = {
+            "host": secret_host,
+            "port": secret_port,
+            "username": secret_username,
+            "password": password_to_use,
+        }
+
+        # Update AWS Secrets Manager
+        result = safe_upsert_single_secret(
+            secret_path=secret_path,
+            secret_data=secret_data,
+            update_only=True,
+        )
+
+        if not result.success:
+            # MySQL was updated but AWS failed - provide manual fix instructions
+            if username_changed or password_changed:
+                raise ValueError(
+                    f"WARNING: MySQL credentials were updated but AWS Secrets Manager failed: {result.error}. "
+                    f"MANUAL FIX REQUIRED: Update AWS secret '{secret_path}' with username='{secret_username}' "
+                    f"and the new password via AWS console."
+                )
+            raise ValueError(result.error or "Failed to update AWS secret")
+
+        # Build success message
+        changes = []
+        if username_changed:
+            changes.append("username")
+        if password_changed:
+            changes.append("password")
+        if host_changed:
+            changes.append("host")
+        if port_changed:
+            changes.append("port")
+        
+        change_msg = f"Updated: {', '.join(changes)}" if changes else "No changes"
+
+        return RedirectResponse(
+            url=f"/web/admin/hosts/{host_id}?secret_updated=1&msg={url_quote(change_msg)}", 
+            status_code=303
         )
     except Exception as e:
         error_msg = url_quote(str(e))
@@ -1229,29 +1511,113 @@ async def delete_host(
     state: Any = Depends(get_api_state),
     admin: User = Depends(require_admin),
 ) -> RedirectResponse:
-    """Soft delete (disable) a host. Validates no active jobs exist."""
+    """Full host deletion with cleanup.
+    
+    This endpoint performs a complete cleanup:
+    1. Validates no active jobs exist for this host
+    2. Attempts to DROP USER on the target MySQL server (best effort)
+    3. Deletes the AWS Secrets Manager secret
+    4. Hard-deletes the db_hosts record
+    
+    Steps 2-3 are best-effort: failures are logged but don't block deletion.
+    The record is always deleted if there are no active jobs.
+    """
+    from pulldb.infra.secrets import CredentialResolver
+    from pulldb.infra.mysql_provisioning import drop_mysql_user
+    import boto3
+
+    cleanup_warnings: list[str] = []
+
     try:
-        if hasattr(state, "host_repo") and state.host_repo:
-            # Get host by ID first
-            host = state.host_repo.get_host_by_id(host_id)
-            if not host:
-                raise ValueError("Host not found")
-            hostname = host.hostname
+        if not hasattr(state, "host_repo") or not state.host_repo:
+            raise ValueError("Host repository not available")
 
-            # Check for active jobs
-            if state.job_repo and hasattr(state.job_repo, "get_active_jobs"):
-                active_jobs = state.job_repo.get_active_jobs()
-                host_jobs = [j for j in active_jobs if getattr(j, "dbhost", None) == hostname]
-                if host_jobs:
-                    raise ValueError(
-                        f"Cannot delete host with {len(host_jobs)} active job(s). "
-                        "Wait for jobs to complete or cancel them first."
+        # Get host by ID first
+        host = state.host_repo.get_host_by_id(host_id)
+        if not host:
+            raise ValueError("Host not found")
+        hostname = host.hostname
+
+        # Check for active jobs - HARD BLOCK
+        if state.job_repo and hasattr(state.job_repo, "get_active_jobs"):
+            active_jobs = state.job_repo.get_active_jobs()
+            host_jobs = [j for j in active_jobs if getattr(j, "dbhost", None) == hostname]
+            if host_jobs:
+                raise ValueError(
+                    f"Cannot delete host with {len(host_jobs)} active job(s). "
+                    "Wait for jobs to complete or cancel them first."
+                )
+
+        # Step 1: Try to resolve credentials and DROP MySQL user
+        credential_ref = host.credential_ref
+        mysql_user = None
+        mysql_host = None
+        mysql_port = None
+        mysql_password = None
+
+        if credential_ref and credential_ref.startswith("aws-secretsmanager:"):
+            try:
+                resolver = CredentialResolver()
+                creds = resolver.resolve(credential_ref)
+                mysql_user = creds.username
+                mysql_host = creds.host
+                mysql_port = creds.port
+                mysql_password = creds.password
+
+                # Try to drop the MySQL user using its own credentials
+                # This works if the user has DROP USER privilege on itself
+                drop_result = drop_mysql_user(
+                    mysql_host=mysql_host,
+                    mysql_port=mysql_port,
+                    admin_username=mysql_user,
+                    admin_password=mysql_password,
+                    user_to_drop=mysql_user,
+                )
+
+                if not drop_result.success:
+                    cleanup_warnings.append(
+                        f"Could not drop MySQL user '{mysql_user}': {drop_result.error}. "
+                        f"Manual cleanup may be required on {mysql_host}:{mysql_port}."
                     )
+            except Exception as e:
+                cleanup_warnings.append(
+                    f"Could not resolve credentials for MySQL cleanup: {e}. "
+                    "Manual MySQL user cleanup may be required."
+                )
 
-            # Soft delete by disabling
-            state.host_repo.disable_host(hostname)
+            # Step 2: Delete the AWS secret
+            try:
+                secret_path = resolver.get_secret_path(credential_ref)
+                if secret_path:
+                    client = resolver._get_secrets_manager_client()
+                    # Force delete without recovery window for cleanliness
+                    # Use 7-day recovery to allow for recovery if needed
+                    client.delete_secret(
+                        SecretId=secret_path,
+                        RecoveryWindowInDays=7,
+                    )
+            except client.exceptions.ResourceNotFoundException:
+                # Secret already doesn't exist - that's fine
+                pass
+            except Exception as e:
+                cleanup_warnings.append(
+                    f"Could not delete AWS secret: {e}. "
+                    f"Manual cleanup may be required in AWS Secrets Manager."
+                )
+
+        # Step 3: Hard delete the host record - this should always succeed
+        state.host_repo.hard_delete_host(host_id)
+
+        # Build success message with any warnings
+        if cleanup_warnings:
+            warning_msg = " | ".join(cleanup_warnings)
+            return RedirectResponse(
+                url=f"/web/admin/hosts?deleted=1&warnings={url_quote(warning_msg)}",
+                status_code=303,
+            )
 
         return RedirectResponse(url="/web/admin/hosts?deleted=1", status_code=303)
+
     except Exception as e:
         error_msg = url_quote(str(e))
         return RedirectResponse(
@@ -1270,8 +1636,8 @@ async def test_host_connection(
     Returns JSON with connection status and setup validation:
     - credential_valid: AWS secret exists and contains required fields
     - connection_valid: Can connect to MySQL server
+    - pulldb_db_valid: pulldb_service database exists
     - sproc_valid: pulldb_atomic_rename procedure exists
-    - pulldb_db_valid: pulldb database exists
     """
     from pulldb.infra.secrets import CredentialResolver, CredentialResolutionError
     import mysql.connector
@@ -1352,27 +1718,27 @@ async def test_host_connection(
                 test_conn.close()
             return result
 
-        # Check 3: pulldb database exists
+        # Check 3: pulldb_service database exists
         try:
             cursor = test_conn.cursor()
-            cursor.execute("SHOW DATABASES LIKE 'pulldb'")
+            cursor.execute("SHOW DATABASES LIKE 'pulldb_service'")
             db_exists = cursor.fetchone()
             cursor.close()
             if db_exists:
                 checks["pulldb_db_valid"] = True
-                checks["pulldb_db_message"] = "pulldb database exists"
+                checks["pulldb_db_message"] = "pulldb_service database exists"
             else:
-                checks["pulldb_db_message"] = "pulldb database not found - create with: CREATE DATABASE pulldb;"
+                checks["pulldb_db_message"] = "pulldb_service database not found - create with: CREATE DATABASE pulldb_service;"
         except mysql.connector.Error as e:
             checks["pulldb_db_message"] = f"Could not check database: {e}"
 
-        # Check 4: Stored procedure exists (only if pulldb database exists)
+        # Check 4: Stored procedure exists (only if pulldb_service database exists)
         if checks["pulldb_db_valid"]:
             try:
                 cursor = test_conn.cursor()
                 cursor.execute("""
                     SELECT ROUTINE_NAME FROM information_schema.ROUTINES 
-                    WHERE ROUTINE_SCHEMA = 'pulldb' 
+                    WHERE ROUTINE_SCHEMA = 'pulldb_service' 
                     AND ROUTINE_NAME = 'pulldb_atomic_rename' 
                     AND ROUTINE_TYPE = 'PROCEDURE'
                 """)
@@ -1382,11 +1748,24 @@ async def test_host_connection(
                     checks["sproc_valid"] = True
                     checks["sproc_message"] = "pulldb_atomic_rename procedure found"
                 else:
-                    checks["sproc_message"] = "Stored procedure not found - deploy with: python scripts/deploy_atomic_rename.py"
+                    # Auto-deploy the stored procedure
+                    from pulldb.infra.mysql_provisioning import deploy_stored_procedure
+                    deploy_result = deploy_stored_procedure(
+                        host=creds.host,
+                        port=creds.port,
+                        username=creds.username or "pulldb_loader",
+                        password=creds.password,
+                        database="pulldb_service",
+                    )
+                    if deploy_result.success:
+                        checks["sproc_valid"] = True
+                        checks["sproc_message"] = "pulldb_atomic_rename procedure deployed successfully"
+                    else:
+                        checks["sproc_message"] = f"Failed to deploy procedure: {deploy_result.error or deploy_result.message}"
             except mysql.connector.Error as e:
                 checks["sproc_message"] = f"Could not check procedure: {e}"
         else:
-            checks["sproc_message"] = "Skipped - pulldb database required first"
+            checks["sproc_message"] = "Skipped - pulldb_service database required first"
 
         test_conn.close()
 
@@ -1405,7 +1784,7 @@ async def test_host_connection(
             # Build message about what's missing
             missing = []
             if not checks["pulldb_db_valid"]:
-                missing.append("pulldb database")
+                missing.append("pulldb_service database")
             if not checks["sproc_valid"]:
                 missing.append("stored procedure")
             result["message"] = f"Connected successfully, but missing: {', '.join(missing)}"
@@ -1574,10 +1953,13 @@ async def provision_host(
     if not admin_username or not admin_password:
         result["message"] = "Admin credentials are required"
         return result
-    if max_running_jobs < 1 or max_active_jobs < 1:
-        result["message"] = "Job limits must be at least 1"
+    if max_running_jobs < 1:
+        result["message"] = "max_running_jobs must be at least 1"
         return result
-    if max_running_jobs > max_active_jobs:
+    if max_active_jobs < 0:
+        result["message"] = "max_active_jobs cannot be negative"
+        return result
+    if max_active_jobs > 0 and max_running_jobs > max_active_jobs:
         result["message"] = "max_running_jobs cannot exceed max_active_jobs"
         return result
     
@@ -1726,13 +2108,9 @@ async def provision_host(
             else:
                 # Add new host
                 state.host_repo.add_host(
-                    hostname=mysql_host,
+                    hostname=host_alias,
                     max_concurrent=max_running_jobs,
                     credential_ref=credential_ref,
-                    host_id=host_id,
-                    host_alias=host_alias,
-                    max_running_jobs=max_running_jobs,
-                    max_active_jobs=max_active_jobs,
                 )
                 result["host_id"] = host_id
                 add_step("Register Host", True, "Host registered successfully")

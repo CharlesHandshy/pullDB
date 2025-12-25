@@ -24,7 +24,7 @@
     <!-- View Toggle Tabs -->
     <div class="tabs mb-4">
         <button type="button" class="tab {% if view != 'history' %}tab-active{% endif %}" data-view="active" id="tab-active">
-            Active Jobs
+            Active
         </button>
         <button type="button" class="tab {% if view == 'history' %}tab-active{% endif %}" data-view="history" id="tab-history">
             History
@@ -318,7 +318,7 @@
     const table = new LazyTable({
         container: document.getElementById('jobs-table-container'),
         columns: getColumnsForView(currentView),
-        fetchUrl: '/api/jobs/paginated?view=' + currentView,
+        fetchUrl: '/web/jobs/api/paginated?view=' + currentView,
         rowHeight: 48,
         rowIdKey: 'id',
         emptyMessage: 'No jobs found.',
@@ -372,7 +372,7 @@
             }
             
             // Refresh with new URL
-            table.setFetchUrl('/api/jobs/paginated?view=' + currentView);
+            table.setFetchUrl('/web/jobs/api/paginated?view=' + currentView);
             
             // Update URL - only set view param, remove any stale filter params
             const url = new URL(window.location);

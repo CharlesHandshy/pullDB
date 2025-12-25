@@ -1,8 +1,20 @@
 # pullDB Installation & Upgrade Guide
 
-> **Version**: 0.0.11 | **Last Updated**: December 24, 2025
+> **Version**: 0.0.12 | **Last Updated**: December 24, 2025
 
-This guide covers installing and upgrading pullDB on a database server.
+This guide covers installing and upgrading pullDB packages on a database server.
+
+> **Note**: Fresh installs automatically create an admin user with a random password.
+> Save the credentials displayed during installation!
+
+---
+
+## Available Packages
+
+| Package | Purpose | Install Path |
+|---------|---------|--------------|
+| `pulldb` | Full server (worker + API + web) | `/opt/pulldb.service` |
+| `pulldb-client` | CLI only (no services) | `/opt/pulldb.client` |
 
 ---
 
@@ -10,29 +22,37 @@ This guide covers installing and upgrading pullDB on a database server.
 
 | Task | Command |
 |------|---------|
-| Install package | `sudo dpkg -i pulldb_X.X.X_amd64.deb` |
+| Install server package | `sudo dpkg -i pulldb_X.X.X_amd64.deb` |
+| Install CLI client | `sudo dpkg -i pulldb-client_X.X.X_amd64.deb` |
 | Check migration status | `sudo /opt/pulldb.service/scripts/pulldb-migrate.sh status` |
 | Apply migrations | `sudo /opt/pulldb.service/scripts/pulldb-migrate.sh up` |
 | Verify schema | `sudo /opt/pulldb.service/scripts/pulldb-migrate.sh verify` |
-| Check services | `sudo systemctl status pulldb-worker pulldb-api` |
+| Check all services | `sudo systemctl status pulldb-worker pulldb-api pulldb-web` |
 | View settings | `sudo /opt/pulldb.service/venv/bin/pulldb-admin settings list` |
 
 ---
 
 ## Fresh Installation
 
-### Step 1: Install the Package
+### Server Package (Full Install)
+
+#### Step 1: Install the Package
 
 ```bash
-sudo dpkg -i pulldb_0.0.11_amd64.deb
+sudo dpkg -i pulldb_0.0.12_amd64.deb
 ```
 
 The package will:
 - Create system user `pulldb_service`
 - Install files to `/opt/pulldb.service/`
+- Create `pulldb_service` database and apply schema (if MySQL accessible)
+- **Create initial admin user with random password** (displayed at end of install)
 - Set up systemd services (enabled but may not start without config)
 
-### Step 2: Configure Environment
+> **IMPORTANT**: Save the admin credentials displayed at the end of installation!
+> They are also saved to `/opt/pulldb.service/ADMIN_CREDENTIALS.txt` (root-only readable).
+
+#### Step 2: Configure Environment
 
 Edit the configuration file:
 
@@ -91,6 +111,46 @@ sudo /opt/pulldb.service/venv/bin/pulldb-admin settings list
 
 # Check version
 sudo /opt/pulldb.service/venv/bin/pulldb --version
+```
+
+---
+
+### Web UI Service
+
+The web UI is included in the server package and runs on port 8000.
+
+#### Enable the Web Service
+
+```bash
+# Enable and start the web UI
+sudo systemctl enable --now pulldb-web
+
+# Verify it's running
+sudo systemctl status pulldb-web
+```
+
+The web UI uses the same configuration file as the server (`/opt/pulldb.service/.env`).
+
+#### Access the Web UI
+
+Open a browser and navigate to:
+```
+http://<server-ip>:8000
+```
+
+Log in with the admin credentials displayed during installation (or check `/opt/pulldb.service/ADMIN_CREDENTIALS.txt`).
+
+---
+
+### CLI Client Package (CLI Only)
+
+For systems that only need CLI access (no background services):
+
+```bash
+sudo dpkg -i pulldb-client_0.0.12_amd64.deb
+
+# Verify installation
+pulldb --help
 ```
 
 ---

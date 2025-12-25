@@ -12,7 +12,7 @@ Usage notes:
 
 Files:
 - `pulldb-staging-s3-read.json` — minimal staging S3 read policy
-- `pulldb-secrets-manager-access.json` — secretsmanager + kms decrypt policy for dev role
+- `pulldb-secrets-manager-access.json` — secretsmanager full CRUD + tagging + kms decrypt policy for dev role (supports host provisioning)
 - `pulldb-prod-policy.json` — production read-only S3 + parameter store with explicit deny on writes
 - `pulldb-prod-trust.json` — assume-role trust policy for production cross-account role
 

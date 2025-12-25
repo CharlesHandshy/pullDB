@@ -103,7 +103,8 @@
    =========================================== */
 
 /* Small */
-.badge--sm {
+.badge--sm,
+.badge-sm {
     padding: var(--space-0-5) var(--space-1-5);
     font-size: var(--text-2xs);
 }

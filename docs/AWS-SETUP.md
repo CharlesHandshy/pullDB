@@ -158,7 +158,9 @@ cat > /tmp/pulldb-secrets-manager-policy.json <<'EOF'
         "secretsmanager:TagResource",
         "secretsmanager:UntagResource"
       ],
-      "Resource": ["arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*"]
+      "Resource": [
+        "arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*"
+      ]
     },
     {
       "Sid": "ListSecretsForDiscovery",

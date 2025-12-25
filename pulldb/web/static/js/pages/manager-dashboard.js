@@ -138,7 +138,7 @@
     const table = new LazyTable({
         container: container,
         columns: columns,
-        fetchUrl: '/api/manager/team',
+        fetchUrl: '/web/manager/api/team',
         rowHeight: 48,
         rowIdKey: 'user_id',
         emptyMessage: 'You are not managing any users.'

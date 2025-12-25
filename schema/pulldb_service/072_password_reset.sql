@@ -7,5 +7,5 @@ ADD COLUMN password_reset_at TIMESTAMP(6) NULL
 COMMENT 'When set, user must reset password via CLI before next login';
 
 -- Index for efficient lookup of users needing password reset
-CREATE INDEX idx_auth_credentials_reset ON auth_credentials(password_reset_at)
-WHERE password_reset_at IS NOT NULL;
+-- Note: MySQL doesn't support partial indexes, so we index the full column
+CREATE INDEX idx_auth_credentials_reset ON auth_credentials(password_reset_at);

@@ -5,6 +5,29 @@ Unreleased
 ---------
 - (no changes yet)
 
+v0.0.12 - 2025-12-24
+--------------------
+### Package & Installation Improvements
+
+This release improves the installation experience with automatic database setup and admin user creation.
+
+### Highlights
+- **Automatic database schema**: Fresh installs create `pulldb_service` database and apply all migrations
+- **Initial admin user**: Auto-generated with random 16-character password displayed at install
+- **Credentials file**: Password saved to `/opt/pulldb.service/ADMIN_CREDENTIALS.txt` (root-only)
+- **Web assets in wheel**: Fixed missing `web/static/**`, `web/templates/**`, `template_after_sql/**`
+- **Separate API/Web ports**: API on 8080, Web UI on 8000
+- **Three systemd services**: `pulldb-worker`, `pulldb-api`, `pulldb-web` all in main package
+
+### Fixed
+- Missing `__init__.py` files in `pulldb/web/features/` subdirectories
+- Web templates and static files not included in wheel build
+
+### Changed
+- Consolidated webclient package into main pulldb package
+- `pulldb-api` entry point now disables web routes by default (use `pulldb-web` for UI)
+- Documentation updated for new installation flow
+
 v0.0.11 - 2025-12-15
 --------------------
 ### GUI Migration Complete (PRs 14-20)

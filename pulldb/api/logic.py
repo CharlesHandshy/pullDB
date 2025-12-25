@@ -118,9 +118,25 @@ def check_host_active_capacity(state: APIState, hostname: str) -> None:
     """
     if not state.host_repo.check_host_active_capacity(hostname):
         host = state.host_repo.get_host_by_hostname(hostname)
-        active_count = state.job_repo.count_active_jobs_for_host(hostname)
         max_active = host.max_active_jobs if host else 0
         
+        # Frozen host (max_active_jobs = 0) gets a specific message
+        if max_active == 0:
+            emit_event(
+                "job_enqueue_rejected",
+                f"Host frozen for {hostname}: queue disabled (max_active_jobs=0)",
+                labels=MetricLabels(
+                    target="",
+                    phase="enqueue",
+                    status="frozen",
+                ),
+            )
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Host '{hostname}' is frozen (queue disabled). No new jobs accepted.",
+            )
+        
+        active_count = state.job_repo.count_active_jobs_for_host(hostname)
         emit_event(
             "job_enqueue_rejected",
             f"Host capacity reached for {hostname}: {active_count}/{max_active} active jobs",

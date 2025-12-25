@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Uninstall script for pullDB
-# Removes systemd service, virtualenv, and application files.
+# Uninstall script for pullDB (server package)
+# Removes systemd services, virtualenv, and application files.
 # PRESERVES: .env and .aws/config files (contain user configuration)
 
 INSTALL_PREFIX="/opt/pulldb.service"
 WORKER_SERVICE="pulldb-worker.service"
 API_SERVICE="pulldb-api.service"
+WEB_SERVICE="pulldb-web.service"
 
 if [[ $EUID -ne 0 ]]; then
    echo "This script must be run as root."
@@ -15,11 +16,13 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 echo "Stopping services..."
-systemctl stop $WORKER_SERVICE || true
-systemctl disable $WORKER_SERVICE || true
-systemctl stop $API_SERVICE || true
-systemctl disable $API_SERVICE || true
-rm -f /etc/systemd/system/$WORKER_SERVICE /etc/systemd/system/$API_SERVICE
+systemctl stop $WORKER_SERVICE 2>/dev/null || true
+systemctl disable $WORKER_SERVICE 2>/dev/null || true
+systemctl stop $API_SERVICE 2>/dev/null || true
+systemctl disable $API_SERVICE 2>/dev/null || true
+systemctl stop $WEB_SERVICE 2>/dev/null || true
+systemctl disable $WEB_SERVICE 2>/dev/null || true
+rm -f /etc/systemd/system/$WORKER_SERVICE /etc/systemd/system/$API_SERVICE /etc/systemd/system/$WEB_SERVICE
 systemctl daemon-reload
 
 # Check for preserved files

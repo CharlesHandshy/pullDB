@@ -8,217 +8,206 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/pages/admin.css') }}">
 {% endblock %}
 
-{% block header_title %}{{ host.host_alias or host.hostname }}{% endblock %}
-{% block header_subtitle %}Database Host Configuration{% endblock %}
+{% block header_title %}{{ host.host_alias or host.hostname }}{% if host.max_active_jobs == 0 %} <span class="badge badge-warning">Frozen</span>{% endif %}{% endblock %}
+{% block header_subtitle %}{% if host.host_alias %}{{ host.hostname }}{% else %}Database Host{% endif %}{% endblock %}
 
-{% block header_actions %}
-<a href="/web/admin/hosts" class="btn btn-ghost btn-sm">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
-        <path d="M19 12H5M12 19l-7-7 7-7"/>
-    </svg>
-    Back to Hosts
-</a>
-{% if host.enabled %}
-<form method="POST" action="/web/admin/hosts/{{ host.id }}/delete" style="display: inline;" 
-      onsubmit="return confirm('Are you sure you want to disable this host?');">
-    <button type="submit" class="btn btn-danger btn-sm">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/>
-        </svg>
-        Disable Host
-    </button>
-</form>
-{% else %}
-<form method="POST" action="/web/admin/hosts/{{ host.hostname }}/enable" style="display: inline;">
-    <button type="submit" class="btn btn-success btn-sm">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
-            <polyline points="20 6 9 17 4 12"/>
-        </svg>
-        Enable Host
-    </button>
-</form>
-{% endif %}
-{% endblock %}
+{% block header_actions %}{% endblock %}
 
 {% block content %}
 <div class="content-body">
+    <!-- Alert Banners -->
+    {% if not host.enabled %}
+    <div class="alert alert-warning" style="margin-bottom: var(--space-4);">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/>
+        </svg>
+        <span>This host is <strong>disabled</strong>. No new restores can be submitted.</span>
+    </div>
+    {% endif %}
+
+    {% if host.credential_error %}
+    <div class="alert alert-danger" style="margin-bottom: var(--space-4);">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <div>
+            <strong>Credential Error:</strong> {{ host.credential_error }}
+            {% if host.aws_secret_url %}
+            <a href="{{ host.aws_secret_url }}" target="_blank" rel="noopener" style="margin-left: var(--space-2);">Check AWS →</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
     <div class="host-detail-layout">
-        <!-- Left Column: Info and Edit Form -->
+        <!-- Left Column -->
         <div class="host-detail-main">
-            <!-- Status Banner -->
-            {% if not host.enabled %}
-            <div class="alert alert-warning">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/>
-                </svg>
-                <span>This host is currently <strong>disabled</strong>. No new restores can be submitted to it.</span>
-            </div>
-            {% endif %}
-
-            {% if host.credential_error %}
-            <div class="alert alert-danger">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="12" y1="8" x2="12" y2="12"/>
-                    <line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                <div>
-                    <strong>Credential Error:</strong> {{ host.credential_error }}
-                    {% if host.aws_secret_url %}
-                    <br><a href="{{ host.aws_secret_url }}" target="_blank" rel="noopener">Check AWS Secrets Manager →</a>
-                    {% endif %}
-                </div>
-            </div>
-            {% endif %}
-
-            <!-- Host Info Card -->
+            <!-- Combined Host Configuration Card -->
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">Host Information</h3>
-                    <button type="button" class="btn btn-sm btn-ghost" onclick="testConnection('{{ host.id }}')">
+                    <h3 class="card-title">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
-                            <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/>
+                            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+                            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+                            <line x1="6" y1="6" x2="6.01" y2="6"/>
+                            <line x1="6" y1="18" x2="6.01" y2="18"/>
                         </svg>
-                        Test Connection
-                    </button>
-                </div>
-                <div class="card-body">
-                    <div class="info-grid">
-                        <div class="info-item">
-                            <label>Hostname</label>
-                            <span class="value monospace">{{ host.hostname }}</span>
-                        </div>
-                        <div class="info-item">
-                            <label>Host Alias</label>
-                            <span class="value">{{ host.host_alias or '—' }}</span>
-                        </div>
-                        <div class="info-item full-width">
-                            <label>Resolved Host URI</label>
-                            {% if host.resolved_host_uri %}
-                            <span class="value monospace">{{ host.resolved_host_uri }}</span>
-                            {% else %}
-                            <span class="value text-muted">Unable to resolve</span>
-                            {% endif %}
-                        </div>
-                        <div class="info-item full-width">
-                            <label>Credential Reference</label>
-                            <div class="credential-ref-row">
-                                <code class="monospace">{{ host.credential_ref }}</code>
-                                {% if host.aws_secret_url %}
-                                <a href="{{ host.aws_secret_url }}" target="_blank" rel="noopener" class="btn btn-xs btn-ghost">
-                                    View in AWS Console →
-                                </a>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="info-item">
-                            <label>Status</label>
-                            {% if host.enabled %}
-                            <span class="status-badge enabled">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <polyline points="20 6 9 17 4 12"/>
-                                </svg>
-                                Enabled
-                            </span>
-                            {% else %}
-                            <span class="status-badge disabled">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <circle cx="12" cy="12" r="10"/>
-                                    <line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/>
-                                </svg>
-                                Disabled
-                            </span>
-                            {% endif %}
-                        </div>
-                        <div class="info-item">
-                            <label>Created</label>
-                            <span class="value">{{ host.created_at.strftime('%b %d, %Y at %H:%M') if host.created_at else 'Unknown' }}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Edit Form Card -->
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Edit Configuration</h3>
+                        Configuration
+                    </h3>
+                    <label class="host-enabled-toggle" title="Toggle host enabled/disabled">
+                        <input type="checkbox" class="toggle-checkbox" id="host-enabled-toggle"
+                               {% if host.enabled %}checked{% endif %}
+                               onchange="toggleHostEnabled('{{ host.id }}', '{{ host.hostname }}', this.checked)">
+                        <span class="toggle-switch"></span>
+                        <span class="toggle-status {% if host.enabled %}enabled{% else %}disabled{% endif %}">{% if host.enabled %}Enabled{% else %}Disabled{% endif %}</span>
+                    </label>
                 </div>
                 <form method="POST" action="/web/admin/hosts/{{ host.id }}/update" class="card-body">
                     <div class="form-grid">
                         <div class="form-group">
-                            <label for="host_alias" class="form-label">Host Alias</label>
+                            <label class="form-label">Hostname</label>
+                            <div class="form-static monospace">{{ host.hostname }}</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="host_alias" class="form-label">Alias</label>
                             <input type="text" id="host_alias" name="host_alias" class="form-input" 
-                                   value="{{ host.host_alias or '' }}"
-                                   placeholder="e.g., dev-db-01">
-                            <span class="form-hint">Short friendly name for this host</span>
+                                   value="{{ host.host_alias or '' }}" placeholder="e.g., dev-db-01">
                         </div>
 
                         <div class="form-group full-width">
                             <label for="credential_ref" class="form-label required">Credential Reference</label>
-                            <input type="text" id="credential_ref" name="credential_ref" class="form-input monospace" 
-                                   value="{{ host.credential_ref }}" required
-                                   placeholder="aws-secretsmanager:/pulldb/mysql/...">
-                            <span class="form-hint">
-                                AWS Secrets Manager path. 
-                                <a href="{{ aws_create_secret_url }}" target="_blank" rel="noopener">Create new secret →</a>
-                            </span>
+                            <div class="input-with-action">
+                                <input type="text" id="credential_ref" name="credential_ref" class="form-input monospace" 
+                                       value="{{ host.credential_ref }}" required
+                                       placeholder="aws-secretsmanager:/pulldb/mysql/...">
+                                {% if host.aws_secret_url %}
+                                <a href="{{ host.aws_secret_url }}" target="_blank" rel="noopener" class="btn btn-xs btn-ghost" title="View in AWS">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                        <polyline points="15 3 21 3 21 9"/>
+                                        <line x1="10" y1="14" x2="21" y2="3"/>
+                                    </svg>
+                                </a>
+                                {% endif %}
+                            </div>
                         </div>
 
                         <div class="form-group">
-                            <label for="max_running_jobs" class="form-label required">Max Running Jobs</label>
+                            <label for="max_running_jobs" class="form-label required">Max Concurrent</label>
                             <input type="number" id="max_running_jobs" name="max_running_jobs" class="form-input" 
                                    value="{{ host.max_running_jobs }}" min="1" required>
-                            <span class="form-hint">Maximum concurrent restore operations</span>
+                            <span class="form-hint">Simultaneous restore operations</span>
                         </div>
-
                         <div class="form-group">
-                            <label for="max_active_jobs" class="form-label required">Max Active Jobs</label>
+                            <label for="max_active_jobs" class="form-label required">Max Queue</label>
                             <input type="number" id="max_active_jobs" name="max_active_jobs" class="form-input" 
-                                   value="{{ host.max_active_jobs }}" min="1" required>
-                            <span class="form-hint">Maximum queued + running jobs</span>
+                                   value="{{ host.max_active_jobs }}" min="0" required>
+                            <span class="form-hint">Set to 0 to freeze (block new jobs)</span>
                         </div>
                     </div>
-
                     <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
-                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                                <polyline points="17 21 17 13 7 13 7 21"/>
-                                <polyline points="7 3 7 8 15 8"/>
-                            </svg>
-                            Save Changes
+                        <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- AWS Secret Card (Conditional) -->
+            {% if host.credential_ref and host.credential_ref.startswith('aws-secretsmanager:') and host.credential_data %}
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                        MySQL Credentials
+                    </h3>
+                </div>
+                <form method="POST" action="/web/admin/hosts/{{ host.id }}/update-secret" class="card-body">
+                    <div class="alert alert-info" style="margin-bottom: var(--space-4); padding: var(--space-2) var(--space-3); font-size: var(--text-sm);">
+                        <strong>Note:</strong> Username/password changes update both MySQL server and AWS Secrets Manager.
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="secret_host" class="form-label required">Host</label>
+                            <input type="text" id="secret_host" name="secret_host" class="form-input monospace" 
+                                   value="{{ host.credential_data.host if host.credential_data else '' }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="secret_port" class="form-label required">Port</label>
+                            <input type="number" id="secret_port" name="secret_port" class="form-input" 
+                                   value="{{ host.credential_data.port if host.credential_data else 3306 }}" 
+                                   min="1" max="65535" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="secret_username" class="form-label required">Username</label>
+                            <input type="text" id="secret_username" name="secret_username" class="form-input monospace" 
+                                   value="{{ host.credential_data.username if host.credential_data else '' }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="secret_password" class="form-label">Password</label>
+                            <input type="password" id="secret_password" name="secret_password" class="form-input" 
+                                   placeholder="Leave blank to keep">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-warning btn-sm" 
+                                onclick="return confirm('Update AWS Secrets Manager secret?');">
+                            Update Secret
                         </button>
                     </div>
                 </form>
             </div>
+            {% elif host.credential_error %}
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                        MySQL Credentials
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted" style="margin: 0;">
+                        Cannot load: {{ host.credential_error }}
+                        {% if host.aws_secret_url %}
+                        <a href="{{ host.aws_secret_url }}" target="_blank" rel="noopener">Edit in AWS →</a>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+            {% endif %}
         </div>
 
-        <!-- Right Column: Stats and Assigned Users -->
+        <!-- Right Column: Activity & Status -->
         <div class="host-detail-sidebar">
-            <!-- Stats Card -->
+            <!-- Activity Card -->
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Activity</h3>
                 </div>
-                <div class="card-body">
-                    <div class="stats-list">
-                        <div class="stat-row">
-                            <span class="stat-label">Running Jobs</span>
-                            <span class="stat-value {% if host.running_count > 0 %}text-warning{% endif %}">{{ host.running_count }}</span>
+                <div class="card-body" style="padding: 0;">
+                    <div class="stat-grid-compact">
+                        <div class="stat-item {% if host.running_count > 0 %}active{% endif %}">
+                            <span class="stat-value">{{ host.running_count }}</span>
+                            <span class="stat-label">Running</span>
                         </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Queued Jobs</span>
+                        <div class="stat-item">
                             <span class="stat-value">{{ host.queued_count }}</span>
+                            <span class="stat-label">Queued</span>
                         </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Active Jobs</span>
-                            <span class="stat-value">{{ host.active_restores }} / {{ host.max_active_jobs }}</span>
+                        <div class="stat-item">
+                            <span class="stat-value">{{ host.active_restores }}<span class="stat-max">/{{ host.max_active_jobs }}</span></span>
+                            <span class="stat-label">Active</span>
                         </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Total Restores</span>
+                        <div class="stat-item">
                             <span class="stat-value">{{ host.total_restores }}</span>
+                            <span class="stat-label">Total</span>
                         </div>
                     </div>
                 </div>
@@ -227,87 +216,96 @@
             <!-- Setup Status Card -->
             <div class="card" id="setup-status-card">
                 <div class="card-header">
-                    <h3 class="card-title">Setup Status</h3>
-                    <button type="button" class="btn btn-sm btn-ghost" onclick="runPreflightChecks('{{ host.id }}')">
+                    <h3 class="card-title">Setup Checks</h3>
+                    <button type="button" class="btn btn-sm btn-ghost" onclick="runPreflightChecks('{{ host.id }}')" title="Run checks">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
                             <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/>
                         </svg>
-                        Check
                     </button>
                 </div>
                 <div class="card-body">
                     <div class="preflight-checks" id="preflight-checks">
-                        <p class="text-muted text-center">Click "Check" to run pre-flight validation</p>
+                        <p class="text-muted text-center" style="margin: 0; font-size: var(--text-sm);">Click to verify setup</p>
                     </div>
+                </div>
+            </div>
+
+            <!-- Meta Info -->
+            <div class="card">
+                <div class="card-body" style="padding: var(--space-3) var(--space-4);">
+                    <div class="meta-info">
+                        <span class="meta-label">Created</span>
+                        <span class="meta-value">{{ host.created_at.strftime('%b %d, %Y') if host.created_at else 'Unknown' }}</span>
+                    </div>
+                    {% if host.resolved_host_uri %}
+                    <div class="meta-info">
+                        <span class="meta-label">URI</span>
+                        <span class="meta-value monospace" style="font-size: var(--text-xs);">{{ host.resolved_host_uri }}</span>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-
 <script>
 {% if flash_message %}
 document.addEventListener('DOMContentLoaded', function() {
-    showToast('{{ flash_message }}', '{{ flash_type }}');
-    // Clean URL params after showing toast
+    showToast({{ flash_message|tojson }}, {{ flash_type|tojson }});
     if (window.history.replaceState) {
         window.history.replaceState({}, document.title, window.location.pathname);
     }
 });
 {% endif %}
 
-function testConnection(hostId) {
-    const btn = event.target.closest('button');
-    const originalHTML = btn.innerHTML;
-    btn.innerHTML = '<span class="spinner"></span> Testing...';
-    btn.disabled = true;
-
-    fetch(`/web/admin/hosts/${hostId}/test-connection`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.simulation_mode) {
-            showToast('🧪 ' + data.message, 'info');
-        } else if (data.success) {
-            showToast('✓ ' + data.message, 'success');
-        } else {
-            showToast('✗ ' + data.message, 'error');
-        }
-        // Also update the preflight checks display
-        if (data.checks) {
-            renderPreflightChecks(data);
-        }
-    })
-    .catch(error => {
-        showToast('Connection test failed: ' + error, 'error');
-    })
-    .finally(() => {
-        btn.innerHTML = originalHTML;
-        btn.disabled = false;
-    });
+function toggleHostEnabled(hostId, hostname, enabled) {
+    const toggle = document.getElementById('host-enabled-toggle');
+    const statusText = document.querySelector('.toggle-status');
+    
+    // Disable toggle during request
+    toggle.disabled = true;
+    
+    // Use the toggle API endpoint which returns JSON
+    fetch(`/web/admin/api/hosts/${hostId}/toggle`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update status text and class based on new state
+                const newEnabled = data.enabled;
+                statusText.textContent = newEnabled ? 'Enabled' : 'Disabled';
+                statusText.classList.toggle('enabled', newEnabled);
+                statusText.classList.toggle('disabled', !newEnabled);
+                showToast(data.message, 'success');
+                // Reload to update alert banners
+                setTimeout(() => window.location.reload(), 500);
+            } else {
+                // Revert toggle on error
+                toggle.checked = !toggle.checked;
+                showToast(data.message || 'Failed to update host status', 'error');
+            }
+        })
+        .catch(error => {
+            toggle.checked = !toggle.checked;
+            showToast('Failed to update host status', 'error');
+        })
+        .finally(() => {
+            toggle.disabled = false;
+        });
 }
 
 function runPreflightChecks(hostId) {
     const container = document.getElementById('preflight-checks');
-    container.innerHTML = '<p class="text-muted text-center"><span class="spinner"></span> Running checks...</p>';
+    container.innerHTML = '<p class="text-muted text-center" style="margin: 0;"><span class="spinner"></span></p>';
 
     fetch(`/web/admin/hosts/${hostId}/test-connection`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
     })
     .then(response => response.json())
-    .then(data => {
-        renderPreflightChecks(data);
-    })
+    .then(data => renderPreflightChecks(data))
     .catch(error => {
-        container.innerHTML = `<p class="text-danger text-center">Check failed: ${error}</p>`;
+        container.innerHTML = `<p class="text-danger text-center" style="margin: 0;">Failed: ${error}</p>`;
     });
 }
 
@@ -316,51 +314,28 @@ function renderPreflightChecks(data) {
     const checks = data.checks || {};
     
     const checkItems = [
-        { key: 'credential_valid', label: 'AWS Credentials', msgKey: 'credential_message' },
-        { key: 'connection_valid', label: 'MySQL Connection', msgKey: 'connection_message' },
-        { key: 'pulldb_db_valid', label: 'pulldb Database', msgKey: 'pulldb_db_message' },
-        { key: 'sproc_valid', label: 'Stored Procedure', msgKey: 'sproc_message' },
+        { key: 'credential_valid', label: 'Credentials' },
+        { key: 'connection_valid', label: 'Connection' },
+        { key: 'pulldb_db_valid', label: 'Database' },
+        { key: 'sproc_valid', label: 'Procedure' },
     ];
     
     let html = '<ul class="check-results">';
     for (const item of checkItems) {
         const valid = checks[item.key];
-        const message = checks[item.msgKey] || '';
         const icon = valid 
             ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="check-icon success"><polyline points="20 6 9 17 4 12"/></svg>'
             : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="check-icon error"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
-        
-        html += `
-            <li class="check-result-item ${valid ? 'valid' : 'invalid'}">
-                ${icon}
-                <div class="check-result-content">
-                    <span class="check-result-label">${item.label}</span>
-                    <span class="check-result-message">${message}</span>
-                </div>
-            </li>
-        `;
+        html += `<li class="check-result-item ${valid ? 'valid' : 'invalid'}">${icon}<span>${item.label}</span></li>`;
     }
     html += '</ul>';
     
-    // Add overall status
     const allValid = data.success;
     const isSimulation = data.simulation_mode;
     
-    if (isSimulation) {
-        html += `
-            <div class="check-summary info">
-                🧪 Simulation Mode - checks simulated (no real MySQL connection)
-            </div>
-        `;
-    } else {
-        html += `
-            <div class="check-summary ${allValid ? 'success' : 'warning'}">
-                ${allValid 
-                    ? '✓ All checks passed' 
-                    : '⚠ Setup incomplete'}
-            </div>
-        `;
-    }
+    html += `<div class="check-summary ${isSimulation ? 'info' : (allValid ? 'success' : 'warning')}">
+        ${isSimulation ? '🧪 Simulated' : (allValid ? '✓ Ready' : '⚠ Incomplete')}
+    </div>`;
     
     container.innerHTML = html;
 }

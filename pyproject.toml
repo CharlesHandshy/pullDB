@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pulldb"
-version = "0.0.11"
+version = "0.0.12"
 description = "pullDB - Development database restoration tool using production MySQL backups from S3"
 readme = "README.md"
 license = { text = "MIT" }
@@ -49,12 +49,22 @@ dev = [
 pulldb = "pulldb.cli.main:main"
 pulldb-admin = "pulldb.cli.admin:main"
 pulldb-api = "pulldb.api.main:main"
+pulldb-web = "pulldb.api.main:main_web"
 pulldb-worker = "pulldb.worker.service:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["pulldb*"]
 namespaces = false
+
+[tool.setuptools.package-data]
+pulldb = [
+    "web/static/**/*",
+    "web/templates/**/*",
+    "web/shared/**/*",
+    "web/widgets/**/*",
+    "template_after_sql/**/*",
+]
 
 [tool.mypy]
 python_version = "3.12"

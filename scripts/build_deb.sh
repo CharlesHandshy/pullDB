@@ -75,6 +75,7 @@ fi
 # Copy systemd unit files to dedicated directory
 cp packaging/systemd/pulldb-worker.service "$APP_ROOT/systemd/"
 cp packaging/systemd/pulldb-api.service "$APP_ROOT/systemd/"
+cp packaging/systemd/pulldb-web.service "$APP_ROOT/systemd/"
 
 # Copy myloader binaries
 if [ -d "pulldb/binaries" ]; then

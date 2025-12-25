@@ -7,6 +7,7 @@ set -euo pipefail
 INSTALL_PREFIX="${PULLDB_INSTALL_PREFIX:-/opt/pulldb.service}"
 WORKER_SERVICE="pulldb-worker.service"
 API_SERVICE="pulldb-api.service"
+WEB_SERVICE="pulldb-web.service"
 
 info() { echo "[INFO] $*"; }
 warn() { echo "[WARN] $*" >&2; }
@@ -42,6 +43,7 @@ info "Starting pullDB upgrade..."
 info "Stopping services..."
 systemctl stop $WORKER_SERVICE 2>/dev/null || true
 systemctl stop $API_SERVICE 2>/dev/null || true
+systemctl stop $WEB_SERVICE 2>/dev/null || true
 
 # Run database migrations first (before updating code)
 if [[ $SKIP_MIGRATE -eq 0 ]]; then
@@ -99,9 +101,12 @@ pip install --upgrade "$WHEEL_FILE"
 info "Restarting services..."
 systemctl start $WORKER_SERVICE 2>/dev/null || warn "Failed to start $WORKER_SERVICE"
 systemctl start $API_SERVICE 2>/dev/null || true  # API is optional
+systemctl start $WEB_SERVICE 2>/dev/null || true  # Web is optional
 
 info "Upgrade complete."
 info ""
 info "Verify status:"
 info "  systemctl status $WORKER_SERVICE"
+info "  systemctl status $API_SERVICE"
+info "  systemctl status $WEB_SERVICE"
 info "  pulldb-migrate verify"

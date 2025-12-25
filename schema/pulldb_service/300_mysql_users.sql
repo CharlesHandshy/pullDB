@@ -2,8 +2,8 @@
 -- MySQL user grants for pullDB services
 --
 -- Three users with least-privilege access:
---   - pulldb_api:    API service (limited permissions)
---   - pulldb_worker: Worker service (job management permissions)
+--   - pulldb_api:    API/Web service (user management, job submission, admin UI)
+--   - pulldb_worker: Worker service (job execution, status updates)
 --   - pulldb_loader: myloader on TARGET hosts (restore permissions)
 --
 -- IMPORTANT: Run this script as a MySQL admin user (root or similar).
@@ -23,15 +23,24 @@
 -- These users connect to the pulldb_service coordination database.
 
 -- -----------------------------------------------------------------------------
--- pulldb_api: API Service User
+-- pulldb_api: API/Web Service User
 -- -----------------------------------------------------------------------------
--- Permissions: Create users, submit jobs, read config
--- Used by: pulldb-api.service
+-- Permissions: User management, job submission, admin UI operations
+-- Used by: pulldb-api.service, pulldb-web.service
 
 CREATE USER IF NOT EXISTS 'pulldb_api'@'localhost' IDENTIFIED BY 'CHANGE_ME_API';
 
--- auth_users: Create users via get_or_create_user()
-GRANT SELECT, INSERT ON pulldb_service.auth_users TO 'pulldb_api'@'localhost';
+-- auth_users: Create users, update roles/managers/status via admin UI
+GRANT SELECT, INSERT, UPDATE ON pulldb_service.auth_users TO 'pulldb_api'@'localhost';
+
+-- auth_credentials: Web login + password management (create, reset)
+GRANT SELECT, INSERT, UPDATE ON pulldb_service.auth_credentials TO 'pulldb_api'@'localhost';
+
+-- sessions: Full access for web session management
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.sessions TO 'pulldb_api'@'localhost';
+
+-- user_hosts: Full access for admin user-host assignment management
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.user_hosts TO 'pulldb_api'@'localhost';
 
 -- jobs: Submit jobs via enqueue_job()
 GRANT SELECT, INSERT ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
@@ -39,14 +48,17 @@ GRANT SELECT, INSERT ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
 -- job_events: Read job history only
 GRANT SELECT ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
 
--- db_hosts: Read host config for validation
-GRANT SELECT ON pulldb_service.db_hosts TO 'pulldb_api'@'localhost';
+-- db_hosts: Full access for admin host management
+GRANT SELECT, INSERT, UPDATE ON pulldb_service.db_hosts TO 'pulldb_api'@'localhost';
 
--- settings: Read settings for config
-GRANT SELECT ON pulldb_service.settings TO 'pulldb_api'@'localhost';
+-- settings: Full access for admin settings management
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.settings TO 'pulldb_api'@'localhost';
 
 -- active_jobs: Read-only view
 GRANT SELECT ON pulldb_service.active_jobs TO 'pulldb_api'@'localhost';
+
+-- audit_logs: Read + write for audit logging
+GRANT SELECT, INSERT ON pulldb_service.audit_logs TO 'pulldb_api'@'localhost';
 
 -- -----------------------------------------------------------------------------
 -- pulldb_worker: Worker Service User

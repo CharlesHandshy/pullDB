@@ -6,12 +6,36 @@ import contextlib
 import fnmatch
 import json
 import os
+import time
 import typing as t
 from dataclasses import dataclass
 from datetime import datetime
 
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.s3 import BACKUP_FILENAME_REGEX, S3Client
+
+# Customer cache: {(bucket, prefix): (customer_list, timestamp)}
+_customer_cache: dict[tuple[str, str], tuple[list[str], float]] = {}
+_CACHE_TTL_SECONDS = 300  # 5 minutes
+
+
+def format_size(size_bytes: int) -> str:
+    """Convert bytes to human-readable string.
+
+    Args:
+        size_bytes: Size in bytes
+
+    Returns:
+        Human-readable string like "1.2 GB", "856 MB", "12 KB"
+    """
+    if size_bytes >= 1024 * 1024 * 1024:  # >= 1 GB
+        return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
+    elif size_bytes >= 1024 * 1024:  # >= 1 MB
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    elif size_bytes >= 1024:  # >= 1 KB
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes} B"
 
 
 @dataclass
@@ -21,7 +45,8 @@ class BackupInfo:
     customer: str
     timestamp: datetime
     date: str  # YYYYMMDD format for display
-    size_mb: float
+    size_mb: float  # Kept for backward compatibility
+    size_display: str  # Human-readable size (e.g., "1.2 GB")
     environment: str
     key: str
     bucket: str
@@ -98,6 +123,25 @@ class DiscoveryService:
 
         return matches
 
+    def _get_cached_customers(
+        self, bucket: str, prefix: str
+    ) -> list[str] | None:
+        """Get cached customer list if not expired."""
+        cache_key = (bucket, prefix)
+        if cache_key in _customer_cache:
+            customers, timestamp = _customer_cache[cache_key]
+            if time.time() - timestamp < _CACHE_TTL_SECONDS:
+                return customers
+            # Expired, remove from cache
+            del _customer_cache[cache_key]
+        return None
+
+    def _set_cached_customers(
+        self, bucket: str, prefix: str, customers: list[str]
+    ) -> None:
+        """Store customer list in cache."""
+        _customer_cache[(bucket, prefix)] = (customers, time.time())
+
     def _process_customer_location(
         self, entry: dict, query: str, s3: S3Client, customer_set: set[str]
     ) -> None:
@@ -117,13 +161,28 @@ class DiscoveryService:
             bucket = path
             prefix = ""
 
+        # Check cache first
+        cached = self._get_cached_customers(bucket, prefix)
+        if cached is not None:
+            customer_set.update(cached)
+            return
+
         try:
+            # Use list_prefixes for efficient folder discovery
+            # Search with query prefix for faster results
             search_prefix = f"{prefix}{query.lower()}"
-            keys = s3.list_keys(bucket, search_prefix, profile=profile)
-            for key in keys:
-                parts = key[len(prefix) :].split("/")
-                if parts:
-                    customer_set.add(parts[0])
+            customers = s3.list_prefixes(
+                bucket, search_prefix, profile=profile, max_results=500
+            )
+            customer_set.update(customers)
+
+            # If query is short (3-4 chars), also cache the full list
+            # for future filtered searches
+            if len(query) <= 4:
+                all_customers = s3.list_prefixes(
+                    bucket, prefix, profile=profile, max_results=1000
+                )
+                self._set_cached_customers(bucket, prefix, all_customers)
         except Exception:
             pass
 
@@ -159,12 +218,14 @@ class DiscoveryService:
             if environment not in ("both", env):
                 continue
 
+            size_bytes = 1024 * 1024 * 1024 + i * 100 * 1024 * 1024  # ~1GB
             results.append(
                 BackupInfo(
                     customer=customer,
                     timestamp=ts,
                     date=ts.strftime("%Y%m%d"),
-                    size_mb=1024.5,
+                    size_mb=round(size_bytes / (1024 * 1024), 1),
+                    size_display=format_size(size_bytes),
                     environment=env,
                     key=f"mock/path/{customer}_{i}.sql.gz",
                     bucket="mock-bucket",
@@ -317,20 +378,22 @@ class DiscoveryService:
         search_prefix = f"{ctx.prefix}{customer}/daily_mydumper_{customer}_"
 
         try:
-            keys = ctx.s3.list_keys(
+            # Use list_keys_with_sizes to get sizes in single API call
+            keys_with_sizes = ctx.s3.list_keys_with_sizes(
                 ctx.bucket, search_prefix, profile=ctx.profile
             )
         except Exception:
             return
 
-        for key in keys:
-            self._process_backup_key(ctx, key, customer, results)
+        for key, size_bytes in keys_with_sizes:
+            self._process_backup_key(ctx, key, customer, size_bytes, results)
 
     def _process_backup_key(
         self,
         ctx: SearchContext,
         key: str,
         customer: str,
+        size_bytes: int,
         results: list[BackupInfo],
     ) -> None:
         filename = key.rsplit("/", 1)[-1]
@@ -347,18 +410,13 @@ class DiscoveryService:
         if ctx.filter_date and ts < ctx.filter_date:
             return
 
-        try:
-            head = ctx.s3.head_object(ctx.bucket, key, profile=ctx.profile)
-            size_bytes = int(head.get("ContentLength", 0))
-        except Exception:
-            size_bytes = 0
-
         results.append(
             BackupInfo(
                 customer=customer,
                 timestamp=ts,
                 date=ts.strftime("%Y%m%d"),
                 size_mb=round(size_bytes / (1024 * 1024), 1),
+                size_display=format_size(size_bytes),
                 environment=ctx.env_name,
                 key=key,
                 bucket=ctx.bucket,

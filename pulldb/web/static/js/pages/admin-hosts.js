@@ -35,10 +35,11 @@
         const displayName = row.host_alias || row.hostname;
         const tooltip = row.host_alias ? row.hostname : '';
         const titleAttr = tooltip ? ` title="${tooltip}"` : '';
+        const frozenBadge = row.max_active_jobs === 0 ? ' <span class="badge badge-warning badge-sm">Frozen</span>' : '';
         
         return `<span class="host-cell">
             <div class="host-icon-sm${disabledClass}">${icons.database}</div>
-            <span class="host-alias"${titleAttr}>${displayName}</span>
+            <span class="host-alias"${titleAttr}>${displayName}</span>${frozenBadge}
         </span>`;
     }
 
@@ -111,7 +112,7 @@
             render: renderHostCell
         },
         {
-            key: 'enabled',
+            key: 'status',
             label: 'Status',
             sortable: true,
             filterable: true,
@@ -321,7 +322,8 @@
         // Show loading state
         btn.classList.add('loading');
         btnText.textContent = 'Provisioning...';
-        statusDiv.style.display = 'block';
+        statusDiv.classList.remove('js-hidden');
+        statusDiv.style.display = '';  // Clear inline style
         stepsDiv.innerHTML = `<div class="provision-step running">
             <div class="provision-step-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

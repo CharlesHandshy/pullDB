@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pulldb.domain.models import JobStatus, User
@@ -10,6 +10,101 @@ from pulldb.web.dependencies import get_api_state, require_manager_or_above, tem
 from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
 router = APIRouter(prefix="/web/manager", tags=["web-manager"])
+
+
+@router.get("/api/team")
+async def api_team_paginated(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_manager_or_above),
+    page: int = Query(0, ge=0, description="Page number (0-indexed)"),
+    pageSize: int = Query(50, ge=10, le=200, description="Page size"),
+    sortColumn: str | None = None,
+    sortDirection: str | None = None,
+) -> dict:
+    """Get paginated team members for LazyTable."""
+    # Get users managed by this manager
+    managed_users = []
+    if hasattr(state.user_repo, "get_users_managed_by"):
+        managed_users = state.user_repo.get_users_managed_by(user.user_id)
+
+    # Get active job counts per user
+    user_active_jobs: dict[str, int] = {}
+    for mu in managed_users:
+        jobs = state.job_repo.get_jobs_by_user(mu.user_id)
+        user_active_jobs[mu.user_id] = len([
+            j for j in jobs
+            if j.status in (JobStatus.QUEUED, JobStatus.RUNNING)
+        ])
+
+    # Check password reset status per user
+    user_password_reset: dict[str, bool] = {}
+    for mu in managed_users:
+        if state.auth_repo and hasattr(state.auth_repo, "is_password_reset_required"):
+            user_password_reset[mu.user_id] = state.auth_repo.is_password_reset_required(mu.user_id)
+        else:
+            user_password_reset[mu.user_id] = False
+
+    # Build enriched user list
+    all_users = []
+    for u in managed_users:
+        all_users.append({
+            "user_id": u.user_id,
+            "username": u.username,
+            "user_code": u.user_code,
+            "active_jobs": user_active_jobs.get(u.user_id, 0),
+            "disabled_at": u.disabled_at.isoformat() if u.disabled_at else None,
+            "status": "disabled" if u.disabled_at else "active",
+            "password_reset_pending": user_password_reset.get(u.user_id, False),
+        })
+
+    total_count = len(all_users)
+    
+    # Apply filters
+    text_filters: dict[str, list[str]] = {}
+    for key, value in request.query_params.items():
+        if key.startswith("filter_") and value:
+            col_key = key[7:]
+            text_filters[col_key] = [v.strip().lower() for v in value.split(',') if v.strip()]
+
+    if text_filters:
+        filtered = []
+        for u in all_users:
+            match = True
+            for col, vals in text_filters.items():
+                cell = str(u.get(col, "")).lower()
+                if not any(v in cell for v in vals):
+                    match = False
+                    break
+            if match:
+                filtered.append(u)
+        all_users = filtered
+
+    filtered_count = len(all_users)
+
+    # Apply sorting
+    if sortColumn and sortDirection:
+        reverse = sortDirection == "desc"
+        sort_keys: dict[str, Any] = {
+            "username": lambda u: (u.get("username") or "").lower(),
+            "user_code": lambda u: (u.get("user_code") or "").lower(),
+            "active_jobs": lambda u: u.get("active_jobs", 0),
+            "status": lambda u: 0 if u.get("disabled_at") else 1,
+        }
+        if sortColumn in sort_keys:
+            all_users = sorted(all_users, key=sort_keys[sortColumn], reverse=reverse)
+
+    # Paginate
+    offset = page * pageSize
+    page_users = all_users[offset : offset + pageSize]
+
+    return {
+        "rows": page_users,
+        "totalCount": total_count,
+        "filteredCount": filtered_count,
+        "page": page,
+        "pageSize": pageSize,
+    }
 
 
 @router.get("/", response_class=HTMLResponse)

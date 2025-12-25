@@ -29,6 +29,8 @@ WORKER_UNIT_SOURCE="${INSTALL_PREFIX}/systemd/pulldb-worker.service"
 WORKER_UNIT_DEST="/etc/systemd/system/pulldb-worker.service"
 API_UNIT_SOURCE="${INSTALL_PREFIX}/systemd/pulldb-api.service"
 API_UNIT_DEST="/etc/systemd/system/pulldb-api.service"
+WEB_UNIT_SOURCE="${INSTALL_PREFIX}/systemd/pulldb-web.service"
+WEB_UNIT_DEST="/etc/systemd/system/pulldb-web.service"
 
 # =============================================================================
 # Step 1: Create System User and Group
@@ -287,17 +289,98 @@ install_python_package() {
 }
 
 check_database_schema() {
-    echo "Step 6b: Checking database schema..."
+    echo "Step 6b: Checking and applying database schema..."
     
-    # Check if pulldb_service database exists with required tables
-    if sudo mysql -N -e "SELECT 1 FROM information_schema.tables WHERE table_schema='pulldb_service' AND table_name='jobs'" 2>/dev/null | grep -q 1; then
-        echo "  Database schema present"
-    else
-        echo "  Warning: Database schema not found"
-        echo "  v0.0.6 requires fresh schema setup. Run:"
-        echo "    sudo mysql -e 'CREATE DATABASE IF NOT EXISTS pulldb_service'"
-        echo "    cat ${INSTALL_PREFIX}/schema/pulldb_service/*.sql | sudo mysql pulldb_service"
+    SCHEMA_DIR="${INSTALL_PREFIX}/schema/pulldb_service"
+    
+    # Check if MySQL is accessible via socket (root access)
+    if ! mysql -N -e "SELECT 1" >/dev/null 2>&1; then
+        echo "  Warning: Cannot connect to MySQL"
+        echo "  Ensure MySQL is running and accessible"
+        return
     fi
+    
+    # Create database if it doesn't exist
+    if ! mysql -N -e "SELECT 1 FROM information_schema.schemata WHERE schema_name='pulldb_service'" 2>/dev/null | grep -q 1; then
+        echo "  Creating pulldb_service database..."
+        mysql -e "CREATE DATABASE pulldb_service CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci" || {
+            echo "  Warning: Failed to create database"
+            return
+        }
+    fi
+    
+    # Check if jobs table exists (indicates schema is applied)
+    if mysql -N -e "SELECT 1 FROM information_schema.tables WHERE table_schema='pulldb_service' AND table_name='jobs'" 2>/dev/null | grep -q 1; then
+        echo "  Database schema already present"
+        return
+    fi
+    
+    # Apply schema files in order
+    if [ -d "${SCHEMA_DIR}" ]; then
+        echo "  Applying schema files..."
+        for sql_file in $(ls -1 "${SCHEMA_DIR}"/*.sql 2>/dev/null | sort); do
+            echo "    Applying $(basename "$sql_file")..."
+            mysql pulldb_service < "$sql_file" || {
+                echo "  Warning: Failed to apply $(basename "$sql_file")"
+                return
+            }
+        done
+        echo "  Database schema applied successfully"
+        
+        # Create initial admin user
+        create_admin_user
+    else
+        echo "  Warning: Schema directory not found: ${SCHEMA_DIR}"
+    fi
+}
+
+create_admin_user() {
+    echo "  Creating initial admin user..."
+    
+    # Check if admin user already exists
+    if mysql -N -e "SELECT 1 FROM pulldb_service.auth_users WHERE username='admin'" 2>/dev/null | grep -q 1; then
+        echo "  Admin user already exists"
+        return
+    fi
+    
+    # Generate random password (16 chars alphanumeric)
+    ADMIN_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16)
+    
+    # Generate UUID for user_id
+    ADMIN_UUID=$(cat /proc/sys/kernel/random/uuid)
+    
+    # Generate 6-char user code
+    ADMIN_CODE=$(head -c 6 /dev/urandom | base64 | tr -dc 'A-Z0-9' | head -c 6)
+    
+    # Hash password using Python/bcrypt
+    ADMIN_HASH=$("${INSTALL_PREFIX}/venv/bin/python3" -c "
+import bcrypt
+password = '${ADMIN_PASSWORD}'.encode('utf-8')
+salt = bcrypt.gensalt(rounds=12)
+print(bcrypt.hashpw(password, salt).decode('utf-8'))
+" 2>/dev/null)
+    
+    if [ -z "$ADMIN_HASH" ]; then
+        echo "  Warning: Failed to hash password"
+        return
+    fi
+    
+    # Insert admin user
+    mysql pulldb_service -e "
+INSERT INTO auth_users (user_id, username, user_code, is_admin, role)
+VALUES ('${ADMIN_UUID}', 'admin', '${ADMIN_CODE}', TRUE, 'admin');
+
+INSERT INTO auth_credentials (user_id, password_hash)
+VALUES ('${ADMIN_UUID}', '${ADMIN_HASH}');
+" 2>/dev/null || {
+        echo "  Warning: Failed to create admin user"
+        return
+    }
+    
+    # Store password for display at end of install
+    INITIAL_ADMIN_PASSWORD="${ADMIN_PASSWORD}"
+    export INITIAL_ADMIN_PASSWORD
+    echo "  Admin user created successfully"
 }
 
 install_systemd_units() {
@@ -311,6 +394,7 @@ install_systemd_units() {
     # Remove old copies if they exist (migrate to symlinks)
     [ -f "${WORKER_UNIT_DEST}" ] && [ ! -L "${WORKER_UNIT_DEST}" ] && rm -f "${WORKER_UNIT_DEST}"
     [ -f "${API_UNIT_DEST}" ] && [ ! -L "${API_UNIT_DEST}" ] && rm -f "${API_UNIT_DEST}"
+    [ -f "${WEB_UNIT_DEST}" ] && [ ! -L "${WEB_UNIT_DEST}" ] && rm -f "${WEB_UNIT_DEST}"
     
     # Create symlinks
     if [ -f "${WORKER_UNIT_SOURCE}" ]; then
@@ -322,7 +406,14 @@ install_systemd_units() {
     if [ -f "${API_UNIT_SOURCE}" ]; then
         ln -sf "${API_UNIT_SOURCE}" "${API_UNIT_DEST}"
         systemctl enable pulldb-api.service >/dev/null 2>&1 || true
-        echo "  Enabled pulldb-api.service"
+        echo "  Enabled pulldb-api.service (REST API on port 8080)"
+    fi
+    
+    if [ -f "${WEB_UNIT_SOURCE}" ]; then
+        ln -sf "${WEB_UNIT_SOURCE}" "${WEB_UNIT_DEST}"
+        # Don't auto-enable web service - let admin choose
+        echo "  Installed pulldb-web.service (Web UI on port 8000)"
+        echo "    To enable: sudo systemctl enable --now pulldb-web"
     fi
     
     systemctl daemon-reload || true
@@ -355,6 +446,16 @@ start_services() {
             echo "  Warning: pulldb-worker.service failed to start"
         fi
     fi
+    
+    # Start web service if enabled
+    if systemctl is-enabled pulldb-web.service >/dev/null 2>&1; then
+        systemctl restart pulldb-web.service 2>/dev/null || true
+        if systemctl is-active --quiet pulldb-web.service 2>/dev/null; then
+            echo "  Started pulldb-web.service"
+        else
+            echo "  Warning: pulldb-web.service failed to start"
+        fi
+    fi
 }
 
 # =============================================================================
@@ -383,6 +484,38 @@ print_completion() {
     echo "  Installation Complete!"
     echo "════════════════════════════════════════════════════════════════"
     echo ""
+    
+    # Display admin credentials if created
+    if [ -n "${INITIAL_ADMIN_PASSWORD:-}" ]; then
+        echo "  ┌─────────────────────────────────────────────────────────────┐"
+        echo "  │  INITIAL ADMIN CREDENTIALS (SAVE THESE!)                    │"
+        echo "  │                                                             │"
+        echo "  │    Username: admin                                          │"
+        printf "  │    Password: %-45s │\n" "${INITIAL_ADMIN_PASSWORD}"
+        echo "  │                                                             │"
+        echo "  │  Change this password after first login!                    │"
+        echo "  └─────────────────────────────────────────────────────────────┘"
+        echo ""
+        
+        # Save to file for reference (root-only readable)
+        CREDS_FILE="${INSTALL_PREFIX}/ADMIN_CREDENTIALS.txt"
+        cat > "${CREDS_FILE}" << EOF
+pullDB Initial Admin Credentials
+================================
+Generated: $(date)
+
+Username: admin
+Password: ${INITIAL_ADMIN_PASSWORD}
+
+IMPORTANT: Change this password after first login!
+Delete this file after saving your credentials.
+EOF
+        chmod 600 "${CREDS_FILE}"
+        chown root:root "${CREDS_FILE}"
+        echo "  Credentials saved to: ${CREDS_FILE}"
+        echo ""
+    fi
+    
     echo "  Configuration: ${ENV_FILE}"
     echo "  Configure:     sudo ${CONFIGURE_SCRIPT}"
     echo ""
@@ -390,7 +523,10 @@ print_completion() {
     echo "    sudo systemctl restart pulldb-api pulldb-worker"
     echo ""
     echo "  Check status:"
-    echo "    sudo systemctl status pulldb-api pulldb-worker"
+    echo "    sudo systemctl status pulldb-api pulldb-worker pulldb-web"
+    echo ""
+    echo "  Web UI (port 8000):"
+    echo "    Enable: sudo systemctl enable --now pulldb-web"
     echo ""
 }
 

@@ -1471,6 +1471,68 @@
     margin: 0 auto;
 }
 
+/* Host Enabled Toggle - inline in card header */
+.host-enabled-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+    margin-left: auto;
+}
+
+.host-enabled-toggle .toggle-status {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    min-width: 60px;
+}
+
+.host-enabled-toggle .toggle-status.enabled {
+    color: var(--success-600);
+}
+
+.host-enabled-toggle .toggle-status.disabled {
+    color: var(--gray-500);
+}
+
+[data-theme="dark"] .host-enabled-toggle .toggle-status.enabled {
+    color: var(--success-400);
+}
+
+[data-theme="dark"] .host-enabled-toggle .toggle-status.disabled {
+    color: var(--gray-400);
+}
+
+/* Host Enabled Toggle - inline in card header */
+.host-enabled-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+    margin-left: auto;
+}
+
+.host-enabled-toggle .toggle-status {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    min-width: 60px;
+}
+
+.host-enabled-toggle .toggle-status.enabled {
+    color: var(--success-600);
+}
+
+.host-enabled-toggle .toggle-status.disabled {
+    color: var(--gray-500);
+}
+
+[data-theme="dark"] .host-enabled-toggle .toggle-status.enabled {
+    color: var(--success-400);
+}
+
+[data-theme="dark"] .host-enabled-toggle .toggle-status.disabled {
+    color: var(--gray-400);
+}
+
 @media (max-width: 900px) {
     .host-detail-layout {
         grid-template-columns: 1fr;
@@ -2108,4 +2170,141 @@
     display: flex;
     justify-content: flex-end;
     gap: var(--space-3);
+}
+
+/* ===========================================
+   HOST DETAIL PAGE - COMPACT COMPONENTS
+   =========================================== */
+
+/* Compact stat grid for host detail sidebar */
+.stat-grid-compact {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--gray-200);
+}
+
+.stat-grid-compact .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-3) var(--space-2);
+    background: var(--color-bg-primary);
+    text-align: center;
+}
+
+.stat-grid-compact .stat-item.active {
+    background: var(--warning-50);
+}
+
+.stat-grid-compact .stat-value {
+    font-size: var(--text-xl);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    line-height: 1.2;
+}
+
+.stat-grid-compact .stat-max {
+    font-size: var(--text-sm);
+    font-weight: var(--font-normal);
+    color: var(--gray-400);
+}
+
+.stat-grid-compact .stat-label {
+    font-size: var(--text-xs);
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Meta info rows */
+.meta-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: var(--space-1) 0;
+}
+
+.meta-info:not(:last-child) {
+    border-bottom: 1px solid var(--gray-200);
+    padding-bottom: var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.meta-info .meta-label {
+    font-size: var(--text-xs);
+    color: var(--gray-400);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+}
+
+.meta-info .meta-value {
+    font-size: var(--text-sm);
+    color: var(--gray-600);
+    text-align: right;
+    word-break: break-all;
+}
+
+/* Input with inline action button */
+.input-with-action {
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-start;
+}
+
+.input-with-action .form-input {
+    flex: 1;
+}
+
+/* Form static display (non-editable field) */
+.form-static {
+    padding: var(--space-2) var(--space-3);
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    color: var(--gray-600);
+    font-size: var(--text-sm);
+}
+
+/* Simplified check results - 2x2 grid */
+.preflight-checks .check-results {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+}
+
+.preflight-checks .check-result-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--gray-600);
+}
+
+.preflight-checks .check-result-item.valid {
+    color: var(--success-600);
+}
+
+.preflight-checks .check-result-item.invalid {
+    color: var(--danger-600);
+}
+
+.preflight-checks .check-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.preflight-checks .check-icon.success {
+    stroke: var(--success-500);
+}
+
+.preflight-checks .check-icon.error {
+    stroke: var(--danger-500);
 }

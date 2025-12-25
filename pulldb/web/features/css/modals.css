@@ -258,10 +258,11 @@
 }
 
 .password-display code {
-    background: var(--gray-100);
+    background: var(--color-bg-secondary);
     padding: 2px 6px;
     border-radius: var(--radius-sm);
     font-family: var(--font-mono);
+    color: var(--color-text-primary);
 }
 
 .password-box {
@@ -269,8 +270,8 @@
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-3);
-    background: var(--gray-50);
-    border: 1px solid var(--gray-200);
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     margin-bottom: var(--space-3);
 }
@@ -281,14 +282,16 @@
     font-weight: var(--font-semibold);
     background: transparent;
     padding: 0;
+    color: var(--color-text-primary);
 }
 
 .password-note {
     font-size: 0.8125rem;
-    color: var(--warning-700);
-    background: var(--warning-50);
+    color: var(--warning-700, #b45309);
+    background: var(--color-warning-bg, rgba(251, 191, 36, 0.15));
     padding: var(--space-3);
     border-radius: var(--radius-md);
+    border: 1px solid var(--color-warning-border, rgba(251, 191, 36, 0.3));
     margin: 0;
 }
 
@@ -299,9 +302,10 @@
 .hosts-list {
     max-height: 300px;
     overflow-y: auto;
-    border: 1px solid var(--gray-200);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     padding: var(--space-2);
+    background: var(--color-surface);
 }
 
 .hosts-header {
@@ -314,7 +318,7 @@
     color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    border-bottom: 1px solid var(--gray-200);
+    border-bottom: 1px solid var(--color-border);
     margin-bottom: var(--space-1);
 }
 
@@ -331,7 +335,7 @@
 }
 
 .host-item:hover {
-    background: var(--gray-50);
+    background: var(--color-surface-hover);
 }
 
 .host-item.inactive {
@@ -339,7 +343,7 @@
 }
 
 .host-item.inactive .host-item-label {
-    color: var(--gray-400);
+    color: var(--color-text-muted);
 }
 
 .host-item-default {
@@ -515,4 +519,12 @@
     background: var(--color-bg-tertiary);
     border-color: var(--color-border);
     color: var(--color-text-primary);
+}
+
+/* Password note dark mode - warning colors need explicit dark values */
+[data-theme="dark"] .password-note {
+    background: rgba(251, 191, 36, 0.15);
+    color: var(--warning, #fbbf24);
+    border-color: rgba(251, 191, 36, 0.3);
+}
 }

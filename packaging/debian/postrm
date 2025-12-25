@@ -14,6 +14,7 @@ INSTALL_PREFIX="/opt/pulldb.service"
 SYSTEM_USER="pulldb_service"
 WORKER_UNIT_DEST="/etc/systemd/system/pulldb-worker.service"
 API_UNIT_DEST="/etc/systemd/system/pulldb-api.service"
+WEB_UNIT_DEST="/etc/systemd/system/pulldb-web.service"
 
 cleanup_systemd() {
     echo "Removing systemd units..."
@@ -22,10 +23,12 @@ cleanup_systemd() {
         systemctl disable pulldb-worker.service >/dev/null 2>&1 || true
         systemctl stop pulldb-api.service >/dev/null 2>&1 || true
         systemctl disable pulldb-api.service >/dev/null 2>&1 || true
-        rm -f "${WORKER_UNIT_DEST}" "${API_UNIT_DEST}" || true
+        systemctl stop pulldb-web.service >/dev/null 2>&1 || true
+        systemctl disable pulldb-web.service >/dev/null 2>&1 || true
+        rm -f "${WORKER_UNIT_DEST}" "${API_UNIT_DEST}" "${WEB_UNIT_DEST}" || true
         systemctl daemon-reload || true
     else
-        rm -f "${WORKER_UNIT_DEST}" "${API_UNIT_DEST}" || true
+        rm -f "${WORKER_UNIT_DEST}" "${API_UNIT_DEST}" "${WEB_UNIT_DEST}" || true
     fi
 }
 

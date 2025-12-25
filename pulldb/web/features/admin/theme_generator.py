@@ -21,28 +21,38 @@ if TYPE_CHECKING:
 GENERATED_CSS_DIR = Path(__file__).parent.parent.parent / "static" / "css" / "generated"
 
 
-def generate_theme_css(schema: "ColorSchema") -> str:
+def generate_theme_css(schema: "ColorSchema", mode: str = "light") -> str:
     """Generate CSS custom properties from a ColorSchema.
     
-    Outputs all variables under :root selector only (no mode-specific selectors).
-    The generated CSS file is loaded exclusively based on current theme mode.
+    Outputs all variables under [data-theme] selector for proper specificity.
+    This ensures theme values are applied based on the data-theme attribute,
+    preventing flash of incorrect theme during page transitions.
     
     Args:
         schema: ColorSchema instance with color values.
+        mode: Theme mode ('light' or 'dark') for selector generation.
         
     Returns:
-        CSS string with :root { --var: value; } declarations.
+        CSS string with [data-theme="mode"] { --var: value; } declarations.
     """
     css_vars = schema.to_css_variables()
     css_lines = [f"    {name}: {value};" for name, value in css_vars.items()]
     css_content = "\n".join(css_lines)
     
-    return f"""/* pullDB Theme - {schema.name}
+    # Use both :root and [data-theme] for maximum compatibility
+    # :root provides defaults, [data-theme] provides specificity
+    return f"""/* pullDB Theme - {schema.name} ({mode})
  * Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
  * This file is auto-generated. Do not edit directly.
  */
 
+/* Base variables - loaded when this file is active */
 :root {{
+{css_content}
+}}
+
+/* Attribute selector for specificity - prevents flash during transitions */
+[data-theme="{mode}"] {{
 {css_content}
 }}
 """
@@ -65,8 +75,8 @@ def write_theme_files(
     """Write light and dark theme CSS files to static directory.
     
     Generates two separate CSS files:
-    - manifest-light.css: Light mode variables under :root
-    - manifest-dark.css: Dark mode variables under :root
+    - manifest-light.css: Light mode variables under :root and [data-theme="light"]
+    - manifest-dark.css: Dark mode variables under :root and [data-theme="dark"]
     
     Args:
         light_schema: ColorSchema for light mode.
@@ -79,12 +89,12 @@ def write_theme_files(
     version = int(time.time())
     
     # Generate and write light theme
-    light_css = generate_theme_css(light_schema)
+    light_css = generate_theme_css(light_schema, mode="light")
     light_path = GENERATED_CSS_DIR / "manifest-light.css"
     light_path.write_text(light_css)
     
     # Generate and write dark theme
-    dark_css = generate_theme_css(dark_schema)
+    dark_css = generate_theme_css(dark_schema, mode="dark")
     dark_path = GENERATED_CSS_DIR / "manifest-dark.css"
     dark_path.write_text(dark_css)
     

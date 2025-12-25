@@ -4,6 +4,23 @@
 >
 > This document covers day-to-day operations of the pullDB service installed at `/opt/pulldb.service`.
 
+## Related Packages
+
+| Package | Purpose | Install Path | Services |
+|---------|---------|--------------|----------|
+| **pulldb** | Full server (worker + API + web) | `/opt/pulldb.service` | `pulldb-worker`, `pulldb-api`, `pulldb-web` |
+| **pulldb-client** | CLI only | `/opt/pulldb.client` | None |
+
+## Service Architecture
+
+| Service | Port | Entry Point | Description |
+|---------|------|-------------|-------------|
+| `pulldb-api` | 8080 | `pulldb-api` | REST API only (web routes disabled) |
+| `pulldb-web` | 8000 | `pulldb-web` | Web UI dashboard only |
+| `pulldb-worker` | N/A | `pulldb-worker` | Background job processor |
+
+The API and Web UI run as separate services on different ports for flexibility and security.
+
 ## Table of Contents
 
 - [Service Management](#service-management)
@@ -17,27 +34,50 @@
 
 ## Service Management
 
-### Starting the Service
+### Available Services
+
+| Service | Package | Port | Description |
+|---------|---------|------|-------------|
+| `pulldb-worker` | pulldb | N/A | Background worker that processes restore jobs |
+| `pulldb-api` | pulldb | 8080 | REST API for job submission and status |
+| `pulldb-web` | pulldb | 8000 | Web UI dashboard |
+
+### Starting Services
 
 ```bash
+# Worker (required for restores)
 sudo systemctl start pulldb-worker
+
+# API (optional, for remote CLI access)
+sudo systemctl start pulldb-api
+
+# Web UI (optional, for web dashboard)
+sudo systemctl start pulldb-web
 ```
 
-### Stopping the Service
+### Stopping Services
 
 ```bash
 sudo systemctl stop pulldb-worker
+sudo systemctl stop pulldb-api
+sudo systemctl stop pulldb-web
 ```
 
-### Restarting the Service
+### Restarting Services
 
 ```bash
 sudo systemctl restart pulldb-worker
+sudo systemctl restart pulldb-api
+sudo systemctl restart pulldb-web
 ```
 
 ### Checking Service Status
 
 ```bash
+# All services
+sudo systemctl status pulldb-worker pulldb-api pulldb-web
+
+# Individual service
 sudo systemctl status pulldb-worker
 ```
 
@@ -45,6 +85,8 @@ sudo systemctl status pulldb-worker
 
 ```bash
 sudo systemctl enable pulldb-worker
+sudo systemctl enable pulldb-api
+sudo systemctl enable pulldb-web
 ```
 
 ### Disable Auto-Start on Boot
@@ -61,6 +103,39 @@ If the service has failed too many times and won't restart:
 sudo systemctl reset-failed pulldb-worker
 sudo systemctl start pulldb-worker
 ```
+
+---
+
+## Web UI Access
+
+### Initial Login
+
+The web UI runs on port 8000. During fresh installation, an admin user is created with a randomly generated password.
+
+**Finding your admin credentials:**
+
+```bash
+# View credentials file (root only)
+sudo cat /opt/pulldb.service/ADMIN_CREDENTIALS.txt
+```
+
+> **Security**: Delete this file after saving your credentials elsewhere:
+> ```bash
+> sudo rm /opt/pulldb.service/ADMIN_CREDENTIALS.txt
+> ```
+
+### Accessing the Web UI
+
+1. Enable and start the web service:
+   ```bash
+   sudo systemctl enable --now pulldb-web
+   ```
+
+2. Open browser to `http://<server-ip>:8000`
+
+3. Log in with username `admin` and the generated password
+
+4. **Change the default password** after first login
 
 ---
 
@@ -108,6 +183,7 @@ sudo systemctl restart pulldb-worker
 /opt/pulldb.service/
 ├── .env                    # Service configuration
 ├── .aws/                   # AWS config directory (for service user)
+├── ADMIN_CREDENTIALS.txt   # Initial admin password (root-only, delete after use)
 ├── AWS-SETUP.md            # AWS configuration guide
 ├── SERVICE-README.md       # This file
 ├── dist/                   # Python wheel package
@@ -119,6 +195,8 @@ sudo systemctl restart pulldb-worker
 │   ├── configure-pulldb.sh
 │   ├── monitor_jobs.py
 │   └── service-validate.sh
+├── schema/                 # Database schema files
+│   └── pulldb_service/     # SQL files applied during install
 ├── venv/                   # Python virtual environment
 │   └── bin/
 │       ├── pulldb          # CLI tool

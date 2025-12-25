@@ -235,6 +235,18 @@ class LazyTable {
             <button type="button" class="error-retry-btn">${this.config.i18n.retry}</button>
         `;
         this.elements.wrapper.appendChild(this.elements.errorOverlay);
+
+        // Empty state overlay
+        this.elements.emptyOverlay = document.createElement('div');
+        this.elements.emptyOverlay.className = 'lazy-table-empty';
+        this.elements.emptyOverlay.innerHTML = `
+            <svg class="empty-icon" viewBox="0 0 24 24" width="48" height="48">
+                <path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/>
+                <path fill="currentColor" d="M7 12h10v2H7z"/>
+            </svg>
+            <span class="empty-message">${this.config.emptyMessage}</span>
+        `;
+        this.elements.wrapper.appendChild(this.elements.emptyOverlay);
     }
 
     createSelectionBar() {
@@ -575,6 +587,13 @@ class LazyTable {
         const renderStart = Math.max(0, startRow - bufferRows);
         const renderEnd = Math.min(this.filteredCount, startRow + this.visibleRowCount + bufferRows);
         
+        // Handle empty state
+        if (this.filteredCount === 0 && !this.hasError && !this.isLoading) {
+            this.showEmpty();
+        } else {
+            this.hideEmpty();
+        }
+        
         // Update spacer height
         this.elements.spacer.style.height = `${this.filteredCount * this.rowHeight}px`;
         
@@ -820,6 +839,7 @@ class LazyTable {
 
     showLoading() {
         this.isLoading = true;
+        this.hideEmpty();
         this.elements.loadingOverlay.classList.add('visible');
     }
 
@@ -831,12 +851,21 @@ class LazyTable {
     showError() {
         this.hasError = true;
         this.hideLoading();
+        this.hideEmpty();
         this.elements.errorOverlay.classList.add('visible');
     }
 
     hideError() {
         this.hasError = false;
         this.elements.errorOverlay.classList.remove('visible');
+    }
+
+    showEmpty() {
+        this.elements.emptyOverlay.classList.add('visible');
+    }
+
+    hideEmpty() {
+        this.elements.emptyOverlay.classList.remove('visible');
     }
 
     // =========================================================================

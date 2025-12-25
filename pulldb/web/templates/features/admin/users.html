@@ -95,12 +95,9 @@
                 <div class="form-group">
                     <label for="new-username" class="form-label required">Username</label>
                     <input type="text" id="new-username" name="username" class="form-input" 
-                           pattern="[a-z0-9_-]+" minlength="3" maxlength="50"
-                           placeholder="e.g., john_doe" required>
-                    <span class="form-hint">Lowercase letters, numbers, underscore, hyphen (3-50 chars)</span>
-                </div>
-                
-                <div class="form-group">
+                           pattern="[a-z0-9_-]*[a-z][a-z0-9_-]*[a-z][a-z0-9_-]*[a-z][a-z0-9_-]*[a-z][a-z0-9_-]*[a-z][a-z0-9_-]*[a-z][a-z0-9_-]*" minlength="6" maxlength="50"
+                           placeholder="e.g., johndoe" required>
+                    <span class="form-hint">Must contain at least 6 letters. Lowercase letters, numbers, underscore, hyphen allowed.</span>
                     <label for="new-role" class="form-label">Role</label>
                     <select id="new-role" name="role" class="form-input">
                         <option value="user" selected>User</option>
@@ -370,7 +367,7 @@
             render: renderDate
         },
         { 
-            key: 'disabled', 
+            key: 'status', 
             label: 'Status', 
             sortable: true, 
             filterable: true,

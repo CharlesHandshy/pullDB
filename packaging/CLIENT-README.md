@@ -4,6 +4,13 @@
 
 The pullDB client provides command-line access to the pullDB restore service. It communicates with the pullDB API server to submit restore jobs and check their status.
 
+## Related Packages
+
+| Package | Purpose | Install Path |
+|---------|---------|--------------|
+| **pulldb** | Full server (worker + API + web) | `/opt/pulldb.service` |
+| **pulldb-client** | CLI only (this package) | `/opt/pulldb.client` |
+
 ## Installation
 
 The client is installed as the `pulldb_service` system user (shared with the server package if installed).

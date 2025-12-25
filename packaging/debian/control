@@ -1,5 +1,5 @@
 Package: pulldb
-Version: 0.0.11
+Version: 0.0.12
 Section: admin
 Priority: optional
 Architecture: amd64
@@ -10,3 +10,6 @@ Description: pullDB database restore tooling
  pullDB retrieves production backups and restores them into development
  environments. This package installs the system scaffolding, service
  templates, and installer used to configure the worker daemon.
+ .
+ Fresh installations automatically create the database schema and an
+ initial admin user with a randomly generated password.

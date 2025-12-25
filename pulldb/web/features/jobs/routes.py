@@ -272,3 +272,203 @@ async def cancel_job(
     else:
         # Cancellation was already requested or job state changed
         return redirect_error("Cancellation already requested or job completed")
+
+
+@router.get("/api/paginated")
+async def api_jobs_paginated(
+    request: Request,
+    view: str = Query("active", description="View: 'active' or 'history'"),
+    page: int = Query(0, ge=0, description="Page number (0-indexed)"),
+    pageSize: int = Query(50, ge=10, le=200, description="Page size"),
+    sortColumn: str | None = None,
+    sortDirection: str = "asc",
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> dict:
+    """Get paginated jobs for LazyTable.
+    
+    Returns jobs based on view (active or history) with filtering/sorting.
+    """
+    jobs = []
+    
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return {"rows": [], "totalCount": 0, "filteredCount": 0}
+    
+    # Fetch jobs based on view
+    if view == "history":
+        if hasattr(state.job_repo, "get_recent_jobs"):
+            jobs = state.job_repo.get_recent_jobs(limit=10000)  # Get all for filtering
+            # Filter to terminal statuses only
+            jobs = [j for j in jobs if j.status not in (JobStatus.QUEUED, JobStatus.RUNNING)]
+        else:
+            jobs = list(getattr(state.job_repo, "history_jobs", []))
+    else:  # active
+        if hasattr(state.job_repo, "get_active_jobs"):
+            jobs = state.job_repo.get_active_jobs()
+        else:
+            jobs = list(getattr(state.job_repo, "active_jobs", []))
+    
+    # Convert to dicts for filtering/sorting
+    all_rows = []
+    for j in jobs:
+        # Determine if user can cancel this job
+        can_cancel = False
+        if j.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+            if user.is_admin:
+                can_cancel = True
+            elif j.owner_user_id == user.user_id:
+                can_cancel = True
+            elif user.role == UserRole.MANAGER:
+                # Check if job owner is managed by this user
+                job_owner = state.user_repo.get_user_by_id(j.owner_user_id) if state.user_repo else None
+                if job_owner and job_owner.manager_id == user.user_id:
+                    can_cancel = True
+        
+        cancel_requested_at = None
+        if hasattr(state.job_repo, "get_cancel_requested_at"):
+            cancel_requested_at = state.job_repo.get_cancel_requested_at(j.id)
+        
+        all_rows.append({
+            "id": j.id,
+            "owner_user_id": j.owner_user_id,
+            "owner_username": getattr(j, "owner_username", None),
+            "owner_user_code": getattr(j, "owner_user_code", None),
+            "target": j.target,
+            "dbhost": j.dbhost,
+            "status": j.status.value if hasattr(j.status, "value") else str(j.status),
+            "submitted_at": j.submitted_at.isoformat() if j.submitted_at else None,
+            "started_at": j.started_at.isoformat() if getattr(j, "started_at", None) else None,
+            "completed_at": j.completed_at.isoformat() if getattr(j, "completed_at", None) else None,
+            "can_cancel": can_cancel,
+            "cancel_requested_at": cancel_requested_at.isoformat() if cancel_requested_at else None,
+        })
+    
+    total_count = len(all_rows)
+    
+    # Apply filters from query params
+    text_filters: dict[str, list[str]] = {}
+    date_after: dict[str, str] = {}
+    date_before: dict[str, str] = {}
+    
+    for key, value in request.query_params.items():
+        if key.startswith("filter_") and value:
+            col_key = key[7:]  # Remove "filter_" prefix
+            
+            # Handle date range filters
+            if col_key.endswith("_after"):
+                base_col = col_key[:-6]
+                date_after[base_col] = value
+                continue
+            if col_key.endswith("_before"):
+                base_col = col_key[:-7]
+                date_before[base_col] = value
+                continue
+            
+            # Text/multi-value filter
+            text_filters[col_key] = [v.strip().lower() for v in value.split(",") if v.strip()]
+    
+    if text_filters or date_after or date_before:
+        filtered = []
+        for row in all_rows:
+            match = True
+            
+            # Text filters
+            for col, vals in text_filters.items():
+                cell = str(row.get(col, "")).lower()
+                # Support wildcard patterns
+                if any("*" in v for v in vals):
+                    import fnmatch
+                    if not any(fnmatch.fnmatch(cell, v) for v in vals):
+                        match = False
+                        break
+                else:
+                    if not any(v in cell for v in vals):
+                        match = False
+                        break
+            
+            # Date range filters
+            for col, after_date in date_after.items():
+                cell_val = row.get(col)
+                if cell_val and cell_val < after_date:
+                    match = False
+                    break
+            
+            for col, before_date in date_before.items():
+                cell_val = row.get(col)
+                if cell_val and cell_val > before_date:
+                    match = False
+                    break
+            
+            if match:
+                filtered.append(row)
+        all_rows = filtered
+    
+    filtered_count = len(all_rows)
+    
+    # Apply sorting
+    sortable_cols = ("id", "owner_user_code", "status", "submitted_at", "started_at", "completed_at", "dbhost", "target")
+    if sortColumn in sortable_cols:
+        reverse = sortDirection == "desc"
+        all_rows.sort(
+            key=lambda r: (r.get(sortColumn) is None, str(r.get(sortColumn) or "").lower()),
+            reverse=reverse,
+        )
+    
+    # Paginate
+    start = page * pageSize
+    page_rows = all_rows[start:start + pageSize]
+    
+    return {
+        "rows": page_rows,
+        "totalCount": total_count,
+        "filteredCount": filtered_count,
+        "page": page,
+        "pageSize": pageSize,
+    }
+
+
+@router.get("/api/paginated/distinct")
+async def api_jobs_distinct(
+    request: Request,
+    column: str,
+    view: str = "active",
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> list:
+    """Get distinct values for a column (for filter dropdowns)."""
+    jobs = []
+    
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return []
+    
+    # Fetch jobs based on view
+    if view == "history":
+        if hasattr(state.job_repo, "get_recent_jobs"):
+            jobs = state.job_repo.get_recent_jobs(limit=10000)
+            jobs = [j for j in jobs if j.status not in (JobStatus.QUEUED, JobStatus.RUNNING)]
+        else:
+            jobs = list(getattr(state.job_repo, "history_jobs", []))
+    else:
+        if hasattr(state.job_repo, "get_active_jobs"):
+            jobs = state.job_repo.get_active_jobs()
+        else:
+            jobs = list(getattr(state.job_repo, "active_jobs", []))
+    
+    # Extract distinct values
+    values = set()
+    for j in jobs:
+        if column == "status":
+            val = j.status.value if hasattr(j.status, "value") else str(j.status)
+        elif column == "dbhost":
+            val = j.dbhost
+        elif column == "owner_user_code":
+            val = getattr(j, "owner_user_code", None)
+        elif column == "target":
+            val = j.target
+        else:
+            val = getattr(j, column, None)
+        
+        if val:
+            values.add(val)
+    
+    return sorted(values)

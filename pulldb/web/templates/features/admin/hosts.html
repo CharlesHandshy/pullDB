@@ -95,16 +95,18 @@
             <div class="modal-body">
                 <!-- Host Settings -->
                 <div class="form-section">
-                    <div class="form-group">
-                        <label for="host_alias" class="form-label required">Host Alias</label>
-                        <div class="input-with-status">
-                            <input type="text" id="host_alias" name="host_alias" class="form-input" 
-                                   placeholder="e.g., staging-db-01" required
-                                   hx-post="/web/admin/hosts/check-alias"
-                                   hx-trigger="blur changed delay:300ms"
-                                   hx-target="#alias-status"
-                                   hx-swap="innerHTML">
-                            <span id="alias-status" class="input-status"></span>
+                    <div class="form-row">
+                        <div class="form-group form-group-wide">
+                            <label for="host_alias" class="form-label required">Host Alias</label>
+                            <div class="input-with-status">
+                                <input type="text" id="host_alias" name="host_alias" class="form-input" 
+                                       placeholder="e.g., staging-01" required maxlength="30"
+                                       hx-post="/web/admin/hosts/check-alias"
+                                       hx-trigger="blur changed delay:300ms"
+                                       hx-target="#alias-status"
+                                       hx-swap="innerHTML">
+                                <span id="alias-status" class="input-status"></span>
+                            </div>
                         </div>
                     </div>
                     
@@ -130,7 +132,8 @@
                         <div class="form-group">
                             <label for="max_active_jobs" class="form-label">Queue Size</label>
                             <input type="number" id="max_active_jobs" name="max_active_jobs" class="form-input" 
-                                   value="10" min="1" max="100">
+                                   value="10" min="0" max="100">
+                            <span class="form-hint">0 = frozen</span>
                         </div>
                     </div>
                 </div>
@@ -190,7 +193,7 @@
 {% if flash_message %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    showToast('{{ flash_message }}', '{{ flash_type }}');
+    showToast({{ flash_message|tojson }}, {{ flash_type|tojson }});
     if (window.history.replaceState) {
         window.history.replaceState({}, document.title, window.location.pathname);
     }

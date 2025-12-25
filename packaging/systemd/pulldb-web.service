@@ -1,6 +1,6 @@
 [Unit]
-Description=pullDB API Service (REST API on port 8080)
-After=network.target mysql.service
+Description=pullDB Web UI Service (Web dashboard on port 8000)
+After=network.target mysql.service pulldb-api.service
 StartLimitIntervalSec=300
 StartLimitBurst=5
 
@@ -8,10 +8,9 @@ StartLimitBurst=5
 Type=simple
 WorkingDirectory=/opt/pulldb.service
 EnvironmentFile=/opt/pulldb.service/.env
-# API-only mode: disable web UI routes, use port 8080
-Environment=PULLDB_WEB_ENABLED=false
-Environment=PULLDB_API_PORT=8080
-ExecStart=/opt/pulldb.service/venv/bin/pulldb-api
+# Web-only mode: use dedicated entry point on port 8000
+Environment=PULLDB_WEB_PORT=8000
+ExecStart=/opt/pulldb.service/venv/bin/pulldb-web
 Restart=on-failure
 RestartSec=5
 User=pulldb_service
@@ -21,7 +20,6 @@ TimeoutStopSec=30
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-# ProtectHome=true
 LimitNOFILE=65535
 
 [Install]

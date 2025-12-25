@@ -90,43 +90,13 @@
     
     /* ===========================================
        SEMANTIC COLOR TOKENS
+       NOTE: These are now provided by the generated theme manifests:
+       - /static/css/generated/manifest-light.css
+       - /static/css/generated/manifest-dark.css
+       
+       Do NOT define semantic --color-* tokens here as they will
+       cause flash-of-wrong-theme during HTMX transitions.
        =========================================== */
-    
-    /* Surfaces */
-    --color-surface: white;
-    --color-surface-hover: var(--gray-50);
-    --color-surface-subtle: var(--gray-25);
-    
-    /* Backgrounds */
-    --color-bg-primary: var(--gray-50);
-    --color-bg-secondary: var(--gray-100);
-    --color-bg-subtle: var(--gray-100);
-    --color-bg-muted: var(--gray-200);
-    
-    /* Text */
-    --color-text-primary: var(--gray-900);
-    --color-text-secondary: var(--gray-600);
-    --color-text-muted: var(--gray-500);
-    --color-text-inverse: white;
-    
-    /* Borders */
-    --color-border: var(--gray-200);
-    --color-border-hover: var(--gray-300);
-    --color-border-focus: var(--primary-500);
-    
-    /* Interactive */
-    --color-primary: var(--primary-600);
-    --color-primary-hover: var(--primary-700);
-    --color-success: var(--success-600);
-    --color-warning: var(--warning-600);
-    --color-danger: var(--danger-600);
-    --color-info: var(--info-600);
-    
-    /* Input */
-    --color-input-bg: white;
-    --color-input-border: var(--gray-300);
-    --color-input-focus: var(--primary-500);
-    --color-input-focus-ring: var(--primary-100);
     
     /* ===========================================
        TYPOGRAPHY

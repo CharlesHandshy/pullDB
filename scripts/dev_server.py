@@ -297,11 +297,18 @@ def create_dev_app():
             if env != "both" and backup_env != env:
                 continue
                 
+            size_mb = round(random.uniform(50, 2000), 1)
+            # Human-readable size
+            if size_mb >= 1024:
+                size_display = f"{size_mb / 1024:.1f} GB"
+            else:
+                size_display = f"{size_mb:.1f} MB"
             backups.append({
                 "customer": customer,
                 "timestamp": timestamp,
                 "date": timestamp.strftime("%Y%m%d"),
-                "size_mb": round(random.uniform(50, 2000), 1),
+                "size_mb": size_mb,
+                "size_display": size_display,
                 "environment": backup_env,
                 "key": f"s3://backups/{backup_env}/{customer}/{timestamp.strftime('%Y%m%d_%H%M%S')}.sql.gz",
                 "bucket": f"pulldb-backups-{backup_env}",
@@ -323,7 +330,7 @@ def create_dev_app():
         for i, backup in enumerate(backups):
             badge_class = "badge-primary" if backup["environment"] == "prod" else "badge-neutral"
             timestamp_str = backup["timestamp"].strftime('%Y-%m-%d %H:%M')
-            size_str = f"{backup['size_mb']:.1f} MB"
+            size_str = backup["size_display"]
             
             rows_html += f'''
             <tr data-backup-key="{backup["key"]}" 

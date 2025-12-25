@@ -342,16 +342,16 @@ def create_pulldb_database(
     port: int,
     username: str,
     password: str,
-    database: str = "pulldb",
+    database: str = "pulldb_service",
 ) -> ProvisioningResult:
-    """Create the pulldb database if it doesn't exist.
+    """Create the pulldb_service database if it doesn't exist.
 
     Args:
         host: MySQL server hostname.
         port: MySQL port.
         username: User with CREATE DATABASE privilege.
         password: User password.
-        database: Database name (default: pulldb).
+        database: Database name (default: pulldb_service).
 
     Returns:
         ProvisioningResult indicating success or failure.
@@ -420,7 +420,7 @@ def deploy_stored_procedure(
     port: int,
     username: str,
     password: str,
-    database: str = "pulldb",
+    database: str = "pulldb_service",
     sql_file: str | Path | None = None,
 ) -> ProvisioningResult:
     """Deploy the pulldb_atomic_rename stored procedure.
@@ -577,7 +577,7 @@ def provision_host_full(
     admin_password: str,
     loader_username: str = DEFAULT_LOADER_USERNAME,
     loader_password: str | None = None,
-    database: str = "pulldb",
+    database: str = "pulldb_service",
     sql_file: str | Path | None = None,
 ) -> tuple[ProvisioningResult, dict[str, Any]]:
     """Perform full MySQL provisioning for a new host.
@@ -585,7 +585,7 @@ def provision_host_full(
     Executes all setup steps in order:
     1. Test admin connection
     2. Create pulldb_loader user
-    3. Create pulldb database
+    3. Create pulldb_service database
     4. Deploy stored procedure
 
     Args:
@@ -680,3 +680,285 @@ def provision_host_full(
             "procedure": PROCEDURE_NAME,
         },
     ), created_resources
+
+
+def sync_mysql_credentials(
+    mysql_host: str,
+    mysql_port: int,
+    current_username: str,
+    current_password: str,
+    new_username: str | None = None,
+    new_password: str | None = None,
+) -> ProvisioningResult:
+    """Sync MySQL user credentials - update password and/or rename user.
+
+    This function handles credential changes atomically:
+    - Password change: Uses ALTER USER to update password
+    - Username change: Creates new user, grants privileges, drops old user
+
+    FAIL HARD: Returns detailed errors if MySQL operations fail.
+    Does NOT touch AWS Secrets Manager - caller must handle that separately.
+
+    Args:
+        mysql_host: MySQL server hostname.
+        mysql_port: MySQL port.
+        current_username: Current username to authenticate with.
+        current_password: Current password for authentication.
+        new_username: New username (if renaming). None = keep current.
+        new_password: New password. None = keep current.
+
+    Returns:
+        ProvisioningResult with success status and details.
+    """
+    # Validate inputs
+    if new_username is None and new_password is None:
+        return ProvisioningResult(
+            success=True,
+            message="No changes requested",
+            data={"changed": False},
+        )
+
+    # First, verify we can connect with current credentials
+    test_result = test_admin_connection(
+        host=mysql_host,
+        port=mysql_port,
+        username=current_username,
+        password=current_password,
+    )
+    if not test_result.success:
+        return ProvisioningResult(
+            success=False,
+            message="Cannot connect with current credentials",
+            error=test_result.error,
+            suggestions=[
+                "Current stored credentials may be invalid",
+                "Verify the MySQL user exists and password is correct",
+                f"Test: mysql -h {mysql_host} -P {mysql_port} -u {current_username} -p",
+            ],
+        )
+
+    conn = None
+    try:
+        conn = mysql.connector.connect(
+            host=mysql_host,
+            port=mysql_port,
+            user=current_username,
+            password=current_password,
+            connect_timeout=10,
+            autocommit=True,
+        )
+        cursor = conn.cursor()
+
+        changes_made = []
+
+        # Case 1: Password change only (no username change)
+        if new_password and (new_username is None or new_username == current_username):
+            logger.info(f"Changing password for user '{current_username}'")
+            cursor.execute(
+                f"ALTER USER '{current_username}'@'%%' IDENTIFIED BY %s",
+                (new_password,),
+            )
+            cursor.execute("FLUSH PRIVILEGES")
+            changes_made.append("password")
+
+        # Case 2: Username change (with or without password change)
+        elif new_username and new_username != current_username:
+            logger.info(f"Renaming user '{current_username}' to '{new_username}'")
+            
+            password_to_use = new_password or current_password
+
+            # Check if new username already exists
+            cursor.execute(
+                "SELECT User FROM mysql.user WHERE User = %s",
+                (new_username,),
+            )
+            if cursor.fetchone():
+                return ProvisioningResult(
+                    success=False,
+                    message=f"Username '{new_username}' already exists",
+                    error="Cannot rename to an existing user",
+                    suggestions=[
+                        f"Choose a different username or drop existing user first",
+                        f"Check: SELECT User, Host FROM mysql.user WHERE User = '{new_username}';",
+                    ],
+                )
+
+            # Get current grants to replicate them
+            cursor.execute(f"SHOW GRANTS FOR '{current_username}'@'%%'")
+            grants = cursor.fetchall()
+
+            # Create new user with password
+            cursor.execute(
+                f"CREATE USER '{new_username}'@'%%' IDENTIFIED BY %s",
+                (password_to_use,),
+            )
+
+            # Replicate grants (skip the USAGE grant)
+            for grant_row in grants:
+                grant_stmt = grant_row[0]
+                # Skip USAGE grants (no real privileges)
+                if "USAGE ON" in grant_stmt:
+                    continue
+                # Replace old username with new username in grant statement
+                new_grant = grant_stmt.replace(
+                    f"TO '{current_username}'@", f"TO '{new_username}'@"
+                ).replace(
+                    f"TO `{current_username}`@", f"TO `{new_username}`@"
+                )
+                try:
+                    cursor.execute(new_grant)
+                except MySQLError as ge:
+                    logger.warning(f"Could not replicate grant: {new_grant} - {ge}")
+
+            # Drop old user
+            cursor.execute(f"DROP USER '{current_username}'@'%%'")
+            cursor.execute("FLUSH PRIVILEGES")
+
+            changes_made.append("username")
+            if new_password:
+                changes_made.append("password")
+
+        cursor.close()
+
+        return ProvisioningResult(
+            success=True,
+            message=f"MySQL credentials updated: {', '.join(changes_made)}",
+            data={
+                "changed": True,
+                "changes": changes_made,
+                "username": new_username or current_username,
+            },
+        )
+
+    except MySQLError as e:
+        error_code = e.errno if hasattr(e, "errno") else None
+
+        suggestions = []
+        if error_code == 1396:  # Operation failed for user
+            suggestions = [
+                "User operation failed - user may not exist or host mismatch",
+                f"Check: SELECT User, Host FROM mysql.user WHERE User = '{current_username}';",
+            ]
+        elif error_code == 1045:  # Access denied
+            suggestions = [
+                "Current credentials are invalid",
+                "Password may have been changed outside this system",
+            ]
+        elif error_code == 1227:  # Access denied; need SUPER privilege
+            suggestions = [
+                "User lacks privilege to modify other users",
+                "This user may need SUPER or CREATE USER privilege",
+            ]
+        else:
+            suggestions = [
+                f"MySQL error {error_code}: {e}",
+                "Check MySQL error logs for details",
+            ]
+
+        return ProvisioningResult(
+            success=False,
+            message="Failed to update MySQL credentials",
+            error=str(e),
+            error_code=error_code,
+            suggestions=suggestions,
+        )
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def drop_mysql_user(
+    mysql_host: str,
+    mysql_port: int,
+    admin_username: str,
+    admin_password: str,
+    user_to_drop: str,
+) -> ProvisioningResult:
+    """Drop a MySQL user.
+    
+    Used during full host deletion to remove the MySQL user account.
+    Connects using admin credentials (the user itself or a privileged account).
+    
+    Args:
+        mysql_host: MySQL server hostname.
+        mysql_port: MySQL port.
+        admin_username: Admin username with DROP USER privilege.
+        admin_password: Admin password.
+        user_to_drop: Username to drop.
+    
+    Returns:
+        ProvisioningResult indicating success or failure.
+    """
+    conn = None
+    try:
+        conn = mysql.connector.connect(
+            host=mysql_host,
+            port=mysql_port,
+            user=admin_username,
+            password=admin_password,
+            connect_timeout=10,
+            autocommit=True,
+        )
+        cursor = conn.cursor()
+
+        # Check if user exists first
+        cursor.execute(
+            "SELECT User FROM mysql.user WHERE User = %s",
+            (user_to_drop,),
+        )
+        if not cursor.fetchone():
+            logger.info(f"User '{user_to_drop}' does not exist, nothing to drop")
+            return ProvisioningResult(
+                success=True,
+                message=f"User '{user_to_drop}' does not exist",
+                data={"user": user_to_drop, "action": "not_found"},
+            )
+
+        # Drop the user
+        cursor.execute(f"DROP USER IF EXISTS '{user_to_drop}'@'%%'")
+        cursor.execute("FLUSH PRIVILEGES")
+        cursor.close()
+
+        logger.info(f"Dropped MySQL user '{user_to_drop}'")
+        return ProvisioningResult(
+            success=True,
+            message=f"User '{user_to_drop}' dropped successfully",
+            data={"user": user_to_drop, "action": "dropped"},
+        )
+
+    except MySQLError as e:
+        error_code = e.errno if hasattr(e, "errno") else None
+
+        suggestions = []
+        if error_code == 1045:  # Access denied
+            suggestions = [
+                "Cannot connect with provided credentials",
+                "The user may have already been deleted or password changed",
+            ]
+        elif error_code == 1227:  # Access denied; need privilege
+            suggestions = [
+                "User lacks DROP USER privilege",
+                "May need to use root or an admin account",
+            ]
+        else:
+            suggestions = [
+                f"MySQL error {error_code}: {e}",
+                "Check MySQL error logs for details",
+            ]
+
+        return ProvisioningResult(
+            success=False,
+            message="Failed to drop MySQL user",
+            error=str(e),
+            error_code=error_code,
+            suggestions=suggestions,
+        )
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass

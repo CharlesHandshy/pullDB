@@ -139,7 +139,7 @@ async def search_backups(
     """HTMX endpoint to search backups for a customer."""
     service = DiscoveryService()
     domain_backups = await run_in_threadpool(
-        service.search_backups, customer, env, None, 50
+        service.search_backups, customer, env, None, 10
     )
 
     # Convert to dicts for template, sorted by timestamp (most recent first)
@@ -149,6 +149,7 @@ async def search_backups(
             "timestamp": b.timestamp,
             "date": b.date,
             "size_mb": b.size_mb,
+            "size_display": b.size_display,
             "environment": b.environment,
             "key": b.key,
             "bucket": b.bucket,

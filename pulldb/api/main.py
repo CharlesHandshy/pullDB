@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import typing as t
 import uuid
 from datetime import UTC, datetime
@@ -14,6 +15,7 @@ import pydantic
 import uvicorn
 from fastapi import Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
+from fastapi.staticfiles import StaticFiles
 
 from pulldb.api.auth import AdminUser, AuthUser, ManagerUser, OptionalUser, validate_job_submission_user
 from pulldb.api.logic import enqueue_job, validate_job_request
@@ -51,28 +53,37 @@ if TYPE_CHECKING:
 DEFAULT_STATUS_LIMIT = 100
 MAX_STATUS_LIMIT = 1000
 
+# Web UI enabled by default, can be disabled with PULLDB_WEB_ENABLED=false
+WEB_ENABLED = os.getenv("PULLDB_WEB_ENABLED", "true").lower() in ("true", "1", "yes")
 
 app = fastapi.FastAPI(title="pullDB API Service", version="0.0.1.dev0")
 
-# Mount unified web UI router
-try:
-    from starlette.exceptions import HTTPException as StarletteHTTPException
-    from pulldb.web import (
-        router as web_router,
-        templates as web_templates,
-        SessionExpiredError,
-        PasswordResetRequiredError,
-        create_session_expired_handler,
-        create_password_reset_required_handler,
-        create_http_exception_handler,
-    )
+# Mount unified web UI router (if enabled)
+if WEB_ENABLED:
+    try:
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+        from pulldb.web import (
+            router as web_router,
+            templates as web_templates,
+            SessionExpiredError,
+            PasswordResetRequiredError,
+            create_session_expired_handler,
+            create_password_reset_required_handler,
+            create_http_exception_handler,
+        )
+        from pulldb.web.dependencies import WEB_DIR
 
-    app.include_router(web_router)
-    app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
-    app.add_exception_handler(PasswordResetRequiredError, create_password_reset_required_handler())
-    app.add_exception_handler(StarletteHTTPException, create_http_exception_handler(web_templates))
-except ImportError:
-    pass  # Web UI module not installed
+        # Mount static files for CSS, JS, fonts
+        static_dir = WEB_DIR / "static"
+        if static_dir.exists():
+            app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+        app.include_router(web_router)
+        app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
+        app.add_exception_handler(PasswordResetRequiredError, create_password_reset_required_handler())
+        app.add_exception_handler(StarletteHTTPException, create_http_exception_handler(web_templates))
+    except ImportError:
+        pass  # Web UI module not installed
 
 # Mount simulation control API if in simulation mode
 if is_simulation_mode():
@@ -176,14 +187,16 @@ def _initialize_real_state() -> APIState:
     # Create credential resolver for host lookups
     credential_resolver = CredentialResolver(config.aws_profile)
 
-    # Phase 4: Create auth repository if web UI is enabled
+    # Phase 4: Create auth repository for web UI (always enabled for both API and Web services)
     auth_repo = None
     audit_repo = None
-    if os.getenv("PULLDB_ENABLE_WEB_UI", "false").lower() == "true":
+    try:
         from pulldb.auth import AuthRepository
         from pulldb.infra.mysql import AuditRepository
         auth_repo = AuthRepository(pool)
         audit_repo = AuditRepository(pool)
+    except ImportError:
+        pass  # Auth modules not available
 
     return APIState(
         config=config,
@@ -2717,6 +2730,7 @@ async def search_backups(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the API server (REST API + optional Web UI on same port)."""
     host = os.getenv("PULLDB_API_HOST", "0.0.0.0")
     port_str = os.getenv("PULLDB_API_PORT", "8080")
     try:
@@ -2724,6 +2738,56 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError:
         port = 8080
     uvicorn.run(app, host=host, port=port)
+    return 0
+
+
+def main_web(argv: list[str] | None = None) -> int:
+    """Run the Web UI server (Web UI only, no REST API, on separate port).
+    
+    This entry point creates a minimal FastAPI app with only the web routes,
+    allowing the Web UI to run on a different port than the API.
+    """
+    # Create a separate app for web-only mode
+    web_app = fastapi.FastAPI(title="pullDB Web UI", version="0.0.1.dev0")
+    
+    try:
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+        from pulldb.web import (
+            router as web_router,
+            templates as web_templates,
+            SessionExpiredError,
+            PasswordResetRequiredError,
+            create_session_expired_handler,
+            create_password_reset_required_handler,
+            create_http_exception_handler,
+        )
+        from pulldb.web.dependencies import WEB_DIR
+
+        # Mount static files for CSS, JS, fonts
+        static_dir = WEB_DIR / "static"
+        if static_dir.exists():
+            web_app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+        web_app.include_router(web_router)
+        web_app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
+        web_app.add_exception_handler(PasswordResetRequiredError, create_password_reset_required_handler())
+        web_app.add_exception_handler(StarletteHTTPException, create_http_exception_handler(web_templates))
+    except ImportError as e:
+        print(f"Error: Web UI module not available: {e}")
+        return 1
+    
+    # Copy state initialization from main app if available
+    @web_app.on_event("startup")
+    async def startup_event() -> None:
+        web_app.state.api = _initialize_state()
+    
+    host = os.getenv("PULLDB_WEB_HOST", "0.0.0.0")
+    port_str = os.getenv("PULLDB_WEB_PORT", "8000")
+    try:
+        port = int(port_str)
+    except ValueError:
+        port = 8000
+    uvicorn.run(web_app, host=host, port=port)
     return 0
 
 

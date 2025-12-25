@@ -147,7 +147,7 @@
                     <!-- Backup search container (hidden when backup is selected) -->
                     <div id="backup-search-container">
                         <div class="backup-list-header">
-                            <span class="backup-list-title">Available Backups</span>
+                            <span class="backup-list-title" id="backup-list-title">Available Backups</span>
                             <span class="backup-list-count" id="backup-count">0 found</span>
                         </div>
                         <div class="backup-list-scroll" id="backup-list">
@@ -919,6 +919,12 @@
         selectedBackupDisplay.style.display = 'none';
         backupList.innerHTML = '<div class="customer-results-message">Loading backups...</div>';
         backupCount.textContent = 'Loading...';
+        
+        // Update title with customer name
+        const backupListTitle = document.getElementById('backup-list-title');
+        if (backupListTitle) {
+            backupListTitle.textContent = 'Available Backups for ' + selectedCustomer;
+        }
         
         const env = document.querySelector('.env-option input:checked').value;
         

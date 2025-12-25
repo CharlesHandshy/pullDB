@@ -44,6 +44,10 @@
             {% if user.is_admin %}
             <div class="nav-section">
                 <div class="nav-section-title">Administration</div>
+                <a href="/web/admin" class="nav-link {% if request.url.path == '/web/admin' %}active{% endif %}" title="Admin Dashboard">
+                    {{ icon('wrench', size='20') }}
+                    <span class="nav-label">Admin</span>
+                </a>
                 <a href="/web/jobs" class="nav-link {% if request.url.path == '/web/jobs' %}active{% endif %}" title="All Jobs">
                     {{ icon('jobs', size='20') }}
                     <span class="nav-label">All Jobs</span>

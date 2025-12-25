@@ -1270,11 +1270,11 @@ class SimulatedHostRepository:
         self, hostname: str, max_active_jobs: int, max_running_jobs: int
     ) -> None:
         """Update job limits for a host."""
-        if max_active_jobs < 1:
-            raise ValueError("max_active_jobs must be at least 1")
+        if max_active_jobs < 0:
+            raise ValueError("max_active_jobs cannot be negative")
         if max_running_jobs < 1:
             raise ValueError("max_running_jobs must be at least 1")
-        if max_running_jobs > max_active_jobs:
+        if max_active_jobs > 0 and max_running_jobs > max_active_jobs:
             raise ValueError("max_running_jobs cannot exceed max_active_jobs")
 
         with self.state.lock:

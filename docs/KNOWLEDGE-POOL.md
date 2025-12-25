@@ -487,11 +487,9 @@ if env and env.lower() not in location.name.lower():
 
 - Secrets live in development account (345321506926) only
 
-- **Required Tags** (for IAM policy compliance):
-  - All `/pulldb/*` secrets MUST be tagged with `Service=pulldb`
-  - The IAM policy `pulldb-secrets-manager-access` uses `secretsmanager:ResourceTag/Service` condition
-  - When creating new secrets, always add: `--tags Key=Service,Value=pulldb`
-  - Example: `aws secretsmanager tag-resource --secret-id /pulldb/mysql/NEW_SECRET --tags Key=Service,Value=pulldb`
+- **Required Tags** (applied automatically during host provisioning):
+  - All `/pulldb/*` secrets are tagged with `Service=pulldb`
+  - Tags are applied automatically when secrets are created via the web UI provisioning flow
 
 - **Secret Structure** (host + password only):
   - `username` comes from service-specific environment variables:
@@ -504,9 +502,11 @@ if env and env.lower() not in location.name.lower():
 - **Schema path**: `schema/pulldb_service/`
 
 - Runtime policy (`pulldb-secrets-manager-access`) should grant:
-  - `secretsmanager:GetSecretValue` and `secretsmanager:DescribeSecret` on `arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*`
+  - Full CRUD on secrets: `GetSecretValue`, `DescribeSecret`, `CreateSecret`, `DeleteSecret`, `PutSecretValue`, `UpdateSecret` on `arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*`
+  - Tagging: `TagResource`, `UntagResource` (required for CreateSecret with tags)
+  - Utility: `GetRandomPassword` (for password generation)
   - `secretsmanager:ListSecrets` with `Resource: "*"` (no condition - AWS does not support condition keys for ListSecrets per service authorization reference)
-  - `kms:Decrypt` (conditioned to Secrets Manager usage)
+  - `kms:Decrypt`, `kms:DescribeKey` (conditioned to Secrets Manager usage)
   - **Note**: ResourceTag conditions do NOT work for `ListSecrets` - AWS ignores them. Use `--filters` client-side instead.
 
 ## Machine-readable index (JSON)

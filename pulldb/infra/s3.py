@@ -209,6 +209,111 @@ class S3Client:
         resp: GetObjectOutputTypeDef = client.get_object(Bucket=bucket, Key=key)
         return resp
 
+    def list_prefixes(
+        self,
+        bucket: str,
+        prefix: str,
+        profile: str | None = None,
+        max_results: int | None = None,
+    ) -> list[str]:  # pragma: no cover - S3 wrapper
+        """Return folder names under prefix using S3 Delimiter.
+
+        Uses CommonPrefixes from list_objects_v2 with Delimiter='/' for
+        efficient folder discovery without listing all objects.
+
+        Args:
+            bucket: S3 bucket name
+            prefix: Prefix to search under (should end with '/')
+            profile: AWS profile to use
+            max_results: Maximum number of prefixes to return (None = all)
+
+        Returns:
+            List of folder names (without trailing '/')
+        """
+        client = self.get_client(profile)
+        prefixes: list[str] = []
+        continuation: str | None = None
+
+        while True:
+            params: dict[str, t.Any] = {
+                "Bucket": bucket,
+                "Prefix": prefix,
+                "Delimiter": "/",
+                "MaxKeys": 1000,
+            }
+            if continuation:
+                params["ContinuationToken"] = continuation
+
+            resp: ListObjectsV2OutputTypeDef = client.list_objects_v2(**params)
+
+            for item in resp.get("CommonPrefixes") or []:
+                p = item.get("Prefix", "")
+                if p:
+                    # Strip the base prefix and trailing '/'
+                    name = p[len(prefix) :].rstrip("/")
+                    if name:
+                        prefixes.append(name)
+                        if max_results and len(prefixes) >= max_results:
+                            return prefixes
+
+            if resp.get("IsTruncated"):
+                continuation = resp.get("NextContinuationToken")
+            else:
+                break
+
+        return prefixes
+
+    def list_keys_with_sizes(
+        self,
+        bucket: str,
+        prefix: str,
+        profile: str | None = None,
+        max_results: int | None = None,
+    ) -> list[tuple[str, int]]:  # pragma: no cover - S3 wrapper
+        """Return keys with their sizes under prefix.
+
+        Extracts Size from list_objects_v2 Contents response, avoiding
+        separate head_object calls for each key.
+
+        Args:
+            bucket: S3 bucket name
+            prefix: Prefix to search under
+            profile: AWS profile to use
+            max_results: Maximum number of results to return (None = all)
+
+        Returns:
+            List of (key, size_bytes) tuples
+        """
+        client = self.get_client(profile)
+        results: list[tuple[str, int]] = []
+        continuation: str | None = None
+
+        while True:
+            params: dict[str, t.Any] = {
+                "Bucket": bucket,
+                "Prefix": prefix,
+                "MaxKeys": 1000,
+            }
+            if continuation:
+                params["ContinuationToken"] = continuation
+
+            resp: ListObjectsV2OutputTypeDef = client.list_objects_v2(**params)
+
+            for item in resp.get("Contents") or []:
+                key = item.get("Key")
+                size = item.get("Size", 0)
+                if isinstance(key, str):
+                    results.append((key, size))
+                    if max_results and len(results) >= max_results:
+                        return results
+
+            if resp.get("IsTruncated"):
+                continuation = resp.get("NextContinuationToken")
+            else:
+                break
+
+        return results
+
 
 def discover_latest_backup(
     s3: S3Client,

@@ -241,7 +241,7 @@
 
     // Show flash message from redirect params
     {% if flash_message %}
-    showToast('{{ flash_message }}', '{{ flash_type }}');
+    showToast({{ flash_message|tojson }}, {{ flash_type|tojson }});
     // Clean URL params after showing toast
     if (window.history.replaceState) {
         const url = new URL(window.location);

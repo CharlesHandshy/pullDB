@@ -45,7 +45,14 @@ cat > /tmp/pulldb-secrets-manager-policy.json <<'POLICY'
       "Effect": "Allow",
       "Action": [
         "secretsmanager:GetSecretValue",
-        "secretsmanager:DescribeSecret"
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetRandomPassword",
+        "secretsmanager:CreateSecret",
+        "secretsmanager:DeleteSecret",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:TagResource",
+        "secretsmanager:UntagResource"
       ],
       "Resource": [
         "arn:aws:secretsmanager:us-east-1:345321506926:secret:/pulldb/mysql/*"
@@ -55,12 +62,7 @@ cat > /tmp/pulldb-secrets-manager-policy.json <<'POLICY'
       "Sid": "ListSecretsForDiscovery",
       "Effect": "Allow",
       "Action": ["secretsmanager:ListSecrets"],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "secretsmanager:ResourceTag/Service": "pulldb"
-        }
-      }
+      "Resource": "*"
     },
     {
       "Sid": "DecryptSecretsWithKMS",
