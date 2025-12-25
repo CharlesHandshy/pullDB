@@ -157,6 +157,40 @@
     const STORAGE_KEY = 'pulldb_job_autorefresh';
     const container = document.getElementById('job-details-container');
     
+    // Scroll position preservation for logs container
+    let logsWasAtBottom = true;
+    
+    // Check if logs container is scrolled to bottom (within 50px tolerance)
+    function isLogsAtBottom() {
+        const logsContainer = document.getElementById('logs-container');
+        if (!logsContainer) return true;
+        return logsContainer.scrollHeight - logsContainer.scrollTop - logsContainer.clientHeight < 50;
+    }
+    
+    // Scroll logs to bottom
+    function scrollLogsToBottom() {
+        const logsContainer = document.getElementById('logs-container');
+        if (logsContainer) {
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+    }
+    
+    // Before HTMX swap, save scroll position state
+    document.body.addEventListener('htmx:beforeSwap', function(evt) {
+        if (evt.detail.target && evt.detail.target.id === 'job-details-container') {
+            logsWasAtBottom = isLogsAtBottom();
+        }
+    });
+    
+    // After HTMX swap, restore scroll position if was at bottom
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+        if (evt.detail.target && evt.detail.target.id === 'job-details-container') {
+            if (logsWasAtBottom) {
+                scrollLogsToBottom();
+            }
+        }
+    });
+    
     // Initialize from localStorage
     function initAutoRefresh() {
         const saved = localStorage.getItem(STORAGE_KEY);
@@ -208,6 +242,9 @@
     
     // Initialize on load
     initAutoRefresh();
+    
+    // Scroll to bottom on initial page load for running jobs
+    scrollLogsToBottom();
 })();
 </script>
 {% endif %}

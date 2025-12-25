@@ -20,6 +20,7 @@ import shutil
 import tarfile
 import typing as t
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pulldb.domain.config import Config, S3BackupLocationConfig
@@ -403,6 +404,10 @@ class WorkerJobExecutor:
                     )
                     last_percent_logged = percent
 
+            # Event callback for internal workflow phases (post_sql, metadata, atomic_rename)
+            def _workflow_event_callback(event_type: str, detail: dict[str, t.Any]) -> None:
+                self._append_event(job.id, event_type, detail)
+
             workflow_spec = build_restore_workflow_spec(
                 config=self.config,
                 job=job,
@@ -412,6 +417,7 @@ class WorkerJobExecutor:
                 post_sql_conn=post_sql_conn,
                 format_tag=format_tag,  # Detected from backup contents
                 progress_callback=_restore_progress_callback,
+                event_callback=_workflow_event_callback,
             )
             self._append_event(
                 job.id,
@@ -425,7 +431,22 @@ class WorkerJobExecutor:
             # Note: orchestrate_restore_workflow internally profiles myloader, post_sql,
             # metadata, and atomic_rename phases. We wrap the entire call here for
             # the "restore" phase timing in the executor.
-            orchestrate_restore_workflow(workflow_spec)
+            workflow_result = orchestrate_restore_workflow(workflow_spec)
+
+            # Add internal workflow phase durations to profiler
+            # These phases run inside orchestrate_restore_workflow and return timing in result
+            from pulldb.worker.profiling import RestorePhase
+
+            for phase_key, phase_enum in [
+                ("post_sql_duration_seconds", RestorePhase.POST_SQL),
+                ("metadata_duration_seconds", RestorePhase.METADATA),
+                ("atomic_rename_duration_seconds", RestorePhase.ATOMIC_RENAME),
+            ]:
+                if phase_key in workflow_result:
+                    # Create phase profile with just the duration
+                    phase_profile = profiler.profile.start_phase(phase_enum)
+                    phase_profile.duration_seconds = float(workflow_result[phase_key])  # type: ignore[arg-type]
+                    phase_profile.completed_at = datetime.now(UTC)
 
             self._append_event(
                 job.id,

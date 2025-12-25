@@ -88,6 +88,7 @@ class RestoreWorkflowSpec:
     myloader_spec: MyLoaderSpec
     timeout: float | None = None
     progress_callback: Callable[[float, dict[str, Any]], None] | None = None
+    event_callback: Callable[[str, dict[str, Any]], None] | None = None
 
 
 def build_restore_workflow_spec(
@@ -103,12 +104,19 @@ def build_restore_workflow_spec(
     timeout_override: float | None = None,
     format_tag: str | None = None,
     progress_callback: Callable[[float, dict[str, Any]], None] | None = None,
+    event_callback: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> RestoreWorkflowSpec:
     """Construct :class:`RestoreWorkflowSpec` using global configuration.
 
     This helper centralizes how worker code translates configuration + job
     metadata into a ready-to-run workflow specification, ensuring new knobs
     (binary path, timeout, threads) automatically flow to myloader.
+
+    Args:
+        event_callback: Optional callback for emitting phase events. Called with
+            (event_type, detail_dict) for post_sql_started, post_sql_complete,
+            metadata_started, metadata_complete, atomic_rename_started,
+            atomic_rename_complete events.
     """
     if not job.staging_name:
         raise ValueError("job.staging_name is required to build restore workflow spec")
@@ -139,6 +147,7 @@ def build_restore_workflow_spec(
         myloader_spec=myloader_spec,
         timeout=timeout,
         progress_callback=progress_callback,
+        event_callback=event_callback,
     )
 
 
@@ -435,6 +444,11 @@ def orchestrate_restore_workflow(
             )
         result["myloader"] = myloader_result
 
+        # Helper to emit events if callback provided
+        def _emit_event(event_type: str, detail: dict[str, Any]) -> None:
+            if spec.event_callback:
+                spec.event_callback(event_type, detail)
+
         # 3. Post-SQL execution (if scripts exist in script_dir)
         logger.info(
             {
@@ -443,12 +457,20 @@ def orchestrate_restore_workflow(
                 "staging_db": staging_result.staging_db,
             }
         )
+        _emit_event("post_sql_started", {"staging_db": staging_result.staging_db})
+        post_sql_started_at = datetime.now(UTC)
         with time_operation(
             "post_sql_duration_seconds",
             MetricLabels(job_id=job.id, target=job.target, phase="post_sql"),
         ):
             post_sql_result = execute_post_sql(spec.post_sql_conn)
+        post_sql_duration = (datetime.now(UTC) - post_sql_started_at).total_seconds()
         result["post_sql"] = post_sql_result
+        result["post_sql_duration_seconds"] = post_sql_duration
+        _emit_event("post_sql_complete", {
+            "scripts_executed": len(post_sql_result.scripts_executed),
+            "duration_seconds": round(post_sql_duration, 2),
+        })
 
         restore_completed_at = datetime.now(UTC)
 
@@ -460,6 +482,8 @@ def orchestrate_restore_workflow(
                 "staging_db": staging_result.staging_db,
             }
         )
+        _emit_event("metadata_started", {"staging_db": staging_result.staging_db})
+        metadata_started_at = datetime.now(UTC)
         metadata_conn = MetadataConnectionSpec(
             staging_db=staging_result.staging_db,
             mysql_host=spec.staging_conn.mysql_host,
@@ -482,7 +506,10 @@ def orchestrate_restore_workflow(
             MetricLabels(job_id=job.id, target=job.target, phase="metadata"),
         ):
             inject_metadata_table(metadata_conn, metadata_spec)
+        metadata_duration = (datetime.now(UTC) - metadata_started_at).total_seconds()
         result["metadata"] = "injected"
+        result["metadata_duration_seconds"] = metadata_duration
+        _emit_event("metadata_complete", {"duration_seconds": round(metadata_duration, 2)})
 
         # 5. Atomic rename staging → target
         logger.info(
@@ -493,6 +520,11 @@ def orchestrate_restore_workflow(
                 "target_db": job.target,
             }
         )
+        _emit_event("atomic_rename_started", {
+            "staging_db": staging_result.staging_db,
+            "target_db": job.target,
+        })
+        rename_started_at = datetime.now(UTC)
         rename_conn = AtomicRenameConnectionSpec(
             mysql_host=spec.staging_conn.mysql_host,
             mysql_port=spec.staging_conn.mysql_port,
@@ -510,7 +542,13 @@ def orchestrate_restore_workflow(
             MetricLabels(job_id=job.id, target=job.target, phase="atomic_rename"),
         ):
             atomic_rename_staging_to_target(rename_conn, rename_spec)
+        rename_duration = (datetime.now(UTC) - rename_started_at).total_seconds()
         result["atomic_rename"] = "complete"
+        result["atomic_rename_duration_seconds"] = rename_duration
+        _emit_event("atomic_rename_complete", {
+            "target_db": job.target,
+            "duration_seconds": round(rename_duration, 2),
+        })
 
         logger.info(
             {

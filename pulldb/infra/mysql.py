@@ -182,6 +182,8 @@ class JobRepository:
                     ),
                 )
                 conn.commit()
+                # Emit queued event as first lifecycle event
+                self.append_job_event(job_id, "queued", "Job submitted")
                 return job_id
             except mysql.connector.IntegrityError as e:
                 if "idx_jobs_active_target" in str(e):
