@@ -71,14 +71,18 @@ CREATE USER IF NOT EXISTS 'pulldb_worker'@'localhost' IDENTIFIED BY 'CHANGE_ME_W
 -- auth_users: Read only (user created by API)
 GRANT SELECT ON pulldb_service.auth_users TO 'pulldb_worker'@'localhost';
 
--- jobs: Update status via mark_job_*()
+-- jobs: SELECT + UPDATE for job status management
 GRANT SELECT, UPDATE ON pulldb_service.jobs TO 'pulldb_worker'@'localhost';
 
 -- job_events: Append events
 GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_worker'@'localhost';
 
--- db_hosts: Read host config
+-- db_hosts: Read host config for claim_next_job()
 GRANT SELECT ON pulldb_service.db_hosts TO 'pulldb_worker'@'localhost';
+
+-- LOCK TABLES: Required for claim_next_job() which uses SELECT FOR UPDATE SKIP LOCKED
+-- MySQL requires this at database level, not table level
+GRANT LOCK TABLES ON pulldb_service.* TO 'pulldb_worker'@'localhost';
 
 -- settings: Full access via CLI
 GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.settings TO 'pulldb_worker'@'localhost';
