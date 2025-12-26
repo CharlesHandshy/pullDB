@@ -174,7 +174,7 @@ WHERE setting_key = 'setting_name';
 |----------|--------|---------|-------------|
 | `PULLDB_S3_BUCKET_PATH` | env, mysql | (none) | S3 path: `s3://bucket/prefix/` |
 | `PULLDB_S3_BACKUP_LOCATIONS` | env, mysql | (none) | JSON array of backup locations |
-| `PULLDB_S3ENV_DEFAULT` | env | `both` | Default S3 environment filter |
+| `PULLDB_S3ENV_DEFAULT` | env | `prod` | Default S3 environment filter |
 
 **S3 Backup Locations JSON Format:**
 ```json

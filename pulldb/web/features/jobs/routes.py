@@ -199,9 +199,13 @@ def _derive_current_phase(
     found_current = False
     for phase_id, phase_label in JOB_PHASES:
         if phase_id == current_phase:
-            state = "active" if job_status == "running" else "complete"
-            if job_status == "failed":
+            # Active state for running OR queued jobs on their respective phases
+            if job_status in ("running", "queued"):
+                state = "active"
+            elif job_status == "failed":
                 state = "failed"
+            else:
+                state = "complete"
             found_current = True
         elif found_current:
             state = "pending"

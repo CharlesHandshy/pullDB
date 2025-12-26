@@ -301,6 +301,26 @@ def _tokenize(
             i += 1
             continue
 
+        # Treat bare token as customer if it looks like a valid customer name
+        # (lowercase letters only, no = sign)
+        if re.match(r"^[a-z]+$", tok) and "=" not in tok:
+            if is_qatemplate:
+                raise CLIParseError(
+                    "Cannot specify both customer and qatemplate. Choose one."
+                )
+            if customer_id is not None:
+                raise CLIParseError(
+                    f"customer specified more than once ('{customer_id}', '{tok}')."
+                )
+            if len(tok) > MAX_CUSTOMER_LEN:
+                raise CLIParseError(
+                    f"customer exceeds maximum length of {MAX_CUSTOMER_LEN} characters "
+                    f"(got {len(tok)}). Shorten the customer name."
+                )
+            customer_id = tok
+            i += 1
+            continue
+
         raise CLIParseError(f"Unrecognized token: '{tok}'")
 
     return username, customer_id, is_qatemplate, suffix, dbhost, date, s3env, overwrite
@@ -321,7 +341,8 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
     """
     if not tokens:
         raise CLIParseError(
-            "No arguments supplied. Usage: pulldb restore customer=<id> [options]\n"
+            "No arguments supplied. Usage: pulldb restore <customer> [options]\n"
+            "  or: pulldb restore customer=<id> [options]\n"
             "  or: pulldb restore qatemplate [options]"
         )
 
@@ -331,7 +352,9 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
     # Enforce exactly one of customer or qatemplate specified
     if customer_id is None and not is_qatemplate:
         raise CLIParseError(
-            "Must specify exactly one of customer=<id> or qatemplate. None provided."
+            "Must specify a customer. Usage: pulldb restore <customer> [options]\n"
+            "  or: pulldb restore customer=<id> [options]\n"
+            "  or: pulldb restore qatemplate [options]"
         )
     if customer_id is not None and is_qatemplate:
         # Defensive; _tokenize already prevents this

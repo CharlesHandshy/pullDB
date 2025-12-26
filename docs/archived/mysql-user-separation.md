@@ -56,7 +56,7 @@ Separate MySQL users for each pullDB service component to implement least-privil
 -- API Service User Grants
 GRANT SELECT, INSERT ON pulldb_service.auth_users TO 'pulldb_api'@'localhost';
 GRANT SELECT, INSERT ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
-GRANT SELECT ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
+GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
 GRANT SELECT ON pulldb_service.db_hosts TO 'pulldb_api'@'localhost';
 GRANT SELECT ON pulldb_service.settings TO 'pulldb_api'@'localhost';
 GRANT SELECT ON pulldb_service.active_jobs TO 'pulldb_api'@'localhost';

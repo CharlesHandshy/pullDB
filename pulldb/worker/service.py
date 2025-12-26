@@ -13,17 +13,19 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import signal
 import subprocess
 import sys
 import threading
 import typing as t
+from pathlib import Path
 from types import FrameType
 
 from dotenv import load_dotenv
 
 from pulldb.domain.config import Config
-from pulldb.domain.models import JobStatus
+from pulldb.domain.models import Job, JobStatus
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.logging import get_logger
 from pulldb.infra.metrics import MetricLabels, emit_event, emit_gauge
@@ -36,6 +38,7 @@ from pulldb.infra.s3 import S3Client
 from pulldb.infra.secrets import CredentialResolver
 from pulldb.worker.executor import WorkerExecutorDependencies, WorkerJobExecutor
 from pulldb.worker.loop import MIN_POLL_INTERVAL_SECONDS, run_poll_loop
+from pulldb.worker.staging import StagingConnectionSpec, cleanup_orphaned_staging
 
 
 logger = get_logger("pulldb.worker")
@@ -147,8 +150,21 @@ def _build_job_repository(config: Config) -> t.Any:
     return JobRepository(pool)
 
 
-def _build_job_executor(config: Config, job_repo: t.Any) -> WorkerJobExecutor:
-    """Build job executor with appropriate dependencies for mode."""
+def _build_job_executor(
+    config: Config,
+    job_repo: t.Any,
+    host_repo: HostRepository | None = None,
+) -> WorkerJobExecutor:
+    """Build job executor with appropriate dependencies for mode.
+
+    Args:
+        config: Application configuration.
+        job_repo: Job repository for database operations.
+        host_repo: Optional pre-built host repository. If None, one will be created.
+
+    Returns:
+        Configured WorkerJobExecutor instance.
+    """
     if is_simulation_mode():
         from pulldb.simulation import (
             MockS3Client,
@@ -165,8 +181,11 @@ def _build_job_executor(config: Config, job_repo: t.Any) -> WorkerJobExecutor:
         )
         return WorkerJobExecutor(config=config, deps=deps)
 
-    credential_resolver = CredentialResolver(config.aws_profile)
-    host_repo = HostRepository(job_repo.pool, credential_resolver)
+    # Use provided host_repo or create a new one
+    if host_repo is None:
+        credential_resolver = CredentialResolver(config.aws_profile)
+        host_repo = HostRepository(job_repo.pool, credential_resolver)
+
     s3_profile = config.s3_aws_profile or config.aws_profile
     s3_client = S3Client(profile=s3_profile)
     deps = WorkerExecutorDependencies(
@@ -238,11 +257,95 @@ def _emit_fatal(error: Exception) -> None:
     )
 
 
-def _cleanup_zombies(job_repo: JobRepository) -> None:
+def _cleanup_zombie_work_dir(work_dir: Path, job_id: str) -> None:
+    """Cleanup work directory for a zombie job.
+
+    Removes the job's download/extraction directory to reclaim disk space.
+
+    Args:
+        work_dir: Base work directory (e.g., /mnt/data/tmp/user/pulldb-work).
+        job_id: UUID of the zombie job.
+    """
+    job_dir = work_dir / job_id
+    if not job_dir.exists():
+        return
+
+    try:
+        shutil.rmtree(job_dir)
+        logger.info(
+            f"Cleaned up zombie job work directory: {job_dir}",
+            extra={"job_id": job_id, "phase": "startup"},
+        )
+    except Exception as e:
+        logger.warning(
+            f"Failed to cleanup zombie work directory: {e}",
+            extra={"job_id": job_id, "job_dir": str(job_dir), "error": str(e)},
+        )
+
+
+def _cleanup_zombie_staging(
+    job: Job,
+    host_repo: HostRepository,
+    staging_timeout: int = 30,
+) -> None:
+    """Cleanup staging database for a zombie job.
+
+    Attempts to drop any orphaned staging databases for the zombie job's target.
+    This is best-effort - failures are logged but don't prevent job cleanup.
+
+    Args:
+        job: The zombie job to cleanup staging for.
+        host_repo: Repository to resolve host credentials.
+        staging_timeout: Timeout for staging cleanup operations.
+    """
+    try:
+        creds = host_repo.get_host_credentials(job.dbhost)
+        conn_spec = StagingConnectionSpec(
+            mysql_host=creds.host,
+            mysql_port=creds.port,
+            mysql_user=creds.username,
+            mysql_password=creds.password,
+            timeout_seconds=staging_timeout,
+        )
+        result = cleanup_orphaned_staging(conn_spec, job.target, job.id)
+        if result.orphans_dropped:
+            logger.info(
+                f"Cleaned up {len(result.orphans_dropped)} orphaned staging databases "
+                f"for zombie job {job.id}",
+                extra={
+                    "job_id": job.id,
+                    "target": job.target,
+                    "orphans": result.orphans_dropped,
+                    "phase": "startup",
+                },
+            )
+    except Exception as e:
+        # Best effort - log but don't fail zombie cleanup
+        logger.warning(
+            f"Failed to cleanup staging for zombie job {job.id}: {e}",
+            extra={"job_id": job.id, "target": job.target, "error": str(e)},
+        )
+
+
+def _cleanup_zombies(
+    job_repo: JobRepository,
+    config: Config | None = None,
+    host_repo: HostRepository | None = None,
+) -> None:
     """Detect and cleanup zombie jobs at startup.
 
     If this is the only worker process running, any jobs marked 'running'
     are zombies from a previous crash and should be marked failed.
+
+    Comprehensive cleanup includes:
+    1. Marking the job as failed (clears cancel_requested_at)
+    2. Dropping orphaned staging databases (if host_repo provided)
+    3. Removing work directories with downloaded archives (if config provided)
+
+    Args:
+        job_repo: Repository for job state queries and updates.
+        config: Optional config for work directory cleanup.
+        host_repo: Optional host repository for staging cleanup.
     """
     try:
         # Check if we are the only worker process
@@ -283,6 +386,16 @@ def _cleanup_zombies(job_repo: JobRepository) -> None:
                 f"Marking zombie job {job.id} as failed",
                 extra={"job_id": job.id, "target": job.target, "phase": "startup"},
             )
+
+            # 1. Cleanup staging databases (best effort)
+            if host_repo is not None:
+                _cleanup_zombie_staging(job, host_repo)
+
+            # 2. Cleanup work directory (best effort)
+            if config is not None:
+                _cleanup_zombie_work_dir(config.work_dir, job.id)
+
+            # 3. Mark job as failed (also clears cancel_requested_at)
             job_repo.mark_job_failed(job.id, msg)
             emit_event(
                 "worker_zombie_cleanup",
@@ -323,6 +436,8 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     stop_event = threading.Event()
     _register_signal_handlers(stop_event)
 
+    host_repo: HostRepository | None = None
+
     try:
         # 1. Bootstrap config from env
         bootstrap_config = _load_config()
@@ -341,15 +456,21 @@ def main(argv: t.Sequence[str] | None = None) -> int:
             },
         )
 
-        # 4. Build executor with full config
-        job_executor = _build_job_executor(config, job_repo)
+        # 4. Build host repository for credential resolution
+        if not is_simulation_mode():
+            credential_resolver = CredentialResolver(config.aws_profile)
+            host_repo = HostRepository(job_repo.pool, credential_resolver)
+
+        # 5. Build executor with full config (reuse host_repo)
+        job_executor = _build_job_executor(config, job_repo, host_repo)
     except Exception as exc:
         _emit_fatal(exc)
         _set_worker_active(0, "fatal")
         return 1
 
     # Cleanup zombie jobs before starting the main loop
-    _cleanup_zombies(job_repo)
+    # Pass config and host_repo for comprehensive cleanup (staging + work dirs)
+    _cleanup_zombies(job_repo, config=config, host_repo=host_repo)
 
     poll_interval = MIN_POLL_INTERVAL_SECONDS if args.oneshot else args.poll_interval
 

@@ -47,6 +47,7 @@ class JobSummary(pydantic.BaseModel):
     owner_user_id: str | None = None  # For authorization checks
     submitted_at: datetime | None = None
     started_at: datetime | None = None
+    completed_at: datetime | None = None
     staging_name: str | None = None
     current_operation: str | None = None
     dbhost: str | None = None

@@ -227,7 +227,21 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
     """Enqueue a new restore job."""
     validate_job_request(req)
 
-    user = state.user_repo.get_or_create_user(username=req.user)
+    # Get user - do NOT auto-create, user must register first
+    user = state.user_repo.get_user_by_username(username=req.user)
+    if not user:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail=f"User '{req.user}' not found. Use 'pulldb register' to create an account.",
+        )
+
+    # Check if user is disabled (pending admin approval)
+    if user.disabled:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Your account is pending approval. Contact an administrator to enable your account.",
+        )
+
     target = _construct_target(user, req)
     dbhost = _select_dbhost(state, req, user)  # Pass user for default_host
 

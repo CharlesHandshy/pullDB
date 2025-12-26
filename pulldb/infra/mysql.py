@@ -28,14 +28,14 @@ logger = logging.getLogger(__name__)
 
 _ACTIVE_JOBS_VIEW_QUERY = """
 SELECT id, owner_user_id, owner_username, owner_user_code, target,
-    status, submitted_at, started_at
+    staging_name, dbhost, status, submitted_at, started_at
 FROM active_jobs
 ORDER BY submitted_at ASC
 """
 
 _ACTIVE_JOBS_TABLE_QUERY = """
 SELECT id, owner_user_id, owner_username, owner_user_code, target,
-    status, submitted_at, started_at
+    staging_name, dbhost, status, submitted_at, started_at
 FROM jobs
 WHERE status IN ('queued','running')
 ORDER BY submitted_at ASC
@@ -542,11 +542,14 @@ class JobRepository:
         """Mark job as failed with error detail.
 
         Called by worker when job execution fails. Updates status to 'failed',
-        records completion time, and stores error message.
+        records completion time, stores error message, and clears any pending
+        cancellation request.
 
         Note:
             The worker_id column is intentionally retained after failure
             for debugging purposes (to identify which worker processed the job).
+            The cancel_requested_at is cleared since the job has reached a
+            terminal state and the cancellation is no longer relevant.
 
         Args:
             job_id: UUID of job.
@@ -558,7 +561,7 @@ class JobRepository:
                 """
                 UPDATE jobs
                 SET status = 'failed', completed_at = UTC_TIMESTAMP(6),
-                    error_detail = %s
+                    error_detail = %s, cancel_requested_at = NULL
                 WHERE id = %s
                 """,
                 (error, job_id),
@@ -1209,16 +1212,17 @@ class JobRepository:
         - At 90-day retention: ~2000-2500 events max
 
         Args:
-            retention_days: Days to retain events. Must be >= 1.
+            retention_days: Days to retain events. Must be >= 0.
+                Use 0 to delete all events for terminal jobs.
 
         Returns:
             Number of events deleted.
 
         Raises:
-            ValueError: If retention_days < 1.
+            ValueError: If retention_days < 0.
         """
-        if retention_days < 1:
-            raise ValueError("retention_days must be >= 1")
+        if retention_days < 0:
+            raise ValueError("retention_days must be >= 0")
 
         with self.pool.connection() as conn:
             cursor = conn.cursor()
@@ -1726,8 +1730,8 @@ class JobRepository:
             owner_username=row["owner_username"],
             owner_user_code=row["owner_user_code"],
             target=row["target"],
-            staging_name="",  # Not in view
-            dbhost="",  # Not in view
+            staging_name=row.get("staging_name", ""),
+            dbhost=row.get("dbhost", ""),
             status=JobStatus(row["status"]),
             submitted_at=row["submitted_at"],
             started_at=row.get("started_at"),
@@ -1949,6 +1953,26 @@ class UserRepository:
             if "user_code" in str(e):
                 raise ValueError(f"User code '{user_code}' already exists") from e
             raise
+
+    def create_user_with_code(self, username: str) -> User:
+        """Create new user with auto-generated user_code.
+
+        Unlike get_or_create_user, this method does NOT check for existing users.
+        It always attempts to create a new user. Use this for explicit registration
+        where you've already verified the user doesn't exist.
+
+        Args:
+            username: Username for the new user.
+
+        Returns:
+            Newly created User instance.
+
+        Raises:
+            ValueError: If user_code cannot be generated, username invalid,
+                or user already exists.
+        """
+        user_code = self.generate_user_code(username)
+        return self.create_user(username, user_code)
 
     def get_or_create_user(self, username: str) -> User:
         """Get existing user or create new one with generated user_code.

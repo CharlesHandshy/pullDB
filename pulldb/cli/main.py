@@ -97,6 +97,45 @@ def _get_user_info(username: str) -> tuple[str, str | None]:
     return username, None
 
 
+class UserState:
+    """User registration state for CLI gating."""
+
+    NOT_REGISTERED = "not_registered"
+    DISABLED = "disabled"
+    ENABLED = "enabled"
+
+
+def _get_user_state(username: str) -> tuple[str, str | None, bool]:
+    """Get user registration state for CLI command gating.
+
+    Args:
+        username: The username to check.
+
+    Returns:
+        Tuple of (state, user_code, has_password) where:
+        - state is one of UserState.NOT_REGISTERED, DISABLED, or ENABLED
+        - user_code is the user's code if registered, else None
+        - has_password indicates if password is set (for setpass flow)
+    """
+    try:
+        base_url, timeout = _load_api_config()
+        url = f"{base_url}/api/users/{username}"
+        response = requests_module.get(url, timeout=timeout)
+        if response.status_code == 404:
+            return UserState.NOT_REGISTERED, None, False
+        if response.status_code == 200:
+            data = response.json()
+            user_code = data.get("user_code")
+            is_disabled = data.get("is_disabled", False)
+            has_password = data.get("has_password", False)
+            if is_disabled:
+                return UserState.DISABLED, user_code, has_password
+            return UserState.ENABLED, user_code, has_password
+    except Exception:
+        pass  # On API error, allow access (fail open for connectivity issues)
+    return UserState.ENABLED, None, False
+
+
 class _APIError(RuntimeError):
     """Raised when the API returns an unexpected payload."""
 
@@ -106,8 +145,8 @@ MIN_JOB_ID_PREFIX_LENGTH = 8
 
 
 def _get_default_s3env() -> str:
-    """Get default S3 environment from PULLDB_S3ENV_DEFAULT or 'both'."""
-    return os.getenv("PULLDB_S3ENV_DEFAULT", "both")
+    """Get default S3 environment from PULLDB_S3ENV_DEFAULT or 'prod'."""
+    return os.getenv("PULLDB_S3ENV_DEFAULT", "prod")
 
 
 def _resolve_job_id(job_id_or_prefix: str) -> str:
@@ -409,6 +448,7 @@ class _JobRow(t.NamedTuple):
     user_code: str
     submitted_at: datetime | None
     started_at: datetime | None
+    completed_at: datetime | None
     staging_name: str | None
     current_operation: str | None
     dbhost: str | None
@@ -426,6 +466,7 @@ def _job_row_from_payload(payload: dict[str, t.Any]) -> _JobRow:
 
     submitted_at = _parse_iso(payload.get("submitted_at"))
     started_at = _parse_iso(payload.get("started_at"))
+    completed_at = _parse_iso(payload.get("completed_at"))
     staging_name_value = payload.get("staging_name")
     staging_name = str(staging_name_value) if staging_name_value else None
     current_operation = payload.get("current_operation")
@@ -447,6 +488,7 @@ def _job_row_from_payload(payload: dict[str, t.Any]) -> _JobRow:
         user_code=user_code,
         submitted_at=submitted_at,
         started_at=started_at,
+        completed_at=completed_at,
         staging_name=staging_name,
         current_operation=current_operation,
         dbhost=dbhost,
@@ -468,13 +510,50 @@ def cli(ctx: click.Context) -> None:
 
     When invoked without a subcommand, displays help with user identity.
 
+    Access control:
+    - Not registered: Only 'register', 'setpass', '--help', '--version' allowed
+    - Registered but disabled: Show contact admin message
+    - Registered and enabled: Full access
+
     Note: Administrative commands (settings) are available via pulldb-admin.
     """
-    if ctx.invoked_subcommand is None:
-        # Show help with user identity when no subcommand given
-        username = _get_calling_username()
-        _, user_code = _get_user_info(username)
+    # Commands that unregistered users can access
+    UNREGISTERED_ALLOWED_COMMANDS = {"register", "setpass", None}  # None = help display
 
+    username = _get_calling_username()
+    user_state, user_code, _ = _get_user_state(username)
+
+    # Store user state in context for commands that need it
+    ctx.ensure_object(dict)
+    ctx.obj["username"] = username
+    ctx.obj["user_state"] = user_state
+    ctx.obj["user_code"] = user_code
+
+    # Gate access based on user state
+    if user_state == UserState.NOT_REGISTERED:
+        if ctx.invoked_subcommand not in UNREGISTERED_ALLOWED_COMMANDS:
+            click.echo("pullDB - Database restore tool")
+            click.echo(f"User: {username} (not registered)")
+            click.echo("")
+            click.echo("You must register before using pullDB commands.")
+            click.echo("")
+            click.echo("To create an account:")
+            click.echo("  pulldb register")
+            click.echo("")
+            click.echo("After registering, contact an administrator to enable your account.")
+            ctx.exit(1)
+
+    elif user_state == UserState.DISABLED:
+        # Disabled users cannot run any commands (including register/setpass)
+        click.echo("pullDB - Database restore tool")
+        click.echo(f"User: {username} (code: {user_code})")
+        click.echo("")
+        click.echo("Your account is pending approval.")
+        click.echo("Contact an administrator to enable your account.")
+        ctx.exit(1)
+
+    # Handle no subcommand (show help)
+    if ctx.invoked_subcommand is None:
         # Display user identity
         if user_code:
             click.echo("pullDB - Database restore tool")
@@ -495,7 +574,9 @@ def restore_cmd(options: tuple[str, ...]) -> None:
 
     \b
     REQUIRED:
-      customer=<id>       Customer database to restore (lowercase letters only, max 42 chars)
+      <customer>          Customer database to restore (lowercase letters only)
+        OR
+      customer=<id>       Alternative syntax for customer
         OR
       qatemplate          Restore the QA template database
 
@@ -504,21 +585,24 @@ def restore_cmd(options: tuple[str, ...]) -> None:
       suffix=<abc>          Suffix for target database (1-3 lowercase letters)
       dbhost=<hostname>     Target database host (default: localhost)
       date=<YYYY-MM-DD>     Specific backup date (default: latest)
-      s3env=<staging|prod>  S3 environment (default: PULLDB_S3ENV_DEFAULT or both)
+      s3env=<staging|prod|both>  S3 environment (default: PULLDB_S3ENV_DEFAULT or prod)
       overwrite             Allow overwriting existing database
-      user=<username>       Override user (admin only)
+
+    \b
+    ADMIN ONLY:
+      user=<username>       Submit job on behalf of another user
 
     \b
     EXAMPLES:
+      pulldb restore actionpest
+      pulldb restore actionpest suffix=dev
+      pulldb restore actionpest date=2025-11-25
       pulldb restore customer=actionpest
-      pulldb restore customer=actionpest date=2025-11-25
-      pulldb restore customer=actionpest suffix=dev
       pulldb restore qatemplate
       pulldb restore qatemplate suffix=dev
-      pulldb restore customer=bigcorp dbhost=db2.example.com
-      pulldb restore customer=acme overwrite
-      pulldb restore customer=acme s3env=prod
-      pulldb restore --customer=acme --s3env=prod
+      pulldb restore actionpest dbhost=db2.example.com
+      pulldb restore actionpest overwrite
+      pulldb restore actionpest s3env=prod
     """
     # Step 1: Parse and validate CLI arguments
     try:
@@ -682,17 +766,24 @@ def status_cmd(
                             return dt.isoformat(timespec="seconds") if dt else "—"
 
                         # Build table for single job
-                        fields = [
+                        fields: list[tuple[str, str]] = [
                             ("STATUS", row.status),
-                            ("OPERATION", row.current_operation or "—"),
+                        ]
+                        # Only show OPERATION if job is running
+                        if row.current_operation:
+                            fields.append(("OPERATION", row.current_operation))
+                        fields.extend([
                             ("JOB_ID", row.id[:8]),
-                            ("SOURCE", row.source or "—"),
+                            ("CUSTOMER", row.source or "—"),
                             ("TARGET", row.target),
                             ("DB", row.dbhost or "—"),
                             ("USER", row.user_code),
                             ("SUBMITTED", _fmt_dt(row.submitted_at)),
                             ("STARTED", _fmt_dt(row.started_at)),
-                        ]
+                        ])
+                        # Show COMPLETED for finished jobs
+                        if row.completed_at:
+                            fields.append(("COMPLETED", _fmt_dt(row.completed_at)))
                         if wide:
                             fields.append(("STAGING", row.staging_name or "—"))
 
@@ -702,7 +793,7 @@ def status_cmd(
                     return
                 else:
                     click.echo("No jobs found for your user. Submit a restore with:")
-                    click.echo("  pullDB user=<username> customer=<id>")
+                    click.echo("  pulldb restore customer=<id>")
                     return
         except _APIError:
             # Fall through to normal listing if we can't get user's last job
@@ -744,7 +835,7 @@ def status_cmd(
     if not summaries:
         click.echo(
             "No matching jobs found. Submit a restore with:\n"
-            "  pullDB user=<username> customer=<id>"
+            "  pulldb restore customer=<id>"
         )
         return
 
@@ -914,7 +1005,7 @@ def search_cmd(args: tuple[str, ...]) -> None:
     OPTIONS:
       date=<YYYYMMDD>         Start date (show backups from this date onwards)
       limit=<N>               Maximum backups to show (default: 5)
-      s3env=<staging|prod|both>  S3 environment (default: PULLDB_S3ENV_DEFAULT or both)
+      s3env=<staging|prod|both>  S3 environment (default: PULLDB_S3ENV_DEFAULT or prod)
       json                    Output JSON instead of table
 
     \b
@@ -1565,6 +1656,76 @@ def _format_bytes(num_bytes: int) -> str:
 # See docs/KNOWLEDGE-POOL.md "CLI Architecture & Scope" for rationale.
 
 
+@cli.command("register", help="Register a new pullDB account")
+@click.option(
+    "--password",
+    prompt=True,
+    hide_input=True,
+    confirmation_prompt=True,
+    help="Password for the new account (minimum 8 characters)",
+)
+@click.pass_context
+def register_cmd(ctx: click.Context, password: str) -> None:
+    """Register a new pullDB account.
+
+    Creates a new user account with your system username. The account
+    will be created in a disabled state and must be enabled by an
+    administrator before you can submit restore jobs.
+
+    After registering:
+    1. Contact an administrator to enable your account
+    2. Once enabled, you can use 'pulldb restore' to submit jobs
+
+    Example:
+        pulldb register
+    """
+    username = ctx.obj.get("username") or _get_calling_username()
+    base_url, timeout = _load_api_config()
+
+    # Validate password minimum requirements
+    if len(password) < 8:
+        raise click.ClickException("Password must be at least 8 characters")
+
+    # Call API to register
+    url = f"{base_url}/api/auth/register"
+    payload = {
+        "username": username,
+        "password": password,
+    }
+
+    try:
+        response = requests_module.post(url, json=payload, timeout=timeout)
+
+        if response.status_code == 201:
+            data = response.json()
+            user_code = data.get("user_code", "unknown")
+            click.echo("✓ Account created successfully!")
+            click.echo("")
+            click.echo(f"  Username:  {username}")
+            click.echo(f"  User Code: {user_code}")
+            click.echo("")
+            click.echo("Your account is pending approval.")
+            click.echo("Contact an administrator to enable your account.")
+        elif response.status_code == 409:
+            raise click.ClickException(
+                f"User '{username}' already exists. "
+                "Use 'pulldb setpass' to change your password."
+            )
+        elif response.status_code == 400:
+            error_detail = response.json().get("detail", "Invalid request")
+            raise click.ClickException(f"Registration failed: {error_detail}")
+        elif response.status_code == 503:
+            raise click.ClickException(
+                "Authentication service not available. Contact an administrator."
+            )
+        else:
+            error_msg = _format_api_error(response)
+            raise click.ClickException(f"Registration failed: {error_msg}")
+
+    except RequestException as exc:
+        raise click.ClickException(f"Cannot connect to API: {exc}") from exc
+
+
 @cli.command("setpass", help="Set a new password (required after password reset)")
 @click.option(
     "--current-password",
@@ -1579,13 +1740,15 @@ def _format_bytes(num_bytes: int) -> str:
     confirmation_prompt=True,
     help="New password",
 )
-def setpass_cmd(current_password: str, new_password: str) -> None:
+@click.pass_context
+def setpass_cmd(ctx: click.Context, current_password: str, new_password: str) -> None:
     """Set a new password for the current user.
 
     This command is used to:
-    - Set initial password for new accounts
     - Change password after an admin/manager issued a password reset
     - Voluntarily change your password
+
+    If you don't have an account yet, use 'pulldb register' first.
 
     When your password has been reset by a manager or admin, you must
     use this command to set a new password before you can log in again.
@@ -1593,8 +1756,16 @@ def setpass_cmd(current_password: str, new_password: str) -> None:
     Example:
         pulldb setpass
     """
-    username = _get_calling_username()
+    username = ctx.obj.get("username") or _get_calling_username()
+    user_state = ctx.obj.get("user_state", UserState.ENABLED)
     base_url, timeout = _load_api_config()
+
+    # Check if user is registered
+    if user_state == UserState.NOT_REGISTERED:
+        raise click.ClickException(
+            f"User '{username}' is not registered. "
+            "Use 'pulldb register' to create an account first."
+        )
 
     # Validate new password minimum requirements
     if len(new_password) < 8:

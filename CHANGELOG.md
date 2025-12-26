@@ -5,6 +5,35 @@ Unreleased
 ---------
 - (no changes yet)
 
+v0.1.0 - 2025-12-26
+-------------------
+### User Registration & Access Control
+
+This release introduces self-service user registration with admin approval workflow.
+
+### Highlights
+- **Self-registration**: New `pulldb register` command for users to create accounts
+- **Gated CLI access**: Unregistered users can only use `register`, `setpass`, and `--help`
+- **Disabled-by-default**: New registrations require admin/manager approval
+- **Removed auto-create**: Users must explicitly register before submitting jobs
+- **API enhancements**: New `/api/auth/register` endpoint, extended user info response
+
+### Added
+- `pulldb register` CLI command with password setup
+- `POST /api/auth/register` endpoint for self-registration
+- `is_disabled` and `has_password` fields in user lookup API
+- `create_user_with_code()` repository method
+- CLI gating based on user registration state
+
+### Changed
+- Job submission now requires registered, enabled user (no auto-create)
+- `setpass` command validates user is registered first
+- Help text clarifies `user=` option is admin-only
+
+### Security
+- New accounts disabled until admin approval
+- Clear separation of registered vs enabled states
+
 v0.0.12 - 2025-12-24
 --------------------
 ### Package & Installation Improvements

@@ -35,10 +35,11 @@ class TestPruneLogsAPI:
 
         from pulldb.api.main import PruneLogsRequest
 
-        # days must be >= 1
-        with pytest.raises(ValidationError):
-            PruneLogsRequest(days=0)
+        # days=0 is now valid (delete all terminal job events)
+        request = PruneLogsRequest(days=0)
+        assert request.days == 0
 
+        # days must be >= 0
         with pytest.raises(ValidationError):
             PruneLogsRequest(days=-1)
 

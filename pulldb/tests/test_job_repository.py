@@ -292,8 +292,9 @@ class TestJobRepository:
         """Test that prune_job_events validates retention_days."""
         repo = JobRepository(mysql_pool)
 
-        with pytest.raises(ValueError, match="retention_days must be >= 1"):
-            repo.prune_job_events(retention_days=0)
+        # 0 is now valid (delete all events for terminal jobs)
+        # Just ensure it doesn't raise - actual deletion tested elsewhere
+        # repo.prune_job_events(retention_days=0)  # Would delete real data
 
-        with pytest.raises(ValueError, match="retention_days must be >= 1"):
+        with pytest.raises(ValueError, match="retention_days must be >= 0"):
             repo.prune_job_events(retention_days=-1)

@@ -7,6 +7,8 @@ SELECT id,
        owner_username,
        owner_user_code,
        target,
+       staging_name,
+       dbhost,
        status,
        submitted_at,
        started_at

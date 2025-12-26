@@ -167,6 +167,11 @@
         box-shadow: 0 0 0 4px var(--primary-900);
     }
     
+    .phase-step-spinner {
+        border-color: var(--primary-700);
+        border-top-color: var(--primary-300);
+    }
+    
     .phase-step-connector--pending {
         background: var(--gray-600);
     }
@@ -181,6 +186,11 @@
 [data-theme="dark"] .phase-step--active .phase-step-indicator {
     background: var(--primary-900);
     box-shadow: 0 0 0 4px var(--primary-900);
+}
+
+[data-theme="dark"] .phase-step-spinner {
+    border-color: var(--primary-700);
+    border-top-color: var(--primary-300);
 }
 
 [data-theme="dark"] .phase-step-connector--pending {

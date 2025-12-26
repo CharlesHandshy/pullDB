@@ -435,8 +435,6 @@ class WorkerJobExecutor:
 
             # Add internal workflow phase durations to profiler
             # These phases run inside orchestrate_restore_workflow and return timing in result
-            from pulldb.worker.profiling import RestorePhase
-
             for phase_key, phase_enum in [
                 ("post_sql_duration_seconds", RestorePhase.POST_SQL),
                 ("metadata_duration_seconds", RestorePhase.METADATA),

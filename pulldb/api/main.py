@@ -56,7 +56,7 @@ MAX_STATUS_LIMIT = 1000
 # Web UI enabled by default, can be disabled with PULLDB_WEB_ENABLED=false
 WEB_ENABLED = os.getenv("PULLDB_WEB_ENABLED", "true").lower() in ("true", "1", "yes")
 
-app = fastapi.FastAPI(title="pullDB API Service", version="0.0.1.dev0")
+app = fastapi.FastAPI(title="pullDB API Service", version="0.1.0")
 
 # Mount unified web UI router (if enabled)
 if WEB_ENABLED:
@@ -352,6 +352,8 @@ class UserInfoResponse(pydantic.BaseModel):
     username: str
     user_code: str
     is_admin: bool = False
+    is_disabled: bool = False
+    has_password: bool = False
 
 
 @app.get("/api/health")
@@ -375,10 +377,20 @@ async def get_user_info(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User '{username}' not found",
         )
+    
+    # Check if user has password set (for CLI registration flow)
+    has_password = False
+    if state.auth_repo:
+        has_password = await run_in_threadpool(
+            state.auth_repo.has_password, user.user_id
+        )
+    
     return UserInfoResponse(
         username=user.username,
         user_code=user.user_code,
         is_admin=user.is_admin,
+        is_disabled=user.disabled,
+        has_password=has_password,
     )
 
 
@@ -473,6 +485,96 @@ async def change_password(
         )
 
     return {"message": "Password changed successfully"}
+
+
+class RegisterRequest(pydantic.BaseModel):
+    """Request body for user self-registration."""
+
+    username: str = pydantic.Field(min_length=1)
+    password: str = pydantic.Field(min_length=8)
+
+
+class RegisterResponse(pydantic.BaseModel):
+    """Response for successful registration."""
+
+    username: str
+    user_code: str
+    message: str
+
+
+@app.post("/api/auth/register", status_code=status.HTTP_201_CREATED, response_model=RegisterResponse)
+async def register_user(
+    request: RegisterRequest,
+    state: APIState = Depends(get_api_state),
+) -> RegisterResponse:
+    """Self-register a new user account.
+
+    Creates a new user account with the given username and password.
+    The account is created in a DISABLED state and must be enabled
+    by an administrator before the user can submit jobs.
+
+    Used by CLI's `pulldb register` command.
+    """
+    from pulldb.auth.password import hash_password
+
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Check if user already exists
+    existing_user = await run_in_threadpool(
+        state.user_repo.get_user_by_username, request.username
+    )
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"User '{request.username}' already exists. Use 'pulldb setpass' to change your password.",
+        )
+
+    # Create user (generates user_code automatically)
+    try:
+        user = await run_in_threadpool(
+            state.user_repo.create_user_with_code,
+            request.username,
+        )
+    except ValueError as exc:
+        # Username validation failed (e.g., insufficient letters for user_code)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    # Set password
+    password_hash = hash_password(request.password)
+    await run_in_threadpool(
+        state.auth_repo.set_password_hash,
+        user.user_id,
+        password_hash,
+    )
+
+    # Disable the account (requires admin/manager approval)
+    await run_in_threadpool(
+        state.user_repo.disable_user,
+        user.username,  # disable_user takes username, not user_id
+    )
+
+    # Log audit event
+    if state.audit_repo:
+        await run_in_threadpool(
+            state.audit_repo.log_action,
+            actor_user_id=user.user_id,
+            action="user_self_register",
+            target_user_id=user.user_id,
+            detail=f"User {user.username} self-registered (pending approval)",
+        )
+
+    return RegisterResponse(
+        username=user.username,
+        user_code=user.user_code,
+        message="Account created successfully. Contact an administrator to enable your account.",
+    )
 
 
 @app.get("/api/status")
@@ -1131,6 +1233,14 @@ def _get_last_job_by_user(state: APIState, user_code: str) -> LastJobResponse:
     if job is None:
         return LastJobResponse(job=None, user_code=user_code)
 
+    # Derive source from options_json
+    source = None
+    if job.options_json:
+        if job.options_json.get("is_qatemplate") == "true":
+            source = "qatemplate"
+        else:
+            source = job.options_json.get("customer_id")
+
     summary = JobSummary(
         id=job.id,
         status=job.status,
@@ -1138,8 +1248,11 @@ def _get_last_job_by_user(state: APIState, user_code: str) -> LastJobResponse:
         user_code=job.owner_user_code or user_code,
         submitted_at=job.submitted_at,
         started_at=job.started_at,
+        completed_at=job.completed_at,
         staging_name=job.staging_name,
         dbhost=job.dbhost,
+        source=source,
+        current_operation=job.current_operation,
     )
     return LastJobResponse(job=summary, user_code=user_code)
 
@@ -1895,9 +2008,9 @@ class PruneLogsRequest(pydantic.BaseModel):
 
     days: int = pydantic.Field(
         default=90,
-        ge=1,
+        ge=0,
         le=365,
-        description="Retention period in days",
+        description="Retention period in days (0 = delete all terminal job events)",
     )
     dry_run: bool = pydantic.Field(
         default=False,
@@ -2809,7 +2922,7 @@ def main_web(argv: list[str] | None = None) -> int:
     allowing the Web UI to run on a different port than the API.
     """
     # Create a separate app for web-only mode
-    web_app = fastapi.FastAPI(title="pullDB Web UI", version="0.0.1.dev0")
+    web_app = fastapi.FastAPI(title="pullDB Web UI", version="0.1.0")
     
     try:
         from starlette.exceptions import HTTPException as StarletteHTTPException

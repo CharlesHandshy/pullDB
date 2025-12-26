@@ -58,7 +58,7 @@ See `schema/pulldb_service/300_mysql_users.sql` for complete grant statements.
 ```sql
 GRANT SELECT, INSERT ON pulldb_service.auth_users TO 'pulldb_api'@'localhost';
 GRANT SELECT, INSERT ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
-GRANT SELECT ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
+GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
 GRANT SELECT ON pulldb_service.db_hosts TO 'pulldb_api'@'localhost';
 GRANT SELECT ON pulldb_service.settings TO 'pulldb_api'@'localhost';
 GRANT SELECT ON pulldb_service.active_jobs TO 'pulldb_api'@'localhost';
@@ -297,6 +297,8 @@ SELECT id,
        owner_username,
        owner_user_code,
        target,
+       staging_name,
+       dbhost,
        status,
        submitted_at,
        started_at

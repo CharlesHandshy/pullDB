@@ -1,6 +1,6 @@
 # pullDB
 
-[![Release](https://img.shields.io/badge/version-0.0.11-blue)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/version-0.1.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-520%2B-success.svg)](pulldb/tests/)
@@ -66,7 +66,7 @@ See [Getting Started](docs/getting-started.md) for complete installation instruc
 
 ## Status (December 2025)
 
-**Version 0.0.11** - Phases 0-5 Complete
+**Version 0.1.0** - Phases 0-5 Complete
 
 | Phase | Features | Status |
 |-------|----------|--------|
