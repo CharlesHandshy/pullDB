@@ -1192,6 +1192,8 @@ def run_scheduled_cleanup(
 # Pattern for user databases: starts with 6-char user_code, followed by customer name
 # Optionally has _hex12 suffix for staging databases
 # Examples: jdoesacme, jdoesacme_abc123def456
+# NOTE: The user_code is exactly 6 lowercase letters, but we can't reliably extract
+# it from the name alone due to no delimiter. We use startswith() checks instead.
 USER_DB_PATTERN = re.compile(r"^([a-z]{6})([a-z]+)(_[0-9a-f]{12})?$", re.IGNORECASE)
 
 
@@ -1223,17 +1225,37 @@ def _extract_user_code(db_name: str) -> str | None:
     """Extract user_code from a database name.
 
     User codes are 6 lowercase alphabetic characters that prefix database names.
+    The database name must match the pullDB naming pattern to be considered valid.
 
     Args:
         db_name: Database name to parse.
 
     Returns:
-        Extracted user_code or None if doesn't match pattern.
+        First 6 chars (lowercase) if the name matches pullDB pattern, None otherwise.
     """
-    match = USER_DB_PATTERN.match(db_name)
-    if match:
-        return match.group(1).lower()
-    return None
+    # Must match the user database pattern first
+    if not _looks_like_user_database(db_name):
+        return None
+    
+    # Extract first 6 characters (we know they're valid letters from the pattern)
+    return db_name[:6].lower()
+
+
+def _looks_like_user_database(db_name: str) -> bool:
+    """Check if a database name looks like a pullDB user database.
+
+    Returns True if the name matches the pattern of user databases:
+    - At least 7 characters (6 user_code + 1 customer)
+    - First 6 characters are letters (the user_code)
+    - Remaining characters are alphanumeric (customer name + optional staging suffix)
+
+    Args:
+        db_name: Database name to check.
+
+    Returns:
+        True if it looks like a user database name.
+    """
+    return USER_DB_PATTERN.match(db_name) is not None
 
 
 def get_all_user_codes(user_repo: UserRepository) -> frozenset[str]:
