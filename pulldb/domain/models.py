@@ -64,6 +64,38 @@ class UserRole(Enum):
     ADMIN = "admin"
 
 
+class AdminTaskType(Enum):
+    """Admin background task types.
+
+    Values correspond to admin_tasks.task_type ENUM in database.
+
+    Attributes:
+        FORCE_DELETE_USER: Delete user with job history, optionally dropping databases.
+        SCAN_USER_ORPHANS: Scan hosts for databases belonging to deleted users.
+    """
+
+    FORCE_DELETE_USER = "force_delete_user"
+    SCAN_USER_ORPHANS = "scan_user_orphans"
+
+
+class AdminTaskStatus(Enum):
+    """Admin task status.
+
+    Values correspond to admin_tasks.status ENUM in database.
+
+    Attributes:
+        PENDING: Task queued, waiting to be claimed.
+        RUNNING: Task in progress by a worker.
+        COMPLETE: Task finished successfully.
+        FAILED: Task failed with error.
+    """
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True)
 class User:
     """User entity from auth_users table.
@@ -339,3 +371,39 @@ class UserDetail:
     complete_jobs: int
     failed_jobs: int
     active_jobs: int
+
+
+@dataclass(frozen=True)
+class AdminTask:
+    """Admin background task entity from admin_tasks table.
+
+    Represents an async admin operation like force-deleting a user with
+    database cleanup. Tasks are queued and processed by the worker service.
+
+    Attributes:
+        task_id: UUID primary key.
+        task_type: Type of task (force_delete_user, etc.).
+        status: Current task status.
+        requested_by: User ID who requested the task.
+        target_user_id: Target user for user-related tasks.
+        parameters_json: Task parameters (databases_to_drop, etc.).
+        result_json: Task results after completion.
+        created_at: Timestamp when task was created.
+        started_at: Timestamp when task execution started.
+        completed_at: Timestamp when task finished.
+        error_detail: Error message if task failed.
+        worker_id: Worker that claimed the task.
+    """
+
+    task_id: str
+    task_type: AdminTaskType
+    status: AdminTaskStatus
+    requested_by: str
+    created_at: datetime
+    target_user_id: str | None = None
+    parameters_json: dict | None = None
+    result_json: dict | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_detail: str | None = None
+    worker_id: str | None = None

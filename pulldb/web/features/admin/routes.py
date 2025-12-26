@@ -201,6 +201,287 @@ async def disable_user(
         return {"success": False, "message": str(e)}
 
 
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Delete a user and all related records. Returns JSON for AJAX calls.
+    
+    Only users with NO job history can be deleted. Users with jobs should
+    be disabled instead to preserve audit trail.
+    """
+    if user_id == admin.user_id:
+        return {"success": False, "message": "Cannot delete your own account"}
+    
+    try:
+        if hasattr(state.user_repo, "delete_user"):
+            result = state.user_repo.delete_user(user_id)
+            return {
+                "success": True,
+                "message": "User deleted successfully",
+                "details": result,
+            }
+        return {"success": False, "message": "Delete not supported"}
+    except ValueError as e:
+        return {"success": False, "message": str(e)}
+    except Exception as e:
+        return {"success": False, "message": f"Delete failed: {e}"}
+
+
+@router.get("/users/{user_id}/force-delete-preview")
+async def force_delete_preview(
+    user_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Get preview data for force-deleting a user with job history.
+    
+    Returns user info, job count, job-based databases, and live-scanned databases.
+    Live scanning finds all databases on user's accessible hosts that have
+    the user's user_code prefix - these may have no job history.
+    """
+    from pulldb.worker.cleanup import scan_databases_for_user_code
+    
+    if user_id == admin.user_id:
+        return {"success": False, "message": "Cannot delete your own account"}
+    
+    try:
+        # Get user info
+        user = state.user_repo.get_user_by_id(user_id)
+        if not user:
+            return {"success": False, "message": "User not found"}
+        
+        # Get job count
+        job_count = 0
+        if hasattr(state.job_repo, "count_jobs_by_user"):
+            job_count = state.job_repo.count_jobs_by_user(user.user_code)
+        
+        # Get unique databases from job history
+        databases_from_jobs = []
+        if hasattr(state.job_repo, "get_user_target_databases"):
+            databases_from_jobs = state.job_repo.get_user_target_databases(user_id)
+        
+        # Live scan for databases on user's accessible hosts
+        # This catches databases with no job history (deleted history, old data, etc.)
+        live_scanned_databases = []
+        scan_hosts = None
+        if hasattr(state, "host_repo") and state.host_repo:
+            # Get user's allowed hosts (or all enabled hosts if not restricted)
+            if user.allowed_hosts:
+                scan_hosts = user.allowed_hosts
+            
+            # Scan for databases with this user's code
+            try:
+                scanned_results = scan_databases_for_user_code(
+                    user_code=user.user_code,
+                    host_repo=state.host_repo,
+                    specific_hosts=scan_hosts,
+                )
+                # Convert to list of dicts
+                for hostname, db_name in scanned_results:
+                    live_scanned_databases.append({
+                        "name": db_name,
+                        "host": hostname,
+                        "source": "live_scan",
+                    })
+            except Exception as e:
+                # Log but don't fail - job-based results are still valid
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Live database scan failed for user {user.user_code}: {e}"
+                )
+        
+        # Merge databases: use live scan as authoritative, mark those also in job history
+        job_db_set = {(d["host"], d["name"]) for d in databases_from_jobs}
+        merged_databases = []
+        seen = set()
+        
+        # First add live scanned (they actually exist)
+        for db in live_scanned_databases:
+            key = (db["host"], db["name"])
+            if key not in seen:
+                seen.add(key)
+                in_history = key in job_db_set
+                merged_databases.append({
+                    "name": db["name"],
+                    "host": db["host"],
+                    "in_job_history": in_history,
+                    "exists": True,  # Live scanned means it exists
+                })
+        
+        # Then add any from job history not found in live scan
+        # These may be on hosts we couldn't scan or already deleted
+        for db in databases_from_jobs:
+            key = (db["host"], db["name"])
+            if key not in seen:
+                seen.add(key)
+                merged_databases.append({
+                    "name": db["name"],
+                    "host": db["host"],
+                    "in_job_history": True,
+                    "exists": False,  # Not found in live scan
+                })
+        
+        return {
+            "success": True,
+            "user": {
+                "user_id": user.user_id,
+                "username": user.username,
+                "user_code": user.user_code,
+            },
+            "job_count": job_count,
+            "databases": merged_databases,
+            "databases_from_jobs": len(databases_from_jobs),
+            "databases_from_scan": len(live_scanned_databases),
+        }
+    except Exception as e:
+        return {"success": False, "message": f"Preview failed: {e}"}
+
+
+@router.post("/users/{user_id}/force-delete")
+async def force_delete_user(
+    user_id: str,
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Force delete a user with job history, optionally dropping databases.
+    
+    Creates an async admin task that will be processed by the worker.
+    """
+    from pulldb.domain.models import AdminTaskType
+    from pulldb.infra.mysql import AdminTaskRepository
+    
+    if user_id == admin.user_id:
+        return {"success": False, "message": "Cannot delete your own account"}
+    
+    try:
+        # Parse JSON body
+        body = await request.json()
+        confirm_username = body.get("confirm_username", "")
+        skip_database_drops = body.get("skip_database_drops", False)
+        databases_to_drop = body.get("databases_to_drop", [])
+        
+        # Get user to validate confirm_username
+        user = state.user_repo.get_user_by_id(user_id)
+        if not user:
+            return {"success": False, "message": "User not found"}
+        
+        # Validate confirmation
+        if confirm_username != user.username:
+            return {
+                "success": False,
+                "message": f"Username confirmation doesn't match. Expected '{user.username}'",
+            }
+        
+        # Create admin task
+        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+        
+        # Build parameters
+        parameters = {
+            "target_username": user.username,
+            "target_user_code": user.user_code,
+            "databases_to_drop": [] if skip_database_drops else databases_to_drop,
+        }
+        
+        try:
+            task_id = admin_task_repo.create_task(
+                task_type=AdminTaskType.FORCE_DELETE_USER,
+                requested_by=admin.user_id,
+                target_user_id=user_id,
+                parameters=parameters,
+            )
+        except ValueError as e:
+            # A task is already running
+            return {"success": False, "message": str(e)}
+        
+        return {
+            "success": True,
+            "message": "Force delete task created",
+            "task_id": task_id,
+        }
+    except Exception as e:
+        return {"success": False, "message": f"Force delete failed: {e}"}
+
+
+@router.get("/admin-tasks/{task_id}/json")
+async def get_admin_task_json(
+    task_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Get admin task status as JSON for API polling."""
+    from pulldb.infra.mysql import AdminTaskRepository
+    
+    try:
+        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+        task = admin_task_repo.get_task(task_id)
+        
+        if not task:
+            return {"success": False, "message": "Task not found"}
+        
+        return {
+            "success": True,
+            "task": {
+                "task_id": task.task_id,
+                "task_type": task.task_type.value,
+                "status": task.status.value,
+                "requested_by": task.requested_by,
+                "target_user_id": task.target_user_id,
+                "parameters": task.parameters_json,
+                "result": task.result_json,
+                "created_at": task.created_at.isoformat() if task.created_at else None,
+                "started_at": task.started_at.isoformat() if task.started_at else None,
+                "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+                "error_detail": task.error_detail,
+            },
+        }
+    except Exception as e:
+        return {"success": False, "message": f"Failed to get task: {e}"}
+
+
+@router.get("/admin-tasks/{task_id}", response_class=HTMLResponse)
+async def get_admin_task_page(
+    request: Request,
+    task_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> Response:
+    """Render admin task status page with HTMX polling."""
+    from pulldb.infra.mysql import AdminTaskRepository
+    
+    admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+    task = admin_task_repo.get_task(task_id)
+    
+    if not task:
+        return RedirectResponse(url="/web/admin/users", status_code=303)
+    
+    # Resolve target username for display
+    target_username = None
+    if task.target_user_id:
+        target_user = state.user_repo.get_user(task.target_user_id)
+        if target_user:
+            target_username = target_user.username
+    
+    # Build enhanced parameters for template (don't mutate dataclass)
+    enhanced_params = dict(task.parameters_json) if task.parameters_json else {}
+    enhanced_params["target_username"] = target_username or task.target_user_id
+    
+    return templates.TemplateResponse(
+        "features/admin/admin_task_status.html",
+        {
+            "request": request,
+            "task": task,
+            "task_params": enhanced_params,
+            "user": admin,
+            "active_nav": "admin",
+            "breadcrumbs": get_breadcrumbs("admin_users"),
+        },
+    )
+
+
 @router.post("/users/{user_id}/role")
 async def update_user_role(
     user_id: str,
@@ -3406,6 +3687,371 @@ async def delete_orphans(
         )
     
     return RedirectResponse(url="/web/admin/", status_code=303)
+
+
+# =============================================================================
+# User Orphans (databases from deleted users)
+# =============================================================================
+
+
+@router.get("/user-orphans", response_class=HTMLResponse)
+async def user_orphans_page(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+    delete_success: int | None = None,
+    delete_error: str | None = None,
+) -> HTMLResponse:
+    """Render the user-orphan databases preview page.
+    
+    User orphans are databases that belong to users who no longer exist.
+    The user_code prefix in the database name doesn't match any user in auth_users.
+    """
+    flash_message = None
+    flash_type = None
+    if delete_success is not None:
+        flash_message = f"Successfully deleted {delete_success} orphan database(s)"
+        flash_type = "success"
+    elif delete_error:
+        flash_message = f"Orphan deletion failed: {delete_error}"
+        flash_type = "error"
+
+    return templates.TemplateResponse(
+        "features/admin/user_orphans.html",
+        {
+            "request": request,
+            "active_nav": "admin",
+            "user": user,
+            "flash_message": flash_message,
+            "flash_type": flash_type,
+            "breadcrumbs": get_breadcrumbs("admin_user_orphans"),
+        },
+    )
+
+
+@router.get("/api/user-orphan-candidates")
+async def api_user_orphan_candidates(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+    page: int = Query(0, ge=0, description="Page number (0-indexed)"),
+    pageSize: int = Query(50, ge=10, le=200, description="Page size"),
+    sortColumn: str | None = None,
+    sortDirection: str | None = None,
+) -> dict[str, Any]:
+    """Get paginated user-orphan candidates for LazyTable.
+    
+    Returns all user-orphan databases from all hosts in a flat list.
+    User orphans are databases with user_codes not in auth_users.
+    """
+    from pulldb.worker.cleanup import (
+        detect_user_orphaned_databases,
+        get_all_user_codes,
+    )
+    from datetime import datetime
+
+    # Get all valid user codes
+    valid_user_codes = frozenset()
+    if hasattr(state.user_repo, "list_users"):
+        valid_user_codes = get_all_user_codes(state.user_repo)
+
+    # Collect all user-orphans from all hosts
+    all_orphans: list[dict[str, Any]] = []
+    if hasattr(state, "host_repo") and state.host_repo:
+        hosts = state.host_repo.get_enabled_hosts()
+        for host in hosts:
+            result = detect_user_orphaned_databases(
+                dbhost=host.hostname,
+                host_repo=state.host_repo,
+                valid_user_codes=valid_user_codes,
+            )
+            # Skip hosts with connection errors
+            if isinstance(result, str):
+                continue
+            if result.error:
+                continue
+            for oc in result.orphans:
+                all_orphans.append({
+                    "database_name": oc.database_name,
+                    "dbhost": oc.dbhost,
+                    "extracted_user_code": oc.extracted_user_code,
+                    "discovered_at": oc.discovered_at.isoformat() if oc.discovered_at else None,
+                    "size_mb": oc.size_mb,
+                })
+
+    total_count = len(all_orphans)
+
+    # Extract filter params from query string
+    text_filters: dict[str, list[str]] = {}
+    date_after: dict[str, str] = {}
+    date_before: dict[str, str] = {}
+    date_columns = ["discovered_at"]
+    
+    for key, value in request.query_params.items():
+        if key.startswith("filter_") and value:
+            col_key = key[7:]  # Remove "filter_" prefix
+            
+            if col_key.endswith("_after"):
+                base_col = col_key[:-6]
+                if base_col in date_columns:
+                    date_after[base_col] = value
+                    continue
+            if col_key.endswith("_before"):
+                base_col = col_key[:-7]
+                if base_col in date_columns:
+                    date_before[base_col] = value
+                    continue
+            
+            text_filters[col_key] = [v.strip().lower() for v in value.split(',') if v.strip()]
+
+    # Apply filters
+    if text_filters or date_after or date_before:
+        filtered_orphans: list[dict[str, Any]] = []
+        for orphan_item in all_orphans:
+            match = True
+            
+            # Check text filters
+            for col_key, filter_vals in text_filters.items():
+                cell_val = str(orphan_item.get(col_key, "")).lower()
+                if not any(fv in cell_val for fv in filter_vals):
+                    match = False
+                    break
+            
+            # Check date filters
+            if match:
+                for col_key, after_str in date_after.items():
+                    cell_val = orphan_item.get(col_key)
+                    if cell_val:
+                        try:
+                            cell_dt = datetime.fromisoformat(cell_val.replace("Z", "+00:00"))
+                            after_dt = datetime.fromisoformat(after_str)
+                            if cell_dt < after_dt:
+                                match = False
+                        except (ValueError, TypeError):
+                            pass
+            
+            if match:
+                for col_key, before_str in date_before.items():
+                    cell_val = orphan_item.get(col_key)
+                    if cell_val:
+                        try:
+                            cell_dt = datetime.fromisoformat(cell_val.replace("Z", "+00:00"))
+                            before_dt = datetime.fromisoformat(before_str)
+                            if cell_dt > before_dt:
+                                match = False
+                        except (ValueError, TypeError):
+                            pass
+            
+            if match:
+                filtered_orphans.append(orphan_item)
+        
+        all_orphans = filtered_orphans
+
+    filtered_count = len(all_orphans)
+
+    # Apply sorting
+    if sortColumn and sortDirection in ("asc", "desc"):
+        reverse = (sortDirection == "desc")
+        all_orphans.sort(
+            key=lambda x: (x.get(sortColumn) is None, x.get(sortColumn) or ""),
+            reverse=reverse,
+        )
+
+    # Apply pagination
+    start_idx = page * pageSize
+    end_idx = start_idx + pageSize
+    page_data = all_orphans[start_idx:end_idx]
+
+    return {
+        "data": page_data,
+        "total": total_count,
+        "filtered": filtered_count,
+        "page": page,
+        "pageSize": pageSize,
+    }
+
+
+@router.get("/api/user-orphan-candidates/distinct")
+async def api_user_orphan_distinct_values(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+    column: str = Query(..., description="Column to get distinct values for"),
+) -> dict[str, Any]:
+    """Get distinct values for a column in user-orphan candidates.
+    
+    Used by LazyTable multi-select filters.
+    """
+    from pulldb.worker.cleanup import (
+        detect_user_orphaned_databases,
+        get_all_user_codes,
+    )
+
+    valid_user_codes = frozenset()
+    if hasattr(state.user_repo, "list_users"):
+        valid_user_codes = get_all_user_codes(state.user_repo)
+
+    all_values: set[str] = set()
+    if hasattr(state, "host_repo") and state.host_repo:
+        hosts = state.host_repo.get_enabled_hosts()
+        for host in hosts:
+            result = detect_user_orphaned_databases(
+                dbhost=host.hostname,
+                host_repo=state.host_repo,
+                valid_user_codes=valid_user_codes,
+            )
+            if isinstance(result, str) or result.error:
+                continue
+            for oc in result.orphans:
+                if column == "dbhost":
+                    all_values.add(oc.dbhost)
+                elif column == "extracted_user_code":
+                    all_values.add(oc.extracted_user_code)
+                elif column == "database_name":
+                    all_values.add(oc.database_name)
+
+    return {
+        "values": sorted(list(all_values)),
+        "column": column,
+    }
+
+
+@router.post("/user-orphans/scan")
+async def start_user_orphan_scan(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Start a background task to scan all hosts for user-orphan databases.
+    
+    Creates an async admin task that will be processed by the worker.
+    Returns immediately with task_id for status polling.
+    """
+    from pulldb.domain.models import AdminTaskType
+    from pulldb.infra.mysql import AdminTaskRepository
+    
+    try:
+        body = await request.json()
+        specific_hosts = body.get("hosts")  # Optional: limit to specific hosts
+        
+        admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+        
+        parameters = {}
+        if specific_hosts:
+            parameters["hosts"] = specific_hosts
+        
+        try:
+            task_id = admin_task_repo.create_task(
+                task_type=AdminTaskType.SCAN_USER_ORPHANS,
+                requested_by=admin.user_id,
+                target_user_id=None,
+                parameters=parameters if parameters else None,
+            )
+        except ValueError as e:
+            # A task is already running
+            return {"success": False, "message": str(e)}
+        
+        return {
+            "success": True,
+            "message": "User orphan scan task created",
+            "task_id": task_id,
+        }
+    except Exception as e:
+        return {"success": False, "message": f"Scan failed: {e}"}
+
+
+@router.post("/user-orphans/delete")
+async def delete_user_orphan(
+    dbhost: str = Form(...),
+    database_name: str = Form(...),
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Delete a user-orphan database."""
+    from pulldb.worker.cleanup import admin_delete_user_orphan_databases
+    
+    if hasattr(state, "host_repo") and state.host_repo:
+        admin_delete_user_orphan_databases(
+            dbhost=dbhost,
+            database_names=[database_name],
+            host_repo=state.host_repo,
+            admin_user=user.username,
+        )
+    
+    return RedirectResponse(
+        url="/web/admin/user-orphans?delete_success=1",
+        status_code=303,
+    )
+
+
+@router.post("/user-orphans/execute")
+async def execute_user_orphan_deletion(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Execute bulk deletion of selected user-orphan databases.
+    
+    Expects form data with selected_orphans as JSON array of 
+    [{dbhost: string, database_name: string}, ...]
+    """
+    import json
+    from pulldb.worker.cleanup import admin_delete_user_orphan_databases
+    
+    form_data = await request.form()
+    selected_orphans_json = form_data.get("selected_orphans", "[]")
+    
+    try:
+        selected_orphans = json.loads(selected_orphans_json)
+    except json.JSONDecodeError:
+        return RedirectResponse(
+            url="/web/admin/user-orphans?delete_error=Invalid+selection+format",
+            status_code=303,
+        )
+    
+    if not selected_orphans:
+        return RedirectResponse(
+            url="/web/admin/user-orphans?delete_error=No+databases+selected",
+            status_code=303,
+        )
+    
+    # Group by host for efficient deletion
+    by_host: dict[str, list[str]] = {}
+    for item in selected_orphans:
+        host = item.get("dbhost")
+        db_name = item.get("database_name")
+        if host and db_name:
+            if host not in by_host:
+                by_host[host] = []
+            by_host[host].append(db_name)
+    
+    total_deleted = 0
+    total_failed = 0
+    
+    if hasattr(state, "host_repo") and state.host_repo:
+        for dbhost, db_names in by_host.items():
+            results = admin_delete_user_orphan_databases(
+                dbhost=dbhost,
+                database_names=db_names,
+                host_repo=state.host_repo,
+                admin_user=admin.username,
+            )
+            for success in results.values():
+                if success:
+                    total_deleted += 1
+                else:
+                    total_failed += 1
+    
+    if total_failed > 0:
+        return RedirectResponse(
+            url=f"/web/admin/user-orphans?delete_success={total_deleted}&delete_error={total_failed}+databases+failed",
+            status_code=303,
+        )
+    
+    return RedirectResponse(
+        url=f"/web/admin/user-orphans?delete_success={total_deleted}",
+        status_code=303,
+    )
 
 
 # =============================================================================
