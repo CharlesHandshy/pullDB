@@ -158,6 +158,25 @@ def _default_extract_archive(archive_path: str, dest_dir: Path, job_id: str) -> 
     return extract_tar_archive(archive_path, dest_dir, job_id)
 
 
+def _get_dir_size(path: Path) -> int:
+    """Calculate total size of all files in a directory recursively.
+
+    Args:
+        path: Directory path to measure.
+
+    Returns:
+        Total size in bytes of all files under the directory.
+    """
+    total = 0
+    try:
+        for entry in path.rglob("*"):
+            if entry.is_file():
+                total += entry.stat().st_size
+    except OSError:
+        pass  # Ignore permission errors, return what we have
+    return total
+
+
 @dataclass(slots=True)
 class WorkerExecutorDependencies:
     """Repositories and shared clients required by the executor.
@@ -433,7 +452,21 @@ class WorkerJobExecutor:
             # the "restore" phase timing in the executor.
             workflow_result = orchestrate_restore_workflow(workflow_spec)
 
-            # Add internal workflow phase durations to profiler
+            # Add MYLOADER phase with throughput calculation from extracted dir size
+            myloader_result = workflow_result.get("myloader")
+            if myloader_result and hasattr(myloader_result, "duration_seconds"):
+                myloader_profile = profiler.profile.start_phase(RestorePhase.MYLOADER)
+                myloader_profile.duration_seconds = float(myloader_result.duration_seconds)
+                myloader_profile.completed_at = datetime.now(UTC)
+                # Calculate extracted directory size for accurate throughput
+                extracted_bytes = _get_dir_size(backup_dir)
+                if extracted_bytes > 0 and myloader_profile.duration_seconds > 0:
+                    myloader_profile.bytes_processed = extracted_bytes
+                    myloader_profile.bytes_per_second = (
+                        extracted_bytes / myloader_profile.duration_seconds
+                    )
+
+            # Add internal workflow phase durations to profiler (no throughput for SQL ops)
             # These phases run inside orchestrate_restore_workflow and return timing in result
             for phase_key, phase_enum in [
                 ("post_sql_duration_seconds", RestorePhase.POST_SQL),

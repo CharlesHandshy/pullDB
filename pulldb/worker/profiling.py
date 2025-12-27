@@ -66,6 +66,13 @@ class PhaseProfile:
     bytes_per_second: float | None = None
     metadata: dict[str, t.Any] = field(default_factory=dict)
 
+    @property
+    def mbps(self) -> float | None:
+        """Calculate throughput in MB/s for display."""
+        if self.bytes_per_second is None:
+            return None
+        return self.bytes_per_second / (1024 * 1024)
+
     def complete(self, bytes_processed: int | None = None) -> None:
         """Mark phase as complete and calculate duration.
 
