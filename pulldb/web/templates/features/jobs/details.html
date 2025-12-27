@@ -7,7 +7,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="job-details-container" id="job-details-container" hx-get="{{ request.url.path }}" {% if job.status.value == 'running' %}hx-trigger="every 5s"{% endif %} hx-select=".job-details-container" hx-swap="outerHTML">
+<div class="job-details-container" id="job-details-container" hx-get="{{ request.url.path }}" {% if job.status.value in ['running', 'queued'] %}hx-trigger="every 5s"{% endif %} hx-select=".job-details-container" hx-swap="outerHTML">
     {% if flash_message %}
     <div class="alert alert-{{ flash_type or 'info' }} mb-4">
         {{ flash_message }}
@@ -131,7 +131,7 @@
     <div class="card card-padding">
         <div class="logs-header">
             <h3 class="card-header">Logs</h3>
-            {% if job.status.value == 'running' %}
+            {% if job.status.value in ['running', 'queued'] %}
             <button type="button" class="btn btn-secondary btn-sm" id="auto-refresh-toggle" onclick="toggleAutoRefresh()">
                 <span id="refresh-icon">⏸</span> <span id="refresh-label">Pause</span>
             </button>
@@ -151,7 +151,7 @@
     </div>
 </div>
 
-{% if job.status.value == 'running' %}
+{% if job.status.value in ['running', 'queued'] %}
 <script>
 (function() {
     const STORAGE_KEY = 'pulldb_job_autorefresh';
@@ -183,10 +183,18 @@
     });
     
     // After HTMX swap, restore scroll position if was at bottom
+    // Also check if job completed (no more hx-trigger attribute)
     document.body.addEventListener('htmx:afterSwap', function(evt) {
         if (evt.detail.target && evt.detail.target.id === 'job-details-container') {
             if (logsWasAtBottom) {
                 scrollLogsToBottom();
+            }
+            
+            // Check if polling stopped (job completed/failed)
+            const newContainer = document.getElementById('job-details-container');
+            if (newContainer && !newContainer.hasAttribute('hx-trigger')) {
+                // Job is no longer active - show completion message
+                console.log('Job finished - polling stopped');
             }
         }
     });

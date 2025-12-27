@@ -1,0 +1,92 @@
+name: Visual Baseline Upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for updating baselines'
+        required: true
+        default: 'Initial baseline capture'
+  push:
+    branches:
+      - main
+    paths:
+      - 'pulldb/web/static/css/**'
+      - 'pulldb/web/templates/**'
+
+jobs:
+  upload-baselines:
+    name: Capture and Upload Visual Baselines
+    runs-on: ubuntu-latest
+    
+    env:
+      AWS_VISUAL_BASELINE_BUCKET: pulldb-visual-baselines
+      AWS_REGION: us-east-1
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+          pip install playwright pillow boto3
+          playwright install chromium
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Start pullDB server
+        run: |
+          # Start the dev server in background
+          python scripts/dev_server.py &
+          
+          # Wait for server to be ready
+          timeout 60 bash -c 'until curl -s http://127.0.0.1:8000/web/auth/login > /dev/null; do sleep 1; done'
+          echo "Server is ready"
+        env:
+          PULLDB_DATABASE_URL: ${{ secrets.PULLDB_TEST_DATABASE_URL }}
+      
+      - name: Capture and upload baselines
+        run: |
+          pytest tests/test_css_visual_regression.py -v --update-baselines -x
+        env:
+          PULLDB_TEST_BASE_URL: http://127.0.0.1:8000
+          PULLDB_TEST_USERNAME: ${{ secrets.PULLDB_TEST_USERNAME }}
+          PULLDB_TEST_PASSWORD: ${{ secrets.PULLDB_TEST_PASSWORD }}
+          AWS_VISUAL_BASELINE_BUCKET: ${{ env.AWS_VISUAL_BASELINE_BUCKET }}
+      
+      - name: Upload screenshots as artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: visual-baselines
+          path: tests/visual_screenshots/
+          retention-days: 30
+      
+      - name: Summary
+        run: |
+          echo "## Visual Baselines Updated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Reason:** ${{ github.event.inputs.reason || 'Automated update from CSS/template change' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Pages captured:**" >> $GITHUB_STEP_SUMMARY
+          echo "- login (light/dark)" >> $GITHUB_STEP_SUMMARY
+          echo "- dashboard (light/dark)" >> $GITHUB_STEP_SUMMARY
+          echo "- restore (light/dark)" >> $GITHUB_STEP_SUMMARY
+          echo "- jobs_list (light/dark)" >> $GITHUB_STEP_SUMMARY
+          echo "- admin (light/dark)" >> $GITHUB_STEP_SUMMARY
+          echo "- profile (light/dark)" >> $GITHUB_STEP_SUMMARY

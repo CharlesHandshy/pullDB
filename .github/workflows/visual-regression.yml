@@ -1,0 +1,121 @@
+name: Visual Regression
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'feature/**'
+
+jobs:
+  visual-regression:
+    name: Visual Regression Tests
+    runs-on: ubuntu-latest
+    
+    env:
+      AWS_VISUAL_BASELINE_BUCKET: pulldb-visual-baselines
+      AWS_REGION: us-east-1
+      VISUAL_THRESHOLD: '0'  # Strict 0% tolerance (change to 0.001 for 0.1% if needed)
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+          pip install playwright pillow boto3
+          playwright install chromium
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Start pullDB server
+        run: |
+          # Start the dev server in background
+          python scripts/dev_server.py &
+          
+          # Wait for server to be ready
+          timeout 60 bash -c 'until curl -s http://127.0.0.1:8000/web/auth/login > /dev/null; do sleep 1; done'
+          echo "Server is ready"
+        env:
+          PULLDB_DATABASE_URL: ${{ secrets.PULLDB_TEST_DATABASE_URL }}
+      
+      - name: Run visual regression tests
+        run: |
+          pytest tests/test_css_visual_regression.py -v --tb=short
+        env:
+          PULLDB_TEST_BASE_URL: http://127.0.0.1:8000
+          PULLDB_TEST_USERNAME: ${{ secrets.PULLDB_TEST_USERNAME }}
+          PULLDB_TEST_PASSWORD: ${{ secrets.PULLDB_TEST_PASSWORD }}
+          AWS_VISUAL_BASELINE_BUCKET: ${{ env.AWS_VISUAL_BASELINE_BUCKET }}
+          VISUAL_THRESHOLD: ${{ env.VISUAL_THRESHOLD }}
+      
+      - name: Upload diff images on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: visual-regression-diffs
+          path: |
+            tests/visual_diffs/
+            tests/visual_screenshots/
+          retention-days: 7
+      
+      - name: Comment on PR with diff images
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            const diffDir = 'tests/visual_diffs';
+            let comment = '## ⚠️ Visual Regression Detected\n\n';
+            comment += 'The following pages have visual differences from the baseline:\n\n';
+            
+            if (fs.existsSync(diffDir)) {
+              const files = fs.readdirSync(diffDir);
+              files.forEach(file => {
+                if (file.endsWith('.png')) {
+                  const pageName = file.replace('diff_', '').replace('.png', '');
+                  comment += `- \`${pageName}\`\n`;
+                }
+              });
+            }
+            
+            comment += '\n**To review:** Download the `visual-regression-diffs` artifact from the workflow run.\n\n';
+            comment += '**To update baselines:** Trigger the "Visual Baseline Upload" workflow manually.\n';
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Visual Regression Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Threshold:** ${VISUAL_THRESHOLD}%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -d "tests/visual_diffs" ] && [ "$(ls -A tests/visual_diffs 2>/dev/null)" ]; then
+            echo "### ❌ Differences Found" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            for f in tests/visual_diffs/*.png; do
+              [ -e "$f" ] && echo "- $(basename $f)" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "### ✅ All pages match baselines" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,0 +1,824 @@
+/* =================================================================
+   pullDB Alert Component
+   HCA Layer: features
+   
+   Purpose: Alerts, toasts, banners, and notification messages.
+   Depends: design-tokens.css
+   
+   BEM Structure:
+   - .alert (Block)
+   - .alert__icon (Element)
+   - .alert__content (Element)
+   - .alert__action (Element)
+   - .alert--{variant} (Modifier: success, warning, danger, info)
+   
+   - .toast (Block)
+   - .toast--{variant} (Modifier: success, error, info)
+   
+   Legacy Compatibility:
+   - .alert-success, .alert-warning, etc. map to BEM modifiers
+   - .toast-success, .toast-error map to BEM modifiers
+   ================================================================= */
+
+/* ===========================================
+   BASE ALERT
+   =========================================== */
+
+.alert {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
+    border: 1px solid transparent;
+}
+
+.alert svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+/* Alert with action button */
+.alert--action,
+.alert-action {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.alert--action .alert__content,
+.alert-action .alert-content {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+/* ===========================================
+   ALERT VARIANTS
+   =========================================== */
+
+/* Success */
+.alert--success,
+.alert-success {
+    background: var(--success-50);
+    border-color: var(--success-200);
+    color: var(--success-800);
+}
+
+.alert--success svg,
+.alert-success svg {
+    color: var(--success-500);
+}
+
+/* Warning */
+.alert--warning,
+.alert-warning {
+    background: var(--warning-50);
+    border-color: var(--warning-200);
+    color: var(--warning-800);
+}
+
+.alert--warning svg,
+.alert-warning svg {
+    color: var(--warning-500);
+}
+
+/* Danger */
+.alert--danger,
+.alert-danger {
+    background: var(--danger-100);
+    border-color: var(--danger-300);
+    color: var(--danger-800);
+}
+
+.alert--danger svg,
+.alert-danger svg {
+    color: var(--danger-600);
+}
+
+.alert--danger a,
+.alert-danger a {
+    color: var(--danger-700);
+}
+
+/* Buttons inside alerts should retain their own colors */
+.alert--danger .btn,
+.alert-danger .btn {
+    color: white;
+}
+
+/* Info */
+.alert--info,
+.alert-info {
+    background: var(--info-50);
+    border-color: var(--info-200);
+    color: var(--info-800);
+}
+
+.alert--info svg,
+.alert-info svg {
+    color: var(--info-500);
+}
+
+/* ===========================================
+   TOAST CONTAINER
+   =========================================== */
+
+.toast-container {
+    position: fixed;
+    bottom: var(--space-6);
+    right: var(--space-6);
+    z-index: var(--z-toast);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+/* ===========================================
+   BASE TOAST
+   =========================================== */
+
+.toast {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-md);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 300px;
+    animation: slideIn 0.3s ease-out;
+}
+
+/* ===========================================
+   TOAST VARIANTS
+   =========================================== */
+
+/* Success */
+.toast--success,
+.toast-success {
+    border-left: 4px solid var(--success-500);
+}
+
+/* Error */
+.toast--error,
+.toast-error {
+    border-left: 4px solid var(--danger-500);
+}
+
+/* Info */
+.toast--info,
+.toast-info {
+    border-left: 4px solid var(--primary-500);
+}
+
+/* Warning */
+.toast--warning {
+    border-left: 4px solid var(--warning-500);
+}
+
+/* ===========================================
+   TOAST ANIMATIONS
+   =========================================== */
+
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+.toast.is-leaving {
+    animation: fadeOut 0.3s ease-out forwards;
+}
+
+/* ===========================================
+   INFO BANNER
+   =========================================== */
+
+.info-banner {
+    display: flex;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    background: var(--info-50);
+    border: 1px solid var(--info-200);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-6);
+    align-items: flex-start;
+}
+
+.info-icon {
+    flex-shrink: 0;
+    padding-top: 2px;
+}
+
+.info-icon svg {
+    width: 20px;
+    height: 20px;
+    color: var(--info-600);
+}
+
+.info-content p {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--info-800);
+    line-height: var(--leading-normal);
+}
+
+/* ===========================================
+   WARNING BOX (Destructive operation preview)
+   =========================================== */
+
+.warning-box {
+    background: var(--danger-50);
+    border: 1px solid var(--danger-200);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+}
+
+.warning-box svg {
+    flex-shrink: 0;
+    color: var(--danger-600);
+}
+
+.warning-box-title {
+    font-weight: var(--font-semibold);
+    color: var(--danger-700);
+    margin-bottom: var(--space-1);
+}
+
+.warning-box-text {
+    color: var(--danger-600);
+    font-size: var(--text-sm);
+}
+
+/* ===========================================
+   NO HOSTS BANNER
+   =========================================== */
+
+.no-hosts-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--warning-50);
+    border: 1px solid var(--warning-200);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
+    color: var(--warning-800);
+}
+
+.no-hosts-banner svg {
+    width: 20px;
+    height: 20px;
+    color: var(--warning-500);
+    flex-shrink: 0;
+}
+
+/* ===========================================
+   INFO SUBTEXT (used in settings)
+   =========================================== */
+
+.info-subtext {
+    margin-top: var(--space-2) !important;
+    font-size: 0.8125rem !important;
+    color: var(--info-700) !important;
+}
+
+/* ===========================================
+   LIVE INDICATOR
+   =========================================== */
+
+.live-indicator {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--success-500);
+    border-radius: var(--radius-full);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* ===========================================
+   SPINNER / LOADING INDICATOR
+   =========================================== */
+
+.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--gray-200);
+    border-top-color: var(--primary-600);
+    border-radius: var(--radius-full);
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* HTMX Loading States */
+.htmx-indicator {
+    opacity: 0;
+    transition: opacity var(--transition-base);
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    opacity: 1;
+}
+
+/* ===========================================
+   PROVISION STATUS (Host setup)
+   =========================================== */
+
+.provision-status {
+    margin-top: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--gray-200);
+}
+
+.provision-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-height: 180px;
+    overflow-y: auto;
+    padding: var(--space-2);
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+}
+
+.provision-step {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+}
+
+.provision-step.pending {
+    color: var(--color-text-muted);
+}
+
+.provision-step.running {
+    background: var(--primary-50);
+    color: var(--primary-700);
+}
+
+.provision-step.success {
+    background: var(--success-50);
+    color: var(--success-700);
+}
+
+.provision-step.error {
+    background: var(--danger-50);
+    color: var(--danger-700);
+}
+
+.provision-step-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.provision-step-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.provision-step.running .provision-step-icon svg {
+    animation: spin 1s linear infinite;
+}
+
+.provision-step-text {
+    flex: 1;
+}
+
+.provision-step-details {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+}
+
+.provision-message {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+}
+
+.provision-message.success {
+    background: var(--success-50);
+    color: var(--success-700);
+    border: 1px solid var(--success-200);
+}
+
+.provision-message.error {
+    background: var(--danger-50);
+    color: var(--danger-700);
+    border: 1px solid var(--danger-200);
+}
+
+/* ===========================================
+   STATUS BAR (Host list summary)
+   =========================================== */
+
+.status-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--gray-200);
+}
+
+.status-item {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+}
+
+.status-item svg {
+    width: 14px;
+    height: 14px;
+}
+
+.status-count {
+    font-weight: var(--font-semibold);
+    font-family: var(--font-mono);
+}
+
+.status-enabled { color: var(--success-600); }
+.status-disabled { color: var(--gray-400); }
+.status-active { color: var(--primary-600); }
+
+.status-divider {
+    width: 1px;
+    height: 16px;
+    background: var(--gray-300);
+}
+
+/* Status bar tooltips */
+.status-item[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    font-size: var(--text-2xs);
+    font-weight: var(--font-medium);
+    white-space: nowrap;
+    color: white;
+    background: var(--gray-800);
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--transition-fast);
+    pointer-events: none;
+    z-index: 10;
+}
+
+.status-item[data-tooltip]::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: var(--gray-800);
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--transition-fast);
+    pointer-events: none;
+    z-index: 10;
+}
+
+.status-item[data-tooltip]:hover::after,
+.status-item[data-tooltip]:hover::before {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ===========================================
+   GENERAL TOOLTIP PATTERN
+   =========================================== */
+
+[data-tooltip] {
+    position: relative;
+}
+
+[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    font-size: var(--text-2xs);
+    font-weight: var(--font-medium);
+    white-space: nowrap;
+    color: white;
+    background: var(--gray-800);
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--transition-fast);
+    pointer-events: none;
+    z-index: 10;
+}
+
+[data-tooltip]::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: var(--gray-800);
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--transition-fast);
+    pointer-events: none;
+    z-index: 10;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:hover::before {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ===========================================
+   DARK MODE
+   Co-located dark theme overrides
+   =========================================== */
+
+/* Alert variants dark mode - use semantic color tokens from generated theme */
+[data-theme="dark"] .alert--success,
+[data-theme="dark"] .alert-success {
+    background: var(--color-success-bg);
+    border-color: var(--color-success-border);
+    color: var(--success-300);
+}
+
+[data-theme="dark"] .alert--success svg,
+[data-theme="dark"] .alert-success svg {
+    color: var(--color-success);
+}
+
+[data-theme="dark"] .alert--warning,
+[data-theme="dark"] .alert-warning {
+    background: var(--color-warning-bg);
+    border-color: var(--color-warning-border);
+    color: var(--warning-300);
+}
+
+[data-theme="dark"] .alert--warning svg,
+[data-theme="dark"] .alert-warning svg {
+    color: var(--color-warning);
+}
+
+[data-theme="dark"] .alert--danger,
+[data-theme="dark"] .alert-danger {
+    background: var(--color-error-bg);
+    border-color: var(--color-error-border);
+    color: var(--danger-300);
+}
+
+[data-theme="dark"] .alert--danger svg,
+[data-theme="dark"] .alert-danger svg {
+    color: var(--color-error);
+}
+
+[data-theme="dark"] .alert--danger a,
+[data-theme="dark"] .alert-danger a {
+    color: var(--danger-300);
+}
+
+[data-theme="dark"] .alert--info,
+[data-theme="dark"] .alert-info {
+    background: var(--color-info-bg);
+    border-color: var(--color-info-border);
+    color: var(--info-300);
+}
+
+[data-theme="dark"] .alert--info svg,
+[data-theme="dark"] .alert-info svg {
+    color: var(--color-info);
+}
+
+/* Toast variants dark mode */
+[data-theme="dark"] .toast-success {
+    border-left-color: var(--color-success);
+}
+
+[data-theme="dark"] .toast-error {
+    border-left-color: var(--color-error);
+}
+
+[data-theme="dark"] .toast-warning {
+    border-left-color: var(--color-warning);
+}
+
+/* Info banner dark mode */
+[data-theme="dark"] .info-banner,
+[data-theme="dark"] .settings-info-banner {
+    background: rgba(96, 165, 250, 0.1);
+    border-color: rgba(96, 165, 250, 0.3);
+}
+
+[data-theme="dark"] .info-icon svg {
+    color: var(--color-primary);
+}
+
+[data-theme="dark"] .info-content p,
+[data-theme="dark"] .settings-info-banner p {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .info-content strong,
+[data-theme="dark"] .settings-info-banner h4 {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .info-subtext {
+    color: var(--color-text-muted);
+}
+
+/* No hosts / error banner dark mode */
+[data-theme="dark"] .no-hosts-banner {
+    background: var(--color-warning-bg);
+    border-color: var(--color-warning-border);
+    color: var(--color-warning);
+}
+
+[data-theme="dark"] .no-hosts-banner-icon {
+    color: var(--color-warning);
+}
+
+[data-theme="dark"] .error-banner {
+    background: var(--color-error-bg);
+    border-color: var(--color-error-border);
+    color: var(--color-error);
+}
+
+[data-theme="dark"] .error-banner-icon {
+    color: var(--color-error);
+}
+
+/* ===========================================
+   ERROR PAGE
+   Full-page error display
+   =========================================== */
+
+.error-container {
+    max-width: 600px;
+    margin: var(--space-8) auto;
+    padding: 0 var(--space-4);
+}
+
+.error-card {
+    background: var(--color-surface);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-8);
+    text-align: center;
+}
+
+.error-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto var(--space-6);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.error-icon svg {
+    width: 40px;
+    height: 40px;
+}
+
+.error-icon.warning {
+    background: var(--warning-100);
+    color: var(--warning-600);
+}
+
+.error-icon.error {
+    background: var(--danger-100);
+    color: var(--danger-600);
+}
+
+.error-icon.info {
+    background: var(--primary-100);
+    color: var(--primary-600);
+}
+
+.error-content {
+    margin-bottom: var(--space-6);
+}
+
+.error-code {
+    font-size: 4rem;
+    font-weight: var(--font-bold);
+    color: var(--gray-300);
+    margin: 0 0 var(--space-2);
+    line-height: 1;
+}
+
+.error-message {
+    font-size: var(--text-lg);
+    color: var(--color-text-muted);
+    margin: 0;
+}
+
+.error-detail {
+    margin-top: var(--space-4);
+    padding: var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius-md);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+}
+
+.error-actions {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-3);
+    margin-top: var(--space-6);
+}
+
+.error-suggestions {
+    margin-top: var(--space-6);
+    text-align: left;
+}
+
+.error-suggestions h3 {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-3);
+}
+
+.error-suggestions ul {
+    list-style: disc;
+    padding-left: var(--space-5);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+}
+
+.error-suggestions li {
+    margin-bottom: var(--space-2);
+}
+
+.error-suggestions li:last-child {
+    margin-bottom: 0;
+}
+
+/* ===========================================
+   DARK MODE - ERROR PAGE
+   =========================================== */
+
+[data-theme="dark"] .error-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+}
+
+[data-theme="dark"] .error-code {
+    color: var(--gray-600);
+}
+
+[data-theme="dark"] .error-detail {
+    background: var(--gray-800);
+}
