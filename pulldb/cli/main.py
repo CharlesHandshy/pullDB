@@ -594,8 +594,9 @@ def restore_cmd(options: tuple[str, ...]) -> None:
 
     \b
     OPTIONS:
+      <dbhost>              Target database host (positional, after customer)
+      dbhost=<hostname>     Target database host (named parameter)
       suffix=<abc>          Suffix for target database (1-3 lowercase letters)
-      dbhost=<hostname>     Target database host (default: localhost)
       date=<YYYY-MM-DD>     Specific backup date (default: latest)
       s3env=<staging|prod|both>  S3 environment (default: PULLDB_S3ENV_DEFAULT or prod)
       overwrite             Allow overwriting existing database
@@ -607,12 +608,14 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     \b
     EXAMPLES:
       pulldb restore actionpest
+      pulldb restore actionpest dev               # dbhost as positional arg
       pulldb restore actionpest suffix=dev
       pulldb restore actionpest date=2025-11-25
       pulldb restore customer=actionpest
       pulldb restore qatemplate
+      pulldb restore qatemplate dev               # qatemplate with dbhost
       pulldb restore qatemplate suffix=dev
-      pulldb restore actionpest dbhost=db2.example.com
+      pulldb restore actionpest dbhost=dev        # dbhost as named arg
       pulldb restore actionpest overwrite
       pulldb restore actionpest s3env=prod
     """
