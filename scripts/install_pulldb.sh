@@ -332,6 +332,21 @@ run_migrations() {
   fi
 }
 
+create_cli_symlinks() {
+  info "Creating CLI symlinks in /usr/local/bin..."
+  local venv_bin="${INSTALL_PREFIX}/venv/bin"
+  
+  # Make venv and binaries accessible to all users
+  chmod 755 "${INSTALL_PREFIX}/venv" 2>/dev/null || true
+  chmod 755 "${venv_bin}" 2>/dev/null || true
+  
+  # Create symlinks for CLI tools
+  ln -sf "${venv_bin}/pulldb" /usr/local/bin/pulldb
+  ln -sf "${venv_bin}/pulldb-admin" /usr/local/bin/pulldb-admin
+  
+  info "Created symlinks: /usr/local/bin/pulldb, /usr/local/bin/pulldb-admin"
+}
+
 post_install_summary() {
   cat <<EOF
 Installation complete.
@@ -345,12 +360,16 @@ Log Directory: ${LOG_DIR}
 Work Directory: ${WORK_DIR}
 Temp Directory: ${TMP_DIR}
 
+CLI Access:
+  System-wide: pulldb --help (via /usr/local/bin symlink)
+  Direct:      ${INSTALL_PREFIX}/venv/bin/pulldb --help
+
 Next Steps:
 1. Review/edit ${INSTALL_PREFIX}/.env
 2. Verify AWS credential access: aws sts get-caller-identity --profile ${AWS_PROFILE}
 3. Confirm secret exists: aws --profile ${AWS_PROFILE} secretsmanager describe-secret --secret-id ${COORD_SECRET}
 4. Validate daemon status: systemctl status pulldb-worker.service (if enabled)
-5. Run CLI help: ${INSTALL_PREFIX}/venv/bin/pulldb --help
+5. Run CLI help: pulldb --help
 6. Tail logs (example): journalctl -u pulldb-worker -f -o cat
 
 Additional AWS guidance:
@@ -361,6 +380,7 @@ Uninstall (manual):
   systemctl stop pulldb-worker.service pulldb-api.service || true
   systemctl disable pulldb-worker.service pulldb-api.service || true
   rm -f /etc/systemd/system/pulldb-worker.service /etc/systemd/system/pulldb-api.service
+  rm -f /usr/local/bin/pulldb /usr/local/bin/pulldb-admin
   systemctl daemon-reload
   rm -rf ${INSTALL_PREFIX}
 
@@ -401,6 +421,7 @@ main() {
 
   generate_env_file ".env"
   create_virtualenv "$INSTALL_PREFIX/venv"
+  create_cli_symlinks
   validate_aws
   
   # Install dbmate and run migrations
