@@ -219,7 +219,7 @@
 }
 
 .input-status.status-credentials {
-    color: var(--amber-600);
+    color: var(--warning-600);
 }
 
 /* ===========================================

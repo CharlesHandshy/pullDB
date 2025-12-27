@@ -89,6 +89,10 @@
     --gray-900: #111827;
     --gray-950: #030712;
     
+    /* Base Colors */
+    --white: #ffffff;
+    --black: #000000;
+    
     /* ===========================================
        SEMANTIC COLOR TOKENS
        NOTE: These are now provided by the generated theme manifests:

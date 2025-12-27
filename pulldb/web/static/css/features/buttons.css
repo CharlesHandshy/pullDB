@@ -608,6 +608,93 @@
 }
 
 /* ===========================================
+   DARK MODE OVERRIDES - Additional Variants
+   =========================================== */
+
+/* Primary - explicit dark mode for consistency */
+[data-theme="dark"] .btn--primary,
+[data-theme="dark"] .btn-primary {
+    background-color: var(--primary-500);
+    border-color: var(--primary-500);
+}
+
+[data-theme="dark"] .btn--primary:hover,
+[data-theme="dark"] .btn-primary:hover {
+    background-color: var(--primary-400);
+    border-color: var(--primary-400);
+}
+
+/* Danger - explicit dark mode */
+[data-theme="dark"] .btn--danger,
+[data-theme="dark"] .btn-danger {
+    background-color: var(--danger-600);
+    border-color: var(--danger-600);
+}
+
+[data-theme="dark"] .btn--danger:hover,
+[data-theme="dark"] .btn-danger:hover {
+    background-color: var(--danger-500);
+    border-color: var(--danger-500);
+}
+
+/* Success - explicit dark mode */
+[data-theme="dark"] .btn--success,
+[data-theme="dark"] .btn-success {
+    background-color: var(--success-600);
+    border-color: var(--success-600);
+}
+
+[data-theme="dark"] .btn--success:hover,
+[data-theme="dark"] .btn-success:hover {
+    background-color: var(--success-500);
+    border-color: var(--success-500);
+}
+
+/* Warning - explicit dark mode */
+[data-theme="dark"] .btn--warning,
+[data-theme="dark"] .btn-warning {
+    background-color: var(--warning-600);
+    border-color: var(--warning-600);
+}
+
+[data-theme="dark"] .btn--warning:hover,
+[data-theme="dark"] .btn-warning:hover {
+    background-color: var(--warning-500);
+    border-color: var(--warning-500);
+}
+
+/* Ghost - dark mode hover fix */
+[data-theme="dark"] .btn--ghost:hover,
+[data-theme="dark"] .btn-ghost:hover {
+    background-color: var(--gray-700);
+    color: var(--gray-100);
+}
+
+/* Outline - dark mode */
+[data-theme="dark"] .btn--outline,
+[data-theme="dark"] .btn-outline {
+    background-color: transparent;
+    border-color: var(--gray-600);
+    color: var(--gray-300);
+}
+
+[data-theme="dark"] .btn--outline:hover,
+[data-theme="dark"] .btn-outline:hover {
+    background-color: var(--gray-800);
+    border-color: var(--gray-500);
+    color: var(--gray-200);
+}
+
+/* Link - dark mode */
+[data-theme="dark"] .btn--link {
+    color: var(--primary-400);
+}
+
+[data-theme="dark"] .btn--link:hover {
+    color: var(--primary-300);
+}
+
+/* ===========================================
    SPECIALIZED ACTION BUTTONS
    Queue and batch action buttons
    =========================================== */
