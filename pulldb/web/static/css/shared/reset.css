@@ -234,3 +234,43 @@ button,
     scrollbar-width: thin;
     scrollbar-color: var(--gray-300) var(--color-bg-secondary);
 }
+
+/* ===========================================
+   DARK MODE
+   Global overrides for body, scrollbar, selection
+   =========================================== */
+
+[data-theme="dark"] body {
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+}
+
+/* Dark mode focus ring - more visible */
+[data-theme="dark"] :focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+/* Selection highlight */
+[data-theme="dark"] ::selection {
+    background: rgba(96, 165, 250, 0.3);
+    color: var(--color-text-primary);
+}
+
+/* Dark mode scrollbar */
+[data-theme="dark"] ::-webkit-scrollbar-track {
+    background: var(--color-scrollbar-track, #1e293b);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: var(--color-scrollbar-thumb, #475569);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-scrollbar-thumb-hover, #64748b);
+}
+
+/* Firefox dark mode */
+[data-theme="dark"] * {
+    scrollbar-color: var(--color-scrollbar-thumb, #475569) var(--color-scrollbar-track, #1e293b);
+}

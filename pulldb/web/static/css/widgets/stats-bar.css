@@ -116,3 +116,20 @@
         display: none;
     }
 }
+
+/* ===========================================
+   DARK MODE
+   =========================================== */
+
+[data-theme="dark"] .stats-bar__item {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .stats-bar__label {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .stats-bar__value {
+    color: var(--color-text-primary);
+}
