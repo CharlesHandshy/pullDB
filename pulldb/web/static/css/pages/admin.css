@@ -1471,12 +1471,12 @@
 }
 
 .modal-header-danger {
-    background: linear-gradient(135deg, var(--red-50), var(--red-100));
-    border-bottom: 1px solid var(--red-200);
+    background: linear-gradient(135deg, var(--danger-50), var(--danger-100));
+    border-bottom: 1px solid var(--danger-200);
 }
 
 .modal-header-danger .modal-title {
-    color: var(--red-700);
+    color: var(--danger-700);
 }
 
 .force-delete-warning {
@@ -1484,8 +1484,8 @@
     align-items: flex-start;
     gap: var(--space-3);
     padding: var(--space-4);
-    background: var(--red-50);
-    border: 1px solid var(--red-200);
+    background: var(--danger-50);
+    border: 1px solid var(--danger-200);
     border-radius: var(--radius-md);
     margin-bottom: var(--space-4);
 }
@@ -1493,13 +1493,13 @@
 .force-delete-warning .warning-icon {
     width: 24px;
     height: 24px;
-    color: var(--red-500);
+    color: var(--danger-500);
     flex-shrink: 0;
 }
 
 .force-delete-warning .warning-text {
     font-size: var(--text-sm);
-    color: var(--red-700);
+    color: var(--danger-700);
     line-height: 1.5;
 }
 
@@ -1606,13 +1606,13 @@
 }
 
 .btn-danger {
-    background: var(--red-600);
+    background: var(--danger-600);
     color: white;
     border: none;
 }
 
 .btn-danger:hover:not(:disabled) {
-    background: var(--red-700);
+    background: var(--danger-700);
 }
 
 .btn-danger:disabled {
@@ -2056,25 +2056,25 @@
 
 /* Force Delete Modal - Dark Mode */
 [data-theme="dark"] .modal-header-danger {
-    background: linear-gradient(135deg, var(--red-900), var(--red-800));
-    border-color: var(--red-700);
+    background: linear-gradient(135deg, var(--danger-900), var(--danger-800));
+    border-color: var(--danger-700);
 }
 
 [data-theme="dark"] .modal-header-danger .modal-title {
-    color: var(--red-300);
+    color: var(--danger-300);
 }
 
 [data-theme="dark"] .force-delete-warning {
     background: rgba(239, 68, 68, 0.1);
-    border-color: var(--red-700);
+    border-color: var(--danger-700);
 }
 
 [data-theme="dark"] .force-delete-warning .warning-icon {
-    color: var(--red-400);
+    color: var(--danger-400);
 }
 
 [data-theme="dark"] .force-delete-warning .warning-text {
-    color: var(--red-300);
+    color: var(--danger-300);
 }
 
 [data-theme="dark"] .skip-drops-option {
@@ -2099,11 +2099,11 @@
 }
 
 [data-theme="dark"] .btn-danger {
-    background: var(--red-700);
+    background: var(--danger-700);
 }
 
 [data-theme="dark"] .btn-danger:hover:not(:disabled) {
-    background: var(--red-600);
+    background: var(--danger-600);
 }
 
 [data-theme="dark"] .btn-danger:disabled {

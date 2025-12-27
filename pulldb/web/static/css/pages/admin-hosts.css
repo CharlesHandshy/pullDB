@@ -102,13 +102,13 @@
 }
 
 .provision-step.running {
-    background: var(--blue-50);
-    color: var(--blue-700);
+    background: var(--primary-50);
+    color: var(--primary-700);
 }
 
 [data-theme="dark"] .provision-step.running {
-    background: var(--blue-900);
-    color: var(--blue-300);
+    background: var(--primary-900);
+    color: var(--primary-300);
 }
 
 .provision-step.success {
@@ -215,7 +215,7 @@
 }
 
 .input-status.status-existing {
-    color: var(--blue-600);
+    color: var(--primary-600);
 }
 
 .input-status.status-credentials {
