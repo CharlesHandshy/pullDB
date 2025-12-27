@@ -6,6 +6,43 @@
 
 ---
 
+## DEPLOYMENT PROTOCOL (CRITICAL)
+
+**ALWAYS use Debian packages for deployment. NEVER use pip install directly.**
+
+```bash
+# Build wheel first
+python3 -m build
+
+# Build .deb package
+./scripts/build_deb.sh
+
+# Deploy via .deb (this handles venv, schema, services)
+sudo dpkg -i pulldb_X.X.X_amd64.deb
+
+# Restart web service
+sudo systemctl restart pulldb-web
+```
+
+**Rationale**: The .deb package handles all deployment concerns (venv setup, schema migrations, systemd units, permissions) in a reproducible way. Direct pip install bypasses these safeguards.
+
+---
+
+## 2025-12-27 | Fix theme.css AttributeError (v0.1.2)
+
+### Context
+Dark mode was broken - theme.css endpoint returning 500 Internal Server Error.
+
+### What Was Done
+- **Root cause**: `settings_repo.get()` should be `settings_repo.get_setting()` per `SettingsRepository` protocol
+- Fixed in [routes.py](pulldb/web/features/admin/routes.py#L4094-L4105) and [theme_generator.py](pulldb/web/features/admin/theme_generator.py#L152-L163)
+- Rebuilt and deployed v0.1.2 via Debian package
+
+### Rationale
+The `SettingsRepository` protocol defines `get_setting(key)`, not `get(key)`. Code was written against wrong interface.
+
+---
+
 ## 2025-12-27 | Force Delete User Feature Implementation
 
 ### Context

@@ -142,16 +142,12 @@
 
 /* Spinner animation for active phase */
 .phase-step-spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--primary-200);
+    width: 18px;
+    height: 18px;
+    border: 3px solid var(--primary-200);
     border-top-color: var(--primary-600);
     border-radius: 50%;
-    animation: phase-spin 0.8s linear infinite;
-}
-
-@keyframes phase-spin {
-    to { transform: rotate(360deg); }
+    animation: spin 1s linear infinite !important;
 }
 
 /* Dark theme */
@@ -168,8 +164,8 @@
     }
     
     .phase-step-spinner {
-        border-color: var(--primary-700);
-        border-top-color: var(--primary-300);
+        border-color: var(--primary-800);
+        border-top-color: var(--primary-400);
     }
     
     .phase-step-connector--pending {
@@ -189,8 +185,8 @@
 }
 
 [data-theme="dark"] .phase-step-spinner {
-    border-color: var(--primary-700);
-    border-top-color: var(--primary-300);
+    border-color: var(--primary-800);
+    border-top-color: var(--primary-400);
 }
 
 [data-theme="dark"] .phase-step-connector--pending {

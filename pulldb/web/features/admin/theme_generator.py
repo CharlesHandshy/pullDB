@@ -150,14 +150,14 @@ def ensure_theme_files_exist(settings_repo) -> int:
     
     if settings_repo:
         try:
-            light_json = settings_repo.get("light_theme_schema")
+            light_json = settings_repo.get_setting("light_theme_schema")
             if light_json:
                 light_schema = ColorSchema.from_json(light_json)
         except (ValueError, TypeError, KeyError):
             pass
         
         try:
-            dark_json = settings_repo.get("dark_theme_schema")
+            dark_json = settings_repo.get_setting("dark_theme_schema")
             if dark_json:
                 dark_schema = ColorSchema.from_json(dark_json)
         except (ValueError, TypeError, KeyError):

@@ -4091,14 +4091,14 @@ async def get_theme_css(
     
     if hasattr(state, "settings_repo") and state.settings_repo:
         try:
-            light_json = state.settings_repo.get("light_theme_schema")
+            light_json = state.settings_repo.get_setting("light_theme_schema")
             if light_json:
                 light_schema = ColorSchema.from_json(light_json)
         except (ValueError, TypeError, KeyError):
             pass  # Use default on error
         
         try:
-            dark_json = state.settings_repo.get("dark_theme_schema")
+            dark_json = state.settings_repo.get_setting("dark_theme_schema")
             if dark_json:
                 dark_schema = ColorSchema.from_json(dark_json)
         except (ValueError, TypeError, KeyError):

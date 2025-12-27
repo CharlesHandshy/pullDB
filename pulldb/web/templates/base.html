@@ -5,11 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}pullDB{% endblock %}</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    {# Dark mode initial state - runs synchronously before CSS load to prevent flash #}
+    <script>
+        (function() {
+            var THEME_KEY = 'pulldb-theme';
+            var VERSION_KEY = 'pulldb-theme-version';
+            var stored = localStorage.getItem(THEME_KEY);
+            var theme;
+            
+            if (stored === 'dark' || stored === 'light') {
+                theme = stored;
+            } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                theme = 'dark';
+            } else {
+                theme = 'light';
+            }
+            
+            document.documentElement.setAttribute('data-theme', theme);
+            window.__pulldb_theme = theme;
+            window.__pulldb_theme_version = localStorage.getItem(VERSION_KEY) || Date.now();
+        })();
+    </script>
+    
     <!-- HCA CSS Manifest (loads shared → entities → features → widgets layers) -->
     <link rel="stylesheet" href="/static/css/shared/manifest.css">
     
-    <!-- Dynamic theme (admin-configurable) -->
-    <link rel="stylesheet" href="/web/admin/api/theme.css">
+    <!-- Theme CSS - Dynamically selected based on detected theme preference -->
+    <script>
+        (function() {
+            var theme = window.__pulldb_theme || 'light';
+            var version = window.__pulldb_theme_version || Date.now();
+            document.write('<link id="theme-css" rel="stylesheet" href="/static/css/generated/manifest-' + theme + '.css?v=' + version + '">');
+        })();
+    </script>
+    <noscript>
+        <link id="theme-css" rel="stylesheet" href="/static/css/generated/manifest-light.css">
+    </noscript>
+    
     {% block extra_css %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -86,7 +119,7 @@
             &copy; 2025 pullDB
         </div>
         <div class="footer-right">
-            v0.0.9
+            v{{ app_version }}
         </div>
     </footer>
 
