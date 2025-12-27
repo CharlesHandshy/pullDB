@@ -577,6 +577,53 @@ async def register_user(
     )
 
 
+# ---------------------------------------------------------------------------
+# Hosts API - Public endpoint for listing available database hosts
+# ---------------------------------------------------------------------------
+
+
+class HostInfoResponse(pydantic.BaseModel):
+    """Information about a database host."""
+
+    hostname: str
+    alias: str | None
+    enabled: bool
+
+
+class HostsListResponse(pydantic.BaseModel):
+    """Response for hosts list endpoint."""
+
+    hosts: list[HostInfoResponse]
+    total: int
+
+
+@app.get("/api/hosts", response_model=HostsListResponse)
+async def list_hosts(
+    state: APIState = Depends(get_api_state),
+) -> HostsListResponse:
+    """List available database hosts.
+
+    Returns all enabled database hosts with their aliases.
+    Used by CLI's `pulldb hosts` command to show users where they
+    can restore databases.
+
+    No authentication required - this is public information.
+    """
+    hosts = await run_in_threadpool(state.host_repo.get_enabled_hosts)
+
+    return HostsListResponse(
+        hosts=[
+            HostInfoResponse(
+                hostname=h.hostname,
+                alias=h.host_alias,
+                enabled=h.enabled,
+            )
+            for h in hosts
+        ],
+        total=len(hosts),
+    )
+
+
 @app.get("/api/status")
 async def status_endpoint(state: APIState = Depends(get_api_state)) -> dict[str, t.Any]:
     def _collect() -> dict[str, t.Any]:

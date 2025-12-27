@@ -168,6 +168,8 @@
         { key: 'restored_at', label: 'Restored', width: '90px', sortable: true, filterable: true,
           filterType: 'dateRange',
           render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
+        { key: 'restored_by', label: 'By', width: '100px', sortable: true, filterable: true,
+          render: (val) => val ? '<span style="font-size: 0.85em;">' + val + '</span>' : '-' },
         { key: 'size_mb', label: 'Size', width: '75px', sortable: true,
           render: (val) => {
             if (val === null || val === undefined) return '<span class="size-cell" style="color: var(--gray-400);">-</span>';

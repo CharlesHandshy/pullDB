@@ -3,7 +3,23 @@ CHANGELOG
 
 Unreleased
 ---------
-- (no changes yet)
+### User Database Orphan Detection & Hosts Command
+
+- **User orphan detection**: Admin UI can now detect orphaned databases by user
+- **Host alias support**: CLI `pulldb hosts` command shows available database hosts with aliases
+- **Alias resolution**: `dbhost=<alias>` now works in restore commands, resolving to hostname
+
+### Added
+- `pulldb hosts` CLI command to list available database hosts
+- `GET /api/hosts` endpoint returning enabled hosts with aliases
+- Host alias resolution in job submission (`_select_dbhost` in logic.py)
+- `restored_at` and `restored_by` columns in user orphan detection (from pullDB metadata table)
+- `_has_pulldb_table()` check validates databases have pullDB marker before flagging as orphan
+
+### Changed
+- User orphan detection now shows "Restored" date from pullDB metadata table
+- Unregistered users see only registration instructions instead of full CLI help
+- CSS uses semantic design tokens for proper light/dark mode support
 
 v0.1.0 - 2025-12-26
 -------------------

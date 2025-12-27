@@ -24,12 +24,21 @@ def _select_dbhost(state: APIState, req: JobRequest, user: User) -> str:
     """Select database host for job, using user's default if not specified.
 
     Priority:
-    1. Explicitly requested host (req.dbhost)
+    1. Explicitly requested host (req.dbhost) - resolved via alias if needed
     2. User's configured default_host
     3. System default_dbhost from config
     4. mysql_host from config (fallback)
+    
+    Host resolution:
+    - If a host alias is provided, it's resolved to the canonical hostname
+    - If hostname is provided directly, it's used as-is
     """
     if req.dbhost:
+        # Resolve alias to hostname if needed
+        resolved = state.host_repo.resolve_hostname(req.dbhost)
+        if resolved:
+            return str(resolved)
+        # Not found - return as-is, will fail later in validation
         return req.dbhost
     if user.default_host:
         return user.default_host

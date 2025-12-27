@@ -554,16 +554,28 @@ def cli(ctx: click.Context) -> None:
 
     # Handle no subcommand (show help)
     if ctx.invoked_subcommand is None:
-        # Display user identity
-        if user_code:
-            click.echo("pullDB - Database restore tool")
-            click.echo(f"User: {username} (code: {user_code})")
-        else:
+        # Display user identity and appropriate help
+        if user_state == UserState.NOT_REGISTERED:
+            # Unregistered users see only registration instructions
             click.echo("pullDB - Database restore tool")
             click.echo(f"User: {username} (not registered)")
-
-        click.echo("")
-        click.echo(ctx.get_help())
+            click.echo("")
+            click.echo("You must register before using pullDB.")
+            click.echo("")
+            click.echo("To create an account:")
+            click.echo("  pulldb register")
+            click.echo("")
+            click.echo("After registering, contact an administrator to enable your account.")
+        elif user_code:
+            click.echo("pullDB - Database restore tool")
+            click.echo(f"User: {username} (code: {user_code})")
+            click.echo("")
+            click.echo(ctx.get_help())
+        else:
+            click.echo("pullDB - Database restore tool")
+            click.echo(f"User: {username}")
+            click.echo("")
+            click.echo(ctx.get_help())
 
 
 @cli.command("restore",
@@ -1654,6 +1666,67 @@ def _format_bytes(num_bytes: int) -> str:
 # are NOT exposed in the user-facing pulldb CLI.
 # They will be available via the pulldb-admin CLI.
 # See docs/KNOWLEDGE-POOL.md "CLI Architecture & Scope" for rationale.
+
+
+@cli.command("hosts", help="Show available database hosts")
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of formatted table",
+)
+def hosts_cmd(json_out: bool) -> None:
+    """Show available database hosts.
+
+    Lists all enabled database hosts where you can restore databases.
+    The alias column shows short names you can use with dbhost= parameter.
+
+    Examples:
+        pulldb hosts                        # Show available hosts
+        pulldb hosts --json                 # Raw JSON output
+        pulldb restore customer dbhost=dev  # Use alias in restore
+    """
+    base_url, timeout = _load_api_config()
+    url = f"{base_url}/api/hosts"
+    try:
+        response = requests_module.get(url, timeout=timeout)
+    except RequestException as exc:
+        raise click.ClickException(
+            f"Failed to reach pullDB API: {exc}. "
+            "Ensure the API service is running and reachable."
+        ) from exc
+
+    if response.status_code >= 400:
+        raise click.ClickException(_format_api_error(response))
+
+    data = _parse_json_response(response)
+    if not isinstance(data, dict):
+        raise click.ClickException("Unexpected API response: expected object payload.")
+
+    hosts = data.get("hosts", [])
+
+    if json_out:
+        click.echo(json_module.dumps(data, indent=2, default=str))
+        return
+
+    if not hosts:
+        click.echo("No database hosts available.")
+        return
+
+    # Formatted table display
+    click.echo("\nAvailable Database Hosts")
+    click.echo("=" * 50)
+    click.echo(f"{'ALIAS':<16} {'HOSTNAME':<32}")
+    click.echo(f"{'-' * 16} {'-' * 32}")
+
+    for host in hosts:
+        alias = host.get("alias") or "—"
+        hostname = host.get("hostname", "unknown")
+        click.echo(f"{alias:<16} {hostname:<32}")
+
+    click.echo(f"{'-' * 16} {'-' * 32}")
+    click.echo(f"\nTotal: {len(hosts)} host(s)")
+    click.echo("\nUse alias or hostname with: pulldb restore <customer> dbhost=<alias>")
 
 
 @cli.command("register", help="Register a new pullDB account")

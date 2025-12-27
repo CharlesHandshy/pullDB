@@ -1246,6 +1246,7 @@ class UserOrphanCandidate:
     discovered_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     size_mb: float | None = None
     restored_at: datetime | None = None  # From pullDB metadata table
+    restored_by: str | None = None  # From pullDB metadata table
 
 
 @dataclass
@@ -1451,6 +1452,7 @@ def detect_user_orphaned_databases(
             size_mb = _get_database_size_mb(credentials, db_name)
             metadata = get_orphan_metadata(credentials, db_name)
             restored_at = metadata.restored_at if metadata else None
+            restored_by = metadata.restored_by if metadata else None
 
             orphan = UserOrphanCandidate(
                 database_name=db_name,
@@ -1458,6 +1460,7 @@ def detect_user_orphaned_databases(
                 dbhost=dbhost,
                 size_mb=size_mb,
                 restored_at=restored_at,
+                restored_by=restored_by,
             )
             report.orphans.append(orphan)
             logger.info(

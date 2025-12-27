@@ -3776,6 +3776,7 @@ async def api_user_orphan_candidates(
                     "dbhost": oc.dbhost,
                     "extracted_user_code": oc.extracted_user_code,
                     "restored_at": oc.restored_at.isoformat() if oc.restored_at else None,
+                    "restored_by": oc.restored_by,
                     "size_mb": oc.size_mb,
                 })
 
