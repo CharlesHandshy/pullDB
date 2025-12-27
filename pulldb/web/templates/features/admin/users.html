@@ -206,6 +206,69 @@
         </div>
     </div>
 </div>
+
+<!-- Force Delete User Modal -->
+<div id="force-delete-modal" class="modal modal-hidden">
+    <div class="modal-backdrop" onclick="hideForceDeleteModal()"></div>
+    <div class="modal-content modal-content-wide">
+        <div class="modal-header modal-header-danger">
+            <h3 class="modal-title">Force Delete User</h3>
+            <button type="button" class="modal-close" onclick="hideForceDeleteModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" x2="6" y1="6" y2="18"/>
+                    <line x1="6" x2="18" y1="6" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="force-delete-warning">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="warning-icon">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <div class="warning-text">
+                    <strong>Warning:</strong> This will permanently delete user <strong id="force-delete-username"></strong> 
+                    and <strong id="force-delete-job-count">0</strong> job(s) in their history.
+                </div>
+            </div>
+            
+            <div id="force-delete-databases-section" class="force-delete-databases">
+                <h4>Target Databases Created by This User</h4>
+                <p class="databases-info">These databases were created by restore jobs. Select which ones to DROP:</p>
+                
+                <div class="skip-drops-option">
+                    <label>
+                        <input type="checkbox" id="skip-all-drops" onchange="toggleDatabasesList()">
+                        Skip all database drops (only delete user and job records)
+                    </label>
+                </div>
+                
+                <div id="databases-list" class="databases-list">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+            
+            <div class="force-delete-confirm">
+                <label for="confirm-username">Type the username to confirm:</label>
+                <input type="text" id="confirm-username" class="form-input" placeholder="Enter username" autocomplete="off" oninput="validateForceDeleteConfirm()">
+                <p class="confirm-hint">Type <code id="expected-username"></code> to enable the delete button</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="hideForceDeleteModal()">Cancel</button>
+            <button type="button" class="btn btn-danger" id="force-delete-btn" onclick="executeForceDelete()" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; margin-right: 4px;">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    <line x1="10" y1="11" x2="10" y2="17"/>
+                    <line x1="14" y1="11" x2="14" y2="17"/>
+                </svg>
+                Force Delete User
+            </button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -318,6 +381,29 @@
             </button>`;
         }
         
+        // Delete user - trash icon: disabled for current user
+        if (isCurrentUser) {
+            // Current user - disabled trash
+            html += `<button class="action-btn action-btn-disabled" title="Cannot delete your own account" aria-label="Cannot delete your own account" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    <line x1="10" x2="10" y1="11" y2="17"/>
+                    <line x1="14" x2="14" y1="11" y2="17"/>
+                </svg>
+            </button>`;
+        } else {
+            // Delete button - click to delete
+            html += `<button class="action-btn action-btn-danger-muted" title="Delete User" aria-label="Delete user ${row.username}" onclick="deleteUser('${row.user_id}', '${row.username}')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    <line x1="10" x2="10" y1="11" y2="17"/>
+                    <line x1="14" x2="14" y1="11" y2="17"/>
+                </svg>
+            </button>`;
+        }
+        
         html += '</div>';
         return html;
     };
@@ -379,7 +465,7 @@
             label: 'Actions', 
             sortable: false, 
             filterable: false,
-            width: '80px',
+            width: '110px',
             render: renderActions
         }
     ];
@@ -525,6 +611,173 @@
             }
         } catch (e) {
             showToast('Error: ' + e.message, 'error');
+        }
+    };
+    
+    window.deleteUser = async function(userId, username) {
+        // Double confirmation for destructive action
+        if (!confirm(`Delete user "${username}"?\n\nThis will permanently remove the user and all related records (sessions, credentials, host assignments).\n\nUsers with any job history cannot be deleted.`)) {
+            return;
+        }
+        
+        try {
+            const resp = await fetch(`/web/admin/users/${userId}`, {
+                method: 'DELETE'
+            });
+            const data = await resp.json();
+            if (data.success) {
+                showToast(`User "${username}" deleted successfully`, 'success');
+                table.refresh();
+            } else {
+                // Check if this is a "has jobs" error
+                if (data.message && data.message.includes('job(s) in history')) {
+                    // Show force delete modal
+                    showForceDeleteModal(userId, username);
+                } else {
+                    showToast(data.message || 'Failed to delete user', 'error');
+                }
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    };
+    
+    // =========================================================================
+    // Force Delete Modal Functions
+    // =========================================================================
+    
+    let currentForceDeleteUserId = null;
+    let currentForceDeleteUsername = null;
+    let currentDatabasesList = [];
+    
+    window.showForceDeleteModal = async function(userId, username) {
+        currentForceDeleteUserId = userId;
+        currentForceDeleteUsername = username;
+        
+        // Fetch preview data
+        try {
+            const resp = await fetch(`/web/admin/users/${userId}/force-delete-preview`);
+            const data = await resp.json();
+            
+            if (!data.success) {
+                showToast(data.message || 'Failed to load force delete preview', 'error');
+                return;
+            }
+            
+            // Populate modal
+            document.getElementById('force-delete-username').textContent = data.user.username;
+            document.getElementById('force-delete-job-count').textContent = data.job_count;
+            document.getElementById('expected-username').textContent = data.user.username;
+            document.getElementById('confirm-username').value = '';
+            document.getElementById('skip-all-drops').checked = false;
+            document.getElementById('force-delete-btn').disabled = true;
+            
+            // Populate databases list
+            currentDatabasesList = data.databases || [];
+            const listEl = document.getElementById('databases-list');
+            const sectionEl = document.getElementById('force-delete-databases-section');
+            
+            if (currentDatabasesList.length === 0) {
+                sectionEl.style.display = 'none';
+            } else {
+                sectionEl.style.display = 'block';
+                let html = '';
+                currentDatabasesList.forEach((db, index) => {
+                    html += `
+                        <div class="database-item">
+                            <label>
+                                <input type="checkbox" class="db-checkbox" data-index="${index}" checked>
+                                <span class="db-name">${db.name}</span>
+                                <span class="db-host">@ ${db.host}</span>
+                            </label>
+                        </div>
+                    `;
+                });
+                listEl.innerHTML = html;
+            }
+            
+            toggleDatabasesList();
+            document.getElementById('force-delete-modal').classList.remove('modal-hidden');
+            document.getElementById('confirm-username').focus();
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    };
+    
+    window.hideForceDeleteModal = function() {
+        document.getElementById('force-delete-modal').classList.add('modal-hidden');
+        currentForceDeleteUserId = null;
+        currentForceDeleteUsername = null;
+        currentDatabasesList = [];
+    };
+    
+    window.toggleDatabasesList = function() {
+        const skipAll = document.getElementById('skip-all-drops').checked;
+        const listEl = document.getElementById('databases-list');
+        if (skipAll) {
+            listEl.style.opacity = '0.5';
+            listEl.style.pointerEvents = 'none';
+        } else {
+            listEl.style.opacity = '1';
+            listEl.style.pointerEvents = 'auto';
+        }
+    };
+    
+    window.validateForceDeleteConfirm = function() {
+        const input = document.getElementById('confirm-username').value;
+        const expected = currentForceDeleteUsername;
+        const btn = document.getElementById('force-delete-btn');
+        btn.disabled = input !== expected;
+    };
+    
+    window.executeForceDelete = async function() {
+        const btn = document.getElementById('force-delete-btn');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = 'Deleting...';
+        
+        const skipDatabaseDrops = document.getElementById('skip-all-drops').checked;
+        
+        // Collect selected databases
+        const databasesToDrop = [];
+        if (!skipDatabaseDrops) {
+            const checkboxes = document.querySelectorAll('.db-checkbox:checked');
+            checkboxes.forEach(cb => {
+                const index = parseInt(cb.dataset.index);
+                if (currentDatabasesList[index]) {
+                    databasesToDrop.push(currentDatabasesList[index]);
+                }
+            });
+        }
+        
+        try {
+            const resp = await fetch(`/web/admin/users/${currentForceDeleteUserId}/force-delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    confirm_username: currentForceDeleteUsername,
+                    skip_database_drops: skipDatabaseDrops,
+                    databases_to_drop: databasesToDrop
+                })
+            });
+            const data = await resp.json();
+            
+            if (data.success) {
+                showToast('Force delete task created. Redirecting to task status...', 'success');
+                hideForceDeleteModal();
+                // Redirect to task status page
+                setTimeout(() => {
+                    window.location.href = `/web/admin/admin-tasks/${data.task_id}`;
+                }, 1000);
+            } else {
+                showToast(data.message || 'Force delete failed', 'error');
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+            btn.disabled = false;
+            btn.innerHTML = originalText;
         }
     };
     
@@ -826,6 +1079,7 @@
             hideAddUserModal();
             hidePasswordModal();
             hideHostsModal();
+            hideForceDeleteModal();
         }
     });
 })();

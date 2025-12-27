@@ -57,11 +57,23 @@ PULLDB_LOADER_MYSQL_USER=pulldb_loader
 
 ```sql
 -- Coordination database only
-GRANT SELECT, INSERT, UPDATE ON pulldb_service.jobs TO 'pulldb_api'@'%';
-GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_api'@'%';
-GRANT SELECT ON pulldb_service.auth_users TO 'pulldb_api'@'%';
-GRANT SELECT ON pulldb_service.db_hosts TO 'pulldb_api'@'%';
-GRANT SELECT ON pulldb_service.settings TO 'pulldb_api'@'%';
+-- User management (full CRUD for admin operations)
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.auth_users TO 'pulldb_api'@'localhost';
+GRANT SELECT, INSERT, UPDATE ON pulldb_service.auth_credentials TO 'pulldb_api'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.sessions TO 'pulldb_api'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.user_hosts TO 'pulldb_api'@'localhost';
+
+-- Job management (submit and cancel only, no status updates)
+GRANT SELECT, INSERT, UPDATE ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
+GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
+
+-- Host management (full CRUD for admin operations)
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.db_hosts TO 'pulldb_api'@'localhost';
+
+-- Settings and audit
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.settings TO 'pulldb_api'@'localhost';
+GRANT SELECT, INSERT ON pulldb_service.audit_logs TO 'pulldb_api'@'localhost';
+GRANT SELECT ON pulldb_service.active_jobs TO 'pulldb_api'@'localhost';
 
 -- Explicit denial: Cannot access target databases
 -- (No grants on other databases)
@@ -71,10 +83,14 @@ GRANT SELECT ON pulldb_service.settings TO 'pulldb_api'@'%';
 
 ```sql
 -- Coordination database
-GRANT SELECT, UPDATE ON pulldb_service.jobs TO 'pulldb_worker'@'%';
-GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_worker'@'%';
-GRANT SELECT ON pulldb_service.db_hosts TO 'pulldb_worker'@'%';
-GRANT SELECT ON pulldb_service.settings TO 'pulldb_worker'@'%';
+GRANT SELECT, UPDATE ON pulldb_service.jobs TO 'pulldb_worker'@'localhost';
+GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_worker'@'localhost';
+GRANT SELECT ON pulldb_service.auth_users TO 'pulldb_worker'@'localhost';
+GRANT SELECT ON pulldb_service.db_hosts TO 'pulldb_worker'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.settings TO 'pulldb_worker'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.locks TO 'pulldb_worker'@'localhost';
+GRANT SELECT ON pulldb_service.active_jobs TO 'pulldb_worker'@'localhost';
+GRANT LOCK TABLES ON pulldb_service.* TO 'pulldb_worker'@'localhost';
 
 -- Cannot create jobs (API only)
 -- Cannot modify users or hosts

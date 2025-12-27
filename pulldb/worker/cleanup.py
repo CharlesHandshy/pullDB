@@ -275,6 +275,42 @@ def _get_database_size_mb(credentials: MySQLCredentials, db_name: str) -> float 
         conn.close()
 
 
+def _has_pulldb_table(credentials: MySQLCredentials, db_name: str) -> bool:
+    """Check if a database contains the pullDB marker table.
+
+    The pullDB table is created during restore operations, so its presence
+    confirms the database was created/managed by pullDB. Databases without
+    this table should not be considered pullDB orphans.
+
+    Args:
+        credentials: MySQL credentials for the host.
+        db_name: Name of the database to check.
+
+    Returns:
+        True if pullDB table exists, False otherwise.
+    """
+    conn = mysql.connector.connect(
+        host=credentials.host,
+        port=credentials.port,
+        user=credentials.username,
+        password=credentials.password,
+        connect_timeout=30,
+    )
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM information_schema.TABLES 
+            WHERE table_schema = %s AND table_name = 'pullDB'
+        """, (db_name,))
+        row = cursor.fetchone()
+        return bool(row and row[0] > 0)
+    except Exception as e:
+        logger.warning("Failed to check pullDB table in %s: %s", db_name, e)
+        return False
+    finally:
+        conn.close()
+
+
 def get_orphan_metadata(
     credentials: MySQLCredentials,
     db_name: str,
@@ -1209,6 +1245,7 @@ class UserOrphanCandidate:
     dbhost: str
     discovered_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     size_mb: float | None = None
+    restored_at: datetime | None = None  # From pullDB metadata table
 
 
 @dataclass
@@ -1400,14 +1437,27 @@ def detect_user_orphaned_databases(
 
         # Check if user_code exists
         if extracted_code.lower() not in valid_user_codes:
-            # User doesn't exist - this is a user orphan
+            # User doesn't exist - verify this is a pullDB-managed database
+            # by checking for the pullDB marker table
+            if not _has_pulldb_table(credentials, db_name):
+                logger.debug(
+                    "Skipping %s on %s: no pullDB marker table (not pullDB-managed)",
+                    db_name,
+                    dbhost,
+                )
+                continue
+
+            # Confirmed pullDB-managed orphan - get metadata
             size_mb = _get_database_size_mb(credentials, db_name)
+            metadata = get_orphan_metadata(credentials, db_name)
+            restored_at = metadata.restored_at if metadata else None
 
             orphan = UserOrphanCandidate(
                 database_name=db_name,
                 extracted_user_code=extracted_code,
                 dbhost=dbhost,
                 size_mb=size_mb,
+                restored_at=restored_at,
             )
             report.orphans.append(orphan)
             logger.info(
@@ -1451,6 +1501,8 @@ def _detect_user_orphaned_databases_simulation(
                 continue
 
             if extracted_code.lower() not in valid_user_codes:
+                # In simulation, assume all synthetic databases are pullDB-managed
+                # (real mode checks for pullDB marker table)
                 size_mb = state.orphan_sizes.get((dbhost, db_name))
                 if size_mb is None:
                     size_mb = 10.0 + (hash(db_name) % 490)

@@ -471,3 +471,76 @@ class TestCleanupStagingDatabases(unittest.TestCase):
         self.assertIsNotNone(updated_job.staging_cleaned_at)
 
 
+class TestSimulatedUserRepositoryDelete(unittest.TestCase):
+    """Tests for delete_user functionality in SimulatedUserRepository."""
+
+    def setUp(self):
+        self.state = get_simulation_state()
+        self.state.clear()
+        self.user_repo = SimulatedUserRepository()
+        self.job_repo = SimulatedJobRepository()
+
+    def test_delete_user_no_jobs(self):
+        """Can delete user with no job history."""
+        user = self.user_repo.create_user("deletable_user", "dltabl")
+        
+        result = self.user_repo.delete_user(user.user_id)
+        
+        self.assertEqual(result["user_deleted"], 1)
+        self.assertIsNone(self.user_repo.get_user_by_id(user.user_id))
+
+    def test_delete_user_with_jobs_fails(self):
+        """Cannot delete user with job history."""
+        user = self.user_repo.create_user("user_with_jobs", "usrjob")
+        
+        # Create a job for this user
+        job = Job(
+            id="job-for-delete-test",
+            owner_user_id=user.user_id,
+            owner_username=user.username,
+            owner_user_code=user.user_code,
+            target="test_db",
+            staging_name="staging_test",
+            dbhost="localhost",
+            status=JobStatus.COMPLETE,
+            submitted_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+        )
+        self.state.jobs[job.id] = job
+        
+        with self.assertRaises(ValueError) as ctx:
+            self.user_repo.delete_user(user.user_id)
+        
+        self.assertIn("job(s) in history", str(ctx.exception))
+        # User should still exist
+        self.assertIsNotNone(self.user_repo.get_user_by_id(user.user_id))
+
+    def test_delete_user_not_found(self):
+        """Delete non-existent user raises ValueError."""
+        with self.assertRaises(ValueError) as ctx:
+            self.user_repo.delete_user("non-existent-id")
+        
+        self.assertIn("not found", str(ctx.exception))
+
+    def test_delete_user_clears_manager_relationships(self):
+        """Deleting a manager clears manager_id for their managed users."""
+        manager = self.user_repo.create_user("manager_user", "mngrus")
+        subordinate = self.user_repo.create_user("subordinate_user", "subord")
+        
+        # Set manager relationship
+        self.user_repo.set_user_manager(subordinate.user_id, manager.user_id)
+        
+        # Verify relationship exists
+        updated_sub = self.user_repo.get_user_by_id(subordinate.user_id)
+        self.assertEqual(updated_sub.manager_id, manager.user_id)
+        
+        # Delete manager
+        result = self.user_repo.delete_user(manager.user_id)
+        
+        self.assertEqual(result["managed_users_updated"], 1)
+        
+        # Verify subordinate's manager_id is cleared
+        updated_sub = self.user_repo.get_user_by_id(subordinate.user_id)
+        self.assertIsNone(updated_sub.manager_id)
+
+

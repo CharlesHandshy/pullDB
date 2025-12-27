@@ -30,12 +30,16 @@ from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.logging import get_logger
 from pulldb.infra.metrics import MetricLabels, emit_event, emit_gauge
 from pulldb.infra.mysql import (
+    AdminTaskRepository,
+    AuditRepository,
     HostRepository,
     JobRepository,
     MySQLPool,
+    UserRepository,
 )
 from pulldb.infra.s3 import S3Client
 from pulldb.infra.secrets import CredentialResolver
+from pulldb.worker.admin_tasks import AdminTaskExecutor
 from pulldb.worker.executor import WorkerExecutorDependencies, WorkerJobExecutor
 from pulldb.worker.loop import MIN_POLL_INTERVAL_SECONDS, run_poll_loop
 from pulldb.worker.staging import StagingConnectionSpec, cleanup_orphaned_staging
@@ -437,6 +441,8 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     _register_signal_handlers(stop_event)
 
     host_repo: HostRepository | None = None
+    admin_task_repo: AdminTaskRepository | None = None
+    admin_task_executor: AdminTaskExecutor | None = None
 
     try:
         # 1. Bootstrap config from env
@@ -463,6 +469,21 @@ def main(argv: t.Sequence[str] | None = None) -> int:
 
         # 5. Build executor with full config (reuse host_repo)
         job_executor = _build_job_executor(config, job_repo, host_repo)
+
+        # 6. Build admin task executor (if not in simulation mode)
+        if not is_simulation_mode() and host_repo:
+            admin_task_repo = AdminTaskRepository(job_repo.pool)
+            user_repo = UserRepository(job_repo.pool)
+            audit_repo = AuditRepository(job_repo.pool)
+            admin_task_executor = AdminTaskExecutor(
+                task_repo=admin_task_repo,
+                job_repo=job_repo,
+                user_repo=user_repo,
+                host_repo=host_repo,
+                audit_repo=audit_repo,
+                pool=job_repo.pool,
+            )
+            logger.info("Admin task executor initialized")
     except Exception as exc:
         _emit_fatal(exc)
         _set_worker_active(0, "fatal")
@@ -489,6 +510,8 @@ def main(argv: t.Sequence[str] | None = None) -> int:
             max_iterations=max_iterations,
             poll_interval=poll_interval,
             should_stop=stop_event.is_set,
+            admin_task_repo=admin_task_repo,
+            admin_task_executor=admin_task_executor.execute if admin_task_executor else None,
         )
     except Exception as exc:
         _emit_fatal(exc)

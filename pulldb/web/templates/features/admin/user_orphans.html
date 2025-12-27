@@ -5,6 +5,58 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/pages/admin.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
+<style>
+/* Selection checkbox styling - using semantic design tokens */
+.select-btn {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--color-border-secondary);
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-input-bg);
+    cursor: pointer;
+    padding: 0;
+    font-size: 12px;
+    font-weight: bold;
+}
+.select-btn:hover {
+    border-color: var(--color-border-hover);
+    background: var(--color-surface-hover);
+}
+/* Red checkmark when selected for deletion */
+.select-btn.selected {
+    background: var(--danger-100);
+    border-color: var(--danger-600);
+    color: var(--danger-600);
+}
+.select-btn.selected:hover {
+    background: var(--danger-200);
+}
+
+/* Reset exclusions button - visible state */
+.reset-exclusions-btn {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-fast);
+    background: transparent;
+    border: none;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.reset-exclusions-btn.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+.reset-exclusions-btn:hover {
+    color: var(--color-text-primary);
+}
+</style>
 {% endblock %}
 
 {% block content %}
@@ -50,7 +102,7 @@
 <!-- Preview Table -->
 <div class="card card-padding">
     <div style="color: var(--gray-500); font-size: 0.875rem; margin-bottom: var(--space-3);">
-        Click X to exclude items from deletion. Exclusions persist through filter changes.
+        Click the checkbox to exclude items from deletion. Red checkmark = will be deleted.
     </div>
 
     <!-- LazyTable Container -->
@@ -96,8 +148,12 @@
             render: (val, row) => {
                 const key = makeKey(row);
                 const isExcluded = excludedKeys.has(key);
-                const cls = isExcluded ? 'exclude-btn excluded' : 'exclude-btn';
-                return '<button type="button" class="' + cls + '" data-key="' + key + '" title="' + (isExcluded ? 'Click to include' : 'Click to exclude') + '">X</button>';
+                // Red checkmark when selected for deletion, empty box when excluded
+                if (isExcluded) {
+                    return '<button type="button" class="select-btn" data-key="' + key + '" title="Click to mark for deletion"></button>';
+                } else {
+                    return '<button type="button" class="select-btn selected" data-key="' + key + '" title="Will be deleted - click to exclude">✓</button>';
+                }
             }
         },
         { key: 'dbhost', label: 'Host', width: '130px', sortable: true, filterable: true,
@@ -109,7 +165,7 @@
         { key: 'extracted_user_code', label: 'User Code', width: '100px', sortable: true, filterable: true,
           render: (val) => '<span class="badge badge-warning">' + (val || '-') + '</span>'
         },
-        { key: 'discovered_at', label: 'Found', width: '90px', sortable: true, filterable: true,
+        { key: 'restored_at', label: 'Restored', width: '90px', sortable: true, filterable: true,
           filterType: 'dateRange',
           render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
         { key: 'size_mb', label: 'Size', width: '75px', sortable: true,
@@ -135,8 +191,9 @@
             clearBtn.title = 'Clear all exclusions (' + exclusionCount + ')';
         }
         
-        // Update execute button
-        const btn = document.getElementById('execute-btn');
+        // Update execute button - search within container since it's in LazyTable footer
+        const container = document.getElementById('orphan-table-container');
+        const btn = container ? container.querySelector('#execute-btn') : null;
         if (!btn) return;
         btn.disabled = selectedCount === 0;
         btn.textContent = selectedCount > 0 
@@ -174,13 +231,15 @@
             `,
             onDataLoaded: (data) => {
                 // Reset loadedRowKeys on fresh filter load (pageIndex 0)
-                if (data.pageIndex === 0) {
+                if (data.page === 0) {
                     loadedRowKeys.clear();
                 }
-                totalCount = data.totalCount || 0;
-                filteredCount = data.filteredCount || data.totalCount || 0;
-                if (data.rows) {
-                    data.rows.forEach(row => loadedRowKeys.add(makeKey(row)));
+                totalCount = data.total || 0;
+                filteredCount = data.filtered || data.total || 0;
+                // API returns "data" array, not "rows"
+                const rows = data.rows || data.data || [];
+                if (rows.length > 0) {
+                    rows.forEach(row => loadedRowKeys.add(makeKey(row)));
                 }
                 updateButton();
             },
@@ -202,19 +261,23 @@
             updateButton();
             return;
         }
-        // Handle exclude button click
-        if (e.target.classList.contains('exclude-btn')) {
+        // Handle select button click
+        if (e.target.classList.contains('select-btn')) {
             const key = e.target.dataset.key;
             const row = e.target.closest('tr');
             if (excludedKeys.has(key)) {
+                // Currently excluded, mark for deletion
                 excludedKeys.delete(key);
-                e.target.classList.remove('excluded');
-                e.target.title = 'Click to exclude';
+                e.target.classList.add('selected');
+                e.target.innerHTML = '✓';
+                e.target.title = 'Will be deleted - click to exclude';
                 row?.classList.remove('excluded-row');
             } else {
+                // Currently selected, exclude it
                 excludedKeys.add(key);
-                e.target.classList.add('excluded');
-                e.target.title = 'Click to include';
+                e.target.classList.remove('selected');
+                e.target.innerHTML = '';
+                e.target.title = 'Click to mark for deletion';
                 row?.classList.add('excluded-row');
             }
             updateButton();

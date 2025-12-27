@@ -14,5 +14,5 @@
 │ │   E │                                                           │
 │ │   R │                                                           │
 │ │User ├───────────────────────────────────────────────────────────┤
-│ │Info │ <LJ> © 2025 pullDB • v0.0.8  <RJ>Service Titan / Field Routes│
+│ │Info │ <LJ> © 2025 pullDB • v{{ app_version }}  <RJ>Service Titan / Field Routes│
 └───────┴───────────────────────────────────────────────────────────┘

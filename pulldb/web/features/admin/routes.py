@@ -461,7 +461,7 @@ async def get_admin_task_page(
     # Resolve target username for display
     target_username = None
     if task.target_user_id:
-        target_user = state.user_repo.get_user(task.target_user_id)
+        target_user = state.user_repo.get_user_by_id(task.target_user_id)
         if target_user:
             target_username = target_user.username
     
@@ -3775,7 +3775,7 @@ async def api_user_orphan_candidates(
                     "database_name": oc.database_name,
                     "dbhost": oc.dbhost,
                     "extracted_user_code": oc.extracted_user_code,
-                    "discovered_at": oc.discovered_at.isoformat() if oc.discovered_at else None,
+                    "restored_at": oc.restored_at.isoformat() if oc.restored_at else None,
                     "size_mb": oc.size_mb,
                 })
 
@@ -3785,7 +3785,7 @@ async def api_user_orphan_candidates(
     text_filters: dict[str, list[str]] = {}
     date_after: dict[str, str] = {}
     date_before: dict[str, str] = {}
-    date_columns = ["discovered_at"]
+    date_columns = ["restored_at"]
     
     for key, value in request.query_params.items():
         if key.startswith("filter_") and value:

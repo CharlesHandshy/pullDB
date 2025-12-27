@@ -6,6 +6,76 @@
 
 ---
 
+## 2025-12-27 | Force Delete User Feature Implementation
+
+### Context
+User requested async force-delete user feature with database drops, job cleanup, and user record deletion via background admin task queue.
+
+### What Was Done
+
+1. **Created admin_tasks queue schema** (`schema/pulldb_service/077_admin_tasks.sql`):
+   - task_id UUID primary key, task_type ENUM, status ENUM
+   - `running_task_type` generated column with unique index for max 1 concurrent task
+   - Foreign keys to auth_users for requested_by and target_user_id
+   - Supports orphan recovery via 10-minute stale timeout
+
+2. **Added domain models** (`pulldb/domain/models.py`):
+   - AdminTaskType enum: FORCE_DELETE_USER
+   - AdminTaskStatus enum: PENDING, RUNNING, COMPLETE, FAILED
+   - AdminTask dataclass with all task fields
+
+3. **Created AdminTaskRepository** (`pulldb/infra/mysql.py`):
+   - create_task(), claim_next_task() with orphan recovery
+   - complete_task(), fail_task(), get_task()
+   - Added count_jobs_by_user(), get_user_target_databases() to JobRepository
+
+4. **Created AdminTaskExecutor** (`pulldb/worker/admin_tasks.py`):
+   - execute_task() dispatcher
+   - _execute_force_delete_user() with full audit logging
+   - _drop_target_database() using pulldb_loader credentials per host
+   - PROTECTED_DATABASES frozenset prevents system DB drops
+
+5. **Extended worker service** (`pulldb/worker/loop.py`, `service.py`):
+   - Admin task polling (lower priority than restore jobs)
+   - Passes all required repositories to executor
+
+6. **Added API endpoints** (`pulldb/web/features/admin/routes.py`):
+   - GET /users/{id}/force-delete-preview - preview databases and job count
+   - POST /users/{id}/force-delete - create admin task
+   - GET /admin-tasks/{id} - status page with HTMX polling
+   - GET /admin-tasks/{id}/json - JSON status for API
+
+7. **Updated UI** (`users.html`, `admin.css`, `admin_task_status.html`):
+   - Force delete modal with username confirmation
+   - Skip all drops checkbox, individual database checkboxes
+   - Dark mode styles for modal
+   - Status page with progress stats and database drop results
+
+8. **Updated MySQL grants** (`300_mysql_users.sql`):
+   - pulldb_api: SELECT,INSERT on admin_tasks
+   - pulldb_worker: Full access for execution
+
+### Rationale
+- **HCA Compliance**: All files placed in correct layers (domain/models, infra/mysql, worker/, web/)
+- **Audit Compliance**: All actions logged to audit_logs with task_id correlation
+- **Concurrency Control**: Generated column trick for MySQL partial index simulation
+- **FAIL HARD**: Protected databases frozenset, explicit error handling
+
+### Files Created/Modified
+- `schema/pulldb_service/077_admin_tasks.sql` (NEW)
+- `pulldb/domain/models.py` (MODIFIED - added enums and dataclass)
+- `pulldb/infra/mysql.py` (MODIFIED - AdminTaskRepository, job count methods)
+- `pulldb/worker/admin_tasks.py` (NEW)
+- `pulldb/worker/loop.py` (MODIFIED - admin task polling)
+- `pulldb/worker/service.py` (MODIFIED - executor initialization)
+- `pulldb/web/features/admin/routes.py` (MODIFIED - 4 new endpoints)
+- `pulldb/web/templates/features/admin/users.html` (MODIFIED - modal + JS)
+- `pulldb/web/templates/features/admin/admin_task_status.html` (NEW)
+- `pulldb/web/static/css/pages/admin.css` (MODIFIED - modal styles)
+- `schema/pulldb_service/300_mysql_users.sql` (MODIFIED - grants)
+
+---
+
 ## 2025-12-22 | Visual Testing & Page-Level CSS Fixes
 
 ### Context

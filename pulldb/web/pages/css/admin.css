@@ -1462,6 +1462,165 @@
     color: var(--warning-600);
 }
 
+/* ===========================================
+   FORCE DELETE MODAL
+   =========================================== */
+
+.modal-content-wide {
+    max-width: 600px;
+}
+
+.modal-header-danger {
+    background: linear-gradient(135deg, var(--red-50), var(--red-100));
+    border-bottom: 1px solid var(--red-200);
+}
+
+.modal-header-danger .modal-title {
+    color: var(--red-700);
+}
+
+.force-delete-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--red-50);
+    border: 1px solid var(--red-200);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
+}
+
+.force-delete-warning .warning-icon {
+    width: 24px;
+    height: 24px;
+    color: var(--red-500);
+    flex-shrink: 0;
+}
+
+.force-delete-warning .warning-text {
+    font-size: var(--text-sm);
+    color: var(--red-700);
+    line-height: 1.5;
+}
+
+.force-delete-databases {
+    margin-bottom: var(--space-4);
+}
+
+.force-delete-databases h4 {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-2);
+}
+
+.force-delete-databases .databases-info {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-3);
+}
+
+.skip-drops-option {
+    padding: var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-3);
+}
+
+.skip-drops-option label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    cursor: pointer;
+}
+
+.databases-list {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    padding: var(--space-2);
+    transition: opacity var(--transition-fast);
+}
+
+.database-item {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast);
+}
+
+.database-item:hover {
+    background: var(--gray-50);
+}
+
+.database-item label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+    font-size: var(--text-sm);
+}
+
+.database-item .db-name {
+    font-family: var(--font-mono);
+    font-weight: var(--font-medium);
+    color: var(--color-text-primary);
+}
+
+.database-item .db-host {
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+}
+
+.force-delete-confirm {
+    padding: var(--space-4);
+    background: var(--gray-50);
+    border-radius: var(--radius-md);
+}
+
+.force-delete-confirm label {
+    display: block;
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-2);
+}
+
+.force-delete-confirm .form-input {
+    width: 100%;
+    margin-bottom: var(--space-2);
+}
+
+.force-delete-confirm .confirm-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+}
+
+.force-delete-confirm .confirm-hint code {
+    font-family: var(--font-mono);
+    background: var(--gray-200);
+    padding: 0.1em 0.3em;
+    border-radius: var(--radius-sm);
+    font-weight: var(--font-medium);
+}
+
+.btn-danger {
+    background: var(--red-600);
+    color: white;
+    border: none;
+}
+
+.btn-danger:hover:not(:disabled) {
+    background: var(--red-700);
+}
+
+.btn-danger:disabled {
+    background: var(--gray-300);
+    color: var(--gray-500);
+    cursor: not-allowed;
+}
+
 /* Host Detail Page */
 .host-detail-layout {
     display: grid;
@@ -1736,6 +1895,15 @@
     color: var(--gray-500);
 }
 
+.action-btn-danger-muted {
+    color: var(--gray-500);
+}
+
+.action-btn-danger-muted:hover {
+    background: var(--danger-50);
+    color: var(--danger-600);
+}
+
 .action-btn-disabled {
     color: var(--gray-400);
     cursor: not-allowed;
@@ -1884,6 +2052,63 @@
 
 [data-theme="dark"] .action-btn:hover {
     background: var(--gray-700);
+}
+
+/* Force Delete Modal - Dark Mode */
+[data-theme="dark"] .modal-header-danger {
+    background: linear-gradient(135deg, var(--red-900), var(--red-800));
+    border-color: var(--red-700);
+}
+
+[data-theme="dark"] .modal-header-danger .modal-title {
+    color: var(--red-300);
+}
+
+[data-theme="dark"] .force-delete-warning {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: var(--red-700);
+}
+
+[data-theme="dark"] .force-delete-warning .warning-icon {
+    color: var(--red-400);
+}
+
+[data-theme="dark"] .force-delete-warning .warning-text {
+    color: var(--red-300);
+}
+
+[data-theme="dark"] .skip-drops-option {
+    background: var(--gray-800);
+}
+
+[data-theme="dark"] .databases-list {
+    background: var(--gray-900);
+    border-color: var(--gray-700);
+}
+
+[data-theme="dark"] .database-item:hover {
+    background: var(--gray-800);
+}
+
+[data-theme="dark"] .force-delete-confirm {
+    background: var(--gray-800);
+}
+
+[data-theme="dark"] .force-delete-confirm .confirm-hint code {
+    background: var(--gray-700);
+}
+
+[data-theme="dark"] .btn-danger {
+    background: var(--red-700);
+}
+
+[data-theme="dark"] .btn-danger:hover:not(:disabled) {
+    background: var(--red-600);
+}
+
+[data-theme="dark"] .btn-danger:disabled {
+    background: var(--gray-700);
+    color: var(--gray-500);
 }
 
 /* ===========================================

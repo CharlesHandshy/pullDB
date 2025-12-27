@@ -1082,6 +1082,47 @@ class SimulatedUserRepository:
             if user.user_code in self.state.users_by_code:
                 self.state.users_by_code[user.user_code] = updated
 
+    def delete_user(self, user_id: str) -> dict[str, int]:
+        """Delete a user and all related records.
+        
+        Users with ANY jobs cannot be deleted (preserves history).
+        """
+        with self.state.lock:
+            user = self.state.users.get(user_id)
+            if not user:
+                raise ValueError(f"User not found: {user_id}")
+            
+            # Check for any jobs
+            job_count = sum(
+                1 for j in self.state.jobs.values()
+                if j.owner_user_id == user_id
+            )
+            if job_count > 0:
+                raise ValueError(
+                    f"Cannot delete user with {job_count} job(s) in history. "
+                    "Use 'disable user' instead to preserve job history."
+                )
+            
+            # Clear manager_id for managed users
+            managed_users_updated = 0
+            for uid, u in list(self.state.users.items()):
+                if u.manager_id == user_id:
+                    updated = replace(u, manager_id=None)
+                    self.state.users[uid] = updated
+                    if u.user_code in self.state.users_by_code:
+                        self.state.users_by_code[u.user_code] = updated
+                    managed_users_updated += 1
+            
+            # Delete user
+            del self.state.users[user_id]
+            if user.user_code in self.state.users_by_code:
+                del self.state.users_by_code[user.user_code]
+            
+            return {
+                "managed_users_updated": managed_users_updated,
+                "user_deleted": 1,
+            }
+
     # =========================================================================
     # Bulk Operations (Admin only)
     # =========================================================================

@@ -257,6 +257,33 @@ class UserRepository(Protocol):
         """
         ...
 
+    def delete_user(self, user_id: str) -> dict[str, int]:
+        """Delete a user and all related records.
+        
+        Deletes the user and cascades to:
+        - sessions (CASCADE)
+        - auth_credentials (CASCADE)
+        - user_hosts (CASCADE)
+        - manager relationships: Sets manager_id to NULL for managed users
+        
+        IMPORTANT: Users with ANY jobs cannot be deleted (preserves history).
+        Use disable_user() instead for users with job history.
+        
+        Args:
+            user_id: The user ID to delete.
+            
+        Returns:
+            Dict with counts of affected records:
+            {
+                "managed_users_updated": int,
+                "user_deleted": 1
+            }
+            
+        Raises:
+            ValueError: If user not found or has any jobs.
+        """
+        ...
+
 
 class HostRepository(Protocol):
     """Protocol for database host operations."""
