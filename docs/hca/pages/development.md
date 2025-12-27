@@ -17,6 +17,8 @@ This guide covers setting up a development environment, coding standards, testin
 3. [Coding Standards](#coding-standards)
 4. [Testing](#testing)
 5. [Development Workflow](#development-workflow)
+6. [Build & Deploy (Development)](#build--deploy-development)
+7. [Common Tasks](#common-tasks)
 
 ---
 
@@ -334,6 +336,102 @@ python -m pulldb.cli.main status --help
 
 # Interactive debugging
 python -c "from pulldb.domain.config import Config; print(Config.from_env())"
+```
+
+---
+
+## Build & Deploy (Development)
+
+> ⚠️ **CRITICAL**: Always deploy to the service venv, never system-wide.
+
+### Building the Package
+
+```bash
+cd /home/charleshandshy/Projects/pullDB
+
+# Clean previous build artifacts
+rm -rf dist/ build/ pulldb.egg-info/
+
+# Build wheel and sdist
+python3 -m build
+```
+
+This creates:
+- `dist/pulldb-X.X.X-py3-none-any.whl` - Wheel package
+- `dist/pulldb-X.X.X.tar.gz` - Source distribution
+
+### Deploying to Service (Development Server)
+
+**ALWAYS use the service venv pip, never system pip:**
+
+```bash
+# ✅ CORRECT: Install to service venv
+sudo /opt/pulldb.service/venv/bin/pip install /path/to/pulldb-X.X.X-py3-none-any.whl --force-reinstall
+
+# Restart service to pick up changes
+sudo systemctl restart pulldb-web
+
+# Verify version
+/opt/pulldb.service/venv/bin/pip show pulldb | head -3
+```
+
+**NEVER do this:**
+```bash
+# ❌ WRONG: Installs system-wide, not to venv
+sudo pip install dist/pulldb-X.X.X-py3-none-any.whl --break-system-packages
+```
+
+### Quick Deploy Script
+
+For convenience during development:
+
+```bash
+#!/bin/bash
+# scripts/dev-deploy.sh
+set -e
+
+cd /home/charleshandshy/Projects/pullDB
+
+# Clean and build
+rm -rf dist/ build/ pulldb.egg-info/
+python3 -m build
+
+# Deploy to service venv
+sudo /opt/pulldb.service/venv/bin/pip install dist/pulldb-*-py3-none-any.whl --force-reinstall
+
+# Restart services
+sudo systemctl restart pulldb-web
+
+# Verify
+echo "Deployed version:"
+/opt/pulldb.service/venv/bin/pip show pulldb | grep Version
+sudo systemctl status pulldb-web --no-pager | head -5
+```
+
+### Service Paths Reference
+
+| Component | Path |
+|-----------|------|
+| Service venv | `/opt/pulldb.service/venv/` |
+| Service pip | `/opt/pulldb.service/venv/bin/pip` |
+| Service python | `/opt/pulldb.service/venv/bin/python` |
+| Service config | `/opt/pulldb.service/.env` |
+| Systemd unit | `/etc/systemd/system/pulldb-web.service` |
+
+### Verifying Deployment
+
+```bash
+# Check installed version
+/opt/pulldb.service/venv/bin/pip show pulldb | head -3
+
+# Verify no system-wide installation
+pip show pulldb 2>/dev/null && echo "WARNING: System-wide install exists!" || echo "OK: No system-wide install"
+
+# Check service is running
+sudo systemctl status pulldb-web --no-pager
+
+# Verify CSS loads (quick smoke test)
+curl -s http://localhost:8000/web/auth/login | grep -E 'manifest\.css' && echo "CSS OK"
 ```
 
 ---
