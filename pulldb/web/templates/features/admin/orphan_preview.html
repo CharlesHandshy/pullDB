@@ -56,7 +56,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=3"></script>
+<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=7"></script>
 <script>
 (function() {
     // Track exclusions by composite key: "dbhost|database_name"
@@ -151,6 +151,7 @@
             fetchUrl: '/web/admin/api/orphan-candidates',
             rowHeight: 48,
             pageSize: 50,
+            emptyMessage: 'No orphan databases detected',
             footerSlot: `
                 <a href="/web/admin/" class="btn btn-secondary">Cancel</a>
                 <button type="button" id="execute-btn" class="btn btn-danger" disabled>No Items Selected</button>

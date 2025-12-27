@@ -240,9 +240,9 @@ class LazyTable {
         this.elements.emptyOverlay = document.createElement('div');
         this.elements.emptyOverlay.className = 'lazy-table-empty';
         this.elements.emptyOverlay.innerHTML = `
-            <svg class="empty-icon" viewBox="0 0 24 24" width="48" height="48">
-                <path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/>
-                <path fill="currentColor" d="M7 12h10v2H7z"/>
+            <svg class="empty-icon" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 12h-6l-2 3h-4l-2-3H2"/>
+                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
             </svg>
             <span class="empty-message">${this.config.emptyMessage}</span>
         `;
