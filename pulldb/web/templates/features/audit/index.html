@@ -26,56 +26,142 @@
             <span class="stat-value" id="stat-total">{{ total_count }}</span>
             <span class="stat-label">total records</span>
         </div>
-    </div>
-
-    <!-- Filters -->
-    <div class="filter-row">
-        <div class="filter-group">
-            <label class="filter-label" for="filter-actor">Actor:</label>
-            <select id="filter-actor" class="filter-select" onchange="applyFilters()">
-                <option value="">All actors</option>
-                {% for u in users_list %}
-                <option value="{{ u.user_id }}" {% if filter_actor_id == u.user_id %}selected{% endif %}>{{ u.username }}</option>
-                {% endfor %}
-            </select>
+        <div class="stat-pill">
+            <span class="stat-value" id="stat-filtered">-</span>
+            <span class="stat-label">shown</span>
         </div>
-        
-        <div class="filter-group">
-            <label class="filter-label" for="filter-target">Target:</label>
-            <select id="filter-target" class="filter-select" onchange="applyFilters()">
-                <option value="">All targets</option>
-                {% for u in users_list %}
-                <option value="{{ u.user_id }}" {% if filter_target_id == u.user_id %}selected{% endif %}>{{ u.username }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        
-        <div class="filter-group">
-            <label class="filter-label" for="filter-action">Action:</label>
-            <select id="filter-action" class="filter-select" onchange="applyFilters()">
-                <option value="">All actions</option>
-                {% for action in action_types %}
-                <option value="{{ action }}">{{ action }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        
-        <button type="button" class="clear-filters-btn" onclick="clearFilters()">
-            {{ icon('x', size='14') }}
-            Clear filters
-        </button>
     </div>
 
     <!-- LazyTable Container -->
     <div class="card lazy-table-height-viewport">
-        <div id="audit-table-container" 
-             data-filter-actor="{{ filter_actor_id or '' }}"
-             data-filter-target="{{ filter_target_id or '' }}"></div>
+        <div id="audit-table-container"></div>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=7"></script>
-<script src="{{ url_for('static', path='js/pages/admin-audit.js') }}?v=1"></script>
+<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=8"></script>
+<script>
+(function() {
+    'use strict';
+
+    const container = document.getElementById('audit-table-container');
+    if (!container) {
+        console.error('[audit] Container not found');
+        return;
+    }
+
+    // ==========================================================================
+    // Column Renderers
+    // ==========================================================================
+
+    const formatTime = (val) => {
+        if (!val) return '-';
+        const d = new Date(val);
+        const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+        return `<span class="cell-nowrap">${date} ${time}</span>`;
+    };
+
+    const renderAction = (val) => {
+        if (!val) return '-';
+        let badgeClass = '';
+        if (val.includes('create') || val.includes('add')) badgeClass = 'create';
+        else if (val.includes('update') || val.includes('change')) badgeClass = 'update';
+        else if (val.includes('delete') || val.includes('remove')) badgeClass = 'delete';
+        else if (val.includes('cancel')) badgeClass = 'cancel';
+        else if (val.includes('submit')) badgeClass = 'submit';
+        else if (val.includes('password') || val.includes('reset')) badgeClass = 'password';
+        else if (val.includes('setting')) badgeClass = 'setting';
+        return `<span class="action-badge ${badgeClass}">${val}</span>`;
+    };
+
+    const renderDetail = (val, row) => {
+        if (!val || val === '-') return '<span class="cell-empty">-</span>';
+        
+        // If there's context data, show it as a tooltip
+        let contextHtml = '';
+        if (row.context && row.context.trim()) {
+            const escapedContext = row.context.replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
+            contextHtml = ` <span class="detail-context-icon" title="${escapedContext}">ⓘ</span>`;
+        }
+        
+        return `<span class="detail-cell" title="${val}">${val}${contextHtml}</span>`;
+    };
+
+    // ==========================================================================
+    // Column Definitions
+    // ==========================================================================
+
+    const columns = [
+        { 
+            key: 'created_at', 
+            label: 'Time', 
+            sortable: true,
+            width: '140px',
+            render: formatTime
+        },
+        { 
+            key: 'actor_username', 
+            label: 'Actor', 
+            sortable: true,
+            filterable: true,
+            width: '140px'
+        },
+        { 
+            key: 'action', 
+            label: 'Action', 
+            sortable: true,
+            filterable: true,
+            width: '180px',
+            render: renderAction
+        },
+        { 
+            key: 'target_username', 
+            label: 'Target', 
+            sortable: true,
+            filterable: true,
+            width: '140px'
+        },
+        { 
+            key: 'detail', 
+            label: 'Detail', 
+            sortable: false,
+            render: renderDetail
+        }
+    ];
+
+    // ==========================================================================
+    // Stats Update
+    // ==========================================================================
+
+    function updateStats(data) {
+        const totalEl = document.getElementById('stat-total');
+        const filteredEl = document.getElementById('stat-filtered');
+        
+        if (totalEl && data.totalCount !== undefined) {
+            totalEl.textContent = data.totalCount;
+        }
+        if (filteredEl && data.filteredCount !== undefined) {
+            filteredEl.textContent = data.filteredCount;
+        }
+    }
+
+    // ==========================================================================
+    // LazyTable Initialization
+    // ==========================================================================
+
+    const table = new LazyTable({
+        container: container,
+        columns: columns,
+        fetchUrl: '/web/admin/audit/api/logs',
+        rowHeight: 48,
+        rowIdKey: 'audit_id',
+        emptyMessage: 'No audit logs found',
+        onDataLoaded: updateStats
+    });
+
+    window.auditTable = table;
+})();
+</script>
 {% endblock %}
