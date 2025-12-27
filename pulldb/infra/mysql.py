@@ -1491,7 +1491,7 @@ class JobRepository:
                 SELECT id, owner_user_id, owner_username, owner_user_code,
                        target, staging_name, dbhost, status, submitted_at,
                        started_at, completed_at, options_json, retry_count,
-                       error_detail, source, worker_id
+                       error_detail, worker_id
                 FROM jobs
                 WHERE target = %s AND dbhost = %s AND id LIKE %s
                 ORDER BY submitted_at DESC
@@ -1574,7 +1574,7 @@ class JobRepository:
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
                        j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
-                       j.error_detail, j.source, j.staging_cleaned_at
+                       j.error_detail, j.worker_id, j.staging_cleaned_at
                 FROM jobs j
                 WHERE j.dbhost = %s
                   AND j.status IN ('complete', 'failed', 'canceled')

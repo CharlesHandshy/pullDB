@@ -523,6 +523,13 @@ class LazyTable {
             
             const data = await response.json();
             
+            // Check for server-side error in response
+            if (data.error) {
+                console.error('LazyTable: server error', data.error);
+                this.showError(data.error);
+                return;
+            }
+            
             this.cache.set(pageIndex, {
                 rows: data.rows || data.data || [],
                 timestamp: Date.now()
@@ -848,10 +855,19 @@ class LazyTable {
         this.elements.loadingOverlay.classList.remove('visible');
     }
 
-    showError() {
+    showError(message = null) {
         this.hasError = true;
         this.hideLoading();
         this.hideEmpty();
+        
+        // Update error message if provided
+        const errorMsg = this.elements.errorOverlay.querySelector('.error-message');
+        if (errorMsg && message) {
+            errorMsg.textContent = message;
+        } else if (errorMsg) {
+            errorMsg.textContent = this.config.i18n.errorMessage;
+        }
+        
         this.elements.errorOverlay.classList.add('visible');
     }
 

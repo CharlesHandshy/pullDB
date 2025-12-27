@@ -3353,26 +3353,30 @@ async def api_orphan_candidates(
 
     # Collect all orphans from all hosts
     all_orphans: list[dict[str, Any]] = []
-    if hasattr(state, "host_repo") and state.host_repo:
-        hosts = state.host_repo.get_enabled_hosts()
-        for host in hosts:
-            result = detect_orphaned_databases(
-                dbhost=host.hostname,
-                job_repo=state.job_repo,
-                host_repo=state.host_repo,
-            )
-            # Skip hosts with connection errors
-            if isinstance(result, str):
-                continue
-            for oc in result.orphans:
-                all_orphans.append({
-                    "database_name": oc.database_name,
-                    "dbhost": oc.dbhost,
-                    "target_name": oc.target_name,
-                    "job_id_prefix": oc.job_id_prefix,
-                    "discovered_at": oc.discovered_at.isoformat() if oc.discovered_at else None,
-                    "size_mb": oc.size_mb,
-                })
+    scan_error: str | None = None
+    try:
+        if hasattr(state, "host_repo") and state.host_repo:
+            hosts = state.host_repo.get_enabled_hosts()
+            for host in hosts:
+                result = detect_orphaned_databases(
+                    dbhost=host.hostname,
+                    job_repo=state.job_repo,
+                    host_repo=state.host_repo,
+                )
+                # Skip hosts with connection errors
+                if isinstance(result, str):
+                    continue
+                for oc in result.orphans:
+                    all_orphans.append({
+                        "database_name": oc.database_name,
+                        "dbhost": oc.dbhost,
+                        "target_name": oc.target_name,
+                        "job_id_prefix": oc.job_id_prefix,
+                        "discovered_at": oc.discovered_at.isoformat() if oc.discovered_at else None,
+                        "size_mb": oc.size_mb,
+                    })
+    except Exception as e:
+        scan_error = f"Failed to scan hosts: {e}"
 
     total_count = len(all_orphans)
 
@@ -3469,6 +3473,7 @@ async def api_orphan_candidates(
         "filteredCount": filtered_count,
         "pageIndex": page,
         "pageSize": pageSize,
+        **(({"error": scan_error} if scan_error else {})),
     }
 
 
@@ -3490,22 +3495,25 @@ async def get_orphan_distinct_values(
     from pulldb.worker.cleanup import detect_orphaned_databases
     
     all_orphans: list[dict[str, Any]] = []
-    if hasattr(state, "host_repo") and state.host_repo:
-        hosts = state.host_repo.get_enabled_hosts()
-        for host in hosts:
-            result = detect_orphaned_databases(
-                dbhost=host.hostname,
-                job_repo=state.job_repo,
-                host_repo=state.host_repo,
-            )
-            if isinstance(result, str):
-                continue
-            for oc in result.orphans:
-                all_orphans.append({
-                    "database_name": oc.database_name,
-                    "dbhost": oc.dbhost,
-                    "target_name": oc.target_name,
-                })
+    try:
+        if hasattr(state, "host_repo") and state.host_repo:
+            hosts = state.host_repo.get_enabled_hosts()
+            for host in hosts:
+                result = detect_orphaned_databases(
+                    dbhost=host.hostname,
+                    job_repo=state.job_repo,
+                    host_repo=state.host_repo,
+                )
+                if isinstance(result, str):
+                    continue
+                for oc in result.orphans:
+                    all_orphans.append({
+                        "database_name": oc.database_name,
+                        "dbhost": oc.dbhost,
+                        "target_name": oc.target_name,
+                    })
+    except Exception:
+        return []  # Return empty list on error - UI will show empty state
     
     # Parse filter order and determine which filters should apply
     order_list = [c.strip() for c in filter_order.split(",") if c.strip()] if filter_order else []
