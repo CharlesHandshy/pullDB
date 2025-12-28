@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from 'partials/icons/_index.html' import icon %}
 
 {% block title %}Audit Logs - Admin - pullDB{% endblock %}
 
@@ -10,13 +9,19 @@
 
 {% block content %}
 <div class="audit-page">
-    <!-- Header with Stats -->
-    <div class="page-header-row">
+    <!-- Page Header with Stats -->
+    <div class="page-header-row mb-4">
         <div class="page-header-left">
-            <a href="/web/admin" class="back-btn" aria-label="Back to Admin">
-                {{ icon('chevron-left', size='20') }}
-            </a>
-            <h1 class="page-title">Audit Logs</h1>
+            <h1 class="page-title">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" x2="8" y1="13" y2="13"/>
+                    <line x1="16" x2="8" y1="17" y2="17"/>
+                    <line x1="10" x2="8" y1="9" y2="9"/>
+                </svg>
+                Audit Logs
+            </h1>
         </div>
         <div class="status-bar">
             <span class="status-item" title="Total Records">
@@ -24,7 +29,22 @@
                     <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
                     <polyline points="14 2 14 8 20 8"/>
                 </svg>
-                <span class="status-count" id="stat-total">{{ total_count }}</span>
+                <span class="status-count" id="stat-total">{{ stats.total }}</span>
+            </span>
+            <span class="status-divider"></span>
+            <span class="status-item status-enabled" title="User Actions">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                </svg>
+                <span class="status-count" id="stat-user-actions">{{ stats.user_actions }}</span>
+            </span>
+            <span class="status-item status-manager" title="System Actions">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                <span class="status-count" id="stat-system-actions">{{ stats.system_actions }}</span>
             </span>
             <span class="status-divider"></span>
             <span class="status-item" title="Filtered Results">
@@ -36,7 +56,7 @@
         </div>
     </div>
 
-    <!-- LazyTable Container -->
+    <!-- Audit Card with LazyTable -->
     <div class="card lazy-table-height-viewport">
         <div id="audit-table-container" class="h-full"></div>
     </div>
@@ -55,6 +75,9 @@
         return;
     }
 
+    // User icon SVG for actor avatar rendering (matches users page pattern)
+    const userIconSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+
     // ==========================================================================
     // Column Renderers
     // ==========================================================================
@@ -67,6 +90,13 @@
         return `<span class="cell-nowrap">${date} ${time}</span>`;
     };
 
+    const renderActor = (val, row) => {
+        const username = val || '(system)';
+        const isSystem = !row.actor_user_id;
+        const iconClass = isSystem ? ' system' : '';
+        return `<span class="user-cell"><div class="user-icon-sm${iconClass}">${userIconSvg}</div><span class="user-name">${username}</span></span>`;
+    };
+
     const renderAction = (val) => {
         if (!val) return '-';
         let badgeClass = '';
@@ -77,7 +107,13 @@
         else if (val.includes('submit')) badgeClass = 'submit';
         else if (val.includes('password') || val.includes('reset')) badgeClass = 'password';
         else if (val.includes('setting')) badgeClass = 'setting';
+        else if (val.includes('login') || val.includes('logout')) badgeClass = 'login';
         return `<span class="action-badge ${badgeClass}">${val}</span>`;
+    };
+
+    const renderTarget = (val, row) => {
+        if (!val || val === '-') return '<span class="cell-empty">-</span>';
+        return `<span class="user-cell"><div class="user-icon-sm">${userIconSvg}</div><span class="user-name">${val}</span></span>`;
     };
 
     const renderDetail = (val, row) => {
@@ -102,6 +138,8 @@
             key: 'created_at', 
             label: 'Time', 
             sortable: true,
+            filterable: true,
+            filterType: 'dateRange',
             width: '140px',
             render: formatTime
         },
@@ -110,7 +148,8 @@
             label: 'Actor', 
             sortable: true,
             filterable: true,
-            width: '140px'
+            width: '160px',
+            render: renderActor
         },
         { 
             key: 'action', 
@@ -125,7 +164,8 @@
             label: 'Target', 
             sortable: true,
             filterable: true,
-            width: '140px'
+            width: '160px',
+            render: renderTarget
         },
         { 
             key: 'detail', 
@@ -140,14 +180,13 @@
     // ==========================================================================
 
     function updateStats(data) {
-        const totalEl = document.getElementById('stat-total');
-        const filteredEl = document.getElementById('stat-filtered');
-        
-        if (totalEl && data.totalCount !== undefined) {
-            totalEl.textContent = data.totalCount;
+        if (data.stats) {
+            document.getElementById('stat-total').textContent = data.stats.total;
+            document.getElementById('stat-user-actions').textContent = data.stats.user_actions;
+            document.getElementById('stat-system-actions').textContent = data.stats.system_actions;
         }
-        if (filteredEl && data.filteredCount !== undefined) {
-            filteredEl.textContent = data.filteredCount;
+        if (data.filteredCount !== undefined) {
+            document.getElementById('stat-filtered').textContent = data.filteredCount;
         }
     }
 

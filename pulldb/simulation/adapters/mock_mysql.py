@@ -1927,13 +1927,20 @@ class SimulatedAuditRepository:
             # Apply pagination
             paginated = filtered[offset : offset + limit]
             
-            # Transform to match expected format
+            # Build username lookup from users
+            user_lookup = {uid: u.username for uid, u in self.state.users.items()}
+            
+            # Transform to match expected format with username enrichment
             results = []
             for entry in paginated:
+                actor_uid = entry["actor_user_id"]
+                target_uid = entry["target_user_id"]
                 results.append({
                     "audit_id": entry["audit_id"],
-                    "actor_user_id": entry["actor_user_id"],
-                    "target_user_id": entry["target_user_id"],
+                    "actor_user_id": actor_uid,
+                    "actor_username": user_lookup.get(actor_uid),
+                    "target_user_id": target_uid,
+                    "target_username": user_lookup.get(target_uid) if target_uid else None,
                     "action": entry["action"],
                     "detail": entry["detail"],
                     "context": json.loads(entry["context_json"]) if entry["context_json"] else None,

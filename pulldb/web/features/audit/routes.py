@@ -27,11 +27,23 @@ async def audit_page(
     
     Filters are handled client-side via LazyTable's built-in filterable columns.
     """
-    # Get total count for stats
-    total_count = 0
+    # Build stats dict (matching users page pattern)
+    stats = {
+        "total": 0,
+        "user_actions": 0,
+        "system_actions": 0,
+    }
+    
     if hasattr(state, "audit_repo") and state.audit_repo:
         try:
-            total_count = state.audit_repo.get_audit_logs_count()
+            all_logs = state.audit_repo.get_audit_logs(limit=10000)
+            stats["total"] = len(all_logs)
+            # Count user vs system actions
+            for log in all_logs:
+                if log.get("actor_user_id"):
+                    stats["user_actions"] += 1
+                else:
+                    stats["system_actions"] += 1
         except Exception:
             pass
 
@@ -41,7 +53,7 @@ async def audit_page(
             "request": request,
             "active_nav": "audit",
             "user": user,
-            "total_count": total_count,
+            "stats": stats,
             "breadcrumbs": get_breadcrumbs("audit_logs"),
         },
     )
@@ -115,19 +127,46 @@ async def get_audit_logs_api(
         
         # Extract filter params
         text_filters: dict[str, list[str]] = {}
+        date_range_filter: tuple[str | None, str | None] | None = None
+        
         for key, value in request.query_params.items():
             if key.startswith("filter_") and value and key != "filter_order":
                 col_key = key[7:]  # Remove "filter_" prefix
-                text_filters[col_key] = parse_multi_value_filter(value)
+                
+                # Date range filter for created_at (format: "fromISO,toISO")
+                if col_key == "created_at":
+                    parts = value.split(",")
+                    from_date = parts[0] if parts[0] else None
+                    to_date = parts[1] if len(parts) > 1 and parts[1] else None
+                    date_range_filter = (from_date, to_date)
+                else:
+                    text_filters[col_key] = parse_multi_value_filter(value)
         
-        # Apply text filters
+        # Apply date range filter
+        if date_range_filter:
+            from_date, to_date = date_range_filter
+            filtered_rows = []
+            for row in rows:
+                created_at = row.get("created_at")
+                if not created_at:
+                    continue
+                # Compare ISO strings directly (they sort lexicographically)
+                if from_date and created_at < from_date:
+                    continue
+                if to_date and created_at > to_date:
+                    continue
+                filtered_rows.append(row)
+            rows = filtered_rows
+        
+        # Apply text filters (multi-select checkbox filters)
         if text_filters:
             filtered_rows = []
             for row in rows:
                 match = True
                 for col_key, filter_vals in text_filters.items():
                     cell_val = str(row.get(col_key, "")).lower()
-                    if not any(fv in cell_val for fv in filter_vals):
+                    # For multi-select, check if cell value matches ANY of the selected values
+                    if not any(fv.lower() == cell_val for fv in filter_vals):
                         match = False
                         break
                 if match:
@@ -149,12 +188,21 @@ async def get_audit_logs_api(
         end = start + pageSize
         page_rows = rows[start:end]
         
+        # Count user vs system actions for stats
+        user_actions = sum(1 for r in rows if r.get("actor_user_id"))
+        system_actions = len(rows) - user_actions
+        
         return {
             "rows": page_rows,
             "totalCount": total_count,
             "filteredCount": filtered_count,
-            "pageIndex": page,
+            "page": page,
             "pageSize": pageSize,
+            "stats": {
+                "total": total_count,
+                "user_actions": user_actions,
+                "system_actions": system_actions,
+            },
         }
         
     except Exception as e:
@@ -162,8 +210,9 @@ async def get_audit_logs_api(
             "rows": [],
             "totalCount": 0,
             "filteredCount": 0,
-            "pageIndex": page,
+            "page": page,
             "pageSize": pageSize,
+            "stats": {"total": 0, "user_actions": 0, "system_actions": 0},
             "error": str(e),
         }
 
@@ -195,6 +244,7 @@ async def get_audit_distinct_values(
                 "actor_username": log.get("actor_username") or "(unknown)",
                 "action": log.get("action"),
                 "target_username": log.get("target_username") or "-",
+                "created_at": log.get("created_at").isoformat() if log.get("created_at") else None,
             })
         
         # Parse filter order and determine which filters should apply
@@ -209,21 +259,47 @@ async def get_audit_distinct_values(
             applicable_cols = set(order_list)
         
         # Extract filter params from request
-        filters: dict[str, list[str]] = {}
+        text_filters: dict[str, list[str]] = {}
+        date_range_filter: tuple[str | None, str | None] | None = None
+        
         for key, value in request.query_params.items():
             if key.startswith("filter_") and value and key != "filter_order":
                 col_key = key[7:]
-                if col_key in applicable_cols:
-                    filters[col_key] = parse_multi_value_filter(value)
+                if col_key not in applicable_cols:
+                    continue
+                    
+                # Date range filter for created_at
+                if col_key == "created_at":
+                    parts = value.split(",")
+                    from_date = parts[0] if parts[0] else None
+                    to_date = parts[1] if len(parts) > 1 and parts[1] else None
+                    date_range_filter = (from_date, to_date)
+                else:
+                    text_filters[col_key] = parse_multi_value_filter(value)
         
-        # Apply cascading filters
-        if filters:
+        # Apply date range filter
+        if date_range_filter:
+            from_date, to_date = date_range_filter
+            filtered = []
+            for row in rows:
+                created_at = row.get("created_at")
+                if not created_at:
+                    continue
+                if from_date and created_at < from_date:
+                    continue
+                if to_date and created_at > to_date:
+                    continue
+                filtered.append(row)
+            rows = filtered
+        
+        # Apply cascading text filters (multi-select)
+        if text_filters:
             filtered = []
             for row in rows:
                 match = True
-                for col_key, filter_vals in filters.items():
+                for col_key, filter_vals in text_filters.items():
                     cell_val = str(row.get(col_key, "")).lower()
-                    if not any(fv in cell_val for fv in filter_vals):
+                    if not any(fv.lower() == cell_val for fv in filter_vals):
                         match = False
                         break
                 if match:
