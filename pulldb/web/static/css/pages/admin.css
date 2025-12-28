@@ -494,6 +494,53 @@
    SETTINGS PAGE
    =========================================== */
 
+/* Settings Page - Icon-Only Tabs */
+.settings-panels {
+    padding: 0;
+}
+
+.settings-panels .tab-content {
+    display: none;
+    max-height: calc(100vh - 300px);
+    overflow-y: auto;
+}
+
+.settings-panels .tab-content.active {
+    display: block;
+}
+
+/* Icon-only tab styling for settings */
+.tabs .tab svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Dim tabs with no search matches */
+.tabs .tab.no-matches {
+    opacity: 0.4;
+}
+
+/* Card header with search and legend */
+.card .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+
+.priority-legend {
+    display: flex;
+    gap: var(--space-3);
+    flex-shrink: 0;
+}
+
+/* Settings List within Tab Panels */
+.settings-list {
+    display: flex;
+    flex-direction: column;
+}
+
 .setting-row {
     display: grid;
     grid-template-columns: 280px 1fr auto;
