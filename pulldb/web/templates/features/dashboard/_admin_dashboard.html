@@ -3,7 +3,7 @@
 {% from 'widgets/stats_bar.html' import stats_bar, stat_item %}
 
 <!-- System Overview Stats -->
-{% call stats_bar() %}
+{% call stats_bar('stats-bar--compact') %}
     {{ stat_item('users-group', 'Users', [(system_stats.active_users, 'Ena', 'primary'), (system_stats.disabled_users, 'Dis', 'gray')], 'primary') }}
     {{ stat_item('server', 'Hosts', [(system_stats.enabled_hosts, 'Ena', 'success'), (system_stats.disabled_hosts, 'Dis', 'gray')], 'success') }}
     {{ stat_item('jobs', 'System Jobs', [(system_stats.queued_jobs, 'Q', 'warning', 'Queued'), (system_stats.running_jobs, 'R', 'primary', 'Running'), (system_stats.completed_jobs, 'C', 'success', 'Completed'), (system_stats.failed_jobs, 'F', 'danger', 'Failed')], 'gray') }}

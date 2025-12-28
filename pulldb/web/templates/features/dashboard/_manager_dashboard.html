@@ -2,7 +2,7 @@
 {% from 'widgets/stats_bar.html' import stats_bar, stat_item %}
 
 <!-- Team Overview Stats -->
-{% call stats_bar() %}
+{% call stats_bar('stats-bar--compact') %}
     {{ stat_item('users-group', 'My Team', [(team_stats.managed_users, 'Ena', 'primary'), (team_stats.disabled_users, 'Dis', 'gray')], 'primary') }}
     {{ stat_item('jobs', 'Team Jobs', [(team_stats.queued_jobs, 'Q', 'warning'), (team_stats.running_jobs, 'R', 'primary'), (team_stats.completed_jobs, 'C', 'success'), (team_stats.failed_jobs, 'F', 'danger')], 'gray') }}
     {{ stat_item('lightning', 'My Active', [(my_active_count, '', 'primary')], 'primary') }}
