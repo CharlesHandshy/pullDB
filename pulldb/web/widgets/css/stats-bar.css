@@ -92,6 +92,72 @@
 }
 
 /* ===========================================
+   COMPACT MODIFIER
+   Pill-style variant matching status-bar aesthetic
+   Used for unified look across dashboards and list pages
+   =========================================== */
+
+.stats-bar--compact {
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--gray-200);
+    margin-top: 0;
+    display: inline-flex;
+    flex-wrap: nowrap;
+}
+
+[data-theme="dark"] .stats-bar--compact {
+    background: var(--gray-800);
+    border-color: var(--gray-700);
+}
+
+.stats-bar--compact .stats-bar__item {
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    gap: var(--space-1);
+}
+
+.stats-bar--compact .stats-bar__label {
+    display: none;
+}
+
+.stats-bar--compact .stats-bar__icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.stats-bar--compact .stats-bar__value {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+.stats-bar--compact .stats-bar__suffix {
+    font-size: 0.6875rem;
+}
+
+.stats-bar--compact .stats-bar__values {
+    gap: var(--space-2);
+}
+
+/* Divider between items in compact mode */
+.stats-bar--compact .stats-bar__item + .stats-bar__item::before {
+    content: '';
+    width: 1px;
+    height: 16px;
+    background: var(--gray-300);
+    margin-right: var(--space-3);
+}
+
+[data-theme="dark"] .stats-bar--compact .stats-bar__item + .stats-bar__item::before {
+    background: var(--gray-600);
+}
+
+/* ===========================================
    RESPONSIVE: Stack on mobile
    =========================================== */
 

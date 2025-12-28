@@ -21,15 +21,21 @@
     </div>
 
     <!-- Stats -->
-    <div class="stats-row">
-        <div class="stat-pill">
-            <span class="stat-value" id="stat-total">{{ total_count }}</span>
-            <span class="stat-label">total records</span>
-        </div>
-        <div class="stat-pill">
-            <span class="stat-value" id="stat-filtered">-</span>
-            <span class="stat-label">shown</span>
-        </div>
+    <div class="status-bar">
+        <span class="status-item" title="Total Records">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span class="status-count" id="stat-total">{{ total_count }}</span>
+        </span>
+        <span class="status-divider"></span>
+        <span class="status-item" title="Filtered Results">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+            </svg>
+            <span class="status-count" id="stat-filtered">-</span>
+        </span>
     </div>
 
     <!-- LazyTable Container -->
