@@ -2,9 +2,11 @@
 {% from 'widgets/stats_bar.html' import stats_bar, stat_item %}
 
 <!-- My Stats -->
+<div class="flex justify-end mb-4">
 {% call stats_bar('stats-bar--compact') %}
     {{ stat_item('lightning', 'My Active Jobs', [(my_active_count, '', 'primary')], 'primary') }}
 {% endcall %}
+</div>
 
 <!-- My Last Job -->
 <div class="card card-padding mt-6">

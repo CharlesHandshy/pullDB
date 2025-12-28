@@ -33,7 +33,7 @@
 
 {# Individual stat item with icon and list of (value, suffix, color[, tooltip]) tuples #}
 {% macro stat_item(icon_name, label, values, icon_color='gray') %}
-<div class="stats-bar__item">
+<div class="stats-bar__item" title="{{ label }}">
     <span class="stats-bar__icon text-{{ icon_color }}-600">{{ icon(icon_name, size='16') }}</span>
     <span class="stats-bar__label">{{ label }}</span>
     <div class="stats-bar__values">
