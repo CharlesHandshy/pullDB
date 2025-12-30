@@ -1619,7 +1619,7 @@
 
 .force-delete-confirm {
     padding: var(--space-4);
-    background: var(--gray-50);
+    background: var(--color-bg-subtle);
     border-radius: var(--radius-md);
 }
 
@@ -1643,20 +1643,20 @@
 
 .force-delete-confirm .confirm-hint code {
     font-family: var(--font-mono);
-    background: var(--gray-200);
+    background: var(--color-bg-muted);
     padding: 0.1em 0.3em;
     border-radius: var(--radius-sm);
     font-weight: var(--font-medium);
 }
 
 .btn-danger {
-    background: var(--danger-600);
-    color: white;
+    background: var(--color-danger);
+    color: var(--color-text-inverse);
     border: none;
 }
 
 .btn-danger:hover:not(:disabled) {
-    background: var(--danger-700);
+    background: var(--color-danger-hover);
 }
 
 .btn-danger:disabled {
@@ -2131,28 +2131,14 @@
 }
 
 [data-theme="dark"] .database-item:hover {
-    background: var(--gray-800);
+    background: var(--color-surface-hover);
 }
 
-[data-theme="dark"] .force-delete-confirm {
-    background: var(--gray-800);
-}
-
-[data-theme="dark"] .force-delete-confirm .confirm-hint code {
-    background: var(--gray-700);
-}
-
-[data-theme="dark"] .btn-danger {
-    background: var(--danger-700);
-}
-
-[data-theme="dark"] .btn-danger:hover:not(:disabled) {
-    background: var(--danger-600);
-}
+/* force-delete-confirm now uses semantic vars, dark mode auto-handled */
 
 [data-theme="dark"] .btn-danger:disabled {
-    background: var(--gray-700);
-    color: var(--gray-500);
+    background: var(--color-bg-muted);
+    color: var(--color-text-muted);
 }
 
 /* ===========================================

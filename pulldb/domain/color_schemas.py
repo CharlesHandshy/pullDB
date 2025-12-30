@@ -207,6 +207,40 @@ class ColorSchema:
         data = json.loads(json_str)
         return cls.from_dict(data)
 
+    @classmethod
+    def from_json_with_defaults(
+        cls, json_str: str, defaults: "ColorSchema"
+    ) -> "ColorSchema":
+        """Deserialize schema from JSON, filling missing values from defaults.
+        
+        This is critical for mode-specific schemas (dark vs light) where
+        the dataclass defaults are light-mode values. When loading a saved
+        dark schema, missing fields should come from the dark defaults,
+        not light defaults.
+        
+        Args:
+            json_str: JSON string with partial schema data.
+            defaults: Default ColorSchema to fill missing values from.
+            
+        Returns:
+            Complete ColorSchema with saved values + defaults for missing.
+        """
+        data = json.loads(json_str)
+        defaults_dict = defaults.to_dict()
+        
+        # Deep merge: data overwrites defaults
+        def deep_merge(base: dict, override: dict) -> dict:
+            result = base.copy()
+            for key, value in override.items():
+                if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                    result[key] = deep_merge(result[key], value)
+                else:
+                    result[key] = value
+            return result
+        
+        merged = deep_merge(defaults_dict, data)
+        return cls.from_dict(merged)
+
     def to_css_variables(self, prefix: str = "") -> dict[str, str]:
         """Convert schema to CSS custom property name→value mapping.
 

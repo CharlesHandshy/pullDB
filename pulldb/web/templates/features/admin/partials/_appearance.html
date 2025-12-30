@@ -645,9 +645,10 @@
 .color-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); flex-wrap: wrap; }
 .color-row:last-child { margin-bottom: 0; }
 .color-row label { flex: 0 0 80px; font-size: var(--text-sm); color: var(--color-text-secondary); }
-.color-picker { width: 32px; height: 32px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer; flex-shrink: 0; }
+.color-picker { width: 32px; height: 32px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer; flex-shrink: 0; background: transparent; -webkit-appearance: none; -moz-appearance: none; appearance: none; }
 .color-picker::-webkit-color-swatch-wrapper { padding: 2px; }
 .color-picker::-webkit-color-swatch { border-radius: var(--radius-xs); border: none; }
+.color-picker::-moz-color-swatch { border-radius: var(--radius-xs); border: none; }
 .color-text { flex: 1; min-width: 0; padding: var(--space-1) var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-input-bg, var(--color-surface)); }
 .hsl-toggle { width: 24px; height: 24px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); transition: all var(--transition-fast); flex-shrink: 0; }
 .hsl-toggle:hover { background: var(--color-bg-hover, var(--color-surface-hover)); color: var(--color-text-primary); }
@@ -850,16 +851,21 @@
     // Load all presets from server on init
     async function initPresets() {
         try {
-            const r = await fetch('/web/admin/api/color-presets');
-            allPresets = await r.json();
+            // Load presets and saved schemas in parallel
+            const [presetsRes, savedRes] = await Promise.all([
+                fetch('/web/admin/api/color-presets'),
+                fetch('/web/admin/api/saved-theme-schemas')
+            ]);
+            allPresets = await presetsRes.json();
+            const saved = await savedRes.json();
             
-            // Set defaults from server data
+            // Set defaults from preset data (for reset functionality)
             defaultLight = allPresets.light?.['Default'] || null;
             defaultDark = allPresets.dark?.['Default'] || null;
             
-            // Initialize schemas with defaults
-            lightSchema = JSON.parse(JSON.stringify(defaultLight));
-            darkSchema = JSON.parse(JSON.stringify(defaultDark));
+            // Initialize schemas from SAVED database values, not defaults
+            lightSchema = saved.light ? JSON.parse(JSON.stringify(saved.light)) : JSON.parse(JSON.stringify(defaultLight));
+            darkSchema = saved.dark ? JSON.parse(JSON.stringify(saved.dark)) : JSON.parse(JSON.stringify(defaultDark));
             
             updateUI();
         } catch(e) {

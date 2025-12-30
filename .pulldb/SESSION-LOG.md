@@ -28,6 +28,66 @@ sudo systemctl restart pulldb-web
 
 ---
 
+## 2025-01-28 | Theme Management Page Overhaul (Phases 1-3)
+
+### Context
+User requested: "A complete page to recolor the theme styles sitewide for Light and Dark mode. Reorder and update this page so that we can retheme with color and sliders, make it easier to use."
+
+### What Was Done
+
+1. **Restructured `_appearance.html`**: Reorganized from 6 flat color panels to 4 collapsible accordion groups:
+   - **Foundation**: Surfaces + Backgrounds (6 tokens)
+   - **Typography**: Text + Links + Code (9 tokens)
+   - **UI Controls**: Interactive + Inputs + Borders + Table + Scrollbar (17 tokens)
+   - **Feedback**: Status Colors (4 tokens)
+
+2. **Added 18 new color controls** for previously unexposed tokens:
+   - Links: default, hover, visited
+   - Code: background, text, border
+   - Inputs: background, border, focus, placeholder
+   - Table: header background, row hover
+   - Scrollbar: track, thumb, thumb hover
+
+3. **Added HSL sliders** to all 37 color tokens:
+   - Click '+' button to expand H/S/L sliders for any color
+   - Bidirectional sync: sliders ↔ hex picker ↔ text input
+   - Dynamic gradient tracks show color space visually
+   - Enables harmonious color variations (same H, vary S/L)
+
+4. **Fixed hardcoded hex colors** in appearance.html:
+   - Toast notifications → `var(--color-success/error/info)`
+   - Demo gallery fallbacks → `var(--gray-50/900)`
+   - Badge backgrounds → `var(--color-*-bg)` tokens
+
+### Commits
+- `0f89a16`: Phase 1 - THEME-CONFORMITY-INDEX.md + audit script
+- `ec679e1`: Phase 2 - Accordion restructure + new color controls
+- `f0f95bb`: Phase 3 - HSL sliders for all 37 tokens
+
+### PAUSED - Remaining Tasks
+- **Remediate hardcoded colors sitewide**: profile.css L772/L906, other files per THEME-CONFORMITY-INDEX.md
+- **Add theme export/import**: Download/upload JSON theme files
+
+### Deployment Note
+2025-12-30: Deploying to production for evaluation before continuing with remaining tasks.
+
+---
+
+## 2025-01-28 | Theme Conformity Index & Audit Script (Phase 1)
+
+### Context
+Pre-work for theme management overhaul. Created documentation and tooling to ensure theme consistency across codebase.
+
+### What Was Done
+1. **Created `docs/THEME-CONFORMITY-INDEX.md`**: Complete index of all 68 CSS theme tokens, compliance status per file, and remediation queue
+2. **Created `scripts/audit_theme_conformity.py`**: Pre-commit script that detects hardcoded hex colors, `[data-theme]` overrides, and inline styles without `var()`
+
+### Rationale
+- **Continuous Learning**: Index serves as single source of truth for theme architecture
+- **Pre-commit Enforcement**: Prevents regression of hardcoded colors
+
+---
+
 ## 2025-01-28 | KISS S3 Configuration Cleanup
 
 ### Context

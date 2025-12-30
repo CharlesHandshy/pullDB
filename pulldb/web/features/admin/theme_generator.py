@@ -39,19 +39,15 @@ def generate_theme_css(schema: "ColorSchema", mode: str = "light") -> str:
     css_lines = [f"    {name}: {value};" for name, value in css_vars.items()]
     css_content = "\n".join(css_lines)
     
-    # Use both :root and [data-theme] for maximum compatibility
-    # :root provides defaults, [data-theme] provides specificity
+    # Use ONLY [data-theme] selector - NOT :root
+    # This prevents conflicts when reloading CSS dynamically
+    # The data-theme attribute on <html> controls which variables are active
     return f"""/* pullDB Theme - {schema.name} ({mode})
  * Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
  * This file is auto-generated. Do not edit directly.
  */
 
-/* Base variables - loaded when this file is active */
-:root {{
-{css_content}
-}}
-
-/* Attribute selector for specificity - prevents flash during transitions */
+/* Theme variables - controlled by data-theme attribute on <html> */
 [data-theme="{mode}"] {{
 {css_content}
 }}

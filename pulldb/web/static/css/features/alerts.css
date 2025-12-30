@@ -326,8 +326,8 @@
 .spinner {
     width: 16px;
     height: 16px;
-    border: 2px solid var(--gray-200);
-    border-top-color: var(--primary-600);
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-primary);
     border-radius: var(--radius-full);
     animation: spin 0.8s linear infinite;
 }
@@ -354,7 +354,7 @@
 .provision-status {
     margin-top: var(--space-4);
     padding-top: var(--space-4);
-    border-top: 1px solid var(--gray-200);
+    border-top: 1px solid var(--color-border);
 }
 
 .provision-steps {
@@ -364,8 +364,8 @@
     max-height: 180px;
     overflow-y: auto;
     padding: var(--space-2);
-    background: var(--gray-50);
-    border: 1px solid var(--gray-200);
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
 }
 
@@ -374,7 +374,7 @@
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-2) var(--space-3);
-    background: var(--gray-50);
+    background: var(--color-bg-subtle);
     border-radius: var(--radius-md);
     font-size: var(--text-sm);
 }
@@ -452,9 +452,9 @@
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-1) var(--space-3);
-    background: var(--gray-50);
+    background: var(--color-bg-subtle);
     border-radius: var(--radius-full);
-    border: 1px solid var(--gray-200);
+    border: 1px solid var(--color-border);
 }
 
 .status-item {
@@ -476,14 +476,14 @@
     font-family: var(--font-mono);
 }
 
-.status-enabled { color: var(--success-600); }
-.status-disabled { color: var(--gray-400); }
-.status-active { color: var(--primary-600); }
+.status-enabled { color: var(--color-success); }
+.status-disabled { color: var(--color-text-muted); }
+.status-active { color: var(--color-primary); }
 
 .status-divider {
     width: 1px;
     height: 16px;
-    background: var(--gray-300);
+    background: var(--color-border);
 }
 
 /* Status bar tooltips */
@@ -497,8 +497,8 @@
     font-size: var(--text-2xs);
     font-weight: var(--font-medium);
     white-space: nowrap;
-    color: white;
-    background: var(--gray-800);
+    color: var(--color-text-inverse);
+    background: var(--color-text-primary);
     border-radius: var(--radius-sm);
     opacity: 0;
     visibility: hidden;
@@ -514,7 +514,7 @@
     left: 50%;
     transform: translateX(-50%);
     border: 4px solid transparent;
-    border-top-color: var(--gray-800);
+    border-top-color: var(--color-text-primary);
     opacity: 0;
     visibility: hidden;
     transition: all var(--transition-fast);
@@ -751,7 +751,7 @@
 .error-code {
     font-size: 4rem;
     font-weight: var(--font-bold);
-    color: var(--gray-300);
+    color: var(--color-text-muted);
     margin: 0 0 var(--space-2);
     line-height: 1;
 }
@@ -765,7 +765,7 @@
 .error-detail {
     margin-top: var(--space-4);
     padding: var(--space-3);
-    background: var(--gray-50);
+    background: var(--color-bg-subtle);
     border-radius: var(--radius-md);
     font-family: var(--font-mono);
     font-size: var(--text-sm);
@@ -808,6 +808,9 @@
 
 /* ===========================================
    DARK MODE - ERROR PAGE
+   Note: Most styles now use semantic --color-* variables
+   that automatically adapt to dark mode. Only truly
+   mode-specific overrides remain here.
    =========================================== */
 
 [data-theme="dark"] .error-card {
@@ -815,10 +818,5 @@
     border: 1px solid var(--color-border);
 }
 
-[data-theme="dark"] .error-code {
-    color: var(--gray-600);
-}
-
-[data-theme="dark"] .error-detail {
-    background: var(--gray-800);
-}
+/* Error code uses muted text in both modes via semantic var */
+/* Error detail uses bg-subtle in both modes via semantic var */

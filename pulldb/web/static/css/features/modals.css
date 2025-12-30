@@ -103,8 +103,8 @@
     justify-content: space-between;
     align-items: center;
     padding: var(--space-5);
-    border-bottom: 1px solid var(--gray-100);
-    background: var(--gray-25);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
 }
 
 /* ===========================================
@@ -133,14 +133,14 @@
     background: none;
     border: none;
     cursor: pointer;
-    color: var(--gray-400);
+    color: var(--color-text-muted);
     border-radius: var(--radius-sm);
     transition: color var(--transition-fast);
 }
 
 .modal__close:hover,
 .modal-close:hover {
-    color: var(--gray-600);
+    color: var(--color-text-primary);
 }
 
 .modal__close svg,
@@ -163,7 +163,7 @@
 .modal-body p {
     margin: 0 0 var(--space-4);
     font-size: var(--text-base);
-    color: var(--gray-600);
+    color: var(--color-text-secondary);
     line-height: var(--leading-normal);
 }
 
@@ -173,12 +173,12 @@
 .modal-path {
     font-family: var(--font-mono);
     font-size: 0.8125rem;
-    background: var(--gray-50);
+    background: var(--color-bg-subtle);
     padding: var(--space-3);
     border-radius: var(--radius-md);
-    border: 1px solid var(--gray-200);
+    border: 1px solid var(--color-border);
     word-break: break-all;
-    color: var(--gray-800);
+    color: var(--color-text-primary);
 }
 
 /* ===========================================
@@ -191,8 +191,8 @@
     justify-content: flex-end;
     gap: var(--space-3);
     padding: var(--space-4) var(--space-6);
-    border-top: 1px solid var(--gray-100);
-    background: var(--gray-25);
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
 }
 
 /* ===========================================
@@ -202,7 +202,7 @@
 .modal__tabs,
 .modal-tabs {
     display: flex;
-    border-bottom: 1px solid var(--gray-200);
+    border-bottom: 1px solid var(--color-border);
     padding: 0 var(--space-5);
 }
 
@@ -224,7 +224,7 @@
 
 .modal__tab:hover,
 .modal-tab:hover {
-    color: var(--gray-700);
+    color: var(--color-text-primary);
 }
 
 .modal__tab.is-active,
@@ -485,48 +485,16 @@
 
 /* ===========================================
    DARK MODE
-   Co-located dark theme overrides
+   Note: Most styles now use semantic --color-* variables
+   that automatically adapt to dark mode. Only truly
+   mode-specific overrides remain here.
    =========================================== */
-
-[data-theme="dark"] .modal-content {
-    background: var(--color-surface);
-    border-color: var(--color-border);
-}
-
-[data-theme="dark"] .modal-header,
-[data-theme="dark"] .modal__header {
-    background: var(--color-bg-secondary);
-    border-bottom-color: var(--color-border);
-}
-
-[data-theme="dark"] .modal-header h3,
-[data-theme="dark"] .modal__title {
-    color: var(--color-text-primary);
-}
-
-[data-theme="dark"] .modal-footer,
-[data-theme="dark"] .modal__footer {
-    background: var(--color-bg-secondary);
-    border-top-color: var(--color-border);
-}
-
-[data-theme="dark"] .modal-body p {
-    color: var(--color-text-secondary);
-}
-
-[data-theme="dark"] .modal-detail,
-[data-theme="dark"] .modal-path {
-    background: var(--color-bg-tertiary);
-    border-color: var(--color-border);
-    color: var(--color-text-primary);
-}
 
 /* Password note dark mode - warning colors need explicit dark values */
 [data-theme="dark"] .password-note {
-    background: rgba(251, 191, 36, 0.15);
-    color: var(--warning, #fbbf24);
-    border-color: rgba(251, 191, 36, 0.3);
-}
+    background: var(--color-warning-bg);
+    color: var(--color-warning);
+    border-color: var(--color-warning-border);
 }
 
 /* ===========================================

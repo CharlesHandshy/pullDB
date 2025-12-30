@@ -4682,6 +4682,51 @@ async def get_all_color_presets(
     }
 
 
+@router.get("/api/saved-theme-schemas")
+async def get_saved_theme_schemas(
+    state: Any = Depends(get_api_state),
+) -> dict:
+    """Get the currently saved theme schemas from the database.
+    
+    Returns the light and dark theme schemas as currently saved,
+    falling back to defaults if not yet customized.
+    
+    Returns:
+        Dict with 'light' and 'dark' keys containing saved schemas.
+    """
+    from pulldb.domain.color_schemas import LIGHT_PRESETS, DARK_PRESETS, ColorSchema
+    
+    # Start with complete defaults for each mode
+    light_schema = LIGHT_PRESETS["Default"]
+    dark_schema = DARK_PRESETS["Default"]
+    
+    if hasattr(state, "settings_repo") and state.settings_repo:
+        try:
+            light_json = state.settings_repo.get_setting("light_theme_schema")
+            if light_json:
+                # Merge saved values with LIGHT defaults (not dataclass defaults)
+                light_schema = ColorSchema.from_json_with_defaults(
+                    light_json, LIGHT_PRESETS["Default"]
+                )
+        except (ValueError, TypeError, KeyError):
+            pass  # Use default on error
+        
+        try:
+            dark_json = state.settings_repo.get_setting("dark_theme_schema")
+            if dark_json:
+                # Merge saved values with DARK defaults (not light dataclass defaults!)
+                dark_schema = ColorSchema.from_json_with_defaults(
+                    dark_json, DARK_PRESETS["Default"]
+                )
+        except (ValueError, TypeError, KeyError):
+            pass  # Use default on error
+    
+    return {
+        "light": _schema_to_dict(light_schema),
+        "dark": _schema_to_dict(dark_schema),
+    }
+
+
 # =============================================================================
 # Theme File Generation Endpoints
 # =============================================================================
@@ -4707,7 +4752,7 @@ async def generate_manifest(
     )
     from pulldb.web.features.admin.theme_generator import write_theme_files
     
-    # Load schemas from database, falling back to defaults
+    # Start with complete defaults for each mode
     light_schema = LIGHT_PRESETS["Default"]
     dark_schema = DARK_PRESETS["Default"]
     
@@ -4715,14 +4760,20 @@ async def generate_manifest(
         try:
             light_json = state.settings_repo.get_setting("light_theme_schema")
             if light_json:
-                light_schema = ColorSchema.from_json(light_json)
+                # Merge saved values with LIGHT defaults
+                light_schema = ColorSchema.from_json_with_defaults(
+                    light_json, LIGHT_PRESETS["Default"]
+                )
         except (ValueError, TypeError, KeyError):
             pass
         
         try:
             dark_json = state.settings_repo.get_setting("dark_theme_schema")
             if dark_json:
-                dark_schema = ColorSchema.from_json(dark_json)
+                # Merge saved values with DARK defaults (critical!)
+                dark_schema = ColorSchema.from_json_with_defaults(
+                    dark_json, DARK_PRESETS["Default"]
+                )
         except (ValueError, TypeError, KeyError):
             pass
     
