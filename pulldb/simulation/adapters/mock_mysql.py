@@ -1443,6 +1443,27 @@ class SimulatedHostRepository:
         """Get all hosts (alias for get_all_hosts)."""
         return self.get_all_hosts()
 
+    def hard_delete_host(self, host_id: str) -> None:
+        """Permanently delete a host by ID.
+        
+        Used by admin Remove Host feature after secret deletion.
+        
+        Raises:
+            ValueError: If host not found.
+        """
+        with self.state.lock:
+            # Find host by ID
+            target_hostname = None
+            for hostname, host in self.state.hosts.items():
+                if host.id == host_id:
+                    target_hostname = hostname
+                    break
+            
+            if target_hostname is None:
+                raise ValueError(f"Host not found: {host_id}")
+            
+            del self.state.hosts[target_hostname]
+
 
 class SimulatedSettingsRepository:
     """In-memory implementation of SettingsRepository."""

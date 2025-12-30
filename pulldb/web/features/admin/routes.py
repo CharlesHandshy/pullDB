@@ -2078,6 +2078,79 @@ async def update_host_secret(
         )
 
 
+@router.get("/hosts/{host_id}/delete-preview")
+async def host_delete_preview(
+    host_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Get preview data for host deletion.
+    
+    Returns information about what will be affected by deleting the host:
+    - Users assigned to this host (will lose access)
+    - Total historical job count
+    - Active job count (blocks deletion)
+    - Host details for confirmation
+    
+    The frontend uses this to populate the delete confirmation modal.
+    """
+    try:
+        if not hasattr(state, "host_repo") or not state.host_repo:
+            return {"success": False, "error": "Host repository not available"}
+        
+        # Get host details
+        host = state.host_repo.get_host_by_id(host_id)
+        if not host:
+            return {"success": False, "error": "Host not found"}
+        
+        hostname = host.hostname
+        host_alias = host.host_alias or hostname
+        
+        # Count assigned users
+        assigned_user_count = 0
+        assigned_users: list[dict] = []
+        if hasattr(state, "auth_repo") and state.auth_repo:
+            if hasattr(state.auth_repo, "count_users_for_host"):
+                assigned_user_count = state.auth_repo.count_users_for_host(host_id)
+            if hasattr(state.auth_repo, "get_users_for_host"):
+                assigned_users = state.auth_repo.get_users_for_host(host_id)
+        
+        # Count jobs
+        total_job_count = 0
+        active_job_count = 0
+        if state.job_repo:
+            if hasattr(state.job_repo, "count_jobs_by_host"):
+                total_job_count = state.job_repo.count_jobs_by_host(hostname)
+            if hasattr(state.job_repo, "get_active_jobs"):
+                active_jobs = state.job_repo.get_active_jobs()
+                active_job_count = len([j for j in active_jobs if getattr(j, "dbhost", None) == hostname])
+        
+        # Check if host is enabled
+        can_delete = not host.enabled and active_job_count == 0
+        block_reason = None
+        if host.enabled:
+            block_reason = "Host must be disabled before deletion"
+        elif active_job_count > 0:
+            block_reason = f"Host has {active_job_count} active job(s). Wait for completion or cancel them."
+        
+        return {
+            "success": True,
+            "host_id": host_id,
+            "hostname": hostname,
+            "host_alias": host_alias,
+            "enabled": host.enabled,
+            "can_delete": can_delete,
+            "block_reason": block_reason,
+            "assigned_user_count": assigned_user_count,
+            "assigned_users": assigned_users[:10],  # Limit to 10 for UI
+            "total_job_count": total_job_count,
+            "active_job_count": active_job_count,
+        }
+        
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 @router.post("/hosts/{host_id}/delete")
 async def delete_host(
     host_id: str,
@@ -2087,13 +2160,14 @@ async def delete_host(
     """Full host deletion with cleanup.
     
     This endpoint performs a complete cleanup:
-    1. Validates no active jobs exist for this host
-    2. Attempts to DROP USER on the target MySQL server (best effort)
-    3. Deletes the AWS Secrets Manager secret
-    4. Hard-deletes the db_hosts record
+    1. Validates host is disabled
+    2. Validates no active jobs exist for this host
+    3. Attempts to DROP USER on the target MySQL server (best effort)
+    4. Immediately deletes the AWS Secrets Manager secret (no recovery)
+    5. Hard-deletes the db_hosts record
     
-    Steps 2-3 are best-effort: failures are logged but don't block deletion.
-    The record is always deleted if there are no active jobs.
+    Steps 3-4 are best-effort: failures are logged but don't block deletion.
+    The record is always deleted if the host is disabled with no active jobs.
     """
     from pulldb.infra.secrets import CredentialResolver
     from pulldb.infra.mysql_provisioning import drop_mysql_user
@@ -2110,6 +2184,14 @@ async def delete_host(
         if not host:
             raise ValueError("Host not found")
         hostname = host.hostname
+        host_alias = host.host_alias or hostname
+
+        # Check host is disabled - HARD BLOCK
+        if host.enabled:
+            raise ValueError(
+                f"Host '{host_alias}' must be disabled before deletion. "
+                "Disable the host first."
+            )
 
         # Check for active jobs - HARD BLOCK
         if state.job_repo and hasattr(state.job_repo, "get_active_jobs"):
@@ -2127,6 +2209,7 @@ async def delete_host(
         mysql_host = None
         mysql_port = None
         mysql_password = None
+        resolver = None
 
         if credential_ref and credential_ref.startswith("aws-secretsmanager:"):
             try:
@@ -2158,25 +2241,25 @@ async def delete_host(
                     "Manual MySQL user cleanup may be required."
                 )
 
-            # Step 2: Delete the AWS secret
-            try:
-                secret_path = resolver.get_secret_path(credential_ref)
-                if secret_path:
-                    client = resolver._get_secrets_manager_client()
-                    # Force delete without recovery window for cleanliness
-                    # Use 7-day recovery to allow for recovery if needed
-                    client.delete_secret(
-                        SecretId=secret_path,
-                        RecoveryWindowInDays=7,
+            # Step 2: Delete the AWS secret IMMEDIATELY (no recovery window)
+            if resolver:
+                try:
+                    secret_path = resolver.get_secret_path(credential_ref)
+                    if secret_path:
+                        client = resolver._get_secrets_manager_client()
+                        # Force delete without recovery window (immediate)
+                        client.delete_secret(
+                            SecretId=secret_path,
+                            ForceDeleteWithoutRecovery=True,
+                        )
+                except client.exceptions.ResourceNotFoundException:
+                    # Secret already doesn't exist - that's fine
+                    pass
+                except Exception as e:
+                    cleanup_warnings.append(
+                        f"Could not delete AWS secret: {e}. "
+                        f"Manual cleanup may be required in AWS Secrets Manager."
                     )
-            except client.exceptions.ResourceNotFoundException:
-                # Secret already doesn't exist - that's fine
-                pass
-            except Exception as e:
-                cleanup_warnings.append(
-                    f"Could not delete AWS secret: {e}. "
-                    f"Manual cleanup may be required in AWS Secrets Manager."
-                )
 
         # Step 3: Hard delete the host record - this should always succeed
         state.host_repo.hard_delete_host(host_id)
@@ -2186,10 +2269,11 @@ async def delete_host(
             state.audit_repo.log_action(
                 actor_user_id=admin.user_id,
                 action="host_deleted",
-                detail=f"Deleted database host {hostname}",
+                detail=f"Deleted database host {host_alias} ({hostname})",
                 context={
                     "host_id": host_id,
                     "hostname": hostname,
+                    "host_alias": host_alias,
                     "cleanup_warnings": cleanup_warnings,
                 },
             )

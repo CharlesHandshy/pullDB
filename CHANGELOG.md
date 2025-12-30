@@ -3,6 +3,26 @@ CHANGELOG
 
 Unreleased
 ---------
+### Remove Host Feature (Admin)
+
+- **Full host removal**: Admin UI now supports permanently deleting database hosts
+- **Type-to-confirm**: Users must type the host alias to confirm deletion
+- **Immediate secret deletion**: AWS Secrets Manager secret deleted with `ForceDeleteWithoutRecovery`
+- **Impact preview**: Shows affected users and historical job counts before deletion
+
+### Added
+- `DELETE /web/admin/hosts/{host_id}/delete` - Full host deletion endpoint
+- `GET /web/admin/hosts/{host_id}/delete-preview` - Pre-deletion impact summary
+- `count_users_for_host()` and `get_users_for_host()` in AuthRepository
+- `hard_delete_host()` in SimulatedHostRepository for simulation mode
+- Danger Zone card in host detail page with delete confirmation modal
+
+### Changed
+- Host deletion requires host to be disabled first (safety check)
+- AWS secret deletion now immediate (no 7-day recovery window)
+
+---
+
 ### Job Delete Services Fix & Status Lifecycle
 
 - **Single delete instant**: Direct database deletion via routes (fixed signature mismatch)
