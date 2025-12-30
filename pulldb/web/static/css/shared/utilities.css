@@ -263,7 +263,7 @@
    =========================================== */
 
 .bg-transparent { background-color: transparent; }
-.bg-white { background-color: white; }
+.bg-white { background-color: var(--color-surface); } /* Use surface for theme awareness */
 .bg-surface { background-color: var(--color-surface); }
 .bg-primary { background-color: var(--color-bg-primary); }
 .bg-secondary { background-color: var(--color-bg-secondary); }

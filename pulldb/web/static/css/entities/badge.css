@@ -365,9 +365,9 @@
 
 [data-theme="dark"] .badge--primary,
 [data-theme="dark"] .badge-primary {
-    background: rgba(96, 165, 250, 0.15);
+    background: var(--color-info-bg);
     color: var(--color-primary);
-    border-color: rgba(96, 165, 250, 0.3);
+    border-color: var(--color-info-border);
 }
 
 [data-theme="dark"] .badge--neutral,
@@ -380,16 +380,16 @@
 /* Source badges dark mode */
 [data-theme="dark"] .badge--source-database,
 [data-theme="dark"] .source-badge.database {
-    background: rgba(96, 165, 250, 0.15);
+    background: var(--color-info-bg);
     color: var(--color-primary);
-    border-color: rgba(96, 165, 250, 0.3);
+    border-color: var(--color-info-border);
 }
 
 [data-theme="dark"] .badge--source-environment,
 [data-theme="dark"] .source-badge.environment {
-    background: rgba(251, 191, 36, 0.15);
+    background: var(--color-warning-bg);
     color: var(--color-warning);
-    border-color: rgba(251, 191, 36, 0.3);
+    border-color: var(--color-warning-border);
 }
 
 [data-theme="dark"] .badge--source-default,
@@ -402,24 +402,24 @@
 /* Action badges dark mode */
 [data-theme="dark"] .badge--action-updated,
 [data-theme="dark"] .action-badge.updated {
-    background: rgba(96, 165, 250, 0.15);
+    background: var(--color-info-bg);
     color: var(--color-primary);
-    border-color: rgba(96, 165, 250, 0.3);
+    border-color: var(--color-info-border);
 }
 
 [data-theme="dark"] .badge--action-reset,
 [data-theme="dark"] .action-badge.reset {
-    background: rgba(251, 191, 36, 0.15);
+    background: var(--color-warning-bg);
     color: var(--color-warning);
-    border-color: rgba(251, 191, 36, 0.3);
+    border-color: var(--color-warning-border);
 }
 
 /* Danger badge (inline warning) dark mode */
 [data-theme="dark"] .badge--danger-outline,
 [data-theme="dark"] .danger-badge {
-    background: rgba(239, 68, 68, 0.15);
+    background: var(--color-error-bg);
     color: var(--color-error);
-    border-color: rgba(239, 68, 68, 0.3);
+    border-color: var(--color-error-border);
 }
 
 /* Category count dark mode */
@@ -462,16 +462,16 @@
 
 /* Role badge dark mode */
 [data-theme="dark"] .role-badge.admin {
-    background: rgba(245, 158, 11, 0.15);
+    background: var(--color-warning-bg);
     color: var(--warning-400);
 }
 
 [data-theme="dark"] .role-badge.manager {
-    background: rgba(59, 130, 246, 0.15);
+    background: var(--color-info-bg);
     color: var(--primary-400);
 }
 
 [data-theme="dark"] .role-badge.developer {
-    background: var(--gray-700);
-    color: var(--gray-300);
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
 }

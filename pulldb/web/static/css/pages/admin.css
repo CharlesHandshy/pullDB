@@ -2109,7 +2109,7 @@
 }
 
 [data-theme="dark"] .force-delete-warning {
-    background: rgba(239, 68, 68, 0.1);
+    background: var(--color-error-bg);
     border-color: var(--danger-700);
 }
 

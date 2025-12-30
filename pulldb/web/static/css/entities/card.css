@@ -491,14 +491,14 @@
 }
 
 [data-theme="dark"] .danger-badge {
-    background: rgba(239, 68, 68, 0.15);
+    background: var(--color-error-bg);
     color: var(--color-error);
-    border-color: rgba(239, 68, 68, 0.3);
+    border-color: var(--color-error-border);
 }
 
 [data-theme="dark"] .info-banner {
-    background: rgba(96, 165, 250, 0.1);
-    border-color: rgba(96, 165, 250, 0.3);
+    background: var(--color-info-bg);
+    border-color: var(--color-info-border);
 }
 
 [data-theme="dark"] .info-icon svg {

@@ -652,8 +652,8 @@
 /* Info banner dark mode */
 [data-theme="dark"] .info-banner,
 [data-theme="dark"] .settings-info-banner {
-    background: rgba(96, 165, 250, 0.1);
-    border-color: rgba(96, 165, 250, 0.3);
+    background: var(--color-info-bg);
+    border-color: var(--color-info-border);
 }
 
 [data-theme="dark"] .info-icon svg {
