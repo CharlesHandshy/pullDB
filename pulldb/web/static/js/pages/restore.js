@@ -9,6 +9,8 @@
 (function() {
     'use strict';
 
+    try {  // Error boundary to prevent total page breakage
+
     // =============================================================================
     // Configuration
     // =============================================================================
@@ -602,6 +604,32 @@
             summary.textContent = 'Select a QA template backup to continue';
         }
     }
+    
+    function clearQaBackupSelection() {
+        const backupInput = $('backup_key');
+        if (backupInput) backupInput.value = '';
+        
+        hide($('selected-qa-backup-display'));
+        hide($('qa-target-callout'));
+        show($('qa-backup-search-container'));
+        
+        // Clear row selection
+        const list = $('qa-backup-list');
+        if (list) {
+            list.querySelectorAll('tr.is-selected').forEach(tr => tr.classList.remove('is-selected'));
+        }
+        
+        updateQaSummary();
+    }
+    
+    function initQaBackupClearBtn() {
+        const clearBtn = $('clear-qa-backup-btn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                clearQaBackupSelection();
+            });
+        }
+    }
 
     // =============================================================================
     // Suffix & Overwrite
@@ -661,7 +689,7 @@
         const form = $('restore-form');
         if (!form) return;
         
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
             const hostInput = $('dbhost');
             const overwrite = $('overwrite');
             const customerHidden = $('customer');
@@ -732,6 +760,7 @@
         initDatePicker();
         initCustomerSearch();
         initBackupClearBtn();
+        initQaBackupClearBtn();
         initTabs();
         initQaDatePicker();
         initSuffixInput();
@@ -749,5 +778,32 @@
         document.addEventListener('DOMContentLoaded', init);
     } else {
         init();
+    }
+    
+    // Force re-initialization on back/forward navigation (bfcache)
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            // Page was restored from bfcache - reset dates
+            const dateInput = $('date-from');
+            const qaDateInput = $('qa-date-from');
+            const defaultDate = new Date();
+            defaultDate.setDate(defaultDate.getDate() - 7);
+            const defaultStr = defaultDate.toISOString().split('T')[0];
+            if (dateInput) dateInput.value = defaultStr;
+            if (qaDateInput) qaDateInput.value = defaultStr;
+        }
+    });
+    
+    } catch (error) {
+        console.error('Restore page initialization failed:', error);
+        // Show user-friendly error
+        const form = document.getElementById('restore-form');
+        if (form) {
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-danger';
+            alert.style.margin = 'var(--space-4)';
+            alert.innerHTML = '<strong>Page Error:</strong> The restore page failed to initialize. Please refresh or contact support.';
+            form.parentNode.insertBefore(alert, form);
+        }
     }
 })();
