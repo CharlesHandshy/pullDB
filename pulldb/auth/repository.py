@@ -624,7 +624,7 @@ class AuthRepository:
                 """
                 SELECT u.user_id, u.username, uh.is_default
                 FROM user_hosts uh
-                JOIN users u ON u.user_id = uh.user_id
+                JOIN auth_users u ON u.user_id = uh.user_id
                 WHERE uh.host_id = %s
                 ORDER BY u.username ASC
                 """,
