@@ -59,6 +59,14 @@
     height: 100%;
 }
 
+/* Inline icon in button text - smaller and with margin */
+.btn svg:not(.btn__icon) {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin-right: var(--space-1);
+}
+
 /* ===========================================
    COLOR VARIANTS (--variant)
    =========================================== */

@@ -107,6 +107,43 @@
     background: var(--color-bg-secondary);
 }
 
+/* Modal Header Variants */
+.modal-header-danger {
+    background: linear-gradient(135deg, var(--danger-50), var(--danger-100));
+    border-bottom-color: var(--danger-200);
+}
+
+.modal-header-danger .modal-title {
+    color: var(--danger-700);
+}
+
+.modal-header-success {
+    background: linear-gradient(135deg, var(--success-50), var(--success-100));
+    border-bottom-color: var(--success-200);
+}
+
+.modal-header-success .modal-title {
+    color: var(--success-700);
+}
+
+.modal-header-warning {
+    background: linear-gradient(135deg, var(--warning-50), var(--warning-100));
+    border-bottom-color: var(--warning-200);
+}
+
+.modal-header-warning .modal-title {
+    color: var(--warning-700);
+}
+
+.modal-header-info {
+    background: linear-gradient(135deg, var(--info-50), var(--info-100));
+    border-bottom-color: var(--info-200);
+}
+
+.modal-header-info .modal-title {
+    color: var(--info-700);
+}
+
 /* ===========================================
    MODAL TITLE
    =========================================== */
@@ -287,12 +324,79 @@
 
 .password-note {
     font-size: 0.8125rem;
-    color: var(--warning-700, #b45309);
-    background: var(--color-warning-bg, rgba(251, 191, 36, 0.15));
+    color: var(--warning-700);
+    background: var(--color-warning-bg);
     padding: var(--space-3);
     border-radius: var(--radius-md);
-    border: 1px solid var(--color-warning-border, rgba(251, 191, 36, 0.3));
+    border: 1px solid var(--color-warning-border);
     margin: 0;
+}
+
+/* ===========================================
+   TEMP PASSWORD MODAL
+   =========================================== */
+
+.temp-password-info {
+    text-align: center;
+    padding: var(--space-4) 0;
+}
+
+.temp-password-info .info-icon {
+    width: 48px;
+    height: 48px;
+    color: var(--warning-500);
+    margin-bottom: var(--space-3);
+}
+
+.temp-password-info p {
+    margin: 0;
+    text-align: center;
+}
+
+.temp-password-display {
+    margin: var(--space-5) 0;
+}
+
+.temp-password-display label {
+    display: block;
+    margin-bottom: var(--space-2);
+    font-weight: var(--font-semibold);
+    font-size: var(--text-sm);
+    color: var(--color-text-primary);
+}
+
+.temp-password-display .temp-password-value {
+    display: block;
+    padding: var(--space-3);
+    background: var(--color-bg-subtle);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
+    font-family: var(--font-mono);
+    color: var(--color-text-primary);
+}
+
+.temp-password-display .temp-password-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+}
+
+.temp-password-display .temp-password-row code {
+    flex: 1;
+    padding: var(--space-3);
+    background: var(--color-bg-subtle);
+    border-radius: var(--radius-md);
+    font-size: var(--text-lg);
+    letter-spacing: 1px;
+    font-family: var(--font-mono);
+    color: var(--color-text-primary);
+}
+
+.temp-password-note {
+    text-align: center;
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    margin: var(--space-4) 0 0 0;
 }
 
 /* ===========================================
@@ -489,6 +593,48 @@
    that automatically adapt to dark mode. Only truly
    mode-specific overrides remain here.
    =========================================== */
+
+/* Modal header variants dark mode */
+[data-theme="dark"] .modal-header-danger {
+    background: linear-gradient(135deg, var(--danger-900), var(--danger-800));
+    border-bottom-color: var(--danger-700);
+}
+
+[data-theme="dark"] .modal-header-danger .modal-title {
+    color: var(--danger-300);
+}
+
+[data-theme="dark"] .modal-header-success {
+    background: linear-gradient(135deg, var(--success-900), var(--success-800));
+    border-bottom-color: var(--success-700);
+}
+
+[data-theme="dark"] .modal-header-success .modal-title {
+    color: var(--success-300);
+}
+
+[data-theme="dark"] .modal-header-warning {
+    background: linear-gradient(135deg, var(--warning-900), var(--warning-800));
+    border-bottom-color: var(--warning-700);
+}
+
+[data-theme="dark"] .modal-header-warning .modal-title {
+    color: var(--warning-300);
+}
+
+[data-theme="dark"] .modal-header-info {
+    background: linear-gradient(135deg, var(--info-900), var(--info-800));
+    border-bottom-color: var(--info-700);
+}
+
+[data-theme="dark"] .modal-header-info .modal-title {
+    color: var(--info-300);
+}
+
+/* Temp password modal dark mode */
+[data-theme="dark"] .temp-password-info .info-icon {
+    color: var(--warning-400);
+}
 
 /* Password note dark mode - warning colors need explicit dark values */
 [data-theme="dark"] .password-note {

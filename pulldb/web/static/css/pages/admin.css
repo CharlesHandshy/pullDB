@@ -1508,20 +1508,8 @@
 
 /* ===========================================
    FORCE DELETE MODAL
+   NOTE: .modal-header-danger is defined in modals.css
    =========================================== */
-
-.modal-content-wide {
-    max-width: 600px;
-}
-
-.modal-header-danger {
-    background: linear-gradient(135deg, var(--danger-50), var(--danger-100));
-    border-bottom: 1px solid var(--danger-200);
-}
-
-.modal-header-danger .modal-title {
-    color: var(--danger-700);
-}
 
 .force-delete-warning {
     display: flex;
@@ -2098,15 +2086,8 @@
     background: var(--gray-700);
 }
 
-/* Force Delete Modal - Dark Mode */
-[data-theme="dark"] .modal-header-danger {
-    background: linear-gradient(135deg, var(--danger-900), var(--danger-800));
-    border-color: var(--danger-700);
-}
-
-[data-theme="dark"] .modal-header-danger .modal-title {
-    color: var(--danger-300);
-}
+/* Force Delete Modal - Dark Mode
+   NOTE: .modal-header-danger dark mode is defined in modals.css */
 
 [data-theme="dark"] .force-delete-warning {
     background: var(--color-error-bg);

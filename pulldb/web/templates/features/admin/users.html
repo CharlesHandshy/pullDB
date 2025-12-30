@@ -258,7 +258,7 @@
         <div class="modal-footer">
             <button type="button" class="btn btn-ghost" onclick="hideForceDeleteModal()">Cancel</button>
             <button type="button" class="btn btn-danger" id="force-delete-btn" onclick="executeForceDelete()" disabled>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; margin-right: 4px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="3 6 5 6 21 6"/>
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                     <line x1="10" y1="11" x2="10" y2="17"/>
@@ -285,26 +285,26 @@
         </div>
         <div class="modal-body">
             <div class="temp-password-info">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="info-icon" style="width: 48px; height: 48px; color: var(--warning-text); margin-bottom: var(--space-md);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="info-icon">
                     <circle cx="12" cy="12" r="10"/>
                     <line x1="12" y1="16" x2="12" y2="12"/>
                     <line x1="12" y1="8" x2="12.01" y2="8"/>
                 </svg>
-                <p style="text-align: center; margin-bottom: var(--space-md);">
+                <p>
                     <strong>This password will only be shown once!</strong><br>
                     Please copy it and share securely with the user.
                 </p>
             </div>
             
-            <div class="temp-password-display" style="margin: var(--space-lg) 0;">
-                <label style="display: block; margin-bottom: var(--space-xs); font-weight: 600;">Username:</label>
-                <code id="temp-password-username" style="display: block; padding: var(--space-sm); background: var(--surface-secondary); border-radius: var(--radius-sm); margin-bottom: var(--space-md);"></code>
+            <div class="temp-password-display">
+                <label>Username:</label>
+                <code id="temp-password-username" class="temp-password-value"></code>
                 
-                <label style="display: block; margin-bottom: var(--space-xs); font-weight: 600;">Temporary Password:</label>
-                <div style="display: flex; gap: var(--space-sm); align-items: center;">
-                    <code id="temp-password-value" style="flex: 1; padding: var(--space-sm); background: var(--surface-secondary); border-radius: var(--radius-sm); font-size: var(--font-size-lg); letter-spacing: 1px;"></code>
+                <label>Temporary Password:</label>
+                <div class="temp-password-row">
+                    <code id="temp-password-value"></code>
                     <button type="button" class="btn btn-primary" onclick="copyTempPassword()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; margin-right: 4px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon-sm">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                         </svg>
@@ -313,7 +313,7 @@
                 </div>
             </div>
             
-            <p style="text-align: center; font-size: var(--font-size-sm); color: var(--text-secondary);">
+            <p class="temp-password-note">
                 The user will be required to change this password on their next login.
             </p>
         </div>
