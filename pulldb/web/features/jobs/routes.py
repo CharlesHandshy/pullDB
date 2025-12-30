@@ -158,6 +158,7 @@ EVENT_TO_PHASE: dict[str, str] = {
     "restore_progress": "myloader",
     "restore_complete": "post_sql",
     "post_sql_started": "post_sql",
+    "post_sql_script_complete": "post_sql",
     "post_sql_complete": "post_sql",
     "metadata_started": "atomic_rename",
     "metadata_complete": "atomic_rename",
