@@ -20,10 +20,30 @@
             {# Cancel is only possible before myloader starts - after that there are no more checkpoints #}
             {% set past_last_checkpoint = current_phase in ['myloader', 'post_sql', 'atomic_rename', 'complete'] %}
             {% if job.status.value in ['queued', 'running'] and can_cancel and not cancel_requested_at and not past_last_checkpoint %}
-            <form method="POST" action="/web/jobs/{{ job.id }}/cancel" style="display: inline;"
-                  onsubmit="if(confirm('Are you sure you want to cancel this job?')) { this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Canceling...'; return true; } return false;">
+            <form method="POST" action="/web/jobs/{{ job.id }}/cancel" id="cancel-job-form" style="display: inline;">
                 <button type="submit" class="btn btn-danger" aria-label="Cancel this restore job">Cancel Job</button>
             </form>
+            <script>
+            (function() {
+                const form = document.getElementById('cancel-job-form');
+                if (form) {
+                    form.addEventListener('submit', async (e) => {
+                        e.preventDefault();
+                        const confirmed = await showConfirm('Are you sure you want to cancel this job?', {
+                            title: 'Cancel Job',
+                            okText: 'Cancel Job',
+                            type: 'danger'
+                        });
+                        if (confirmed) {
+                            const btn = form.querySelector('button');
+                            btn.disabled = true;
+                            btn.textContent = 'Canceling...';
+                            form.submit();
+                        }
+                    });
+                }
+            })();
+            </script>
             {% elif cancel_requested_at and job.status.value == 'running' %}
             <span class="badge badge-warning">Cancellation Pending</span>
             {% elif job.status.value == 'running' and past_last_checkpoint %}

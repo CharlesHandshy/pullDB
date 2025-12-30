@@ -317,7 +317,11 @@ async function addDisallowedUser(event) {
 }
 
 async function removeDisallowedUser(username) {
-    if (!confirm(`Remove "${username}" from the disallowed list? This username will be able to register.`)) {
+    const confirmed = await showConfirm(`Remove "${username}" from the disallowed list?\\n\\nThis username will be able to register.`, {
+        title: 'Remove from Disallowed List',
+        okText: 'Remove'
+    });
+    if (!confirmed) {
         return;
     }
 

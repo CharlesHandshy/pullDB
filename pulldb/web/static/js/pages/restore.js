@@ -695,10 +695,16 @@
                 }
             }
             
-            // Confirm overwrite
+            // Confirm overwrite - async handler requires preventing default and manual submit
             if (overwrite && overwrite.checked) {
-                if (!confirm('WARNING: Overwrite is enabled!\n\nAny existing data will be PERMANENTLY DELETED.\n\nContinue?')) {
-                    e.preventDefault();
+                e.preventDefault();
+                const confirmed = await showConfirm('WARNING: Overwrite is enabled!\n\nAny existing data will be PERMANENTLY DELETED.\n\nContinue?', {
+                    title: 'Confirm Overwrite',
+                    okText: 'Proceed with Overwrite',
+                    type: 'danger'
+                });
+                if (confirmed) {
+                    form.submit();
                 }
             }
         });

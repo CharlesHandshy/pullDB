@@ -592,7 +592,11 @@
         const username = select.dataset.username;
         const newRole = select.value;
         
-        if (!confirm(`Change ${username}'s role to ${newRole}?`)) {
+        const confirmed = await showConfirm(`Change ${username}'s role to ${newRole}?`, {
+            title: 'Change Role',
+            okText: 'Change Role'
+        });
+        if (!confirmed) {
             // Revert the dropdown to previous value
             table.refresh();
             return;
@@ -621,7 +625,12 @@
     };
     
     window.forcePasswordReset = async function(userId, username) {
-        if (!confirm(`Force password reset for ${username}?`)) return;
+        const confirmed = await showConfirm(`Force password reset for ${username}?\n\nThe user will be required to set a new password on their next login.`, {
+            title: 'Force Password Reset',
+            okText: 'Force Reset',
+            type: 'warning'
+        });
+        if (!confirmed) return;
         
         try {
             const resp = await fetch(`/web/admin/users/${userId}/force-password-reset`, {
@@ -640,7 +649,12 @@
     };
     
     window.assignTempPassword = async function(userId, username) {
-        if (!confirm(`Assign a temporary password to ${username}?\n\nThis will generate a new password that you must share with the user. The user will be required to change it on next login.`)) return;
+        const confirmed = await showConfirm(`Assign a temporary password to ${username}?\n\nThis will generate a new password that you must share with the user. The user will be required to change it on next login.`, {
+            title: 'Assign Temporary Password',
+            okText: 'Generate Password',
+            type: 'warning'
+        });
+        if (!confirmed) return;
         
         try {
             const resp = await fetch(`/web/admin/users/${userId}/assign-temp-password`, {
@@ -697,7 +711,12 @@
         
         // Only confirm for disable action
         if (action === 'disable') {
-            if (!confirm(`Disable user ${username}?`)) return;
+            const confirmed = await showConfirm(`Disable user ${username}?\n\nThey will not be able to log in until re-enabled.`, {
+                title: 'Disable User',
+                okText: 'Disable',
+                type: 'warning'
+            });
+            if (!confirmed) return;
         }
         
         try {
@@ -733,7 +752,12 @@
     
     window.deleteUser = async function(userId, username) {
         // Double confirmation for destructive action
-        if (!confirm(`Delete user "${username}"?\n\nThis will permanently remove the user and all related records (sessions, credentials, host assignments).\n\nUsers with any job history cannot be deleted.`)) {
+        const confirmed = await showConfirm(`Delete user "${username}"?\n\nThis will permanently remove the user and all related records (sessions, credentials, host assignments).\n\nUsers with any job history cannot be deleted.`, {
+            title: 'Delete User',
+            okText: 'Delete',
+            type: 'danger'
+        });
+        if (!confirmed) {
             return;
         }
         

@@ -114,6 +114,29 @@
     {# Modal container - outside app-main for proper fixed positioning #}
     {% block modals %}{% endblock %}
 
+    {# Global Confirm Modal - themed replacement for native confirm() #}
+    <div id="confirm-modal" class="modal modal-hidden">
+        <div class="modal-backdrop" onclick="window._confirmReject && window._confirmReject()"></div>
+        <div class="modal-content modal-content-sm">
+            <div class="modal-header" id="confirm-modal-header">
+                <h3 class="modal-title" id="confirm-modal-title">Confirm</h3>
+                <button type="button" class="modal-close" onclick="window._confirmReject && window._confirmReject()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" x2="6" y1="6" y2="18"/>
+                        <line x1="6" x2="18" y1="6" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-modal-message">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="window._confirmReject && window._confirmReject()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirm-modal-ok" onclick="window._confirmResolve && window._confirmResolve()">OK</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Footer -->

@@ -784,13 +784,18 @@
         });
         
         // Cancel button click handler (delegated)
-        document.addEventListener('click', (e) => {
+        document.addEventListener('click', async (e) => {
             const btn = e.target.closest('.cancel-job-btn');
             if (btn) {
                 e.preventDefault();
                 e.stopPropagation();
                 const jobId = btn.dataset.jobId;
-                if (confirm('Are you sure you want to cancel this job?')) {
+                const confirmed = await showConfirm('Are you sure you want to cancel this job?', {
+                    title: 'Cancel Job',
+                    okText: 'Cancel Job',
+                    type: 'warning'
+                });
+                if (confirmed) {
                     fetch(`/web/jobs/${jobId}/cancel`, { method: 'POST', credentials: 'same-origin' })
                         .then(() => table && table.refresh());
                 }

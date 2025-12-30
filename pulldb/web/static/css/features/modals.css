@@ -79,8 +79,9 @@
 }
 
 /* Size variants */
-.modal__content--sm {
-    max-width: 320px;
+.modal__content--sm,
+.modal-content-sm {
+    max-width: 400px;
 }
 
 .modal__content--wide,

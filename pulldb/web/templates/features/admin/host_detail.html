@@ -126,7 +126,7 @@
                         MySQL Credentials
                     </h3>
                 </div>
-                <form method="POST" action="/web/admin/hosts/{{ host.id }}/update-secret" class="card-body">
+                <form method="POST" action="/web/admin/hosts/{{ host.id }}/update-secret" class="card-body" id="update-secret-form">
                     <div class="alert alert-info" style="margin-bottom: var(--space-4); padding: var(--space-2) var(--space-3); font-size: var(--text-sm);">
                         <strong>Note:</strong> Username/password changes update both MySQL server and AWS Secrets Manager.
                     </div>
@@ -154,12 +154,27 @@
                         </div>
                     </div>
                     <div class="form-actions">
-                        <button type="submit" class="btn btn-warning btn-sm" 
-                                onclick="return confirm('Update AWS Secrets Manager secret?');">
+                        <button type="submit" class="btn btn-warning btn-sm" id="update-secret-btn">
                             Update Secret
                         </button>
                     </div>
                 </form>
+                <script>
+                (function() {
+                    const form = document.getElementById('update-secret-form');
+                    if (form) {
+                        form.addEventListener('submit', async (e) => {
+                            e.preventDefault();
+                            const confirmed = await showConfirm('Update AWS Secrets Manager secret?', {
+                                title: 'Update Secret',
+                                okText: 'Update',
+                                type: 'warning'
+                            });
+                            if (confirmed) form.submit();
+                        });
+                    }
+                })();
+                </script>
             </div>
             {% elif host.credential_error %}
             <div class="card">

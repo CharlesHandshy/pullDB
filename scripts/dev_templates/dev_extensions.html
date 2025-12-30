@@ -884,16 +884,19 @@
     };
     
     window.resetSimulation = async function() {
-        if (!confirm('Reset all simulation state? This will clear jobs, events, and S3 fixtures.')) {
-            return;
-        }
+        const confirmed = await showConfirm('Reset all simulation state? This will clear jobs, events, and S3 fixtures.', {
+            title: 'Reset Simulation',
+            okText: 'Reset All',
+            type: 'danger'
+        });
+        if (!confirmed) return;
         try {
             const resp = await fetch('/simulation/reset', { method: 'POST' });
             const data = await resp.json();
-            alert(data.message);
+            showToast(data.message, 'success');
             location.reload();
         } catch (e) {
-            alert('Reset failed: ' + e.message);
+            showToast('Reset failed: ' + e.message, 'error');
         }
     };
     

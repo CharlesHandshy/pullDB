@@ -229,7 +229,12 @@
             return;
         }
         
-        if (confirm(`Reset "${key}" to its default value?`)) {
+        const confirmed = await showConfirm(`Reset "${key}" to its default value?`, {
+            title: 'Reset Setting',
+            okText: 'Reset',
+            type: 'warning'
+        });
+        if (confirmed) {
             await performReset(key);
         }
     };

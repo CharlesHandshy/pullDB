@@ -227,16 +227,21 @@
         }
     });
 
-    document.getElementById('execute-form').addEventListener('submit', (e) => {
+    document.getElementById('execute-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
         const selectedIds = Array.from(loadedRowIds).filter(id => !excludedIds.has(id));
         const selectedCount = selectedIds.length;
         if (selectedCount === 0) {
-            e.preventDefault();
             showToast('No items selected for deletion.', 'warning');
             return;
         }
-        if (!confirm('Are you sure you want to DROP ' + selectedCount + ' staging database(s)?\n\nThis action cannot be undone.')) {
-            e.preventDefault();
+        const confirmed = await showConfirm('Are you sure you want to DROP ' + selectedCount + ' staging database(s)?\n\nThis action cannot be undone.', {
+            title: 'Drop Staging Databases',
+            okText: 'Drop ' + selectedCount + ' Database(s)',
+            type: 'danger'
+        });
+        if (confirmed) {
+            e.target.submit();
         }
     });
 

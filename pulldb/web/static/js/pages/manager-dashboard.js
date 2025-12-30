@@ -169,23 +169,32 @@
         
         // Confirm for disable action
         if (action === 'disable') {
-            if (!confirm('Are you sure you want to disable ' + username + '? They will not be able to log in.')) {
-                return;
-            }
+            const confirmed = await showConfirm('Are you sure you want to disable ' + username + '? They will not be able to log in.', {
+                title: 'Disable User',
+                okText: 'Disable',
+                type: 'warning'
+            });
+            if (!confirmed) return;
         }
         
         // Confirm for reset-password action
         if (action === 'reset-password') {
-            if (!confirm('Force password reset for ' + username + '?')) {
-                return;
-            }
+            const confirmed = await showConfirm('Force password reset for ' + username + '?', {
+                title: 'Force Password Reset',
+                okText: 'Force Reset',
+                type: 'warning'
+            });
+            if (!confirmed) return;
         }
         
         // Confirm for assign-temp-password action
         if (action === 'assign-temp-password') {
-            if (!confirm('Assign a temporary password to ' + username + '?\n\nThis will generate a new password that you must share with the user. The user will be required to change it on next login.')) {
-                return;
-            }
+            const confirmed = await showConfirm('Assign a temporary password to ' + username + '?\n\nThis will generate a new password that you must share with the user. The user will be required to change it on next login.', {
+                title: 'Assign Temporary Password',
+                okText: 'Assign Password',
+                type: 'warning'
+            });
+            if (!confirmed) return;
         }
         
         // Map action to endpoint
