@@ -3,6 +3,28 @@ CHANGELOG
 
 Unreleased
 ---------
+### Job Delete Services Fix & Status Lifecycle
+
+- **Single delete instant**: Direct database deletion via routes (fixed signature mismatch)
+- **Bulk delete queued**: Admin task with progress tracking (fixed result structure)
+- **Deleting status**: New intermediate status during async bulk delete operations
+- **Deleted status**: Final state after databases successfully dropped
+
+### Added
+- `DELETING` status in JobStatus enum for visibility during bulk operations
+- `mark_job_deleting()` method in JobRepository
+- Schema migration `080_job_delete_support.sql` adds `deleting` to status ENUM
+- `.badge-pulse` animation for visual feedback during deletion
+- Unit tests for `delete_job_databases` function
+
+### Fixed
+- Single delete route signature mismatch (now passes staging_name, dbhost, host_repo)
+- Bulk delete result structure alignment between worker and status polling endpoint
+- Bulk delete now collects all required job fields (staging_name, dbhost, owner_user_code)
+
+### Removed
+- `jobs_old.html` orphaned template file
+
 ### User Database Orphan Detection & Hosts Command
 
 - **User orphan detection**: Admin UI can now detect orphaned databases by user

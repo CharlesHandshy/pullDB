@@ -45,6 +45,7 @@ class LazyTable {
      * @param {string} [config.rowIdKey='id'] - Key for unique row identifier
      * @param {boolean} [config.selectable=false] - Enable row selection
      * @param {string} [config.selectionMode='multiple'] - 'single' or 'multiple'
+     * @param {Function} [config.canSelect] - Callback(rowData) => boolean to determine if row is selectable
      * @param {Function} [config.onSelectionChange] - Callback when selection changes
      * @param {Function} [config.onRowClick] - Callback when row is clicked (if not selectable)
      * @param {string} [config.emptyMessage='No data available'] - Message when no data
@@ -57,6 +58,9 @@ class LazyTable {
             rowIdKey: 'id',
             selectable: false,
             selectionMode: 'multiple',
+            canSelect: null,
+            showSelectionBar: true,
+            selectionActions: [],
             emptyMessage: 'No data available',
             tableId: `lazy-table-${Date.now()}`,
             i18n: {
@@ -158,8 +162,8 @@ class LazyTable {
         this.elements.wrapper.className = 'lazy-table-wrapper';
         container.appendChild(this.elements.wrapper);
 
-        // Selection bar (shown when items selected)
-        if (selectable) {
+        // Selection bar (shown when items selected) - only if showSelectionBar enabled
+        if (selectable && this.config.showSelectionBar) {
             this.elements.selectionBar = this.createSelectionBar();
             this.elements.wrapper.appendChild(this.elements.selectionBar);
         }
@@ -270,15 +274,30 @@ class LazyTable {
         const thead = document.createElement('thead');
         const tr = document.createElement('tr');
         
-        // Selection checkbox column
+        // Selection checkbox column with optional action buttons
         if (selectable && selectionMode === 'multiple') {
             const th = document.createElement('th');
             th.className = 'lazy-table-th lazy-table-th-select';
+            
+            // Build action buttons HTML
+            let actionsHtml = '';
+            if (this.config.selectionActions && this.config.selectionActions.length > 0) {
+                actionsHtml = this.config.selectionActions.map(action => {
+                    const minSelected = action.minSelected || 1;
+                    return `<button type="button" class="selection-action-btn" data-action="${action.id}" data-min-selected="${minSelected}" title="${action.title || ''}" disabled>
+                        ${action.icon || ''}
+                    </button>`;
+                }).join('');
+            }
+            
             th.innerHTML = `
-                <label class="lazy-table-checkbox">
-                    <input type="checkbox" class="select-all-checkbox">
-                    <span class="checkmark"></span>
-                </label>
+                <div class="lazy-table-select-header">
+                    <label class="lazy-table-checkbox">
+                        <input type="checkbox" class="select-all-checkbox">
+                        <span class="checkmark"></span>
+                    </label>
+                    ${actionsHtml}
+                </div>
             `;
             tr.appendChild(th);
         }
@@ -293,7 +312,12 @@ class LazyTable {
             if (col.type === 'actions' || (!col.sortable && !col.filterable)) {
                 // Action column or non-interactive column - no sort/filter controls
                 if (col.type === 'actions') th.classList.add('lazy-table-th-actions');
-                th.innerHTML = `<span class="th-label">${col.label != null ? col.label : ''}</span>`;
+                // Support custom header render function
+                if (col.headerRender) {
+                    th.innerHTML = col.headerRender();
+                } else {
+                    th.innerHTML = `<span class="th-label">${col.label != null ? col.label : ''}</span>`;
+                }
             } else {
                 // Regular column with sort/filter controls
                 th.innerHTML = this.createColumnHeaderContent(col);
@@ -409,14 +433,17 @@ class LazyTable {
         // Body events
         this.elements.tbody.addEventListener('click', this.handleBodyClick.bind(this));
         
-        // Selection bar events
-        if (this.config.selectable) {
+        // Selection bar events (only if selection bar exists)
+        if (this.config.selectable && this.elements.selectionBar) {
             const selectAllBtn = this.elements.selectionBar.querySelector('.selection-select-all');
             const clearBtn = this.elements.selectionBar.querySelector('.selection-clear');
             
             selectAllBtn?.addEventListener('click', () => this.selectAllFiltered());
             clearBtn?.addEventListener('click', () => this.clearSelection());
-            
+        }
+        
+        // Selection header events (checkbox and action buttons)
+        if (this.config.selectable) {
             // Select all checkbox
             const selectAllCheckbox = this.elements.headerTable.querySelector('.select-all-checkbox');
             selectAllCheckbox?.addEventListener('change', (e) => {
@@ -425,6 +452,18 @@ class LazyTable {
                 } else {
                     this.clearSelection();
                 }
+            });
+            
+            // Selection action buttons
+            const actionBtns = this.elements.headerTable.querySelectorAll('.selection-action-btn');
+            actionBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const actionId = btn.dataset.action;
+                    const action = this.config.selectionActions.find(a => a.id === actionId);
+                    if (action && action.onClick) {
+                        action.onClick(this.getSelectionState());
+                    }
+                });
             });
         }
         
@@ -658,12 +697,21 @@ class LazyTable {
         if (selectable && selectionMode === 'multiple') {
             const td = document.createElement('td');
             td.className = 'lazy-table-td lazy-table-td-select';
-            td.innerHTML = `
-                <label class="lazy-table-checkbox">
-                    <input type="checkbox" class="row-checkbox" ${isSelected ? 'checked' : ''}>
-                    <span class="checkmark"></span>
-                </label>
-            `;
+            
+            // Check if row can be selected (via canSelect callback)
+            const canSelectRow = !this.config.canSelect || this.config.canSelect(row);
+            
+            if (canSelectRow) {
+                td.innerHTML = `
+                    <label class="lazy-table-checkbox">
+                        <input type="checkbox" class="row-checkbox" ${isSelected ? 'checked' : ''}>
+                        <span class="checkmark"></span>
+                    </label>
+                `;
+            } else {
+                // Non-selectable row - show empty checkbox area
+                td.innerHTML = '';
+            }
             tr.appendChild(td);
         }
         
@@ -818,14 +866,17 @@ class LazyTable {
 
     updateSelectionBar() {
         const count = this.getSelectedCount();
-        const bar = this.elements.selectionBar;
-        const countSpan = bar.querySelector('.selection-count');
         
-        if (count > 0) {
-            bar.classList.remove('hidden');
-            countSpan.textContent = `${count} ${this.config.i18n.selected}`;
-        } else {
-            bar.classList.add('hidden');
+        // Update selection bar if it exists
+        const bar = this.elements.selectionBar;
+        if (bar) {
+            const countSpan = bar.querySelector('.selection-count');
+            if (count > 0) {
+                bar.classList.remove('hidden');
+                countSpan.textContent = `${count} ${this.config.i18n.selected}`;
+            } else {
+                bar.classList.add('hidden');
+            }
         }
         
         // Update header checkbox state
@@ -842,6 +893,13 @@ class LazyTable {
                 selectAllCheckbox.indeterminate = false;
             }
         }
+        
+        // Update selection action buttons enabled state
+        const actionBtns = this.elements.headerTable.querySelectorAll('.selection-action-btn');
+        actionBtns.forEach(btn => {
+            const minSelected = parseInt(btn.dataset.minSelected, 10) || 1;
+            btn.disabled = count < minSelected;
+        });
     }
 
     showLoading() {
@@ -934,7 +992,11 @@ class LazyTable {
             const row = e.target.closest('.lazy-table-row');
             const rowId = row?.dataset.rowId;
             if (rowId) {
-                this.toggleRowSelection(rowId, checkbox.checked);
+                const rowData = this.getRowById(rowId);
+                // Check canSelect before allowing toggle
+                if (!this.config.canSelect || this.config.canSelect(rowData)) {
+                    this.toggleRowSelection(rowId, checkbox.checked);
+                }
             }
             return;
         }

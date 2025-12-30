@@ -76,10 +76,11 @@
         <div id="hosts-table-container" class="h-full"></div>
     </div>
 </div>
+{% endblock %}
 
+{% block modals %}
 <!-- Add Host Modal -->
-<div id="add-host-modal" class="modal modal-hidden">
-    <div class="modal-backdrop" onclick="hideAddHostModal()"></div>
+<div id="add-host-modal" class="modal-overlay hidden">
     <div class="modal-content modal-content-wide">
         <div class="modal-header">
             <h3 class="modal-title">Add Database Host</h3>

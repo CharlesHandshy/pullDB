@@ -73,9 +73,8 @@ PULLDB_COORDINATION_SECRET="aws-ssm:/pulldb/mysql/coordination-db"
 
 | Variable | Source | Default | Description |
 |----------|--------|---------|-------------|
+| `PULLDB_S3_BACKUP_LOCATIONS` | env | **required** | JSON array of S3 backup locations (see env.example) |
 | `PULLDB_S3_AWS_PROFILE` | env | (uses PULLDB_AWS_PROFILE) | AWS profile for S3 operations |
-| `PULLDB_S3_PROD_PROFILE` | env | `pr-prod` | Profile for production S3 bucket |
-| `PULLDB_S3_STAGING_PROFILE` | env | `pr-staging` | Profile for staging S3 bucket |
 
 ### Logging & Metrics
 
@@ -97,10 +96,7 @@ PULLDB_COORDINATION_SECRET="aws-ssm:/pulldb/mysql/coordination-db"
 | Setting Key | Type | Default | Description |
 |-------------|------|---------|-------------|
 | `default_dbhost` | string | `localhost` | Default target database host |
-| `s3_bucket_path` | string | (varies) | Legacy S3 bucket path |
-| `s3_bucket_stg` | string | (varies) | Staging environment S3 bucket |
-| `s3_bucket_prod` | string | (varies) | Production environment S3 bucket |
-| `s3_backup_locations` | JSON | (none) | Multi-location S3 configuration |
+| `s3_bucket_path` | string | (varies) | Legacy S3 bucket path (prefer PULLDB_S3_BACKUP_LOCATIONS env var) |
 | `work_directory` | path | `/var/lib/pulldb/work/` | Download/extraction directory |
 | `customers_after_sql_dir` | path | (code default) | Post-SQL scripts for customers |
 | `qa_template_after_sql_dir` | path | (code default) | Post-SQL scripts for QA templates |

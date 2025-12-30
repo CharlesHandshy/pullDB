@@ -17,13 +17,17 @@
     <div class="page-header">
         <h1 class="page-title">Job Details: <span class="font-mono" title="{{ job.id }}">{{ job.id[:8] }}</span></h1>
         <div class="page-header-actions">
-            {% if job.status.value in ['queued', 'running'] and can_cancel and not cancel_requested_at %}
+            {# Cancel is only possible before myloader starts - after that there are no more checkpoints #}
+            {% set past_last_checkpoint = current_phase in ['myloader', 'post_sql', 'atomic_rename', 'complete'] %}
+            {% if job.status.value in ['queued', 'running'] and can_cancel and not cancel_requested_at and not past_last_checkpoint %}
             <form method="POST" action="/web/jobs/{{ job.id }}/cancel" style="display: inline;"
                   onsubmit="if(confirm('Are you sure you want to cancel this job?')) { this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Canceling...'; return true; } return false;">
                 <button type="submit" class="btn btn-danger" aria-label="Cancel this restore job">Cancel Job</button>
             </form>
             {% elif cancel_requested_at and job.status.value == 'running' %}
             <span class="badge badge-warning">Cancellation Pending</span>
+            {% elif job.status.value == 'running' and past_last_checkpoint %}
+            <span class="badge badge-neutral" title="Job is past the last cancellation checkpoint">Cannot Cancel</span>
             {% endif %}
         </div>
     </div>
@@ -63,6 +67,8 @@
                     {% if job.status.value == 'complete' %}badge-success
                     {% elif job.status.value == 'failed' %}badge-danger
                     {% elif job.status.value == 'running' %}badge-primary
+                    {% elif job.status.value == 'deleted' %}badge-neutral badge-deleted
+                    {% elif job.status.value == 'deleting' %}badge-warning badge-pulse
                     {% else %}badge-neutral{% endif %}"
                     {% if job.status.value == 'running' and cancel_requested_at %}
                     style="text-decoration: line-through; background-color: var(--danger-100); color: var(--danger-700); border-color: var(--danger-200);"

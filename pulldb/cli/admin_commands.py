@@ -546,3 +546,187 @@ def users_show(username: str) -> None:
     click.echo(f"  Complete:   {detail.complete_jobs}")
     click.echo(f"  Failed:     {detail.failed_jobs}")
     click.echo(f"  Active:     {detail.active_jobs}")
+
+
+# =============================================================================
+# Disallow Command Group
+# =============================================================================
+
+
+@click.group(name="disallow", help="Manage disallowed usernames")
+def disallow_group() -> None:
+    """Disallowed usernames management command group."""
+    pass
+
+
+@disallow_group.command("list")
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of table",
+)
+def disallow_list(json_out: bool) -> None:
+    """List all disallowed usernames.
+
+    Shows both hardcoded (always blocked) and database-configured entries.
+    """
+    from pulldb.domain.validation import DISALLOWED_USERS_HARDCODED
+    from pulldb.infra.factory import get_disallowed_user_repository
+
+    repo = get_disallowed_user_repository()
+    db_entries = repo.get_all()
+
+    # Build combined list
+    all_entries: list[dict[str, t.Any]] = []
+
+    # Add hardcoded entries
+    for username in sorted(DISALLOWED_USERS_HARDCODED):
+        all_entries.append({
+            "username": username,
+            "reason": "System account (hardcoded)",
+            "is_hardcoded": True,
+            "created_at": None,
+            "created_by": None,
+        })
+
+    # Add DB entries (skip if already in hardcoded)
+    for entry in db_entries:
+        if entry.username.lower() not in DISALLOWED_USERS_HARDCODED:
+            all_entries.append({
+                "username": entry.username,
+                "reason": entry.reason or "-",
+                "is_hardcoded": entry.is_hardcoded,
+                "created_at": entry.created_at.isoformat() if entry.created_at else None,
+                "created_by": entry.created_by,
+            })
+
+    if json_out:
+        click.echo(json.dumps(all_entries, indent=2))
+        return
+
+    if not all_entries:
+        click.echo("No disallowed usernames configured.")
+        return
+
+    # Table output
+    headers = ["USERNAME", "SOURCE", "REASON", "ADDED BY"]
+    rows_out: list[list[str]] = []
+
+    for entry in all_entries:
+        source = "hardcoded" if entry["is_hardcoded"] else "database"
+        rows_out.append([
+            entry["username"],
+            source,
+            (entry["reason"] or "-")[:40],
+            entry["created_by"] or "-",
+        ])
+
+    # Calculate column widths
+    col_widths = [len(h) for h in headers]
+    for row in rows_out:
+        for i, cell in enumerate(row):
+            col_widths[i] = max(col_widths[i], len(cell))
+
+    # Print table
+    header_line = "  ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers))
+    click.echo(header_line)
+    click.echo("  ".join("-" * w for w in col_widths))
+
+    for row in rows_out:
+        click.echo("  ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row)))
+
+    hardcoded_count = sum(1 for e in all_entries if e["is_hardcoded"])
+    db_count = len(all_entries) - hardcoded_count
+    click.echo(f"\nTotal: {len(all_entries)} ({hardcoded_count} hardcoded, {db_count} database)")
+
+
+@disallow_group.command("add")
+@click.argument("username")
+@click.option(
+    "--reason",
+    "-r",
+    default="Admin-configured",
+    help="Reason for disallowing this username",
+)
+def disallow_add(username: str, reason: str) -> None:
+    """Add a username to the disallowed list.
+
+    USERNAME will be normalized to lowercase. Hardcoded system accounts
+    cannot be added (they are always blocked).
+    """
+    from pulldb.domain.validation import (
+        DISALLOWED_USERS_HARDCODED,
+        MIN_USERNAME_LENGTH,
+    )
+    from pulldb.infra.factory import get_disallowed_user_repository
+
+    # Normalize to lowercase
+    username_lower = username.lower().strip()
+
+    if not username_lower:
+        raise click.ClickException("Username cannot be empty.")
+
+    # Check if hardcoded
+    if username_lower in DISALLOWED_USERS_HARDCODED:
+        raise click.ClickException(
+            f"Username '{username_lower}' is already blocked (hardcoded system account)."
+        )
+
+    # Warn if short username being blocked
+    if len(username_lower) < MIN_USERNAME_LENGTH:
+        click.echo(
+            f"Note: Usernames under {MIN_USERNAME_LENGTH} characters are "
+            "already blocked by length policy."
+        )
+
+    repo = get_disallowed_user_repository()
+
+    # Check if already in database
+    if repo.exists(username_lower):
+        raise click.ClickException(f"Username '{username_lower}' is already disallowed.")
+
+    # Add to database
+    repo.add(username_lower, reason, created_by="pulldb-admin")
+    click.echo(f"✓ Username '{username_lower}' added to disallowed list.")
+
+
+@disallow_group.command("remove")
+@click.argument("username")
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+def disallow_remove(username: str, force: bool) -> None:
+    """Remove a username from the disallowed list.
+
+    Only database-configured entries can be removed. Hardcoded system
+    accounts (root, daemon, etc.) cannot be removed.
+    """
+    from pulldb.domain.validation import DISALLOWED_USERS_HARDCODED
+    from pulldb.infra.factory import get_disallowed_user_repository
+
+    # Normalize to lowercase
+    username_lower = username.lower().strip()
+
+    if not username_lower:
+        raise click.ClickException("Username cannot be empty.")
+
+    # Check if hardcoded
+    if username_lower in DISALLOWED_USERS_HARDCODED:
+        raise click.ClickException(
+            f"Cannot remove '{username_lower}' - it is a hardcoded system account "
+            "and will always be blocked."
+        )
+
+    repo = get_disallowed_user_repository()
+
+    # Check if exists in database
+    if not repo.exists(username_lower):
+        raise click.ClickException(f"Username '{username_lower}' is not in the disallowed list.")
+
+    if not force:
+        if not click.confirm(f"Remove '{username_lower}' from disallowed list?"):
+            click.echo("Aborted.")
+            return
+
+    # Remove from database
+    repo.remove(username_lower)
+    click.echo(f"✓ Username '{username_lower}' removed from disallowed list.")

@@ -11,11 +11,12 @@
     <tbody>
         {% for backup in backups %}
         {% set filename = backup.key.split('/')[-1] %}
-        <tr data-backup-key="{{ backup.key }}" 
+        {% set full_s3_path = 's3://' ~ backup.bucket ~ '/' ~ backup.key %}
+        <tr data-backup-key="{{ full_s3_path }}" 
             onclick="(function(el) {
                 var isQa = el.closest('#qa-backup-list') !== null;
                 var fn = isQa ? window.selectQaBackup : window.selectBackup;
-                if (fn) fn('{{ backup.key }}', '{{ backup.environment }}', '{{ backup.timestamp.strftime('%Y-%m-%d %H:%M') }}', '{{ backup.size_display }}');
+                if (fn) fn('{{ full_s3_path }}', '{{ backup.environment }}', '{{ backup.timestamp.strftime('%Y-%m-%d %H:%M') }}', '{{ backup.size_display }}');
             })(this)">
             <td title="{{ filename }}">{{ backup.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
             <td>

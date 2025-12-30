@@ -28,6 +28,152 @@ sudo systemctl restart pulldb-web
 
 ---
 
+## 2025-01-28 | KISS S3 Configuration Cleanup
+
+### Context
+Deep audit revealed 9 S3-related config variables but only 2 were functional. The rest were dead code from earlier development phases creating confusion and maintenance burden. User decided: "Let's solidify what works and clean up the rest."
+
+### What Was Done
+
+1. **`packaging/env.example`**: Removed staging location from `PULLDB_S3_BACKUP_LOCATIONS` JSON array - now production only
+
+2. **`pulldb/domain/settings.py`**: Removed 4 dead settings:
+   - `s3_bucket_stg` (PULLDB_S3_BUCKET_STG)
+   - `s3_bucket_prod` (PULLDB_S3_BUCKET_PROD)
+   - `s3_aws_profile_stg` (PULLDB_S3_AWS_PROFILE_STG)
+   - `s3_aws_profile_prod` (PULLDB_S3_AWS_PROFILE_PROD)
+
+3. **`pulldb/domain/services/discovery.py`**: Replaced hardcoded fallback locations with FAIL HARD error message when `PULLDB_S3_BACKUP_LOCATIONS` not configured
+
+4. **`pulldb/domain/config.py`**: Removed fallback to `s3_bucket_stg`/`s3_bucket_prod` settings
+
+5. **`pulldb/web/templates/features/restore/restore.html`**: Removed environment selector UI (Production/Staging/All) - replaced with hidden input defaulting to production
+
+6. **`docs/hca/shared/configuration.md`**: Updated documentation to reflect only working config vars
+
+7. **`docs/KNOWLEDGE-POOL.json`**: Removed staging S3 bucket references, added note about single config var
+
+8. **`pulldb/tests/test_config.py`**: Updated test fixtures to use `s3_bucket_path` instead of staging vars, removed tests for removed fallback behavior
+
+9. **`pulldb/tests/conftest.py`**: Updated test fixtures and documentation to reference production S3 bucket
+
+### Rationale
+- **KISS principle**: Ship what works, save complexity for later
+- **FAIL HARD protocol**: No silent fallbacks - if config is missing, fail with clear error
+- **Dead code elimination**: 4+ unused settings removed reduces maintenance burden
+- **Single source of truth**: `PULLDB_S3_BACKUP_LOCATIONS` is the only active S3 config
+
+### Files Modified
+- `packaging/env.example`
+- `pulldb/domain/settings.py`
+- `pulldb/domain/services/discovery.py`
+- `pulldb/domain/config.py`
+- `pulldb/web/templates/features/restore/restore.html`
+- `docs/hca/shared/configuration.md`
+- `docs/KNOWLEDGE-POOL.json`
+- `pulldb/tests/test_config.py`
+- `pulldb/tests/conftest.py`
+
+---
+
+## 2025-12-29 | Hard Delete Functionality for Soft-Deleted Jobs
+
+### Context
+User requested ability to perform a "hard delete" (remove job record from database) for jobs that have already been soft-deleted (status=deleted). The delete button was being hidden for jobs in deleted status.
+
+### What Was Done
+1. **Frontend: Modified `jobIdHistory` renderer** in [jobs.html](pulldb/web/templates/features/jobs/jobs.html):
+   - Removed `deleted` from status exclusion list for delete button
+   - Added detection of `isHardDelete` when `row.status === 'deleted'`
+   - Added `hard-delete` CSS class for differentiation
+   - Updated button title to "Hard Delete (remove job record)" for deleted jobs
+
+2. **Frontend: Modified `singleDelete.open()`** in [jobs.html](pulldb/web/templates/features/jobs/jobs.html):
+   - Accepts `isHardDelete` parameter
+   - Shows different modal title: "🗑️ Hard Delete Job Record"
+   - Shows different description: "This job's databases have already been deleted. This will permanently remove the job record."
+   - Auto-checks and hides hard_delete checkbox for already-deleted jobs
+
+3. **Frontend: Modified click handler** to pass `isHardDelete` flag to modal
+
+4. **Frontend: Modified `singleDelete.execute()`** to always send `hard_delete=true` when `isHardDeleteOnly`
+
+5. **Backend: Modified `can_delete` logic** in [routes.py](pulldb/web/features/jobs/routes.py#L587):
+   - Changed exclusion from `JobStatus.DELETED` to `JobStatus.DELETING`
+   - Now allows `can_delete=True` for deleted jobs (enabling hard delete)
+
+6. **Database: Updated schema** in [300_mysql_users.sql](schema/pulldb_service/300_mysql_users.sql):
+   - Added DELETE permission to `pulldb_api` user for `jobs` and `job_events` tables
+   - Required for `hard_delete_job()` to delete job records
+
+7. **Database: Granted permissions** (one-time fix for existing installations):
+   ```sql
+   GRANT DELETE ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
+   GRANT DELETE ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
+   ```
+
+### Rationale
+- **Two-stage delete workflow**: Soft delete removes databases, hard delete removes job record
+- **Backend logic exists**: `force_hard_delete = job.status == JobStatus.DELETED` already in delete endpoint
+- **Least privilege principle**: Only grant DELETE when needed (hard delete feature)
+- **Progressive disclosure**: Modal title/description adapts to context so users understand the action
+
+### Testing
+- Verified delete button appears for deleted jobs with "Hard Delete" title
+- Verified modal shows correct hard delete messaging
+- Verified hard delete successfully removes job from database
+- Job count decreased from 11 to 10 after hard delete
+
+---
+
+## 2025-12-27 | Job Delete Services Fix & Status Lifecycle
+
+### Context
+Job delete services (single and bulk) were broken. Single delete had a function signature mismatch; bulk delete had result structure mismatch between worker and status polling endpoint.
+
+### What Was Done
+1. **Fixed single delete route signature** in [routes.py](pulldb/web/features/jobs/routes.py#L436):
+   - Changed from `(job_id, target_name, user_code, connection_config)` 
+   - To `(job_id, staging_name, target_name, owner_user_code, dbhost, host_repo)`
+
+2. **Fixed bulk delete result structure** in [admin_tasks.py](pulldb/worker/admin_tasks.py):
+   - Worker now uses `progress` dict with counts (`processed`, `soft_deleted`, `hard_deleted`, `errors`)
+   - Matches what status endpoint expects: `result.get("progress", {}).get("processed", 0)`
+
+3. **Added `DELETING` intermediate status** in [models.py](pulldb/domain/models.py):
+   - New status for visibility during async bulk delete operations
+   - Called via `mark_job_deleting()` before database drops
+
+4. **Added schema migration** [080_job_delete_support.sql](schema/pulldb_service/080_job_delete_support.sql):
+   - Updated ENUM to include `deleting` status
+
+5. **Added badge styling** in [admin.css](pulldb/web/static/css/pages/admin.css):
+   - `.badge-pulse` animation for visual feedback during deletion
+
+6. **Added unit tests** [test_job_delete.py](tests/unit/test_job_delete.py):
+   - 13 tests covering `JobDeleteResult`, `is_valid_staging_name`, and `delete_job_databases`
+
+7. **Removed orphaned file**: `jobs_old.html` (0 references found)
+
+### Rationale
+- **FAIL HARD principle**: Single delete was silently failing due to wrong parameters
+- **Status lifecycle**: Jobs need visibility during async operations (deleting → deleted)
+- **Result structure alignment**: Worker and polling endpoint must agree on data shape
+
+### Files Modified
+- `pulldb/web/features/jobs/routes.py` (signature fix, job_infos collection)
+- `pulldb/worker/admin_tasks.py` (result structure, mark_job_deleting call)
+- `pulldb/domain/models.py` (DELETING enum value)
+- `pulldb/infra/mysql.py` (mark_job_deleting method)
+- `pulldb/web/templates/features/jobs/jobs.html` (badge class, can_delete check)
+- `pulldb/web/static/css/pages/admin.css` (.badge-pulse animation)
+- `schema/pulldb_service/080_job_delete_support.sql` (deleting in ENUM)
+- `tests/unit/test_job_delete.py` (new - 13 tests)
+- `CHANGELOG.md` (documented changes)
+- Deleted: `pulldb/web/templates/features/jobs/jobs_old.html`
+
+---
+
 ## 2025-12-27 | Fix theme.css AttributeError (v0.1.2)
 
 ### Context

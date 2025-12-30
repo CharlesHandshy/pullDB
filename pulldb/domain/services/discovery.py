@@ -12,7 +12,10 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from pulldb.infra.factory import is_simulation_mode
+from pulldb.infra.logging import get_logger
 from pulldb.infra.s3 import BACKUP_FILENAME_REGEX, S3Client
+
+logger = get_logger("pulldb.domain.services.discovery")
 
 # Customer cache: {(bucket, prefix): (customer_list, timestamp)}
 _customer_cache: dict[tuple[str, str], tuple[list[str], float]] = {}
@@ -316,8 +319,17 @@ class DiscoveryService:
                     bucket, prefix, profile=profile, max_results=1000
                 )
                 self._set_cached_customers(bucket, prefix, all_customers)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error(
+                "Error listing customer prefixes from S3",
+                extra={
+                    "bucket": bucket,
+                    "prefix": prefix,
+                    "profile": profile,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            )
 
     def search_backups(
         self,
@@ -384,20 +396,11 @@ class DiscoveryService:
                             self._parse_location_entry(entry, all_locations)
 
         if not all_locations:
-            all_locations = [
-                (
-                    "staging",
-                    "pestroutesrdsdbs",
-                    "daily/stg/",
-                    os.getenv("PULLDB_S3_STAGING_PROFILE", "pr-staging"),
-                ),
-                (
-                    "prod",
-                    "pestroutes-rds-backup-prod-vpc-us-east-1-s3",
-                    "daily/prod/",
-                    os.getenv("PULLDB_S3_PROD_PROFILE", "pr-prod"),
-                ),
-            ]
+            raise ValueError(
+                "PULLDB_S3_BACKUP_LOCATIONS not configured or invalid JSON. "
+                "Set this environment variable with a JSON array of location objects. "
+                "See packaging/env.example for the expected format."
+            )
         return all_locations
 
     def _parse_location_entry(
@@ -481,8 +484,18 @@ class DiscoveryService:
                 self._handle_wildcard_search(ctx, customer, results)
             else:
                 self._collect_customer_backups(ctx, customer, results)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error(
+                "Error searching bucket for backups",
+                extra={
+                    "bucket": ctx.bucket,
+                    "prefix": ctx.prefix,
+                    "customer": customer,
+                    "profile": ctx.profile,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            )
 
     def _handle_wildcard_search(
         self, ctx: SearchContext, customer: str, results: list[BackupInfo]
@@ -517,13 +530,39 @@ class DiscoveryService:
         self, ctx: SearchContext, customer: str, results: list[BackupInfo]
     ) -> None:
         search_prefix = f"{ctx.prefix}{customer}/daily_mydumper_{customer}_"
+        logger.debug(
+            "Searching for customer backups",
+            extra={
+                "bucket": ctx.bucket,
+                "search_prefix": search_prefix,
+                "profile": ctx.profile,
+            },
+        )
 
         try:
             # Use list_keys_with_sizes to get sizes in single API call
             keys_with_sizes = ctx.s3.list_keys_with_sizes(
                 ctx.bucket, search_prefix, profile=ctx.profile
             )
-        except Exception:
+            logger.debug(
+                "Found backup keys",
+                extra={
+                    "bucket": ctx.bucket,
+                    "count": len(keys_with_sizes),
+                    "customer": customer,
+                },
+            )
+        except Exception as exc:
+            logger.error(
+                "Error listing backup keys from S3",
+                extra={
+                    "bucket": ctx.bucket,
+                    "search_prefix": search_prefix,
+                    "profile": ctx.profile,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            )
             return
 
         for key, size_bytes in keys_with_sizes:

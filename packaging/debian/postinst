@@ -309,43 +309,102 @@ check_database_schema() {
     
     # Check if MySQL is accessible via socket (root access)
     if ! mysql -N -e "SELECT 1" >/dev/null 2>&1; then
-        echo "  Warning: Cannot connect to MySQL"
+        echo "  FATAL: Cannot connect to MySQL"
         echo "  Ensure MySQL is running and accessible"
-        return
+        exit 1
     fi
     
     # Create database if it doesn't exist
     if ! mysql -N -e "SELECT 1 FROM information_schema.schemata WHERE schema_name='pulldb_service'" 2>/dev/null | grep -q 1; then
         echo "  Creating pulldb_service database..."
         mysql -e "CREATE DATABASE pulldb_service CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci" || {
-            echo "  Warning: Failed to create database"
-            return
+            echo "  FATAL: Failed to create database"
+            exit 1
         }
     fi
     
-    # Check if jobs table exists (indicates schema is applied)
+    # Check if jobs table exists (indicates schema is applied - not a fresh install)
+    SCHEMA_EXISTS=0
     if mysql -N -e "SELECT 1 FROM information_schema.tables WHERE table_schema='pulldb_service' AND table_name='jobs'" 2>/dev/null | grep -q 1; then
-        echo "  Database schema already present"
-        return
+        SCHEMA_EXISTS=1
+        echo "  Database schema already present - checking for migrations..."
     fi
     
-    # Apply schema files in order
-    if [ -d "${SCHEMA_DIR}" ]; then
-        echo "  Applying schema files..."
-        for sql_file in $(ls -1 "${SCHEMA_DIR}"/*.sql 2>/dev/null | sort); do
-            echo "    Applying $(basename "$sql_file")..."
-            mysql pulldb_service < "$sql_file" || {
-                echo "  Warning: Failed to apply $(basename "$sql_file")"
-                return
-            }
-        done
-        echo "  Database schema applied successfully"
-        
-        # Create initial admin user
-        create_admin_user
+    if [ "$SCHEMA_EXISTS" = "0" ]; then
+        # FRESH INSTALL: Apply all schema files in order
+        if [ -d "${SCHEMA_DIR}" ]; then
+            echo "  Fresh install: Applying schema files..."
+            for sql_file in $(ls -1 "${SCHEMA_DIR}"/*.sql 2>/dev/null | sort); do
+                echo "    Applying $(basename "$sql_file")..."
+                mysql pulldb_service < "$sql_file" || {
+                    echo "  FATAL: Failed to apply $(basename "$sql_file")"
+                    exit 1
+                }
+            done
+            echo "  Database schema applied successfully"
+            
+            # Create initial admin user
+            create_admin_user
+        else
+            echo "  FATAL: Schema directory not found: ${SCHEMA_DIR}"
+            exit 1
+        fi
     else
-        echo "  Warning: Schema directory not found: ${SCHEMA_DIR}"
+        # UPGRADE: Run dbmate migrations if available
+        # Migrations folder is separate from schema - only contains incremental changes
+        DBMATE_MIGRATIONS_DIR="${INSTALL_PREFIX}/schema/migrations"
+        if [ -d "${DBMATE_MIGRATIONS_DIR}" ] && [ "$(ls -A ${DBMATE_MIGRATIONS_DIR}/*.sql 2>/dev/null)" ]; then
+            run_database_migrations "${DBMATE_MIGRATIONS_DIR}"
+        else
+            echo "  No pending migrations found - schema up to date"
+        fi
     fi
+}
+
+run_database_migrations() {
+    echo "  Running database migrations..."
+    
+    MIGRATION_DIR="$1"
+    
+    # Check if dbmate is installed
+    if ! command -v dbmate >/dev/null 2>&1; then
+        echo "  FATAL: dbmate not found - required for database migrations"
+        echo "  Install with: curl -fsSL -o /usr/local/bin/dbmate https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-amd64 && chmod +x /usr/local/bin/dbmate"
+        exit 1
+    fi
+    
+    if [ ! -d "${MIGRATION_DIR}" ]; then
+        echo "  FATAL: Migration directory not found: ${MIGRATION_DIR}"
+        exit 1
+    fi
+    
+    # Build DATABASE_URL from .env or defaults
+    # dbmate expects mysql://user:pass@host:port/dbname format
+    DB_HOST="${PULLDB_MYSQL_HOST:-localhost}"
+    DB_PORT="${PULLDB_MYSQL_PORT:-3306}"
+    DB_NAME="${PULLDB_MYSQL_DATABASE:-pulldb_service}"
+    
+    # For migrations, we need root or a privileged user
+    # Try socket connection first (common on same host)
+    if mysql -N -e "SELECT 1" >/dev/null 2>&1; then
+        # Socket connection works - use unix socket
+        # dbmate format for unix socket: mysql://user@/dbname?socket=/path/to/socket
+        export DATABASE_URL="mysql://root@/${DB_NAME}?socket=/var/run/mysqld/mysqld.sock"
+    else
+        echo "  FATAL: Cannot connect to MySQL for migrations"
+        exit 1
+    fi
+    
+    # Run dbmate migrations - HARD FAIL on error
+    echo "  Executing: dbmate -d ${MIGRATION_DIR} up"
+    dbmate -d "${MIGRATION_DIR}" up || {
+        echo "  FATAL: Database migration failed!"
+        echo "  Package installation cannot continue with database in inconsistent state."
+        echo "  Please check migration logs and resolve manually."
+        exit 1
+    }
+    
+    echo "  Database migrations completed successfully"
 }
 
 create_admin_user() {

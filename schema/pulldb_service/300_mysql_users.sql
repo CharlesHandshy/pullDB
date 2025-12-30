@@ -43,11 +43,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.sessions TO 'pulldb_api'@
 -- user_hosts: Full access for admin user-host assignment management
 GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.user_hosts TO 'pulldb_api'@'localhost';
 
--- jobs: Submit jobs + request cancellation (UPDATE for cancel_requested_at)
-GRANT SELECT, INSERT, UPDATE ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
+-- jobs: Submit jobs + request cancellation (UPDATE for cancel_requested_at) + hard delete
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
 
--- job_events: Read history + insert events when submitting jobs
-GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
+-- job_events: Read history + insert events when submitting jobs + hard delete cascade
+GRANT SELECT, INSERT, DELETE ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
 
 -- db_hosts: Full CRUD for admin host management (including hard delete)
 GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.db_hosts TO 'pulldb_api'@'localhost';

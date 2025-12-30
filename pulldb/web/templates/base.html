@@ -111,6 +111,9 @@
         {% block content %}{% endblock %}
     </main>
 
+    {# Modal container - outside app-main for proper fixed positioning #}
+    {% block modals %}{% endblock %}
+
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Footer -->

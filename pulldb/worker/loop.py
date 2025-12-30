@@ -50,9 +50,15 @@ AdminTaskExecutorFunc = t.Callable[[AdminTask], None]
 def get_worker_id() -> str:
     """Generate a unique identifier for this worker instance.
 
+    Checks PULLDB_WORKER_ID env var first for explicit identification
+    (useful for systemd template instances), falls back to hostname:pid.
+
     Returns:
-        Worker ID in format "hostname:pid", e.g. "worker-node-1:12345".
+        Worker ID, e.g. "worker-1" or "worker-node-1:12345".
     """
+    env_id = os.getenv("PULLDB_WORKER_ID")
+    if env_id:
+        return env_id
     hostname = socket.gethostname()
     pid = os.getpid()
     return f"{hostname}:{pid}"

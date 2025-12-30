@@ -188,9 +188,21 @@ async def reset_team_member_password(
         # Not authorized to manage this user - redirect back
         return RedirectResponse(url="/web/manager/", status_code=303)
 
+    # Get target user for audit context
+    target_user = next((u for u in managed_users if u.user_id == user_id), None)
+
     # Mark password reset required
     if hasattr(state.auth_repo, "mark_password_reset"):
         state.auth_repo.mark_password_reset(user_id)
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="team_password_reset",
+                target_user_id=user_id,
+                detail=f"Manager forced password reset for {target_user.username if target_user else user_id[:12]}",
+            )
 
     return RedirectResponse(url="/web/manager/", status_code=303)
 
@@ -211,9 +223,21 @@ async def clear_team_member_password_reset(
     if user_id not in managed_user_ids:
         return RedirectResponse(url="/web/manager/", status_code=303)
 
+    # Get target user for audit context
+    target_user = next((u for u in managed_users if u.user_id == user_id), None)
+
     # Clear password reset requirement
     if hasattr(state.auth_repo, "clear_password_reset"):
         state.auth_repo.clear_password_reset(user_id)
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="team_clear_password_reset",
+                target_user_id=user_id,
+                detail=f"Manager cleared password reset for {target_user.username if target_user else user_id[:12]}",
+            )
 
     return RedirectResponse(url="/web/manager/", status_code=303)
 
@@ -235,11 +259,23 @@ async def enable_team_member(
         if user_id not in managed_user_ids:
             return {"success": False, "message": "User is not managed by you"}
 
+        # Get target user for audit context
+        target_user = next((u for u in managed_users if u.user_id == user_id), None)
+
         # Enable the user
         if hasattr(state.user_repo, "enable_user_by_id"):
             state.user_repo.enable_user_by_id(user_id)
         elif hasattr(state.user_repo, "enable_user"):
             state.user_repo.enable_user(user_id)
+
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="team_user_enabled",
+                target_user_id=user_id,
+                detail=f"Manager enabled team member {target_user.username if target_user else user_id[:12]}",
+            )
 
         return {"success": True, "message": "User enabled successfully"}
     except Exception as e:
@@ -267,12 +303,89 @@ async def disable_team_member(
         if user_id not in managed_user_ids:
             return {"success": False, "message": "User is not managed by you"}
 
+        # Get target user for audit context
+        target_user = next((u for u in managed_users if u.user_id == user_id), None)
+
         # Disable the user
         if hasattr(state.user_repo, "disable_user_by_id"):
             state.user_repo.disable_user_by_id(user_id)
         elif hasattr(state.user_repo, "disable_user"):
             state.user_repo.disable_user(user_id)
 
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="team_user_disabled",
+                target_user_id=user_id,
+                detail=f"Manager disabled team member {target_user.username if target_user else user_id[:12]}",
+            )
+
         return {"success": True, "message": "User disabled successfully"}
     except Exception as e:
         return {"success": False, "message": str(e)}
+
+@router.post("/my-team/{user_id}/assign-temp-password")
+async def assign_team_member_temp_password(
+    user_id: str,
+    user: User = Depends(require_manager_or_above),
+    state: Any = Depends(get_api_state),
+) -> dict:
+    """Assign a temporary password to a managed user.
+    
+    Generates a random password, updates the user's credentials, marks password
+    reset required, and returns the temp password to the manager (shown once).
+    Audit logs the action WITHOUT storing the password or hash.
+    """
+    import secrets
+    import string
+    from pulldb.auth.password import hash_password
+    
+    # Prevent self-modification
+    if user_id == user.user_id:
+        return {"success": False, "message": "Cannot modify your own account"}
+    
+    # Verify user is managed by this manager
+    managed_users = []
+    if hasattr(state.user_repo, "get_users_managed_by"):
+        managed_users = state.user_repo.get_users_managed_by(user.user_id)
+    
+    managed_user_ids = {u.user_id for u in managed_users}
+    if user_id not in managed_user_ids:
+        return {"success": False, "message": "User is not managed by you"}
+    
+    # Get target user
+    target_user = next((u for u in managed_users if u.user_id == user_id), None)
+    if not target_user:
+        return {"success": False, "message": "User not found"}
+    
+    # Generate random password (12 chars, mix of letters/digits/symbols)
+    alphabet = string.ascii_letters + string.digits + "!@#$%&*"
+    temp_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+    
+    # Hash and set the password
+    password_hash = hash_password(temp_password)
+    if hasattr(state.auth_repo, "set_password_hash"):
+        state.auth_repo.set_password_hash(user_id, password_hash)
+    else:
+        return {"success": False, "message": "Cannot set password"}
+    
+    # Mark for password reset on next login
+    if hasattr(state.auth_repo, "mark_password_reset"):
+        state.auth_repo.mark_password_reset(user_id)
+    
+    # Audit log - DO NOT log password or hash, only actor/target/timestamp
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        state.audit_repo.log_action(
+            actor_user_id=user.user_id,
+            action="team_temp_password_assigned",
+            target_user_id=user_id,
+            detail=f"Manager assigned temporary password to {target_user.username}",
+        )
+    
+    return {
+        "success": True,
+        "message": "Temporary password assigned",
+        "temp_password": temp_password,
+        "username": target_user.username,
+    }

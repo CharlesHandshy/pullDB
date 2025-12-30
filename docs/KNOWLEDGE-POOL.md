@@ -99,10 +99,13 @@ Role-Based Access Control with three roles: `USER`, `MANAGER`, `ADMIN`.
 | View own jobs | ✅ | ✅ | ✅ |
 | Submit own jobs | ✅ | ✅ | ✅ |
 | Cancel own jobs | ✅ | ✅ | ✅ |
+| Delete own job databases | ✅ | ✅ | ✅ |
 | View managed users' jobs | ❌ | ✅ | ✅ |
 | Cancel managed users' jobs | ❌ | ✅ | ✅ |
+| Delete managed users' jobs | ❌ | ✅ | ✅ |
 | View all jobs | ❌ | ❌ | ✅ |
 | Cancel any job | ❌ | ❌ | ✅ |
+| Delete any job | ❌ | ❌ | ✅ |
 | Manage users | ❌ | ❌ | ✅ |
 | Orphan cleanup | ❌ | ❌ | ✅ |
 | System settings | ❌ | ❌ | ✅ |
@@ -130,6 +133,83 @@ from pulldb.domain.permissions import check_permission, Permission
 # Check if user can cancel a job
 if not check_permission(current_user, Permission.CANCEL_JOB, job.user_id):
     raise PermissionDenied("Cannot cancel this job")
+```
+
+---
+
+## Job Delete Feature (Phase 5)
+
+User-initiated deletion of completed job databases with full audit trail.
+
+### Job Status Lifecycle
+
+```
+QUEUED → RUNNING → COMPLETE/FAILED/CANCELED → DELETED (soft delete)
+```
+
+| Status | Terminal? | Deletable? | Notes |
+|--------|-----------|------------|-------|
+| `queued` | ❌ | ❌ | Active - cannot delete |
+| `running` | ❌ | ❌ | Active - cannot delete |
+| `complete` | ✅ | ✅ | Standard terminal state |
+| `failed` | ✅ | ✅ | Standard terminal state |
+| `canceled` | ✅ | ✅ | Standard terminal state |
+| `deleted` | ✅ | ❌ | Already deleted |
+
+### Delete Modes
+
+| Mode | Behavior | Audit Trail |
+|------|----------|-------------|
+| **Soft Delete** (default) | Drop databases, set status=`deleted` | Job record preserved |
+| **Hard Delete** | Drop databases, remove job record | Audit log preserved |
+
+### What Gets Deleted
+
+Both database types are dropped regardless of job status:
+- **Staging database**: `{target}_{job_id_first_12_chars}` (temporary)
+- **Target database**: `{user_code}{target}` (user's named database)
+
+### Key Components
+
+| File | Layer | Purpose |
+|------|-------|---------|
+| `pulldb/domain/permissions.py` | entities | `can_delete_job_database()` |
+| `pulldb/worker/cleanup.py` | features | `delete_job_databases()`, `JobDeleteResult` |
+| `pulldb/infra/mysql.py` | shared | `mark_job_deleted()`, `hard_delete_job()`, `create_bulk_delete_task()` |
+| `pulldb/worker/admin_tasks.py` | features | `_execute_bulk_delete_jobs()` handler |
+| `pulldb/web/features/jobs/routes.py` | pages | Delete routes (single + bulk) |
+
+### API Routes
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/web/jobs/{job_id}/delete-database` | POST | Single job delete |
+| `/web/jobs/bulk-delete` | POST | Create bulk delete task |
+| `/web/jobs/bulk-delete/{task_id}/status` | GET | Poll bulk delete progress |
+
+### Audit Actions
+
+| Action | Event |
+|--------|-------|
+| `delete_job_database` | Single job delete (soft or hard) |
+| `bulk_delete_jobs_requested` | Bulk delete task created |
+| `bulk_delete_started` | Bulk delete task began processing |
+| `bulk_delete_progress` | Individual job in bulk delete processed |
+| `bulk_delete_completed` | Bulk delete task finished |
+
+### UI Components
+
+- **Single Delete**: Trash icon button in history table row → "Are you sure?" modal
+- **Bulk Delete**: Checkbox selection → "Delete Selected" → type "I am sure." modal
+- **Progress**: Modal with progress bar, 2-second polling
+
+### Schema Migration
+
+```sql
+-- Migration: 080_job_delete_support.sql
+ALTER TABLE jobs MODIFY status ENUM(..., 'deleted');
+ALTER TABLE admin_tasks MODIFY task_type ENUM(..., 'bulk_delete_jobs');
+CREATE INDEX idx_jobs_deletable ON jobs(status, owner_user_id);
 ```
 
 ---

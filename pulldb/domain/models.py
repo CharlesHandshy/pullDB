@@ -30,6 +30,8 @@ class JobStatus(Enum):
         FAILED: Job execution failed with error.
         COMPLETE: Job successfully completed.
         CANCELED: Job canceled by user (reserved for Phase 1).
+        DELETING: Job databases being deleted (async bulk delete in progress).
+        DELETED: Job databases deleted by user (soft delete complete).
     """
 
     QUEUED = "queued"
@@ -37,11 +39,13 @@ class JobStatus(Enum):
     FAILED = "failed"
     COMPLETE = "complete"
     CANCELED = "canceled"  # Reserved for Phase 1
+    DELETING = "deleting"  # Async bulk delete in progress
+    DELETED = "deleted"  # User-initiated database deletion
 
 
 # Terminal states - jobs in these states have finished processing and
 # their staging databases are eligible for cleanup
-TERMINAL_STATUSES = frozenset({JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED})
+TERMINAL_STATUSES = frozenset({JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED, JobStatus.DELETED})
 
 # SQL-safe terminal status values for use in queries
 TERMINAL_STATUS_VALUES = frozenset({s.value for s in TERMINAL_STATUSES})
@@ -72,10 +76,12 @@ class AdminTaskType(Enum):
     Attributes:
         FORCE_DELETE_USER: Delete user with job history, optionally dropping databases.
         SCAN_USER_ORPHANS: Scan hosts for databases belonging to deleted users.
+        BULK_DELETE_JOBS: Bulk delete job databases (user-initiated).
     """
 
     FORCE_DELETE_USER = "force_delete_user"
     SCAN_USER_ORPHANS = "scan_user_orphans"
+    BULK_DELETE_JOBS = "bulk_delete_jobs"
 
 
 class AdminTaskStatus(Enum):

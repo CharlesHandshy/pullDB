@@ -201,6 +201,36 @@ class S3Client:
         resp: HeadObjectOutputTypeDef = client.head_object(Bucket=bucket, Key=key)
         return resp
 
+    def get_object_size(
+        self, bucket: str, key: str, profile: str | None = None
+    ) -> int | None:
+        """Return object size in bytes, or None if object doesn't exist.
+
+        Uses HEAD request to check object existence and get size without
+        downloading the object. This is efficient for verifying user-selected
+        backups exist before job execution.
+
+        Args:
+            bucket: S3 bucket name.
+            key: Object key.
+            profile: AWS profile to use.
+
+        Returns:
+            Size in bytes if object exists, None otherwise.
+
+        Raises:
+            Exception: For S3 errors other than 404 (not found).
+        """
+        try:
+            resp = self.head_object(bucket, key, profile=profile)
+            return resp.get("ContentLength")
+        except Exception as exc:
+            # Check if it's a 404 Not Found
+            error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return None
+            raise
+
     def get_object(
         self, bucket: str, key: str, profile: str | None = None
     ) -> GetObjectOutputTypeDef:  # pragma: no cover - thin
@@ -284,11 +314,17 @@ class S3Client:
         Returns:
             List of (key, size_bytes) tuples
         """
+        logger.debug(
+            "list_keys_with_sizes starting",
+            extra={"bucket": bucket, "prefix": prefix, "profile": profile},
+        )
         client = self.get_client(profile)
         results: list[tuple[str, int]] = []
         continuation: str | None = None
+        page_count = 0
 
         while True:
+            page_count += 1
             params: dict[str, t.Any] = {
                 "Bucket": bucket,
                 "Prefix": prefix,
@@ -298,6 +334,15 @@ class S3Client:
                 params["ContinuationToken"] = continuation
 
             resp: ListObjectsV2OutputTypeDef = client.list_objects_v2(**params)
+            logger.debug(
+                f"list_keys_with_sizes page {page_count}",
+                extra={
+                    "bucket": bucket,
+                    "prefix": prefix,
+                    "items_in_page": len(resp.get("Contents") or []),
+                    "is_truncated": resp.get("IsTruncated", False),
+                },
+            )
 
             for item in resp.get("Contents") or []:
                 key = item.get("Key")

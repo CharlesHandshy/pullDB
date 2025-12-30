@@ -134,55 +134,21 @@ def _initialize_simulation_state() -> APIState:
 
 
 def _initialize_real_state() -> APIState:
-    """Build API state with real MySQL/AWS connections."""
-    try:
-        config = Config.minimal_from_env()
+    """Build API state with real MySQL/AWS connections.
+    
+    Uses shared bootstrap module for two-phase config loading:
+    1. Bootstrap from environment (MySQL credentials, AWS profile)
+    2. Resolve Secrets Manager credentials
+    3. Connect to MySQL
+    4. Load full config from env + MySQL settings (same as worker)
+    """
+    from pulldb.infra.bootstrap import bootstrap_service_config
 
-        # REQUIRED: API service must have its own MySQL user
-        api_mysql_user = os.getenv("PULLDB_API_MYSQL_USER")
-        if not api_mysql_user:
-            raise RuntimeError(
-                "PULLDB_API_MYSQL_USER is required. "
-                "Set it to the API service MySQL user (e.g., pulldb_api)."
-            )
-        config.mysql_user = api_mysql_user.strip()
-
-        # Resolve coordination credentials if provided via secret
-        # Only fetch from Secrets Manager if password is not already set
-        coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
-        if coordination_secret and not config.mysql_password:
-            try:
-                resolver = CredentialResolver(config.aws_profile)
-                creds = resolver.resolve(coordination_secret)
-                # Secret provides host and password; username comes from PULLDB_API_MYSQL_USER
-                config.mysql_host = creds.host
-                config.mysql_password = creds.password
-                print(
-                    f"INFO: Resolved coordination credentials from {coordination_secret} "
-                    f"(host={creds.host}, user={config.mysql_user})"
-                )
-            except Exception as e:
-                # Log warning but proceed with defaults (will likely fail connection)
-                print(f"WARNING: Failed to resolve coordination secret: {e}")
-
-    except Exception as exc:  # FAIL HARD: configuration path invalid
-        raise RuntimeError(
-            "Failed loading pullDB configuration from environment for API service: "
-            f"{exc}. Configure PULLDB_MYSQL_* variables or consult docs/testing.md."
-        ) from exc
-
-    try:
-        pool = build_default_pool(
-            host=config.mysql_host,
-            user=config.mysql_user,
-            password=config.mysql_password,
-            database=config.mysql_database,
-        )
-    except Exception as exc:  # pragma: no cover - guarded by tests
-        raise RuntimeError(
-            "Failed connecting to coordination database for pullDB API service. "
-            f"Attempted {config.mysql_host}/{config.mysql_database}: {exc}."
-        ) from exc
+    # Use shared bootstrap for consistent config loading with worker
+    config, pool = bootstrap_service_config(
+        service_mysql_user_env="PULLDB_API_MYSQL_USER",
+        service_name="API service",
+    )
 
     # Create credential resolver for host lookups
     credential_resolver = CredentialResolver(config.aws_profile)
@@ -516,12 +482,46 @@ async def register_user(
     Used by CLI's `pulldb register` command.
     """
     from pulldb.auth.password import hash_password
+    from pulldb.domain.validation import (
+        ValidationError,
+        validate_username_format,
+        validate_username_not_disallowed,
+    )
+    from pulldb.infra.mysql import DisallowedUserRepository
 
     if not state.auth_repo:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authentication service not available",
         )
+
+    # Validate username format
+    try:
+        validate_username_format(request.username)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.message,
+        ) from exc
+
+    # Check hardcoded disallowed list
+    try:
+        validate_username_not_disallowed(request.username)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.message,
+        ) from exc
+
+    # Check database disallowed list (if repository available)
+    if hasattr(state, "job_repo") and state.job_repo and hasattr(state.job_repo, "pool"):
+        disallowed_repo = DisallowedUserRepository(state.job_repo.pool)
+        is_disallowed, reason = disallowed_repo.is_disallowed(request.username)
+        if is_disallowed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Username '{request.username}' is not allowed: {reason}",
+            )
 
     # Check if user already exists
     existing_user = await run_in_threadpool(

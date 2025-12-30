@@ -21,9 +21,12 @@
 
 The API and Web UI run as separate services on different ports for flexibility and security.
 
+
 ## Table of Contents
 
 - [Service Management](#service-management)
+- [Multi-Worker Setup](#multi-worker-setup)
+- [Web UI Access](#web-ui-access)
 - [Configuration](#configuration)
 - [Directory Structure](#directory-structure)
 - [Log Management](#log-management)
@@ -103,6 +106,77 @@ If the service has failed too many times and won't restart:
 sudo systemctl reset-failed pulldb-worker
 sudo systemctl start pulldb-worker
 ```
+
+---
+
+## Multi-Worker Setup
+
+> **Horizontal Scaling**: Run multiple worker instances to process restore jobs in parallel.
+
+### Architecture
+
+Each worker:
+- Processes **one job at a time** (single-threaded per process)
+- Uses MySQL `FOR UPDATE SKIP LOCKED` for safe job claiming
+- Has a unique `PULLDB_WORKER_ID` (e.g., `worker-1`, `worker-2`)
+- Coordinates zombie cleanup via MySQL advisory locks
+
+### Enabling Multiple Workers
+
+The system uses systemd template units (`pulldb-worker@.service`) for multiple instances:
+
+```bash
+# Stop single-worker mode (if enabled)
+sudo systemctl stop pulldb-worker
+sudo systemctl disable pulldb-worker
+
+# Enable 3 worker instances
+sudo systemctl enable --now pulldb-worker@1 pulldb-worker@2 pulldb-worker@3
+```
+
+### Managing Worker Instances
+
+```bash
+# Check status of all workers
+sudo systemctl status 'pulldb-worker@*'
+
+# Restart all workers
+sudo systemctl restart pulldb-worker@{1,2,3}
+
+# View logs from all workers
+sudo journalctl -u 'pulldb-worker@*' -f
+
+# View logs from specific worker
+sudo journalctl -u pulldb-worker@2 -f
+
+# Stop a specific worker
+sudo systemctl stop pulldb-worker@2
+
+# Add a 4th worker
+sudo systemctl enable --now pulldb-worker@4
+```
+
+### Worker Count Recommendations
+
+| Use Case | Workers | Notes |
+|----------|---------|-------|
+| Development | 1 | Default configuration |
+| Standard Production | 3 | Balanced throughput |
+| High Volume | 5-10 | Limited by MySQL connections and I/O |
+
+### How It Works
+
+1. **Job Claiming**: Workers poll MySQL with `SELECT ... FOR UPDATE SKIP LOCKED`
+   - Only one worker can claim a job
+   - No race conditions or duplicate processing
+
+2. **Worker ID**: Each instance gets a unique ID via `PULLDB_WORKER_ID` env var
+   - Template unit sets `worker-1`, `worker-2`, etc.
+   - Visible in job logs and `claimed_by` field
+
+3. **Zombie Cleanup**: Uses MySQL advisory lock `GET_LOCK('pulldb_zombie_cleanup', 0)`
+   - Only one worker runs cleanup at a time
+   - Safe across multiple hosts
 
 ---
 

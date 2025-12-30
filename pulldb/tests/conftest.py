@@ -9,15 +9,12 @@ AWS PROFILE CONFIGURATION:
     - pr-dev: AWS Secrets Manager access (development account 345321506926)
               Used for: MySQL coordination DB credentials, target host secrets
 
-    - pr-staging: S3 bucket access (staging account 333204494849)
-                  Used for: pestroutesrdsdbs bucket with daily/stg/ backups
-
     - pr-prod: S3 bucket access (production account 448509429610)
                Used for: pestroutes-rds-backup-prod-vpc-us-east-1-s3 bucket
 
     Set via environment or .env file:
         PULLDB_AWS_PROFILE=pr-dev         # For Secrets Manager (default)
-        PULLDB_S3_AWS_PROFILE=pr-staging  # For S3 bucket access
+        PULLDB_S3_AWS_PROFILE=pr-prod     # For S3 bucket access
 
     On EC2 with instance profile, leave PULLDB_AWS_PROFILE unset or empty.
 
@@ -188,14 +185,7 @@ def _seed_isolated_settings(socket_path: Path) -> None:
     cursor.execute(
         """
         INSERT INTO settings (setting_key, setting_value)
-        VALUES ('s3_bucket_stg','pestroutesrdsdbs')
-        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
-        """
-    )
-    cursor.execute(
-        """
-        INSERT INTO settings (setting_key, setting_value)
-        VALUES ('s3_bucket_path','pestroutesrdsdbs/daily/stg/')
+        VALUES ('s3_bucket_path','pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/')
         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
         """
     )
@@ -683,14 +673,7 @@ def mysql_pool(
         cursor.execute(
             """
             INSERT INTO settings (setting_key, setting_value)
-            VALUES ('s3_bucket_stg','pestroutesrdsdbs')
-            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
-            """
-        )
-        cursor.execute(
-            """
-            INSERT INTO settings (setting_key, setting_value)
-            VALUES ('s3_bucket_path','pestroutesrdsdbs/daily/stg/')
+            VALUES ('s3_bucket_path','pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/')
             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
             """
         )

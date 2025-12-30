@@ -74,6 +74,32 @@ def can_cancel_job(user: User, job_owner_id: str, job_owner_manager_id: str | No
     return user.user_id == job_owner_id
 
 
+def can_delete_job_database(user: User, job_owner_id: str, job_owner_manager_id: str | None = None) -> bool:
+    """Check if user can delete a job's databases.
+
+    Admins can delete any job's databases.
+    Managers can only delete databases for jobs owned by users they manage.
+    Regular users can only delete their own job databases.
+
+    This permission applies to both soft delete (status=deleted) and hard delete
+    (complete removal of job record and databases).
+
+    Args:
+        user: The user attempting to delete.
+        job_owner_id: The user_id of the job owner.
+        job_owner_manager_id: The manager_id of the job owner (who manages them).
+
+    Returns:
+        True if user can delete the job's databases, False otherwise.
+    """
+    if user.role == UserRole.ADMIN:
+        return True
+    if user.role == UserRole.MANAGER:
+        # Managers can only delete for users they manage
+        return job_owner_manager_id == user.user_id
+    return user.user_id == job_owner_id
+
+
 def can_submit_for_user(actor: User, target_user: User) -> bool:
     """Check if actor can submit jobs for target user.
 

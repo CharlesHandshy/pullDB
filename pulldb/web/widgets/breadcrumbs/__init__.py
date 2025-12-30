@@ -106,6 +106,11 @@ BREADCRUMB_PATHS: dict[str, list[tuple[str, str | None]]] = {
         ("Administration", "/web/admin"),
         ("Settings", None),
     ],
+    "admin_disallowed_users": [
+        ("Dashboard", "/web/dashboard"),
+        ("Administration", "/web/admin"),
+        ("Disallowed Users", None),
+    ],
     "admin_cleanup": [
         ("Dashboard", "/web/dashboard"),
         ("Administration", "/web/admin"),

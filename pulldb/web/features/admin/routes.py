@@ -176,8 +176,23 @@ async def enable_user(
         return {"success": False, "message": "Cannot modify your own account"}
     
     try:
+        # Get target user for audit context
+        target_user = None
+        if hasattr(state.user_repo, "get_user_by_id"):
+            target_user = state.user_repo.get_user_by_id(user_id)
+        
         if hasattr(state.user_repo, "enable_user_by_id"):
             state.user_repo.enable_user_by_id(user_id)
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="user_enabled",
+                target_user_id=user_id,
+                detail=f"Admin enabled user {target_user.username if target_user else user_id[:12]}",
+            )
+        
         return {"success": True, "message": "User enabled"}
     except Exception as e:
         return {"success": False, "message": str(e)}
@@ -194,8 +209,23 @@ async def disable_user(
         return {"success": False, "message": "Cannot disable your own account"}
     
     try:
+        # Get target user for audit context
+        target_user = None
+        if hasattr(state.user_repo, "get_user_by_id"):
+            target_user = state.user_repo.get_user_by_id(user_id)
+        
         if hasattr(state.user_repo, "disable_user_by_id"):
             state.user_repo.disable_user_by_id(user_id)
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="user_disabled",
+                target_user_id=user_id,
+                detail=f"Admin disabled user {target_user.username if target_user else user_id[:12]}",
+            )
+        
         return {"success": True, "message": "User disabled"}
     except Exception as e:
         return {"success": False, "message": str(e)}
@@ -216,8 +246,24 @@ async def delete_user(
         return {"success": False, "message": "Cannot delete your own account"}
     
     try:
+        # Get target user for audit context BEFORE deletion
+        target_user = None
+        if hasattr(state.user_repo, "get_user_by_id"):
+            target_user = state.user_repo.get_user_by_id(user_id)
+        
         if hasattr(state.user_repo, "delete_user"):
             result = state.user_repo.delete_user(user_id)
+            
+            # Audit log
+            if hasattr(state, "audit_repo") and state.audit_repo:
+                state.audit_repo.log_action(
+                    actor_user_id=admin.user_id,
+                    action="user_deleted",
+                    target_user_id=user_id,
+                    detail=f"Admin deleted user {target_user.username if target_user else user_id[:12]}",
+                    context={"delete_result": result},
+                )
+            
             return {
                 "success": True,
                 "message": "User deleted successfully",
@@ -497,9 +543,27 @@ async def update_user_role(
         return {"success": False, "message": "Cannot modify your own role"}
     
     try:
+        # Get target user for audit context
+        target_user = None
+        old_role = None
+        if hasattr(state.user_repo, "get_user_by_id"):
+            target_user = state.user_repo.get_user_by_id(user_id)
+            old_role = target_user.role.value if target_user else None
+        
         role_enum = UserRole(new_role.lower())
         if hasattr(state.user_repo, "update_user_role"):
             state.user_repo.update_user_role(user_id, role_enum)
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="role_changed",
+                target_user_id=user_id,
+                detail=f"Changed role from {old_role} to {new_role} for {target_user.username if target_user else user_id[:12]}",
+                context={"old_role": old_role, "new_role": new_role},
+            )
+        
         return {"success": True, "message": "Role updated"}
     except ValueError:
         return {"success": False, "message": "Invalid role"}
@@ -527,11 +591,6 @@ async def add_user(
     import re
     if not re.match(r'^[a-z0-9_-]+$', username):
         return {"success": False, "message": "Username can only contain lowercase letters, numbers, underscore, and hyphen"}
-    
-    # Count letters to ensure at least 6 for user code generation
-    letter_count = sum(1 for c in username if c.isalpha())
-    if letter_count < 6:
-        return {"success": False, "message": f"Username must contain at least 6 letters (found {letter_count})"}
     
     # Check if username already exists
     existing = None
@@ -579,6 +638,21 @@ async def add_user(
     if hasattr(state.auth_repo, "mark_password_reset"):
         state.auth_repo.mark_password_reset(new_user.user_id)
     
+    # Audit log
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        state.audit_repo.log_action(
+            actor_user_id=admin.user_id,
+            action="user_created",
+            target_user_id=new_user.user_id,
+            detail=f"Admin created user {username} with role {role}",
+            context={
+                "username": username,
+                "user_code": user_code,
+                "role": role,
+                "manager_id": actual_manager_id,
+            },
+        )
+    
     return {
         "success": True,
         "message": "User created successfully",
@@ -597,9 +671,43 @@ async def update_user_manager(
     admin: User = Depends(require_admin),
 ) -> dict:
     """Update a user's manager assignment. Returns JSON for AJAX calls."""
+    # Get target user and old manager for audit context
+    target_user = None
+    old_manager_id = None
+    if hasattr(state.user_repo, "get_user_by_id"):
+        target_user = state.user_repo.get_user_by_id(user_id)
+        old_manager_id = target_user.manager_id if target_user else None
+    
     if hasattr(state.user_repo, "set_user_manager"):
         actual_manager_id = manager_id if manager_id else None
         state.user_repo.set_user_manager(user_id, actual_manager_id)
+        
+        # Audit log - use distinct action for assignment vs unassignment
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            if actual_manager_id:
+                # Manager assigned
+                state.audit_repo.log_action(
+                    actor_user_id=admin.user_id,
+                    action="manager_assigned",
+                    target_user_id=user_id,
+                    detail=f"Assigned manager for {target_user.username if target_user else user_id[:12]}",
+                    context={
+                        "old_manager_id": old_manager_id,
+                        "new_manager_id": actual_manager_id,
+                    },
+                )
+            else:
+                # Manager unassigned (set to None)
+                state.audit_repo.log_action(
+                    actor_user_id=admin.user_id,
+                    action="manager_unassigned",
+                    target_user_id=user_id,
+                    detail=f"Removed manager from {target_user.username if target_user else user_id[:12]}",
+                    context={
+                        "old_manager_id": old_manager_id,
+                    },
+                )
+        
         return {"success": True, "message": "Manager updated"}
     return {"success": True, "message": "Manager updated (simulation)"}
 
@@ -621,6 +729,16 @@ async def force_password_reset(
     
     if target_user and hasattr(state.auth_repo, "mark_password_reset"):
         state.auth_repo.mark_password_reset(target_user.user_id)
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="force_password_reset",
+                target_user_id=user_id,
+                detail=f"Forced password reset for {target_user.username}",
+            )
+        
         return {"success": True, "message": "Password reset required on next login"}
     return {"success": False, "message": "Could not set password reset"}
 
@@ -642,8 +760,77 @@ async def clear_password_reset(
     
     if target_user and hasattr(state.auth_repo, "clear_password_reset"):
         state.auth_repo.clear_password_reset(target_user.user_id)
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="clear_password_reset",
+                target_user_id=user_id,
+                detail=f"Cleared password reset for {target_user.username}",
+            )
+        
         return {"success": True, "message": "Password reset cleared"}
     return {"success": False, "message": "Could not clear password reset"}
+
+
+@router.post("/users/{user_id}/assign-temp-password")
+async def assign_temp_password(
+    user_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Assign a temporary password to a user.
+    
+    Generates a random password, updates the user's credentials, marks password
+    reset required, and returns the temp password to the admin (shown once).
+    Audit logs the action WITHOUT storing the password or hash.
+    """
+    import secrets
+    import string
+    from pulldb.auth.password import hash_password
+    
+    if user_id == admin.user_id:
+        return {"success": False, "message": "Cannot modify your own account"}
+    
+    # Get the target user
+    target_user = None
+    if hasattr(state.user_repo, "get_user_by_id"):
+        target_user = state.user_repo.get_user_by_id(user_id)
+    
+    if not target_user:
+        return {"success": False, "message": "User not found"}
+    
+    # Generate random password (12 chars, mix of letters/digits/symbols)
+    alphabet = string.ascii_letters + string.digits + "!@#$%&*"
+    temp_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+    
+    # Hash and set the password
+    password_hash = hash_password(temp_password)
+    if hasattr(state.auth_repo, "set_password_hash"):
+        state.auth_repo.set_password_hash(user_id, password_hash)
+    else:
+        return {"success": False, "message": "Cannot set password"}
+    
+    # Mark for password reset on next login
+    if hasattr(state.auth_repo, "mark_password_reset"):
+        state.auth_repo.mark_password_reset(user_id)
+    
+    # Audit log - DO NOT log password or hash, only actor/target/timestamp
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        state.audit_repo.log_action(
+            actor_user_id=admin.user_id,
+            action="temp_password_assigned",
+            target_user_id=user_id,
+            detail=f"Admin assigned temporary password to {target_user.username}",
+        )
+    
+    return {
+        "success": True,
+        "message": "Temporary password assigned",
+        "temp_password": temp_password,
+        "username": target_user.username,
+    }
 
 
 # =============================================================================
@@ -725,6 +912,24 @@ async def set_user_hosts(
             default_host_id=default_host_id,
             assigned_by=admin.user_id,
         )
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            # Get target user for audit context
+            target_user = None
+            if hasattr(state.user_repo, "get_user_by_id"):
+                target_user = state.user_repo.get_user_by_id(user_id)
+            
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="user_hosts_updated",
+                target_user_id=user_id,
+                detail=f"Updated host assignments for {target_user.username if target_user else user_id[:12]}",
+                context={
+                    "host_ids": host_ids,
+                    "default_host_id": default_host_id,
+                },
+            )
         
         return {"success": True, "message": "Host assignments updated"}
     except Exception as e:
@@ -1208,6 +1413,16 @@ async def enable_host(
     """Enable a database host (form POST redirect)."""
     if hasattr(state.host_repo, "enable_host"):
         state.host_repo.enable_host(hostname)
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="host_enabled",
+                detail=f"Enabled database host {hostname}",
+                context={"hostname": hostname},
+            )
+    
     return RedirectResponse(url="/web/admin/hosts", status_code=303)
 
 
@@ -1220,6 +1435,16 @@ async def disable_host(
     """Disable a database host."""
     if hasattr(state.host_repo, "disable_host"):
         state.host_repo.disable_host(hostname)
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="host_disabled",
+                detail=f"Disabled database host {hostname}",
+                context={"hostname": hostname},
+            )
+    
     return RedirectResponse(url="/web/admin/hosts", status_code=303)
 
 
@@ -1244,10 +1469,30 @@ async def api_toggle_host(
         if getattr(host, "enabled", True):
             if hasattr(state.host_repo, "disable_host"):
                 state.host_repo.disable_host(host.hostname)
+            
+            # Audit log
+            if hasattr(state, "audit_repo") and state.audit_repo:
+                state.audit_repo.log_action(
+                    actor_user_id=admin.user_id,
+                    action="host_disabled",
+                    detail=f"Disabled database host {host.hostname}",
+                    context={"host_id": host_id, "hostname": host.hostname},
+                )
+            
             return {"success": True, "message": f"Host '{host.hostname}' disabled", "enabled": False}
         else:
             if hasattr(state.host_repo, "enable_host"):
                 state.host_repo.enable_host(host.hostname)
+            
+            # Audit log
+            if hasattr(state, "audit_repo") and state.audit_repo:
+                state.audit_repo.log_action(
+                    actor_user_id=admin.user_id,
+                    action="host_enabled",
+                    detail=f"Enabled database host {host.hostname}",
+                    context={"host_id": host_id, "hostname": host.hostname},
+                )
+            
             return {"success": True, "message": f"Host '{host.hostname}' enabled", "enabled": True}
     except Exception as e:
         return {"success": False, "message": str(e)}
@@ -1384,6 +1629,21 @@ async def add_host(
                 max_running_jobs=max_running_jobs,
                 max_active_jobs=max_active_jobs,
             )
+            
+            # Audit log
+            if hasattr(state, "audit_repo") and state.audit_repo:
+                state.audit_repo.log_action(
+                    actor_user_id=admin.user_id,
+                    action="host_created",
+                    detail=f"Added database host {hostname}",
+                    context={
+                        "host_id": host_id,
+                        "hostname": hostname,
+                        "host_alias": host_alias,
+                        "max_running_jobs": max_running_jobs,
+                        "max_active_jobs": max_active_jobs,
+                    },
+                )
 
         return RedirectResponse(
             url=f"/web/admin/hosts/{host_id}?added=1", status_code=303
@@ -1612,6 +1872,21 @@ async def update_host(
                          max_active_jobs, host_id),
                     )
                     conn.commit()
+            
+            # Audit log
+            if hasattr(state, "audit_repo") and state.audit_repo:
+                state.audit_repo.log_action(
+                    actor_user_id=admin.user_id,
+                    action="host_updated",
+                    detail=f"Updated database host {existing.hostname if existing else host_id[:12]}",
+                    context={
+                        "host_id": host_id,
+                        "hostname": existing.hostname if existing else None,
+                        "host_alias": host_alias,
+                        "max_running_jobs": max_running_jobs,
+                        "max_active_jobs": max_active_jobs,
+                    },
+                )
 
         return RedirectResponse(
             url=f"/web/admin/hosts/{host_id}?updated=1", status_code=303
@@ -1775,6 +2050,23 @@ async def update_host_secret(
         
         change_msg = f"Updated: {', '.join(changes)}" if changes else "No changes"
 
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="host_secret_updated",
+                detail=f"Updated credentials for host {host.hostname}: {change_msg}",
+                context={
+                    "host_id": host_id,
+                    "hostname": host.hostname,
+                    "changes": changes,
+                    "username_changed": username_changed,
+                    "password_changed": password_changed,
+                    "host_changed": host_changed,
+                    "port_changed": port_changed,
+                },
+            )
+
         return RedirectResponse(
             url=f"/web/admin/hosts/{host_id}?secret_updated=1&msg={url_quote(change_msg)}", 
             status_code=303
@@ -1888,6 +2180,19 @@ async def delete_host(
 
         # Step 3: Hard delete the host record - this should always succeed
         state.host_repo.hard_delete_host(host_id)
+
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="host_deleted",
+                detail=f"Deleted database host {hostname}",
+                context={
+                    "host_id": host_id,
+                    "hostname": hostname,
+                    "cleanup_warnings": cleanup_warnings,
+                },
+            )
 
         # Build success message with any warnings
         if cleanup_warnings:
@@ -2395,6 +2700,23 @@ async def provision_host(
                 )
                 result["host_id"] = host_id
                 add_step("Register Host", True, "Host registered successfully")
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="host_provisioned",
+                detail=f"Provisioned database host {host_alias} ({mysql_host}:{mysql_port})",
+                context={
+                    "host_id": result.get("host_id"),
+                    "host_alias": host_alias,
+                    "mysql_host": mysql_host,
+                    "mysql_port": mysql_port,
+                    "max_running_jobs": max_running_jobs,
+                    "max_active_jobs": max_active_jobs,
+                    "was_update": existing_host is not None,
+                },
+            )
         
         result["success"] = True
         result["message"] = "Host provisioned successfully"
@@ -4336,3 +4658,177 @@ async def get_theme_version() -> dict:
     from pulldb.web.features.admin.theme_generator import get_theme_version as get_version
     
     return {"version": get_version()}
+
+
+# =============================================================================
+# Disallowed Users Management
+# =============================================================================
+
+
+@router.get("/api/disallowed-users")
+async def api_get_disallowed_users(
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Get all disallowed usernames from database.
+    
+    Returns both hardcoded and admin-added entries.
+    """
+    from pulldb.infra.mysql import DisallowedUserRepository
+    
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return {"success": False, "message": "Database not available"}
+    
+    try:
+        repo = DisallowedUserRepository(state.job_repo.pool)
+        users = repo.get_all()
+        
+        return {
+            "success": True,
+            "users": [
+                {
+                    "username": u.username,
+                    "reason": u.reason,
+                    "is_hardcoded": u.is_hardcoded,
+                    "created_at": u.created_at.isoformat() if u.created_at else None,
+                    "created_by": u.created_by,
+                }
+                for u in users
+            ],
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@router.post("/api/disallowed-users")
+async def api_add_disallowed_user(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Add a username to the disallowed list.
+    
+    Request body: {"username": "...", "reason": "..."}
+    """
+    from pulldb.infra.mysql import DisallowedUserRepository
+    
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return {"success": False, "message": "Database not available"}
+    
+    try:
+        body = await request.json()
+        username = body.get("username", "").strip().lower()
+        reason = body.get("reason", "").strip() or None
+        
+        if not username:
+            return {"success": False, "message": "Username is required"}
+        
+        if len(username) < 2:
+            return {"success": False, "message": "Username must be at least 2 characters"}
+        
+        repo = DisallowedUserRepository(state.job_repo.pool)
+        
+        # Check if already exists
+        if repo.exists(username):
+            return {"success": False, "message": f"Username '{username}' is already disallowed"}
+        
+        success = repo.add(username, reason, admin.user_id)
+        
+        if success:
+            # Audit log
+            if hasattr(state, "audit_repo") and state.audit_repo:
+                state.audit_repo.log_action(
+                    actor_user_id=admin.user_id,
+                    action="disallowed_user_added",
+                    detail=f"Added '{username}' to disallowed users list",
+                    context={"username": username, "reason": reason},
+                )
+            
+            return {"success": True, "message": f"Username '{username}' added to disallowed list"}
+        else:
+            return {"success": False, "message": f"Failed to add username '{username}'"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@router.delete("/api/disallowed-users/{username}")
+async def api_remove_disallowed_user(
+    username: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Remove a username from the disallowed list.
+    
+    Only non-hardcoded entries can be removed.
+    """
+    from pulldb.infra.mysql import DisallowedUserRepository
+    
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return {"success": False, "message": "Database not available"}
+    
+    try:
+        repo = DisallowedUserRepository(state.job_repo.pool)
+        success, message = repo.remove(username.lower())
+        
+        if success:
+            # Audit log
+            if hasattr(state, "audit_repo") and state.audit_repo:
+                state.audit_repo.log_action(
+                    actor_user_id=admin.user_id,
+                    action="disallowed_user_removed",
+                    detail=f"Removed '{username}' from disallowed users list",
+                    context={"username": username},
+                )
+        
+        return {"success": success, "message": message}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@router.get("/disallowed-users", response_class=HTMLResponse)
+async def disallowed_users_page(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> HTMLResponse:
+    """Display the disallowed users management page.
+    
+    Shows hardcoded system accounts (read-only) and database entries (editable).
+    """
+    from pulldb.domain.validation import (
+        DISALLOWED_USERS_HARDCODED,
+        MIN_USERNAME_LENGTH,
+    )
+    from pulldb.infra.mysql import DisallowedUserRepository
+    
+    # Get database entries
+    database_users = []
+    if hasattr(state, "job_repo") and state.job_repo:
+        try:
+            repo = DisallowedUserRepository(state.job_repo.pool)
+            all_entries = repo.get_all()
+            # Filter to non-hardcoded entries (database-added only)
+            database_users = [
+                u for u in all_entries 
+                if u.username.lower() not in DISALLOWED_USERS_HARDCODED
+            ]
+        except Exception:
+            pass  # Will show empty list
+    
+    # Sort hardcoded users alphabetically
+    hardcoded_users = sorted(DISALLOWED_USERS_HARDCODED)
+    
+    return templates.TemplateResponse(
+        "features/admin/disallowed_users.html",
+        {
+            "request": request,
+            "active_nav": "admin",
+            "user": user,
+            "hardcoded_users": hardcoded_users,
+            "hardcoded_count": len(hardcoded_users),
+            "database_users": database_users,
+            "database_count": len(database_users),
+            "min_length": MIN_USERNAME_LENGTH,
+            "breadcrumbs": get_breadcrumbs("admin_disallowed_users"),
+        },
+    )

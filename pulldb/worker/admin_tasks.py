@@ -102,6 +102,8 @@ class AdminTaskExecutor:
                 self._execute_force_delete_user(task)
             elif task.task_type == AdminTaskType.SCAN_USER_ORPHANS:
                 self._execute_scan_user_orphans(task)
+            elif task.task_type == AdminTaskType.BULK_DELETE_JOBS:
+                self._execute_bulk_delete_jobs(task)
             else:
                 raise ValueError(f"Unknown task type: {task.task_type.value}")
 
@@ -635,5 +637,313 @@ class AdminTaskExecutor:
         logger.info(
             f"Scan user orphans task {task.task_id} completed: "
             f"hosts={result['hosts_scanned']}, orphans={result['orphans_found']}",
+            extra={"task_id": task.task_id, "result": result},
+        )
+
+    def _execute_bulk_delete_jobs(self, task: AdminTask) -> None:
+        """Execute bulk delete jobs task.
+
+        Deletes databases (staging + target) for multiple jobs and updates
+        job status. Supports both soft delete (status='deleted') and hard
+        delete (remove job record entirely).
+
+        Progress is tracked in result_json for resume on timeout/restart.
+        Jobs already in 'deleted' status are skipped (idempotent).
+
+        Args:
+            task: The admin task with parameters.
+        """
+        from pulldb.worker.cleanup import delete_job_databases
+        from pulldb.domain.models import JobStatus
+
+        params = task.parameters_json or {}
+        job_infos = params.get("job_infos", [])
+        hard_delete = params.get("hard_delete", False)
+        total_jobs = params.get("total_jobs", len(job_infos))
+
+        # Initialize or restore result tracking (for resume)
+        # Use 'progress' key to match what bulk_delete_status endpoint reads
+        existing_result = task.result_json or {}
+        existing_progress = existing_result.get("progress", {})
+        
+        # Internal tracking lists for resume capability
+        processed_list: list[dict] = existing_result.get("_processed_list", [])
+        failed_list: list[dict] = existing_result.get("_failed_list", [])
+        skipped_list: list[dict] = existing_result.get("_skipped_list", [])
+        
+        # Progress dict for status polling (counts, not full lists)
+        progress: dict[str, t.Any] = {
+            "total": total_jobs,
+            "processed": existing_progress.get("processed", 0),
+            "soft_deleted": existing_progress.get("soft_deleted", 0),
+            "hard_deleted": existing_progress.get("hard_deleted", 0),
+            "errors": existing_progress.get("errors", []),
+        }
+        
+        # Full result structure
+        result: dict[str, t.Any] = {
+            "progress": progress,
+            "_processed_list": processed_list,
+            "_failed_list": failed_list,
+            "_skipped_list": skipped_list,
+            "hard_delete": hard_delete,
+        }
+
+        # Track which jobs have already been processed (for resume)
+        processed_ids = set(j["job_id"] for j in processed_list)
+        failed_ids = set(j["job_id"] for j in failed_list)
+        skipped_ids = set(j["job_id"] for j in skipped_list)
+        done_ids = processed_ids | failed_ids | skipped_ids
+
+        # Log task start (only if this is a fresh start)
+        if not done_ids:
+            self.audit_repo.log_action(
+                actor_user_id=task.requested_by,
+                action="bulk_delete_started",
+                target_user_id=None,
+                detail=f"Starting bulk delete of {total_jobs} job(s)",
+                context={
+                    "task_id": task.task_id,
+                    "total_jobs": total_jobs,
+                    "hard_delete": hard_delete,
+                },
+            )
+
+        try:
+            for job_info in job_infos:
+                job_id = job_info.get("job_id")
+                if not job_id:
+                    continue
+
+                # Skip already processed jobs (for resume)
+                if job_id in done_ids:
+                    continue
+
+                staging_name = job_info.get("staging_name", "")
+                target_name = job_info.get("target", "")
+                owner_user_code = job_info.get("owner_user_code", "")
+                dbhost = job_info.get("dbhost", "")
+
+                # Check current job status
+                job = self.job_repo.get_job_by_id(job_id)
+                if not job:
+                    failed_list.append({
+                        "job_id": job_id,
+                        "error": "Job not found",
+                    })
+                    progress["errors"].append(f"{job_id[:12]}: not found")
+                    self.task_repo.update_task_result(task.task_id, result)
+                    continue
+
+                # Skip already deleted jobs for soft delete (idempotent)
+                # For hard delete, proceed to remove the job record
+                if job.status == JobStatus.DELETED and not hard_delete:
+                    skipped_list.append({
+                        "job_id": job_id,
+                        "reason": "Already soft-deleted (use hard delete to remove record)",
+                    })
+                    progress["processed"] += 1  # Count as processed (no-op)
+                    self.task_repo.update_task_result(task.task_id, result)
+                    continue
+
+                # Fast path: already soft-deleted + hard_delete requested
+                # Skip database checks (DBs already dropped), just remove record
+                if job.status == JobStatus.DELETED and hard_delete:
+                    self.audit_repo.log_action(
+                        actor_user_id=task.requested_by,
+                        action="job_hard_deleted",
+                        target_user_id=job.owner_user_id,
+                        detail=f"Hard deleted job {job_id} (was already soft-deleted)",
+                        context={
+                            "task_id": task.task_id,
+                            "job_id": job_id,
+                            "target": target_name,
+                            "staging": staging_name,
+                            "dbhost": dbhost,
+                            "fast_path": True,
+                        },
+                    )
+                    self.job_repo.hard_delete_job(job_id)
+                    processed_list.append({
+                        "job_id": job_id,
+                        "staging_dropped": False,
+                        "target_dropped": False,
+                        "hard_deleted": True,
+                    })
+                    progress["processed"] += 1
+                    progress["hard_deleted"] += 1
+                    self.task_repo.update_task_result(task.task_id, result)
+                    continue
+
+                # Log the individual deletion to audit (BEFORE action)
+                self.audit_repo.log_action(
+                    actor_user_id=task.requested_by,
+                    action="job_delete_started",
+                    target_user_id=job.owner_user_id,
+                    detail=f"Deleting job {job_id} databases (hard_delete={hard_delete})",
+                    context={
+                        "task_id": task.task_id,
+                        "job_id": job_id,
+                        "target": target_name,
+                        "staging": staging_name,
+                        "dbhost": dbhost,
+                        "hard_delete": hard_delete,
+                    },
+                )
+
+                try:
+                    # Mark job as deleting BEFORE dropping databases
+                    self.job_repo.mark_job_deleting(job_id)
+                    
+                    # Drop databases
+                    delete_result = delete_job_databases(
+                        job_id=job_id,
+                        staging_name=staging_name,
+                        target_name=target_name,
+                        owner_user_code=owner_user_code,
+                        dbhost=dbhost,
+                        host_repo=self.host_repo,
+                    )
+
+                    if delete_result.error:
+                        failed_list.append({
+                            "job_id": job_id,
+                            "error": delete_result.error,
+                        })
+                        progress["errors"].append(f"{job_id[:12]}: {delete_result.error}")
+                        self.audit_repo.log_action(
+                            actor_user_id=task.requested_by,
+                            action="job_delete_failed",
+                            target_user_id=job.owner_user_id,
+                            detail=f"Failed to delete job {job_id}: {delete_result.error}",
+                            context={
+                                "task_id": task.task_id,
+                                "job_id": job_id,
+                                "error": delete_result.error,
+                            },
+                        )
+                        self.task_repo.update_task_result(task.task_id, result)
+                        continue
+
+                    # Build detailed event log entry (matching single delete behavior)
+                    if delete_result.staging_existed or delete_result.target_existed:
+                        details = []
+                        if delete_result.staging_existed:
+                            details.append(f"staging={'dropped' if delete_result.staging_dropped else 'failed'}")
+                        else:
+                            details.append("staging=did not exist")
+                        if delete_result.target_existed:
+                            details.append(f"target={'dropped' if delete_result.target_dropped else 'failed'}")
+                        else:
+                            details.append("target=did not exist")
+                        event_detail = f"Bulk delete: databases deleted ({', '.join(details)})"
+                    else:
+                        event_detail = "Bulk delete: job marked deleted (databases did not exist)"
+
+                    self.job_repo.append_job_event(
+                        job_id=job_id,
+                        event_type="deleted",
+                        detail=event_detail,
+                    )
+
+                    # Update job status or hard delete
+                    if hard_delete:
+                        # Log to audit BEFORE hard delete (preserves record)
+                        self.audit_repo.log_action(
+                            actor_user_id=task.requested_by,
+                            action="job_hard_deleted",
+                            target_user_id=job.owner_user_id,
+                            detail=f"Hard deleted job {job_id}",
+                            context={
+                                "task_id": task.task_id,
+                                "job_id": job_id,
+                                "target": target_name,
+                                "staging": staging_name,
+                                "dbhost": dbhost,
+                                "staging_existed": delete_result.staging_existed,
+                                "staging_dropped": delete_result.staging_dropped,
+                                "target_existed": delete_result.target_existed,
+                                "target_dropped": delete_result.target_dropped,
+                            },
+                        )
+                        self.job_repo.hard_delete_job(job_id)
+                    else:
+                        self.job_repo.mark_job_deleted(job_id)
+                        self.audit_repo.log_action(
+                            actor_user_id=task.requested_by,
+                            action="job_deleted",
+                            target_user_id=job.owner_user_id,
+                            detail=f"Soft deleted job {job_id}",
+                            context={
+                                "task_id": task.task_id,
+                                "job_id": job_id,
+                                "staging_existed": delete_result.staging_existed,
+                                "staging_dropped": delete_result.staging_dropped,
+                                "target_existed": delete_result.target_existed,
+                                "target_dropped": delete_result.target_dropped,
+                            },
+                        )
+
+                    processed_list.append({
+                        "job_id": job_id,
+                        "staging_dropped": delete_result.staging_dropped,
+                        "target_dropped": delete_result.target_dropped,
+                        "hard_deleted": hard_delete,
+                    })
+                    progress["processed"] += 1
+                    if hard_delete:
+                        progress["hard_deleted"] += 1
+                    else:
+                        progress["soft_deleted"] += 1
+
+                except Exception as e:
+                    failed_list.append({
+                        "job_id": job_id,
+                        "error": str(e),
+                    })
+                    progress["errors"].append(f"{job_id[:12]}: {e}")
+                    logger.error(
+                        f"Error deleting job {job_id}: {e}",
+                        extra={"task_id": task.task_id, "job_id": job_id},
+                    )
+
+                # Update progress after each job
+                self.task_repo.update_task_result(task.task_id, result)
+
+        except Exception as e:
+            error_msg = f"Bulk delete failed: {e}"
+            self.task_repo.fail_task(task.task_id, error_msg, result)
+            self.audit_repo.log_action(
+                actor_user_id=task.requested_by,
+                action="bulk_delete_failed",
+                target_user_id=None,
+                detail=error_msg,
+                context={"task_id": task.task_id, "error": str(e)},
+            )
+            raise
+
+        # Complete the task
+        self.audit_repo.log_action(
+            actor_user_id=task.requested_by,
+            action="bulk_delete_completed",
+            target_user_id=None,
+            detail=(
+                f"Bulk delete complete: {len(processed_list)} deleted, "
+                f"{len(failed_list)} failed, {len(skipped_list)} skipped"
+            ),
+            context={
+                "task_id": task.task_id,
+                "processed": len(processed_list),
+                "failed": len(failed_list),
+                "skipped": len(skipped_list),
+                "hard_delete": hard_delete,
+            },
+        )
+        self.task_repo.complete_task(task.task_id, result)
+
+        logger.info(
+            f"Bulk delete jobs task {task.task_id} completed: "
+            f"processed={len(processed_list)}, failed={len(failed_list)}, "
+            f"skipped={len(skipped_list)}",
             extra={"task_id": task.task_id, "result": result},
         )

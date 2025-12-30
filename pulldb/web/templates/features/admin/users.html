@@ -269,6 +269,59 @@
         </div>
     </div>
 </div>
+
+<!-- Temp Password Modal -->
+<div id="temp-password-modal" class="modal modal-hidden">
+    <div class="modal-backdrop" onclick="closeTempPasswordModal()"></div>
+    <div class="modal-content">
+        <div class="modal-header modal-header-success">
+            <h3 class="modal-title">Temporary Password Generated</h3>
+            <button type="button" class="modal-close" onclick="closeTempPasswordModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" x2="6" y1="6" y2="18"/>
+                    <line x1="6" x2="18" y1="6" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="temp-password-info">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="info-icon" style="width: 48px; height: 48px; color: var(--warning-text); margin-bottom: var(--space-md);">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="16" x2="12" y2="12"/>
+                    <line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <p style="text-align: center; margin-bottom: var(--space-md);">
+                    <strong>This password will only be shown once!</strong><br>
+                    Please copy it and share securely with the user.
+                </p>
+            </div>
+            
+            <div class="temp-password-display" style="margin: var(--space-lg) 0;">
+                <label style="display: block; margin-bottom: var(--space-xs); font-weight: 600;">Username:</label>
+                <code id="temp-password-username" style="display: block; padding: var(--space-sm); background: var(--surface-secondary); border-radius: var(--radius-sm); margin-bottom: var(--space-md);"></code>
+                
+                <label style="display: block; margin-bottom: var(--space-xs); font-weight: 600;">Temporary Password:</label>
+                <div style="display: flex; gap: var(--space-sm); align-items: center;">
+                    <code id="temp-password-value" style="flex: 1; padding: var(--space-sm); background: var(--surface-secondary); border-radius: var(--radius-sm); font-size: var(--font-size-lg); letter-spacing: 1px;"></code>
+                    <button type="button" class="btn btn-primary" onclick="copyTempPassword()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; margin-right: 4px;">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+            </div>
+            
+            <p style="text-align: center; font-size: var(--font-size-sm); color: var(--text-secondary);">
+                The user will be required to change this password on their next login.
+            </p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeTempPasswordModal()">Close</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -377,6 +430,23 @@
             html += `<button class="action-btn action-btn-muted" title="Force Password Reset" aria-label="Force password reset for ${row.username}" onclick="forcePasswordReset('${row.user_id}', '${row.username}')">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                </svg>
+            </button>`;
+        }
+        
+        // Temp password - lock icon with plus
+        if (isCurrentUser) {
+            html += `<button class="action-btn action-btn-disabled" title="Cannot modify your own account" aria-label="Cannot modify your own account" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+            </button>`;
+        } else {
+            html += `<button class="action-btn action-btn-primary-muted" title="Assign Temporary Password" aria-label="Assign temp password for ${row.username}" onclick="assignTempPassword('${row.user_id}', '${row.username}')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                 </svg>
             </button>`;
         }
@@ -566,6 +636,53 @@
             }
         } catch (e) {
             showToast('Error: ' + e.message, 'error');
+        }
+    };
+    
+    window.assignTempPassword = async function(userId, username) {
+        if (!confirm(`Assign a temporary password to ${username}?\n\nThis will generate a new password that you must share with the user. The user will be required to change it on next login.`)) return;
+        
+        try {
+            const resp = await fetch(`/web/admin/users/${userId}/assign-temp-password`, {
+                method: 'POST'
+            });
+            const data = await resp.json();
+            if (data.success) {
+                // Show modal with the temp password
+                showTempPasswordModal(data.username, data.temp_password);
+                table.refresh();
+            } else {
+                showToast(data.message || 'Failed to assign temp password', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    };
+    
+    window.showTempPasswordModal = function(username, password) {
+        document.getElementById('temp-password-username').textContent = username;
+        document.getElementById('temp-password-value').textContent = password;
+        document.getElementById('temp-password-modal').classList.remove('modal-hidden');
+    };
+    
+    window.closeTempPasswordModal = function() {
+        document.getElementById('temp-password-modal').classList.add('modal-hidden');
+    };
+    
+    window.copyTempPassword = async function() {
+        const password = document.getElementById('temp-password-value').textContent;
+        try {
+            await navigator.clipboard.writeText(password);
+            showToast('Password copied to clipboard', 'success');
+        } catch (e) {
+            // Fallback for older browsers
+            const el = document.createElement('textarea');
+            el.value = password;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            showToast('Password copied to clipboard', 'success');
         }
     };
     

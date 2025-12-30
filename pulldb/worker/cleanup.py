@@ -442,6 +442,163 @@ def _drop_database(credentials: MySQLCredentials, db_name: str) -> bool:
     return True
 
 
+@dataclass
+class JobDeleteResult:
+    """Result of deleting a job's databases.
+    
+    Tracks what databases were found and dropped for audit purposes.
+    """
+    
+    job_id: str
+    staging_name: str
+    target_name: str
+    dbhost: str
+    staging_existed: bool = False
+    staging_dropped: bool = False
+    target_existed: bool = False
+    target_dropped: bool = False
+    error: str | None = None
+
+
+def _drop_target_database_unsafe(credentials: MySQLCredentials, db_name: str) -> bool:
+    """Drop a target database without staging pattern validation.
+    
+    WARNING: This function bypasses staging name validation and should ONLY
+    be called after verifying the database name matches the expected user_code
+    pattern. Used for user-initiated database deletion.
+    
+    SAFETY: Still blocks protected databases.
+    
+    Args:
+        credentials: MySQL credentials for the host.
+        db_name: Name of the database to drop.
+        
+    Returns:
+        True if database was dropped and confirmed gone, False otherwise.
+        
+    Raises:
+        ValueError: If attempting to drop a protected database.
+    """
+    # HARD BLOCK: Never drop protected databases
+    if db_name.lower() in PROTECTED_DATABASES:
+        raise ValueError(
+            f"FATAL: Attempted to drop protected database: {db_name}. "
+            f"This should never happen - report this as a critical bug."
+        )
+    
+    conn = mysql.connector.connect(
+        host=credentials.host,
+        port=credentials.port,
+        user=credentials.username,
+        password=credentials.password,
+        connect_timeout=30,
+        autocommit=True,
+    )
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f"DROP DATABASE IF EXISTS `{db_name}`")
+        logger.info(f"Dropped target database: {db_name}")
+    finally:
+        conn.close()
+    
+    # Verify the database is actually gone
+    if _database_exists(credentials, db_name):
+        logger.error(f"Database {db_name} still exists after DROP command!")
+        return False
+    
+    return True
+
+
+def delete_job_databases(
+    job_id: str,
+    staging_name: str,
+    target_name: str,
+    owner_user_code: str,
+    dbhost: str,
+    host_repo: HostRepository,
+) -> JobDeleteResult:
+    """Delete both staging and target databases for a job.
+    
+    User-initiated deletion of job databases. Drops BOTH:
+    - staging_name: The staging database ({target}_{job_id[:12]})
+    - target_name: The target database ({user_code}{customer/template})
+    
+    Both are dropped if they exist, regardless of job status.
+    
+    SAFETY:
+    - Validates target_name contains the owner's user_code
+    - Protected databases are never dropped
+    - Logs all operations
+    
+    Args:
+        job_id: Job UUID for logging.
+        staging_name: Staging database name to drop.
+        target_name: Target database name to drop.
+        owner_user_code: User code of the job owner (for validation).
+        dbhost: Database host where databases exist.
+        host_repo: HostRepository for credential resolution.
+        
+    Returns:
+        JobDeleteResult with details of what was found and dropped.
+    """
+    result = JobDeleteResult(
+        job_id=job_id,
+        staging_name=staging_name,
+        target_name=target_name,
+        dbhost=dbhost,
+    )
+    
+    # SAFETY: Validate target_name contains owner's user_code
+    if owner_user_code not in target_name:
+        result.error = (
+            f"Target database '{target_name}' does not contain "
+            f"owner user code '{owner_user_code}' - refusing to delete"
+        )
+        logger.error(result.error)
+        return result
+    
+    try:
+        credentials = host_repo.get_host_credentials(dbhost)
+    except Exception as e:
+        result.error = f"Failed to get credentials for {dbhost}: {e}"
+        logger.error(result.error)
+        return result
+    
+    # Check and drop staging database
+    try:
+        result.staging_existed = _database_exists(credentials, staging_name)
+        if result.staging_existed:
+            # Staging names pass is_valid_staging_name, use regular _drop_database
+            is_valid, reason = is_valid_staging_name(staging_name)
+            if is_valid:
+                result.staging_dropped = _drop_database(credentials, staging_name)
+            else:
+                logger.warning(
+                    f"Staging name {staging_name} failed validation: {reason}"
+                )
+    except Exception as e:
+        logger.error(f"Error dropping staging database {staging_name}: {e}")
+        # Continue to try target
+    
+    # Check and drop target database
+    try:
+        result.target_existed = _database_exists(credentials, target_name)
+        if result.target_existed:
+            result.target_dropped = _drop_target_database_unsafe(credentials, target_name)
+    except Exception as e:
+        logger.error(f"Error dropping target database {target_name}: {e}")
+        if not result.error:
+            result.error = f"Failed to drop target database: {e}"
+    
+    logger.info(
+        f"Job {job_id} database deletion complete: "
+        f"staging={staging_name} (existed={result.staging_existed}, dropped={result.staging_dropped}), "
+        f"target={target_name} (existed={result.target_existed}, dropped={result.target_dropped})"
+    )
+    
+    return result
+
+
 # =============================================================================
 # Job-Based Cleanup (Safe - only cleans databases with job records)
 # =============================================================================

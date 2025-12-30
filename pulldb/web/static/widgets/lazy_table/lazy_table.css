@@ -219,7 +219,52 @@
 
 .lazy-table-th-select {
     width: 48px;
+    min-width: 48px;
+    max-width: 48px;
     text-align: center;
+    box-sizing: border-box;
+}
+
+.lazy-table-select-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.selection-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm, 4px);
+    background: transparent;
+    color: var(--color-text-muted, #9ca3af);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.selection-action-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* Active state (enabled) - show prominent red color */
+.selection-action-btn:not(:disabled) {
+    color: var(--danger-600, #dc2626);
+}
+
+.selection-action-btn:not(:disabled):hover {
+    background: var(--danger-50, #fef2f2);
+    color: var(--danger-700, #b91c1c);
+}
+
+.selection-action-btn svg {
+    width: 16px;
+    height: 16px;
 }
 
 .lazy-table-th-actions {
@@ -361,19 +406,19 @@
 
 .lazy-table-row {
     border-bottom: 1px solid var(--color-border-secondary, #f3f4f6);
-    transition: background 0.15s ease;
 }
 
 .lazy-table-row:hover {
     background: var(--color-surface-hover, #f9fafb);
 }
 
+/* No background change when row is selected - checkbox is the only indicator */
 .lazy-table-row.selected {
-    background: var(--primary-50, #eff6ff);
+    background: transparent;
 }
 
 .lazy-table-row.selected:hover {
-    background: var(--primary-100, #dbeafe);
+    background: var(--color-surface-hover, #f9fafb);
 }
 
 .lazy-table-td {
@@ -390,7 +435,10 @@
 
 .lazy-table-td-select {
     width: 48px;
+    min-width: 48px;
+    max-width: 48px;
     text-align: center;
+    box-sizing: border-box;
 }
 
 .lazy-table-td-actions {
@@ -435,6 +483,11 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    /* Fixed dimensions to prevent layout shift on check/uncheck */
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    min-height: 22px;
 }
 
 .lazy-table-checkbox input[type="checkbox"] {

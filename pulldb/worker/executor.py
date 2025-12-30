@@ -545,53 +545,118 @@ class WorkerJobExecutor:
         self,
         job: Job,
     ) -> tuple[BackupSpec, S3BackupLocationConfig, str]:
-        attempts: list[dict[str, str]] = []
-        
-        # Get env filter from job options (if specified)
+        """Discover backup for job, honoring user-selected backup_path if present.
+
+        If job.options_json contains 'backup_path', the worker uses that specific
+        backup instead of auto-discovering the latest. This ensures user selection
+        is honored and jobs are deterministic.
+
+        If backup_path is provided but the S3 object doesn't exist, this raises
+        BackupDiscoveryError (no fallback to latest - FAIL HARD).
+
+        Args:
+            job: Job with options_json potentially containing backup_path.
+
+        Returns:
+            Tuple of (BackupSpec, S3BackupLocationConfig, lookup_target).
+
+        Raises:
+            BackupDiscoveryError: If backup not found (either user-selected or auto-discovery).
+        """
+        from pulldb.domain.config import find_location_for_backup_path, parse_backup_path
+        from pulldb.infra.s3 import BACKUP_FILENAME_REGEX
+
         options = job.options_json or {}
-        job_env = options.get("env")  # e.g., "staging", "prod", or None for all
-        
-        # Filter locations by job's env preference
-        locations_to_search = self.backup_locations
-        if job_env:
-            locations_to_search = [
-                loc for loc in self.backup_locations
-                if loc.name.lower() == job_env.lower()
-                or job_env.lower() in loc.name.lower()
-            ]
-            if not locations_to_search:
-                # No matching locations - log and fall back to all locations
-                logger.warning(
-                    "No backup locations match requested env, searching all",
-                    extra={"job_id": job.id, "requested_env": job_env},
+
+        # Priority 1: Use user-selected backup_path if provided
+        backup_path = options.get("backup_path")
+        if backup_path:
+            logger.info(
+                "Using user-selected backup path",
+                extra={"job_id": job.id, "backup_path": backup_path},
+            )
+
+            # Parse backup path
+            parsed = parse_backup_path(backup_path)
+            if not parsed:
+                raise BackupDiscoveryError(
+                    job.id,
+                    [{"error": f"Invalid backup_path format: {backup_path}"}],
                 )
-                locations_to_search = self.backup_locations
-        
-        for location in locations_to_search:
-            for lookup_target in build_lookup_targets_for_location(job, location):
+
+            bucket, key = parsed
+
+            # Find matching S3 location config
+            location = find_location_for_backup_path(backup_path, self.backup_locations)
+            if not location:
+                raise BackupDiscoveryError(
+                    job.id,
+                    [{"error": f"No S3 location config matches backup_path: {backup_path}"}],
+                )
+
+            # Use stored profile or location's profile
+            profile = options.get("s3_profile") or location.profile
+
+            # Verify the backup exists in S3 (HEAD request)
+            try:
+                size_bytes = self.s3_client.get_object_size(bucket, key, profile=profile)
+                if size_bytes is None:
+                    raise BackupDiscoveryError(
+                        job.id,
+                        [{
+                            "error": f"Backup not found in S3 (may have been deleted): s3://{bucket}/{key}",
+                            "bucket": bucket,
+                            "key": key,
+                        }],
+                    )
+            except Exception as exc:
+                raise BackupDiscoveryError(
+                    job.id,
+                    [{
+                        "error": f"Failed to verify backup exists: {exc}",
+                        "bucket": bucket,
+                        "key": key,
+                    }],
+                ) from exc
+
+            # Parse timestamp and target from filename
+            filename = key.rsplit("/", 1)[-1] if "/" in key else key
+            match = BACKUP_FILENAME_REGEX.match(filename)
+            if match:
+                target = match.group("target")
+                ts_str = match.group("ts")
+                # Parse timestamp: 2024-01-02T12-30-45Z -> datetime
                 try:
-                    spec = self._discover_backup(
-                        self.s3_client,
-                        location.bucket,
-                        location.prefix,
-                        lookup_target,
-                        location.profile,
-                    )
-                except BackupValidationError as exc:
-                    attempts.append(
-                        {
-                            "location": location.name,
-                            "bucket": location.bucket,
-                            "prefix": location.prefix,
-                            "lookup_target": lookup_target,
-                            "error": str(exc),
-                        }
-                    )
-                    continue
-                # spec.format_tag is already set by discover_latest_backup based on bucket
-                # Do not overwrite it with location.format_tag which defaults to legacy
-                return spec, location, lookup_target
-        raise BackupDiscoveryError(job.id, attempts)
+                    timestamp = datetime.strptime(ts_str, "%Y-%m-%dT%H-%M-%SZ").replace(tzinfo=UTC)
+                except ValueError:
+                    timestamp = datetime.now(UTC)
+            else:
+                # Fallback: derive target from customer_id
+                target = options.get("customer_id", "unknown")
+                timestamp = datetime.now(UTC)
+
+            spec = BackupSpec(
+                bucket=bucket,
+                key=key,
+                target=target,
+                timestamp=timestamp,
+                size_bytes=size_bytes,
+                format_tag=location.format_tag,
+                profile=profile,
+            )
+
+            return spec, location, target
+
+        # FAIL HARD: backup_path is required - no auto-discovery fallback
+        raise BackupDiscoveryError(
+            job.id,
+            [{
+                "error": "Job missing required backup_path in options_json. "
+                         "Jobs must specify the exact backup to restore. "
+                         "This job may have been submitted before backup_path was required.",
+                "api_version": options.get("api_version", "unknown"),
+            }],
+        )
 
     def _prepare_job_dirs(self, job_id: str) -> tuple[Path, Path, Path]:
         job_dir = self.work_dir / job_id

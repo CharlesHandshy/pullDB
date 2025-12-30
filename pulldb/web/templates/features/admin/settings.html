@@ -215,10 +215,11 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block modals %}
 <!-- Confirmation Modal for Dangerous Settings -->
-<div id="confirm-modal" class="modal modal-hidden">
-    <div class="modal-backdrop" onclick="closeConfirmModal()"></div>
+<div id="confirm-modal" class="modal-overlay hidden">
     <div class="modal-content">
         <div class="modal-header modal-header-danger">
             <h3 class="modal-title">
@@ -248,8 +249,7 @@
 </div>
 
 <!-- Create Directory Modal -->
-<div id="create-dir-modal" class="modal modal-hidden">
-    <div class="modal-backdrop" onclick="closeCreateDirModal()"></div>
+<div id="create-dir-modal" class="modal-overlay hidden">
     <div class="modal-content">
         <div class="modal-header">
             <h3 class="modal-title">
@@ -275,9 +275,6 @@
         </div>
     </div>
 </div>
-
-<!-- Toast Container -->
-<div id="toast-container"></div>
 {% endblock %}
 
 {% block extra_js %}
