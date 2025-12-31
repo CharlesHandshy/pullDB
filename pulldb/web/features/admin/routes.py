@@ -4967,3 +4967,105 @@ async def disallowed_users_page(
             "breadcrumbs": get_breadcrumbs("admin_disallowed_users"),
         },
     )
+
+
+# =============================================================================
+# Locked Databases Management
+# =============================================================================
+
+
+@router.get("/locked-databases", response_class=HTMLResponse)
+async def locked_databases_page(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> HTMLResponse:
+    """View all locked databases across the system.
+    
+    Shows databases that users have locked to prevent automatic cleanup.
+    Admins can unlock these databases if needed.
+    """
+    locked_jobs = []
+    
+    if hasattr(state, "job_repo") and state.job_repo:
+        if hasattr(state.job_repo, "get_all_locked_databases"):
+            locked_jobs = state.job_repo.get_all_locked_databases()
+    
+    # Enrich with user info
+    locked_databases = []
+    for job in locked_jobs:
+        owner = None
+        if hasattr(state, "user_repo") and state.user_repo:
+            owner = state.user_repo.get_user_by_id(job.owner_user_id)
+        
+        locked_by_user = None
+        if job.locked_by and hasattr(state, "user_repo") and state.user_repo:
+            locked_by_user = state.user_repo.get_user_by_id(job.locked_by)
+        
+        locked_databases.append({
+            "job": job,
+            "owner": owner,
+            "locked_by_user": locked_by_user,
+        })
+    
+    return templates.TemplateResponse(
+        "features/admin/locked_databases.html",
+        {
+            "request": request,
+            "active_nav": "admin",
+            "user": user,
+            "locked_databases": locked_databases,
+            "total_count": len(locked_databases),
+            "breadcrumbs": get_breadcrumbs("admin_locked_databases"),
+        },
+    )
+
+
+@router.post("/locked-databases/{job_id}/unlock")
+async def admin_unlock_database(
+    job_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Admin action to unlock a database."""
+    from urllib.parse import urlencode
+    from fastapi.concurrency import run_in_threadpool
+
+    base_url = "/web/admin/locked-databases"
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'error': 'Job repository unavailable'})}",
+            status_code=303,
+        )
+
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'error': 'Job not found'})}",
+            status_code=303,
+        )
+
+    try:
+        from pulldb.worker.retention import RetentionService
+
+        settings_repo = getattr(state, "settings_repo", None)
+        retention_service = RetentionService(
+            job_repo=state.job_repo,
+            user_repo=state.user_repo,
+            settings_repo=settings_repo,
+        )
+        await run_in_threadpool(
+            retention_service.unlock_job,
+            job_id,
+            user.user_id,
+        )
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'success': f'Unlocked database {job.target}'})}",
+            status_code=303,
+        )
+    except Exception as e:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'error': str(e)})}",
+            status_code=303,
+        )
