@@ -398,11 +398,13 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
         )
 
     # Proactive duplicate check - fail fast with clear message
+    # Also blocks if a recently-canceled job may still have myloader running
     if state.job_repo.has_active_jobs_for_target(target, dbhost):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            detail=f"A restore for '{target}' on '{dbhost}' is already queued or running. "
-                   f"Please wait for it to complete or cancel it first."
+            detail=f"A restore for '{target}' on '{dbhost}' is already in progress. "
+                   f"This may be a queued, running, or recently-canceled job. "
+                   f"Please wait for it to complete."
         )
 
     # Phase 2: Concurrency controls - check limits before job creation

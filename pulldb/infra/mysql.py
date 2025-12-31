@@ -1609,7 +1609,13 @@ class JobRepository:
     def has_active_jobs_for_target(self, target: str, dbhost: str) -> bool:
         """Check if there are any active (queued/running) jobs for a target.
 
-        Used as a safety check before scheduled cleanup drops staging databases.
+        Also checks for recently-canceled jobs that were started, as myloader
+        may still be running (cancellation doesn't kill myloader by design).
+        Jobs canceled within the last 30 minutes are considered potentially
+        active if they had started.
+
+        Used as a safety check before allowing new job submission and before
+        scheduled cleanup drops staging databases.
 
         Args:
             target: Target database name.
@@ -1624,7 +1630,14 @@ class JobRepository:
                 """
                 SELECT COUNT(*) FROM jobs
                 WHERE target = %s AND dbhost = %s
-                  AND status IN ('queued', 'running')
+                  AND (
+                    -- Queued or running jobs
+                    status IN ('queued', 'running')
+                    -- OR recently-canceled jobs that were started (myloader may still be running)
+                    OR (status = 'canceled' 
+                        AND started_at IS NOT NULL 
+                        AND cancel_requested_at > DATE_SUB(NOW(), INTERVAL 30 MINUTE))
+                  )
                 """,
                 (target, dbhost),
             )
