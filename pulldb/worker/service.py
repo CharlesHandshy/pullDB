@@ -30,12 +30,16 @@ from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.logging import get_logger
 from pulldb.infra.metrics import MetricLabels, emit_event, emit_gauge
 from pulldb.infra.mysql import (
+    AdminTaskRepository,
+    AuditRepository,
     HostRepository,
     JobRepository,
     MySQLPool,
+    UserRepository,
 )
 from pulldb.infra.s3 import S3Client
 from pulldb.infra.secrets import CredentialResolver
+from pulldb.worker.admin_tasks import AdminTaskExecutor
 from pulldb.worker.executor import WorkerExecutorDependencies, WorkerJobExecutor
 from pulldb.worker.loop import MIN_POLL_INTERVAL_SECONDS, run_poll_loop
 from pulldb.worker.staging import StagingConnectionSpec, cleanup_orphaned_staging
@@ -94,7 +98,32 @@ def _parse_args(argv: t.Sequence[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _load_config_and_pool() -> tuple[Config, MySQLPool]:
+    """Load config and create MySQL pool using shared bootstrap.
+    
+    Uses shared bootstrap module for two-phase config loading:
+    1. Bootstrap from environment (MySQL credentials, AWS profile)
+    2. Resolve Secrets Manager credentials
+    3. Connect to MySQL
+    4. Load full config from env + MySQL settings
+    
+    Returns:
+        Tuple of (fully_loaded_config, mysql_pool)
+    """
+    from pulldb.infra.bootstrap import bootstrap_service_config
+
+    return bootstrap_service_config(
+        service_mysql_user_env="PULLDB_WORKER_MYSQL_USER",
+        service_name="Worker service",
+    )
+
+
 def _load_config() -> Config:
+    """Load worker configuration (legacy wrapper for compatibility).
+    
+    Note: This returns only the config, not the pool. For new code,
+    prefer _load_config_and_pool() which returns both.
+    """
     config = Config.minimal_from_env()
 
     # Default to pr-dev profile if not specified (required for Secrets Manager access)
@@ -329,13 +358,16 @@ def _cleanup_zombie_staging(
 
 def _cleanup_zombies(
     job_repo: JobRepository,
+    pool: MySQLPool,
     config: Config | None = None,
     host_repo: HostRepository | None = None,
 ) -> None:
     """Detect and cleanup zombie jobs at startup.
 
-    If this is the only worker process running, any jobs marked 'running'
-    are zombies from a previous crash and should be marked failed.
+    Uses MySQL advisory lock to ensure only one worker performs cleanup,
+    preventing race conditions when multiple workers start simultaneously.
+    Any jobs marked 'running' when cleanup runs are zombies from a previous
+    crash and should be marked failed.
 
     Comprehensive cleanup includes:
     1. Marking the job as failed (clears cancel_requested_at)
@@ -344,69 +376,65 @@ def _cleanup_zombies(
 
     Args:
         job_repo: Repository for job state queries and updates.
+        pool: MySQL connection pool for advisory lock.
         config: Optional config for work directory cleanup.
         host_repo: Optional host repository for staging cleanup.
     """
     try:
-        # Check if we are the only worker process
-        # We need to check for both module execution and entrypoint script
-        pids: set[str] = set()
-        for pattern in ["pulldb.worker.service", "pulldb-worker"]:
-            cmd = ["pgrep", "-f", pattern]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            if result.returncode == 0:
-                for pid in result.stdout.strip().splitlines():
-                    pids.add(pid)
+        # Use MySQL advisory lock to ensure only one worker performs cleanup.
+        # GET_LOCK with timeout=0 returns immediately: 1 if acquired, 0 if held.
+        with pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT GET_LOCK('pulldb_zombie_cleanup', 0)")
+            result = cursor.fetchone()
+            acquired = result[0] == 1 if result else False
 
-        count = len(pids)
+            if not acquired:
+                logger.info(
+                    "Another worker is performing zombie cleanup, skipping",
+                    extra={"phase": "startup"},
+                )
+                return
 
-        # If count > 1, we are not alone.
-        if count > 1:
-            logger.info(
-                "Multiple worker processes detected, skipping zombie cleanup",
-                extra={"worker_count": count, "phase": "startup"},
-            )
-            return
+            try:
+                # We hold the lock. Check for running jobs.
+                active_jobs = job_repo.get_active_jobs()
+                running_jobs = [j for j in active_jobs if j.status == JobStatus.RUNNING]
 
-        # We are the only worker. Check for running jobs.
-        active_jobs = job_repo.get_active_jobs()
-        running_jobs = [j for j in active_jobs if j.status == JobStatus.RUNNING]
+                if not running_jobs:
+                    return
 
-        if not running_jobs:
-            return
+                logger.warning(
+                    f"Found {len(running_jobs)} zombie jobs at startup",
+                    extra={"phase": "startup", "zombie_count": len(running_jobs)},
+                )
 
-        logger.warning(
-            f"Found {len(running_jobs)} zombie jobs at startup",
-            extra={"phase": "startup", "zombie_count": len(running_jobs)},
-        )
+                for job in running_jobs:
+                    msg = "Zombie job detected at worker startup"
+                    logger.warning(
+                        f"Marking zombie job {job.id} as failed",
+                        extra={"job_id": job.id, "target": job.target, "phase": "startup"},
+                    )
 
-        for job in running_jobs:
-            msg = "Zombie job detected at worker startup (single worker mode)"
-            logger.warning(
-                f"Marking zombie job {job.id} as failed",
-                extra={"job_id": job.id, "target": job.target, "phase": "startup"},
-            )
+                    # 1. Cleanup staging databases (best effort)
+                    if host_repo is not None:
+                        _cleanup_zombie_staging(job, host_repo)
 
-            # 1. Cleanup staging databases (best effort)
-            if host_repo is not None:
-                _cleanup_zombie_staging(job, host_repo)
+                    # 2. Cleanup work directory (best effort)
+                    if config is not None:
+                        _cleanup_zombie_work_dir(config.work_dir, job.id)
 
-            # 2. Cleanup work directory (best effort)
-            if config is not None:
-                _cleanup_zombie_work_dir(config.work_dir, job.id)
+                    # 3. Mark job as failed (also clears cancel_requested_at)
+                    job_repo.mark_job_failed(job.id, msg)
+                    emit_event(
+                        "worker_zombie_cleanup",
+                        f"job_id={job.id}",
+                        MetricLabels(phase="startup", status="cleanup"),
+                    )
+            finally:
+                # Always release the lock
+                cursor.execute("SELECT RELEASE_LOCK('pulldb_zombie_cleanup')")
 
-            # 3. Mark job as failed (also clears cancel_requested_at)
-            job_repo.mark_job_failed(job.id, msg)
-            emit_event(
-                "worker_zombie_cleanup",
-                f"job_id={job.id}",
-                MetricLabels(phase="startup", status="cleanup"),
-            )
-
-    except FileNotFoundError:
-        logger.warning(
-            "pgrep not found, skipping zombie cleanup", extra={"phase": "startup"}
-        )
     except Exception as e:
         logger.error(
             "Failed to cleanup zombie jobs",
@@ -437,16 +465,15 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     _register_signal_handlers(stop_event)
 
     host_repo: HostRepository | None = None
+    admin_task_repo: AdminTaskRepository | None = None
+    admin_task_executor: AdminTaskExecutor | None = None
 
     try:
-        # 1. Bootstrap config from env
-        bootstrap_config = _load_config()
+        # 1. Bootstrap config and pool using shared bootstrap module
+        config, pool = _load_config_and_pool()
 
-        # 2. Build repo (connects to DB)
-        job_repo = _build_job_repository(bootstrap_config)
-
-        # 3. Load full config from env + MySQL
-        config = Config.from_env_and_mysql(job_repo.pool)
+        # 2. Build job repository with the pool
+        job_repo = JobRepository(pool)
 
         logger.info(
             "DEBUG: Loaded config",
@@ -456,21 +483,36 @@ def main(argv: t.Sequence[str] | None = None) -> int:
             },
         )
 
-        # 4. Build host repository for credential resolution
+        # 3. Build host repository for credential resolution
         if not is_simulation_mode():
             credential_resolver = CredentialResolver(config.aws_profile)
-            host_repo = HostRepository(job_repo.pool, credential_resolver)
+            host_repo = HostRepository(pool, credential_resolver)
 
-        # 5. Build executor with full config (reuse host_repo)
+        # 4. Build executor with full config (reuse host_repo)
         job_executor = _build_job_executor(config, job_repo, host_repo)
+
+        # 5. Build admin task executor (if not in simulation mode)
+        if not is_simulation_mode() and host_repo:
+            admin_task_repo = AdminTaskRepository(pool)
+            user_repo = UserRepository(pool)
+            audit_repo = AuditRepository(pool)
+            admin_task_executor = AdminTaskExecutor(
+                task_repo=admin_task_repo,
+                job_repo=job_repo,
+                user_repo=user_repo,
+                host_repo=host_repo,
+                audit_repo=audit_repo,
+                pool=pool,
+            )
+            logger.info("Admin task executor initialized")
     except Exception as exc:
         _emit_fatal(exc)
         _set_worker_active(0, "fatal")
         return 1
 
     # Cleanup zombie jobs before starting the main loop
-    # Pass config and host_repo for comprehensive cleanup (staging + work dirs)
-    _cleanup_zombies(job_repo, config=config, host_repo=host_repo)
+    # Uses MySQL advisory lock to prevent race conditions with multiple workers
+    _cleanup_zombies(job_repo, pool, config=config, host_repo=host_repo)
 
     poll_interval = MIN_POLL_INTERVAL_SECONDS if args.oneshot else args.poll_interval
 
@@ -489,6 +531,8 @@ def main(argv: t.Sequence[str] | None = None) -> int:
             max_iterations=max_iterations,
             poll_interval=poll_interval,
             should_stop=stop_event.is_set,
+            admin_task_repo=admin_task_repo,
+            admin_task_executor=admin_task_executor.execute if admin_task_executor else None,
         )
     except Exception as exc:
         _emit_fatal(exc)

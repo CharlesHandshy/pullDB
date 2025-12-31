@@ -463,13 +463,22 @@ def orchestrate_restore_workflow(
             "post_sql_duration_seconds",
             MetricLabels(job_id=job.id, target=job.target, phase="post_sql"),
         ):
-            post_sql_result = execute_post_sql(spec.post_sql_conn)
+            post_sql_result = execute_post_sql(spec.post_sql_conn, event_callback=_emit_event)
         post_sql_duration = (datetime.now(UTC) - post_sql_started_at).total_seconds()
         result["post_sql"] = post_sql_result
         result["post_sql_duration_seconds"] = post_sql_duration
         _emit_event("post_sql_complete", {
             "scripts_executed": len(post_sql_result.scripts_executed),
             "duration_seconds": round(post_sql_duration, 2),
+            "scripts": [
+                {
+                    "name": s.script_name,
+                    "duration": round(s.duration_seconds, 3),
+                    "rows": s.rows_affected,
+                }
+                for s in post_sql_result.scripts_executed
+            ],
+            "source": "template_after_sql/",
         })
 
         restore_completed_at = datetime.now(UTC)

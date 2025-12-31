@@ -476,21 +476,31 @@
             </div>
         </div>
         
-        <!-- Compact Stat Cards -->
-        <h3 class="styleguide-subsection-title">Compact Stats</h3>
-        <div class="stats-row">
-            <div class="stat-card-compact">
-                <div class="stat-label">Users</div>
-                <div class="stat-value text-primary">12</div>
-            </div>
-            <div class="stat-card-compact">
-                <div class="stat-label">Active</div>
-                <div class="stat-value text-success">10</div>
-            </div>
-            <div class="stat-card-compact">
-                <div class="stat-label">Errors</div>
-                <div class="stat-value text-danger">2</div>
-            </div>
+        <!-- Status Bar (Standard for list page headers) -->
+        <h3 class="styleguide-subsection-title">Status Bar</h3>
+        <p class="text-muted text-sm mb-3">Standard pattern for displaying stats in list page headers (users, hosts, audit).</p>
+        <div class="status-bar">
+            <span class="status-item" title="Total Users">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                </svg>
+                <span class="status-count">12</span>
+            </span>
+            <span class="status-divider"></span>
+            <span class="status-item status-enabled" title="Enabled">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <span class="status-count">10</span>
+            </span>
+            <span class="status-item status-disabled" title="Disabled">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/>
+                </svg>
+                <span class="status-count">2</span>
+            </span>
         </div>
     </section>
 

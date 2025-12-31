@@ -39,19 +39,15 @@ def generate_theme_css(schema: "ColorSchema", mode: str = "light") -> str:
     css_lines = [f"    {name}: {value};" for name, value in css_vars.items()]
     css_content = "\n".join(css_lines)
     
-    # Use both :root and [data-theme] for maximum compatibility
-    # :root provides defaults, [data-theme] provides specificity
+    # Use ONLY [data-theme] selector - NOT :root
+    # This prevents conflicts when reloading CSS dynamically
+    # The data-theme attribute on <html> controls which variables are active
     return f"""/* pullDB Theme - {schema.name} ({mode})
  * Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}
  * This file is auto-generated. Do not edit directly.
  */
 
-/* Base variables - loaded when this file is active */
-:root {{
-{css_content}
-}}
-
-/* Attribute selector for specificity - prevents flash during transitions */
+/* Theme variables - controlled by data-theme attribute on <html> */
 [data-theme="{mode}"] {{
 {css_content}
 }}
@@ -150,14 +146,14 @@ def ensure_theme_files_exist(settings_repo) -> int:
     
     if settings_repo:
         try:
-            light_json = settings_repo.get("light_theme_schema")
+            light_json = settings_repo.get_setting("light_theme_schema")
             if light_json:
                 light_schema = ColorSchema.from_json(light_json)
         except (ValueError, TypeError, KeyError):
             pass
         
         try:
-            dark_json = settings_repo.get("dark_theme_schema")
+            dark_json = settings_repo.get_setting("dark_theme_schema")
             if dark_json:
                 dark_schema = ColorSchema.from_json(dark_json)
         except (ValueError, TypeError, KeyError):

@@ -265,7 +265,7 @@
     window.showAddHostModal = function() {
         const modal = document.getElementById('add-host-modal');
         if (modal) {
-            modal.classList.remove('modal-hidden');
+            modal.classList.remove('hidden');
             resetProvisionForm();
         }
     };
@@ -273,7 +273,7 @@
     window.hideAddHostModal = function() {
         const modal = document.getElementById('add-host-modal');
         if (modal) {
-            modal.classList.add('modal-hidden');
+            modal.classList.add('hidden');
             resetProvisionForm();
         }
     };

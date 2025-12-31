@@ -4,6 +4,8 @@ Polls MySQL for queued jobs, claims them atomically, and executes restores.
 Uses SELECT FOR UPDATE SKIP LOCKED for safe multi-worker operation.
 Implements exponential backoff when queue is empty to reduce database load.
 
+Also supports polling for admin tasks (lower priority than restore jobs).
+
 Example:
     >>> from pulldb.infra.mysql import MySQLPool, JobRepository
     >>> pool = MySQLPool(host="localhost", user="worker", password="...")
@@ -19,7 +21,7 @@ import socket
 import time
 import typing as t
 
-from pulldb.domain.models import Job
+from pulldb.domain.models import AdminTask, Job
 from pulldb.infra.logging import current_task_name, get_logger
 from pulldb.infra.metrics import (
     MetricLabels,
@@ -31,7 +33,7 @@ from pulldb.infra.metrics import (
 
 
 if t.TYPE_CHECKING:
-    from pulldb.infra.mysql import JobRepository
+    from pulldb.infra.mysql import AdminTaskRepository, JobRepository
 
 logger = get_logger("pulldb.worker.loop")
 
@@ -42,14 +44,21 @@ BACKOFF_MULTIPLIER = 2.0
 
 
 JobExecutor = t.Callable[[Job], None]
+AdminTaskExecutorFunc = t.Callable[[AdminTask], None]
 
 
 def get_worker_id() -> str:
     """Generate a unique identifier for this worker instance.
 
+    Checks PULLDB_WORKER_ID env var first for explicit identification
+    (useful for systemd template instances), falls back to hostname:pid.
+
     Returns:
-        Worker ID in format "hostname:pid", e.g. "worker-node-1:12345".
+        Worker ID, e.g. "worker-1" or "worker-node-1:12345".
     """
+    env_id = os.getenv("PULLDB_WORKER_ID")
+    if env_id:
+        return env_id
     hostname = socket.gethostname()
     pid = os.getpid()
     return f"{hostname}:{pid}"
@@ -63,12 +72,17 @@ def run_poll_loop(
     poll_interval: float = MIN_POLL_INTERVAL_SECONDS,
     should_stop: t.Callable[[], bool] | None = None,
     worker_id: str | None = None,
+    admin_task_repo: AdminTaskRepository | None = None,
+    admin_task_executor: AdminTaskExecutorFunc | None = None,
 ) -> None:
     """Poll job queue and process jobs.
 
     Continuously polls MySQL for queued jobs using atomic claim with
     SELECT FOR UPDATE SKIP LOCKED. This is safe for multi-worker deployments
     where multiple workers poll the same queue concurrently.
+
+    If admin_task_repo and admin_task_executor are provided, also polls for
+    admin tasks when no restore jobs are available (lower priority).
 
     Args:
         job_repo: Repository for job operations.
@@ -80,6 +94,8 @@ def run_poll_loop(
             signal handler sets an Event).
         worker_id: Unique identifier for this worker instance. If None,
             auto-generated as "hostname:pid".
+        admin_task_repo: Optional repository for admin task operations.
+        admin_task_executor: Optional callable for admin task execution.
 
     Example:
         >>> pool = MySQLPool(...)
@@ -168,31 +184,77 @@ def run_poll_loop(
                     current_task_name.reset(token)
 
             else:
-                # No job found - apply exponential backoff
-                logger.debug(
-                    "Queue empty, backing off",
-                    extra={
-                        "current_interval": current_interval,
-                        "next_interval": min(
-                            current_interval * BACKOFF_MULTIPLIER,
-                            MAX_POLL_INTERVAL_SECONDS,
-                        ),
-                        "phase": "backoff",
-                    },
-                )
-                emit_event(
-                    "queue_empty",
-                    f"backoff={current_interval}",
-                    MetricLabels(phase="backoff"),
-                )
+                # No restore job found - check for admin tasks (lower priority)
+                admin_task_claimed = False
+                if admin_task_repo and admin_task_executor:
+                    admin_task = admin_task_repo.claim_next_task(
+                        worker_id=effective_worker_id
+                    )
+                    if admin_task:
+                        admin_task_claimed = True
+                        current_interval = poll_interval  # Reset backoff
+                        emit_gauge("queue_backoff_interval_seconds", current_interval)
 
-                time.sleep(current_interval)
+                        logger.info(
+                            "Admin task claimed from queue",
+                            extra={
+                                "task_id": admin_task.task_id,
+                                "task_type": admin_task.task_type.value,
+                                "worker_id": effective_worker_id,
+                                "phase": "admin_task",
+                            },
+                        )
 
-                # Increase backoff interval (capped at max)
-                current_interval = min(
-                    current_interval * BACKOFF_MULTIPLIER,
-                    MAX_POLL_INTERVAL_SECONDS,
-                )
+                        try:
+                            admin_task_executor(admin_task)
+                            emit_event(
+                                "admin_task_success",
+                                f"task_id={admin_task.task_id}",
+                                MetricLabels(phase="admin_task", status="success"),
+                            )
+                        except Exception as exc:
+                            logger.error(
+                                "Admin task executor raised error",
+                                extra={
+                                    "task_id": admin_task.task_id,
+                                    "task_type": admin_task.task_type.value,
+                                    "phase": "admin_task",
+                                    "error": str(exc),
+                                },
+                                exc_info=True,
+                            )
+                            emit_event(
+                                "admin_task_error",
+                                str(exc),
+                                MetricLabels(phase="admin_task", status="error"),
+                            )
+
+                if not admin_task_claimed:
+                    # No job and no admin task - apply exponential backoff
+                    logger.debug(
+                        "Queue empty, backing off",
+                        extra={
+                            "current_interval": current_interval,
+                            "next_interval": min(
+                                current_interval * BACKOFF_MULTIPLIER,
+                                MAX_POLL_INTERVAL_SECONDS,
+                            ),
+                            "phase": "backoff",
+                        },
+                    )
+                    emit_event(
+                        "queue_empty",
+                        f"backoff={current_interval}",
+                        MetricLabels(phase="backoff"),
+                    )
+
+                    time.sleep(current_interval)
+
+                    # Increase backoff interval (capped at max)
+                    current_interval = min(
+                        current_interval * BACKOFF_MULTIPLIER,
+                        MAX_POLL_INTERVAL_SECONDS,
+                    )
 
         except KeyboardInterrupt:
             logger.info("Poll loop interrupted by user", extra={"phase": "shutdown"})

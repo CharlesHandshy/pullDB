@@ -167,6 +167,9 @@ templates.env.globals["admin_dark_mode"] = _get_admin_dark_mode
 templates.env.globals["theme_version"] = _get_theme_version
 # Explicitly disable dev toolbar in production (defense in depth)
 templates.env.globals["dev_mode"] = False
+# App version from package
+from pulldb import __version__ as _app_version
+templates.env.globals["app_version"] = _app_version
 
 
 def get_api_state(request: Request) -> "APIState":

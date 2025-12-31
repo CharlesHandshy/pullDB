@@ -197,3 +197,75 @@ class TestUserRepository:
         self._cleanup(
             mysql_pool, "DELETE FROM auth_users WHERE user_id = %s", (user.user_id,)
         )
+
+
+class TestUserRepositoryDelete:
+    """Tests for delete_user functionality."""
+
+    def test_delete_user_no_jobs(self, mysql_pool: Any) -> None:
+        """Can delete user with no job history."""
+        repo = UserRepository(mysql_pool)
+        # Create a test user
+        username = "deletable_test_user"
+        with mysql_pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM auth_users WHERE username = %s", (username,))
+            conn.commit()
+        
+        user = repo.get_or_create_user(username)
+        
+        # Delete should succeed
+        result = repo.delete_user(user.user_id)
+        assert result["user_deleted"] == 1
+        
+        # Verify user is gone
+        assert repo.get_user_by_id(user.user_id) is None
+
+    def test_delete_user_with_jobs_fails(self, mysql_pool: Any) -> None:
+        """Cannot delete user with job history."""
+        import uuid as uuid_mod
+        repo = UserRepository(mysql_pool)
+        username = "user_with_job_history"
+        
+        with mysql_pool.connection() as conn:
+            cursor = conn.cursor()
+            # Clean up first
+            cursor.execute("DELETE FROM jobs WHERE owner_username = %s", (username,))
+            cursor.execute("DELETE FROM auth_users WHERE username = %s", (username,))
+            conn.commit()
+        
+        user = repo.get_or_create_user(username)
+        
+        # Create a completed job for this user
+        job_id = str(uuid_mod.uuid4())
+        with mysql_pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO jobs (id, owner_user_id, owner_username, owner_user_code,
+                    target, staging_name, dbhost, status, submitted_at, completed_at)
+                VALUES (%s, %s, %s, %s, 'test-db', 'staging_test', 'localhost', 
+                    'complete', UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+                """,
+                (job_id, user.user_id, user.username, user.user_code),
+            )
+            conn.commit()
+        
+        # Delete should fail
+        with pytest.raises(ValueError) as exc_info:
+            repo.delete_user(user.user_id)
+        assert "job(s) in history" in str(exc_info.value)
+        
+        # Cleanup
+        with mysql_pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM jobs WHERE id = %s", (job_id,))
+            cursor.execute("DELETE FROM auth_users WHERE user_id = %s", (user.user_id,))
+            conn.commit()
+
+    def test_delete_user_not_found(self, mysql_pool: Any) -> None:
+        """Delete non-existent user raises ValueError."""
+        repo = UserRepository(mysql_pool)
+        with pytest.raises(ValueError) as exc_info:
+            repo.delete_user("non-existent-user-id")
+        assert "not found" in str(exc_info.value)

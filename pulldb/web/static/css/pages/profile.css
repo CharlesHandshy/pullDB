@@ -1,0 +1,921 @@
+/* =================================================================
+   pullDB Profile & Auth Pages Styles
+   HCA Layer: pages (Layer 4)
+   
+   Purpose: Page-specific styles for auth pages (profile, login, password).
+   Depends: design-tokens.css, forms.css, cards.css
+   ================================================================= */
+
+/* ===========================================
+   PROFILE PAGE
+   =========================================== */
+
+.profile-page {
+    max-width: var(--content-max-lg);
+    margin: 0 auto;
+}
+
+.profile-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    margin-bottom: var(--space-6);
+}
+
+.profile-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: var(--radius-full);
+    background: linear-gradient(135deg, var(--primary-400), var(--primary-600));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-3xl);
+    font-weight: var(--font-bold);
+    color: white;
+    flex-shrink: 0;
+}
+
+.profile-info h1 {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+    margin: 0 0 var(--space-1) 0;
+}
+
+/* Profile info row items */
+.profile-name {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-1);
+}
+
+.profile-code {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-2);
+}
+
+.profile-info .profile-role {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+}
+
+/* Profile role badges */
+.profile-role {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.profile-role.admin {
+    background: var(--primary-100);
+    color: var(--primary-700);
+}
+
+.profile-role.manager {
+    background: var(--warning-100);
+    color: var(--warning-700);
+}
+
+.profile-role.user {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+/* Profile stats row */
+.profile-stats {
+    display: flex;
+    gap: var(--space-8);
+    flex-wrap: wrap;
+}
+
+.profile-stat {
+    text-align: center;
+    min-width: 80px;
+}
+
+.profile-stat-value {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+}
+
+.profile-stat-label {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Profile container */
+.profile-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Profile cards */
+.profile-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    margin-bottom: var(--space-6);
+}
+
+.profile-card-header {
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--gray-50);
+}
+
+.profile-card-header h2 {
+    font-size: var(--text-md);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    margin: 0;
+}
+
+.profile-card-body {
+    padding: var(--space-5);
+}
+
+/* ===========================================
+   PROFILE SECTIONS
+   =========================================== */
+
+.profile-section {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-5);
+    overflow: hidden;
+}
+
+.profile-section-header {
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--gray-50);
+}
+
+.profile-section-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0;
+}
+
+.profile-section-title svg {
+    width: 16px;
+    height: 16px;
+    color: var(--gray-500);
+}
+
+.profile-section-body {
+    padding: var(--space-5);
+}
+
+/* ===========================================
+   PROFILE INFO GRID
+   =========================================== */
+
+.profile-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-4);
+}
+
+.profile-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.profile-info-item.full-width {
+    grid-column: 1 / -1;
+}
+
+.profile-info-label {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.profile-info-value {
+    font-size: var(--text-sm);
+    color: var(--color-text-primary);
+}
+
+@media (max-width: 480px) {
+    .profile-info-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ===========================================
+   HOST PERMISSIONS LIST
+   =========================================== */
+
+.host-permissions-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.host-permission-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--gray-50);
+    border-radius: var(--radius-md);
+}
+
+.host-permission-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    background: var(--primary-100);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.host-permission-icon svg {
+    width: 16px;
+    height: 16px;
+    color: var(--primary-600);
+}
+
+.host-permission-info {
+    flex: 1;
+}
+
+.host-permission-name {
+    font-weight: var(--font-medium);
+    color: var(--color-text-primary);
+}
+
+.host-permission-detail {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+}
+
+.host-permission-default {
+    padding: var(--space-1) var(--space-2);
+    background: var(--warning-100);
+    color: var(--warning-700);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+}
+
+/* ===========================================
+   CHANGE PASSWORD PAGE
+   =========================================== */
+
+.change-password-page {
+    max-width: var(--content-max-md);
+    margin: 0 auto;
+}
+
+/* ===========================================
+   PASSWORD FORM COMPONENTS
+   =========================================== */
+
+.password-form {
+    max-width: 400px;
+}
+
+.password-wrapper {
+    position: relative;
+}
+
+.password-wrapper .form-input {
+    padding-right: 44px;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: var(--gray-400);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: color var(--transition-fast);
+}
+
+.password-toggle:hover {
+    color: var(--gray-600);
+}
+
+.password-toggle svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Password requirements checklist */
+.password-requirements {
+    background: var(--gray-50);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    margin: var(--space-4) 0;
+}
+
+.password-requirements h4 {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
+    margin: 0 0 var(--space-3) 0;
+}
+
+/* Password display (after reset) */
+.password-display p {
+    margin: 0 0 var(--space-3) 0;
+}
+
+.password-display code {
+    background: var(--gray-100);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+}
+
+.password-box {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background: var(--gray-50);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-3);
+}
+
+.password-box code {
+    flex: 1;
+    font-size: var(--text-md);
+    font-weight: var(--font-semibold);
+    background: transparent;
+    padding: 0;
+}
+
+.password-note {
+    font-size: var(--text-sm);
+    color: var(--warning-700);
+    background: var(--warning-50);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    margin: 0;
+}
+
+.change-password-form {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+}
+
+/* ===========================================
+   LOGIN PAGE (if using custom login)
+   =========================================== */
+
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    background: var(--color-bg-primary);
+}
+
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-8);
+}
+
+.login-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-6);
+}
+
+.login-logo svg {
+    width: 32px;
+    height: 32px;
+    color: var(--primary-600);
+}
+
+.login-logo span {
+    font-size: var(--text-xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+}
+
+.login-title {
+    text-align: center;
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-6);
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.login-footer {
+    margin-top: var(--space-6);
+    text-align: center;
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+}
+
+.login-footer a {
+    color: var(--primary-600);
+    text-decoration: none;
+}
+
+.login-footer a:hover {
+    text-decoration: underline;
+}
+
+/* ===========================================
+   AUTH LAYOUT (no sidebar)
+   =========================================== */
+
+.auth-layout {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.auth-layout .app-main {
+    margin-left: 0;
+}
+
+/* ===========================================
+   DARK MODE
+   =========================================== */
+
+[data-theme="dark"] .profile-section {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .profile-section-header {
+    background: var(--gray-800);
+}
+
+[data-theme="dark"] .host-permission-item {
+    background: var(--gray-800);
+}
+
+[data-theme="dark"] .login-card {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .profile-card {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .profile-card-header {
+    background: var(--gray-800);
+}
+
+[data-theme="dark"] .password-requirements {
+    background: var(--gray-800);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .password-box {
+    background: var(--gray-800);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .password-note {
+    background: var(--gray-800);
+}
+
+[data-theme="dark"] .password-toggle:hover {
+    color: var(--gray-300);
+}
+
+/* ===========================================
+   AUTH CONTAINER (base_auth.html layout)
+   Uses .auth-* prefix for standalone auth pages
+   =========================================== */
+
+.auth-container {
+    width: 100%;
+    max-width: 420px;
+}
+
+.auth-card {
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--space-8);
+    box-shadow: var(--shadow-lg);
+}
+
+[data-theme="dark"] .auth-card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: var(--space-6);
+}
+
+.auth-header .auth-icon {
+    width: 64px;
+    height: 64px;
+    background: var(--primary-100);
+    color: var(--primary-600);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto var(--space-4);
+}
+
+[data-theme="dark"] .auth-header .auth-icon {
+    background: linear-gradient(135deg, var(--primary-600), var(--primary-700));
+    color: var(--white);
+}
+
+/* Warning variant for forced password reset */
+.auth-header .auth-icon--warning {
+    background: linear-gradient(135deg, var(--warning-500), var(--danger-500));
+    color: var(--white);
+}
+
+.auth-header h1 {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--gray-900);
+    margin-bottom: var(--space-2);
+}
+
+[data-theme="dark"] .auth-header h1 {
+    color: var(--white);
+}
+
+.auth-header p {
+    font-size: var(--font-size-sm);
+    color: var(--gray-500);
+    line-height: 1.5;
+}
+
+[data-theme="dark"] .auth-header p {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* ===========================================
+   AUTH FORM STYLES
+   =========================================== */
+
+.auth-form .form-group {
+    margin-bottom: var(--space-4);
+}
+
+.auth-form label {
+    display: block;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--gray-700);
+    margin-bottom: var(--space-2);
+}
+
+[data-theme="dark"] .auth-form label {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.auth-form input {
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--font-size-base);
+    background: var(--white);
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-md);
+    color: var(--gray-900);
+    transition: border-color var(--transition-base), box-shadow var(--transition-base);
+}
+
+.auth-form input:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+[data-theme="dark"] .auth-form input {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: var(--white);
+}
+
+[data-theme="dark"] .auth-form input:focus {
+    border-color: var(--primary-400);
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
+[data-theme="dark"] .auth-form input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* ===========================================
+   AUTH MESSAGES & ALERTS
+   =========================================== */
+
+.auth-error {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background: var(--danger-50);
+    border: 1px solid var(--danger-200);
+    border-radius: var(--radius-md);
+    color: var(--danger-700);
+    margin-bottom: var(--space-4);
+    font-size: var(--font-size-sm);
+}
+
+.auth-error svg {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+}
+
+[data-theme="dark"] .auth-error {
+    background: var(--color-error-bg);
+    border-color: var(--color-error-border);
+    color: var(--danger-300);
+}
+
+.auth-success {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background: var(--success-50);
+    border: 1px solid var(--success-200);
+    border-radius: var(--radius-md);
+    color: var(--success-700);
+    margin-bottom: var(--space-4);
+    font-size: var(--font-size-sm);
+}
+
+[data-theme="dark"] .auth-success {
+    background: var(--color-success-bg);
+    border-color: var(--color-success-border);
+    color: var(--success-300);
+}
+
+/* ===========================================
+   AUTH BUTTONS
+   =========================================== */
+
+.auth-form .btn-primary {
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--font-size-base);
+    font-weight: 500;
+}
+
+/* ===========================================
+   AUTH FOOTER / LINKS
+   =========================================== */
+
+.auth-footer {
+    text-align: center;
+    margin-top: var(--space-5);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--gray-200);
+    font-size: var(--font-size-sm);
+    color: var(--gray-500);
+}
+
+[data-theme="dark"] .auth-footer {
+    border-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.auth-footer a {
+    color: var(--primary-600);
+    text-decoration: none;
+}
+
+.auth-footer a:hover {
+    text-decoration: underline;
+}
+
+[data-theme="dark"] .auth-footer a {
+    color: var(--primary-400);
+}
+
+/* ===========================================
+   AUTH PAGE BODY STYLES
+   Applied when using base_auth.html template
+   =========================================== */
+
+body.auth-body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--gray-100);
+    padding: var(--space-4);
+}
+
+[data-theme="dark"] body.auth-body {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+}
+
+/* ===========================================
+   PASSWORD STRENGTH INDICATOR
+   =========================================== */
+
+.password-strength {
+    margin-top: var(--space-2);
+}
+
+.password-strength-bar {
+    height: 4px;
+    background: var(--gray-200);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+.password-strength-fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.password-strength-fill.is-weak {
+    background: var(--danger-500);
+    width: 33%;
+}
+
+.password-strength-fill.is-medium {
+    background: var(--warning-500);
+    width: 66%;
+}
+
+.password-strength-fill.is-strong {
+    background: var(--success-500);
+    width: 100%;
+}
+
+.password-strength-text {
+    font-size: var(--font-size-xs);
+    margin-top: var(--space-1);
+    color: var(--gray-500);
+}
+
+/* ===========================================
+   AUTH SUBMIT BUTTON (legacy, migrate to .btn-primary)
+   =========================================== */
+
+.auth-submit {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-6);
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    color: var(--white);
+    background: var(--primary-600);
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background-color var(--transition-base), transform var(--transition-base);
+}
+
+.auth-submit:hover {
+    background: var(--primary-700);
+}
+
+.auth-submit:active {
+    transform: translateY(1px);
+}
+
+.auth-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ===========================================
+   PASSWORD REQUIREMENTS LIST
+   Used on forced-reset page
+   =========================================== */
+
+.auth-requirements {
+    background: var(--gray-50);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    margin-bottom: var(--space-6);
+}
+
+[data-theme="dark"] .auth-requirements {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.auth-requirements h3 {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--space-3);
+}
+
+[data-theme="dark"] .auth-requirements h3 {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.auth-requirements ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.auth-requirements li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
+    color: var(--gray-400);
+    padding: var(--space-1) 0;
+    transition: color var(--transition-base);
+}
+
+[data-theme="dark"] .auth-requirements li {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.auth-requirements li.valid {
+    color: var(--success-500);
+}
+
+[data-theme="dark"] .auth-requirements li.valid {
+    color: var(--success-400);
+}
+
+.auth-requirements li svg {
+    flex-shrink: 0;
+}
+
+/* ===========================================
+   AUTH THEME TOGGLE POSITION
+   =========================================== */
+
+.auth-theme-toggle {
+    position: fixed;
+    top: var(--space-4);
+    right: var(--space-4);
+}

@@ -588,3 +588,46 @@ class AuthRepository:
             )
             rows = cursor.fetchall()
             return [row["hostname"] for row in rows]
+
+    def count_users_for_host(self, host_id: str) -> int:
+        """Count users assigned to a specific host.
+
+        Used for host deletion preview to show affected users.
+
+        Args:
+            host_id: UUID of the host.
+
+        Returns:
+            Number of users assigned to this host.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM user_hosts WHERE host_id = %s",
+                (host_id,),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else 0
+
+    def get_users_for_host(self, host_id: str) -> list[dict]:
+        """Get users assigned to a specific host.
+
+        Args:
+            host_id: UUID of the host.
+
+        Returns:
+            List of dicts with user_id, username, is_default for each user.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT u.user_id, u.username, uh.is_default
+                FROM user_hosts uh
+                JOIN auth_users u ON u.user_id = uh.user_id
+                WHERE uh.host_id = %s
+                ORDER BY u.username ASC
+                """,
+                (host_id,),
+            )
+            return list(cursor.fetchall())

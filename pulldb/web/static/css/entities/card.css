@@ -1,0 +1,518 @@
+/* =================================================================
+   pullDB Card Component
+   HCA Layer: entities
+   
+   Purpose: Container cards for grouping content.
+   Depends: design-tokens.css
+   
+   BEM Structure:
+   - .card (Block)
+   - .card__header (Element)
+   - .card__title (Element)
+   - .card__body (Element)
+   - .card__footer (Element)
+   - .card--{variant} (Modifier: stat, info, expandable, compact)
+   - .card--{state} (Modifier: hover, loading)
+   
+   Legacy Compatibility:
+   - .card-padding maps to .card__body
+   - .card-header maps to .card__header
+   - .stat-card maps to .card--stat
+   - .dashboard-stat-card maps to .card--stat
+   ================================================================= */
+
+/* ===========================================
+   BASE CARD
+   =========================================== */
+
+.card {
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--color-border);
+    overflow: hidden;
+}
+
+/* ===========================================
+   CARD ELEMENTS
+   =========================================== */
+
+/* Card Header */
+.card__header,
+.card-header {
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface);
+}
+
+/* Card Title */
+.card__title,
+.card-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--text-md);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    margin: 0;
+}
+
+.card__title svg,
+.card-title svg {
+    width: 20px;
+    height: 20px;
+    color: var(--gray-500);
+}
+
+/* Card Body */
+.card__body,
+.card-padding {
+    padding: var(--space-5);
+}
+
+/* Card Footer */
+.card__footer {
+    padding: var(--space-4) var(--space-5);
+    border-top: 1px solid var(--color-border);
+    background: var(--gray-25);
+}
+
+/* NOTE: Stat card styles moved to features/dashboard.css per HCA methodology */
+
+.card--dashboard.compact,
+.dashboard-stat-card.compact {
+    padding: var(--space-3) var(--space-4);
+}
+
+.dashboard-stat-label {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--space-2);
+}
+
+.dashboard-stat-value {
+    font-size: 1.75rem;
+    font-weight: var(--font-bold);
+}
+
+.dashboard-stat-value.lg {
+    font-size: var(--text-2xl);
+}
+
+.dashboard-stat-suffix {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    margin-left: var(--space-1);
+}
+
+.dashboard-stat-secondary {
+    font-size: var(--text-sm);
+    color: var(--gray-400);
+}
+
+/* ===========================================
+   EXPANDABLE CARD (Settings)
+   =========================================== */
+
+.card--expandable,
+.settings-category {
+    margin-bottom: var(--space-6);
+    transition: box-shadow var(--transition-base);
+}
+
+.card--expandable:hover,
+.settings-category:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.card--expandable .card__header,
+.settings-category .category-header {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color var(--transition-fast);
+}
+
+.card--expandable .card__header:hover,
+.settings-category .category-header:hover {
+    background: var(--color-surface-hover);
+}
+
+.card--expandable .chevron-icon,
+.settings-category .chevron-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--gray-400);
+    transition: transform var(--transition-base);
+}
+
+.card--expandable.is-collapsed .chevron-icon,
+.settings-category.collapsed .chevron-icon {
+    transform: rotate(-90deg);
+}
+
+.card--expandable.is-collapsed .card__body,
+.settings-category.collapsed .category-content {
+    display: none;
+}
+
+.card--expandable.is-collapsed .card__header,
+.settings-category.collapsed .category-header {
+    border-bottom: none;
+}
+
+/* ===========================================
+   INFO CARD
+   =========================================== */
+
+.card--info,
+.info-banner {
+    display: flex;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    background: var(--info-50);
+    border: 1px solid var(--info-200);
+    border-radius: var(--radius-md);
+    align-items: flex-start;
+}
+
+.card--info .card__icon,
+.info-banner .info-icon {
+    flex-shrink: 0;
+    padding-top: 2px;
+}
+
+.card--info .card__icon svg,
+.info-banner .info-icon svg {
+    width: 20px;
+    height: 20px;
+    color: var(--info-600);
+}
+
+.card--info .card__content p,
+.info-banner .info-content p {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--info-800);
+    line-height: var(--leading-normal);
+}
+
+/* ===========================================
+   WARNING CARD
+   =========================================== */
+
+.card--warning,
+.warning-box {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--danger-50);
+    border: 1px solid var(--danger-200);
+    border-radius: var(--radius-md);
+    align-items: flex-start;
+}
+
+.card--warning svg,
+.warning-box svg {
+    flex-shrink: 0;
+    color: var(--danger-600);
+}
+
+.card--warning .card__title,
+.warning-box-title {
+    font-weight: var(--font-semibold);
+    color: var(--danger-700);
+    margin-bottom: var(--space-1);
+}
+
+.card--warning .card__text,
+.warning-box-text {
+    color: var(--danger-600);
+    font-size: var(--text-sm);
+}
+
+/* ===========================================
+   SKELETON CARD
+   =========================================== */
+
+.card.is-loading,
+.skeleton-card {
+    height: 100%;
+    min-height: 60px;
+    background: linear-gradient(90deg, 
+        var(--color-bg-subtle, var(--gray-100)) 25%, 
+        var(--color-bg-muted, var(--gray-200)) 50%, 
+        var(--color-bg-subtle, var(--gray-100)) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-md);
+}
+
+/* ===========================================
+   CARD LAYOUTS
+   =========================================== */
+
+/* Card Grid */
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--space-6);
+}
+
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--space-4);
+}
+
+/* Stats Row (inline) */
+.stats-row {
+    display: flex;
+    flex-direction: row;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* Dashboard Stats Row */
+.dashboard-stats-row {
+    display: flex;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+
+/* Dashboard Row */
+.dashboard-stat-row {
+    display: flex;
+    gap: var(--space-6);
+    flex-wrap: wrap;
+}
+
+.dashboard-stat-row.baseline {
+    align-items: baseline;
+}
+
+/* Dashboard Grid */
+.dashboard-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-5);
+}
+
+@media (max-width: 768px) {
+    .dashboard-grid-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ===========================================
+   STAT PILL
+   =========================================== */
+
+.stat-pill {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: var(--color-surface);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-border);
+    font-size: var(--text-sm);
+}
+
+.stat-pill .stat-value {
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+}
+
+.stat-pill .stat-label {
+    color: var(--color-text-muted);
+}
+
+/* ===========================================
+   DARK MODE
+   Co-located dark theme overrides
+   =========================================== */
+
+/* Base card dark mode */
+[data-theme="dark"] .card {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .card:hover {
+    border-color: var(--color-border-light);
+}
+
+[data-theme="dark"] .card__header {
+    background: var(--color-bg-secondary);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .card__title {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .card__title svg {
+    color: var(--color-text-secondary);
+}
+
+/* NOTE: Stat card dark mode styles moved to features/dashboard.css per HCA methodology */
+
+/* ===========================================
+   INFO DISPLAY PAIRS (label + value)
+   Used in cards and detail views
+   =========================================== */
+
+.info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.info-label {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.info-value {
+    font-size: var(--text-sm);
+    color: var(--color-text-primary);
+    font-weight: var(--font-medium);
+}
+
+/* Stat rows - horizontal label/value pairs */
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.stat-row:last-child {
+    border-bottom: none;
+}
+
+/* ===========================================
+   DARK MODE - INFO & STAT ROW
+   =========================================== */
+
+[data-theme="dark"] .info-label {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .info-value {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .stat-row {
+    border-bottom-color: var(--color-border);
+}
+
+/* ===========================================
+   DARK MODE - SETTINGS CATEGORY
+   =========================================== */
+
+[data-theme="dark"] .settings-category {
+    border-color: var(--color-border);
+    background: var(--color-surface);
+}
+
+[data-theme="dark"] .category-header {
+    background: var(--color-surface);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .category-header:hover {
+    background: var(--color-surface-hover);
+}
+
+[data-theme="dark"] .category-count {
+    background: var(--color-bg-tertiary, #334155);
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .setting-row {
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .setting-row:hover {
+    background: var(--color-surface-hover);
+}
+
+[data-theme="dark"] .setting-key {
+    background: var(--color-bg-tertiary, #334155);
+    color: var(--color-text-primary);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .setting-description {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .setting-meta {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .env-var {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .setting-edit {
+    background: var(--color-bg-secondary, #0f172a);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .default-hint {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .default-hint code {
+    background: var(--color-bg-tertiary, #334155);
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .path-value,
+[data-theme="dark"] .setting-value.path-value {
+    color: var(--color-text-secondary);
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .danger-badge {
+    background: var(--color-error-bg);
+    color: var(--color-error);
+    border-color: var(--color-error-border);
+}
+
+[data-theme="dark"] .info-banner {
+    background: var(--color-info-bg);
+    border-color: var(--color-info-border);
+}
+
+[data-theme="dark"] .info-icon svg {
+    color: var(--color-primary);
+}
+
+[data-theme="dark"] .info-content p {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .info-content strong {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .info-subtext {
+    color: var(--color-text-muted);
+}

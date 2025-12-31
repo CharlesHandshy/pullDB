@@ -24,12 +24,21 @@ def _select_dbhost(state: APIState, req: JobRequest, user: User) -> str:
     """Select database host for job, using user's default if not specified.
 
     Priority:
-    1. Explicitly requested host (req.dbhost)
+    1. Explicitly requested host (req.dbhost) - resolved via alias if needed
     2. User's configured default_host
     3. System default_dbhost from config
     4. mysql_host from config (fallback)
+    
+    Host resolution:
+    - If a host alias is provided, it's resolved to the canonical hostname
+    - If hostname is provided directly, it's used as-is
     """
     if req.dbhost:
+        # Resolve alias to hostname if needed
+        resolved = state.host_repo.resolve_hostname(req.dbhost)
+        if resolved:
+            return str(resolved)
+        # Not found - return as-is, will fail later in validation
         return req.dbhost
     if user.default_host:
         return user.default_host
@@ -81,17 +90,86 @@ def _construct_target(user: User, req: JobRequest) -> str:
     return target
 
 
-def _options_snapshot(req: JobRequest) -> dict[str, str]:
+def _options_snapshot(
+    req: JobRequest,
+    state: APIState,
+    dbhost: str,
+) -> dict[str, str]:
+    """Create options snapshot with all job parameters for self-contained execution.
+
+    Captures everything needed to execute the restore job:
+    - Original request parameters (customer, qatemplate, overwrite, etc.)
+    - Resolved backup path and S3 location info
+    - Resolved MySQL host endpoint
+    - Execution config (myloader path, post-SQL directory)
+
+    This ensures jobs are self-contained and don't depend on external state
+    that could change between submission and execution.
+
+    Args:
+        req: The job request with user inputs.
+        state: API state with config and repositories.
+        dbhost: Resolved database host for this job.
+
+    Returns:
+        Dictionary of options to store in job.options_json.
+    """
+    from pulldb.domain.config import find_location_for_backup_path, parse_backup_path
+
     opts: dict[str, str] = {
         "customer_id": req.customer or "",
         "is_qatemplate": str(req.qatemplate).lower(),
         "overwrite": str(req.overwrite).lower(),
-        "api_version": "v1",
+        "api_version": "v2",  # Bumped version for new self-contained format
     }
     if req.date:
         opts["date"] = req.date
     if req.env:
         opts["env"] = req.env
+
+    # Snapshot backup path and S3 location info
+    if req.backup_path:
+        opts["backup_path"] = req.backup_path
+
+        # Parse backup path to extract bucket/key
+        parsed = parse_backup_path(req.backup_path)
+        if parsed:
+            bucket, key = parsed
+            opts["s3_bucket"] = bucket
+            opts["s3_key"] = key
+
+        # Find matching S3 location config
+        location = find_location_for_backup_path(
+            req.backup_path,
+            state.config.s3_backup_locations,
+        )
+        if location:
+            opts["s3_location_name"] = location.name
+            opts["s3_prefix"] = location.prefix
+            if location.profile:
+                opts["s3_profile"] = location.profile
+
+    # Snapshot resolved MySQL host endpoint
+    if state.host_repo and dbhost:
+        try:
+            creds = state.host_repo.get_host_credentials(dbhost)
+            if creds:
+                opts["resolved_mysql_host"] = creds.host
+                if creds.port and creds.port != 3306:
+                    opts["resolved_mysql_port"] = str(creds.port)
+        except Exception:
+            pass  # Best effort - don't fail job submission if resolution fails
+
+    # Snapshot execution config
+    if state.config:
+        opts["myloader_path"] = state.config.myloader_binary
+
+        # Resolve post-SQL directory based on qatemplate flag
+        if req.qatemplate:
+            opts["post_sql_dir"] = str(state.config.qa_template_after_sql_dir)
+        else:
+            opts["post_sql_dir"] = str(state.config.customers_after_sql_dir)
+
     return opts
 
 
@@ -280,7 +358,7 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
         dbhost=dbhost,
         status=JobStatus.QUEUED,
         submitted_at=datetime.now(UTC),
-        options_json=_options_snapshot(req),
+        options_json=_options_snapshot(req, state, dbhost),
         retry_count=0,
     )
 
@@ -320,6 +398,21 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
             status="queued",
         ),
     )
+
+    # Audit log job submission
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        state.audit_repo.log_action(
+            actor_user_id=user.user_id,
+            action="job_submitted",
+            target_user_id=user.user_id,
+            detail=f"Submitted restore job for {target} on {dbhost}",
+            context={
+                "job_id": job_id,
+                "target": target,
+                "staging_name": staging_name,
+                "dbhost": dbhost,
+            },
+        )
 
     return JobResponse(
         job_id=job_id,

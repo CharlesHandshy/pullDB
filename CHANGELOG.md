@@ -3,7 +3,65 @@ CHANGELOG
 
 Unreleased
 ---------
-- (no changes yet)
+### Remove Host Feature (Admin)
+
+- **Full host removal**: Admin UI now supports permanently deleting database hosts
+- **Type-to-confirm**: Users must type the host alias to confirm deletion
+- **Immediate secret deletion**: AWS Secrets Manager secret deleted with `ForceDeleteWithoutRecovery`
+- **Impact preview**: Shows affected users and historical job counts before deletion
+
+### Added
+- `DELETE /web/admin/hosts/{host_id}/delete` - Full host deletion endpoint
+- `GET /web/admin/hosts/{host_id}/delete-preview` - Pre-deletion impact summary
+- `count_users_for_host()` and `get_users_for_host()` in AuthRepository
+- `hard_delete_host()` in SimulatedHostRepository for simulation mode
+- Danger Zone card in host detail page with delete confirmation modal
+
+### Changed
+- Host deletion requires host to be disabled first (safety check)
+- AWS secret deletion now immediate (no 7-day recovery window)
+
+---
+
+### Job Delete Services Fix & Status Lifecycle
+
+- **Single delete instant**: Direct database deletion via routes (fixed signature mismatch)
+- **Bulk delete queued**: Admin task with progress tracking (fixed result structure)
+- **Deleting status**: New intermediate status during async bulk delete operations
+- **Deleted status**: Final state after databases successfully dropped
+
+### Added
+- `DELETING` status in JobStatus enum for visibility during bulk operations
+- `mark_job_deleting()` method in JobRepository
+- Schema migration `080_job_delete_support.sql` adds `deleting` to status ENUM
+- `.badge-pulse` animation for visual feedback during deletion
+- Unit tests for `delete_job_databases` function
+
+### Fixed
+- Single delete route signature mismatch (now passes staging_name, dbhost, host_repo)
+- Bulk delete result structure alignment between worker and status polling endpoint
+- Bulk delete now collects all required job fields (staging_name, dbhost, owner_user_code)
+
+### Removed
+- `jobs_old.html` orphaned template file
+
+### User Database Orphan Detection & Hosts Command
+
+- **User orphan detection**: Admin UI can now detect orphaned databases by user
+- **Host alias support**: CLI `pulldb hosts` command shows available database hosts with aliases
+- **Alias resolution**: `dbhost=<alias>` now works in restore commands, resolving to hostname
+
+### Added
+- `pulldb hosts` CLI command to list available database hosts
+- `GET /api/hosts` endpoint returning enabled hosts with aliases
+- Host alias resolution in job submission (`_select_dbhost` in logic.py)
+- `restored_at` and `restored_by` columns in user orphan detection (from pullDB metadata table)
+- `_has_pulldb_table()` check validates databases have pullDB marker before flagging as orphan
+
+### Changed
+- User orphan detection now shows "Restored" date from pullDB metadata table
+- Unregistered users see only registration instructions instead of full CLI help
+- CSS uses semantic design tokens for proper light/dark mode support
 
 v0.1.0 - 2025-12-26
 -------------------

@@ -10,6 +10,7 @@ Commands:
 - cleanup: Cleanup orphaned staging databases and work files
 - hosts: Manage registered database hosts
 - users: View and manage users
+- disallow: Manage disallowed usernames (list, add, remove)
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ elif os.path.exists(_repo_env):
 from pulldb import __version__
 from pulldb.cli.admin_commands import (
     cleanup_cmd,
+    disallow_group,
     hosts_group,
     jobs_group,
     users_group,
@@ -61,6 +63,7 @@ cli.add_command(jobs_group)
 cli.add_command(cleanup_cmd)
 cli.add_command(hosts_group)
 cli.add_command(users_group)
+cli.add_command(disallow_group)
 
 
 def main(argv: t.Sequence[str] | None = None) -> int:

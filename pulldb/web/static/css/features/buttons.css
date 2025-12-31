@@ -1,0 +1,803 @@
+/* =================================================================
+   pullDB Button Component
+   HCA Layer: features
+   
+   Purpose: All button styles including action buttons, icon buttons.
+   Depends: design-tokens.css
+   
+   BEM Structure:
+   - .btn (Block)
+   - .btn--{variant} (Modifier: primary, secondary, danger, ghost, outline)
+   - .btn--{size} (Modifier: xs, sm, lg)
+   - .btn__icon (Element)
+   - .btn__text (Element)
+   - .btn.is-loading (State)
+   - .btn.is-disabled (State)
+   
+   Legacy Compatibility:
+   - .btn-primary, .btn-secondary, etc. map to BEM modifiers
+   - .btn-icon maps to .btn--icon
+   - .action-btn maps to .btn--action
+   ================================================================= */
+
+/* ===========================================
+   BASE BUTTON
+   =========================================== */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    line-height: var(--leading-tight);
+    text-decoration: none;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+}
+
+.btn:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+/* Button Elements */
+.btn__icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.btn__icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Inline icon in button text - smaller and with margin */
+.btn svg:not(.btn__icon) {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin-right: var(--space-1);
+}
+
+/* ===========================================
+   COLOR VARIANTS (--variant)
+   =========================================== */
+
+/* Primary */
+.btn--primary,
+.btn-primary {
+    background-color: var(--primary-600);
+    border-color: var(--primary-600);
+    color: white;
+}
+
+.btn--primary:hover,
+.btn-primary:hover {
+    background-color: var(--primary-700);
+    border-color: var(--primary-700);
+}
+
+.btn--primary:active,
+.btn-primary:active {
+    background-color: var(--primary-800);
+}
+
+/* Secondary */
+.btn--secondary,
+.btn-secondary {
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+}
+
+.btn--secondary:hover,
+.btn-secondary:hover {
+    background-color: var(--color-surface-hover);
+    border-color: var(--color-border-hover);
+}
+
+/* Danger */
+.btn--danger,
+.btn-danger {
+    background-color: var(--danger-600);
+    border-color: var(--danger-600);
+    color: white;
+}
+
+.btn--danger:hover,
+.btn-danger:hover {
+    background-color: var(--danger-700);
+    border-color: var(--danger-700);
+}
+
+/* Success */
+.btn--success,
+.btn-success {
+    background-color: var(--success-600);
+    border-color: var(--success-600);
+    color: white;
+}
+
+.btn--success:hover,
+.btn-success:hover {
+    background-color: var(--success-700);
+    border-color: var(--success-700);
+}
+
+/* Warning */
+.btn--warning,
+.btn-warning {
+    background-color: var(--warning-600);
+    border-color: var(--warning-600);
+    color: white;
+}
+
+.btn--warning:hover,
+.btn-warning:hover {
+    background-color: var(--warning-700);
+    border-color: var(--warning-700);
+}
+
+/* Ghost (transparent background) */
+.btn--ghost,
+.btn-ghost {
+    background-color: transparent;
+    border-color: transparent;
+    color: var(--color-text-secondary);
+}
+
+.btn--ghost:hover,
+.btn-ghost:hover {
+    background-color: var(--gray-100);
+    color: var(--color-text-primary);
+}
+
+/* Outline */
+.btn--outline,
+.btn-outline {
+    background-color: var(--color-surface);
+    border-color: var(--gray-300);
+    color: var(--gray-700);
+}
+
+.btn--outline:hover,
+.btn-outline:hover {
+    background-color: var(--gray-50);
+    border-color: var(--gray-400);
+}
+
+/* Link style button */
+.btn--link {
+    background: none;
+    border: none;
+    color: var(--primary-600);
+    padding: 0;
+    font-weight: var(--font-medium);
+}
+
+.btn--link:hover {
+    text-decoration: underline;
+}
+
+/* ===========================================
+   SIZE VARIANTS (--size)
+   =========================================== */
+
+/* Extra Small */
+.btn--xs,
+.btn-xs {
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-xs);
+    height: 28px;
+    gap: var(--space-1);
+}
+
+.btn--xs .btn__icon,
+.btn-xs .btn__icon,
+.icon-xs {
+    width: 14px;
+    height: 14px;
+}
+
+/* Small */
+.btn--sm,
+.btn-sm {
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
+}
+
+/* Large */
+.btn--lg,
+.btn-lg {
+    padding: var(--space-3) var(--space-6);
+    font-size: var(--text-md);
+}
+
+.btn--lg .btn__icon {
+    width: 20px;
+    height: 20px;
+}
+
+/* ===========================================
+   ICON-ONLY BUTTON
+   =========================================== */
+
+.btn--icon,
+.btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--gray-600);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn--icon:hover,
+.btn-icon:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
+}
+
+.btn--icon:focus-visible,
+.btn-icon:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+.btn--icon svg,
+.btn-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Icon button with primary background */
+.btn--icon-primary,
+.btn-icon-primary {
+    background: var(--primary-500);
+    color: white;
+}
+
+.btn--icon-primary:hover,
+.btn-icon-primary:hover {
+    background: var(--primary-600);
+    transform: scale(1.05);
+}
+
+/* ===========================================
+   ACTION BUTTON (Table row actions)
+   =========================================== */
+
+.btn--action,
+.action-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--gray-500);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn--action:hover,
+.action-btn:hover {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.btn--action svg,
+.action-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Action button color variants */
+.btn--action-view,
+.action-btn-view {
+    color: var(--primary-500);
+}
+
+.btn--action-view:hover,
+.action-btn-view:hover {
+    background: var(--primary-50);
+    color: var(--primary-600);
+}
+
+.btn--action-enable,
+.action-btn-enable,
+.action-btn.success:hover {
+    color: var(--success-500);
+}
+
+.btn--action-enable:hover,
+.action-btn-enable:hover,
+.action-btn.success:hover {
+    background: var(--success-50);
+    color: var(--success-600);
+}
+
+.btn--action-disable,
+.action-btn-disable,
+.action-btn.warning:hover {
+    color: var(--warning-500);
+}
+
+.btn--action-disable:hover,
+.action-btn-disable:hover,
+.action-btn.warning:hover {
+    background: var(--warning-50);
+    color: var(--warning-600);
+}
+
+.btn--action-danger,
+.action-btn-danger,
+.action-btn.danger:hover {
+    color: var(--danger-600);
+}
+
+.btn--action-danger:hover,
+.action-btn.danger:hover {
+    background: var(--danger-50);
+    color: var(--danger-600);
+}
+
+.btn--action-test,
+.action-btn-test {
+    color: var(--info-500);
+}
+
+.btn--action-test:hover,
+.action-btn-test:hover {
+    background: var(--info-50);
+    color: var(--info-600);
+}
+
+.btn--action-muted,
+.action-btn-muted {
+    color: var(--gray-500);
+}
+
+.btn--action-primary,
+.action-btn-primary {
+    color: var(--primary-600);
+}
+
+/* Disabled action button */
+.btn--action-disabled,
+.action-btn-disabled {
+    color: var(--gray-400);
+    cursor: not-allowed;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* ===========================================
+   SPECIAL BUTTONS
+   =========================================== */
+
+/* Cancel Job Button (mini) */
+.btn--cancel-job,
+.cancel-job-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    background: var(--danger-50);
+    color: var(--danger-600);
+    border: 1px solid var(--danger-200);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.btn--cancel-job:hover,
+.cancel-job-btn:hover {
+    background: var(--danger-100);
+}
+
+.btn--cancel-job svg,
+.cancel-job-btn svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* Delete Job Button (mini) - trash icon for history view */
+.btn--delete-job,
+.delete-job-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    background: transparent;
+    color: var(--color-text-muted, var(--gray-500));
+    border: 1px solid var(--color-border-secondary, var(--gray-200));
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn--delete-job:hover,
+.delete-job-btn:hover {
+    background: var(--danger-50);
+    color: var(--danger-600);
+    border-color: var(--danger-200);
+}
+
+.btn--delete-job svg,
+.delete-job-btn svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* Exclude Button (preview tables) */
+.btn--exclude,
+.exclude-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: var(--gray-100);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gray-500);
+    font-size: var(--text-sm);
+    font-weight: var(--font-bold);
+    line-height: 1;
+    transition: all var(--transition-fast);
+}
+
+.btn--exclude:hover,
+.exclude-btn:hover {
+    background: var(--danger-100);
+    color: var(--danger-600);
+}
+
+.btn--exclude.is-excluded,
+.exclude-btn.excluded {
+    background: var(--danger-100);
+    color: var(--danger-600);
+}
+
+/* Reset Exclusions Button */
+.btn--reset-exclusions,
+.reset-exclusions-btn {
+    display: inline-flex;
+    visibility: hidden;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--gray-300);
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    color: var(--gray-500);
+    transition: all var(--transition-fast);
+}
+
+.btn--reset-exclusions:hover,
+.reset-exclusions-btn:hover {
+    background: var(--gray-100);
+    color: var(--gray-700);
+    border-color: var(--gray-400);
+}
+
+.btn--reset-exclusions.is-visible,
+.reset-exclusions-btn.visible {
+    visibility: visible;
+}
+
+/* Back Button */
+.btn--back,
+.back-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    color: var(--gray-500);
+    transition: all var(--transition-fast);
+}
+
+.btn--back:hover,
+.back-btn:hover {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+/* Copy Button */
+.btn--copy,
+.copy-btn {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    background: var(--gray-700);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--gray-300);
+    font-size: var(--text-2xs);
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity var(--transition-base);
+}
+
+.btn--copy:hover,
+.copy-btn:hover {
+    opacity: 1;
+}
+
+.btn--copy.is-copied,
+.copy-btn.copied {
+    background: var(--success-600);
+    color: white;
+}
+
+/* ===========================================
+   BUTTON STATES
+   =========================================== */
+
+/* Loading State */
+.btn.is-loading,
+.btn.loading {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.btn.is-loading svg,
+.btn.loading svg {
+    animation: spin 1s linear infinite;
+}
+
+/* Disabled State */
+.btn.is-disabled,
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ===========================================
+   BUTTON GROUPS
+   =========================================== */
+
+.btn-group {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.btn-group--vertical {
+    flex-direction: column;
+}
+
+/* Action buttons container (table cells) */
+.action-buttons,
+.cell-actions {
+    display: flex;
+    gap: var(--space-1);
+    justify-content: flex-start;
+    align-items: center;
+}
+
+/* Quick actions row */
+.quick-actions {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
+/* Edit actions row */
+.edit-actions {
+    display: flex;
+    gap: var(--space-2);
+    justify-content: flex-end;
+}
+
+/* ===========================================
+   DARK MODE
+   =========================================== */
+
+[data-theme="dark"] .btn--icon,
+[data-theme="dark"] .btn-icon {
+    color: var(--gray-400);
+}
+
+[data-theme="dark"] .btn--icon:hover,
+[data-theme="dark"] .btn-icon:hover {
+    background: var(--gray-700);
+    color: var(--gray-100);
+}
+
+[data-theme="dark"] .btn--secondary,
+[data-theme="dark"] .btn-secondary {
+    background-color: var(--gray-800);
+    border-color: var(--gray-600);
+}
+
+[data-theme="dark"] .btn--secondary:hover,
+[data-theme="dark"] .btn-secondary:hover {
+    background-color: var(--gray-700);
+}
+
+/* ===========================================
+   DARK MODE OVERRIDES - Additional Variants
+   =========================================== */
+
+/* Primary - explicit dark mode for consistency */
+[data-theme="dark"] .btn--primary,
+[data-theme="dark"] .btn-primary {
+    background-color: var(--primary-500);
+    border-color: var(--primary-500);
+}
+
+[data-theme="dark"] .btn--primary:hover,
+[data-theme="dark"] .btn-primary:hover {
+    background-color: var(--primary-400);
+    border-color: var(--primary-400);
+}
+
+/* Danger - explicit dark mode */
+[data-theme="dark"] .btn--danger,
+[data-theme="dark"] .btn-danger {
+    background-color: var(--danger-600);
+    border-color: var(--danger-600);
+}
+
+[data-theme="dark"] .btn--danger:hover,
+[data-theme="dark"] .btn-danger:hover {
+    background-color: var(--danger-500);
+    border-color: var(--danger-500);
+}
+
+/* Success - explicit dark mode */
+[data-theme="dark"] .btn--success,
+[data-theme="dark"] .btn-success {
+    background-color: var(--success-600);
+    border-color: var(--success-600);
+}
+
+[data-theme="dark"] .btn--success:hover,
+[data-theme="dark"] .btn-success:hover {
+    background-color: var(--success-500);
+    border-color: var(--success-500);
+}
+
+/* Warning - explicit dark mode */
+[data-theme="dark"] .btn--warning,
+[data-theme="dark"] .btn-warning {
+    background-color: var(--warning-600);
+    border-color: var(--warning-600);
+}
+
+[data-theme="dark"] .btn--warning:hover,
+[data-theme="dark"] .btn-warning:hover {
+    background-color: var(--warning-500);
+    border-color: var(--warning-500);
+}
+
+/* Ghost - dark mode hover fix */
+[data-theme="dark"] .btn--ghost:hover,
+[data-theme="dark"] .btn-ghost:hover {
+    background-color: var(--gray-700);
+    color: var(--gray-100);
+}
+
+/* Outline - dark mode */
+[data-theme="dark"] .btn--outline,
+[data-theme="dark"] .btn-outline {
+    background-color: transparent;
+    border-color: var(--gray-600);
+    color: var(--gray-300);
+}
+
+[data-theme="dark"] .btn--outline:hover,
+[data-theme="dark"] .btn-outline:hover {
+    background-color: var(--gray-800);
+    border-color: var(--gray-500);
+    color: var(--gray-200);
+}
+
+/* Link - dark mode */
+[data-theme="dark"] .btn--link {
+    color: var(--primary-400);
+}
+
+[data-theme="dark"] .btn--link:hover {
+    color: var(--primary-300);
+}
+
+/* ===========================================
+   SPECIALIZED ACTION BUTTONS
+   Queue and batch action buttons
+   =========================================== */
+
+/* Queue button - for adding items to queue */
+.btn-queue {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: var(--primary-600);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-queue:hover {
+    background: var(--primary-700);
+}
+
+.btn-queue:disabled {
+    background: var(--gray-400);
+    cursor: not-allowed;
+}
+
+/* Cancel all button - for batch cancellation */
+.btn-cancel-all {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: var(--danger-100);
+    color: var(--danger-700);
+    border: 1px solid var(--danger-200);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-cancel-all:hover {
+    background: var(--danger-200);
+    border-color: var(--danger-300);
+}
+
+.btn-cancel-all:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ===========================================
+   DARK MODE - SPECIALIZED BUTTONS
+   =========================================== */
+
+[data-theme="dark"] .btn-cancel-all {
+    background: rgba(var(--danger-500-rgb), 0.1);
+    color: var(--danger-400);
+    border-color: var(--danger-800);
+}
+
+[data-theme="dark"] .btn-cancel-all:hover {
+    background: rgba(var(--danger-500-rgb), 0.2);
+}

@@ -1,6 +1,12 @@
 <!-- Appearance Settings Partial - Color Schema Editor
      Dual-pane UI for Light/Dark mode color schemas with preset selection
      and live preview. All colors stored in database as JSON schemas.
+     
+     Structure: 4 collapsible accordion groups using native details/summary
+     - Foundation (surfaces + backgrounds)
+     - Typography (text + links + code)
+     - UI Controls (interactive + inputs + borders + table + scrollbar)
+     - Feedback (status colors)
 -->
 
 <div class="appearance-settings">
@@ -43,132 +49,498 @@
         <span class="preset-hint">Selecting a preset overwrites current values</span>
     </div>
 
-    <!-- Color Editor Panels -->
-    <div class="color-panels">
-        <!-- Surfaces -->
-        <div class="color-panel">
-            <h4 class="panel-title">Surfaces</h4>
-            <div class="color-row">
-                <label>Base</label>
-                <input type="color" data-token="surface.base" class="color-picker">
-                <input type="text" data-token="surface.base" class="color-text">
+    <!-- Color Editor Accordion Groups -->
+    <div class="color-accordion">
+        
+        <!-- Foundation Group (Surfaces + Backgrounds) -->
+        <details class="accordion-group" open>
+            <summary class="accordion-header">
+                <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+                <span class="accordion-title">Foundation</span>
+                <span class="accordion-subtitle">Surfaces &amp; Backgrounds</span>
+            </summary>
+            <div class="accordion-content">
+                <div class="color-panels-grid">
+                    <!-- Surfaces -->
+                    <div class="color-panel">
+                        <h4 class="panel-title">Surfaces</h4>
+                        <div class="color-row">
+                            <label>Base</label>
+                            <input type="color" data-token="surface.base" class="color-picker">
+                            <input type="text" data-token="surface.base" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="surface.base" title="HSL Sliders">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg>
+                            </button>
+                            <div class="hsl-sliders" data-token="surface.base">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Hover</label>
+                            <input type="color" data-token="surface.hover" class="color-picker">
+                            <input type="text" data-token="surface.hover" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="surface.hover" title="HSL Sliders">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg>
+                            </button>
+                            <div class="hsl-sliders" data-token="surface.hover">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Active</label>
+                            <input type="color" data-token="surface.active" class="color-picker">
+                            <input type="text" data-token="surface.active" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="surface.active" title="HSL Sliders">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg>
+                            </button>
+                            <div class="hsl-sliders" data-token="surface.active">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Backgrounds -->
+                    <div class="color-panel">
+                        <h4 class="panel-title">Backgrounds</h4>
+                        <div class="color-row">
+                            <label>Primary</label>
+                            <input type="color" data-token="background.primary" class="color-picker">
+                            <input type="text" data-token="background.primary" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="background.primary" title="HSL Sliders">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg>
+                            </button>
+                            <div class="hsl-sliders" data-token="background.primary">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Secondary</label>
+                            <input type="color" data-token="background.secondary" class="color-picker">
+                            <input type="text" data-token="background.secondary" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="background.secondary" title="HSL Sliders">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg>
+                            </button>
+                            <div class="hsl-sliders" data-token="background.secondary">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Elevated</label>
+                            <input type="color" data-token="background.elevated" class="color-picker">
+                            <input type="text" data-token="background.elevated" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="background.elevated" title="HSL Sliders">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg>
+                            </button>
+                            <div class="hsl-sliders" data-token="background.elevated">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="color-row">
-                <label>Hover</label>
-                <input type="color" data-token="surface.hover" class="color-picker">
-                <input type="text" data-token="surface.hover" class="color-text">
-            </div>
-            <div class="color-row">
-                <label>Active</label>
-                <input type="color" data-token="surface.active" class="color-picker">
-                <input type="text" data-token="surface.active" class="color-text">
-            </div>
-        </div>
+        </details>
 
-        <!-- Backgrounds -->
-        <div class="color-panel">
-            <h4 class="panel-title">Backgrounds</h4>
-            <div class="color-row">
-                <label>Primary</label>
-                <input type="color" data-token="background.primary" class="color-picker">
-                <input type="text" data-token="background.primary" class="color-text">
+        <!-- Typography Group (Text + Links + Code) -->
+        <details class="accordion-group">
+            <summary class="accordion-header">
+                <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+                <span class="accordion-title">Typography</span>
+                <span class="accordion-subtitle">Text, Links &amp; Code</span>
+            </summary>
+            <div class="accordion-content">
+                <div class="color-panels-grid">
+                    <!-- Text -->
+                    <div class="color-panel">
+                        <h4 class="panel-title">Text</h4>
+                        <div class="color-row">
+                            <label>Primary</label>
+                            <input type="color" data-token="text.primary" class="color-picker">
+                            <input type="text" data-token="text.primary" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="text.primary" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="text.primary">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Secondary</label>
+                            <input type="color" data-token="text.secondary" class="color-picker">
+                            <input type="text" data-token="text.secondary" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="text.secondary" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="text.secondary">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Muted</label>
+                            <input type="color" data-token="text.muted" class="color-picker">
+                            <input type="text" data-token="text.muted" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="text.muted" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="text.muted">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Links -->
+                    <div class="color-panel">
+                        <h4 class="panel-title">Links</h4>
+                        <div class="color-row">
+                            <label>Default</label>
+                            <input type="color" data-token="link.default" class="color-picker">
+                            <input type="text" data-token="link.default" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="link.default" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="link.default">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Hover</label>
+                            <input type="color" data-token="link.hover" class="color-picker">
+                            <input type="text" data-token="link.hover" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="link.hover" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="link.hover">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Visited</label>
+                            <input type="color" data-token="link.visited" class="color-picker">
+                            <input type="text" data-token="link.visited" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="link.visited" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="link.visited">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Code -->
+                    <div class="color-panel">
+                        <h4 class="panel-title">Code</h4>
+                        <div class="color-row">
+                            <label>Background</label>
+                            <input type="color" data-token="code.bg" class="color-picker">
+                            <input type="text" data-token="code.bg" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="code.bg" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="code.bg">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Text</label>
+                            <input type="color" data-token="code.text" class="color-picker">
+                            <input type="text" data-token="code.text" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="code.text" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="code.text">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Border</label>
+                            <input type="color" data-token="code.border" class="color-picker">
+                            <input type="text" data-token="code.border" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="code.border" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="code.border">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="color-row">
-                <label>Secondary</label>
-                <input type="color" data-token="background.secondary" class="color-picker">
-                <input type="text" data-token="background.secondary" class="color-text">
-            </div>
-            <div class="color-row">
-                <label>Elevated</label>
-                <input type="color" data-token="background.elevated" class="color-picker">
-                <input type="text" data-token="background.elevated" class="color-text">
-            </div>
-        </div>
+        </details>
 
-        <!-- Text -->
-        <div class="color-panel">
-            <h4 class="panel-title">Text</h4>
-            <div class="color-row">
-                <label>Primary</label>
-                <input type="color" data-token="text.primary" class="color-picker">
-                <input type="text" data-token="text.primary" class="color-text">
+        <!-- UI Controls Group -->
+        <details class="accordion-group">
+            <summary class="accordion-header">
+                <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+                <span class="accordion-title">UI Controls</span>
+                <span class="accordion-subtitle">Interactive, Inputs &amp; Borders</span>
+            </summary>
+            <div class="accordion-content">
+                <div class="color-panels-grid">
+                    <!-- Interactive -->
+                    <div class="color-panel">
+                        <h4 class="panel-title">Interactive</h4>
+                        <div class="color-row">
+                            <label>Primary</label>
+                            <input type="color" data-token="interactive.primary" class="color-picker">
+                            <input type="text" data-token="interactive.primary" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="interactive.primary" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="interactive.primary">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Hover</label>
+                            <input type="color" data-token="interactive.primary_hover" class="color-picker">
+                            <input type="text" data-token="interactive.primary_hover" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="interactive.primary_hover" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="interactive.primary_hover">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Danger</label>
+                            <input type="color" data-token="interactive.danger" class="color-picker">
+                            <input type="text" data-token="interactive.danger" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="interactive.danger" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="interactive.danger">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Inputs -->
+                    <div class="color-panel">
+                        <h4 class="panel-title">Inputs</h4>
+                        <div class="color-row">
+                            <label>Background</label>
+                            <input type="color" data-token="input.bg" class="color-picker">
+                            <input type="text" data-token="input.bg" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="input.bg" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="input.bg">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Border</label>
+                            <input type="color" data-token="input.border" class="color-picker">
+                            <input type="text" data-token="input.border" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="input.border" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="input.border">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Focus</label>
+                            <input type="color" data-token="input.focus" class="color-picker">
+                            <input type="text" data-token="input.focus" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="input.focus" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="input.focus">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Placeholder</label>
+                            <input type="color" data-token="input.placeholder" class="color-picker">
+                            <input type="text" data-token="input.placeholder" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="input.placeholder" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="input.placeholder">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Borders -->
+                    <div class="color-panel">
+                        <h4 class="panel-title">Borders</h4>
+                        <div class="color-row">
+                            <label>Default</label>
+                            <input type="color" data-token="border.default" class="color-picker">
+                            <input type="text" data-token="border.default" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="border.default" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="border.default">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Hover</label>
+                            <input type="color" data-token="border.hover" class="color-picker">
+                            <input type="text" data-token="border.hover" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="border.hover" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="border.hover">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Focus</label>
+                            <input type="color" data-token="border.focus" class="color-picker">
+                            <input type="text" data-token="border.focus" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="border.focus" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="border.focus">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Table -->
+                    <div class="color-panel">
+                        <h4 class="panel-title">Table</h4>
+                        <div class="color-row">
+                            <label>Header BG</label>
+                            <input type="color" data-token="table.header_bg" class="color-picker">
+                            <input type="text" data-token="table.header_bg" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="table.header_bg" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="table.header_bg">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Row Hover</label>
+                            <input type="color" data-token="table.row_hover" class="color-picker">
+                            <input type="text" data-token="table.row_hover" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="table.row_hover" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="table.row_hover">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Scrollbar -->
+                    <div class="color-panel">
+                        <h4 class="panel-title">Scrollbar</h4>
+                        <div class="color-row">
+                            <label>Track</label>
+                            <input type="color" data-token="scrollbar.track" class="color-picker">
+                            <input type="text" data-token="scrollbar.track" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="scrollbar.track" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="scrollbar.track">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Thumb</label>
+                            <input type="color" data-token="scrollbar.thumb" class="color-picker">
+                            <input type="text" data-token="scrollbar.thumb" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="scrollbar.thumb" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="scrollbar.thumb">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Thumb Hover</label>
+                            <input type="color" data-token="scrollbar.thumb_hover" class="color-picker">
+                            <input type="text" data-token="scrollbar.thumb_hover" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="scrollbar.thumb_hover" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="scrollbar.thumb_hover">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="color-row">
-                <label>Secondary</label>
-                <input type="color" data-token="text.secondary" class="color-picker">
-                <input type="text" data-token="text.secondary" class="color-text">
-            </div>
-            <div class="color-row">
-                <label>Muted</label>
-                <input type="color" data-token="text.muted" class="color-picker">
-                <input type="text" data-token="text.muted" class="color-text">
-            </div>
-        </div>
+        </details>
 
-        <!-- Borders -->
-        <div class="color-panel">
-            <h4 class="panel-title">Borders</h4>
-            <div class="color-row">
-                <label>Default</label>
-                <input type="color" data-token="border.default" class="color-picker">
-                <input type="text" data-token="border.default" class="color-text">
+        <!-- Feedback Group -->
+        <details class="accordion-group">
+            <summary class="accordion-header">
+                <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+                <span class="accordion-title">Feedback</span>
+                <span class="accordion-subtitle">Status Colors</span>
+            </summary>
+            <div class="accordion-content">
+                <div class="color-panels-grid">
+                    <!-- Status -->
+                    <div class="color-panel">
+                        <h4 class="panel-title">Status Colors</h4>
+                        <div class="color-row">
+                            <label>Success</label>
+                            <input type="color" data-token="status.success" class="color-picker">
+                            <input type="text" data-token="status.success" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="status.success" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="status.success">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Warning</label>
+                            <input type="color" data-token="status.warning" class="color-picker">
+                            <input type="text" data-token="status.warning" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="status.warning" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="status.warning">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Error</label>
+                            <input type="color" data-token="status.error" class="color-picker">
+                            <input type="text" data-token="status.error" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="status.error" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="status.error">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <label>Info</label>
+                            <input type="color" data-token="status.info" class="color-picker">
+                            <input type="text" data-token="status.info" class="color-text">
+                            <button type="button" class="hsl-toggle" data-token="status.info" title="HSL Sliders"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg></button>
+                            <div class="hsl-sliders" data-token="status.info">
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">H</span><input type="range" min="0" max="360" class="hsl-slider hue-slider"><span class="hsl-slider-value hue-value">0°</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">S</span><input type="range" min="0" max="100" class="hsl-slider sat-slider"><span class="hsl-slider-value sat-value">0%</span></div>
+                                <div class="hsl-slider-row"><span class="hsl-slider-label">L</span><input type="range" min="0" max="100" class="hsl-slider lit-slider"><span class="hsl-slider-value lit-value">0%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="color-row">
-                <label>Hover</label>
-                <input type="color" data-token="border.hover" class="color-picker">
-                <input type="text" data-token="border.hover" class="color-text">
-            </div>
-            <div class="color-row">
-                <label>Focus</label>
-                <input type="color" data-token="border.focus" class="color-picker">
-                <input type="text" data-token="border.focus" class="color-text">
-            </div>
-        </div>
-
-        <!-- Interactive -->
-        <div class="color-panel">
-            <h4 class="panel-title">Interactive</h4>
-            <div class="color-row">
-                <label>Primary</label>
-                <input type="color" data-token="interactive.primary" class="color-picker">
-                <input type="text" data-token="interactive.primary" class="color-text">
-            </div>
-            <div class="color-row">
-                <label>Hover</label>
-                <input type="color" data-token="interactive.primary_hover" class="color-picker">
-                <input type="text" data-token="interactive.primary_hover" class="color-text">
-            </div>
-            <div class="color-row">
-                <label>Danger</label>
-                <input type="color" data-token="interactive.danger" class="color-picker">
-                <input type="text" data-token="interactive.danger" class="color-text">
-            </div>
-        </div>
-
-        <!-- Status -->
-        <div class="color-panel">
-            <h4 class="panel-title">Status Colors</h4>
-            <div class="color-row">
-                <label>Success</label>
-                <input type="color" data-token="status.success" class="color-picker">
-                <input type="text" data-token="status.success" class="color-text">
-            </div>
-            <div class="color-row">
-                <label>Warning</label>
-                <input type="color" data-token="status.warning" class="color-picker">
-                <input type="text" data-token="status.warning" class="color-text">
-            </div>
-            <div class="color-row">
-                <label>Error</label>
-                <input type="color" data-token="status.error" class="color-picker">
-                <input type="text" data-token="status.error" class="color-text">
-            </div>
-            <div class="color-row">
-                <label>Info</label>
-                <input type="color" data-token="status.info" class="color-picker">
-                <input type="text" data-token="status.info" class="color-text">
-            </div>
-        </div>
+        </details>
     </div>
 
     <!-- Dark Mode Default Toggle -->
@@ -254,18 +626,53 @@
 .preset-selector label { font-weight: var(--font-medium); }
 .preset-selector select { padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); }
 .preset-hint { font-size: var(--text-xs); color: var(--color-text-muted); }
-.color-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
-.color-panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3); }
-.panel-title { font-size: var(--text-sm); font-weight: var(--font-semibold); margin-bottom: var(--space-3); }
-.color-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
-.color-row label { flex: 0 0 70px; font-size: var(--text-sm); color: var(--color-text-secondary); }
-.color-picker { width: 32px; height: 32px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer; }
-.color-text { flex: 1; padding: var(--space-1) var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-input-bg); }
+
+/* Accordion Structure */
+.color-accordion { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); }
+.accordion-group { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); overflow: hidden; }
+.accordion-header { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--color-bg-subtle, var(--color-bg-secondary)); cursor: pointer; user-select: none; list-style: none; transition: background var(--transition-fast); }
+.accordion-header::-webkit-details-marker { display: none; }
+.accordion-header:hover { background: var(--color-bg-hover, var(--color-surface-hover)); }
+.accordion-chevron { flex-shrink: 0; transition: transform var(--transition-fast); color: var(--color-text-muted); }
+.accordion-group[open] .accordion-chevron { transform: rotate(180deg); }
+.accordion-title { font-weight: var(--font-semibold); font-size: var(--text-sm); color: var(--color-text-primary); }
+.accordion-subtitle { font-size: var(--text-xs); color: var(--color-text-muted); margin-left: auto; }
+.accordion-content { padding: var(--space-4); border-top: 1px solid var(--color-border); }
+.color-panels-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-4); }
+
+.color-panel { background: var(--color-bg-subtle, var(--color-bg-secondary)); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3); }
+.panel-title { font-size: var(--text-sm); font-weight: var(--font-semibold); margin-bottom: var(--space-3); color: var(--color-text-primary); padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border); }
+.color-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); flex-wrap: wrap; }
+.color-row:last-child { margin-bottom: 0; }
+.color-row label { flex: 0 0 80px; font-size: var(--text-sm); color: var(--color-text-secondary); }
+.color-picker { width: 32px; height: 32px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer; flex-shrink: 0; background: transparent; -webkit-appearance: none; -moz-appearance: none; appearance: none; }
+.color-picker::-webkit-color-swatch-wrapper { padding: 2px; }
+.color-picker::-webkit-color-swatch { border-radius: var(--radius-xs); border: none; }
+.color-picker::-moz-color-swatch { border-radius: var(--radius-xs); border: none; }
+.color-text { flex: 1; min-width: 0; padding: var(--space-1) var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-input-bg, var(--color-surface)); }
+.hsl-toggle { width: 24px; height: 24px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); transition: all var(--transition-fast); flex-shrink: 0; }
+.hsl-toggle:hover { background: var(--color-bg-hover, var(--color-surface-hover)); color: var(--color-text-primary); }
+.hsl-toggle.active { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+
+/* HSL Sliders Panel */
+.hsl-sliders { width: 100%; padding: var(--space-2) 0 var(--space-2) calc(80px + var(--space-2)); display: none; }
+.hsl-sliders.visible { display: block; }
+.hsl-slider-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
+.hsl-slider-row:last-child { margin-bottom: 0; }
+.hsl-slider-label { flex: 0 0 16px; font-size: var(--text-xs); color: var(--color-text-muted); font-weight: var(--font-medium); }
+.hsl-slider { flex: 1; height: 6px; -webkit-appearance: none; appearance: none; border-radius: var(--radius-full); cursor: pointer; background: var(--color-border); }
+.hsl-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: white; border: 2px solid var(--color-primary); cursor: pointer; box-shadow: var(--shadow-sm); }
+.hsl-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: white; border: 2px solid var(--color-primary); cursor: pointer; box-shadow: var(--shadow-sm); }
+.hsl-slider-value { flex: 0 0 36px; font-size: var(--text-xs); font-family: var(--font-mono); color: var(--color-text-secondary); text-align: right; }
+.hsl-slider.hue-slider { background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000); }
+.hsl-slider.sat-slider { background: linear-gradient(to right, var(--sat-min, #808080), var(--sat-max, #ff0000)); }
+.hsl-slider.lit-slider { background: linear-gradient(to right, #000000, var(--lit-mid, #ff0000), #ffffff); }
+
 .dark-mode-control { padding: var(--space-4); background: var(--color-bg-subtle, var(--color-bg-secondary)); border-radius: var(--radius-md); margin-bottom: var(--space-4); }
 .toggle-label { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
 .toggle-text { display: flex; align-items: center; gap: var(--space-2); font-weight: var(--font-medium); }
 .toggle-checkbox { display: none; }
-.toggle-switch { width: 44px; height: 24px; background: var(--color-border); border-radius: var(--radius-full); position: relative; transition: background var(--transition-fast); }
+.toggle-switch { width: 44px; height: 24px; background: var(--color-border); border-radius: var(--radius-full); position: relative; transition: background var(--transition-fast); flex-shrink: 0; }
 .toggle-switch::after { content: ''; position: absolute; width: 20px; height: 20px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: transform var(--transition-fast); }
 .toggle-checkbox:checked + .toggle-switch { background: var(--color-primary); }
 .toggle-checkbox:checked + .toggle-switch::after { transform: translateX(20px); }
@@ -276,8 +683,8 @@
 
 /* Demo Gallery - Isolated Preview Area */
 .demo-gallery { margin-top: var(--space-6); padding: var(--space-4); border-radius: var(--radius-lg); border: 2px dashed var(--color-border); }
-.demo-gallery[data-preview-mode="light"] { background: var(--demo-bg-primary, #f9fafb); }
-.demo-gallery[data-preview-mode="dark"] { background: var(--demo-bg-primary, #0f172a); }
+.demo-gallery[data-preview-mode="light"] { background: var(--demo-bg-primary, var(--gray-50)); }
+.demo-gallery[data-preview-mode="dark"] { background: var(--demo-bg-primary, var(--gray-900)); }
 .demo-title { font-size: var(--text-md); font-weight: var(--font-semibold); margin-bottom: var(--space-4); color: var(--demo-text-primary, var(--color-text-primary)); }
 .demo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-4); }
 .demo-section h5 { font-size: var(--text-xs); text-transform: uppercase; color: var(--demo-text-muted, var(--color-text-muted)); margin-bottom: var(--space-2); }
@@ -289,9 +696,9 @@
 .demo-gallery .btn-primary:hover { background: var(--demo-primary-hover, var(--color-primary-hover)); }
 .demo-gallery .btn-secondary { background: var(--demo-surface, var(--color-surface)); color: var(--demo-text-primary, var(--color-text-primary)); border: 1px solid var(--demo-border, var(--color-border)); }
 .demo-gallery .btn-danger { background: var(--demo-danger, var(--color-danger)); color: white; }
-.demo-gallery .badge-success { background: rgba(22,163,74,0.1); color: var(--demo-success, var(--color-success)); }
-.demo-gallery .badge-warning { background: rgba(217,119,6,0.1); color: var(--demo-warning, var(--color-warning)); }
-.demo-gallery .badge-danger { background: rgba(220,38,38,0.1); color: var(--demo-error, var(--color-error)); }
+.demo-gallery .badge-success { background: var(--color-success-bg); color: var(--demo-success, var(--color-success)); }
+.demo-gallery .badge-warning { background: var(--color-warning-bg); color: var(--demo-warning, var(--color-warning)); }
+.demo-gallery .badge-danger { background: var(--color-error-bg); color: var(--demo-error, var(--color-error)); }
 .demo-gallery .badge-info { background: rgba(8,145,178,0.1); color: var(--demo-info, var(--color-info)); }
 .demo-gallery .form-input { background: var(--demo-surface, var(--color-surface)); border: 1px solid var(--demo-border, var(--color-border)); color: var(--demo-text-primary, var(--color-text-primary)); }
 .demo-card { border: 1px solid var(--demo-border, var(--color-border)); border-radius: var(--radius-md); background: var(--demo-surface, var(--color-surface)); overflow: hidden; }
@@ -305,9 +712,9 @@
 /* Toast Notifications */
 .toast-notification { position: fixed; bottom: 20px; right: 20px; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium); box-shadow: var(--shadow-lg); z-index: var(--z-toast, 800); transform: translateY(100px); opacity: 0; transition: all 0.3s ease; }
 .toast-notification.toast-visible { transform: translateY(0); opacity: 1; }
-.toast-success { background: #16a34a; color: white; }
-.toast-error { background: #dc2626; color: white; }
-.toast-info { background: #0891b2; color: white; }
+.toast-success { background: var(--color-success); color: white; }
+.toast-error { background: var(--color-error); color: white; }
+.toast-info { background: var(--color-info); color: white; }
 .toast-icon { font-size: var(--text-lg); }
 </style>
 
@@ -323,12 +730,72 @@
     function getVal(obj, path) { return path.split('.').reduce((o, k) => o && o[k], obj); }
     function setVal(obj, path, val) { const keys = path.split('.'); const last = keys.pop(); keys.reduce((o, k) => o[k] = o[k] || {}, obj)[last] = val; }
 
+    // HSL <-> Hex conversion utilities
+    function hexToHsl(hex) {
+        const r = parseInt(hex.slice(1,3), 16) / 255;
+        const g = parseInt(hex.slice(3,5), 16) / 255;
+        const b = parseInt(hex.slice(5,7), 16) / 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h, s, l = (max + min) / 2;
+        if (max === min) { h = s = 0; }
+        else {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            switch (max) {
+                case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+                case g: h = ((b - r) / d + 2) / 6; break;
+                case b: h = ((r - g) / d + 4) / 6; break;
+            }
+        }
+        return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+    }
+
+    function hslToHex(h, s, l) {
+        s /= 100; l /= 100;
+        const a = s * Math.min(l, 1 - l);
+        const f = n => {
+            const k = (n + h / 30) % 12;
+            const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+            return Math.round(255 * color).toString(16).padStart(2, '0');
+        };
+        return `#${f(0)}${f(8)}${f(4)}`;
+    }
+
+    function updateSliderGradients(token, h, s, l) {
+        const sliders = document.querySelector(`.hsl-sliders[data-token="${token}"]`);
+        if (!sliders) return;
+        const satSlider = sliders.querySelector('.sat-slider');
+        const litSlider = sliders.querySelector('.lit-slider');
+        if (satSlider) {
+            satSlider.style.setProperty('--sat-min', hslToHex(h, 0, l));
+            satSlider.style.setProperty('--sat-max', hslToHex(h, 100, l));
+        }
+        if (litSlider) {
+            litSlider.style.setProperty('--lit-mid', hslToHex(h, s, 50));
+        }
+    }
+
     function updateUI() {
         const schema = currentMode === 'light' ? lightSchema : darkSchema;
         if (!schema) return;
         document.querySelectorAll('.color-picker, .color-text').forEach(input => {
             const val = getVal(schema, input.dataset.token);
             if (val) input.value = val;
+        });
+        // Update HSL sliders
+        document.querySelectorAll('.hsl-sliders').forEach(panel => {
+            const token = panel.dataset.token;
+            const val = getVal(schema, token);
+            if (val && /^#[0-9a-fA-F]{6}$/.test(val)) {
+                const hsl = hexToHsl(val);
+                panel.querySelector('.hue-slider').value = hsl.h;
+                panel.querySelector('.sat-slider').value = hsl.s;
+                panel.querySelector('.lit-slider').value = hsl.l;
+                panel.querySelector('.hue-value').textContent = hsl.h + '°';
+                panel.querySelector('.sat-value').textContent = hsl.s + '%';
+                panel.querySelector('.lit-value').textContent = hsl.l + '%';
+                updateSliderGradients(token, hsl.h, hsl.s, hsl.l);
+            }
         });
         document.querySelectorAll('.mode-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.mode === currentMode));
         // Update preset selector to show relevant presets
@@ -384,16 +851,21 @@
     // Load all presets from server on init
     async function initPresets() {
         try {
-            const r = await fetch('/web/admin/api/color-presets');
-            allPresets = await r.json();
+            // Load presets and saved schemas in parallel
+            const [presetsRes, savedRes] = await Promise.all([
+                fetch('/web/admin/api/color-presets'),
+                fetch('/web/admin/api/saved-theme-schemas')
+            ]);
+            allPresets = await presetsRes.json();
+            const saved = await savedRes.json();
             
-            // Set defaults from server data
+            // Set defaults from preset data (for reset functionality)
             defaultLight = allPresets.light?.['Default'] || null;
             defaultDark = allPresets.dark?.['Default'] || null;
             
-            // Initialize schemas with defaults
-            lightSchema = JSON.parse(JSON.stringify(defaultLight));
-            darkSchema = JSON.parse(JSON.stringify(defaultDark));
+            // Initialize schemas from SAVED database values, not defaults
+            lightSchema = saved.light ? JSON.parse(JSON.stringify(saved.light)) : JSON.parse(JSON.stringify(defaultLight));
+            darkSchema = saved.dark ? JSON.parse(JSON.stringify(saved.dark)) : JSON.parse(JSON.stringify(defaultDark));
             
             updateUI();
         } catch(e) {
@@ -403,17 +875,45 @@
 
     document.querySelectorAll('.color-picker').forEach(p => p.addEventListener('input', function() {
         const schema = currentMode === 'light' ? lightSchema : darkSchema;
-        setVal(schema, this.dataset.token, this.value);
-        const txt = document.querySelector(`.color-text[data-token="${this.dataset.token}"]`);
+        const token = this.dataset.token;
+        setVal(schema, token, this.value);
+        const txt = document.querySelector(`.color-text[data-token="${token}"]`);
         if (txt) txt.value = this.value;
+        // Update HSL sliders
+        const hsl = hexToHsl(this.value);
+        const panel = document.querySelector(`.hsl-sliders[data-token="${token}"]`);
+        if (panel) {
+            panel.querySelector('.hue-slider').value = hsl.h;
+            panel.querySelector('.sat-slider').value = hsl.s;
+            panel.querySelector('.lit-slider').value = hsl.l;
+            panel.querySelector('.hue-value').textContent = hsl.h + '°';
+            panel.querySelector('.sat-value').textContent = hsl.s + '%';
+            panel.querySelector('.lit-value').textContent = hsl.l + '%';
+            updateSliderGradients(token, hsl.h, hsl.s, hsl.l);
+        }
         updateDemoPreview();
     }));
 
     document.querySelectorAll('.color-text').forEach(t => t.addEventListener('change', function() {
         const schema = currentMode === 'light' ? lightSchema : darkSchema;
-        setVal(schema, this.dataset.token, this.value);
-        const p = document.querySelector(`.color-picker[data-token="${this.dataset.token}"]`);
-        if (p && /^#[0-9a-fA-F]{6}$/.test(this.value)) p.value = this.value;
+        const token = this.dataset.token;
+        setVal(schema, token, this.value);
+        const p = document.querySelector(`.color-picker[data-token="${token}"]`);
+        if (p && /^#[0-9a-fA-F]{6}$/.test(this.value)) {
+            p.value = this.value;
+            // Update HSL sliders
+            const hsl = hexToHsl(this.value);
+            const panel = document.querySelector(`.hsl-sliders[data-token="${token}"]`);
+            if (panel) {
+                panel.querySelector('.hue-slider').value = hsl.h;
+                panel.querySelector('.sat-slider').value = hsl.s;
+                panel.querySelector('.lit-slider').value = hsl.l;
+                panel.querySelector('.hue-value').textContent = hsl.h + '°';
+                panel.querySelector('.sat-value').textContent = hsl.s + '%';
+                panel.querySelector('.lit-value').textContent = hsl.l + '%';
+                updateSliderGradients(token, hsl.h, hsl.s, hsl.l);
+            }
+        }
         updateDemoPreview();
     }));
 
@@ -493,6 +993,53 @@
             setTimeout(() => toast.remove(), 300);
         }, 3000);
     }
+
+    // HSL toggle button handlers
+    document.querySelectorAll('.hsl-toggle').forEach(btn => btn.addEventListener('click', function() {
+        const token = this.dataset.token;
+        const panel = document.querySelector(`.hsl-sliders[data-token="${token}"]`);
+        if (panel) {
+            const isVisible = panel.classList.toggle('visible');
+            this.classList.toggle('active', isVisible);
+            // Initialize gradients when opening
+            if (isVisible) {
+                const schema = currentMode === 'light' ? lightSchema : darkSchema;
+                const val = getVal(schema, token);
+                if (val && /^#[0-9a-fA-F]{6}$/.test(val)) {
+                    const hsl = hexToHsl(val);
+                    updateSliderGradients(token, hsl.h, hsl.s, hsl.l);
+                }
+            }
+        }
+    }));
+
+    // HSL slider handlers
+    document.querySelectorAll('.hsl-slider').forEach(slider => slider.addEventListener('input', function() {
+        const panel = this.closest('.hsl-sliders');
+        const token = panel.dataset.token;
+        const h = parseInt(panel.querySelector('.hue-slider').value);
+        const s = parseInt(panel.querySelector('.sat-slider').value);
+        const l = parseInt(panel.querySelector('.lit-slider').value);
+        
+        // Update value displays
+        panel.querySelector('.hue-value').textContent = h + '°';
+        panel.querySelector('.sat-value').textContent = s + '%';
+        panel.querySelector('.lit-value').textContent = l + '%';
+        
+        // Convert to hex and update other inputs
+        const hex = hslToHex(h, s, l);
+        const schema = currentMode === 'light' ? lightSchema : darkSchema;
+        setVal(schema, token, hex);
+        
+        const picker = document.querySelector(`.color-picker[data-token="${token}"]`);
+        const text = document.querySelector(`.color-text[data-token="${token}"]`);
+        if (picker) picker.value = hex;
+        if (text) text.value = hex;
+        
+        // Update gradient backgrounds
+        updateSliderGradients(token, h, s, l);
+        updateDemoPreview();
+    }));
 
     // Initialize: load presets from server
     initPresets();

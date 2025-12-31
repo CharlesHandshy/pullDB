@@ -1082,6 +1082,47 @@ class SimulatedUserRepository:
             if user.user_code in self.state.users_by_code:
                 self.state.users_by_code[user.user_code] = updated
 
+    def delete_user(self, user_id: str) -> dict[str, int]:
+        """Delete a user and all related records.
+        
+        Users with ANY jobs cannot be deleted (preserves history).
+        """
+        with self.state.lock:
+            user = self.state.users.get(user_id)
+            if not user:
+                raise ValueError(f"User not found: {user_id}")
+            
+            # Check for any jobs
+            job_count = sum(
+                1 for j in self.state.jobs.values()
+                if j.owner_user_id == user_id
+            )
+            if job_count > 0:
+                raise ValueError(
+                    f"Cannot delete user with {job_count} job(s) in history. "
+                    "Use 'disable user' instead to preserve job history."
+                )
+            
+            # Clear manager_id for managed users
+            managed_users_updated = 0
+            for uid, u in list(self.state.users.items()):
+                if u.manager_id == user_id:
+                    updated = replace(u, manager_id=None)
+                    self.state.users[uid] = updated
+                    if u.user_code in self.state.users_by_code:
+                        self.state.users_by_code[u.user_code] = updated
+                    managed_users_updated += 1
+            
+            # Delete user
+            del self.state.users[user_id]
+            if user.user_code in self.state.users_by_code:
+                del self.state.users_by_code[user.user_code]
+            
+            return {
+                "managed_users_updated": managed_users_updated,
+                "user_deleted": 1,
+            }
+
     # =========================================================================
     # Bulk Operations (Admin only)
     # =========================================================================
@@ -1401,6 +1442,27 @@ class SimulatedHostRepository:
     def list_hosts(self) -> list[DBHost]:
         """Get all hosts (alias for get_all_hosts)."""
         return self.get_all_hosts()
+
+    def hard_delete_host(self, host_id: str) -> None:
+        """Permanently delete a host by ID.
+        
+        Used by admin Remove Host feature after secret deletion.
+        
+        Raises:
+            ValueError: If host not found.
+        """
+        with self.state.lock:
+            # Find host by ID
+            target_hostname = None
+            for hostname, host in self.state.hosts.items():
+                if host.id == host_id:
+                    target_hostname = hostname
+                    break
+            
+            if target_hostname is None:
+                raise ValueError(f"Host not found: {host_id}")
+            
+            del self.state.hosts[target_hostname]
 
 
 class SimulatedSettingsRepository:
@@ -1886,13 +1948,20 @@ class SimulatedAuditRepository:
             # Apply pagination
             paginated = filtered[offset : offset + limit]
             
-            # Transform to match expected format
+            # Build username lookup from users
+            user_lookup = {uid: u.username for uid, u in self.state.users.items()}
+            
+            # Transform to match expected format with username enrichment
             results = []
             for entry in paginated:
+                actor_uid = entry["actor_user_id"]
+                target_uid = entry["target_user_id"]
                 results.append({
                     "audit_id": entry["audit_id"],
-                    "actor_user_id": entry["actor_user_id"],
-                    "target_user_id": entry["target_user_id"],
+                    "actor_user_id": actor_uid,
+                    "actor_username": user_lookup.get(actor_uid),
+                    "target_user_id": target_uid,
+                    "target_username": user_lookup.get(target_uid) if target_uid else None,
                     "action": entry["action"],
                     "detail": entry["detail"],
                     "context": json.loads(entry["context_json"]) if entry["context_json"] else None,

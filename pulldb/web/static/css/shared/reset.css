@@ -1,0 +1,276 @@
+/* =================================================================
+   pullDB CSS Reset
+   HCA Layer: shared
+   
+   Purpose: Normalize browser defaults and establish base styles.
+   Depends: design-tokens.css
+   ================================================================= */
+
+/* ===========================================
+   BOX SIZING
+   =========================================== */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* ===========================================
+   ROOT & BODY
+   =========================================== */
+
+html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-size-adjust: 100%;
+    tab-size: 4;
+    line-height: 1.5;
+}
+
+body {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
+    color: var(--color-text-primary);
+    background: var(--color-bg-primary);
+    min-height: 100vh;
+}
+
+/* Prevent page-level scrolling for app layout */
+html.app-layout,
+html.app-layout body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* ===========================================
+   TYPOGRAPHY RESET
+   =========================================== */
+
+h1, h2, h3, h4, h5, h6 {
+    font-size: inherit;
+    font-weight: inherit;
+}
+
+p, h1, h2, h3, h4, h5, h6 {
+    overflow-wrap: break-word;
+}
+
+/* ===========================================
+   LINKS
+   =========================================== */
+
+a {
+    color: inherit;
+    text-decoration: inherit;
+}
+
+/* ===========================================
+   LISTS
+   =========================================== */
+
+ol, ul {
+    list-style: none;
+}
+
+/* ===========================================
+   MEDIA
+   =========================================== */
+
+img, svg, video, canvas, audio, iframe, embed, object {
+    display: block;
+    max-width: 100%;
+}
+
+img, video {
+    height: auto;
+}
+
+/* ===========================================
+   TABLES
+   =========================================== */
+
+table {
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
+/* ===========================================
+   FORM ELEMENTS
+   =========================================== */
+
+button,
+input,
+optgroup,
+select,
+textarea {
+    font-family: inherit;
+    font-size: 100%;
+    font-weight: inherit;
+    line-height: inherit;
+    color: inherit;
+    margin: 0;
+    padding: 0;
+}
+
+button,
+select {
+    text-transform: none;
+}
+
+button,
+[type='button'],
+[type='reset'],
+[type='submit'] {
+    -webkit-appearance: button;
+    background-color: transparent;
+    background-image: none;
+}
+
+:-moz-focusring {
+    outline: auto;
+}
+
+:-moz-ui-invalid {
+    box-shadow: none;
+}
+
+::-webkit-inner-spin-button,
+::-webkit-outer-spin-button {
+    height: auto;
+}
+
+[type='search'] {
+    -webkit-appearance: textfield;
+    outline-offset: -2px;
+}
+
+::-webkit-search-decoration {
+    -webkit-appearance: none;
+}
+
+::-webkit-file-upload-button {
+    -webkit-appearance: button;
+    font: inherit;
+}
+
+textarea {
+    resize: vertical;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--color-text-muted);
+    opacity: 1;
+}
+
+button,
+[role="button"] {
+    cursor: pointer;
+}
+
+:disabled {
+    cursor: default;
+}
+
+/* ===========================================
+   FOCUS STYLES (Accessibility)
+   =========================================== */
+
+:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* ===========================================
+   REDUCED MOTION
+   =========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* ===========================================
+   SCROLLBAR STYLING
+   =========================================== */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--gray-300);
+    border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--gray-400);
+}
+
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--gray-300) var(--color-bg-secondary);
+}
+
+/* ===========================================
+   DARK MODE
+   Global overrides for body, scrollbar, selection
+   =========================================== */
+
+[data-theme="dark"] body {
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+}
+
+/* Dark mode focus ring - more visible */
+[data-theme="dark"] :focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+/* Selection highlight */
+[data-theme="dark"] ::selection {
+    background: rgba(96, 165, 250, 0.3);
+    color: var(--color-text-primary);
+}
+
+/* Dark mode scrollbar */
+[data-theme="dark"] ::-webkit-scrollbar-track {
+    background: var(--color-scrollbar-track, #1e293b);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: var(--color-scrollbar-thumb, #475569);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-scrollbar-thumb-hover, #64748b);
+}
+
+/* Firefox dark mode */
+[data-theme="dark"] * {
+    scrollbar-color: var(--color-scrollbar-thumb, #475569) var(--color-scrollbar-track, #1e293b);
+}

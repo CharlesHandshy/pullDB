@@ -1,0 +1,201 @@
+/* =================================================================
+   Stats Bar Widget
+   HCA Layer: widgets (Layer 3)
+   
+   Purpose: Compact horizontal stats display with icons for dashboards
+   Depends: design-tokens.css
+   ================================================================= */
+
+/* ===========================================
+   STATS BAR CONTAINER
+   Horizontal flex layout, wraps on mobile
+   =========================================== */
+
+.stats-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    align-items: stretch;
+    margin-top: var(--space-6);
+}
+
+/* ===========================================
+   STAT ITEM
+   Individual stat block with icon + values
+   =========================================== */
+
+.stats-bar__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/* Icon styling */
+.stats-bar__icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+}
+
+.stats-bar__icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Label - shows on larger screens */
+.stats-bar__label {
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--gray-500);
+    margin-right: var(--space-1);
+}
+
+/* Values container */
+.stats-bar__values {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+}
+
+/* Individual value with optional suffix */
+.stats-bar__value {
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    line-height: 1;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 2px;
+}
+
+/* Suffix (Ena, Dis, Q, R, C, F) */
+.stats-bar__suffix {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    opacity: 0.8;
+}
+
+/* ===========================================
+   FLEX GROW MODIFIER
+   Allow specific items to grow (System Jobs)
+   =========================================== */
+
+.stats-bar__item--grow {
+    flex: 1 1 auto;
+}
+
+/* ===========================================
+   COMPACT MODIFIER
+   Pill-style variant matching status-bar aesthetic
+   Used for unified look across dashboards and list pages
+   =========================================== */
+
+.stats-bar--compact {
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--gray-200);
+    margin-top: 0;
+    display: inline-flex;
+    flex-wrap: nowrap;
+}
+
+[data-theme="dark"] .stats-bar--compact {
+    background: var(--gray-800);
+    border-color: var(--gray-700);
+}
+
+.stats-bar--compact .stats-bar__item {
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    gap: var(--space-1);
+}
+
+.stats-bar--compact .stats-bar__label {
+    display: none;
+}
+
+.stats-bar--compact .stats-bar__icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.stats-bar--compact .stats-bar__value {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+.stats-bar--compact .stats-bar__suffix {
+    font-size: 0.6875rem;
+}
+
+.stats-bar--compact .stats-bar__values {
+    gap: var(--space-2);
+}
+
+/* Divider between items in compact mode */
+.stats-bar--compact .stats-bar__item + .stats-bar__item::before {
+    content: '';
+    width: 1px;
+    height: 16px;
+    background: var(--gray-300);
+    margin-right: var(--space-3);
+}
+
+[data-theme="dark"] .stats-bar--compact .stats-bar__item + .stats-bar__item::before {
+    background: var(--gray-600);
+}
+
+/* ===========================================
+   RESPONSIVE: Stack on mobile
+   =========================================== */
+
+@media (max-width: 640px) {
+    .stats-bar {
+        flex-direction: column;
+    }
+    
+    .stats-bar__item {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .stats-bar__values {
+        margin-left: auto;
+    }
+}
+
+/* Hide label on very small screens to save space */
+@media (max-width: 480px) {
+    .stats-bar__label {
+        display: none;
+    }
+}
+
+/* ===========================================
+   DARK MODE
+   =========================================== */
+
+[data-theme="dark"] .stats-bar__item {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .stats-bar__label {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .stats-bar__value {
+    color: var(--color-text-primary);
+}

@@ -6,6 +6,319 @@
 
 ---
 
+## DEPLOYMENT PROTOCOL (CRITICAL)
+
+**ALWAYS use Debian packages for deployment. NEVER use pip install directly.**
+
+```bash
+# Build wheel first
+python3 -m build
+
+# Build .deb package
+./scripts/build_deb.sh
+
+# Deploy via .deb (this handles venv, schema, services)
+sudo dpkg -i pulldb_X.X.X_amd64.deb
+
+# Restart web service
+sudo systemctl restart pulldb-web
+```
+
+**Rationale**: The .deb package handles all deployment concerns (venv setup, schema migrations, systemd units, permissions) in a reproducible way. Direct pip install bypasses these safeguards.
+
+---
+
+## 2025-01-28 | Theme Management Page Overhaul (Phases 1-3)
+
+### Context
+User requested: "A complete page to recolor the theme styles sitewide for Light and Dark mode. Reorder and update this page so that we can retheme with color and sliders, make it easier to use."
+
+### What Was Done
+
+1. **Restructured `_appearance.html`**: Reorganized from 6 flat color panels to 4 collapsible accordion groups:
+   - **Foundation**: Surfaces + Backgrounds (6 tokens)
+   - **Typography**: Text + Links + Code (9 tokens)
+   - **UI Controls**: Interactive + Inputs + Borders + Table + Scrollbar (17 tokens)
+   - **Feedback**: Status Colors (4 tokens)
+
+2. **Added 18 new color controls** for previously unexposed tokens:
+   - Links: default, hover, visited
+   - Code: background, text, border
+   - Inputs: background, border, focus, placeholder
+   - Table: header background, row hover
+   - Scrollbar: track, thumb, thumb hover
+
+3. **Added HSL sliders** to all 37 color tokens:
+   - Click '+' button to expand H/S/L sliders for any color
+   - Bidirectional sync: sliders ↔ hex picker ↔ text input
+   - Dynamic gradient tracks show color space visually
+   - Enables harmonious color variations (same H, vary S/L)
+
+4. **Fixed hardcoded hex colors** in appearance.html:
+   - Toast notifications → `var(--color-success/error/info)`
+   - Demo gallery fallbacks → `var(--gray-50/900)`
+   - Badge backgrounds → `var(--color-*-bg)` tokens
+
+### Commits
+- `0f89a16`: Phase 1 - THEME-CONFORMITY-INDEX.md + audit script
+- `ec679e1`: Phase 2 - Accordion restructure + new color controls
+- `f0f95bb`: Phase 3 - HSL sliders for all 37 tokens
+
+### PAUSED - Remaining Tasks
+- **Remediate hardcoded colors sitewide**: profile.css L772/L906, other files per THEME-CONFORMITY-INDEX.md
+- **Add theme export/import**: Download/upload JSON theme files
+
+### Deployment Note
+2025-12-30: Deploying to production for evaluation before continuing with remaining tasks.
+
+---
+
+## 2025-01-28 | Theme Conformity Index & Audit Script (Phase 1)
+
+### Context
+Pre-work for theme management overhaul. Created documentation and tooling to ensure theme consistency across codebase.
+
+### What Was Done
+1. **Created `docs/THEME-CONFORMITY-INDEX.md`**: Complete index of all 68 CSS theme tokens, compliance status per file, and remediation queue
+2. **Created `scripts/audit_theme_conformity.py`**: Pre-commit script that detects hardcoded hex colors, `[data-theme]` overrides, and inline styles without `var()`
+
+### Rationale
+- **Continuous Learning**: Index serves as single source of truth for theme architecture
+- **Pre-commit Enforcement**: Prevents regression of hardcoded colors
+
+---
+
+## 2025-01-28 | KISS S3 Configuration Cleanup
+
+### Context
+Deep audit revealed 9 S3-related config variables but only 2 were functional. The rest were dead code from earlier development phases creating confusion and maintenance burden. User decided: "Let's solidify what works and clean up the rest."
+
+### What Was Done
+
+1. **`packaging/env.example`**: Removed staging location from `PULLDB_S3_BACKUP_LOCATIONS` JSON array - now production only
+
+2. **`pulldb/domain/settings.py`**: Removed 4 dead settings:
+   - `s3_bucket_stg` (PULLDB_S3_BUCKET_STG)
+   - `s3_bucket_prod` (PULLDB_S3_BUCKET_PROD)
+   - `s3_aws_profile_stg` (PULLDB_S3_AWS_PROFILE_STG)
+   - `s3_aws_profile_prod` (PULLDB_S3_AWS_PROFILE_PROD)
+
+3. **`pulldb/domain/services/discovery.py`**: Replaced hardcoded fallback locations with FAIL HARD error message when `PULLDB_S3_BACKUP_LOCATIONS` not configured
+
+4. **`pulldb/domain/config.py`**: Removed fallback to `s3_bucket_stg`/`s3_bucket_prod` settings
+
+5. **`pulldb/web/templates/features/restore/restore.html`**: Removed environment selector UI (Production/Staging/All) - replaced with hidden input defaulting to production
+
+6. **`docs/hca/shared/configuration.md`**: Updated documentation to reflect only working config vars
+
+7. **`docs/KNOWLEDGE-POOL.json`**: Removed staging S3 bucket references, added note about single config var
+
+8. **`pulldb/tests/test_config.py`**: Updated test fixtures to use `s3_bucket_path` instead of staging vars, removed tests for removed fallback behavior
+
+9. **`pulldb/tests/conftest.py`**: Updated test fixtures and documentation to reference production S3 bucket
+
+### Rationale
+- **KISS principle**: Ship what works, save complexity for later
+- **FAIL HARD protocol**: No silent fallbacks - if config is missing, fail with clear error
+- **Dead code elimination**: 4+ unused settings removed reduces maintenance burden
+- **Single source of truth**: `PULLDB_S3_BACKUP_LOCATIONS` is the only active S3 config
+
+### Files Modified
+- `packaging/env.example`
+- `pulldb/domain/settings.py`
+- `pulldb/domain/services/discovery.py`
+- `pulldb/domain/config.py`
+- `pulldb/web/templates/features/restore/restore.html`
+- `docs/hca/shared/configuration.md`
+- `docs/KNOWLEDGE-POOL.json`
+- `pulldb/tests/test_config.py`
+- `pulldb/tests/conftest.py`
+
+---
+
+## 2025-12-29 | Hard Delete Functionality for Soft-Deleted Jobs
+
+### Context
+User requested ability to perform a "hard delete" (remove job record from database) for jobs that have already been soft-deleted (status=deleted). The delete button was being hidden for jobs in deleted status.
+
+### What Was Done
+1. **Frontend: Modified `jobIdHistory` renderer** in [jobs.html](pulldb/web/templates/features/jobs/jobs.html):
+   - Removed `deleted` from status exclusion list for delete button
+   - Added detection of `isHardDelete` when `row.status === 'deleted'`
+   - Added `hard-delete` CSS class for differentiation
+   - Updated button title to "Hard Delete (remove job record)" for deleted jobs
+
+2. **Frontend: Modified `singleDelete.open()`** in [jobs.html](pulldb/web/templates/features/jobs/jobs.html):
+   - Accepts `isHardDelete` parameter
+   - Shows different modal title: "🗑️ Hard Delete Job Record"
+   - Shows different description: "This job's databases have already been deleted. This will permanently remove the job record."
+   - Auto-checks and hides hard_delete checkbox for already-deleted jobs
+
+3. **Frontend: Modified click handler** to pass `isHardDelete` flag to modal
+
+4. **Frontend: Modified `singleDelete.execute()`** to always send `hard_delete=true` when `isHardDeleteOnly`
+
+5. **Backend: Modified `can_delete` logic** in [routes.py](pulldb/web/features/jobs/routes.py#L587):
+   - Changed exclusion from `JobStatus.DELETED` to `JobStatus.DELETING`
+   - Now allows `can_delete=True` for deleted jobs (enabling hard delete)
+
+6. **Database: Updated schema** in [300_mysql_users.sql](schema/pulldb_service/300_mysql_users.sql):
+   - Added DELETE permission to `pulldb_api` user for `jobs` and `job_events` tables
+   - Required for `hard_delete_job()` to delete job records
+
+7. **Database: Granted permissions** (one-time fix for existing installations):
+   ```sql
+   GRANT DELETE ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
+   GRANT DELETE ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
+   ```
+
+### Rationale
+- **Two-stage delete workflow**: Soft delete removes databases, hard delete removes job record
+- **Backend logic exists**: `force_hard_delete = job.status == JobStatus.DELETED` already in delete endpoint
+- **Least privilege principle**: Only grant DELETE when needed (hard delete feature)
+- **Progressive disclosure**: Modal title/description adapts to context so users understand the action
+
+### Testing
+- Verified delete button appears for deleted jobs with "Hard Delete" title
+- Verified modal shows correct hard delete messaging
+- Verified hard delete successfully removes job from database
+- Job count decreased from 11 to 10 after hard delete
+
+---
+
+## 2025-12-27 | Job Delete Services Fix & Status Lifecycle
+
+### Context
+Job delete services (single and bulk) were broken. Single delete had a function signature mismatch; bulk delete had result structure mismatch between worker and status polling endpoint.
+
+### What Was Done
+1. **Fixed single delete route signature** in [routes.py](pulldb/web/features/jobs/routes.py#L436):
+   - Changed from `(job_id, target_name, user_code, connection_config)` 
+   - To `(job_id, staging_name, target_name, owner_user_code, dbhost, host_repo)`
+
+2. **Fixed bulk delete result structure** in [admin_tasks.py](pulldb/worker/admin_tasks.py):
+   - Worker now uses `progress` dict with counts (`processed`, `soft_deleted`, `hard_deleted`, `errors`)
+   - Matches what status endpoint expects: `result.get("progress", {}).get("processed", 0)`
+
+3. **Added `DELETING` intermediate status** in [models.py](pulldb/domain/models.py):
+   - New status for visibility during async bulk delete operations
+   - Called via `mark_job_deleting()` before database drops
+
+4. **Added schema migration** [080_job_delete_support.sql](schema/pulldb_service/080_job_delete_support.sql):
+   - Updated ENUM to include `deleting` status
+
+5. **Added badge styling** in [admin.css](pulldb/web/static/css/pages/admin.css):
+   - `.badge-pulse` animation for visual feedback during deletion
+
+6. **Added unit tests** [test_job_delete.py](tests/unit/test_job_delete.py):
+   - 13 tests covering `JobDeleteResult`, `is_valid_staging_name`, and `delete_job_databases`
+
+7. **Removed orphaned file**: `jobs_old.html` (0 references found)
+
+### Rationale
+- **FAIL HARD principle**: Single delete was silently failing due to wrong parameters
+- **Status lifecycle**: Jobs need visibility during async operations (deleting → deleted)
+- **Result structure alignment**: Worker and polling endpoint must agree on data shape
+
+### Files Modified
+- `pulldb/web/features/jobs/routes.py` (signature fix, job_infos collection)
+- `pulldb/worker/admin_tasks.py` (result structure, mark_job_deleting call)
+- `pulldb/domain/models.py` (DELETING enum value)
+- `pulldb/infra/mysql.py` (mark_job_deleting method)
+- `pulldb/web/templates/features/jobs/jobs.html` (badge class, can_delete check)
+- `pulldb/web/static/css/pages/admin.css` (.badge-pulse animation)
+- `schema/pulldb_service/080_job_delete_support.sql` (deleting in ENUM)
+- `tests/unit/test_job_delete.py` (new - 13 tests)
+- `CHANGELOG.md` (documented changes)
+- Deleted: `pulldb/web/templates/features/jobs/jobs_old.html`
+
+---
+
+## 2025-12-27 | Fix theme.css AttributeError (v0.1.2)
+
+### Context
+Dark mode was broken - theme.css endpoint returning 500 Internal Server Error.
+
+### What Was Done
+- **Root cause**: `settings_repo.get()` should be `settings_repo.get_setting()` per `SettingsRepository` protocol
+- Fixed in [routes.py](pulldb/web/features/admin/routes.py#L4094-L4105) and [theme_generator.py](pulldb/web/features/admin/theme_generator.py#L152-L163)
+- Rebuilt and deployed v0.1.2 via Debian package
+
+### Rationale
+The `SettingsRepository` protocol defines `get_setting(key)`, not `get(key)`. Code was written against wrong interface.
+
+---
+
+## 2025-12-27 | Force Delete User Feature Implementation
+
+### Context
+User requested async force-delete user feature with database drops, job cleanup, and user record deletion via background admin task queue.
+
+### What Was Done
+
+1. **Created admin_tasks queue schema** (`schema/pulldb_service/077_admin_tasks.sql`):
+   - task_id UUID primary key, task_type ENUM, status ENUM
+   - `running_task_type` generated column with unique index for max 1 concurrent task
+   - Foreign keys to auth_users for requested_by and target_user_id
+   - Supports orphan recovery via 10-minute stale timeout
+
+2. **Added domain models** (`pulldb/domain/models.py`):
+   - AdminTaskType enum: FORCE_DELETE_USER
+   - AdminTaskStatus enum: PENDING, RUNNING, COMPLETE, FAILED
+   - AdminTask dataclass with all task fields
+
+3. **Created AdminTaskRepository** (`pulldb/infra/mysql.py`):
+   - create_task(), claim_next_task() with orphan recovery
+   - complete_task(), fail_task(), get_task()
+   - Added count_jobs_by_user(), get_user_target_databases() to JobRepository
+
+4. **Created AdminTaskExecutor** (`pulldb/worker/admin_tasks.py`):
+   - execute_task() dispatcher
+   - _execute_force_delete_user() with full audit logging
+   - _drop_target_database() using pulldb_loader credentials per host
+   - PROTECTED_DATABASES frozenset prevents system DB drops
+
+5. **Extended worker service** (`pulldb/worker/loop.py`, `service.py`):
+   - Admin task polling (lower priority than restore jobs)
+   - Passes all required repositories to executor
+
+6. **Added API endpoints** (`pulldb/web/features/admin/routes.py`):
+   - GET /users/{id}/force-delete-preview - preview databases and job count
+   - POST /users/{id}/force-delete - create admin task
+   - GET /admin-tasks/{id} - status page with HTMX polling
+   - GET /admin-tasks/{id}/json - JSON status for API
+
+7. **Updated UI** (`users.html`, `admin.css`, `admin_task_status.html`):
+   - Force delete modal with username confirmation
+   - Skip all drops checkbox, individual database checkboxes
+   - Dark mode styles for modal
+   - Status page with progress stats and database drop results
+
+8. **Updated MySQL grants** (`300_mysql_users.sql`):
+   - pulldb_api: SELECT,INSERT on admin_tasks
+   - pulldb_worker: Full access for execution
+
+### Rationale
+- **HCA Compliance**: All files placed in correct layers (domain/models, infra/mysql, worker/, web/)
+- **Audit Compliance**: All actions logged to audit_logs with task_id correlation
+- **Concurrency Control**: Generated column trick for MySQL partial index simulation
+- **FAIL HARD**: Protected databases frozenset, explicit error handling
+
+### Files Created/Modified
+- `schema/pulldb_service/077_admin_tasks.sql` (NEW)
+- `pulldb/domain/models.py` (MODIFIED - added enums and dataclass)
+- `pulldb/infra/mysql.py` (MODIFIED - AdminTaskRepository, job count methods)
+- `pulldb/worker/admin_tasks.py` (NEW)
+- `pulldb/worker/loop.py` (MODIFIED - admin task polling)
+- `pulldb/worker/service.py` (MODIFIED - executor initialization)
+- `pulldb/web/features/admin/routes.py` (MODIFIED - 4 new endpoints)
+- `pulldb/web/templates/features/admin/users.html` (MODIFIED - modal + JS)
+- `pulldb/web/templates/features/admin/admin_task_status.html` (NEW)
+- `pulldb/web/static/css/pages/admin.css` (MODIFIED - modal styles)
+- `schema/pulldb_service/300_mysql_users.sql` (MODIFIED - grants)
+
+---
+
 ## 2025-12-22 | Visual Testing & Page-Level CSS Fixes
 
 ### Context

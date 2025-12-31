@@ -158,6 +158,7 @@ EVENT_TO_PHASE: dict[str, str] = {
     "restore_progress": "myloader",
     "restore_complete": "post_sql",
     "post_sql_started": "post_sql",
+    "post_sql_script_complete": "post_sql",
     "post_sql_complete": "post_sql",
     "metadata_started": "atomic_rename",
     "metadata_complete": "atomic_rename",
@@ -222,6 +223,8 @@ async def job_details(
     job_id: str,
     cancel_error: str | None = Query(None),
     cancel_success: str | None = Query(None),
+    delete_error: str | None = Query(None),
+    delete_success: str | None = Query(None),
     state: Any = Depends(get_api_state),
     user: User = Depends(require_login),
 ) -> HTMLResponse:
@@ -269,7 +272,7 @@ async def job_details(
     elif hasattr(state.job_repo, "get_cancel_requested_at"):
         cancel_requested_at = state.job_repo.get_cancel_requested_at(job_id)
 
-    # Build flash message from query params
+    # Build flash message from query params (cancel or delete)
     flash_message = None
     flash_type = None
     if cancel_error:
@@ -277,6 +280,12 @@ async def job_details(
         flash_type = "error"
     elif cancel_success:
         flash_message = cancel_success
+        flash_type = "success"
+    elif delete_error:
+        flash_message = delete_error
+        flash_type = "error"
+    elif delete_success:
+        flash_message = delete_success
         flash_type = "success"
 
     return templates.TemplateResponse(
@@ -352,6 +361,20 @@ async def cancel_job(
             detail=f"User {user.username} requested job cancellation",
         )
 
+        # Audit log job cancellation
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="job_canceled",
+                target_user_id=job.owner_user_id,
+                detail=f"Canceled job {job_id[:12]} (status was {job.status.value})",
+                context={
+                    "job_id": job_id,
+                    "previous_status": job.status.value,
+                    "target": job.target,
+                },
+            )
+
         if job.status == JobStatus.QUEUED:
             state.job_repo.mark_job_canceled(
                 job_id, "Canceled before execution started"
@@ -363,6 +386,151 @@ async def cancel_job(
     else:
         # Cancellation was already requested or job state changed
         return redirect_error("Cancellation already requested or job completed")
+
+
+@router.post("/{job_id}/delete-database")
+async def delete_job_database(
+    job_id: str,
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> RedirectResponse:
+    """Delete databases for a completed job (staging + target).
+    
+    Supports soft delete (status=deleted) or hard delete (remove record).
+    """
+    from urllib.parse import urlencode
+
+    from pulldb.domain.permissions import can_delete_job_database
+    from pulldb.worker.cleanup import delete_job_databases
+
+    base_url = f"/web/jobs/{job_id}"
+
+    def redirect_error(msg: str) -> RedirectResponse:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': msg})}",
+            status_code=303,
+        )
+
+    def redirect_success(msg: str) -> RedirectResponse:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_success': msg})}",
+            status_code=303,
+        )
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return redirect_error("Job repository unavailable")
+
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        return redirect_error("Job not found")
+
+    # Must be in terminal state to delete
+    if job.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+        return redirect_error(f"Cannot delete active job (status: {job.status.value})")
+
+    # If already soft-deleted, force hard delete on second attempt
+    force_hard_delete = job.status == JobStatus.DELETED
+
+    # Authorization check
+    job_owner = state.user_repo.get_user_by_id(job.owner_user_id)
+    job_owner_manager_id = job_owner.manager_id if job_owner else None
+
+    if not can_delete_job_database(user, job.owner_user_id, job_owner_manager_id):
+        return redirect_error("You do not have permission to delete this job")
+
+    # Parse form data for hard_delete option
+    form_data = await request.form()
+    hard_delete_val = form_data.get("hard_delete", "")
+    # Handle both str and UploadFile (which shouldn't happen for checkboxes)
+    if isinstance(hard_delete_val, str):
+        hard_delete = hard_delete_val.lower() in ("true", "1", "on")
+    else:
+        hard_delete = False
+
+    # Force hard delete if job was already soft-deleted
+    if force_hard_delete:
+        hard_delete = True
+
+    # Get job owner's user_code for validation
+    job_owner_user_code = job_owner.user_code if job_owner else None
+
+    # Perform the delete
+    result = delete_job_databases(
+        job_id=job_id,
+        staging_name=job.staging_name,
+        target_name=job.target,
+        owner_user_code=job_owner_user_code or "",
+        dbhost=job.dbhost,
+        host_repo=state.host_repo,
+    )
+
+    # Audit log the delete operation
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        state.audit_repo.log_action(
+            actor_user_id=user.user_id,
+            action="job_delete_requested",
+            target_user_id=job.owner_user_id,
+            detail=f"{'Hard' if hard_delete else 'Soft'} delete job {job_id[:12]} target={job.target}",
+            context={
+                "job_id": job_id,
+                "hard_delete": hard_delete,
+                "target": job.target,
+                "owner_user_code": job_owner_user_code,
+                "staging_existed": result.staging_existed,
+                "staging_dropped": result.staging_dropped,
+                "target_existed": result.target_existed,
+                "target_dropped": result.target_dropped,
+                "error": result.error,
+            },
+        )
+
+    if hard_delete:
+        # Hard delete: remove the job record entirely
+        state.job_repo.hard_delete_job(job_id)
+        # Build descriptive message
+        if result.staging_existed or result.target_existed:
+            msg = f"Job {job_id[:12]} hard deleted"
+            details = []
+            if result.staging_existed:
+                details.append(f"staging={'dropped' if result.staging_dropped else 'failed to drop'}")
+            if result.target_existed:
+                details.append(f"target={'dropped' if result.target_dropped else 'failed to drop'}")
+            msg += f" ({', '.join(details)})"
+        else:
+            msg = f"Job {job_id[:12]} hard deleted (databases did not exist)"
+        # Redirect to jobs list since detail page won't exist
+        return RedirectResponse(
+            url=f"/web/jobs?view=history&{urlencode({'delete_success': msg})}",
+            status_code=303,
+        )
+    else:
+        # Soft delete: mark status as deleted
+        state.job_repo.mark_job_deleted(job_id)
+
+        # Build detailed event log entry
+        if result.staging_existed or result.target_existed:
+            details = []
+            if result.staging_existed:
+                details.append(f"staging={'dropped' if result.staging_dropped else 'failed'}")
+            else:
+                details.append("staging=did not exist")
+            if result.target_existed:
+                details.append(f"target={'dropped' if result.target_dropped else 'failed'}")
+            else:
+                details.append("target=did not exist")
+            event_detail = f"User {user.username} deleted databases ({', '.join(details)})"
+            msg = f"Databases deleted ({', '.join(details)})"
+        else:
+            event_detail = f"User {user.username} marked job deleted (databases did not exist)"
+            msg = "Job marked deleted (databases did not exist)"
+
+        state.job_repo.append_job_event(
+            job_id=job_id,
+            event_type="deleted",
+            detail=event_detail,
+        )
+        return redirect_success(msg)
 
 
 @router.get("/api/paginated")
@@ -415,6 +583,20 @@ async def api_jobs_paginated(
                 if job_owner and job_owner.manager_id == user.user_id:
                     can_cancel = True
         
+        # Determine if user can delete this job (terminal jobs only)
+        # Also allow for 'deleted' status to enable hard delete (remove job record)
+        can_delete = False
+        if j.status not in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.DELETING):
+            if user.is_admin:
+                can_delete = True
+            elif j.owner_user_id == user.user_id:
+                can_delete = True
+            elif user.role == UserRole.MANAGER:
+                # Check if job owner is managed by this user
+                job_owner = state.user_repo.get_user_by_id(j.owner_user_id) if state.user_repo else None
+                if job_owner and job_owner.manager_id == user.user_id:
+                    can_delete = True
+        
         cancel_requested_at = None
         if hasattr(state.job_repo, "get_cancel_requested_at"):
             cancel_requested_at = state.job_repo.get_cancel_requested_at(j.id)
@@ -431,6 +613,7 @@ async def api_jobs_paginated(
             "started_at": j.started_at.isoformat() if getattr(j, "started_at", None) else None,
             "completed_at": j.completed_at.isoformat() if getattr(j, "completed_at", None) else None,
             "can_cancel": can_cancel,
+            "can_delete": can_delete,
             "cancel_requested_at": cancel_requested_at.isoformat() if cancel_requested_at else None,
         })
     
@@ -563,3 +746,162 @@ async def api_jobs_distinct(
             values.add(val)
     
     return sorted(values)
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_jobs(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> dict:
+    """Create a bulk delete admin task for multiple jobs.
+    
+    Validates permissions upfront for ALL jobs before creating task.
+    Returns task_id for polling status.
+    """
+    from pulldb.domain.permissions import can_delete_job_database
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return {"error": "Job repository unavailable", "success": False}
+
+    # Parse JSON body
+    try:
+        body = await request.json()
+        job_ids = body.get("job_ids", [])
+        hard_delete = body.get("hard_delete", False)
+    except Exception:
+        return {"error": "Invalid JSON body", "success": False}
+
+    if not job_ids:
+        return {"error": "No jobs specified", "success": False}
+
+    if len(job_ids) > 500:
+        return {"error": "Maximum 500 jobs per bulk delete", "success": False}
+
+    # Validate ALL permissions upfront
+    job_infos = []
+    permission_errors = []
+    skipped_already_deleted = 0
+
+    for job_id in job_ids:
+        job = state.job_repo.get_job_by_id(job_id)
+        if not job:
+            permission_errors.append(f"Job {job_id[:12]} not found")
+            continue
+
+        # Must be in terminal state
+        if job.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+            permission_errors.append(
+                f"Job {job_id[:12]} is active (status: {job.status.value})"
+            )
+            continue
+
+        # Already soft-deleted? Skip for soft delete, allow for hard delete
+        if job.status == JobStatus.DELETED and not hard_delete:
+            # Track skipped jobs - user needs to enable hard_delete to remove records
+            skipped_already_deleted += 1
+            continue
+
+        # Check permission
+        job_owner = state.user_repo.get_user_by_id(job.owner_user_id)
+        job_owner_manager_id = job_owner.manager_id if job_owner else None
+
+        if not can_delete_job_database(user, job.owner_user_id, job_owner_manager_id):
+            owner_code = job_owner.user_code if job_owner else "unknown"
+            permission_errors.append(
+                f"No permission to delete job {job_id[:12]} (owner: {owner_code})"
+            )
+            continue
+
+        # Collect info for task (all fields needed by admin_tasks executor)
+        job_infos.append({
+            "job_id": job_id,
+            "staging_name": job.staging_name,
+            "target": job.target,
+            "owner_user_code": job_owner.user_code if job_owner else "",
+            "owner_user_id": job.owner_user_id,
+            "dbhost": job.dbhost,
+        })
+
+    # If any permission errors, fail the whole request
+    if permission_errors:
+        return {
+            "error": "Permission check failed",
+            "details": permission_errors,
+            "success": False,
+        }
+
+    # All validated - create admin task
+    if not job_infos:
+        if skipped_already_deleted > 0:
+            # Informational: jobs exist but are already soft-deleted
+            return {
+                "success": True,
+                "message": f"{skipped_already_deleted} job(s) already deleted. Enable 'Remove job history records' to permanently remove them.",
+                "skipped_count": skipped_already_deleted,
+            }
+        return {"error": "No deletable jobs found", "success": False}
+
+    # Audit log the bulk delete request
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        state.audit_repo.log_action(
+            actor_user_id=user.user_id,
+            action="bulk_delete_jobs_requested",
+            detail=f"Bulk {'hard' if hard_delete else 'soft'} delete {len(job_infos)} jobs",
+            context={
+                "job_count": len(job_infos),
+                "hard_delete": hard_delete,
+                "job_ids": [ji["job_id"] for ji in job_infos],
+            },
+        )
+
+    # Create admin task
+    from pulldb.infra.mysql import AdminTaskRepository
+    admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+    task_id = admin_task_repo.create_bulk_delete_task(
+        requested_by=user.user_id,
+        job_infos=job_infos,
+        hard_delete=hard_delete,
+    )
+
+    return {
+        "success": True,
+        "task_id": task_id,
+        "job_count": len(job_infos),
+    }
+
+
+@router.get("/bulk-delete/{task_id}/status")
+async def bulk_delete_status(
+    task_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> dict:
+    """Get status of a bulk delete task for polling."""
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return {"error": "Job repository unavailable"}
+
+    from pulldb.infra.mysql import AdminTaskRepository
+    admin_task_repo = AdminTaskRepository(state.job_repo.pool)
+    task = admin_task_repo.get_task(task_id)
+    if not task:
+        return {"error": "Task not found"}
+
+    # Only task creator or admin can view status
+    if task.requested_by != user.user_id and not user.is_admin:
+        return {"error": "Access denied"}
+
+    # Parse result_json for progress
+    result = task.result_json or {}
+    progress = result.get("progress", {})
+
+    return {
+        "task_id": task_id,
+        "status": task.status.value,
+        "total": progress.get("total", 0),
+        "processed": progress.get("processed", 0),
+        "soft_deleted": progress.get("soft_deleted", 0),
+        "hard_deleted": progress.get("hard_deleted", 0),
+        "errors": progress.get("errors", []),
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+    }

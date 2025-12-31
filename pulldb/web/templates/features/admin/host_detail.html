@@ -126,7 +126,7 @@
                         MySQL Credentials
                     </h3>
                 </div>
-                <form method="POST" action="/web/admin/hosts/{{ host.id }}/update-secret" class="card-body">
+                <form method="POST" action="/web/admin/hosts/{{ host.id }}/update-secret" class="card-body" id="update-secret-form">
                     <div class="alert alert-info" style="margin-bottom: var(--space-4); padding: var(--space-2) var(--space-3); font-size: var(--text-sm);">
                         <strong>Note:</strong> Username/password changes update both MySQL server and AWS Secrets Manager.
                     </div>
@@ -154,12 +154,27 @@
                         </div>
                     </div>
                     <div class="form-actions">
-                        <button type="submit" class="btn btn-warning btn-sm" 
-                                onclick="return confirm('Update AWS Secrets Manager secret?');">
+                        <button type="submit" class="btn btn-warning btn-sm" id="update-secret-btn">
                             Update Secret
                         </button>
                     </div>
                 </form>
+                <script>
+                (function() {
+                    const form = document.getElementById('update-secret-form');
+                    if (form) {
+                        form.addEventListener('submit', async (e) => {
+                            e.preventDefault();
+                            const confirmed = await showConfirm('Update AWS Secrets Manager secret?', {
+                                title: 'Update Secret',
+                                okText: 'Update',
+                                type: 'warning'
+                            });
+                            if (confirmed) form.submit();
+                        });
+                    }
+                })();
+                </script>
             </div>
             {% elif host.credential_error %}
             <div class="card">
@@ -245,6 +260,150 @@
                     {% endif %}
                 </div>
             </div>
+
+            <!-- Danger Zone: Delete Host -->
+            <div class="card card-danger">
+                <div class="card-header">
+                    <h3 class="card-title text-danger">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        Danger Zone
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted" style="margin: 0 0 var(--space-3) 0; font-size: var(--text-sm);">
+                        Permanently delete this host and its AWS secret.
+                    </p>
+                    <button type="button" 
+                            class="btn btn-danger btn-sm" 
+                            onclick="showDeleteHostModal('{{ host.id }}', '{{ host.host_alias or host.hostname }}')"
+                            {% if host.enabled %}
+                            disabled
+                            title="Disable the host first"
+                            {% endif %}>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            <line x1="10" y1="11" x2="10" y2="17"/>
+                            <line x1="14" y1="11" x2="14" y2="17"/>
+                        </svg>
+                        Delete Host
+                    </button>
+                    {% if host.enabled %}
+                    <p class="text-muted" style="margin: var(--space-2) 0 0 0; font-size: var(--text-xs);">
+                        Host must be disabled before deletion.
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Host Confirmation Modal -->
+<div id="delete-host-modal" class="modal modal-hidden">
+    <div class="modal-backdrop" onclick="hideDeleteHostModal()"></div>
+    <div class="modal-content modal-content-wide">
+        <div class="modal-header modal-header-danger">
+            <h3 class="modal-title">Delete Host</h3>
+            <button type="button" class="modal-close" onclick="hideDeleteHostModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" x2="6" y1="6" y2="18"/>
+                    <line x1="6" x2="18" y1="6" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <!-- Loading state -->
+            <div id="delete-host-loading" class="text-center" style="padding: var(--space-lg);">
+                <span class="spinner"></span>
+                <p class="text-muted" style="margin-top: var(--space-md);">Loading host information...</p>
+            </div>
+            
+            <!-- Error state -->
+            <div id="delete-host-error" class="alert alert-danger js-hidden" style="margin-bottom: var(--space-md);">
+                <span id="delete-host-error-text"></span>
+            </div>
+            
+            <!-- Content (populated by JS) -->
+            <div id="delete-host-content" class="js-hidden">
+                <!-- Warning banner -->
+                <div class="force-delete-warning" style="margin-bottom: var(--space-lg);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="warning-icon">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div class="warning-text">
+                        <strong>Warning:</strong> This will permanently delete host <strong id="delete-host-alias"></strong>.
+                        This action cannot be undone.
+                    </div>
+                </div>
+                
+                <!-- Impact summary -->
+                <div class="delete-impact-summary">
+                    <h4 style="margin: 0 0 var(--space-sm) 0; font-size: var(--text-sm); color: var(--text-secondary);">
+                        WHAT WILL BE DELETED
+                    </h4>
+                    <ul class="impact-list" style="margin: 0; padding-left: var(--space-lg); color: var(--text-primary);">
+                        <li>AWS Secrets Manager secret (immediate, no recovery)</li>
+                        <li>MySQL user on target server (best effort)</li>
+                        <li>Host record in pullDB</li>
+                    </ul>
+                </div>
+                
+                <!-- Users affected -->
+                <div id="delete-host-users-section" class="js-hidden" style="margin-top: var(--space-lg);">
+                    <h4 style="margin: 0 0 var(--space-sm) 0; font-size: var(--text-sm); color: var(--text-secondary);">
+                        USERS WHO WILL LOSE ACCESS (<span id="delete-host-user-count">0</span>)
+                    </h4>
+                    <div id="delete-host-users-list" class="user-chips" style="display: flex; flex-wrap: wrap; gap: var(--space-xs);">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+                
+                <!-- Job history info -->
+                <div id="delete-host-jobs-section" style="margin-top: var(--space-lg);">
+                    <h4 style="margin: 0 0 var(--space-sm) 0; font-size: var(--text-sm); color: var(--text-secondary);">
+                        JOB HISTORY
+                    </h4>
+                    <p class="text-muted" style="margin: 0; font-size: var(--text-sm);">
+                        <span id="delete-host-job-count">0</span> historical job(s) reference this host.
+                        <br><span style="color: var(--text-tertiary);">Job records will remain but show the original hostname.</span>
+                    </p>
+                </div>
+                
+                <!-- Confirmation input -->
+                <div class="force-delete-confirm" style="margin-top: var(--space-lg);">
+                    <label for="delete-host-confirm-input">Type the host alias to confirm:</label>
+                    <input type="text" 
+                           id="delete-host-confirm-input" 
+                           class="form-input" 
+                           placeholder="Enter host alias" 
+                           autocomplete="off" 
+                           oninput="validateDeleteHostConfirm()">
+                    <p class="confirm-hint">
+                        Type <code id="delete-host-expected"></code> to enable the delete button
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="hideDeleteHostModal()">Cancel</button>
+            <form id="delete-host-form" method="POST" action="" style="display: inline;">
+                <button type="submit" class="btn btn-danger" id="delete-host-btn" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; margin-right: 4px;">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        <line x1="10" y1="11" x2="10" y2="17"/>
+                        <line x1="14" y1="11" x2="14" y2="17"/>
+                    </svg>
+                    Delete Host
+                </button>
+            </form>
         </div>
     </div>
 </div>
@@ -338,6 +497,105 @@ function renderPreflightChecks(data) {
     </div>`;
     
     container.innerHTML = html;
+}
+
+// =========================================================================
+// Delete Host Modal Functions
+// =========================================================================
+
+let deleteHostId = null;
+let deleteHostAlias = null;
+
+function showDeleteHostModal(hostId, hostAlias) {
+    deleteHostId = hostId;
+    deleteHostAlias = hostAlias;
+    
+    const modal = document.getElementById('delete-host-modal');
+    modal.classList.remove('modal-hidden');
+    
+    // Reset states
+    document.getElementById('delete-host-loading').classList.remove('js-hidden');
+    document.getElementById('delete-host-content').classList.add('js-hidden');
+    document.getElementById('delete-host-error').classList.add('js-hidden');
+    document.getElementById('delete-host-confirm-input').value = '';
+    document.getElementById('delete-host-btn').disabled = true;
+    
+    // Load preview data
+    loadDeleteHostPreview(hostId);
+}
+
+function hideDeleteHostModal() {
+    const modal = document.getElementById('delete-host-modal');
+    modal.classList.add('modal-hidden');
+    deleteHostId = null;
+    deleteHostAlias = null;
+}
+
+async function loadDeleteHostPreview(hostId) {
+    try {
+        const response = await fetch(`/web/admin/hosts/${hostId}/delete-preview`);
+        const data = await response.json();
+        
+        document.getElementById('delete-host-loading').classList.add('js-hidden');
+        
+        if (!data.success) {
+            document.getElementById('delete-host-error-text').textContent = data.error || 'Failed to load host information';
+            document.getElementById('delete-host-error').classList.remove('js-hidden');
+            return;
+        }
+        
+        if (!data.can_delete) {
+            document.getElementById('delete-host-error-text').textContent = data.block_reason || 'Cannot delete this host';
+            document.getElementById('delete-host-error').classList.remove('js-hidden');
+            return;
+        }
+        
+        // Populate content
+        deleteHostAlias = data.host_alias;
+        document.getElementById('delete-host-alias').textContent = data.host_alias;
+        document.getElementById('delete-host-expected').textContent = data.host_alias;
+        document.getElementById('delete-host-job-count').textContent = data.total_job_count;
+        
+        // Users section
+        if (data.assigned_user_count > 0) {
+            document.getElementById('delete-host-user-count').textContent = data.assigned_user_count;
+            const usersList = document.getElementById('delete-host-users-list');
+            usersList.innerHTML = data.assigned_users.map(u => 
+                `<span class="chip">${escapeHtml(u.username)}${u.is_default ? ' (default)' : ''}</span>`
+            ).join('');
+            if (data.assigned_user_count > data.assigned_users.length) {
+                usersList.innerHTML += `<span class="chip chip-muted">+${data.assigned_user_count - data.assigned_users.length} more</span>`;
+            }
+            document.getElementById('delete-host-users-section').classList.remove('js-hidden');
+        } else {
+            document.getElementById('delete-host-users-section').classList.add('js-hidden');
+        }
+        
+        // Set form action
+        document.getElementById('delete-host-form').action = `/web/admin/hosts/${hostId}/delete`;
+        
+        // Show content
+        document.getElementById('delete-host-content').classList.remove('js-hidden');
+        
+    } catch (error) {
+        document.getElementById('delete-host-loading').classList.add('js-hidden');
+        document.getElementById('delete-host-error-text').textContent = 'Failed to load: ' + error.message;
+        document.getElementById('delete-host-error').classList.remove('js-hidden');
+    }
+}
+
+function validateDeleteHostConfirm() {
+    const input = document.getElementById('delete-host-confirm-input');
+    const btn = document.getElementById('delete-host-btn');
+    
+    const isValid = input.value.trim().toLowerCase() === deleteHostAlias.toLowerCase();
+    btn.disabled = !isValid;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 </script>
 {% endblock %}

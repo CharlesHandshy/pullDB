@@ -381,6 +381,65 @@ async def restore_submit(
                 status_code=400
             )
     
+    # === Validate backup_key matches customer ===
+    # If backup_key is provided, validate it contains the expected customer pattern
+    # Pattern: {customer}/daily_mydumper_{customer}_
+    validated_backup_path: str | None = None
+    if backup_key:
+        # Determine expected customer name for validation
+        expected_customer = 'qatemplate' if qatemplate == 'true' else customer
+        if expected_customer:
+            # Extract customer-only part (letters only, lowercase)
+            customer_letters = ''.join(ch for ch in expected_customer.lower() if ch.isalpha())
+            if customer_letters:
+                # Validate backup_key contains the expected pattern
+                expected_pattern = f"{customer_letters}/daily_mydumper_{customer_letters}_"
+                if expected_pattern not in backup_key.lower():
+                    return templates.TemplateResponse(
+                        "features/restore/restore.html",
+                        {
+                            "request": request,
+                            "allowed_hosts": allowed_hosts,
+                            "default_host": user.default_host,
+                            "user": user,
+                            "error": f"Selected backup does not match customer '{expected_customer}'. "
+                                     f"Expected path to contain '{expected_pattern}'.",
+                            "active_nav": "restore",
+                            "form": {
+                                "customer": customer,
+                                "s3env": s3env,
+                                "dbhost": dbhost,
+                                "suffix": suffix,
+                                "overwrite": overwrite == "true",
+                            }
+                        },
+                        status_code=400
+                    )
+                # Validate path format - must be full S3 URI from template
+                if backup_key.startswith("s3://"):
+                    validated_backup_path = backup_key
+                else:
+                    # Legacy format without bucket - fail hard
+                    return templates.TemplateResponse(
+                        "features/restore/restore.html",
+                        {
+                            "request": request,
+                            "allowed_hosts": allowed_hosts,
+                            "default_host": user.default_host,
+                            "user": user,
+                            "error": "Invalid backup path format. Expected s3://bucket/key.",
+                            "active_nav": "restore",
+                            "form": {
+                                "customer": customer,
+                                "s3env": s3env,
+                                "dbhost": dbhost,
+                                "suffix": suffix,
+                                "overwrite": overwrite == "true",
+                            }
+                        },
+                        status_code=400
+                    )
+
     env_val = s3env if s3env in ("staging", "prod") else None
     overwrite_val = overwrite == "true"
     is_qatemplate = qatemplate == 'true'
@@ -393,6 +452,7 @@ async def restore_submit(
         dbhost=dbhost if dbhost else None,
         suffix=suffix if suffix else None,
         overwrite=overwrite_val,
+        backup_path=validated_backup_path,
     )
 
     try:

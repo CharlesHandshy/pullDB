@@ -554,16 +554,28 @@ def cli(ctx: click.Context) -> None:
 
     # Handle no subcommand (show help)
     if ctx.invoked_subcommand is None:
-        # Display user identity
-        if user_code:
-            click.echo("pullDB - Database restore tool")
-            click.echo(f"User: {username} (code: {user_code})")
-        else:
+        # Display user identity and appropriate help
+        if user_state == UserState.NOT_REGISTERED:
+            # Unregistered users see only registration instructions
             click.echo("pullDB - Database restore tool")
             click.echo(f"User: {username} (not registered)")
-
-        click.echo("")
-        click.echo(ctx.get_help())
+            click.echo("")
+            click.echo("You must register before using pullDB.")
+            click.echo("")
+            click.echo("To create an account:")
+            click.echo("  pulldb register")
+            click.echo("")
+            click.echo("After registering, contact an administrator to enable your account.")
+        elif user_code:
+            click.echo("pullDB - Database restore tool")
+            click.echo(f"User: {username} (code: {user_code})")
+            click.echo("")
+            click.echo(ctx.get_help())
+        else:
+            click.echo("pullDB - Database restore tool")
+            click.echo(f"User: {username}")
+            click.echo("")
+            click.echo(ctx.get_help())
 
 
 @cli.command("restore",
@@ -582,8 +594,9 @@ def restore_cmd(options: tuple[str, ...]) -> None:
 
     \b
     OPTIONS:
+      <dbhost>              Target database host (positional, after customer)
+      dbhost=<hostname>     Target database host (named parameter)
       suffix=<abc>          Suffix for target database (1-3 lowercase letters)
-      dbhost=<hostname>     Target database host (default: localhost)
       date=<YYYY-MM-DD>     Specific backup date (default: latest)
       s3env=<staging|prod|both>  S3 environment (default: PULLDB_S3ENV_DEFAULT or prod)
       overwrite             Allow overwriting existing database
@@ -595,12 +608,14 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     \b
     EXAMPLES:
       pulldb restore actionpest
+      pulldb restore actionpest dev               # dbhost as positional arg
       pulldb restore actionpest suffix=dev
       pulldb restore actionpest date=2025-11-25
       pulldb restore customer=actionpest
       pulldb restore qatemplate
+      pulldb restore qatemplate dev               # qatemplate with dbhost
       pulldb restore qatemplate suffix=dev
-      pulldb restore actionpest dbhost=db2.example.com
+      pulldb restore actionpest dbhost=dev        # dbhost as named arg
       pulldb restore actionpest overwrite
       pulldb restore actionpest s3env=prod
     """
@@ -664,30 +679,30 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     click.echo("\nUse 'pulldb status' to monitor progress.")
 
 
-@cli.command("status", help="Show active (queued/running) jobs")
+@cli.command("status")
 @click.argument("job_id", required=False)
 @click.option(
     "--json",
     "json_out",
     is_flag=True,
-    help="Output JSON instead of table",
+    help="Output JSON instead of table.",
 )
 @click.option(
     "--wide",
     is_flag=True,
-    help="Show additional columns",
+    help="Show additional columns (staging_name).",
 )
 @click.option(
     "--limit",
     type=int,
     default=100,
     show_default=True,
-    help="Limit number of rows",
+    help="Maximum number of jobs to display.",
 )
 @click.option(
     "--active",
     is_flag=True,
-    help="Show active jobs (queued/running). Default if no other filter specified.",
+    help="Show only active jobs (queued/running).",
 )
 @click.option(
     "--history",
@@ -695,14 +710,15 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     help="Show historical jobs (completed/failed/canceled).",
 )
 @click.option(
-    "--filter",
-    "filter_json",
-    help='JSON string to filter results by column values (e.g. \'{"status": "failed"}\').',
+    "--status",
+    "filter_status",
+    type=click.Choice(["queued", "running", "complete", "failed", "canceled"]),
+    help="Filter by specific job status.",
 )
 @click.option(
     "--rt",
     is_flag=True,
-    help="Realtime mode: stream events for the specified job.",
+    help="Stream job events in realtime. Auto-exits when job completes.",
 )
 def status_cmd(
     job_id: str | None,
@@ -711,42 +727,87 @@ def status_cmd(
     limit: int,
     active: bool,
     history: bool,
-    filter_json: str | None,
+    filter_status: str | None,
     rt: bool,
 ) -> None:
-    """Show jobs ordered by submission time.
+    """Show job status and history.
 
-    Provides a view of work in progress and history. By default outputs a table;
-    use --json for machine-readable output. Pass a JOB_ID to filter by that job.
+    \b
+    USAGE:
+      pulldb status                  # Your last submitted job
+      pulldb status <job_id>         # Specific job details
+      pulldb status --active         # All active jobs (queued/running)
+      pulldb status --history        # Historical jobs
+      pulldb status --status failed  # Filter by status
+      pulldb status --rt             # Stream your last job's events
+      pulldb status --rt <job_id>    # Stream specific job's events
 
-    FAIL HARD behaviors:
-      * Configuration load failures surface with actionable guidance.
-      * MySQL connectivity failures include host/database context.
-      * Invalid limit (<=0 or >1000) aborts with usage error.
+    \b
+    STATUS VALUES:
+      queued    - Job waiting to be processed
+      running   - Job currently executing
+      complete  - Job finished successfully
+      failed    - Job failed with error
+      canceled  - Job was canceled
 
-    Args:
-        job_id: Optional job ID to filter by or stream events for.
-        json_out: Emit JSON list of jobs.
-        wide: Include staging_name column.
-        limit: Max number of rows to display.
-        active: Show active jobs.
-        history: Show historical jobs.
-        filter_json: JSON filter string.
-        rt: Realtime event streaming mode.
+    \b
+    EXAMPLES:
+      pulldb status                  # Quick check on your last job
+      pulldb status f19f06a1         # Check job by ID prefix
+      pulldb status --rt             # Watch your job in realtime
+      pulldb status --history --status failed  # Failed jobs only
     """
     if rt:
-        if not job_id:
-            raise click.UsageError("--rt requires a job_id argument")
-        # Resolve short prefix to full job ID
-        resolved_id = _resolve_job_id(job_id)
-        _stream_job_events(resolved_id)
+        resolved_id: str | None = None
+        job_status: str | None = None
+        
+        if job_id:
+            # User provided a job ID, resolve it
+            resolved_id = _resolve_job_id(job_id)
+            # Get job status
+            try:
+                job_data = _api_get_object(f"/api/jobs/{resolved_id}", {})
+                job_status = job_data.get("status")
+            except _APIError:
+                pass
+        else:
+            # No job ID provided - find user's last submitted job
+            try:
+                username = _get_calling_username()
+                _, user_code = _get_user_info(username)
+                if user_code:
+                    result = _api_get_object("/api/jobs/my-last", {"user_code": user_code})
+                    job_data = result.get("job")
+                    if job_data:
+                        resolved_id = job_data.get("id")
+                        job_status = job_data.get("status")
+            except _APIError:
+                pass
+        
+        if not resolved_id:
+            raise click.UsageError(
+                "No job found. Provide a job_id or submit a restore first.\n"
+                "  pulldb status --rt <job_id>   # stream specific job\n"
+                "  pulldb restore <customer>     # submit a new restore"
+            )
+        
+        # Check if job is active (queued or running)
+        is_active = job_status in ("queued", "running")
+        
+        if is_active:
+            click.echo(f"Streaming events for active job {resolved_id[:8]}...")
+            _stream_job_events(resolved_id)
+        else:
+            # Job is not active - dump events once and exit
+            click.echo(f"Job {resolved_id[:8]} ({job_status}):\n")
+            _dump_job_events(resolved_id)
         return
 
     if limit <= 0 or limit > MAX_STATUS_LIMIT:
         raise click.UsageError(f"--limit must be between 1 and {MAX_STATUS_LIMIT}")
 
     # When no arguments/flags: show user's last submitted job
-    if not job_id and not active and not history and not filter_json:
+    if not job_id and not active and not history and not filter_status:
         try:
             username = _get_calling_username()
             _, user_code = _get_user_info(username)
@@ -804,19 +865,16 @@ def status_cmd(
         params["active"] = "true"
     if history:
         params["history"] = "true"
-    if filter_json:
-        params["filter"] = filter_json
+    if filter_status:
+        params["filter"] = json_module.dumps({"status": filter_status})
 
     # If job_id provided, resolve and filter by it
     if job_id:
         # Resolve short prefix to full job ID
         resolved_id = _resolve_job_id(job_id)
         current_filter = {}
-        if filter_json:
-            try:
-                current_filter = json_module.loads(filter_json)
-            except ValueError:
-                pass
+        if filter_status:
+            current_filter = {"status": filter_status}
         current_filter["id"] = resolved_id
         params["filter"] = json_module.dumps(current_filter)
 
@@ -911,12 +969,68 @@ def status_cmd(
 
 def _parse_search_args(
     args: tuple[str, ...],
-) -> tuple[str, str | None, int | None, bool, str]:
-    """Parse search command arguments supporting both --opt and opt= syntax.
+) -> tuple[str, int | None, bool]:
+    """Parse search command arguments.
+
+    Returns:
+        Tuple of (query, limit, json_out)
+    """
+    query: str | None = None
+    limit: int | None = None
+    json_out = False
     
-    Args:
-        args: Tuple of command line arguments.
+    i = 0
+    while i < len(args):
+        arg = args[i]
         
+        # Handle --option=value or option=value
+        if "=" in arg:
+            key, value = arg.lstrip("-").split("=", 1)
+            if key == "limit":
+                try:
+                    limit = int(value)
+                except ValueError:
+                    raise click.UsageError(f"Invalid limit value: {value}")
+            else:
+                # Treat as query if no recognized key
+                if query is None:
+                    query = arg
+                else:
+                    raise click.UsageError(f"Unrecognized option: {arg}")
+        elif arg in ("--json", "json"):
+            json_out = True
+        elif arg.startswith("--"):
+            # Handle --option value syntax
+            opt = arg[2:]
+            if opt == "limit" and i + 1 < len(args):
+                i += 1
+                try:
+                    limit = int(args[i])
+                except ValueError:
+                    raise click.UsageError(f"Invalid limit value: {args[i]}")
+            elif opt == "json":
+                json_out = True
+            else:
+                raise click.UsageError(f"Unrecognized option: {arg}")
+        else:
+            # Positional argument - treat as query
+            if query is None:
+                query = arg
+            else:
+                raise click.UsageError(f"Unexpected argument: {arg}")
+        i += 1
+    
+    if query is None:
+        raise click.UsageError("Missing required argument: QUERY")
+    
+    return query, limit, json_out
+
+
+def _parse_list_args(
+    args: tuple[str, ...],
+) -> tuple[str, str | None, int | None, bool, str]:
+    """Parse list command arguments.
+
     Returns:
         Tuple of (customer, start_date, limit, json_out, s3env)
     """
@@ -924,7 +1038,7 @@ def _parse_search_args(
     start_date: str | None = None
     limit: int | None = None
     json_out = False
-    s3env: str | None = None  # Will use default if not specified
+    s3env: str | None = None
     
     i = 0
     while i < len(args):
@@ -995,31 +1109,94 @@ def _parse_search_args(
               context_settings={"ignore_unknown_options": True, "allow_interspersed_args": False})
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def search_cmd(args: tuple[str, ...]) -> None:
-    """Search for available backups by customer name.
+    """Search for customers by name pattern.
 
     \b
     USAGE:
-      pulldb search <customer> [options]
+      pulldb search <query> [options]
+
+    \b
+    OPTIONS:
+      limit=<N>               Maximum results to show (default: 20)
+      json                    Output JSON instead of list
+
+    \b
+    EXAMPLES:
+      pulldb search action           # Find customers containing 'action'
+      pulldb search action*          # Find customers starting with 'action'
+      pulldb search *pest            # Find customers ending with 'pest'
+      pulldb search actionpest       # Exact match
+      pulldb search action limit=50  # Show up to 50 results
+    """
+    # Parse arguments
+    query, limit_arg, json_out = _parse_search_args(args)
+    limit = limit_arg if limit_arg is not None else 20
+
+    if limit <= 0 or limit > 500:
+        raise click.UsageError("limit must be between 1 and 500")
+
+    # Call customer search API
+    params: dict[str, t.Any] = {
+        "q": query,
+        "limit": limit,
+    }
+
+    try:
+        response = _api_get_object("/api/customers/search", params)
+    except _APIError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    customers = response.get("customers", [])
+    
+    if not customers:
+        click.echo(f"No customers found matching '{query}'")
+        if "*" not in query and "?" not in query:
+            click.echo("Tip: Use wildcards like 'action*' to broaden your search.")
+        return
+
+    if json_out:
+        click.echo(json_module.dumps(customers, indent=2))
+        return
+
+    # List output
+    click.echo(f"\nCustomers matching '{query}':\n")
+    
+    for customer in customers:
+        click.echo(f"  {customer}")
+
+    click.echo(f"\n{len(customers)} customer(s) found.")
+    if len(customers) == limit:
+        click.echo(f"(showing first {limit}, use limit=N to see more)")
+    click.echo("\nUse 'pulldb list <customer>' to see available backups.")
+
+
+@cli.command("list",
+              context_settings={"ignore_unknown_options": True, "allow_interspersed_args": False})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def list_cmd(args: tuple[str, ...]) -> None:
+    """List available backups for a customer.
+
+    \b
+    USAGE:
+      pulldb list <customer> [options]
 
     \b
     OPTIONS:
       date=<YYYYMMDD>         Start date (show backups from this date onwards)
-      limit=<N>               Maximum backups to show (default: 5)
+      limit=<N>               Maximum backups to show (default: 10)
       s3env=<staging|prod|both>  S3 environment (default: PULLDB_S3ENV_DEFAULT or prod)
       json                    Output JSON instead of table
 
     \b
     EXAMPLES:
-      pulldb search actionpest
-      pulldb search action*
-      pulldb search actionpest date=20251101
-      pulldb search actionpest limit=10
-      pulldb search actionpest s3env=prod
-      pulldb search actionpest --s3env=prod
+      pulldb list actionpest
+      pulldb list actionpest date=20251101
+      pulldb list actionpest limit=20
+      pulldb list actionpest s3env=prod
     """
     # Parse arguments
-    customer, start_date, limit_arg, json_out, environment = _parse_search_args(args)
-    limit = limit_arg if limit_arg is not None else 5
+    customer, start_date, limit_arg, json_out, environment = _parse_list_args(args)
+    limit = limit_arg if limit_arg is not None else 10
     
     # Validate date format if provided
     if start_date:
@@ -1033,7 +1210,7 @@ def search_cmd(args: tuple[str, ...]) -> None:
             raise click.UsageError(f"Invalid date: {start_date}") from e
 
     if limit <= 0 or limit > 100:
-        raise click.UsageError("--limit must be between 1 and 100")
+        raise click.UsageError("limit must be between 1 and 100")
 
     # Call backup search API
     params: dict[str, t.Any] = {
@@ -1053,8 +1230,7 @@ def search_cmd(args: tuple[str, ...]) -> None:
     
     if not backups:
         click.echo(f"No backups found for '{customer}'")
-        if "*" in customer or "?" in customer:
-            click.echo("Try a more specific pattern or check the customer name.")
+        click.echo("Tip: Use 'pulldb search' to find available customers.")
         return
 
     if json_out:
@@ -1062,9 +1238,9 @@ def search_cmd(args: tuple[str, ...]) -> None:
         return
 
     # Table output
-    click.echo(f"\nBackups matching '{customer}':\n")
+    click.echo(f"\nBackups for '{customer}':\n")
 
-    headers = ["CUSTOMER", "DATE", "TIME (UTC)", "SIZE", "ENV", "FILENAME"]
+    headers = ["DATE", "TIME (UTC)", "SIZE", "ENV", "FILENAME"]
     rows: list[list[str]] = []
 
     for b in backups:
@@ -1088,7 +1264,6 @@ def search_cmd(args: tuple[str, ...]) -> None:
 
         rows.append(
             [
-                b.get("customer", ""),
                 ts.strftime("%Y-%m-%d") if ts else "—",
                 ts.strftime("%H:%M:%S") if ts else "—",
                 size_str,
@@ -1114,12 +1289,33 @@ def search_cmd(args: tuple[str, ...]) -> None:
 
     click.echo(f"\n{len(rows)} backup(s) found.")
     if len(backups) == limit:
-        click.echo(f"(showing first {limit}, use --limit to see more)")
+        click.echo(f"(showing first {limit}, use limit=N to see more)")
+    click.echo(f"\nRestore with: pulldb restore {customer}")
+
+
+def _dump_job_events(job_id: str) -> None:
+    """Fetch and display all events for a job once (non-streaming)."""
+    try:
+        events = _api_get(f"/api/jobs/{job_id}/events", {})
+    except _APIError as exc:
+        click.echo(f"Error fetching events: {exc}")
+        return
+
+    if not events:
+        click.echo("No events found for this job.")
+        return
+
+    for event in events:
+        ts = _parse_iso(event.get("logged_at"))
+        ts_str = ts.strftime("%H:%M:%S") if ts else "??:??:??"
+        event_type = event.get("event_type", "unknown")
+        detail = event.get("detail") or ""
+        click.echo(f"[{ts_str}] {event_type}: {detail}")
 
 
 def _stream_job_events(job_id: str) -> None:
     last_id: int | None = None
-    click.echo(f"Streaming events for job {job_id} (Ctrl+C to stop)...")
+    click.echo(f"(Ctrl+C to stop)")
     while True:
         params: dict[str, t.Any] = {}
         if last_id is not None:
@@ -1139,6 +1335,16 @@ def _stream_job_events(job_id: str) -> None:
             detail = event.get("detail") or ""
             click.echo(f"[{ts_str}] {event_type}: {detail}")
             last_id = int(event["id"])
+
+        # Check if job is still active
+        try:
+            job_data = _api_get_object(f"/api/jobs/{job_id}", {})
+            status = job_data.get("status")
+            if status not in ("queued", "running"):
+                click.echo(f"\nJob {job_id[:8]} finished with status: {status}")
+                return
+        except _APIError:
+            pass  # Continue streaming if we can't check status
 
         time.sleep(2)
 
@@ -1378,15 +1584,19 @@ def history_cmd(
 ) -> None:
     """Show job history with filtering options.
 
-    By default shows the last 30 days of completed, failed, and canceled jobs.
-    Use --status to filter by specific outcome. Use --wide for error details.
+    \b
+    USAGE:
+      pulldb history                    # Last 30 days of history
+      pulldb history --days 7           # Last week only
+      pulldb history --status failed    # Only failed jobs
+      pulldb history --user jdoe        # Jobs by user code
+      pulldb history --wide             # Include error details
 
-    Examples:
-        pulldb history                    # Last 30 days
-        pulldb history --days 7           # Last week
-        pulldb history --status failed    # Only failed jobs
-        pulldb history --user jdoe        # Jobs by user code
-        pulldb history --wide             # Include error details
+    \b
+    STATUS VALUES (for --status):
+      complete  - Job finished successfully
+      failed    - Job failed with error
+      canceled  - Job was canceled
     """
     if limit <= 0 or limit > 1000:
         raise click.UsageError("--limit must be between 1 and 1000")
@@ -1654,6 +1864,67 @@ def _format_bytes(num_bytes: int) -> str:
 # are NOT exposed in the user-facing pulldb CLI.
 # They will be available via the pulldb-admin CLI.
 # See docs/KNOWLEDGE-POOL.md "CLI Architecture & Scope" for rationale.
+
+
+@cli.command("hosts", help="Show available database hosts")
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of formatted table",
+)
+def hosts_cmd(json_out: bool) -> None:
+    """Show available database hosts.
+
+    Lists all enabled database hosts where you can restore databases.
+    The alias column shows short names you can use with dbhost= parameter.
+
+    Examples:
+        pulldb hosts                        # Show available hosts
+        pulldb hosts --json                 # Raw JSON output
+        pulldb restore customer dbhost=dev  # Use alias in restore
+    """
+    base_url, timeout = _load_api_config()
+    url = f"{base_url}/api/hosts"
+    try:
+        response = requests_module.get(url, timeout=timeout)
+    except RequestException as exc:
+        raise click.ClickException(
+            f"Failed to reach pullDB API: {exc}. "
+            "Ensure the API service is running and reachable."
+        ) from exc
+
+    if response.status_code >= 400:
+        raise click.ClickException(_format_api_error(response))
+
+    data = _parse_json_response(response)
+    if not isinstance(data, dict):
+        raise click.ClickException("Unexpected API response: expected object payload.")
+
+    hosts = data.get("hosts", [])
+
+    if json_out:
+        click.echo(json_module.dumps(data, indent=2, default=str))
+        return
+
+    if not hosts:
+        click.echo("No database hosts available.")
+        return
+
+    # Formatted table display
+    click.echo("\nAvailable Database Hosts")
+    click.echo("=" * 50)
+    click.echo(f"{'ALIAS':<16} {'HOSTNAME':<32}")
+    click.echo(f"{'-' * 16} {'-' * 32}")
+
+    for host in hosts:
+        alias = host.get("alias") or "—"
+        hostname = host.get("hostname", "unknown")
+        click.echo(f"{alias:<16} {hostname:<32}")
+
+    click.echo(f"{'-' * 16} {'-' * 32}")
+    click.echo(f"\nTotal: {len(hosts)} host(s)")
+    click.echo("\nUse alias or hostname with: pulldb restore <customer> dbhost=<alias>")
 
 
 @cli.command("register", help="Register a new pullDB account")

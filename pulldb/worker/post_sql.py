@@ -21,6 +21,7 @@ Deferred / Future Enhancements:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Callable
 
 # ruff: noqa: I001
 from datetime import UTC, datetime
@@ -35,6 +36,7 @@ from pulldb.infra.logging import get_logger
 
 SCRIPT_EXTENSION = ".sql"
 MAX_SCRIPT_SIZE_BYTES = 2_000_000  # 2 MB safety cap to prevent runaway memory
+SCRIPT_SOURCE_NOTE = "template_after_sql/"  # Note for log messages about script location
 
 logger = get_logger("pulldb.worker.post_sql")
 
@@ -100,14 +102,19 @@ def _read_script(path: Path) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def execute_post_sql(spec: PostSQLConnectionSpec) -> PostSQLExecutionResult:
+def execute_post_sql(
+    spec: PostSQLConnectionSpec,
+    event_callback: Callable[[str, dict[str, Any]], None] | None = None,
+) -> PostSQLExecutionResult:
     """Execute ordered SQL scripts for a restored staging database.
 
     Args:
-    spec: Connection + script directory specification.
+        spec: Connection + script directory specification.
+        event_callback: Optional callback for emitting per-script events.
+            Called with (event_type, detail_dict) after each script completes.
 
     Returns:
-    PostSQLExecutionResult summarizing executed scripts (empty if none).
+        PostSQLExecutionResult summarizing executed scripts (empty if none).
 
     Raises:
         PostSQLError: On first script failure (execution stops immediately).
@@ -186,15 +193,25 @@ def execute_post_sql(spec: PostSQLConnectionSpec) -> PostSQLExecutionResult:
                 f"Script completed: {path.name}",
                 extra={"duration_seconds": duration, "rows_affected": affected},
             )
-            results.append(
-                PostSQLScriptResult(
-                    script_name=path.name,
-                    started_at=started,
-                    completed_at=completed,
-                    duration_seconds=duration,
-                    rows_affected=affected,
-                )
+            script_result = PostSQLScriptResult(
+                script_name=path.name,
+                started_at=started,
+                completed_at=completed,
+                duration_seconds=duration,
+                rows_affected=affected,
             )
+            results.append(script_result)
+
+            # Emit per-script event for live progress visibility
+            if event_callback:
+                event_callback("post_sql_script_complete", {
+                    "script_name": path.name,
+                    "script_index": len(results),
+                    "total_scripts": len(scripts),
+                    "duration_seconds": round(duration, 3),
+                    "rows_affected": affected,
+                    "source": SCRIPT_SOURCE_NOTE,
+                })
     finally:
         with suppress(Exception):  # pragma: no cover - best effort
             conn.close()

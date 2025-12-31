@@ -28,7 +28,12 @@ from pulldb.infra.metrics import MetricLabels, emit_counter, emit_gauge
 
 
 if TYPE_CHECKING:
-    from pulldb.infra.mysql import HostRepository, JobRepository, SettingsRepository
+    from pulldb.infra.mysql import (
+        HostRepository,
+        JobRepository,
+        SettingsRepository,
+        UserRepository,
+    )
     from pulldb.infra.secrets import MySQLCredentials
 
 
@@ -270,6 +275,42 @@ def _get_database_size_mb(credentials: MySQLCredentials, db_name: str) -> float 
         conn.close()
 
 
+def _has_pulldb_table(credentials: MySQLCredentials, db_name: str) -> bool:
+    """Check if a database contains the pullDB marker table.
+
+    The pullDB table is created during restore operations, so its presence
+    confirms the database was created/managed by pullDB. Databases without
+    this table should not be considered pullDB orphans.
+
+    Args:
+        credentials: MySQL credentials for the host.
+        db_name: Name of the database to check.
+
+    Returns:
+        True if pullDB table exists, False otherwise.
+    """
+    conn = mysql.connector.connect(
+        host=credentials.host,
+        port=credentials.port,
+        user=credentials.username,
+        password=credentials.password,
+        connect_timeout=30,
+    )
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM information_schema.TABLES 
+            WHERE table_schema = %s AND table_name = 'pullDB'
+        """, (db_name,))
+        row = cursor.fetchone()
+        return bool(row and row[0] > 0)
+    except Exception as e:
+        logger.warning("Failed to check pullDB table in %s: %s", db_name, e)
+        return False
+    finally:
+        conn.close()
+
+
 def get_orphan_metadata(
     credentials: MySQLCredentials,
     db_name: str,
@@ -399,6 +440,163 @@ def _drop_database(credentials: MySQLCredentials, db_name: str) -> bool:
         return False
 
     return True
+
+
+@dataclass
+class JobDeleteResult:
+    """Result of deleting a job's databases.
+    
+    Tracks what databases were found and dropped for audit purposes.
+    """
+    
+    job_id: str
+    staging_name: str
+    target_name: str
+    dbhost: str
+    staging_existed: bool = False
+    staging_dropped: bool = False
+    target_existed: bool = False
+    target_dropped: bool = False
+    error: str | None = None
+
+
+def _drop_target_database_unsafe(credentials: MySQLCredentials, db_name: str) -> bool:
+    """Drop a target database without staging pattern validation.
+    
+    WARNING: This function bypasses staging name validation and should ONLY
+    be called after verifying the database name matches the expected user_code
+    pattern. Used for user-initiated database deletion.
+    
+    SAFETY: Still blocks protected databases.
+    
+    Args:
+        credentials: MySQL credentials for the host.
+        db_name: Name of the database to drop.
+        
+    Returns:
+        True if database was dropped and confirmed gone, False otherwise.
+        
+    Raises:
+        ValueError: If attempting to drop a protected database.
+    """
+    # HARD BLOCK: Never drop protected databases
+    if db_name.lower() in PROTECTED_DATABASES:
+        raise ValueError(
+            f"FATAL: Attempted to drop protected database: {db_name}. "
+            f"This should never happen - report this as a critical bug."
+        )
+    
+    conn = mysql.connector.connect(
+        host=credentials.host,
+        port=credentials.port,
+        user=credentials.username,
+        password=credentials.password,
+        connect_timeout=30,
+        autocommit=True,
+    )
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f"DROP DATABASE IF EXISTS `{db_name}`")
+        logger.info(f"Dropped target database: {db_name}")
+    finally:
+        conn.close()
+    
+    # Verify the database is actually gone
+    if _database_exists(credentials, db_name):
+        logger.error(f"Database {db_name} still exists after DROP command!")
+        return False
+    
+    return True
+
+
+def delete_job_databases(
+    job_id: str,
+    staging_name: str,
+    target_name: str,
+    owner_user_code: str,
+    dbhost: str,
+    host_repo: HostRepository,
+) -> JobDeleteResult:
+    """Delete both staging and target databases for a job.
+    
+    User-initiated deletion of job databases. Drops BOTH:
+    - staging_name: The staging database ({target}_{job_id[:12]})
+    - target_name: The target database ({user_code}{customer/template})
+    
+    Both are dropped if they exist, regardless of job status.
+    
+    SAFETY:
+    - Validates target_name contains the owner's user_code
+    - Protected databases are never dropped
+    - Logs all operations
+    
+    Args:
+        job_id: Job UUID for logging.
+        staging_name: Staging database name to drop.
+        target_name: Target database name to drop.
+        owner_user_code: User code of the job owner (for validation).
+        dbhost: Database host where databases exist.
+        host_repo: HostRepository for credential resolution.
+        
+    Returns:
+        JobDeleteResult with details of what was found and dropped.
+    """
+    result = JobDeleteResult(
+        job_id=job_id,
+        staging_name=staging_name,
+        target_name=target_name,
+        dbhost=dbhost,
+    )
+    
+    # SAFETY: Validate target_name contains owner's user_code
+    if owner_user_code not in target_name:
+        result.error = (
+            f"Target database '{target_name}' does not contain "
+            f"owner user code '{owner_user_code}' - refusing to delete"
+        )
+        logger.error(result.error)
+        return result
+    
+    try:
+        credentials = host_repo.get_host_credentials(dbhost)
+    except Exception as e:
+        result.error = f"Failed to get credentials for {dbhost}: {e}"
+        logger.error(result.error)
+        return result
+    
+    # Check and drop staging database
+    try:
+        result.staging_existed = _database_exists(credentials, staging_name)
+        if result.staging_existed:
+            # Staging names pass is_valid_staging_name, use regular _drop_database
+            is_valid, reason = is_valid_staging_name(staging_name)
+            if is_valid:
+                result.staging_dropped = _drop_database(credentials, staging_name)
+            else:
+                logger.warning(
+                    f"Staging name {staging_name} failed validation: {reason}"
+                )
+    except Exception as e:
+        logger.error(f"Error dropping staging database {staging_name}: {e}")
+        # Continue to try target
+    
+    # Check and drop target database
+    try:
+        result.target_existed = _database_exists(credentials, target_name)
+        if result.target_existed:
+            result.target_dropped = _drop_target_database_unsafe(credentials, target_name)
+    except Exception as e:
+        logger.error(f"Error dropping target database {target_name}: {e}")
+        if not result.error:
+            result.error = f"Failed to drop target database: {e}"
+    
+    logger.info(
+        f"Job {job_id} database deletion complete: "
+        f"staging={staging_name} (existed={result.staging_existed}, dropped={result.staging_dropped}), "
+        f"target={target_name} (existed={result.target_existed}, dropped={result.target_dropped})"
+    )
+    
+    return result
 
 
 # =============================================================================
@@ -1177,6 +1375,432 @@ def run_scheduled_cleanup(
     )
 
     return summary
+
+
+# =============================================================================
+# User Orphan Detection (databases from deleted users)
+# =============================================================================
+
+
+# Pattern for user databases: starts with 6-char user_code, followed by customer name
+# Optionally has _hex12 suffix for staging databases
+# Examples: jdoesacme, jdoesacme_abc123def456
+# NOTE: The user_code is exactly 6 lowercase letters, but we can't reliably extract
+# it from the name alone due to no delimiter. We use startswith() checks instead.
+USER_DB_PATTERN = re.compile(r"^([a-z]{6})([a-z]+)(_[0-9a-f]{12})?$", re.IGNORECASE)
+
+
+@dataclass
+class UserOrphanCandidate:
+    """A database that appears to belong to a deleted user.
+
+    User_code was extracted from database name but doesn't exist in auth_users.
+    """
+
+    database_name: str
+    extracted_user_code: str
+    dbhost: str
+    discovered_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    size_mb: float | None = None
+    restored_at: datetime | None = None  # From pullDB metadata table
+    restored_by: str | None = None  # From pullDB metadata table
+
+
+@dataclass
+class UserOrphanReport:
+    """Report of databases belonging to deleted users."""
+
+    dbhost: str
+    scanned_at: datetime
+    orphans: list[UserOrphanCandidate] = field(default_factory=list)
+    error: str | None = None
+
+
+def _extract_user_code(db_name: str) -> str | None:
+    """Extract user_code from a database name.
+
+    User codes are 6 lowercase alphabetic characters that prefix database names.
+    The database name must match the pullDB naming pattern to be considered valid.
+
+    Args:
+        db_name: Database name to parse.
+
+    Returns:
+        First 6 chars (lowercase) if the name matches pullDB pattern, None otherwise.
+    """
+    # Must match the user database pattern first
+    if not _looks_like_user_database(db_name):
+        return None
+    
+    # Extract first 6 characters (we know they're valid letters from the pattern)
+    return db_name[:6].lower()
+
+
+def _looks_like_user_database(db_name: str) -> bool:
+    """Check if a database name looks like a pullDB user database.
+
+    Returns True if the name matches the pattern of user databases:
+    - At least 7 characters (6 user_code + 1 customer)
+    - First 6 characters are letters (the user_code)
+    - Remaining characters are alphanumeric (customer name + optional staging suffix)
+
+    Args:
+        db_name: Database name to check.
+
+    Returns:
+        True if it looks like a user database name.
+    """
+    return USER_DB_PATTERN.match(db_name) is not None
+
+
+def get_all_user_codes(user_repo: UserRepository) -> frozenset[str]:
+    """Get all user_codes from the auth_users table.
+
+    Args:
+        user_repo: UserRepository for user lookups.
+
+    Returns:
+        Frozenset of all active user codes (lowercase).
+    """
+    users = user_repo.list_users()
+    return frozenset(u.user_code.lower() for u in users if u.user_code)
+
+
+def scan_databases_for_user_code(
+    user_code: str,
+    host_repo: HostRepository,
+    specific_hosts: list[str] | None = None,
+) -> list[tuple[str, str]]:
+    """Scan hosts for databases belonging to a specific user_code.
+
+    Used by force-delete preview to find all databases for a user being deleted.
+
+    Args:
+        user_code: The 6-char user code to search for.
+        host_repo: HostRepository for credential resolution.
+        specific_hosts: Optional list of hostnames to scan. If None, scans all enabled hosts.
+
+    Returns:
+        List of (dbhost, database_name) tuples.
+    """
+    if is_simulation_mode():
+        return _scan_databases_for_user_code_simulation(user_code, host_repo, specific_hosts)
+
+    results: list[tuple[str, str]] = []
+    user_code_lower = user_code.lower()
+
+    # Get hosts to scan
+    if specific_hosts:
+        hosts_to_scan = specific_hosts
+    else:
+        hosts = host_repo.get_enabled_hosts()
+        hosts_to_scan = [h.hostname for h in hosts]
+
+    for hostname in hosts_to_scan:
+        try:
+            credentials = host_repo.get_host_credentials(hostname)
+            all_databases = _list_databases(credentials)
+
+            for db_name in all_databases:
+                # Skip protected databases
+                if db_name.lower() in PROTECTED_DATABASES:
+                    continue
+
+                # Check if database belongs to this user
+                extracted = _extract_user_code(db_name)
+                if extracted and extracted.lower() == user_code_lower:
+                    results.append((hostname, db_name))
+
+        except Exception as e:
+            logger.warning(f"Failed to scan host {hostname} for user databases: {e}")
+            continue
+
+    return results
+
+
+def _scan_databases_for_user_code_simulation(
+    user_code: str,
+    host_repo: HostRepository,
+    specific_hosts: list[str] | None = None,
+) -> list[tuple[str, str]]:
+    """Simulation mode database scan for user_code."""
+    from pulldb.simulation.core.state import get_simulation_state
+
+    state = get_simulation_state()
+    results: list[tuple[str, str]] = []
+    user_code_lower = user_code.lower()
+
+    # Get hosts to scan
+    if specific_hosts:
+        hosts_to_scan = specific_hosts
+    else:
+        hosts = host_repo.get_enabled_hosts()
+        hosts_to_scan = [h.hostname for h in hosts]
+
+    with state.lock:
+        for hostname in hosts_to_scan:
+            host_dbs = state.staging_databases.get(hostname, set())
+            for db_name in host_dbs:
+                if (hostname, db_name) in state.deleted_orphans:
+                    continue
+                extracted = _extract_user_code(db_name)
+                if extracted and extracted.lower() == user_code_lower:
+                    results.append((hostname, db_name))
+
+    return results
+
+
+def detect_user_orphaned_databases(
+    dbhost: str,
+    host_repo: HostRepository,
+    valid_user_codes: frozenset[str],
+) -> UserOrphanReport | str:
+    """Detect databases belonging to users that no longer exist.
+
+    Scans a host for databases that match the user_code pattern but whose
+    extracted user_code is not in the valid_user_codes set (from auth_users).
+
+    Args:
+        dbhost: Hostname to scan.
+        host_repo: HostRepository for credential resolution.
+        valid_user_codes: Set of all existing user codes from auth_users.
+
+    Returns:
+        UserOrphanReport with orphaned databases, or error string if connection failed.
+    """
+    if is_simulation_mode():
+        return _detect_user_orphaned_databases_simulation(dbhost, valid_user_codes)
+
+    report = UserOrphanReport(
+        dbhost=dbhost,
+        scanned_at=datetime.now(UTC),
+    )
+
+    try:
+        credentials = host_repo.get_host_credentials(dbhost)
+        all_databases = _list_databases(credentials)
+    except Exception as e:
+        logger.error("Failed to list databases on %s: %s", dbhost, e)
+        return f"Failed to connect: {e}"
+
+    for db_name in all_databases:
+        # Skip protected databases
+        if db_name.lower() in PROTECTED_DATABASES:
+            continue
+
+        # Try to extract user_code
+        extracted_code = _extract_user_code(db_name)
+        if not extracted_code:
+            continue
+
+        # Check if user_code exists
+        if extracted_code.lower() not in valid_user_codes:
+            # User doesn't exist - verify this is a pullDB-managed database
+            # by checking for the pullDB marker table
+            if not _has_pulldb_table(credentials, db_name):
+                logger.debug(
+                    "Skipping %s on %s: no pullDB marker table (not pullDB-managed)",
+                    db_name,
+                    dbhost,
+                )
+                continue
+
+            # Confirmed pullDB-managed orphan - get metadata
+            size_mb = _get_database_size_mb(credentials, db_name)
+            metadata = get_orphan_metadata(credentials, db_name)
+            restored_at = metadata.restored_at if metadata else None
+            restored_by = metadata.restored_by if metadata else None
+
+            orphan = UserOrphanCandidate(
+                database_name=db_name,
+                extracted_user_code=extracted_code,
+                dbhost=dbhost,
+                size_mb=size_mb,
+                restored_at=restored_at,
+                restored_by=restored_by,
+            )
+            report.orphans.append(orphan)
+            logger.info(
+                "Detected user-orphan database: %s on %s (user_code '%s' not in system, %.2f MB)",
+                db_name,
+                dbhost,
+                extracted_code,
+                size_mb or 0,
+            )
+
+    return report
+
+
+def _detect_user_orphaned_databases_simulation(
+    dbhost: str,
+    valid_user_codes: frozenset[str],
+) -> UserOrphanReport:
+    """Simulation mode user orphan detection."""
+    from pulldb.simulation.core.state import get_simulation_state
+
+    state = get_simulation_state()
+    report = UserOrphanReport(
+        dbhost=dbhost,
+        scanned_at=datetime.now(UTC),
+    )
+
+    # Simulate connection failure for staging-03
+    if dbhost == SIMULATION_FAILING_HOST:
+        report.error = f"Connection refused to {dbhost}"
+        return report
+
+    with state.lock:
+        host_dbs = state.staging_databases.get(dbhost, set())
+
+        for db_name in host_dbs:
+            if (dbhost, db_name) in state.deleted_orphans:
+                continue
+
+            extracted_code = _extract_user_code(db_name)
+            if not extracted_code:
+                continue
+
+            if extracted_code.lower() not in valid_user_codes:
+                # In simulation, assume all synthetic databases are pullDB-managed
+                # (real mode checks for pullDB marker table)
+                size_mb = state.orphan_sizes.get((dbhost, db_name))
+                if size_mb is None:
+                    size_mb = 10.0 + (hash(db_name) % 490)
+
+                orphan = UserOrphanCandidate(
+                    database_name=db_name,
+                    extracted_user_code=extracted_code,
+                    dbhost=dbhost,
+                    size_mb=size_mb,
+                )
+                report.orphans.append(orphan)
+
+    return report
+
+
+def admin_delete_user_orphan_databases(
+    dbhost: str,
+    database_names: list[str],
+    host_repo: HostRepository,
+    admin_user: str,
+) -> dict[str, bool]:
+    """Delete user orphan databases (admin-initiated).
+
+    Unlike staging orphan deletion, this drops databases that match the user_code
+    pattern but have no matching user in the system.
+
+    Args:
+        dbhost: Hostname where databases exist.
+        database_names: List of database names to delete.
+        host_repo: HostRepository for credential resolution.
+        admin_user: Username of admin performing the deletion.
+
+    Returns:
+        Dict mapping database name to success (True) or failure (False).
+    """
+    if is_simulation_mode():
+        return _admin_delete_user_orphan_databases_simulation(
+            dbhost, database_names, admin_user
+        )
+
+    results: dict[str, bool] = {}
+
+    try:
+        credentials = host_repo.get_host_credentials(dbhost)
+    except Exception as e:
+        logger.error("Failed to get credentials for %s: %s", dbhost, e)
+        return {db: False for db in database_names}
+
+    for db_name in database_names:
+        # Validate it matches user database pattern
+        if not _extract_user_code(db_name):
+            logger.warning(
+                "Admin deletion rejected: %s doesn't match user database pattern",
+                db_name,
+            )
+            results[db_name] = False
+            continue
+
+        # Check it's not a protected database
+        if db_name.lower() in PROTECTED_DATABASES:
+            logger.error("Attempted to delete protected database: %s", db_name)
+            results[db_name] = False
+            continue
+
+        try:
+            # Check if database exists
+            if not _database_exists(credentials, db_name):
+                logger.info("Database %s already doesn't exist", db_name)
+                results[db_name] = True
+                continue
+
+            # Drop the database
+            conn = mysql.connector.connect(
+                host=credentials.host,
+                port=credentials.port,
+                user=credentials.username,
+                password=credentials.password,
+                connect_timeout=30,
+                autocommit=True,
+            )
+            try:
+                cursor = conn.cursor()
+                cursor.execute(f"DROP DATABASE IF EXISTS `{db_name}`")
+                logger.info(
+                    "Admin %s deleted user-orphan database: %s on %s",
+                    admin_user,
+                    db_name,
+                    dbhost,
+                )
+            finally:
+                conn.close()
+
+            # Verify deletion
+            if _database_exists(credentials, db_name):
+                logger.error("Database %s still exists after DROP", db_name)
+                results[db_name] = False
+            else:
+                results[db_name] = True
+
+        except Exception as e:
+            logger.error("Failed to delete %s: %s", db_name, e)
+            results[db_name] = False
+
+    return results
+
+
+def _admin_delete_user_orphan_databases_simulation(
+    dbhost: str,
+    database_names: list[str],
+    admin_user: str,
+) -> dict[str, bool]:
+    """Simulation mode user orphan deletion."""
+    from pulldb.simulation.core.state import get_simulation_state
+
+    state = get_simulation_state()
+    results: dict[str, bool] = {}
+
+    with state.lock:
+        for db_name in database_names:
+            if not _extract_user_code(db_name):
+                results[db_name] = False
+                continue
+
+            host_dbs = state.staging_databases.get(dbhost, set())
+            if db_name not in host_dbs:
+                results[db_name] = True
+                continue
+
+            state.deleted_orphans.add((dbhost, db_name))
+            logger.info(
+                "[SIMULATION] Admin %s deleted user-orphan database: %s on %s",
+                admin_user,
+                db_name,
+                dbhost,
+            )
+            results[db_name] = True
+
+    return results
 
 
 # Legacy function for backwards compatibility

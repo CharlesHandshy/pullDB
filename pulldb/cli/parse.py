@@ -301,25 +301,35 @@ def _tokenize(
             i += 1
             continue
 
-        # Treat bare token as customer if it looks like a valid customer name
-        # (lowercase letters only, no = sign)
-        if re.match(r"^[a-z]+$", tok) and "=" not in tok:
-            if is_qatemplate:
-                raise CLIParseError(
-                    "Cannot specify both customer and qatemplate. Choose one."
-                )
-            if customer_id is not None:
-                raise CLIParseError(
-                    f"customer specified more than once ('{customer_id}', '{tok}')."
-                )
-            if len(tok) > MAX_CUSTOMER_LEN:
-                raise CLIParseError(
-                    f"customer exceeds maximum length of {MAX_CUSTOMER_LEN} characters "
-                    f"(got {len(tok)}). Shorten the customer name."
-                )
-            customer_id = tok
-            i += 1
-            continue
+        # Handle bare tokens (no = sign) - could be customer or dbhost
+        if "=" not in tok and re.match(r"^[A-Za-z0-9_.-]+$", tok):
+            # If we don't have a customer yet and token is lowercase letters only,
+            # treat it as customer
+            if customer_id is None and not is_qatemplate and re.match(r"^[a-z]+$", tok):
+                if len(tok) > MAX_CUSTOMER_LEN:
+                    raise CLIParseError(
+                        f"customer exceeds maximum length of {MAX_CUSTOMER_LEN} characters "
+                        f"(got {len(tok)}). Shorten the customer name."
+                    )
+                customer_id = tok
+                i += 1
+                continue
+            
+            # If we already have customer/qatemplate, treat bare token as dbhost
+            if customer_id is not None or is_qatemplate:
+                if dbhost is not None:
+                    raise CLIParseError(
+                        f"dbhost specified more than once ('{dbhost}', '{tok}')."
+                    )
+                dbhost = tok
+                i += 1
+                continue
+            
+            # Token doesn't fit customer pattern but we don't have customer yet
+            raise CLIParseError(
+                f"Unrecognized token: '{tok}'. "
+                "Customer must be lowercase letters only (a-z)."
+            )
 
         raise CLIParseError(f"Unrecognized token: '{tok}'")
 

@@ -1,26 +1,162 @@
-{#
-    HCA Migration Wrapper: base.html → shared/layouts/app_layout.html
-    ==================================================================
+<!DOCTYPE html>
+<html lang="en" data-theme="light"{% if admin_dark_mode() %} data-admin-theme-default="dark"{% endif %}>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}pullDB{% endblock %}</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     
-    This template now extends the HCA-compliant app_layout.html.
-    All 19 feature templates that extend "base.html" automatically
-    inherit the HCA structure without modification.
+    {# Dark mode initial state - runs synchronously before CSS load to prevent flash #}
+    <script>
+        (function() {
+            var THEME_KEY = 'pulldb-theme';
+            var VERSION_KEY = 'pulldb-theme-version';
+            var stored = localStorage.getItem(THEME_KEY);
+            var theme;
+            
+            if (stored === 'dark' || stored === 'light') {
+                theme = stored;
+            } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                theme = 'dark';
+            } else {
+                theme = 'light';
+            }
+            
+            document.documentElement.setAttribute('data-theme', theme);
+            window.__pulldb_theme = theme;
+            window.__pulldb_theme_version = localStorage.getItem(VERSION_KEY) || Date.now();
+        })();
+    </script>
     
-    Block Mapping:
-    - title → title (inherited)
-    - content → content (inherited)
-    - extra_css → extra_css (inherited)
-    - extra_js → extra_js (inherited)
-    - header_actions → header_actions (inherited)
-    - body_class → layout_class (mapped)
-    - sidebar → sidebar (inherited)
+    <!-- HCA CSS Manifest (loads shared → entities → features → widgets layers) -->
+    <link rel="stylesheet" href="/static/css/shared/manifest.css">
     
-    Migration Complete: All pages now use HCA template hierarchy:
-    _skeleton.html → base.html → app_layout.html → feature templates
+    <!-- Theme CSS - Dynamically selected based on detected theme preference -->
+    <script>
+        (function() {
+            var theme = window.__pulldb_theme || 'light';
+            var version = window.__pulldb_theme_version || Date.now();
+            document.write('<link id="theme-css" rel="stylesheet" href="/static/css/generated/manifest-' + theme + '.css?v=' + version + '">');
+        })();
+    </script>
+    <noscript>
+        <link id="theme-css" rel="stylesheet" href="/static/css/generated/manifest-light.css">
+    </noscript>
     
-    Size: ~10 lines (HCA compliant - thin wrapper)
-#}
-{% extends "shared/layouts/app_layout.html" %}
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    {% from "partials/icons/_index.html" import icon %}
+    
+    {# Accessibility: Skip link for keyboard navigation #}
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-left flex items-center gap-4">
+            <button id="sidebar-toggle" class="btn-icon" aria-label="Toggle sidebar">
+                {{ icon('menu', size='24', stroke_width='2') }}
+            </button>
+            <div class="header-logo">
+                {{ icon('layers', size='24', stroke_width='2') }}
+                <span>pullDB</span>
+            </div>
+        </div>
+        <div class="header-center">
+            {% include "partials/breadcrumbs.html" %}
+        </div>
+        <div class="header-actions">
+            <!-- Theme Toggle -->
+            <button id="theme-toggle" class="btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                {# Sun icon (shown in dark mode - click to go light) #}
+                <span class="theme-icon-light hidden">
+                    {{ icon('sun', size='20') }}
+                </span>
+                {# Moon icon (shown in light mode - click to go dark) #}
+                <span class="theme-icon-dark">
+                    {{ icon('moon', size='20') }}
+                </span>
+            </button>
+            
+            {% block header_actions %}
+            <!-- User Profile / Actions -->
+            <div class="user-profile">
+                {% if user %}
+                <a href="/web/auth/profile" class="link-neutral flex items-center gap-2 no-underline">
+                    <div class="avatar avatar--sm avatar--primary">
+                        {{ user.username[0]|upper }}
+                    </div>
+                    <span>{{ user.username }}</span>
+                </a>
+                {% else %}
+                <span>Guest</span>
+                {% endif %}
+            </div>
+            {% endblock %}
+        </div>
+    </header>
 
-{# Map body_class to layout_class for backward compatibility #}
-{% block layout_class %}{% block body_class %}{% endblock %}{% endblock %}
+    <!-- Sidebar Trigger Strip -->
+    <div class="sidebar-trigger" id="sidebar-trigger"></div>
+
+    <!-- Sidebar -->
+    <nav class="app-sidebar" id="app-sidebar">
+        {% block sidebar %}
+        {% include "widgets/sidebar/sidebar.html" %}
+        {% endblock %}
+    </nav>
+
+    <!-- Main Content -->
+    <main class="app-main" id="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    {# Modal container - outside app-main for proper fixed positioning #}
+    {% block modals %}{% endblock %}
+
+    {# Global Confirm Modal - themed replacement for native confirm() #}
+    <div id="confirm-modal" class="modal modal-hidden">
+        <div class="modal-backdrop" onclick="window._confirmReject && window._confirmReject()"></div>
+        <div class="modal-content modal-content-sm">
+            <div class="modal-header" id="confirm-modal-header">
+                <h3 class="modal-title" id="confirm-modal-title">Confirm</h3>
+                <button type="button" class="modal-close" onclick="window._confirmReject && window._confirmReject()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" x2="6" y1="6" y2="18"/>
+                        <line x1="6" x2="18" y1="6" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-modal-message">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="window._confirmReject && window._confirmReject()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirm-modal-ok" onclick="window._confirmResolve && window._confirmResolve()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        <div class="footer-left">
+            &copy; 2025 pullDB
+        </div>
+        <div class="footer-right">
+            v{{ app_version }}
+        </div>
+    </footer>
+
+    <script src="/static/js/navigation.js"></script>
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/theme-toggle.js"></script>
+    {% block extra_js %}{% endblock %}
+    
+    {# Dev toolbar - only injected when dev_extensions is defined (dev_server.py) #}
+    {% if dev_extensions is defined %}
+    {{ dev_extensions | safe }}
+    {% endif %}
+</body>
+</html>

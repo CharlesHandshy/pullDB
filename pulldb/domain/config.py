@@ -311,10 +311,10 @@ class Config:
         settings = repo.get_all_settings()
 
         # Phase 3: Apply MySQL overrides (environment takes precedence if set)
+        # Note: S3 bucket path is legacy - PULLDB_S3_BACKUP_LOCATIONS is now the primary config
         s3_bucket_path: str | None = (
             os.getenv("PULLDB_S3_BUCKET_PATH")
-            or settings.get("s3_bucket_stg")  # Use staging as default for dev
-            or settings.get("s3_bucket_prod")
+            or settings.get("s3_bucket_path")
         )
 
         default_dbhost: str | None = os.getenv("PULLDB_DEFAULT_DBHOST") or settings.get(
@@ -582,3 +582,98 @@ def _parse_s3_backup_locations(
             )
         )
     return tuple(locations)
+
+
+def find_location_for_backup_path(
+    backup_path: str,
+    locations: tuple[S3BackupLocationConfig, ...] | list[S3BackupLocationConfig],
+) -> S3BackupLocationConfig | None:
+    """Match a backup path to its S3 location config.
+
+    Finds the location config that corresponds to the given backup path by matching
+    bucket and prefix. Uses longest-prefix matching when multiple locations share
+    the same bucket (e.g., 'daily/stg/special/' before 'daily/stg/').
+
+    Args:
+        backup_path: Full S3 path (s3://bucket/key) or just the key.
+            Example: "s3://pestroutesrdsdbs/daily/stg/acme/daily_mydumper_acme_2024-01-02T12-30-45Z_Tue_dbimp.tar"
+        locations: Configured backup locations to search.
+
+    Returns:
+        Matching S3BackupLocationConfig or None if no match found.
+
+    Examples:
+        >>> loc = find_location_for_backup_path(
+        ...     "s3://pestroutesrdsdbs/daily/stg/acme/daily_mydumper_acme.tar",
+        ...     config.s3_backup_locations,
+        ... )
+        >>> loc.name
+        'staging'
+    """
+    if not backup_path or not locations:
+        return None
+
+    # Normalize: strip s3:// scheme if present
+    path = backup_path
+    if path.startswith("s3://"):
+        path = path[5:]  # Remove "s3://"
+
+    # Split into bucket and remainder (key)
+    # Format: bucket/prefix/target/filename.tar
+    parts = path.split("/", 1)
+    if len(parts) < 2:
+        return None
+
+    path_bucket = parts[0]
+    remainder = parts[1]  # prefix/target/filename.tar
+
+    # Find all matching locations (bucket matches and key starts with prefix)
+    matches: list[S3BackupLocationConfig] = []
+    for location in locations:
+        # Check bucket match
+        if location.bucket != path_bucket:
+            continue
+
+        # Check prefix match (location.prefix always ends with /)
+        # remainder should start with the prefix
+        if not remainder.startswith(location.prefix):
+            continue
+
+        matches.append(location)
+
+    if not matches:
+        return None
+
+    # Return location with longest prefix (most specific match wins)
+    return max(matches, key=lambda loc: len(loc.prefix))
+
+
+def parse_backup_path(
+    backup_path: str,
+) -> tuple[str, str] | None:
+    """Parse a backup path into bucket and key components.
+
+    Args:
+        backup_path: Full S3 path (s3://bucket/key) or just the key.
+
+    Returns:
+        Tuple of (bucket, key) or None if invalid.
+
+    Examples:
+        >>> parse_backup_path("s3://mybucket/path/to/file.tar")
+        ('mybucket', 'path/to/file.tar')
+        >>> parse_backup_path("mybucket/path/to/file.tar")
+        ('mybucket', 'path/to/file.tar')
+    """
+    if not backup_path:
+        return None
+
+    path = backup_path
+    if path.startswith("s3://"):
+        path = path[5:]
+
+    parts = path.split("/", 1)
+    if len(parts) < 2:
+        return None
+
+    return parts[0], parts[1]

@@ -22,6 +22,10 @@ class JobRequest(pydantic.BaseModel):
         pattern=r"^[a-z]{1,3}$",
         description="Optional suffix for target database (1-3 lowercase letters)",
     )
+    backup_path: str | None = pydantic.Field(
+        default=None,
+        description="Full S3 path to specific backup (e.g., s3://bucket/prefix/customer/daily_mydumper_*.tar)",
+    )
 
 
 class JobResponse(pydantic.BaseModel):

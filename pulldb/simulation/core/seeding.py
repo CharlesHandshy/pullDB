@@ -777,6 +777,179 @@ def _seed_job_events(
 
 
 # =============================================================================
+# Audit Log Seeding
+# =============================================================================
+
+# Audit action types matching the real system
+AUDIT_ACTIONS = [
+    "user_create",
+    "user_update",
+    "user_disable",
+    "user_enable",
+    "password_change",
+    "role_change",
+    "host_create",
+    "host_update",
+    "host_disable",
+    "host_enable",
+    "login_success",
+    "login_failed",
+    "job_create",
+    "job_cancel",
+    "settings_update",
+]
+
+
+def seed_audit_logs(
+    state: SimulationState,
+    users_dict: dict[str, User],
+    count: int = 150,
+) -> None:
+    """Seed realistic audit log entries.
+
+    Creates a variety of audit events spanning the past 30 days,
+    including user management, host changes, logins, and job operations.
+
+    Args:
+        state: SimulationState to populate.
+        users_dict: Dictionary of user_id -> User to reference as actors/targets.
+        count: Number of audit entries to create (default 150).
+    """
+    import json
+
+    users = list(users_dict.values())
+    admin_users = [u for u in users if u.role == UserRole.ADMIN]
+    manager_users = [u for u in users if u.role == UserRole.MANAGER]
+    regular_users = [u for u in users if u.role == UserRole.USER]
+
+    # Get host list for host-related actions
+    hosts = list(state.hosts.values())
+
+    entries: list[dict[str, t.Any]] = []
+    now = datetime.now(UTC)
+
+    for i in range(count):
+        # Spread events across the past 30 days
+        days_ago = random.randint(0, 30)
+        hours_ago = random.randint(0, 23)
+        minutes_ago = random.randint(0, 59)
+        timestamp = now - timedelta(days=days_ago, hours=hours_ago, minutes=minutes_ago)
+
+        action = random.choice(AUDIT_ACTIONS)
+        audit_id = str(uuid.uuid4())
+
+        # Select actor and target based on action type
+        actor: User
+        target_user_id: str | None = None
+        detail: str | None = None
+        context: dict[str, t.Any] | None = None
+
+        if action in ("user_create", "user_update", "user_disable", "user_enable", "role_change"):
+            # Admin/manager actions on users
+            actor = random.choice(admin_users + manager_users) if (admin_users or manager_users) else random.choice(users)
+            target = random.choice(users)
+            target_user_id = target.user_id
+
+            if action == "user_create":
+                detail = f"Created user {target.username}"
+                context = {"username": target.username, "role": target.role.value}
+            elif action == "user_update":
+                detail = f"Updated profile for {target.username}"
+                context = {"field": random.choice(["email", "display_name", "preferences"])}
+            elif action == "user_disable":
+                detail = f"Disabled user {target.username}"
+            elif action == "user_enable":
+                detail = f"Enabled user {target.username}"
+            elif action == "role_change":
+                old_role = random.choice(["user", "manager", "admin"])
+                new_role = random.choice(["user", "manager", "admin"])
+                detail = f"Changed {target.username} role from {old_role} to {new_role}"
+                context = {"old_role": old_role, "new_role": new_role}
+
+        elif action == "password_change":
+            # User changes own password or admin resets
+            if random.random() < 0.7:
+                actor = random.choice(users)
+                target_user_id = actor.user_id
+                detail = "Changed own password"
+            else:
+                actor = random.choice(admin_users) if admin_users else random.choice(users)
+                target = random.choice(users)
+                target_user_id = target.user_id
+                detail = f"Reset password for {target.username}"
+
+        elif action in ("host_create", "host_update", "host_disable", "host_enable"):
+            # Host management (admin only)
+            actor = random.choice(admin_users) if admin_users else random.choice(users)
+            if hosts:
+                host = random.choice(hosts)
+                if action == "host_create":
+                    detail = f"Created host {host.hostname}"
+                    context = {"hostname": host.hostname, "alias": host.host_alias}
+                elif action == "host_update":
+                    detail = f"Updated host {host.hostname}"
+                    context = {"hostname": host.hostname, "field": random.choice(["port", "max_concurrent", "alias"])}
+                elif action == "host_disable":
+                    detail = f"Disabled host {host.hostname}"
+                    context = {"hostname": host.hostname}
+                elif action == "host_enable":
+                    detail = f"Enabled host {host.hostname}"
+                    context = {"hostname": host.hostname}
+            else:
+                detail = f"{action.replace('_', ' ').title()} (no host reference)"
+
+        elif action in ("login_success", "login_failed"):
+            # Login events
+            actor = random.choice(users)
+            if action == "login_success":
+                detail = f"Login from {random.choice(['192.168.1.', '10.0.0.', '172.16.0.'])}{random.randint(1, 254)}"
+                context = {"ip": detail.split("from ")[1], "user_agent": "Mozilla/5.0"}
+            else:
+                detail = f"Failed login attempt for {actor.username}"
+                context = {"reason": random.choice(["invalid_password", "account_disabled", "rate_limited"])}
+
+        elif action in ("job_create", "job_cancel"):
+            # Job operations
+            actor = random.choice(users)
+            job_id = str(uuid.uuid4())[:8]
+            customer = random.choice(CUSTOMERS)
+            if action == "job_create":
+                detail = f"Created restore job for {customer}"
+                context = {"job_id": job_id, "customer": customer}
+            else:
+                detail = f"Cancelled job {job_id}"
+                context = {"job_id": job_id, "reason": random.choice(["user_requested", "duplicate", "invalid_backup"])}
+
+        elif action == "settings_update":
+            # System settings (admin only)
+            actor = random.choice(admin_users) if admin_users else random.choice(users)
+            setting = random.choice(["max_concurrent_jobs", "retention_days", "s3_bucket", "alert_threshold"])
+            detail = f"Updated setting: {setting}"
+            context = {"setting": setting}
+
+        else:
+            actor = random.choice(users)
+            detail = f"Unknown action: {action}"
+
+        entry = {
+            "audit_id": audit_id,
+            "actor_user_id": actor.user_id,
+            "target_user_id": target_user_id,
+            "action": action,
+            "detail": detail,
+            "context_json": json.dumps(context) if context else None,
+            "created_at": timestamp,
+        }
+        entries.append(entry)
+
+    # Sort by timestamp ascending so newest are last (matches real behavior)
+    entries.sort(key=lambda x: x["created_at"])
+
+    with state.lock:
+        state.audit_logs.extend(entries)
+
+
+# =============================================================================
 # Scenario Seeding (Orchestration)
 # =============================================================================
 
@@ -809,6 +982,9 @@ def seed_dev_scenario(
     
     # Always seed orphan databases for admin maintenance testing
     seed_orphan_databases(state)
+    
+    # Always seed audit logs for audit page testing
+    seed_audit_logs(state, users)
 
     if scenario in ("minimal", "empty"):
         # Infrastructure only - no jobs, history, logs, or staged databases

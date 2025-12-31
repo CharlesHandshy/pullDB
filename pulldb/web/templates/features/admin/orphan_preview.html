@@ -8,8 +8,20 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1 class="page-title">Delete Orphan Databases</h1>
+<div class="page-header-row mb-4">
+    <div class="page-header-left">
+        <h1 class="page-title">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                <path d="M3 5v14c0 1.5 3.5 3 9 3"/>
+                <path d="M3 12c0 1.5 3.5 3 9 3"/>
+                <path d="M21 5v4"/>
+                <path d="m18 15 4 4"/>
+                <path d="m22 15-4 4"/>
+            </svg>
+            Delete Orphan Databases
+        </h1>
+    </div>
 </div>
 
 <!-- Warning Box -->
@@ -56,7 +68,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=3"></script>
+<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=7"></script>
 <script>
 (function() {
     // Track exclusions by composite key: "dbhost|database_name"
@@ -151,6 +163,7 @@
             fetchUrl: '/web/admin/api/orphan-candidates',
             rowHeight: 48,
             pageSize: 50,
+            emptyMessage: 'No orphan databases detected',
             footerSlot: `
                 <a href="/web/admin/" class="btn btn-secondary">Cancel</a>
                 <button type="button" id="execute-btn" class="btn btn-danger" disabled>No Items Selected</button>
@@ -216,16 +229,21 @@
         }
     });
 
-    document.getElementById('execute-form').addEventListener('submit', (e) => {
+    document.getElementById('execute-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
         const selectedKeys = Array.from(loadedRowKeys).filter(k => !excludedKeys.has(k));
         const selectedCount = selectedKeys.length;
         if (selectedCount === 0) {
-            e.preventDefault();
             showToast('No items selected for deletion.', 'warning');
             return;
         }
-        if (!confirm('Are you sure you want to delete ' + selectedCount + ' orphan database(s)?\\n\\nThis action cannot be undone.')) {
-            e.preventDefault();
+        const confirmed = await showConfirm('Are you sure you want to delete ' + selectedCount + ' orphan database(s)?\\n\\nThis action cannot be undone.', {
+            title: 'Delete Orphan Databases',
+            okText: 'Delete ' + selectedCount + ' Database(s)',
+            type: 'danger'
+        });
+        if (confirmed) {
+            e.target.submit();
         }
     });
 

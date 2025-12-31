@@ -132,8 +132,7 @@ class TestFromEnvAndMySQL:
                 "setting_key": "default_dbhost",
                 "setting_value": "dev-db-01.example.com",
             },
-            {"setting_key": "s3_bucket_stg", "setting_value": "pestroutesrdsdbs"},
-            {"setting_key": "s3_prefix_stg", "setting_value": "daily/stg"},
+            {"setting_key": "s3_bucket_path", "setting_value": "pestroutesrdsdbs"},
             {"setting_key": "work_directory", "setting_value": "/var/lib/pulldb"},
             {
                 "setting_key": "customers_after_sql_dir",
@@ -196,7 +195,7 @@ class TestFromEnvAndMySQL:
         os.environ["PULLDB_MYLOADER_THREADS"] = "2"
 
         settings_rows = [
-            {"setting_key": "s3_bucket_stg", "setting_value": "mysql-bucket"},
+            {"setting_key": "s3_bucket_path", "setting_value": "mysql-bucket"},
             {"setting_key": "default_dbhost", "setting_value": "mysql-dbhost"},
             {"setting_key": "work_directory", "setting_value": "/var/mysql-work"},
             {
@@ -240,31 +239,6 @@ class TestFromEnvAndMySQL:
         )
         assert config.customers_after_sql_dir == expected_customer_dir
         assert config.qa_template_after_sql_dir == expected_qa_dir
-
-    def test_prefers_staging_bucket_over_prod(self) -> None:
-        """Staging bucket preferred when both staging and prod provided."""
-        os.environ["PULLDB_MYSQL_HOST"] = "localhost"
-        os.environ["PULLDB_MYSQL_PASSWORD"] = "testpass"
-
-        settings_rows = [
-            {"setting_key": "s3_bucket_stg", "setting_value": "staging-bucket"},
-            {"setting_key": "s3_bucket_prod", "setting_value": "prod-bucket"},
-        ]
-        mock_pool = self._build_pool_with_settings(settings_rows)
-        config = Config.from_env_and_mysql(mock_pool)
-        assert config.s3_bucket_path == "staging-bucket"
-
-    def test_falls_back_to_prod_bucket_if_no_staging(self) -> None:
-        """Production bucket used when staging bucket absent."""
-        os.environ["PULLDB_MYSQL_HOST"] = "localhost"
-        os.environ["PULLDB_MYSQL_PASSWORD"] = "testpass"
-
-        settings_rows = [
-            {"setting_key": "s3_bucket_prod", "setting_value": "prod-bucket"},
-        ]
-        mock_pool = self._build_pool_with_settings(settings_rows)
-        config = Config.from_env_and_mysql(mock_pool)
-        assert config.s3_bucket_path == "prod-bucket"
 
 
 class TestS3BackupLocationParsing:

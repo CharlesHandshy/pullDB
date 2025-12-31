@@ -18,10 +18,9 @@
     "production": "448509429610"
   },
   "s3": {
-    "staging_bucket": "pestroutesrdsdbs",
-    "staging_prefix": "daily/stg/",
     "production_bucket": "pestroutes-rds-backup-prod-vpc-us-east-1-s3",
-    "production_prefix": "daily/prod/"
+    "production_prefix": "daily/prod/",
+    "config_note": "PULLDB_S3_BACKUP_LOCATIONS is the only active config var - see packaging/env.example"
   },
   "iam": {
     "dev_ec2_role": "arn:aws:iam::345321506926:role/pulldb-ec2-service-role",

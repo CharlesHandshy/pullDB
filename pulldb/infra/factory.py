@@ -109,6 +109,15 @@ def get_settings_repository() -> SettingsRepository:
     return MySQLSettingsRepository(pool)
 
 
+def get_disallowed_user_repository() -> t.Any:
+    """Get DisallowedUserRepository implementation."""
+    # No simulation mode for this repository (simple lookup)
+    from pulldb.infra.mysql import DisallowedUserRepository
+
+    pool = _get_real_mysql_pool()
+    return DisallowedUserRepository(pool)
+
+
 def _get_real_mysql_pool() -> t.Any:
     """Create real MySQL connection pool."""
     from pulldb.infra.mysql import MySQLPool

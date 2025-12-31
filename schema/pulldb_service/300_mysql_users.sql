@@ -30,10 +30,11 @@
 
 CREATE USER IF NOT EXISTS 'pulldb_api'@'localhost' IDENTIFIED BY 'CHANGE_ME_API';
 
--- auth_users: Create users, update roles/managers/status via admin UI
-GRANT SELECT, INSERT, UPDATE ON pulldb_service.auth_users TO 'pulldb_api'@'localhost';
+-- auth_users: Full CRUD for admin user management (create, update, delete)
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.auth_users TO 'pulldb_api'@'localhost';
 
 -- auth_credentials: Web login + password management (create, reset)
+-- Note: DELETE cascades from auth_users, no explicit DELETE needed
 GRANT SELECT, INSERT, UPDATE ON pulldb_service.auth_credentials TO 'pulldb_api'@'localhost';
 
 -- sessions: Full access for web session management
@@ -42,14 +43,14 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.sessions TO 'pulldb_api'@
 -- user_hosts: Full access for admin user-host assignment management
 GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.user_hosts TO 'pulldb_api'@'localhost';
 
--- jobs: Submit jobs + request cancellation (UPDATE for cancel_requested_at)
-GRANT SELECT, INSERT, UPDATE ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
+-- jobs: Submit jobs + request cancellation (UPDATE for cancel_requested_at) + hard delete
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.jobs TO 'pulldb_api'@'localhost';
 
--- job_events: Read history + insert events when submitting jobs
-GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
+-- job_events: Read history + insert events when submitting jobs + hard delete cascade
+GRANT SELECT, INSERT, DELETE ON pulldb_service.job_events TO 'pulldb_api'@'localhost';
 
--- db_hosts: Full access for admin host management
-GRANT SELECT, INSERT, UPDATE ON pulldb_service.db_hosts TO 'pulldb_api'@'localhost';
+-- db_hosts: Full CRUD for admin host management (including hard delete)
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.db_hosts TO 'pulldb_api'@'localhost';
 
 -- settings: Full access for admin settings management
 GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.settings TO 'pulldb_api'@'localhost';
@@ -60,22 +61,25 @@ GRANT SELECT ON pulldb_service.active_jobs TO 'pulldb_api'@'localhost';
 -- audit_logs: Read + write for audit logging
 GRANT SELECT, INSERT ON pulldb_service.audit_logs TO 'pulldb_api'@'localhost';
 
+-- admin_tasks: Create tasks and read status (worker updates)
+GRANT SELECT, INSERT ON pulldb_service.admin_tasks TO 'pulldb_api'@'localhost';
+
 -- -----------------------------------------------------------------------------
 -- pulldb_worker: Worker Service User
 -- -----------------------------------------------------------------------------
--- Permissions: Update job status, manage events/locks/settings
+-- Permissions: Update job status, manage events/locks/settings, execute admin tasks
 -- Used by: pulldb-worker.service
 
 CREATE USER IF NOT EXISTS 'pulldb_worker'@'localhost' IDENTIFIED BY 'CHANGE_ME_WORKER';
 
--- auth_users: Read only (user created by API)
-GRANT SELECT ON pulldb_service.auth_users TO 'pulldb_worker'@'localhost';
+-- auth_users: Full access for force_delete_user task
+GRANT SELECT, UPDATE, DELETE ON pulldb_service.auth_users TO 'pulldb_worker'@'localhost';
 
--- jobs: SELECT + UPDATE for job status management
-GRANT SELECT, UPDATE ON pulldb_service.jobs TO 'pulldb_worker'@'localhost';
+-- jobs: Full access for force_delete_user task (delete job records)
+GRANT SELECT, UPDATE, DELETE ON pulldb_service.jobs TO 'pulldb_worker'@'localhost';
 
--- job_events: Append events
-GRANT SELECT, INSERT ON pulldb_service.job_events TO 'pulldb_worker'@'localhost';
+-- job_events: Full access for force_delete_user task (delete events)
+GRANT SELECT, INSERT, DELETE ON pulldb_service.job_events TO 'pulldb_worker'@'localhost';
 
 -- db_hosts: Read host config for claim_next_job()
 GRANT SELECT ON pulldb_service.db_hosts TO 'pulldb_worker'@'localhost';
@@ -92,6 +96,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.locks TO 'pulldb_worker'@
 
 -- active_jobs: Read-only view
 GRANT SELECT ON pulldb_service.active_jobs TO 'pulldb_worker'@'localhost';
+
+-- admin_tasks: Full access for claiming and executing admin tasks
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.admin_tasks TO 'pulldb_worker'@'localhost';
+
+-- audit_logs: Write for compliance logging during admin tasks
+GRANT SELECT, INSERT ON pulldb_service.audit_logs TO 'pulldb_worker'@'localhost';
 
 FLUSH PRIVILEGES;
 

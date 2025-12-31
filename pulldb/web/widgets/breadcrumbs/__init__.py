@@ -106,6 +106,11 @@ BREADCRUMB_PATHS: dict[str, list[tuple[str, str | None]]] = {
         ("Administration", "/web/admin"),
         ("Settings", None),
     ],
+    "admin_disallowed_users": [
+        ("Dashboard", "/web/dashboard"),
+        ("Administration", "/web/admin"),
+        ("Disallowed Users", None),
+    ],
     "admin_cleanup": [
         ("Dashboard", "/web/dashboard"),
         ("Administration", "/web/admin"),
@@ -129,7 +134,12 @@ BREADCRUMB_PATHS: dict[str, list[tuple[str, str | None]]] = {
     "admin_orphans": [
         ("Dashboard", "/web/dashboard"),
         ("Administration", "/web/admin"),
-        ("Orphan Databases", None),
+        ("Staging Orphans", None),
+    ],
+    "admin_user_orphans": [
+        ("Dashboard", "/web/dashboard"),
+        ("Administration", "/web/admin"),
+        ("User Orphans", None),
     ],
     "admin_host_detail": [
         ("Dashboard", "/web/dashboard"),

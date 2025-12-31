@@ -11,6 +11,162 @@ from __future__ import annotations
 
 import re
 
+# =============================================================================
+# Username Validation Constants
+# =============================================================================
+
+# Minimum username length for pullDB accounts
+MIN_USERNAME_LENGTH = 6
+
+# Hardcoded disallowed usernames - system accounts and reserved names
+# These are ALWAYS blocked and cannot be overridden via database configuration.
+# Case-insensitive: all comparisons done via lowercase.
+DISALLOWED_USERS_HARDCODED: frozenset[str] = frozenset({
+    # Core system accounts
+    "root",
+    "daemon",
+    "bin",
+    "sys",
+    "sync",
+    "games",
+    "man",
+    "lp",
+    "mail",
+    "news",
+    "uucp",
+    "proxy",
+    "backup",
+    "list",
+    "irc",
+    "gnats",
+    "nobody",
+    # Systemd accounts
+    "systemd-network",
+    "systemd-resolve",
+    "systemd-timesync",
+    "messagebus",
+    "syslog",
+    # Package/service accounts
+    "_apt",
+    "tss",
+    "uuidd",
+    "tcpdump",
+    "avahi-autoipd",
+    "usbmux",
+    "rtkit",
+    "dnsmasq",
+    "cups-pk-helper",
+    "speech-dispatcher",
+    "avahi",
+    "kernoops",
+    "saned",
+    "nm-openvpn",
+    "hplip",
+    "whoopsie",
+    "colord",
+    "geoclue",
+    "pulse",
+    "gnome-initial-setup",
+    "gdm",
+    "sssd",
+    # Web/database service accounts
+    "www-data",
+    "mysql",
+    "postgres",
+    "redis",
+    "nginx",
+    "apache",
+    "apache2",
+    "httpd",
+    # Cloud/VM accounts
+    "ubuntu",
+    "ec2-user",
+    "admin",
+    # Reserved pullDB names
+    "pulldb",
+    "system",
+    "service",
+    "api",
+    "web",
+    "worker",
+    "anonymous",
+    "guest",
+    "test",
+    "demo",
+})
+
+
+def is_username_disallowed_hardcoded(username: str) -> bool:
+    """Check if username is in the hardcoded disallowed list.
+
+    Args:
+        username: Username to check (case-insensitive).
+
+    Returns:
+        True if username is in hardcoded disallowed list.
+    """
+    return username.lower() in DISALLOWED_USERS_HARDCODED
+
+
+def validate_username_format(username: str) -> None:
+    """Validate username meets basic format requirements.
+
+    FAIL HARD: Raises ValidationError if invalid.
+
+    Checks:
+    1. Not empty
+    2. At least MIN_USERNAME_LENGTH characters
+    3. Contains only allowed characters (a-z, 0-9, _, -)
+    4. Starts with a letter
+
+    Args:
+        username: Username to validate.
+
+    Raises:
+        ValidationError: If format is invalid.
+    """
+    if not username:
+        raise ValidationError("username", "Username cannot be empty")
+
+    username_lower = username.lower()
+
+    if len(username_lower) < MIN_USERNAME_LENGTH:
+        raise ValidationError(
+            "username",
+            f"Username must be at least {MIN_USERNAME_LENGTH} characters long",
+        )
+
+    if not re.match(r"^[a-z][a-z0-9_-]*$", username_lower):
+        raise ValidationError(
+            "username",
+            "Username must start with a letter and contain only "
+            "lowercase letters, numbers, underscore, and hyphen",
+        )
+
+
+def validate_username_not_disallowed(username: str) -> None:
+    """Validate username is not in the hardcoded disallowed list.
+
+    FAIL HARD: Raises ValidationError if disallowed.
+
+    Args:
+        username: Username to validate (case-insensitive).
+
+    Raises:
+        ValidationError: If username is disallowed.
+    """
+    if is_username_disallowed_hardcoded(username):
+        raise ValidationError(
+            "username",
+            f"Username '{username}' is not allowed. "
+            "This is a reserved system name. Please choose a different username.",
+        )
+
+
+# =============================================================================
+# UUID Validation
+# =============================================================================
+
 # UUID v4 pattern: 8-4-4-4-12 hex characters with dashes
 # Case-insensitive to handle both lowercase and uppercase UUIDs
 UUID_PATTERN = re.compile(

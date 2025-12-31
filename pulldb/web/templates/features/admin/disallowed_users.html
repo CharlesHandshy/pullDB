@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+
+{% block title %}Disallowed Users - Admin - pullDB{% endblock %}
+
+{% block page_id %}admin-disallowed-users{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/pages/admin.css') }}">
+<style>
+/* Disallowed Users Page Specific Styles */
+.disallowed-page {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.stats-row {
+    display: flex;
+    gap: var(--space-lg);
+    margin-bottom: var(--space-lg);
+}
+
+.stat-card {
+    background: var(--surface-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.stat-card .stat-value {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.stat-card .stat-label {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+.stat-card.hardcoded {
+    border-color: var(--warning-muted);
+}
+
+.stat-card.database {
+    border-color: var(--primary-muted);
+}
+
+.add-form {
+    display: flex;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+}
+
+.add-form input[type="text"] {
+    flex: 1;
+    max-width: 250px;
+}
+
+.add-form input[name="reason"] {
+    flex: 2;
+}
+
+.user-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.user-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-sm) var(--space-md);
+    background: var(--surface-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    transition: background 0.15s ease;
+}
+
+.user-item:hover {
+    background: var(--surface-hover);
+}
+
+.user-item.hardcoded {
+    background: var(--warning-subtle);
+    border-color: var(--warning-muted);
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.username {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.user-reason {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+.user-source {
+    font-size: var(--font-size-xs);
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.user-source.hardcoded {
+    background: var(--warning-subtle);
+    color: var(--warning-text);
+}
+
+.user-source.database {
+    background: var(--primary-subtle);
+    color: var(--primary-text);
+}
+
+.remove-btn {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.user-item:hover .remove-btn {
+    opacity: 1;
+}
+
+.user-item.hardcoded .remove-btn {
+    display: none;
+}
+
+.empty-state {
+    text-align: center;
+    padding: var(--space-xl);
+    color: var(--text-secondary);
+}
+
+.section-title {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin: var(--space-lg) 0 var(--space-sm) 0;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-body disallowed-page">
+    <!-- Page Header -->
+    <div class="page-header-row mb-4">
+        <h1 class="page-title">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+            </svg>
+            Disallowed Users
+        </h1>
+    </div>
+
+    <!-- Info Alert -->
+    <div class="alert alert-info mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="16" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+        <div>
+            <strong>About Disallowed Users</strong>
+            <p class="mb-0 mt-1">Usernames in this list cannot register. <strong>Hardcoded</strong> entries are system accounts 
+            that can never be removed. <strong>Database</strong> entries can be added or removed by admins.
+            Additionally, usernames shorter than {{ min_length }} characters are always blocked.</p>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+        <div class="stat-card hardcoded">
+            <div class="stat-value" id="stat-hardcoded">{{ hardcoded_count }}</div>
+            <div class="stat-label">Hardcoded (System)</div>
+        </div>
+        <div class="stat-card database">
+            <div class="stat-value" id="stat-database">{{ database_count }}</div>
+            <div class="stat-label">Database (Admin-Added)</div>
+        </div>
+    </div>
+
+    <!-- Add Form -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h3 class="card-title">Add Username to Block</h3>
+        </div>
+        <div class="card-body">
+            <form class="add-form" id="add-disallowed-form" onsubmit="return addDisallowedUser(event)">
+                <input type="text" 
+                       name="username" 
+                       class="form-control" 
+                       placeholder="Username to block" 
+                       required
+                       pattern="[a-zA-Z0-9_-]+"
+                       title="Only letters, numbers, underscores, and dashes allowed">
+                <input type="text" 
+                       name="reason" 
+                       class="form-control" 
+                       placeholder="Reason (optional)">
+                <button type="submit" class="btn btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-xs">
+                        <line x1="12" x2="12" y1="5" y2="19"/>
+                        <line x1="5" x2="19" y1="12" y2="12"/>
+                    </svg>
+                    Add
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Database Entries (Removable) -->
+    <div class="section-title">Database Entries (Removable)</div>
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="user-list" id="database-list">
+                {% if database_users %}
+                {% for user in database_users %}
+                <div class="user-item" data-username="{{ user.username }}">
+                    <div class="user-info">
+                        <span class="username">{{ user.username }}</span>
+                        <span class="user-reason">{{ user.reason or 'No reason provided' }}</span>
+                        <span class="user-source database">DB</span>
+                    </div>
+                    <button type="button" 
+                            class="btn-icon btn-icon-muted remove-btn" 
+                            onclick="removeDisallowedUser('{{ user.username }}')"
+                            title="Remove from list">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"/>
+                            <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </button>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state">
+                    No database entries yet. Use the form above to add usernames.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Hardcoded Entries (Read-Only) -->
+    <div class="section-title">Hardcoded System Accounts (Cannot Remove)</div>
+    <div class="card">
+        <div class="card-body">
+            <div class="user-list" id="hardcoded-list">
+                {% for username in hardcoded_users %}
+                <div class="user-item hardcoded">
+                    <div class="user-info">
+                        <span class="username">{{ username }}</span>
+                        <span class="user-reason">System account</span>
+                        <span class="user-source hardcoded">Hardcoded</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function addDisallowedUser(event) {
+    event.preventDefault();
+    const form = event.target;
+    const username = form.username.value.trim().toLowerCase();
+    const reason = form.reason.value.trim() || 'Admin-configured';
+
+    if (!username) {
+        showToast('Please enter a username', 'error');
+        return false;
+    }
+
+    try {
+        const response = await fetch('/admin/api/disallowed-users', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ username, reason }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showToast(data.message, 'success');
+            form.reset();
+            // Reload to refresh the list
+            setTimeout(() => window.location.reload(), 500);
+        } else {
+            showToast(data.message || 'Failed to add username', 'error');
+        }
+    } catch (error) {
+        console.error('Error adding disallowed user:', error);
+        showToast('Error adding username', 'error');
+    }
+
+    return false;
+}
+
+async function removeDisallowedUser(username) {
+    const confirmed = await showConfirm(`Remove "${username}" from the disallowed list?\\n\\nThis username will be able to register.`, {
+        title: 'Remove from Disallowed List',
+        okText: 'Remove'
+    });
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/admin/api/disallowed-users/${encodeURIComponent(username)}`, {
+            method: 'DELETE',
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showToast(data.message, 'success');
+            // Remove the item from the DOM
+            const item = document.querySelector(`.user-item[data-username="${username}"]`);
+            if (item) {
+                item.remove();
+            }
+            // Update stats
+            const statEl = document.getElementById('stat-database');
+            if (statEl) {
+                statEl.textContent = parseInt(statEl.textContent) - 1;
+            }
+        } else {
+            showToast(data.message || 'Failed to remove username', 'error');
+        }
+    } catch (error) {
+        console.error('Error removing disallowed user:', error);
+        showToast('Error removing username', 'error');
+    }
+}
+
+// Toast notification helper (should be in base.js, but fallback here)
+if (typeof showToast === 'undefined') {
+    function showToast(message, type = 'info') {
+        alert(message);
+    }
+}
+</script>
+{% endblock %}

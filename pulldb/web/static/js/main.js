@@ -248,3 +248,81 @@ function showValidationSummary(errors, title = 'Please fix the following issues:
 
 window.showToast = showToast;
 window.showValidationSummary = showValidationSummary;
+
+/**
+ * Show a themed confirmation modal (replacement for native confirm())
+ * @param {string} message - The confirmation message
+ * @param {Object} options - Optional configuration
+ * @param {string} options.title - Modal title (default: 'Confirm')
+ * @param {string} options.okText - OK button text (default: 'OK')
+ * @param {string} options.cancelText - Cancel button text (default: 'Cancel')
+ * @param {string} options.type - Modal type: 'default', 'danger', 'warning' (default: 'default')
+ * @returns {Promise<boolean>} - Resolves to true if confirmed, false if cancelled
+ */
+function showConfirm(message, options = {}) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('confirm-modal');
+        const header = document.getElementById('confirm-modal-header');
+        const title = document.getElementById('confirm-modal-title');
+        const msg = document.getElementById('confirm-modal-message');
+        const okBtn = document.getElementById('confirm-modal-ok');
+        
+        if (!modal || !msg || !okBtn) {
+            // Fallback to native confirm if modal not available
+            resolve(confirm(message));
+            return;
+        }
+        
+        // Set content
+        title.textContent = options.title || 'Confirm';
+        msg.innerHTML = message.replace(/\n/g, '<br>');
+        okBtn.textContent = options.okText || 'OK';
+        
+        // Reset header classes and apply type
+        header.className = 'modal-header';
+        okBtn.className = 'btn btn-primary';
+        
+        if (options.type === 'danger') {
+            header.classList.add('modal-header-danger');
+            okBtn.className = 'btn btn-danger';
+        } else if (options.type === 'warning') {
+            header.classList.add('modal-header-warning');
+            okBtn.className = 'btn btn-warning';
+        }
+        
+        // Setup handlers
+        const cleanup = () => {
+            modal.classList.add('modal-hidden');
+            window._confirmResolve = null;
+            window._confirmReject = null;
+        };
+        
+        window._confirmResolve = () => {
+            cleanup();
+            resolve(true);
+        };
+        
+        window._confirmReject = () => {
+            cleanup();
+            resolve(false);
+        };
+        
+        // Handle Escape key
+        const handleKeydown = (e) => {
+            if (e.key === 'Escape') {
+                window._confirmReject();
+                document.removeEventListener('keydown', handleKeydown);
+            } else if (e.key === 'Enter') {
+                window._confirmResolve();
+                document.removeEventListener('keydown', handleKeydown);
+            }
+        };
+        document.addEventListener('keydown', handleKeydown);
+        
+        // Show modal
+        modal.classList.remove('modal-hidden');
+        okBtn.focus();
+    });
+}
+
+window.showConfirm = showConfirm;
