@@ -671,6 +671,61 @@ async def list_jobs(
     return await run_in_threadpool(_list_jobs, state, limit, active, history, filter)
 
 
+def _get_single_job(state: APIState, job_id: str) -> JobSummary:
+    """Get a single job by ID."""
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found",
+        )
+
+    # Get current operation from latest event
+    current_op = state.job_repo.get_current_operation(job_id)
+
+    # Parse source from options_json
+    source = None
+    if job.options_json:
+        if job.options_json.get("is_qatemplate") == "true":
+            source = "qatemplate"
+        else:
+            source = job.options_json.get("customer_id")
+
+    return JobSummary(
+        id=job.id,
+        target=job.target,
+        status=job.status.value,
+        user_code=job.owner_user_code,
+        owner_user_code=job.owner_user_code,
+        owner_user_id=job.owner_user_id,
+        submitted_at=job.submitted_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        staging_name=job.staging_name,
+        current_operation=current_op,
+        dbhost=job.dbhost,
+        source=source,
+        cancel_requested_at=state.job_repo.get_cancel_requested_at(job_id),
+        can_cancel=job.status.value in ("queued", "running", "canceling"),
+    )
+
+
+@app.get(
+    "/api/jobs/{job_id}",
+    response_model=JobSummary,
+)
+async def get_job(
+    job_id: str,
+    state: APIState = Depends(get_api_state),
+) -> JobSummary:
+    """Get a single job by ID.
+
+    Returns full job summary including current operation and status.
+    Used by CLI streaming to check if job is still active.
+    """
+    return await run_in_threadpool(_get_single_job, state, job_id)
+
+
 @app.get(
     "/api/jobs/active",
     response_model=list[JobSummary],

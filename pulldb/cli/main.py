@@ -1368,7 +1368,7 @@ def _stream_job_events(job_id: str) -> None:
         try:
             job_data = _api_get_object(f"/api/jobs/{job_id}", {})
             status = job_data.get("status")
-            if status not in ("queued", "running"):
+            if status not in ("queued", "running", "canceling"):
                 click.echo(f"\nJob {job_id[:8]} finished with status: {status}")
                 return
         except _APIError:
