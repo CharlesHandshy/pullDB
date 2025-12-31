@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% from "partials/icons/_index.html" import icon %}
+
+{% block title %}Database Maintenance - pullDB{% endblock %}
+
+{% block content %}
+<div class="page-container" style="max-width: 900px; margin: 0 auto;">
+    
+    <!-- Page Header -->
+    <div class="page-header-row mb-4">
+        <div class="page-header-left">
+            <h1 class="page-title">
+                {{ icon('calendar-clock', size='24') }}
+                Database Maintenance
+            </h1>
+        </div>
+    </div>
+
+    <div class="alert alert-info mb-4">
+        {{ icon('info', size='16') }}
+        Review your databases below. You can extend retention, lock databases to prevent cleanup, 
+        or unlock previously locked databases. Click <strong>Acknowledge</strong> when done.
+    </div>
+
+    {% if errors %}
+    <div class="alert alert-danger mb-4">
+        {{ icon('alert-triangle', size='16') }}
+        <strong>Some actions failed:</strong>
+        <ul class="mt-2 mb-0">
+        {% for error in errors %}
+            <li>{{ error }}</li>
+        {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/web/maintenance" id="maintenanceForm">
+        
+        <!-- Expired Databases (Action Required) -->
+        {% if expired_jobs %}
+        <div class="card mb-4">
+            <div class="card-header" style="background-color: var(--danger-bg); border-color: var(--danger-border);">
+                <h2 style="color: var(--danger-text);">
+                    {{ icon('alert-circle', size='20') }}
+                    Expired Databases ({{ expired_jobs|length }})
+                </h2>
+                <span class="badge badge-danger">Action Required</span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    These databases have passed their expiration date and will be automatically 
+                    cleaned up after the grace period unless you extend or lock them.
+                </p>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Database</th>
+                                <th>Host</th>
+                                <th>Expired</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for job in expired_jobs %}
+                            <tr>
+                                <td>
+                                    <a href="/web/jobs/{{ job.id }}">{{ job.target }}</a>
+                                </td>
+                                <td>{{ job.dbhost }}</td>
+                                <td class="text-danger">
+                                    {{ job.expires_at.strftime('%Y-%m-%d') if job.expires_at else 'N/A' }}
+                                </td>
+                                <td>
+                                    <div class="action-group">
+                                        <select name="action_{{ job.id }}" class="form-select form-select-sm action-select" 
+                                                onchange="toggleExtendOptions(this, '{{ job.id }}')">
+                                            <option value="none">No action</option>
+                                            <option value="extend">Extend retention</option>
+                                            <option value="lock">Lock (prevent cleanup)</option>
+                                        </select>
+                                        <div id="extend_{{ job.id }}" class="extend-options" style="display: none;">
+                                            <select name="extend_months_{{ job.id }}" class="form-select form-select-sm">
+                                                {% for opt in retention_options %}
+                                                <option value="{{ opt.months }}">{{ opt.label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Expiring Soon (Notice) -->
+        {% if expiring_jobs %}
+        <div class="card mb-4">
+            <div class="card-header" style="background-color: var(--warning-bg); border-color: var(--warning-border);">
+                <h2 style="color: var(--warning-text);">
+                    {{ icon('clock', size='20') }}
+                    Expiring Soon ({{ expiring_jobs|length }})
+                </h2>
+                <span class="badge badge-warning">Notice</span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    These databases will expire soon. Consider extending retention or locking 
+                    if you still need them.
+                </p>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Database</th>
+                                <th>Host</th>
+                                <th>Expires</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for job in expiring_jobs %}
+                            <tr>
+                                <td>
+                                    <a href="/web/jobs/{{ job.id }}">{{ job.target }}</a>
+                                </td>
+                                <td>{{ job.dbhost }}</td>
+                                <td class="text-warning">
+                                    {{ job.expires_at.strftime('%Y-%m-%d') if job.expires_at else 'N/A' }}
+                                </td>
+                                <td>
+                                    <div class="action-group">
+                                        <select name="action_{{ job.id }}" class="form-select form-select-sm action-select"
+                                                onchange="toggleExtendOptions(this, '{{ job.id }}')">
+                                            <option value="none">No action</option>
+                                            <option value="extend">Extend retention</option>
+                                            <option value="lock">Lock (prevent cleanup)</option>
+                                        </select>
+                                        <div id="extend_{{ job.id }}" class="extend-options" style="display: none;">
+                                            <select name="extend_months_{{ job.id }}" class="form-select form-select-sm">
+                                                {% for opt in retention_options %}
+                                                <option value="{{ opt.months }}">{{ opt.label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Locked Databases (Notice) -->
+        {% if locked_jobs %}
+        <div class="card mb-4">
+            <div class="card-header" style="background-color: var(--info-bg); border-color: var(--info-border);">
+                <h2 style="color: var(--info-text);">
+                    {{ icon('lock', size='20') }}
+                    Locked Databases ({{ locked_jobs|length }})
+                </h2>
+                <span class="badge badge-info">Locked</span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    These databases are locked and will not be automatically cleaned up. 
+                    You can unlock them to allow normal expiration.
+                </p>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Database</th>
+                                <th>Host</th>
+                                <th>Locked Since</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for job in locked_jobs %}
+                            <tr>
+                                <td>
+                                    <a href="/web/jobs/{{ job.id }}">{{ job.target }}</a>
+                                </td>
+                                <td>{{ job.dbhost }}</td>
+                                <td>
+                                    {{ job.locked_at.strftime('%Y-%m-%d') if job.locked_at else 'N/A' }}
+                                </td>
+                                <td>
+                                    <div class="action-group">
+                                        <select name="action_{{ job.id }}" class="form-select form-select-sm">
+                                            <option value="none">Keep locked</option>
+                                            <option value="unlock">Unlock</option>
+                                        </select>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- No Items Message -->
+        {% if not expired_jobs and not expiring_jobs and not locked_jobs %}
+        <div class="card mb-4">
+            <div class="card-body text-center py-5">
+                {{ icon('check-circle', size='48', extra_class='text-success mb-3') }}
+                <h3>No Maintenance Items</h3>
+                <p class="text-muted">All your databases are within their retention period.</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Submit Button -->
+        <div class="form-actions text-center">
+            <button type="submit" class="btn btn-primary btn-lg">
+                {{ icon('check', size='20') }}
+                Acknowledge
+            </button>
+            <p class="text-muted mt-2">
+                <small>Click to acknowledge and continue to the application.</small>
+            </p>
+        </div>
+    </form>
+</div>
+
+<style>
+.action-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 180px;
+}
+
+.action-select {
+    width: 100%;
+}
+
+.extend-options {
+    padding-left: 1rem;
+}
+
+.form-select-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 0.25rem;
+}
+
+.badge-danger {
+    background-color: var(--danger-bg);
+    color: var(--danger-text);
+    border: 1px solid var(--danger-border);
+}
+
+.badge-warning {
+    background-color: var(--warning-bg);
+    color: var(--warning-text);
+    border: 1px solid var(--warning-border);
+}
+
+.badge-info {
+    background-color: var(--info-bg);
+    color: var(--info-text);
+    border: 1px solid var(--info-border);
+}
+
+.text-danger {
+    color: var(--danger-text);
+}
+
+.text-warning {
+    color: var(--warning-text);
+}
+
+.text-success {
+    color: var(--success-text);
+}
+
+.form-actions {
+    padding: 1.5rem 0;
+}
+</style>
+
+<script>
+function toggleExtendOptions(selectEl, jobId) {
+    const extendDiv = document.getElementById('extend_' + jobId);
+    if (extendDiv) {
+        extendDiv.style.display = selectEl.value === 'extend' ? 'block' : 'none';
+    }
+}
+</script>
+{% endblock %}

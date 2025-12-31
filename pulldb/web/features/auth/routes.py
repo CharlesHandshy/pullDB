@@ -432,3 +432,215 @@ async def set_default_host(
     )
 
 
+# =============================================================================
+# Database Maintenance Modal (Expiring/Locked Databases)
+# =============================================================================
+
+
+@router.get("/maintenance", response_class=HTMLResponse)
+async def maintenance_page(
+    request: Request,
+    user: User | None = Depends(get_session_user),
+    state: Any = Depends(get_api_state),
+) -> Any:
+    """Render the database maintenance acknowledgment page.
+    
+    Shows databases that are expired, expiring soon, or locked.
+    Users must acknowledge before continuing to use the application.
+    """
+    from fastapi.concurrency import run_in_threadpool
+    
+    if not user:
+        return RedirectResponse(url="/web/login", status_code=303)
+    
+    # Get maintenance items for this user
+    expired_jobs: list = []
+    expiring_jobs: list = []
+    locked_jobs: list = []
+    retention_options: list = []
+    
+    if hasattr(state, "job_repo") and state.job_repo:
+        if hasattr(state.job_repo, "get_maintenance_items"):
+            # Get expiring notice days from settings
+            expiring_notice_days = 7
+            if hasattr(state, "settings_repo") and state.settings_repo:
+                if hasattr(state.settings_repo, "get_expiring_notice_days"):
+                    expiring_notice_days = await run_in_threadpool(
+                        state.settings_repo.get_expiring_notice_days
+                    )
+            
+            items = await run_in_threadpool(
+                state.job_repo.get_maintenance_items,
+                user.user_id,
+                expiring_notice_days,
+            )
+            expired_jobs = items.expired
+            expiring_jobs = items.expiring
+            locked_jobs = items.locked
+    
+    # Get retention extension options from settings
+    if hasattr(state, "settings_repo") and state.settings_repo:
+        if hasattr(state.settings_repo, "get_retention_options"):
+            retention_options = await run_in_threadpool(
+                state.settings_repo.get_retention_options
+            )
+    
+    return templates.TemplateResponse(
+        "features/auth/maintenance.html",
+        {
+            "request": request,
+            "user": user,
+            "expired_jobs": expired_jobs,
+            "expiring_jobs": expiring_jobs,
+            "locked_jobs": locked_jobs,
+            "retention_options": retention_options,
+            "active_nav": None,  # No nav highlighting for modal-like pages
+        },
+    )
+
+
+@router.post("/maintenance", response_class=HTMLResponse)
+async def maintenance_submit(
+    request: Request,
+    user: User | None = Depends(get_session_user),
+    state: Any = Depends(get_api_state),
+) -> Any:
+    """Handle maintenance acknowledgment submission.
+    
+    Processes user actions (extend, lock, unlock) and marks maintenance as acknowledged.
+    """
+    from fastapi.concurrency import run_in_threadpool
+    
+    if not user:
+        return RedirectResponse(url="/web/login", status_code=303)
+    
+    # Parse form data
+    form = await request.form()
+    
+    # Process actions for each job
+    # Form fields are named like: action_{job_id}, extend_months_{job_id}
+    errors = []
+    
+    if hasattr(state, "job_repo") and state.job_repo:
+        for key in form.keys():
+            if key.startswith("action_"):
+                job_id = key.replace("action_", "")
+                action = form.get(key)
+                
+                if not action or action == "none":
+                    continue
+                
+                try:
+                    if action == "extend":
+                        months_str = form.get(f"extend_months_{job_id}", "1")
+                        months = int(months_str)
+                        if hasattr(state.job_repo, "extend_job_expiration"):
+                            # Note: This would need to use RetentionService but for now
+                            # we use the repository directly
+                            from pulldb.worker.retention import RetentionService
+                            
+                            settings_repo = getattr(state, "settings_repo", None)
+                            retention_service = RetentionService(
+                                job_repo=state.job_repo,
+                                user_repo=state.user_repo,
+                                settings_repo=settings_repo,
+                            )
+                            await run_in_threadpool(
+                                retention_service.extend_job,
+                                job_id,
+                                months,
+                                user.user_id,
+                            )
+                    
+                    elif action == "lock":
+                        reason = form.get(f"lock_reason_{job_id}", "User locked via maintenance modal")
+                        from pulldb.worker.retention import RetentionService
+                        
+                        settings_repo = getattr(state, "settings_repo", None)
+                        retention_service = RetentionService(
+                            job_repo=state.job_repo,
+                            user_repo=state.user_repo,
+                            settings_repo=settings_repo,
+                        )
+                        await run_in_threadpool(
+                            retention_service.lock_job,
+                            job_id,
+                            user.user_id,
+                            reason,
+                        )
+                    
+                    elif action == "unlock":
+                        from pulldb.worker.retention import RetentionService
+                        
+                        settings_repo = getattr(state, "settings_repo", None)
+                        retention_service = RetentionService(
+                            job_repo=state.job_repo,
+                            user_repo=state.user_repo,
+                            settings_repo=settings_repo,
+                        )
+                        await run_in_threadpool(
+                            retention_service.unlock_job,
+                            job_id,
+                            user.user_id,
+                        )
+                
+                except Exception as e:
+                    errors.append(f"Failed to process {action} for job {job_id[:8]}: {e}")
+    
+    # Mark maintenance as acknowledged (even if there were errors)
+    if hasattr(state, "user_repo") and state.user_repo:
+        if hasattr(state.user_repo, "set_last_maintenance_ack"):
+            await run_in_threadpool(
+                state.user_repo.set_last_maintenance_ack,
+                user.user_id,
+            )
+    
+    # If there were errors, show them
+    if errors:
+        # Re-fetch items to show current state
+        expired_jobs: list = []
+        expiring_jobs: list = []
+        locked_jobs: list = []
+        retention_options: list = []
+        
+        if hasattr(state, "job_repo") and state.job_repo:
+            if hasattr(state.job_repo, "get_maintenance_items"):
+                from fastapi.concurrency import run_in_threadpool
+                expiring_notice_days = 7
+                if hasattr(state, "settings_repo") and state.settings_repo:
+                    if hasattr(state.settings_repo, "get_expiring_notice_days"):
+                        expiring_notice_days = await run_in_threadpool(
+                            state.settings_repo.get_expiring_notice_days
+                        )
+                
+                items = await run_in_threadpool(
+                    state.job_repo.get_maintenance_items,
+                    user.user_id,
+                    expiring_notice_days,
+                )
+                expired_jobs = items.expired
+                expiring_jobs = items.expiring
+                locked_jobs = items.locked
+        
+        if hasattr(state, "settings_repo") and state.settings_repo:
+            if hasattr(state.settings_repo, "get_retention_options"):
+                retention_options = await run_in_threadpool(
+                    state.settings_repo.get_retention_options
+                )
+        
+        return templates.TemplateResponse(
+            "features/auth/maintenance.html",
+            {
+                "request": request,
+                "user": user,
+                "expired_jobs": expired_jobs,
+                "expiring_jobs": expiring_jobs,
+                "locked_jobs": locked_jobs,
+                "retention_options": retention_options,
+                "errors": errors,
+                "active_nav": None,
+            },
+        )
+    
+    # Redirect to dashboard
+    return RedirectResponse(url="/web/dashboard/", status_code=303)

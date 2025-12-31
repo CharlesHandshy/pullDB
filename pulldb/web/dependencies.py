@@ -219,6 +219,9 @@ def require_login(
     Also checks if user must change their password before continuing.
     The change-password route is exempted from the password reset check.
     
+    Additionally checks if user needs to acknowledge maintenance items (expiring
+    or locked databases). The maintenance route is exempted from this check.
+    
     Handles both regular requests (via Location header) and HTMX requests
     (via HX-Redirect header) to properly redirect.
     
@@ -233,21 +236,45 @@ def require_login(
     Raises:
         SessionExpiredError: If no valid session exists
         PasswordResetRequiredError: If user must change password first
+        MaintenanceRequiredError: If user must acknowledge maintenance items
     """
-    from pulldb.web.exceptions import SessionExpiredError, PasswordResetRequiredError
+    from pulldb.web.exceptions import (
+        MaintenanceRequiredError,
+        PasswordResetRequiredError,
+        SessionExpiredError,
+    )
     
     if not user:
         is_htmx = request.headers.get("HX-Request") == "true"
         raise SessionExpiredError(is_htmx=is_htmx)
     
-    # Check if password reset is required (exempt the change-password route itself)
     current_path = request.url.path
+    
+    # Check if password reset is required (exempt the change-password route itself)
     if not current_path.startswith("/web/change-password"):
         if hasattr(state, "auth_repo") and state.auth_repo:
             if hasattr(state.auth_repo, "is_password_reset_required"):
                 if state.auth_repo.is_password_reset_required(user.user_id):
                     is_htmx = request.headers.get("HX-Request") == "true"
                     raise PasswordResetRequiredError(is_htmx=is_htmx)
+    
+    # Check if maintenance acknowledgment is required (exempt maintenance route)
+    # Only check for non-HTMX requests to avoid interrupting partial updates
+    if not current_path.startswith("/web/maintenance"):
+        is_htmx = request.headers.get("HX-Request") == "true"
+        if not is_htmx:
+            if hasattr(state, "user_repo") and state.user_repo:
+                if hasattr(state.user_repo, "needs_maintenance_ack"):
+                    if state.user_repo.needs_maintenance_ack(user.user_id):
+                        # Check if there are actually maintenance items
+                        if hasattr(state, "job_repo") and state.job_repo:
+                            if hasattr(state.job_repo, "get_maintenance_items"):
+                                items = state.job_repo.get_maintenance_items(
+                                    user.user_id,
+                                    expiring_notice_days=7,  # Will be replaced with setting
+                                )
+                                if items.expired or items.expiring or items.locked:
+                                    raise MaintenanceRequiredError(is_htmx=False)
     
     return user
 

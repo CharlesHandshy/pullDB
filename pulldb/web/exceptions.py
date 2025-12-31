@@ -31,6 +31,18 @@ class PasswordResetRequiredError(Exception):
         super().__init__("Password reset required")
 
 
+class MaintenanceRequiredError(Exception):
+    """Raised when user must acknowledge database maintenance before continuing.
+    
+    This is triggered on first daily login when there are expiring or locked
+    databases that require user attention.
+    """
+
+    def __init__(self, is_htmx: bool = False) -> None:
+        self.is_htmx = is_htmx
+        super().__init__("Maintenance acknowledgment required")
+
+
 class PermissionDeniedError(Exception):
     """Raised when user lacks permission for an action."""
 
@@ -97,6 +109,32 @@ def create_password_reset_required_handler() -> t.Callable[[Request, PasswordRes
             # For regular requests, use HTTP redirect
             return RedirectResponse(
                 url="/web/change-password",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+
+    return handler
+
+
+def create_maintenance_required_handler() -> t.Callable[[Request, MaintenanceRequiredError], t.Awaitable[Response]]:
+    """Create exception handler for MaintenanceRequiredError.
+
+    Redirects user to the maintenance acknowledgment page.
+    For HTMX requests, uses HX-Redirect header.
+    For regular requests, uses HTTP 303 redirect.
+    """
+
+    async def handler(request: Request, exc: MaintenanceRequiredError) -> Response:
+        if exc.is_htmx:
+            # For HTMX requests, return 200 with HX-Redirect header
+            return Response(
+                content="",
+                status_code=200,
+                headers={"HX-Redirect": "/web/maintenance"},
+            )
+        else:
+            # For regular requests, use HTTP redirect
+            return RedirectResponse(
+                url="/web/maintenance",
                 status_code=status.HTTP_303_SEE_OTHER,
             )
 
