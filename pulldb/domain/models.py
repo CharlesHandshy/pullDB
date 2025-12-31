@@ -123,6 +123,7 @@ class User:
         disabled_at: Timestamp when user was disabled (soft delete).
         allowed_hosts: List of database hostnames this user can restore to.
         default_host: User's default database host for restores.
+        last_maintenance_ack: Last date user acknowledged maintenance modal.
     """
 
     user_id: str
@@ -136,6 +137,7 @@ class User:
     max_active_jobs: int | None = None
     allowed_hosts: list[str] | None = None
     default_host: str | None = None
+    last_maintenance_ack: datetime | None = None  # Date only, stored as datetime
 
     @property
     def is_manager_or_above(self) -> bool:
@@ -225,6 +227,77 @@ class Job:
     current_operation: str | None = None
     staging_cleaned_at: datetime | None = None
     cancel_requested_at: datetime | None = None
+    # Retention & lifecycle fields (Phase: Database Retention)
+    expires_at: datetime | None = None
+    locked_at: datetime | None = None
+    locked_by: str | None = None
+    db_dropped_at: datetime | None = None
+    superseded_at: datetime | None = None
+    superseded_by_job_id: str | None = None
+
+    @property
+    def is_locked(self) -> bool:
+        """Check if this database is locked (protected from cleanup/removal)."""
+        return self.locked_at is not None
+
+    @property
+    def is_db_dropped(self) -> bool:
+        """Check if the actual database has been dropped from target host."""
+        return self.db_dropped_at is not None
+
+    @property
+    def is_superseded(self) -> bool:
+        """Check if this job was superseded by a newer restore to same target."""
+        return self.superseded_at is not None
+
+    @property
+    def is_expired(self) -> bool:
+        """Check if this database has expired (past expires_at date)."""
+        if self.expires_at is None:
+            return False
+        from datetime import UTC
+        return datetime.now(UTC).replace(tzinfo=None) > self.expires_at
+
+    def is_expiring(self, notice_days: int = 7) -> bool:
+        """Check if this database is expiring soon (within notice window).
+        
+        Args:
+            notice_days: Days before expiry to consider as "expiring soon".
+            
+        Returns:
+            True if expires_at is within notice_days from now but not yet expired.
+        """
+        if self.expires_at is None:
+            return False
+        from datetime import UTC, timedelta
+        now = datetime.now(UTC).replace(tzinfo=None)
+        notice_threshold = now + timedelta(days=notice_days)
+        return now < self.expires_at <= notice_threshold
+
+    def get_maintenance_status(self, notice_days: int = 7) -> str | None:
+        """Get the maintenance status for UI display.
+        
+        Args:
+            notice_days: Days before expiry to consider as "expiring soon".
+            
+        Returns:
+            'locked' if locked (regardless of expiry),
+            'expired' if past expiry date,
+            'expiring' if within notice window,
+            'active' if complete and not expiring,
+            None if not a complete job or already dropped/superseded.
+        """
+        if self.status != JobStatus.COMPLETE:
+            return None
+        if self.is_db_dropped or self.is_superseded:
+            return None
+        if self.is_locked:
+            return "locked"
+        if self.is_expired:
+            return "expired"
+        if self.is_expiring(notice_days):
+            return "expiring"
+        return "active"
 
 
 @dataclass(frozen=True)
@@ -415,3 +488,35 @@ class AdminTask:
     completed_at: datetime | None = None
     error_detail: str | None = None
     worker_id: str | None = None
+
+
+@dataclass(frozen=True)
+class MaintenanceItems:
+    """Container for user's maintenance modal items.
+    
+    Groups databases by their maintenance status for display in the
+    daily maintenance acknowledgment modal.
+    
+    Attributes:
+        expired: Jobs with databases past their expiration date (action required).
+        expiring: Jobs with databases expiring soon (notice only).
+        locked: Jobs with locked databases past expiration (notice only).
+    """
+    
+    expired: list[Job]
+    expiring: list[Job]
+    locked: list[Job]
+    
+    @property
+    def has_items(self) -> bool:
+        """Check if there are any maintenance items to display."""
+        return bool(self.expired or self.expiring or self.locked)
+    
+    @property
+    def requires_action(self) -> bool:
+        """Check if there are expired items requiring user action.
+        
+        Note: With optional acknowledgment, this is informational only.
+        User can acknowledge without taking action.
+        """
+        return bool(self.expired)
