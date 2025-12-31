@@ -271,7 +271,8 @@ def require_login(
                             if hasattr(state.job_repo, "get_maintenance_items"):
                                 items = state.job_repo.get_maintenance_items(
                                     user.user_id,
-                                    expiring_notice_days=7,  # Will be replaced with setting
+                                    notice_days=7,  # Will be replaced with setting
+                                    grace_days=7,
                                 )
                                 if items.expired or items.expiring or items.locked:
                                     raise MaintenanceRequiredError(is_htmx=False)
