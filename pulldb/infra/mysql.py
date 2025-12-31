@@ -1833,6 +1833,13 @@ class JobRepository:
             worker_id=row.get("worker_id"),
             staging_cleaned_at=row.get("staging_cleaned_at"),
             current_operation=self._derive_operation(row),
+            # Retention & lifecycle fields
+            expires_at=row.get("expires_at"),
+            locked_at=row.get("locked_at"),
+            locked_by=row.get("locked_by"),
+            db_dropped_at=row.get("db_dropped_at"),
+            superseded_at=row.get("superseded_at"),
+            superseded_by_job_id=row.get("superseded_by_job_id"),
         )
 
     def _derive_operation(self, row: dict[str, t.Any]) -> str | None:
@@ -1936,6 +1943,298 @@ class JobRepository:
                 (job_id,),
             )
             conn.commit()
+
+    # =========================================================================
+    # Database Retention & Lifecycle Methods
+    # =========================================================================
+
+    def set_job_expiration(self, job_id: str, expires_at: datetime) -> None:
+        """Set expiration date for a job's database.
+
+        Args:
+            job_id: Job ID to update.
+            expires_at: New expiration timestamp.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE jobs SET expires_at = %s WHERE id = %s",
+                (expires_at, job_id),
+            )
+            conn.commit()
+
+    def lock_job(self, job_id: str, locked_by: str) -> bool:
+        """Lock a job's database to protect from cleanup and overwrites.
+
+        Args:
+            job_id: Job ID to lock.
+            locked_by: Username of user locking the database.
+
+        Returns:
+            True if lock was set, False if job not found or already locked.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE jobs 
+                SET locked_at = UTC_TIMESTAMP(6), locked_by = %s
+                WHERE id = %s AND locked_at IS NULL
+                """,
+                (locked_by, job_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def unlock_job(self, job_id: str) -> bool:
+        """Unlock a job's database.
+
+        Args:
+            job_id: Job ID to unlock.
+
+        Returns:
+            True if unlocked, False if job not found or wasn't locked.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE jobs 
+                SET locked_at = NULL, locked_by = NULL
+                WHERE id = %s AND locked_at IS NOT NULL
+                """,
+                (job_id,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def mark_db_dropped(self, job_id: str) -> None:
+        """Mark that the actual database was dropped from target host.
+
+        Args:
+            job_id: Job ID to mark.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE jobs SET db_dropped_at = UTC_TIMESTAMP(6) WHERE id = %s",
+                (job_id,),
+            )
+            conn.commit()
+
+    def supersede_job(self, job_id: str, superseded_by_job_id: str) -> None:
+        """Mark a job as superseded by a newer restore to the same target.
+
+        Args:
+            job_id: Job ID being superseded.
+            superseded_by_job_id: Job ID of the new restore.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE jobs 
+                SET superseded_at = UTC_TIMESTAMP(6), superseded_by_job_id = %s
+                WHERE id = %s
+                """,
+                (superseded_by_job_id, job_id),
+            )
+            conn.commit()
+
+    def get_locked_by_target(
+        self, target: str, dbhost: str, owner_user_id: str
+    ) -> Job | None:
+        """Find a locked job for a specific target+host+user combination.
+
+        Used to check if a new restore should be blocked due to existing lock.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+            owner_user_id: User ID who owns the job.
+
+        Returns:
+            Locked Job if found, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail,
+                       worker_id, staging_cleaned_at, expires_at, locked_at,
+                       locked_by, db_dropped_at, superseded_at, superseded_by_job_id
+                FROM jobs
+                WHERE target = %s 
+                  AND dbhost = %s 
+                  AND owner_user_id = %s
+                  AND locked_at IS NOT NULL
+                  AND db_dropped_at IS NULL
+                  AND superseded_at IS NULL
+                LIMIT 1
+                """,
+                (target, dbhost, owner_user_id),
+            )
+            row = cursor.fetchone()
+            return self._row_to_job(row) if row else None
+
+    def get_maintenance_items(
+        self, user_id: str, notice_days: int, grace_days: int
+    ) -> "MaintenanceItems":
+        """Get maintenance items for a user's daily modal.
+
+        Returns jobs grouped by maintenance status: expired, expiring, locked.
+
+        Args:
+            user_id: User ID to get items for.
+            notice_days: Days before expiry to show in "expiring" section.
+            grace_days: Not used in query but available for reference.
+
+        Returns:
+            MaintenanceItems with expired, expiring, and locked job lists.
+        """
+        from pulldb.domain.models import MaintenanceItems
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            # Query all potentially relevant jobs in one query
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail,
+                       worker_id, staging_cleaned_at, expires_at, locked_at,
+                       locked_by, db_dropped_at, superseded_at, superseded_by_job_id
+                FROM jobs
+                WHERE owner_user_id = %s
+                  AND status = 'complete'
+                  AND db_dropped_at IS NULL
+                  AND superseded_at IS NULL
+                  AND (
+                      expires_at < UTC_TIMESTAMP() + INTERVAL %s DAY
+                      OR (locked_at IS NOT NULL AND expires_at < UTC_TIMESTAMP())
+                  )
+                ORDER BY expires_at ASC
+                """,
+                (user_id, notice_days),
+            )
+            rows = cursor.fetchall()
+
+        expired: list[Job] = []
+        expiring: list[Job] = []
+        locked: list[Job] = []
+
+        for row in rows:
+            job = self._row_to_job(row)
+            if job.is_locked and job.is_expired:
+                locked.append(job)
+            elif job.is_expired:
+                expired.append(job)
+            elif job.is_expiring(notice_days):
+                expiring.append(job)
+
+        return MaintenanceItems(expired=expired, expiring=expiring, locked=locked)
+
+    def get_cleanup_candidates(self, grace_days: int) -> list[Job]:
+        """Get jobs eligible for automatic database cleanup.
+
+        Returns complete jobs that are:
+        - Past expiration + grace period
+        - Not locked
+        - Database not already dropped
+        - Not superseded
+
+        Args:
+            grace_days: Additional days after expiry before cleanup.
+
+        Returns:
+            List of jobs whose databases can be dropped.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail,
+                       worker_id, staging_cleaned_at, expires_at, locked_at,
+                       locked_by, db_dropped_at, superseded_at, superseded_by_job_id
+                FROM jobs
+                WHERE status = 'complete'
+                  AND locked_at IS NULL
+                  AND db_dropped_at IS NULL
+                  AND superseded_at IS NULL
+                  AND expires_at IS NOT NULL
+                  AND expires_at < UTC_TIMESTAMP() - INTERVAL %s DAY
+                ORDER BY expires_at ASC
+                """,
+                (grace_days,),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
+
+    def get_all_locked_databases(self) -> list[Job]:
+        """Get all locked databases across all users (manager report).
+
+        Returns:
+            List of locked jobs ordered by user, then lock date.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail,
+                       worker_id, staging_cleaned_at, expires_at, locked_at,
+                       locked_by, db_dropped_at, superseded_at, superseded_by_job_id
+                FROM jobs
+                WHERE locked_at IS NOT NULL
+                  AND db_dropped_at IS NULL
+                ORDER BY owner_username ASC, locked_at ASC
+                """
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
+
+    def get_user_active_databases(self, user_id: str) -> list[Job]:
+        """Get all active (non-dropped, non-superseded) databases for a user.
+
+        Used for the Active Jobs view showing databases the user owns.
+
+        Args:
+            user_id: User ID to get databases for.
+
+        Returns:
+            List of jobs representing active databases.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail,
+                       worker_id, staging_cleaned_at, expires_at, locked_at,
+                       locked_by, db_dropped_at, superseded_at, superseded_by_job_id
+                FROM jobs
+                WHERE owner_user_id = %s
+                  AND status = 'complete'
+                  AND db_dropped_at IS NULL
+                  AND superseded_at IS NULL
+                ORDER BY 
+                    CASE 
+                        WHEN locked_at IS NOT NULL THEN 0
+                        WHEN expires_at < UTC_TIMESTAMP() + INTERVAL 7 DAY THEN 1
+                        ELSE 2
+                    END,
+                    expires_at ASC
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
 
     def _row_to_active_job(self, row: dict[str, t.Any]) -> Job:
         """Convert active_jobs view row to Job dataclass.
@@ -2456,6 +2755,80 @@ class UserRepository:
                 active_jobs=row["active_jobs"],
             )
 
+    # =========================================================================
+    # Maintenance Acknowledgment Methods
+    # =========================================================================
+
+    def get_last_maintenance_ack(self, user_id: str) -> datetime | None:
+        """Get last maintenance acknowledgment date for a user.
+
+        Args:
+            user_id: User UUID.
+
+        Returns:
+            Date of last acknowledgment, or None if never acknowledged.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT last_maintenance_ack FROM auth_users WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            return row["last_maintenance_ack"] if row else None
+
+    def set_last_maintenance_ack(self, user_id: str, ack_date: datetime) -> None:
+        """Set last maintenance acknowledgment date for a user.
+
+        Args:
+            user_id: User UUID.
+            ack_date: Date to record (typically today's date).
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE auth_users SET last_maintenance_ack = %s WHERE user_id = %s",
+                (ack_date, user_id),
+            )
+            conn.commit()
+
+    def needs_maintenance_ack(self, user_id: str) -> bool:
+        """Check if user needs to acknowledge maintenance modal today.
+
+        Args:
+            user_id: User UUID.
+
+        Returns:
+            True if user hasn't acknowledged today, False otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT last_maintenance_ack 
+                FROM auth_users 
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False  # User not found
+            
+            last_ack = row["last_maintenance_ack"]
+            if last_ack is None:
+                return True  # Never acknowledged
+            
+            # Compare dates (not timestamps)
+            from datetime import date
+            today = date.today()
+            if isinstance(last_ack, datetime):
+                last_ack_date = last_ack.date()
+            else:
+                last_ack_date = last_ack
+            
+            return last_ack_date < today
+
     def _row_to_user(self, row: dict[str, t.Any]) -> User:
         """Convert database row to User dataclass.
 
@@ -2487,6 +2860,7 @@ class UserRepository:
             max_active_jobs=row.get("max_active_jobs"),
             allowed_hosts=row.get("allowed_hosts"),
             default_host=row.get("default_host"),
+            last_maintenance_ack=row.get("last_maintenance_ack"),
         )
 
     def get_users_managed_by(self, manager_id: str) -> list[User]:
