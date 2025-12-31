@@ -295,6 +295,11 @@
     border: 1px solid var(--danger-200);
 }
 
+.job-status-banner.status-canceling {
+    background: var(--warning-50);
+    border: 1px solid var(--warning-200);
+}
+
 .job-status-banner.status-canceled {
     background: var(--gray-100);
     border: 1px solid var(--gray-300);
@@ -330,6 +335,11 @@
     color: var(--danger-600);
 }
 
+.job-status-banner.status-canceling .job-status-icon {
+    background: var(--warning-100);
+    color: var(--warning-600);
+}
+
 .job-status-banner.status-canceled .job-status-icon {
     background: var(--gray-200);
     color: var(--gray-600);
@@ -353,6 +363,7 @@
 .job-status-banner.status-running .job-status-label { color: var(--primary-700); }
 .job-status-banner.status-complete .job-status-label { color: var(--success-700); }
 .job-status-banner.status-failed .job-status-label { color: var(--danger-700); }
+.job-status-banner.status-canceling .job-status-label { color: var(--warning-700); }
 .job-status-banner.status-canceled .job-status-label { color: var(--gray-700); }
 
 .job-status-detail {
@@ -364,6 +375,7 @@
 .job-status-banner.status-running .job-status-detail { color: var(--primary-600); }
 .job-status-banner.status-complete .job-status-detail { color: var(--success-600); }
 .job-status-banner.status-failed .job-status-detail { color: var(--danger-600); }
+.job-status-banner.status-canceling .job-status-detail { color: var(--warning-600); }
 .job-status-banner.status-canceled .job-status-detail { color: var(--gray-600); }
 
 /* ===========================================

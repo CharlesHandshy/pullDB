@@ -582,6 +582,56 @@ class JobRepository:
             )
             conn.commit()
 
+    def has_restore_started(self, job_id: str) -> bool:
+        """Check if myloader restore has started for a job.
+
+        Used to determine if cancellation is still possible. Once myloader
+        starts, the job cannot be safely canceled (myloader cannot be killed
+        without risking database corruption or long rollback).
+
+        Args:
+            job_id: UUID of job to check.
+
+        Returns:
+            True if restore_started event exists, False otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT 1 FROM job_events
+                WHERE job_id = %s AND event_type = 'restore_started'
+                LIMIT 1
+                """,
+                (job_id,),
+            )
+            return cursor.fetchone() is not None
+
+    def mark_job_canceling(self, job_id: str) -> bool:
+        """Transition a running job to canceling state.
+
+        Sets status to 'canceling' to indicate cancellation is in progress.
+        Worker will detect this and stop at next checkpoint.
+
+        Args:
+            job_id: UUID of job.
+
+        Returns:
+            True if status was updated, False if job not in running state.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET status = 'canceling', cancel_requested_at = UTC_TIMESTAMP(6)
+                WHERE id = %s AND status = 'running'
+                """,
+                (job_id,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
     def request_cancellation(self, job_id: str) -> bool:
         """Request cancellation of a job.
 
@@ -714,18 +764,19 @@ class JobRepository:
         """Check if cancellation has been requested for a job.
 
         Called by worker during long operations to check if it should stop.
+        Checks both the cancel_requested_at timestamp and the 'canceling' status.
 
         Args:
             job_id: UUID of job.
 
         Returns:
-            True if cancel_requested_at is set, False otherwise.
+            True if cancellation requested or job is in canceling state.
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT cancel_requested_at IS NOT NULL as is_requested
+                SELECT (cancel_requested_at IS NOT NULL OR status = 'canceling') as is_requested
                 FROM jobs
                 WHERE id = %s
                 """,
@@ -1607,12 +1658,11 @@ class JobRepository:
             return row["logged_at"] if row else None
 
     def has_active_jobs_for_target(self, target: str, dbhost: str) -> bool:
-        """Check if there are any active (queued/running) jobs for a target.
+        """Check if there are any active jobs for a target.
 
-        Also checks for recently-canceled jobs that were started, as myloader
-        may still be running (cancellation doesn't kill myloader by design).
-        Jobs canceled within the last 30 minutes are considered potentially
-        active if they had started.
+        Active jobs include queued, running, and canceling states.
+        Jobs in 'canceling' state are still active because the worker
+        is cleaning up (myloader may still be running).
 
         Used as a safety check before allowing new job submission and before
         scheduled cleanup drops staging databases.
@@ -1630,14 +1680,7 @@ class JobRepository:
                 """
                 SELECT COUNT(*) FROM jobs
                 WHERE target = %s AND dbhost = %s
-                  AND (
-                    -- Queued or running jobs
-                    status IN ('queued', 'running')
-                    -- OR recently-canceled jobs that were started (myloader may still be running)
-                    OR (status = 'canceled' 
-                        AND started_at IS NOT NULL 
-                        AND cancel_requested_at > DATE_SUB(NOW(), INTERVAL 30 MINUTE))
-                  )
+                  AND status IN ('queued', 'running', 'canceling')
                 """,
                 (target, dbhost),
             )

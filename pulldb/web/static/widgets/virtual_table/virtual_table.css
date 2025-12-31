@@ -110,6 +110,9 @@
 .filter-btn-failed { background: var(--danger-50, #fef2f2); border-color: var(--gray-300, #d1d5db); color: var(--gray-600, #4b5563); }
 .filter-btn-failed .filter-btn-count { background: var(--danger-100, #fee2e2); color: var(--gray-600, #4b5563); }
 
+.filter-btn-canceling { background: var(--warning-50, #fffbeb); border-color: var(--gray-300, #d1d5db); color: var(--gray-600, #4b5563); }
+.filter-btn-canceling .filter-btn-count { background: var(--warning-100, #fef3c7); color: var(--gray-600, #4b5563); }
+
 .filter-btn-canceled { background: var(--gray-50, #f9fafb); border-color: var(--gray-300, #d1d5db); color: var(--gray-600, #4b5563); }
 .filter-btn-canceled .filter-btn-count { background: var(--gray-100, #f3f4f6); color: var(--gray-600, #4b5563); }
 
@@ -119,6 +122,9 @@
 
 .filter-btn-running.active { background: var(--primary-100, #dbeafe); border-color: var(--primary-500, #3b82f6); color: var(--primary-700, #1d4ed8); }
 .filter-btn-running.active .filter-btn-count { background: var(--primary-200, #bfdbfe); color: var(--primary-800, #1e40af); }
+
+.filter-btn-canceling.active { background: var(--warning-100, #fef3c7); border-color: var(--warning-400, #fbbf24); color: var(--warning-600, #d97706); }
+.filter-btn-canceling.active .filter-btn-count { background: var(--warning-200, #fde68a); color: var(--warning-700, #b45309); }
 
 .filter-btn-complete.active { background: var(--success-100, #dcfce7); border-color: var(--success-500, #22c55e); color: var(--success-700, #15803d); }
 .filter-btn-complete.active .filter-btn-count { background: var(--success-200, #bbf7d0); color: var(--success-800, #166534); }
@@ -585,6 +591,7 @@
 
 .badge-queued { background: var(--status-queued-bg, #fef9c3); color: var(--status-queued-text, #854d0e); }
 .badge-running { background: var(--status-running-bg, #dbeafe); color: var(--status-running-text, #1e40af); }
+.badge-canceling { background: var(--status-canceling-bg, #fef3c7); color: var(--status-canceling-text, #d97706); }
 .badge-complete { background: var(--status-complete-bg, #dcfce7); color: var(--status-complete-text, #166534); }
 .badge-failed { background: var(--status-failed-bg, #fee2e2); color: var(--status-failed-text, #991b1b); }
 .badge-canceled { background: var(--status-canceled-bg, #f3f4f6); color: var(--status-canceled-text, #374151); }

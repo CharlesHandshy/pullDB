@@ -63,6 +63,10 @@ class TestCancelAPIEndpoint:
         """JobStatus enum should include CANCELED value."""
         assert JobStatus.CANCELED.value == "canceled"
 
+    def test_job_status_includes_canceling(self) -> None:
+        """JobStatus enum should include CANCELING value for intermediate state."""
+        assert JobStatus.CANCELING.value == "canceling"
+
 
 class TestExecutorCancellationCheckpoints:
     """Tests for worker executor cancellation checkpoint behavior."""

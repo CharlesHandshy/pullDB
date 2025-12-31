@@ -1578,6 +1578,11 @@ class CancelResponse(pydantic.BaseModel):
 def _cancel_job(state: APIState, job_id: str, user: User) -> CancelResponse:
     """Request cancellation of a job.
 
+    Cancellation behavior depends on job state:
+    - QUEUED: Immediate cancellation (job never started)
+    - RUNNING (pre-restore): Transition to CANCELING, worker stops at checkpoint
+    - RUNNING (restore started): Reject - myloader cannot be safely interrupted
+
     Args:
         state: API state with repositories.
         job_id: UUID of job to cancel.
@@ -1616,28 +1621,65 @@ def _cancel_job(state: APIState, job_id: str, user: User) -> CancelResponse:
             detail=f"Job {job_id} cannot be canceled (status: {job.status.value})",
         )
 
-    # Request cancellation
-    was_requested = state.job_repo.request_cancellation(job_id)
-    if not was_requested:
-        # Race condition: job may have completed or already been canceled
-        refreshed = state.job_repo.get_job_by_id(job_id)
-        if refreshed and refreshed.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
+    # For running jobs, check if myloader has started (point of no return)
+    if job.status == JobStatus.RUNNING:
+        if state.job_repo.has_restore_started(job_id):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Job {job_id} cannot be canceled (status: {refreshed.status.value})",
+                detail="Cannot cancel: restore is in progress. Myloader cannot be safely interrupted.",
             )
-        # Cancellation was already requested
-        return CancelResponse(
+        # Transition to CANCELING state
+        was_updated = state.job_repo.mark_job_canceling(job_id)
+        if not was_updated:
+            # Race condition: job may have moved to another state
+            refreshed = state.job_repo.get_job_by_id(job_id)
+            if refreshed and refreshed.status != JobStatus.RUNNING:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Job {job_id} cannot be canceled (status: {refreshed.status.value})",
+                )
+            return CancelResponse(
+                job_id=job_id,
+                status="pending",
+                message="Cancellation already in progress",
+            )
+
+        state.job_repo.append_job_event(
             job_id=job_id,
-            status="pending",
-            message="Cancellation already requested",
+            event_type="cancel_requested",
+            detail="User requested job cancellation; worker will stop at next checkpoint",
         )
 
-    # Log cancellation event
+        emit_event(
+            "job_cancel_requested",
+            f"job_id={job_id}",
+            MetricLabels(phase="api", status="canceling"),
+        )
+        emit_counter(
+            "job_canceling_total",
+            labels=MetricLabels(phase="api", status="running"),
+        )
+
+        return CancelResponse(
+            job_id=job_id,
+            status="canceling",
+            message="Cancellation requested; worker will stop at next checkpoint",
+        )
+
+    # For queued jobs, cancel immediately
+    # First try to set cancel_requested_at (maintains audit trail)
+    state.job_repo.request_cancellation(job_id)
+    state.job_repo.mark_job_canceled(job_id, "Canceled before execution started")
+    
     state.job_repo.append_job_event(
         job_id=job_id,
         event_type="cancel_requested",
         detail="User requested job cancellation",
+    )
+    state.job_repo.append_job_event(
+        job_id=job_id,
+        event_type="canceled",
+        detail="Job canceled before worker started processing",
     )
 
     emit_event(
@@ -1645,30 +1687,15 @@ def _cancel_job(state: APIState, job_id: str, user: User) -> CancelResponse:
         f"job_id={job_id}",
         MetricLabels(phase="api", status="cancel_requested"),
     )
+    emit_counter(
+        "job_canceled_total",
+        labels=MetricLabels(phase="api", status="queued"),
+    )
 
-    # For queued jobs, we can cancel immediately
-    if job.status == JobStatus.QUEUED:
-        state.job_repo.mark_job_canceled(job_id, "Canceled before execution started")
-        state.job_repo.append_job_event(
-            job_id=job_id,
-            event_type="canceled",
-            detail="Job canceled before worker started processing",
-        )
-        emit_counter(
-            "job_canceled_total",
-            labels=MetricLabels(phase="api", status="queued"),
-        )
-        return CancelResponse(
-            job_id=job_id,
-            status="canceled",
-            message="Job canceled successfully (was queued)",
-        )
-
-    # For running jobs, worker will check cancel flag and stop
     return CancelResponse(
         job_id=job_id,
-        status="pending",
-        message="Cancellation requested; worker will stop at next checkpoint",
+        status="canceled",
+        message="Job canceled successfully (was queued)",
     )
 
 

@@ -27,6 +27,7 @@ class JobStatus(Enum):
     Attributes:
         QUEUED: Job submitted and waiting to be processed.
         RUNNING: Job currently being executed by worker.
+        CANCELING: Cancellation requested, worker stopping at checkpoint.
         FAILED: Job execution failed with error.
         COMPLETE: Job successfully completed.
         CANCELED: Job canceled by user (reserved for Phase 1).
@@ -36,6 +37,7 @@ class JobStatus(Enum):
 
     QUEUED = "queued"
     RUNNING = "running"
+    CANCELING = "canceling"  # Cancellation requested, stopping at checkpoint
     FAILED = "failed"
     COMPLETE = "complete"
     CANCELED = "canceled"  # Reserved for Phase 1
