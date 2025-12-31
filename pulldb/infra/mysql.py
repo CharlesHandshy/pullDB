@@ -805,6 +805,40 @@ class JobRepository:
             row = cursor.fetchone()
             return row["cancel_requested_at"] if row else None
 
+    def get_current_operation(self, job_id: str) -> str | None:
+        """Get user-friendly current operation string for a job.
+
+        Queries the latest job event and derives a human-readable operation
+        string (e.g., "Downloading(45%)", "Restoring", "Queued").
+
+        Args:
+            job_id: UUID of job.
+
+        Returns:
+            Human-readable operation string, or None if job not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT j.status,
+                       je.event_type AS last_event_type,
+                       je.detail AS last_event_detail
+                FROM jobs j
+                LEFT JOIN (
+                    SELECT job_id, event_type, detail
+                    FROM job_events
+                    WHERE job_id = %s
+                    ORDER BY logged_at DESC
+                    LIMIT 1
+                ) je ON je.job_id = j.id
+                WHERE j.id = %s
+                """,
+                (job_id, job_id),
+            )
+            row = cursor.fetchone()
+            return self._derive_operation(row) if row else None
+
     def get_active_jobs(self) -> list[Job]:
         """Get all active jobs (queued or running).
 
