@@ -730,3 +730,144 @@ def disallow_remove(username: str, force: bool) -> None:
     # Remove from database
     repo.remove(username_lower)
     click.echo(f"✓ Username '{username_lower}' removed from disallowed list.")
+
+
+# =============================================================================
+# Retention Cleanup Command
+# =============================================================================
+
+
+@click.command(
+    name="run-retention-cleanup",
+    help="Run database retention cleanup (drop expired databases)",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview what would be cleaned (no changes made)",
+)
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of human-readable text",
+)
+def run_retention_cleanup_cmd(
+    dry_run: bool,
+    json_out: bool,
+) -> None:
+    """Run the database retention cleanup process.
+
+    This command identifies and drops expired staging databases based on
+    the configured retention policy. Locked databases are never dropped.
+
+    This is typically run via systemd timer (pulldb-retention.timer) but
+    can also be invoked manually.
+
+    The cleanup process:
+    1. Finds databases past their expiration + grace period
+    2. Skips locked databases (protected by users)
+    3. Drops the staging database from the target host
+    4. Marks the job record as cleaned in the database
+    """
+    from pulldb.infra.factory import (
+        get_job_repository,
+        get_settings_repository,
+        get_user_repository,
+    )
+
+    job_repo = get_job_repository()
+    user_repo = get_user_repository()
+    settings_repo = get_settings_repository()
+
+    # Get cleanup candidates
+    from pulldb.worker.retention import RetentionService
+
+    retention_service = RetentionService(
+        job_repo=job_repo,
+        user_repo=user_repo,
+        settings_repo=settings_repo,
+    )
+
+    grace_days = settings_repo.get_int("cleanup_grace_days", 7)
+    candidates = job_repo.get_cleanup_candidates(grace_days=grace_days)
+
+    if not candidates:
+        if json_out:
+            click.echo(json.dumps({"candidates": 0, "cleaned": 0, "failed": 0}))
+        else:
+            click.echo("No expired databases to clean up.")
+        return
+
+    if dry_run:
+        if json_out:
+            data = {
+                "mode": "dry_run",
+                "candidates": len(candidates),
+                "databases": [
+                    {
+                        "job_id": job.id,
+                        "target": job.target,
+                        "dbhost": job.dbhost,
+                        "staging_name": job.staging_name,
+                        "expires_at": job.expires_at.isoformat() if job.expires_at else None,
+                        "owner_user_id": job.owner_user_id,
+                    }
+                    for job in candidates
+                ],
+            }
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo("Retention Cleanup Preview (DRY RUN):\n")
+            click.echo(f"Found {len(candidates)} expired database(s):\n")
+
+            # Group by host
+            by_host: dict[str, list[t.Any]] = {}
+            for job in candidates:
+                host = job.dbhost or "unknown"
+                by_host.setdefault(host, []).append(job)
+
+            for host, jobs in sorted(by_host.items()):
+                click.echo(f"  {host}:")
+                for job in jobs:
+                    exp_str = (
+                        job.expires_at.strftime("%Y-%m-%d")
+                        if job.expires_at
+                        else "never"
+                    )
+                    click.echo(f"    - {job.target} → {job.staging_name} (expired {exp_str})")
+
+            click.echo("\nRun without --dry-run to perform cleanup.")
+        return
+
+    # Execute cleanup
+    if not json_out:
+        click.echo("Executing retention cleanup...\n")
+
+    from pulldb.worker.cleanup import run_retention_cleanup
+
+    result = run_retention_cleanup(
+        job_repo=job_repo,
+        user_repo=user_repo,
+        settings_repo=settings_repo,
+    )
+
+    if json_out:
+        click.echo(
+            json.dumps(
+                {
+                    "cleaned": result.cleaned_count,
+                    "failed": result.failed_count,
+                    "skipped_locked": result.skipped_locked,
+                    "errors": result.errors,
+                }
+            )
+        )
+    else:
+        click.echo("\nRetention Cleanup Complete:")
+        click.echo(f"  Cleaned: {result.cleaned_count}")
+        click.echo(f"  Skipped (locked): {result.skipped_locked}")
+        if result.failed_count:
+            click.echo(f"  Failed: {result.failed_count}")
+            for error in result.errors:
+                click.echo(f"    - {error}")

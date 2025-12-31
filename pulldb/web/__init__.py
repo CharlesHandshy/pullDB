@@ -11,8 +11,10 @@ from pulldb.web.dependencies import TEMPLATES_DIR, templates
 from pulldb.web.exceptions import (
     SessionExpiredError,
     PasswordResetRequiredError,
+    MaintenanceRequiredError,
     create_session_expired_handler,
     create_password_reset_required_handler,
+    create_maintenance_required_handler,
     create_http_exception_handler,
 )
 
@@ -22,7 +24,9 @@ __all__ = [
     "templates",
     "SessionExpiredError",
     "PasswordResetRequiredError",
+    "MaintenanceRequiredError",
     "create_session_expired_handler",
     "create_password_reset_required_handler",
+    "create_maintenance_required_handler",
     "create_http_exception_handler",
 ]

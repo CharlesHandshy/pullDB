@@ -67,8 +67,10 @@ if WEB_ENABLED:
             templates as web_templates,
             SessionExpiredError,
             PasswordResetRequiredError,
+            MaintenanceRequiredError,
             create_session_expired_handler,
             create_password_reset_required_handler,
+            create_maintenance_required_handler,
             create_http_exception_handler,
         )
         from pulldb.web.dependencies import WEB_DIR
@@ -81,6 +83,7 @@ if WEB_ENABLED:
         app.include_router(web_router)
         app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
         app.add_exception_handler(PasswordResetRequiredError, create_password_reset_required_handler())
+        app.add_exception_handler(MaintenanceRequiredError, create_maintenance_required_handler())
         app.add_exception_handler(StarletteHTTPException, create_http_exception_handler(web_templates))
     except ImportError:
         pass  # Web UI module not installed
@@ -3066,8 +3069,10 @@ def main_web(argv: list[str] | None = None) -> int:
             templates as web_templates,
             SessionExpiredError,
             PasswordResetRequiredError,
+            MaintenanceRequiredError,
             create_session_expired_handler,
             create_password_reset_required_handler,
+            create_maintenance_required_handler,
             create_http_exception_handler,
         )
         from pulldb.web.dependencies import WEB_DIR
@@ -3080,6 +3085,7 @@ def main_web(argv: list[str] | None = None) -> int:
         web_app.include_router(web_router)
         web_app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
         web_app.add_exception_handler(PasswordResetRequiredError, create_password_reset_required_handler())
+        web_app.add_exception_handler(MaintenanceRequiredError, create_maintenance_required_handler())
         web_app.add_exception_handler(StarletteHTTPException, create_http_exception_handler(web_templates))
     except ImportError as e:
         print(f"Error: Web UI module not available: {e}")

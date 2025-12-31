@@ -8,6 +8,7 @@ Commands:
 - secrets: Manage AWS Secrets Manager credentials (list, get, set, delete, test, rotate)
 - jobs: View and manage jobs across all users
 - cleanup: Cleanup orphaned staging databases and work files
+- run-retention-cleanup: Run database retention cleanup (drop expired databases)
 - hosts: Manage registered database hosts
 - users: View and manage users
 - disallow: Manage disallowed usernames (list, add, remove)
@@ -39,6 +40,7 @@ from pulldb.cli.admin_commands import (
     disallow_group,
     hosts_group,
     jobs_group,
+    run_retention_cleanup_cmd,
     users_group,
 )
 from pulldb.cli.secrets_commands import secrets_group
@@ -61,6 +63,7 @@ cli.add_command(settings_group)
 cli.add_command(secrets_group)
 cli.add_command(jobs_group)
 cli.add_command(cleanup_cmd)
+cli.add_command(run_retention_cleanup_cmd)
 cli.add_command(hosts_group)
 cli.add_command(users_group)
 cli.add_command(disallow_group)

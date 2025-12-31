@@ -28,6 +28,7 @@ from pulldb.infra.metrics import MetricLabels, emit_counter, emit_gauge
 
 
 if TYPE_CHECKING:
+    from pulldb.domain.models import Job
     from pulldb.infra.mysql import (
         HostRepository,
         JobRepository,
@@ -1844,3 +1845,252 @@ def find_orphaned_staging(
         host_repo=host_repo,
         retention_days=retention_days,
     )
+
+
+# =============================================================================
+# Retention-Based Cleanup (Database Expiration System)
+# =============================================================================
+
+
+@dataclass
+class RetentionCleanupResult:
+    """Result of retention-based database cleanup."""
+
+    started_at: datetime
+    completed_at: datetime | None = None
+    grace_days: int = 7
+    candidates_found: int = 0
+    databases_dropped: int = 0
+    databases_skipped: int = 0
+    errors: list[str] = field(default_factory=list)
+    dropped_jobs: list[str] = field(default_factory=list)
+
+
+def run_retention_cleanup(
+    job_repo: "JobRepository",
+    host_repo: "HostRepository",
+    settings_repo: "SettingsRepository",
+    dry_run: bool = False,
+) -> RetentionCleanupResult:
+    """Run retention-based cleanup of expired databases.
+
+    Finds complete jobs that are:
+    - Past expiration date + grace period
+    - Not locked
+    - Database not already dropped
+
+    For each candidate, drops the actual database on the target host and
+    marks the job as db_dropped.
+
+    Args:
+        job_repo: Job repository.
+        host_repo: Host repository for credentials.
+        settings_repo: Settings repository for grace_days config.
+        dry_run: If True, don't actually drop databases.
+
+    Returns:
+        RetentionCleanupResult with counts and details.
+    """
+    from pulldb.domain.models import Job as JobModel
+
+    started_at = datetime.now(UTC)
+    grace_days = settings_repo.get_cleanup_grace_days()
+
+    result = RetentionCleanupResult(
+        started_at=started_at,
+        grace_days=grace_days,
+    )
+
+    # Get all cleanup candidates
+    candidates = job_repo.get_cleanup_candidates(grace_days)
+    result.candidates_found = len(candidates)
+
+    if not candidates:
+        logger.info(
+            "No retention cleanup candidates found (grace_days=%d)", grace_days
+        )
+        result.completed_at = datetime.now(UTC)
+        return result
+
+    logger.info(
+        "Starting retention cleanup: candidates=%d, grace_days=%d, dry_run=%s",
+        len(candidates),
+        grace_days,
+        dry_run,
+    )
+
+    # Group candidates by host for efficient processing
+    by_host: dict[str, list[JobModel]] = {}
+    for job in candidates:
+        if job.dbhost not in by_host:
+            by_host[job.dbhost] = []
+        by_host[job.dbhost].append(job)
+
+    # Process each host
+    for dbhost, jobs in by_host.items():
+        try:
+            _process_retention_cleanup_host(
+                dbhost=dbhost,
+                jobs=jobs,
+                job_repo=job_repo,
+                host_repo=host_repo,
+                result=result,
+                dry_run=dry_run,
+            )
+        except Exception as e:
+            error_msg = f"Error processing host {dbhost}: {e}"
+            logger.exception(error_msg)
+            result.errors.append(error_msg)
+
+    result.completed_at = datetime.now(UTC)
+
+    duration = (result.completed_at - result.started_at).total_seconds()
+    logger.info(
+        "Retention cleanup complete: candidates=%d, dropped=%d, skipped=%d, "
+        "errors=%d, duration=%.2fs",
+        result.candidates_found,
+        result.databases_dropped,
+        result.databases_skipped,
+        len(result.errors),
+        duration,
+    )
+
+    return result
+
+
+def _process_retention_cleanup_host(
+    dbhost: str,
+    jobs: list["Job"],
+    job_repo: "JobRepository",
+    host_repo: "HostRepository",
+    result: RetentionCleanupResult,
+    dry_run: bool,
+) -> None:
+    """Process retention cleanup for a single host.
+
+    Args:
+        dbhost: Database host to process.
+        jobs: Jobs with databases on this host.
+        job_repo: Job repository.
+        host_repo: Host repository for credentials.
+        result: Result object to update.
+        dry_run: If True, don't actually drop databases.
+    """
+    # Get connection to target host
+    try:
+        host = host_repo.get_host_by_hostname(dbhost)
+        if not host:
+            error_msg = f"Host {dbhost} not found in db_hosts"
+            logger.error(error_msg)
+            result.errors.append(error_msg)
+            result.databases_skipped += len(jobs)
+            return
+
+        creds = host_repo.get_host_credentials(dbhost)
+
+    except Exception as e:
+        error_msg = f"Error getting credentials for {dbhost}: {e}"
+        logger.exception(error_msg)
+        result.errors.append(error_msg)
+        result.databases_skipped += len(jobs)
+        return
+
+    # Connect and process jobs
+    try:
+        conn = mysql.connector.connect(
+            host=creds.host,
+            port=creds.port,
+            user=creds.username,
+            password=creds.password,
+        )
+        cursor = conn.cursor()
+
+        for job in jobs:
+            try:
+                _drop_job_database(
+                    job=job,
+                    cursor=cursor,
+                    job_repo=job_repo,
+                    result=result,
+                    dry_run=dry_run,
+                )
+            except Exception as e:
+                error_msg = f"Error dropping database for job {job.id}: {e}"
+                logger.exception(error_msg)
+                result.errors.append(error_msg)
+                result.databases_skipped += 1
+
+        conn.close()
+
+    except mysql.connector.Error as e:
+        error_msg = f"MySQL connection error for {dbhost}: {e}"
+        logger.exception(error_msg)
+        result.errors.append(error_msg)
+        result.databases_skipped += len(jobs)
+
+
+def _drop_job_database(
+    job: "Job",
+    cursor: "mysql.connector.cursor.MySQLCursor",
+    job_repo: "JobRepository",
+    result: RetentionCleanupResult,
+    dry_run: bool,
+) -> None:
+    """Drop the database for a single job.
+
+    Args:
+        job: Job whose database to drop.
+        cursor: MySQL cursor.
+        job_repo: Job repository.
+        result: Result object to update.
+        dry_run: If True, don't actually drop.
+    """
+    # The target name is the actual database name after rename
+    db_name = job.target
+
+    # Validate it's safe to drop - skip protected databases
+    if db_name.lower() in PROTECTED_DATABASES:
+        logger.warning(
+            "Skipping protected database %s for job %s", db_name, job.id
+        )
+        result.databases_skipped += 1
+        return
+
+    if dry_run:
+        logger.info(
+            "[DRY RUN] Would drop database %s on %s (job %s)",
+            db_name,
+            job.dbhost,
+            job.id,
+        )
+        result.databases_dropped += 1
+        result.dropped_jobs.append(job.id)
+        return
+
+    # Drop the database
+    try:
+        # Use backticks for identifier quoting
+        cursor.execute(f"DROP DATABASE IF EXISTS `{db_name}`")
+        logger.info(
+            "Dropped expired database %s on %s (job %s)",
+            db_name,
+            job.dbhost,
+            job.id,
+        )
+
+        # Mark job as db_dropped
+        job_repo.mark_db_dropped(job.id)
+        job_repo.append_job_event(
+            job.id,
+            "retention_cleanup",
+            f"Database {db_name} dropped (expired + grace period)",
+        )
+
+        result.databases_dropped += 1
+        result.dropped_jobs.append(job.id)
+
+    except mysql.connector.Error as e:
+        error_msg = f"Failed to drop {db_name} on {job.dbhost}: {e}"
+        logger.exception(error_msg)
+        result.errors.append(error_msg)
+        result.databases_skipped += 1

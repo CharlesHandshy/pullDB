@@ -1,0 +1,16 @@
+[Unit]
+Description=pullDB Database Retention Cleanup Timer
+Requires=pulldb-retention.service
+
+[Timer]
+# Run daily at 3:00 AM local time
+OnCalendar=*-*-* 03:00:00
+# Add random delay up to 30 minutes to avoid thundering herd
+RandomizedDelaySec=1800
+# Run immediately if we missed the last scheduled time
+Persistent=true
+# Don't run if system is on battery
+# ConditionACPower=true
+
+[Install]
+WantedBy=timers.target
