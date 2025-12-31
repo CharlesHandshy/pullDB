@@ -1004,6 +1004,161 @@ class JobRepository:
             rows = cursor.fetchall()
             return [self._row_to_job(row) for row in rows]
 
+    def get_owned_databases(
+        self,
+        limit: int = 100,
+        user_code: str | None = None,
+        target: str | None = None,
+        dbhost: str | None = None,
+    ) -> list[Job]:
+        """Get databases user currently owns (Active view).
+
+        Returns jobs that represent currently owned databases:
+        - Queued/running/canceling jobs (in progress)
+        - Complete jobs where database still exists (not dropped, not superseded)
+
+        Per retention-cleanup plan: "Shows all databases user currently owns
+        (not cleaned up, not superseded)"
+
+        Args:
+            limit: Maximum number of jobs to return.
+            user_code: Filter by owner_user_code.
+            target: Filter by target database name.
+            dbhost: Filter by database host.
+
+        Returns:
+            List of jobs representing owned databases, newest first.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+
+            # Active (in-progress) OR complete with database still existing
+            query = """
+                SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
+                       j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
+                       j.started_at, j.completed_at, j.options_json, j.retry_count,
+                       j.error_detail, j.expires_at, j.locked_at, j.locked_by,
+                       j.db_dropped_at, j.superseded_at, j.superseded_by_job_id
+                FROM jobs j
+                WHERE (
+                    j.status IN ('queued', 'running', 'canceling')
+                    OR (
+                        j.status = 'complete'
+                        AND j.db_dropped_at IS NULL
+                        AND j.superseded_at IS NULL
+                    )
+                )
+            """
+
+            params: list[t.Any] = []
+
+            # User filter
+            if user_code:
+                query += " AND j.owner_user_code = %s"
+                params.append(user_code)
+
+            # Target filter
+            if target:
+                query += " AND j.target = %s"
+                params.append(target)
+
+            # Dbhost filter
+            if dbhost:
+                query += " AND j.dbhost = %s"
+                params.append(dbhost)
+
+            query += " ORDER BY j.submitted_at DESC LIMIT %s"
+            params.append(limit)
+
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
+
+    def get_job_history_v2(
+        self,
+        limit: int = 100,
+        retention_days: int | None = None,
+        user_code: str | None = None,
+        target: str | None = None,
+        dbhost: str | None = None,
+        status: str | None = None,
+    ) -> list[Job]:
+        """Get historical jobs (History view).
+
+        Returns jobs that are no longer "active" databases:
+        - Failed, canceled, deleted, deleting jobs
+        - Complete jobs where database was dropped or superseded
+
+        Per retention-cleanup plan: "Contains removed, failed, canceled,
+        superseded jobs"
+
+        Args:
+            limit: Maximum number of jobs to return.
+            retention_days: Only return jobs completed within N days.
+            user_code: Filter by owner_user_code.
+            target: Filter by target database name.
+            dbhost: Filter by database host.
+            status: Filter by specific status.
+
+        Returns:
+            List of historical jobs, newest first.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+
+            # Failed/canceled/deleted OR complete but dropped/superseded
+            query = """
+                SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
+                       j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
+                       j.started_at, j.completed_at, j.options_json, j.retry_count,
+                       j.error_detail, j.expires_at, j.locked_at, j.locked_by,
+                       j.db_dropped_at, j.superseded_at, j.superseded_by_job_id
+                FROM jobs j
+                WHERE (
+                    j.status IN ('failed', 'canceled', 'deleted', 'deleting')
+                    OR (
+                        j.status = 'complete'
+                        AND (j.db_dropped_at IS NOT NULL OR j.superseded_at IS NOT NULL)
+                    )
+                )
+            """
+
+            params: list[t.Any] = []
+
+            # Retention filter
+            if retention_days is not None:
+                query += (
+                    " AND j.completed_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)"
+                )
+                params.append(retention_days)
+
+            # User filter
+            if user_code:
+                query += " AND j.owner_user_code = %s"
+                params.append(user_code)
+
+            # Target filter
+            if target:
+                query += " AND j.target = %s"
+                params.append(target)
+
+            # Dbhost filter
+            if dbhost:
+                query += " AND j.dbhost = %s"
+                params.append(dbhost)
+
+            # Status filter
+            if status and status in ("failed", "canceled", "deleted", "deleting", "complete"):
+                query += " AND j.status = %s"
+                params.append(status)
+
+            query += " ORDER BY COALESCE(j.completed_at, j.submitted_at) DESC LIMIT %s"
+            params.append(limit)
+
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
+
     def list_jobs(
         self,
         limit: int = 20,

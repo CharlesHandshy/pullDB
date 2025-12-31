@@ -40,8 +40,18 @@ async def jobs_page(
 
     if hasattr(state, "job_repo") and state.job_repo:
         if view == "history":
-            # History view - use get_job_history with filters
-            if hasattr(state.job_repo, "get_job_history"):
+            # History view - shows failed, canceled, dropped, superseded jobs
+            if hasattr(state.job_repo, "get_job_history_v2"):
+                jobs = state.job_repo.get_job_history_v2(
+                    limit=page_size,
+                    retention_days=days,
+                    user_code=user_code if user_code else None,
+                    target=target if target else None,
+                    dbhost=host if host else None,
+                    status=status if status else None,
+                )
+            elif hasattr(state.job_repo, "get_job_history"):
+                # Fallback to old method
                 jobs = state.job_repo.get_job_history(
                     limit=page_size,
                     retention_days=days,
@@ -70,16 +80,34 @@ async def jobs_page(
                         for j in jobs
                         if getattr(j, "owner_user_code", None) == user_code
                     ]
-        # Active view
+        # Active view - shows owned databases (in-progress + complete but not dropped/superseded)
         elif q and len(q) >= 4:
             # Search mode
             exact = len(q) >= 5
             jobs = state.job_repo.search_jobs(q, limit=page_size, exact=exact)
-            # Filter to active only
+            # Filter to owned databases only
             jobs = [
-                j for j in jobs if j.status in (JobStatus.QUEUED, JobStatus.RUNNING)
+                j for j in jobs 
+                if j.status in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELING)
+                or (
+                    j.status == JobStatus.COMPLETE 
+                    and getattr(j, "db_dropped_at", None) is None
+                    and getattr(j, "superseded_at", None) is None
+                )
             ]
+        elif hasattr(state.job_repo, "get_owned_databases"):
+            # New method: shows in-progress + complete (not dropped, not superseded)
+            jobs = state.job_repo.get_owned_databases(
+                limit=page_size,
+                user_code=user_code if user_code else None,
+                target=target if target else None,
+                dbhost=host if host else None,
+            )
+            # Apply status filter if provided
+            if status:
+                jobs = [j for j in jobs if j.status.value == status]
         elif hasattr(state.job_repo, "get_active_jobs"):
+            # Fallback to old method (only queued/running)
             jobs = state.job_repo.get_active_jobs()
 
             # Apply filters
@@ -570,6 +598,9 @@ async def api_jobs_paginated(
     """Get paginated jobs for LazyTable.
     
     Returns jobs based on view (active or history) with filtering/sorting.
+    
+    Active view: Owned databases (in-progress + complete not dropped/superseded)
+    History view: Failed, canceled, dropped, superseded jobs
     """
     jobs = []
     
@@ -578,14 +609,27 @@ async def api_jobs_paginated(
     
     # Fetch jobs based on view
     if view == "history":
-        if hasattr(state.job_repo, "get_recent_jobs"):
-            jobs = state.job_repo.get_recent_jobs(limit=10000)  # Get all for filtering
-            # Filter to terminal statuses only
-            jobs = [j for j in jobs if j.status not in (JobStatus.QUEUED, JobStatus.RUNNING)]
+        # History: failed, canceled, deleted, or dropped/superseded complete jobs
+        if hasattr(state.job_repo, "get_job_history_v2"):
+            jobs = state.job_repo.get_job_history_v2(limit=10000)
+        elif hasattr(state.job_repo, "get_recent_jobs"):
+            jobs = state.job_repo.get_recent_jobs(limit=10000)
+            # Filter to terminal statuses or dropped/superseded
+            jobs = [
+                j for j in jobs 
+                if j.status in (JobStatus.FAILED, JobStatus.CANCELED, JobStatus.DELETED, JobStatus.DELETING)
+                or (
+                    j.status == JobStatus.COMPLETE
+                    and (getattr(j, "db_dropped_at", None) is not None or getattr(j, "superseded_at", None) is not None)
+                )
+            ]
         else:
             jobs = list(getattr(state.job_repo, "history_jobs", []))
     else:  # active
-        if hasattr(state.job_repo, "get_active_jobs"):
+        # Active: owned databases (in-progress + complete not dropped/superseded)
+        if hasattr(state.job_repo, "get_owned_databases"):
+            jobs = state.job_repo.get_owned_databases(limit=10000)
+        elif hasattr(state.job_repo, "get_active_jobs"):
             jobs = state.job_repo.get_active_jobs()
         else:
             jobs = list(getattr(state.job_repo, "active_jobs", []))
