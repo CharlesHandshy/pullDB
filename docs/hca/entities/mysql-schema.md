@@ -177,7 +177,7 @@ CREATE TABLE jobs (
     target VARCHAR(255) NOT NULL,
     staging_name VARCHAR(64) NOT NULL,
     dbhost VARCHAR(255) NOT NULL,
-    status ENUM('queued','running','failed','complete','canceled') NOT NULL DEFAULT 'queued',
+    status ENUM('queued','running','canceling','failed','complete','canceled','deleting','deleted') NOT NULL DEFAULT 'queued',
     submitted_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     started_at TIMESTAMP(6) NULL,
     completed_at TIMESTAMP(6) NULL,
@@ -188,7 +188,7 @@ CREATE TABLE jobs (
     cancel_requested_at TIMESTAMP(6) NULL,
     staging_cleaned_at TIMESTAMP(6) NULL,
     active_target_key VARCHAR(520) GENERATED ALWAYS AS (
-        CASE WHEN status IN ('queued','running') THEN CONCAT(target,'@@',dbhost) ELSE NULL END
+        CASE WHEN status IN ('queued','running','canceling') THEN CONCAT(target,'@@',dbhost) ELSE NULL END
     ) VIRTUAL,
     CONSTRAINT fk_jobs_owner FOREIGN KEY (owner_user_id) REFERENCES auth_users(user_id)
 );
@@ -203,8 +203,16 @@ CREATE TABLE jobs (
 - `worker_id`: identifier of the worker that claimed the job (format: "hostname:pid"). Set by `claim_next_job()` for debugging/monitoring in multi-daemon deployments. NULL for unclaimed jobs.
 - `cancel_requested_at`: timestamp when user requested cancellation (Phase 1). Worker checks this periodically and aborts gracefully if set.
 - `staging_cleaned_at`: timestamp when staging database was cleaned up after restore (Phase 1). Prevents re-processing in cleanup runs.
-- `status`: `queued`, `running`, `failed`, `complete`, `canceled`. The `canceled` status is set when a job is successfully canceled.
-- `active_target_key`: generated virtual column for per-target exclusivity (NULL unless status is queued/running).
+- `status`: Job lifecycle states:
+  - `queued`: Job submitted, waiting to be processed
+  - `running`: Job being executed by worker
+  - `canceling`: Cancellation requested, worker stopping at checkpoint (myloader cannot be interrupted)
+  - `failed`: Job execution failed
+  - `complete`: Job successfully completed
+  - `canceled`: Job was canceled before completion
+  - `deleting`: Job databases being deleted (async bulk delete)
+  - `deleted`: Job databases deleted by user
+- `active_target_key`: generated virtual column for per-target exclusivity (NULL unless status is queued/running/canceling).
 
 Enforce per-target exclusivity with unique index on generated column (MySQL 8.0 doesn't support partial indexes):
 

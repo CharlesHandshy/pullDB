@@ -1,6 +1,6 @@
 -- 010_jobs.sql
 -- Core table definition: jobs and associated indexes
--- v0.0.6: Complete schema with Phase 1-3 columns
+-- v0.0.7: Added 'canceling' status for intermediate cancellation state
 
 CREATE TABLE jobs (
     id CHAR(36) PRIMARY KEY,
@@ -10,7 +10,7 @@ CREATE TABLE jobs (
     target VARCHAR(255) NOT NULL,
     staging_name VARCHAR(64) NOT NULL,
     dbhost VARCHAR(255) NOT NULL,
-    status ENUM('queued','running','failed','complete','canceled') NOT NULL DEFAULT 'queued',
+    status ENUM('queued','running','canceling','failed','complete','canceled','deleting','deleted') NOT NULL DEFAULT 'queued',
     submitted_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     started_at TIMESTAMP(6) NULL,
     completed_at TIMESTAMP(6) NULL,
@@ -21,7 +21,7 @@ CREATE TABLE jobs (
     staging_cleaned_at TIMESTAMP(6) NULL COMMENT 'Phase 1: When staging database was cleaned up',
     worker_id VARCHAR(255) NULL COMMENT 'Phase 3: Worker that claimed this job (hostname:pid)',
     active_target_key VARCHAR(520) GENERATED ALWAYS AS (
-        CASE WHEN status IN ('queued','running') THEN CONCAT(target,'@@',dbhost) ELSE NULL END
+        CASE WHEN status IN ('queued','running','canceling') THEN CONCAT(target,'@@',dbhost) ELSE NULL END
     ) VIRTUAL,
     CONSTRAINT fk_jobs_owner FOREIGN KEY (owner_user_id) REFERENCES auth_users(user_id)
 );

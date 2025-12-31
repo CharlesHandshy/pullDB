@@ -206,8 +206,9 @@ Both database types are dropped regardless of job status:
 ### Schema Migration
 
 ```sql
--- Migration: 080_job_delete_support.sql
-ALTER TABLE jobs MODIFY status ENUM(..., 'deleted');
+-- Migration: 080_job_delete_support.sql (adds deleting/deleted)
+-- Migration: 082_job_canceling_status.sql (adds canceling)
+ALTER TABLE jobs MODIFY status ENUM('queued','running','canceling','failed','complete','canceled','deleting','deleted');
 ALTER TABLE admin_tasks MODIFY task_type ENUM(..., 'bulk_delete_jobs');
 CREATE INDEX idx_jobs_deletable ON jobs(status, owner_user_id);
 ```

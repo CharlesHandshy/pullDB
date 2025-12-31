@@ -65,7 +65,7 @@
 
 ```python
 # Verified: pulldb/domain/models.py
-JobStatus = ['queued', 'running', 'failed', 'complete', 'canceled']  # ✅
+JobStatus = ['queued', 'running', 'canceling', 'failed', 'complete', 'canceled', 'deleting', 'deleted']  # ✅
 ```
 
 ### CLI Commands
@@ -161,8 +161,8 @@ schema/pulldb_service/
 ### Jobs Table Key Features
 
 - ✅ UUID primary key (`CHAR(36)`)
-- ✅ Status enum: `queued, running, failed, complete, canceled`
-- ✅ Per-target exclusivity via `active_target_key` generated column
+- ✅ Status enum: `queued, running, canceling, failed, complete, canceled, deleting, deleted`
+- ✅ Per-target exclusivity via `active_target_key` generated column (includes canceling)
 - ✅ Worker tracking via `worker_id` column
 
 ---

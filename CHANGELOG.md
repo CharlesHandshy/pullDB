@@ -3,6 +3,32 @@ CHANGELOG
 
 Unreleased
 ---------
+### Canceling Intermediate State
+
+- **CANCELING status**: New intermediate state for jobs being canceled
+- **Myloader protection**: Cancel blocked once restore starts (myloader cannot be safely interrupted)
+- **Race condition fix**: Eliminates orphan myloader issues when submitting new jobs
+
+### Added
+- `CANCELING` status in JobStatus enum (between RUNNING and FAILED)
+- `has_restore_started()` method in JobRepository to check if myloader began
+- `mark_job_canceling()` method to transition running jobs to canceling
+- Schema migration `082_job_canceling_status.sql`:
+  - Adds 'canceling' to jobs.status ENUM
+  - Updates active_jobs view to include canceling jobs
+  - Updates active_target_key virtual column to block new submissions
+- UI badge styling for canceling status (amber/warning color)
+
+### Changed
+- Cancel endpoint logic:
+  - QUEUED jobs: immediate cancellation (unchanged)
+  - RUNNING + pre-restore: transitions to CANCELING, returns 202
+  - RUNNING + restore started: rejects with 409 (cannot interrupt myloader)
+- `has_active_jobs_for_target()` simplified - now checks queued/running/canceling (removes 30-min heuristic)
+- `is_cancellation_requested()` checks both timestamp and 'canceling' status
+
+---
+
 ### Remove Host Feature (Admin)
 
 - **Full host removal**: Admin UI now supports permanently deleting database hosts

@@ -3,7 +3,7 @@
 [← Back to Documentation Index](START-HERE.md)
 
 > **Purpose**: Comprehensive atomic-level index for AI model searching and navigation.  
-> **Last Updated**: 2025-12-12  
+> **Last Updated**: 2025-12-31  
 > **File Count**: ~286 project files (excluding venv, .git, caches)
 
 ---
@@ -15,7 +15,7 @@
 | Python Source | 91 | `pulldb/` |
 | Tests | 137 | `pulldb/tests/`, `tests/` |
 | Shell Scripts | 42 | `scripts/` |
-| SQL Schema | 16 | `schema/pulldb_service/` |
+| SQL Schema | 22 | `schema/pulldb_service/` |
 | Documentation | 35+ | `docs/` |
 | Copilot Instructions | 6 | `.github/` |
 
@@ -286,6 +286,12 @@
 | `072_sessions.sql` | sessions |
 | `073_manager_user_relationship.sql` | manager_user_relationship |
 | `074_audit_logs.sql` | audit_logs |
+| `075_user_hosts.sql` | user_hosts |
+| `076_job_limits.sql` | job_limits |
+| `077_admin_tasks.sql` | admin_tasks |
+| `080_job_delete_support.sql` | job_delete_support (deleting/deleted) |
+| `081_disallowed_users.sql` | disallowed_users |
+| `082_job_canceling_status.sql` | job_canceling_status (canceling) |
 | `200_seed_db_hosts.sql` | seed_db_hosts |
 | `210_seed_settings.sql` | seed_settings |
 | `300_mysql_users.sql` | mysql_users |

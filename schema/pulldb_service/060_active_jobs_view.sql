@@ -1,5 +1,6 @@
 -- 060_active_jobs_view.sql
 -- Supporting view: active_jobs
+-- Includes canceling jobs as they are still operationally active
 
 CREATE VIEW active_jobs AS
 SELECT id,
@@ -13,4 +14,4 @@ SELECT id,
        submitted_at,
        started_at
 FROM jobs
-WHERE status IN ('queued','running');
+WHERE status IN ('queued','running','canceling');
