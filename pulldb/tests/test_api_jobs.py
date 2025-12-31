@@ -96,6 +96,14 @@ class FakeJobRepository:
             for j in self.active
         )
 
+    def get_current_operation(self, job_id: str) -> str | None:
+        """Get current operation for a job (stub returns None)."""
+        return None
+
+    def get_cancel_requested_at(self, job_id: str) -> datetime | None:
+        """Get cancel requested timestamp (stub returns None)."""
+        return None
+
 
 class FakeSettingsRepository:
     """In-memory settings repository stub for API tests."""
@@ -447,3 +455,94 @@ def test_submit_job_both_limits_satisfied(
 
     # Under both limits (user: 1 < 3, global: 4 < 10)
     assert response.status_code == 201
+
+
+# --- Route Ordering Tests ---
+# These tests verify that specific routes like /api/jobs/my-last are not
+# captured by the generic /api/jobs/{job_id} route due to incorrect ordering.
+
+
+def test_my_last_route_not_captured_by_job_id(
+    client: TestClient, fake_state: FakeRepos
+) -> None:
+    """Verify /api/jobs/my-last is not captured by /api/jobs/{job_id}.
+
+    If route ordering is wrong, the generic {job_id} route will match first
+    and return 404 'Job my-last not found' instead of proper my-last response.
+    """
+    # Add a job for the user so my-last has something to return
+    job = _build_job(id="job-1", owner_user_code="janedo")
+    fake_state.job_repo.enqueued.append(job)
+
+    # Mock get_last_job_by_user_code method that the endpoint uses
+    def get_last_job_by_user_code(user_code: str) -> Job | None:
+        for j in fake_state.job_repo.enqueued:
+            if j.owner_user_code == user_code:
+                return j
+        return None
+
+    fake_state.job_repo.get_last_job_by_user_code = get_last_job_by_user_code  # type: ignore[attr-defined]
+
+    # /api/jobs/my-last requires user_code query param
+    response = client.get("/api/jobs/my-last", params={"user_code": "janedo"})
+
+    # Should NOT be 404 with "Job my-last not found"
+    if response.status_code == 404:
+        data = response.json()
+        assert "Job my-last not found" not in data.get("detail", ""), (
+            "Route ordering bug: /api/jobs/{job_id} is capturing /api/jobs/my-last. "
+            "The generic {job_id} route must be defined AFTER all specific routes."
+        )
+    # 200 is expected (returns job), 404 is acceptable if no job found
+    assert response.status_code in (200, 404)
+
+
+def test_history_route_not_captured_by_job_id(
+    client: TestClient, fake_state: FakeRepos
+) -> None:
+    """Verify /api/jobs/history is not captured by /api/jobs/{job_id}.
+
+    If route ordering is wrong, the generic {job_id} route will match first
+    and return 404 'Job history not found' instead of proper history response.
+    """
+    # Mock get_job_history method
+    fake_state.job_repo.get_job_history = lambda **kwargs: []  # type: ignore[attr-defined]
+
+    response = client.get("/api/jobs/history")
+
+    # Should NOT be 404 with "Job history not found"
+    if response.status_code == 404:
+        data = response.json()
+        assert "Job history not found" not in data.get("detail", ""), (
+            "Route ordering bug: /api/jobs/{job_id} is capturing /api/jobs/history. "
+            "The generic {job_id} route must be defined AFTER all specific routes."
+        )
+    # 200 is expected (returns empty list)
+    assert response.status_code == 200
+
+
+def test_get_single_job_still_works(
+    client: TestClient, fake_state: FakeRepos
+) -> None:
+    """Verify /api/jobs/{job_id} works correctly for actual job IDs."""
+    # Add a job
+    job = _build_job(id="job-abc123")
+    fake_state.job_repo.enqueued.append(job)
+
+    response = client.get("/api/jobs/job-abc123")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == "job-abc123"
+    assert data["target"] == "janedoacme"
+
+
+def test_get_single_job_returns_404_for_unknown(
+    client: TestClient, fake_state: FakeRepos
+) -> None:
+    """Verify /api/jobs/{job_id} returns 404 for non-existent jobs."""
+    response = client.get("/api/jobs/nonexistent-job-id")
+
+    assert response.status_code == 404
+    data = response.json()
+    assert "Job nonexistent-job-id not found" in data["detail"]
