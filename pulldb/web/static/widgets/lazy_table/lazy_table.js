@@ -1023,6 +1023,21 @@ class LazyTable {
         return null;
     }
 
+    /**
+     * Get all rows currently in the cache.
+     * Useful for bulk operations when in 'all' selection mode.
+     * @returns {Array} Array of all cached row objects
+     */
+    getAllCachedRows() {
+        const rows = [];
+        for (const [, page] of this.cache) {
+            if (page.rows) {
+                rows.push(...page.rows);
+            }
+        }
+        return rows;
+    }
+
     // =========================================================================
     // Sorting
     // =========================================================================

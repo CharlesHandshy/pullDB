@@ -444,7 +444,19 @@
             return;
         }
         
-        const selectedIds = selectionState.includeIds || [];
+        let selectedIds;
+        if (selectionState.mode === 'all') {
+            // "Select All" mode - get all cached rows except excluded ones
+            const excludeSet = new Set(selectionState.excludeIds || []);
+            const allRows = table.getAllCachedRows();
+            selectedIds = allRows
+                .map(row => String(row.id))
+                .filter(id => !excludeSet.has(id));
+        } else {
+            // Partial selection mode - use explicit includeIds
+            selectedIds = selectionState.includeIds || [];
+        }
+        
         selectedDeletableIds = selectedIds.filter(id => {
             const row = table.getRowById(id);
             return row && row.can_delete === true;
