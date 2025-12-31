@@ -9,8 +9,16 @@
 
 {% block content %}
 <div class="jobs-page">
-    <div class="page-header">
-        <h1 class="page-title">Jobs</h1>
+    <div class="page-header-row mb-4">
+        <div class="page-header-left">
+            <h1 class="page-title">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                    <rect width="20" height="14" x="2" y="7" rx="2" ry="2"/>
+                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                </svg>
+                Jobs
+            </h1>
+        </div>
         <div class="flex gap-4 items-center">
             {% if user.is_admin %}
             <button type="button" id="bulk-cancel-btn" class="btn btn-danger hidden">

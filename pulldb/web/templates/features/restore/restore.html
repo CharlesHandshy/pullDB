@@ -8,8 +8,19 @@
 
 {% block content %}
 <div class="restore-page">
-    <div class="page-header">
-        <h1 class="page-title">New Restore Job</h1>
+    <div class="page-header-row mb-4">
+        <div class="page-header-left">
+            <h1 class="page-title">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                    <path d="M3 5v14c0 1.5 3.5 3 9 3"/>
+                    <path d="M3 12c0 1.5 3.5 3 9 3"/>
+                    <path d="M21 12l-3 3-3-3"/>
+                    <path d="M18 15v6"/>
+                </svg>
+                New Restore Job
+            </h1>
+        </div>
     </div>
     
     {% if error %}
