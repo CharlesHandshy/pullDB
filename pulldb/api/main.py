@@ -1922,6 +1922,228 @@ async def bulk_cancel_jobs(
     return await run_in_threadpool(_bulk_cancel_jobs, state, request, user)
 
 
+# =============================================================================
+# Database Retention API Endpoints
+# =============================================================================
+
+
+class ExtendRetentionRequest(pydantic.BaseModel):
+    """Request to extend job retention period."""
+
+    months: int = pydantic.Field(
+        default=1,
+        ge=1,
+        le=12,
+        description="Number of months to extend retention by",
+    )
+
+
+class LockJobRequest(pydantic.BaseModel):
+    """Request to lock a job database."""
+
+    reason: str = pydantic.Field(
+        default="Locked via API",
+        description="Reason for locking the database",
+    )
+
+
+class RetentionActionResponse(pydantic.BaseModel):
+    """Response from retention action (extend/lock/unlock)."""
+
+    success: bool
+    message: str
+    job_id: str
+    expires_at: datetime | None = None
+    locked_at: datetime | None = None
+    locked_by: str | None = None
+
+
+def _extend_job_retention(
+    state: APIState,
+    job_id: str,
+    months: int,
+    user: User,
+) -> RetentionActionResponse:
+    """Extend retention period for a job."""
+    from pulldb.worker.retention import RetentionService
+
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found",
+        )
+
+    # Authorization: job owner or admin
+    if job.owner_user_id != user.user_id and not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied: You can only extend your own jobs",
+        )
+
+    settings_repo = getattr(state, "settings_repo", None)
+    retention_service = RetentionService(
+        job_repo=state.job_repo,
+        user_repo=state.user_repo,
+        settings_repo=settings_repo,
+    )
+    retention_service.extend_job(job_id, months, user.user_id)
+
+    # Get updated job
+    updated_job = state.job_repo.get_job_by_id(job_id)
+    return RetentionActionResponse(
+        success=True,
+        message=f"Extended retention by {months} month(s)",
+        job_id=job_id,
+        expires_at=updated_job.expires_at if updated_job else None,
+        locked_at=updated_job.locked_at if updated_job else None,
+        locked_by=updated_job.locked_by if updated_job else None,
+    )
+
+
+def _lock_job_database(
+    state: APIState,
+    job_id: str,
+    reason: str,
+    user: User,
+) -> RetentionActionResponse:
+    """Lock a job database to prevent cleanup."""
+    from pulldb.worker.retention import RetentionService
+
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found",
+        )
+
+    # Authorization: job owner or admin
+    if job.owner_user_id != user.user_id and not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied: You can only lock your own jobs",
+        )
+
+    settings_repo = getattr(state, "settings_repo", None)
+    retention_service = RetentionService(
+        job_repo=state.job_repo,
+        user_repo=state.user_repo,
+        settings_repo=settings_repo,
+    )
+    retention_service.lock_job(job_id, user.user_id, reason)
+
+    # Get updated job
+    updated_job = state.job_repo.get_job_by_id(job_id)
+    return RetentionActionResponse(
+        success=True,
+        message="Database locked successfully",
+        job_id=job_id,
+        expires_at=updated_job.expires_at if updated_job else None,
+        locked_at=updated_job.locked_at if updated_job else None,
+        locked_by=updated_job.locked_by if updated_job else None,
+    )
+
+
+def _unlock_job_database(
+    state: APIState,
+    job_id: str,
+    user: User,
+) -> RetentionActionResponse:
+    """Unlock a job database to allow cleanup."""
+    from pulldb.worker.retention import RetentionService
+
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found",
+        )
+
+    # Authorization: job owner or admin
+    if job.owner_user_id != user.user_id and not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied: You can only unlock your own jobs",
+        )
+
+    settings_repo = getattr(state, "settings_repo", None)
+    retention_service = RetentionService(
+        job_repo=state.job_repo,
+        user_repo=state.user_repo,
+        settings_repo=settings_repo,
+    )
+    retention_service.unlock_job(job_id, user.user_id)
+
+    # Get updated job
+    updated_job = state.job_repo.get_job_by_id(job_id)
+    return RetentionActionResponse(
+        success=True,
+        message="Database unlocked successfully",
+        job_id=job_id,
+        expires_at=updated_job.expires_at if updated_job else None,
+        locked_at=updated_job.locked_at if updated_job else None,
+        locked_by=updated_job.locked_by if updated_job else None,
+    )
+
+
+@app.post(
+    "/api/jobs/{job_id}/extend",
+    response_model=RetentionActionResponse,
+)
+async def extend_job_retention(
+    job_id: str,
+    request: ExtendRetentionRequest,
+    user: AuthUser,
+    state: APIState = Depends(get_api_state),
+) -> RetentionActionResponse:
+    """Extend retention period for a job's database.
+
+    Adds additional months to the job's expiration date.
+    Users can only extend their own jobs. Admins can extend any job.
+    """
+    return await run_in_threadpool(
+        _extend_job_retention, state, job_id, request.months, user
+    )
+
+
+@app.post(
+    "/api/jobs/{job_id}/lock",
+    response_model=RetentionActionResponse,
+)
+async def lock_job_database(
+    job_id: str,
+    request: LockJobRequest,
+    user: AuthUser,
+    state: APIState = Depends(get_api_state),
+) -> RetentionActionResponse:
+    """Lock a job database to prevent automatic cleanup.
+
+    Locked databases are protected from retention cleanup and overwrites.
+    Users can only lock their own jobs. Admins can lock any job.
+    """
+    return await run_in_threadpool(
+        _lock_job_database, state, job_id, request.reason, user
+    )
+
+
+@app.post(
+    "/api/jobs/{job_id}/unlock",
+    response_model=RetentionActionResponse,
+)
+async def unlock_job_database(
+    job_id: str,
+    user: AuthUser,
+    state: APIState = Depends(get_api_state),
+) -> RetentionActionResponse:
+    """Unlock a job database to allow cleanup.
+
+    Removes lock protection, making the database eligible for
+    retention cleanup and overwrites.
+    Users can only unlock their own jobs. Admins can unlock any job.
+    """
+    return await run_in_threadpool(_unlock_job_database, state, job_id, user)
+
+
 # --- Manager Endpoints ---
 
 

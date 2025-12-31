@@ -638,6 +638,11 @@ async def api_jobs_paginated(
             "can_cancel": can_cancel,
             "can_delete": can_delete,
             "cancel_requested_at": cancel_requested_at.isoformat() if cancel_requested_at else None,
+            # Retention fields
+            "expires_at": getattr(j, "expires_at", None).isoformat() if getattr(j, "expires_at", None) else None,
+            "locked_at": getattr(j, "locked_at", None).isoformat() if getattr(j, "locked_at", None) else None,
+            "is_locked": getattr(j, "locked_at", None) is not None,
+            "db_dropped_at": getattr(j, "db_dropped_at", None).isoformat() if getattr(j, "db_dropped_at", None) else None,
         })
     
     total_count = len(all_rows)

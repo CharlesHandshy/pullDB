@@ -407,6 +407,25 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
                    f"Please wait for it to complete."
         )
 
+    # Check if target is locked (prevents overwrites until unlocked)
+    locked_job = state.job_repo.get_locked_by_target(target, dbhost, user.user_id)
+    if locked_job:
+        emit_event(
+            "job_enqueue_blocked",
+            f"Restore blocked: target '{target}' on '{dbhost}' is locked (job {locked_job.id[:8]})",
+            labels=MetricLabels(
+                target=target,
+                phase="enqueue",
+                status="blocked",
+            ),
+        )
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail=f"Target '{target}' on '{dbhost}' is locked. "
+                   f"The database from job {locked_job.id[:8]} is protected from overwrites. "
+                   f"Unlock it first or use a different target name."
+        )
+
     # Phase 2: Concurrency controls - check limits before job creation
     check_concurrency_limits(state, user)
     
@@ -454,6 +473,31 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to enqueue job due to unexpected error: {exc}",
         ) from exc
+
+    # Mark any previous completed job for this target as superseded
+    # This allows retention cleanup to know which jobs have been replaced
+    if hasattr(state.job_repo, "get_latest_completed_job_for_target"):
+        try:
+            previous_job = state.job_repo.get_latest_completed_job_for_target(
+                target, dbhost, user.user_id
+            )
+            if previous_job and previous_job.id != job_id:
+                # Only supersede if not locked and not already dropped
+                if not previous_job.locked_at and not previous_job.db_dropped_at:
+                    state.job_repo.supersede_job(previous_job.id, job_id)
+                    emit_event(
+                        "job_superseded",
+                        f"Job {previous_job.id[:8]} superseded by {job_id[:8]} for target {target}",
+                        labels=MetricLabels(
+                            job_id=previous_job.id,
+                            target=target,
+                            phase="enqueue",
+                            status="superseded",
+                        ),
+                    )
+        except Exception:
+            # Supersession is non-critical - don't fail job submission
+            pass
 
     stored = state.job_repo.get_job_by_id(job_id) or job
 

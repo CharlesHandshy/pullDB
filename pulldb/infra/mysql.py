@@ -2022,6 +2022,45 @@ class JobRepository:
             )
             conn.commit()
 
+    def get_latest_completed_job_for_target(
+        self, target: str, dbhost: str, owner_user_id: str
+    ) -> Job | None:
+        """Get the most recent completed job for a target+host+user.
+
+        Used for supersession - finding the job to mark as superseded when
+        a new restore to the same target is submitted.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+            owner_user_id: User ID who owns the job.
+
+        Returns:
+            Most recent completed Job if found, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail,
+                       worker_id, staging_cleaned_at, expires_at, locked_at,
+                       locked_by, db_dropped_at, superseded_at, superseded_by_job_id
+                FROM jobs
+                WHERE target = %s 
+                  AND dbhost = %s 
+                  AND owner_user_id = %s
+                  AND status = 'complete'
+                  AND superseded_at IS NULL
+                ORDER BY completed_at DESC
+                LIMIT 1
+                """,
+                (target, dbhost, owner_user_id),
+            )
+            row = cursor.fetchone()
+            return self._row_to_job(row) if row else None
+
     def supersede_job(self, job_id: str, superseded_by_job_id: str) -> None:
         """Mark a job as superseded by a newer restore to the same target.
 

@@ -218,7 +218,30 @@
                 : d.toLocaleDateString();
         },
         
-        host: (val) => val ? val.split('.')[0] : '-'
+        host: (val) => val ? val.split('.')[0] : '-',
+        
+        // Retention status renderer - shows lock icon or expiration date
+        retention: (val, row) => {
+            if (row.is_locked) {
+                return `<span class="badge badge-warning" title="Locked - protected from cleanup">🔒 Locked</span>`;
+            }
+            if (row.db_dropped_at) {
+                return `<span class="badge badge-neutral badge-deleted" title="Database dropped">Dropped</span>`;
+            }
+            if (row.expires_at) {
+                const d = new Date(row.expires_at);
+                const now = new Date();
+                const diffDays = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
+                if (diffDays <= 7) {
+                    return `<span class="badge badge-danger" title="Expires ${d.toLocaleDateString()}">${diffDays}d</span>`;
+                } else if (diffDays <= 30) {
+                    return `<span class="badge badge-warning" title="Expires ${d.toLocaleDateString()}">${diffDays}d</span>`;
+                }
+                const months = Math.floor(diffDays / 30);
+                return `<span class="badge badge-neutral" title="Expires ${d.toLocaleDateString()}">${months}mo</span>`;
+            }
+            return '-';
+        }
     };
     
     // =========================================================================
@@ -239,9 +262,9 @@
             { key: 'owner_user_code', label: 'User', sortable: true, filterable: true, width: '95px', render: Renderers.user },
             { key: 'status', label: 'Status', sortable: true, filterable: true, width: '110px', render: Renderers.status },
             { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '100px', render: Renderers.date },
-            { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, maxWidth: '180px', render: Renderers.host },
-            // Target column spans extra width to account for Actions column space
-            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true },
+            { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, maxWidth: '150px', render: Renderers.host },
+            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, maxWidth: '180px' },
+            { key: 'retention', label: 'Retention', sortable: false, width: '90px', render: Renderers.retention },
             // Actions column at far right - only shows delete button when rows selected
             { 
                 type: 'actions', 
