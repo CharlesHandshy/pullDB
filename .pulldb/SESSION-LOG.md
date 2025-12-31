@@ -6,6 +6,88 @@
 
 ---
 
+## 2025-12-31 | Database Retention & Cleanup System
+
+### Context
+User asked about scheduled jobs/cron in pullDB. Discussion evolved into designing a comprehensive database retention and cleanup system with forced user accountability.
+
+### What Was Done
+
+**Feature Branch**: `feature/database-retention-cleanup` (merged to main)
+
+**Phase 1 - Schema & Settings** (8f18efc)
+- Migration 083: Added expires_at, locked_at, locked_by, db_dropped_at, superseded_at, superseded_by_job_id to jobs
+- Migration 084: Added RETENTION_CLEANUP to admin_tasks.task_type ENUM
+- Added 4 settings: max_retention_months, max_retention_increment, expiring_notice_days, cleanup_grace_days
+
+**Phase 2 - Domain Models** (26e4320)
+- Job: Added retention fields + is_locked, is_expired, is_expiring(), get_maintenance_status()
+- User: Added last_maintenance_ack field
+- Created MaintenanceItems dataclass
+
+**Phase 3 - Repository Layer** (a22b534)
+- Added ~374 lines to mysql.py: set_job_expiration(), lock_job(), unlock_job(), mark_db_dropped(), get_maintenance_items(), get_cleanup_candidates(), get_all_locked_databases(), needs_maintenance_ack()
+
+**Phase 4 - Business Logic** (RetentionService ~350 lines)
+- extend_job(), lock_job(), unlock_job(), check_target_locked()
+- get_maintenance_items(), should_show_maintenance_modal(), process_maintenance_acknowledgment()
+
+**Phase 4b - Cleanup Integration** (d2adee8)
+- run_retention_cleanup() in cleanup.py with host credential lookup and actual DROP DATABASE execution
+
+**Phase 5 - Admin Task Integration** (570733e)
+- Added RETENTION_CLEANUP handler to AdminTaskExecutor
+
+**Phase 6 - Maintenance Modal UI** (15b9526)
+- MaintenanceRequiredError exception with FastAPI handler
+- require_login dependency checks needs_maintenance_ack
+- maintenance.html template with 3 sections (expired/expiring/locked)
+
+**Phase 7 - Active Jobs UI** (707f24c)
+- Job details page shows retention info, expiration status, lock status
+- Extend/Lock/Unlock buttons with confirmation modals
+
+**Phase 8 - Admin UI** (5c39180)
+- "Locked Databases" link on admin dashboard
+- locked_databases.html shows all system-wide locked DBs with unlock capability
+
+**Phase 9 - Systemd Timer** (2513450)
+- pulldb-retention.service (oneshot)
+- pulldb-retention.timer (daily at 3 AM)
+- CLI command: `pulldb-admin run-retention-cleanup --dry-run|--json`
+
+### Rationale
+
+- **Forced Accountability**: Users MUST acknowledge maintenance modal daily (no "skip" or "remind later")
+- **Optional Actions**: All extend/lock/unlock actions optional - just "Acknowledge" required
+- **Never Surprise Data Loss**: expiring_notice_days (14) + cleanup_grace_days (7) = 3 weeks warning
+- **Lock Protection**: Locked databases exempt from cleanup but still shown in maintenance modal
+- **HCA Compliance**: retention.py in features layer, models in entities, repos in shared
+
+### Files Created
+- schema/pulldb_service/083_database_retention.sql
+- schema/pulldb_service/084_retention_cleanup_task.sql
+- pulldb/worker/retention.py
+- pulldb/web/exceptions.py
+- pulldb/web/templates/features/auth/maintenance.html
+- pulldb/web/templates/features/admin/locked_databases.html
+- packaging/systemd/pulldb-retention.service
+- packaging/systemd/pulldb-retention.timer
+
+### Deployment Notes
+```bash
+# Run migrations
+dbmate up
+
+# Enable timer
+sudo systemctl enable --now pulldb-retention.timer
+
+# Manual test
+pulldb-admin run-retention-cleanup --dry-run
+```
+
+---
+
 ## 2025-12-31 | CLI/API Endpoint Fixes (quality-assurance branch)
 
 ### Context
