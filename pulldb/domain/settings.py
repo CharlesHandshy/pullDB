@@ -269,6 +269,16 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
         dangerous=False,
         validators=["is_non_negative_integer"],
     ),
+    "jobs_refresh_interval_seconds": SettingMeta(
+        key="jobs_refresh_interval_seconds",
+        env_var="PULLDB_JOBS_REFRESH_INTERVAL",
+        default="5",
+        description="Auto-refresh interval for jobs page in seconds (0 to disable)",
+        setting_type=SettingType.INTEGER,
+        category=SettingCategory.CLEANUP,
+        dangerous=False,
+        validators=["is_non_negative_integer"],
+    ),
     # -------------------------------------------------------------------------
     # Appearance
     # -------------------------------------------------------------------------

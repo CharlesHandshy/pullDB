@@ -119,6 +119,26 @@ async def jobs_page(
             # Fallback for mock
             jobs = getattr(state.job_repo, "active_jobs", [])
 
+    # Get retention settings for JavaScript
+    expiring_notice_days = 7
+    max_retention_months = 6
+    max_retention_increment = 3
+    jobs_refresh_interval = 5
+    retention_options: list[tuple[str, str]] = []
+    
+    settings_repo = getattr(state, "settings_repo", None)
+    if settings_repo:
+        if hasattr(settings_repo, "get_expiring_notice_days"):
+            expiring_notice_days = settings_repo.get_expiring_notice_days()
+        if hasattr(settings_repo, "get_max_retention_months"):
+            max_retention_months = settings_repo.get_max_retention_months()
+        if hasattr(settings_repo, "get_max_retention_increment"):
+            max_retention_increment = settings_repo.get_max_retention_increment()
+        if hasattr(settings_repo, "get_jobs_refresh_interval"):
+            jobs_refresh_interval = settings_repo.get_jobs_refresh_interval()
+        if hasattr(settings_repo, "get_retention_options"):
+            retention_options = settings_repo.get_retention_options(include_now=False)
+
     return templates.TemplateResponse(
         "features/jobs/jobs.html",
         {
@@ -141,6 +161,12 @@ async def jobs_page(
             # Role-based filter defaults
             "managed_user_codes": _get_managed_user_codes(state, user),
             "three_days_ago_iso": (datetime.now(UTC) - timedelta(days=3)).isoformat(),
+            # Retention settings for JavaScript
+            "expiring_notice_days": expiring_notice_days,
+            "max_retention_months": max_retention_months,
+            "max_retention_increment": max_retention_increment,
+            "jobs_refresh_interval": jobs_refresh_interval,
+            "retention_options": retention_options,
         },
     )
 

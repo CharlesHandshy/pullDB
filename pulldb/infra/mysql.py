@@ -4301,6 +4301,20 @@ class SettingsRepository:
         except ValueError:
             return 7
 
+    def get_jobs_refresh_interval(self) -> int:
+        """Get auto-refresh interval for jobs page in seconds.
+
+        Returns:
+            Interval in seconds. Default: 5. 0 means disabled.
+        """
+        value = self.get_setting("jobs_refresh_interval_seconds")
+        if value is None:
+            return 5  # Default: 5 seconds
+        try:
+            return max(0, min(60, int(value)))  # Clamp to 0-60
+        except ValueError:
+            return 5
+
     def get_retention_options(
         self, include_now: bool = False
     ) -> list[tuple[str, str]]:

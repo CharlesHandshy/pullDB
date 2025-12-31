@@ -150,7 +150,13 @@
         userCode: '{{ user.user_code }}',
         managedUserCodes: {{ managed_user_codes | tojson }},
         isAdmin: {{ 'true' if user.is_admin else 'false' }},
-        initialView: '{{ view or "active" }}'
+        initialView: '{{ view or "active" }}',
+        // Retention settings from server
+        expiringNoticeDays: {{ expiring_notice_days | default(7) }},
+        maxRetentionMonths: {{ max_retention_months | default(6) }},
+        maxRetentionIncrement: {{ max_retention_increment | default(3) }},
+        jobsRefreshInterval: {{ jobs_refresh_interval | default(5) }},
+        retentionOptions: {{ retention_options | tojson if retention_options else '[]' }}
     };
     
     // Current view state
@@ -162,6 +168,49 @@
     
     // Selection state for bulk delete
     let selectedDeletableIds = [];
+    
+    // Auto-refresh state
+    let autoRefreshInterval = null;
+    let autoRefreshPaused = false;
+    
+    // =========================================================================
+    // Auto-Refresh Management
+    // =========================================================================
+    
+    function startAutoRefresh() {
+        if (CONFIG.jobsRefreshInterval <= 0) return;
+        if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+        
+        autoRefreshInterval = setInterval(() => {
+            if (!autoRefreshPaused && table && document.visibilityState === 'visible') {
+                table.refresh();
+            }
+        }, CONFIG.jobsRefreshInterval * 1000);
+    }
+    
+    function stopAutoRefresh() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+        }
+    }
+    
+    function pauseAutoRefresh() {
+        autoRefreshPaused = true;
+    }
+    
+    function resumeAutoRefresh() {
+        autoRefreshPaused = false;
+    }
+    
+    // Pause refresh when page is not visible
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            pauseAutoRefresh();
+        } else {
+            resumeAutoRefresh();
+        }
+    });
     
     // =========================================================================
     // Column Renderers
@@ -228,11 +277,18 @@
             if (row.db_dropped_at) {
                 return `<span class="badge badge-neutral badge-deleted" title="Database dropped">Dropped</span>`;
             }
+            if (row.superseded_at) {
+                return `<span class="badge badge-neutral badge-deleted" title="Superseded by newer restore">Superseded</span>`;
+            }
             if (row.expires_at) {
                 const d = new Date(row.expires_at);
                 const now = new Date();
                 const diffDays = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
-                if (diffDays <= 7) {
+                // Use expiring_notice_days from settings (dynamic threshold)
+                const noticeDays = CONFIG.expiringNoticeDays;
+                if (diffDays <= 0) {
+                    return `<span class="badge badge-danger" title="Expired ${d.toLocaleDateString()}">Expired</span>`;
+                } else if (diffDays <= noticeDays) {
                     return `<span class="badge badge-danger" title="Expires ${d.toLocaleDateString()}">${diffDays}d</span>`;
                 } else if (diffDays <= 30) {
                     return `<span class="badge badge-warning" title="Expires ${d.toLocaleDateString()}">${diffDays}d</span>`;
@@ -241,6 +297,46 @@
                 return `<span class="badge badge-neutral" title="Expires ${d.toLocaleDateString()}">${months}mo</span>`;
             }
             return '-';
+        },
+        
+        // Active view actions renderer - Extend/Lock/Unlock/Remove buttons
+        activeActions: (val, row) => {
+            // Only show actions for complete jobs with existing database
+            if (row.status !== 'complete') return '';
+            if (row.db_dropped_at) return '';
+            if (row.superseded_at) return '';
+            
+            // Check if user can perform actions (owns the job or is admin/manager)
+            const canAct = CONFIG.isAdmin || 
+                          CONFIG.userRole === 'manager' || 
+                          row.owner_user_code === CONFIG.userCode;
+            if (!canAct) return '';
+            
+            let html = '<div class="cell-actions-retention">';
+            
+            if (row.is_locked) {
+                // Locked: only show Unlock button
+                html += `<button class="btn btn-xs btn-secondary unlock-btn" data-job-id="${row.id}" title="Unlock database">Unlock</button>`;
+            } else {
+                // Not locked: show Extend dropdown + Lock + Remove
+                html += `<div class="extend-group">`;
+                html += `<select class="extend-select" data-job-id="${row.id}">`;
+                html += `<option value="">Extend...</option>`;
+                // Build options from settings
+                const options = CONFIG.retentionOptions.length > 0 
+                    ? CONFIG.retentionOptions 
+                    : [['1', '+1 month'], ['3', '+3 months'], ['6', '+6 months']];
+                for (const [value, label] of options) {
+                    html += `<option value="${value}">${label}</option>`;
+                }
+                html += `</select>`;
+                html += `</div>`;
+                html += `<button class="btn btn-xs btn-secondary lock-btn" data-job-id="${row.id}" title="Lock database (prevent cleanup)">Lock</button>`;
+                html += `<button class="btn btn-xs btn-danger remove-btn" data-job-id="${row.id}" title="Remove database">Remove</button>`;
+            }
+            
+            html += '</div>';
+            return html;
         }
     };
     
@@ -252,10 +348,12 @@
         active: [
             { key: 'id', label: 'Job ID', sortable: true, filterable: true, filterType: 'text', filterPlaceholder: 'b875* or *ef3c', width: '125px', render: Renderers.jobId },
             { key: 'owner_user_code', label: 'User', sortable: true, filterable: true, width: '95px', render: Renderers.user },
-            { key: 'status', label: 'Status', sortable: true, filterable: true, width: '110px', render: Renderers.status },
-            { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '100px', render: Renderers.date },
-            { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, maxWidth: '180px', render: Renderers.host },
-            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, maxWidth: '200px' }
+            { key: 'status', label: 'Status', sortable: true, filterable: true, width: '100px', render: Renderers.status },
+            { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '80px', render: Renderers.date },
+            { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, maxWidth: '140px', render: Renderers.host },
+            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, maxWidth: '160px' },
+            { key: 'retention', label: 'Expires', sortable: false, width: '85px', render: Renderers.retention },
+            { type: 'actions', label: 'Actions', width: '200px', render: Renderers.activeActions }
         ],
         history: [
             { key: 'id', label: 'Job ID', sortable: true, filterable: true, filterType: 'text', filterPlaceholder: 'b875* or *ef3c', width: '125px', render: Renderers.jobIdHistory },
@@ -845,6 +943,127 @@
             }
         });
         
+        // Retention action buttons (delegated)
+        // Extend dropdown change handler
+        document.addEventListener('change', async (e) => {
+            const select = e.target.closest('.extend-select');
+            if (select && select.value) {
+                pauseAutoRefresh();
+                const jobId = select.dataset.jobId;
+                const months = select.value;
+                try {
+                    const response = await fetch(`/web/jobs/${jobId}/extend`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ months: parseInt(months) })
+                    });
+                    if (response.ok) {
+                        showToast(`Extended retention by ${months} month(s)`, 'success');
+                        table?.refresh();
+                    } else {
+                        const data = await response.json();
+                        showToast(data.detail || 'Failed to extend retention', 'error');
+                    }
+                } catch (error) {
+                    showToast(`Error: ${error.message}`, 'error');
+                } finally {
+                    select.value = '';
+                    resumeAutoRefresh();
+                }
+            }
+        });
+        
+        // Lock button handler
+        document.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.lock-btn');
+            if (btn) {
+                e.preventDefault();
+                e.stopPropagation();
+                pauseAutoRefresh();
+                const jobId = btn.dataset.jobId;
+                try {
+                    const response = await fetch(`/web/jobs/${jobId}/lock`, {
+                        method: 'POST',
+                        credentials: 'same-origin'
+                    });
+                    if (response.ok) {
+                        showToast('Database locked', 'success');
+                        table?.refresh();
+                    } else {
+                        const data = await response.json();
+                        showToast(data.detail || 'Failed to lock database', 'error');
+                    }
+                } catch (error) {
+                    showToast(`Error: ${error.message}`, 'error');
+                } finally {
+                    resumeAutoRefresh();
+                }
+            }
+        });
+        
+        // Unlock button handler
+        document.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.unlock-btn');
+            if (btn) {
+                e.preventDefault();
+                e.stopPropagation();
+                pauseAutoRefresh();
+                const jobId = btn.dataset.jobId;
+                try {
+                    const response = await fetch(`/web/jobs/${jobId}/unlock`, {
+                        method: 'POST',
+                        credentials: 'same-origin'
+                    });
+                    if (response.ok) {
+                        showToast('Database unlocked', 'success');
+                        table?.refresh();
+                    } else {
+                        const data = await response.json();
+                        showToast(data.detail || 'Failed to unlock database', 'error');
+                    }
+                } catch (error) {
+                    showToast(`Error: ${error.message}`, 'error');
+                } finally {
+                    resumeAutoRefresh();
+                }
+            }
+        });
+        
+        // Remove button handler (with confirmation)
+        document.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.remove-btn');
+            if (btn) {
+                e.preventDefault();
+                e.stopPropagation();
+                pauseAutoRefresh();
+                const jobId = btn.dataset.jobId;
+                const confirmed = await showConfirm('Are you sure you want to remove this database? This will drop the database and cannot be undone.', {
+                    title: 'Remove Database',
+                    okText: 'Remove',
+                    type: 'danger'
+                });
+                if (confirmed) {
+                    try {
+                        const response = await fetch(`/web/jobs/${jobId}/delete`, {
+                            method: 'DELETE',
+                            credentials: 'same-origin'
+                        });
+                        if (response.ok) {
+                            showToast('Database removed', 'success');
+                            table?.refresh();
+                        } else {
+                            const data = await response.json();
+                            showToast(data.detail || 'Failed to remove database', 'error');
+                        }
+                    } catch (error) {
+                        showToast(`Error: ${error.message}`, 'error');
+                    }
+                }
+                resumeAutoRefresh();
+            }
+        });
+        
         // Bulk delete action button click handler (in Actions column header)
         document.addEventListener('click', (e) => {
             const btn = e.target.closest('.bulk-delete-action-btn');
@@ -927,6 +1146,7 @@
     
     bindEvents();
     initializeTable();
+    startAutoRefresh();
     
 })();
 </script>
