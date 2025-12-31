@@ -3673,6 +3673,103 @@ class SettingsRepository:
             )
             return list(cursor.fetchall())
 
+    # -------------------------------------------------------------------------
+    # Database Retention Settings
+    # -------------------------------------------------------------------------
+
+    def get_max_retention_months(self) -> int:
+        """Get maximum retention months for database expiration.
+
+        Returns:
+            Maximum months a database can be retained (1-12). Default: 6.
+        """
+        value = self.get_setting("max_retention_months")
+        if value is None:
+            return 6  # Default: 6 months
+        try:
+            return max(1, min(12, int(value)))  # Clamp to 1-12
+        except ValueError:
+            return 6
+
+    def get_max_retention_increment(self) -> int:
+        """Get increment step for retention dropdown options.
+
+        Returns:
+            Step size in months (1-5). Default: 3.
+        """
+        value = self.get_setting("max_retention_increment")
+        if value is None:
+            return 3  # Default: 3 months
+        try:
+            return max(1, min(5, int(value)))  # Clamp to 1-5
+        except ValueError:
+            return 3
+
+    def get_expiring_notice_days(self) -> int:
+        """Get days before expiry to show warning notice.
+
+        Returns:
+            Number of days. Default: 7.
+        """
+        value = self.get_setting("expiring_notice_days")
+        if value is None:
+            return 7
+        try:
+            return max(0, int(value))
+        except ValueError:
+            return 7
+
+    def get_cleanup_grace_days(self) -> int:
+        """Get days after expiry before automatic cleanup.
+
+        Returns:
+            Number of days. Default: 7.
+        """
+        value = self.get_setting("cleanup_grace_days")
+        if value is None:
+            return 7
+        try:
+            return max(0, int(value))
+        except ValueError:
+            return 7
+
+    def get_retention_options(
+        self, include_now: bool = False
+    ) -> list[tuple[str, str]]:
+        """Get retention dropdown options based on current settings.
+
+        Generates options starting with 1 month, then stepping by increment
+        up to the maximum retention months.
+
+        Args:
+            include_now: Whether to include "Now" (immediate removal) option.
+
+        Returns:
+            List of (value, label) tuples for dropdown options.
+            Value is string: "now", or number of months as string ("1", "3", etc.)
+        """
+        max_months = self.get_max_retention_months()
+        increment = self.get_max_retention_increment()
+
+        options: list[tuple[str, str]] = []
+
+        if include_now:
+            options.append(("now", "Now"))
+
+        # Always include 1 month as first option
+        if 1 <= max_months:
+            options.append(("1", "+1 month"))
+
+        # Then step by increment
+        months = increment
+        while months <= max_months:
+            if months != 1:  # Don't duplicate 1
+                label = f"+{months} months"
+                options.append((str(months), label))
+            months += increment
+
+        return options
+
 
 class AdminTaskRepository:
     """Repository for admin background task operations.
