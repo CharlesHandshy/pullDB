@@ -6,6 +6,72 @@
 
 ---
 
+## 2025-12-31 | CLI/API Endpoint Fixes (quality-assurance branch)
+
+### Context
+User reported multiple CLI errors during testing of the CANCELING intermediate state feature:
+1. `pulldb status` → "Error: API error (404): Job my-last not found"
+2. `pulldb history` → "Error: API error (404): Job history not found"
+3. `pulldb status --rt` → "Error: API error (500): Internal Server Error" during streaming
+
+### What Was Done
+
+**Commits (in order):**
+
+1. **3eb6a01** `feat(cancel): add CANCELING intermediate state for job cancellation`
+   - Added CANCELING to JobStatus enum
+   - Created schema migration 082_job_canceling_status.sql
+   - Added has_restore_started(), mark_job_canceling() repository methods
+   - Updated cancel endpoint with myloader protection logic
+   - Added UI badge styles for canceling state
+
+2. **1c20b12** `docs: update schema definitions and documentation for canceling state`
+   - Updated base schema files (010_jobs.sql, 060_active_jobs_view.sql)
+   - Updated mysql-schema.md, KNOWLEDGE-POOL.md, WORKSPACE-INDEX.md, CHANGELOG.md
+
+3. **7025fc7** `fix(api): add missing /api/jobs/{job_id} endpoint for CLI streaming`
+   - Added GET /api/jobs/{job_id} endpoint returning JobSummary
+   - Added _get_single_job() helper
+   - Updated CLI streaming to include 'canceling' in active status check
+
+4. **c9ccf58** `fix(api): correct route ordering for /api/jobs/{job_id}`
+   - **Root cause**: Generic {job_id} route captured "my-last" and "history" as job IDs
+   - Moved /api/jobs/{job_id} AFTER all specific routes (my-last, history, active)
+   - Added comment explaining ordering requirement
+   - Added 4 regression tests to prevent future ordering bugs
+
+5. **90dfcb9** `fix(repo): add missing get_current_operation method to JobRepository`
+   - **Root cause**: _get_single_job() called non-existent method → AttributeError → 500
+   - Added get_current_operation() that joins jobs with latest event
+   - Delegates to existing _derive_operation() for human-readable output
+
+### Rationale
+
+- **Route Ordering**: FastAPI matches routes in definition order. Generic path parameters must come AFTER specific literal paths (FAIL HARD principle - the 404 message "Job my-last not found" made the issue clear).
+- **Method Existence**: New API endpoints must verify all called repository methods exist (another FAIL HARD lesson).
+
+### Key Learnings for Tomorrow
+
+1. **Test CLI commands after API changes** - `pulldb status`, `pulldb history`, `pulldb status --rt`
+2. **FastAPI route order matters** - Specific routes before generic {param} routes
+3. **Branch status**: quality-assurance has 5 commits ready for merge to main
+
+### Files Modified
+- `pulldb/api/main.py` (new endpoint, route reordering)
+- `pulldb/cli/main.py` (status check includes 'canceling')
+- `pulldb/infra/mysql.py` (get_current_operation method)
+- `pulldb/domain/models.py` (CANCELING enum)
+- `pulldb/tests/test_api_jobs.py` (route ordering tests)
+- `schema/migrations/082_job_canceling_status.sql`
+- Multiple doc files
+
+### TODO Tomorrow
+- [ ] Deploy to test environment and verify CLI commands work
+- [ ] Test full cancel flow with CANCELING state
+- [ ] Consider squashing commits before merge to main
+
+---
+
 ## DEPLOYMENT PROTOCOL (CRITICAL)
 
 **ALWAYS use Debian packages for deployment. NEVER use pip install directly.**
