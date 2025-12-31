@@ -205,7 +205,15 @@ class WorkerExecutorHooks:
         discover_latest_backup
     )
     download_backup: t.Callable[
-        [S3Client, BackupSpec, str, str, t.Callable[[int, int], None] | None], str
+        [
+            S3Client,
+            BackupSpec,
+            str,
+            str,
+            t.Callable[[int, int, float], None] | None,
+            t.Callable[[], bool] | None,
+        ],
+        str,
     ] = download_backup
     extract_archive: t.Callable[[str, Path, str], str] = _default_extract_archive
 
@@ -320,12 +328,19 @@ class WorkerJobExecutor:
                 {"bucket": backup_spec.bucket, "key": backup_spec.key},
             )
 
-            def _progress_callback(downloaded: int, total: int) -> None:
+            def _progress_callback(downloaded: int, total: int, percent: float) -> None:
                 self._append_event(
                     job.id,
                     "download_progress",
-                    {"downloaded_bytes": downloaded, "total_bytes": total},
+                    {
+                        "downloaded_bytes": downloaded,
+                        "total_bytes": total,
+                        "percent_complete": percent,
+                    },
                 )
+
+            def _cancel_check() -> bool:
+                return self.job_repo.is_cancellation_requested(job.id)
 
             # Phase: Download
             with profiler.phase(RestorePhase.DOWNLOAD) as download_profile:
@@ -337,6 +352,7 @@ class WorkerJobExecutor:
                     job.id,
                     str(download_dir),
                     _progress_callback,
+                    _cancel_check,
                 )
                 download_profile.metadata["bytes_processed"] = backup_spec.size_bytes
                 download_profile.metadata["archive_path"] = archive_path

@@ -4,6 +4,7 @@ Tests backup download operations:
 - Disk capacity verification
 - S3 streaming download
 - Progress callback handling
+- Cancellation during download
 - Error handling
 """
 
@@ -15,9 +16,10 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from pulldb.domain.errors import DiskCapacityError, DownloadError
+from pulldb.domain.errors import CancellationError, DiskCapacityError, DownloadError
 from pulldb.worker.downloader import (
     BUFFER_SIZE,
+    CANCEL_CHECK_INTERVAL_MB,
     PROGRESS_INTERVAL_MB,
     _stream_download,
     download_backup,
@@ -124,8 +126,8 @@ class TestStreamDownload:
 
         progress_calls = []
 
-        def progress_callback(downloaded: int, total: int) -> None:
-            progress_calls.append((downloaded, total))
+        def progress_callback(downloaded: int, total: int, percent: float) -> None:
+            progress_calls.append((downloaded, total, percent))
 
         _stream_download(
             mock_body, dest_path, SAMPLE_JOB_ID, chunk_size, progress_callback
@@ -133,6 +135,7 @@ class TestStreamDownload:
 
         assert len(progress_calls) >= 1
         assert progress_calls[0][0] == chunk_size
+        assert progress_calls[0][2] == 100.0  # 100% since downloaded == total
 
     def test_handles_callback_exception(self, tmp_path) -> None:
         """Download continues even if callback raises exception."""
@@ -143,7 +146,7 @@ class TestStreamDownload:
         mock_body = MagicMock()
         mock_body.read.side_effect = [data, b""]
 
-        def failing_callback(downloaded: int, total: int) -> None:
+        def failing_callback(downloaded: int, total: int, percent: float) -> None:
             raise RuntimeError("Callback failed")
 
         # Should not raise despite callback failure
@@ -166,6 +169,52 @@ class TestStreamDownload:
 
         # Verify read was called with BUFFER_SIZE
         mock_body.read.assert_called_with(BUFFER_SIZE)
+
+    def test_cancel_check_raises_cancellation_error(self, tmp_path) -> None:
+        """Cancel check triggers CancellationError when it returns True."""
+        dest_path = str(tmp_path / "test.tar")
+        # Create data larger than cancel check interval (128MB)
+        chunk_size = CANCEL_CHECK_INTERVAL_MB * 1024 * 1024
+        data = b"x" * chunk_size
+
+        mock_body = MagicMock()
+        # Provide enough chunks to trigger cancel check
+        mock_body.read.side_effect = [data, data, b""]
+
+        # Cancel check returns True (cancellation requested)
+        cancel_check = MagicMock(return_value=True)
+
+        with pytest.raises(CancellationError) as exc_info:
+            _stream_download(
+                mock_body, dest_path, SAMPLE_JOB_ID, chunk_size * 2, None, cancel_check
+            )
+
+        assert exc_info.value.detail["job_id"] == SAMPLE_JOB_ID
+        assert exc_info.value.detail["phase"] == "download"
+
+    def test_cancel_check_not_triggered_when_returns_false(self, tmp_path) -> None:
+        """Download continues when cancel_check returns False."""
+        dest_path = str(tmp_path / "test.tar")
+        chunk_size = CANCEL_CHECK_INTERVAL_MB * 1024 * 1024
+        data = b"x" * chunk_size
+
+        mock_body = MagicMock()
+        mock_body.read.side_effect = [data, data, b""]
+
+        # Cancel check returns False (no cancellation)
+        cancel_check = MagicMock(return_value=False)
+
+        # Should complete without error
+        _stream_download(
+            mock_body, dest_path, SAMPLE_JOB_ID, chunk_size * 2, None, cancel_check
+        )
+
+        # File should be written completely
+        with open(dest_path, "rb") as f:
+            assert len(f.read()) == chunk_size * 2
+
+        # Cancel check should have been called
+        assert cancel_check.call_count >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -281,8 +330,8 @@ class TestDownloadBackup:
         dest_dir = str(tmp_path)
         progress_calls = []
 
-        def callback(downloaded: int, total: int) -> None:
-            progress_calls.append((downloaded, total))
+        def callback(downloaded: int, total: int, percent: float) -> None:
+            progress_calls.append((downloaded, total, percent))
 
         mock_usage = MagicMock()
         mock_usage.free = 1024 * 1024 * 1024 * 100
