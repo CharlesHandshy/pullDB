@@ -1,0 +1,25 @@
+[Unit]
+Description=pullDB Database Retention Cleanup
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/pulldb.service
+EnvironmentFile=/opt/pulldb.service/.env
+ExecStart=/opt/pulldb.service/venv/bin/pulldb-cli admin run-retention-cleanup
+User=pulldb_service
+Group=pulldb_service
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+# TimeoutStartSec controls how long the cleanup can run
+TimeoutStartSec=1800
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pulldb-retention
+
+[Install]
+WantedBy=multi-user.target
