@@ -49,13 +49,41 @@ else:
 
 
 def _get_calling_username() -> str:
-    """Get the username of the calling user (handles sudo).
+    """Get the original SSH user, even after sudo su -.
+
+    Detection order:
+    1. SUDO_USER - works for plain 'sudo' commands
+    2. 'who am i' - works after 'sudo su -' by checking TTY owner
+    3. USER - fallback to current user
 
     Returns:
-        The username from SUDO_USER if running under sudo,
-        otherwise the current USER.
+        The original SSH username that initiated the session.
     """
-    return os.environ.get("SUDO_USER") or os.environ.get("USER") or "unknown"
+    import subprocess
+
+    # Try SUDO_USER first (works for plain sudo)
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user and sudo_user != "root":
+        return sudo_user
+
+    # Fall back to 'who am i' (works after sudo su -)
+    # This returns the user who owns the current TTY/pts
+    try:
+        result = subprocess.run(
+            ["who", "am", "i"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # Output format: "username pts/0 2025-12-31 10:00 (192.168.1.1)"
+            parts = result.stdout.split()
+            if parts and parts[0] != "root":
+                return parts[0]
+    except Exception:
+        pass  # Fall through to USER
+
+    return os.environ.get("USER") or "unknown"
 
 
 def _load_api_config() -> tuple[str, float]:
