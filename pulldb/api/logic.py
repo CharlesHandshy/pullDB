@@ -113,8 +113,12 @@ def _options_snapshot(
 
     Returns:
         Dictionary of options to store in job.options_json.
+        
+    Raises:
+        HTTPException: If backup discovery fails when backup_path not provided.
     """
     from pulldb.domain.config import find_location_for_backup_path, parse_backup_path
+    from pulldb.domain.services.discovery import DiscoveryService
 
     opts: dict[str, str] = {
         "customer_id": req.customer or "",
@@ -127,12 +131,74 @@ def _options_snapshot(
     if req.env:
         opts["env"] = req.env
 
+    # Resolve backup_path: use provided or auto-discover
+    backup_path = req.backup_path
+    if not backup_path:
+        # Auto-discover backup from customer/qatemplate + optional date
+        customer_to_search = req.customer if req.customer else "qatemplate"
+        env_to_search = req.env if req.env else "both"
+        
+        # Use date filter if provided (convert YYYY-MM-DD to YYYYMMDD)
+        date_from = None
+        if req.date:
+            date_from = req.date.replace("-", "")
+        
+        try:
+            service = DiscoveryService()
+            # Search for backups, get only the most recent matching one
+            result = service.search_backups(
+                customer=customer_to_search,
+                environment=env_to_search,
+                date_from=date_from,
+                limit=100,  # Get enough to find exact date match
+                offset=0,
+            )
+            
+            if not result.backups:
+                raise HTTPException(
+                    status.HTTP_404_NOT_FOUND,
+                    detail=f"No backups found for '{customer_to_search}'. "
+                           f"Use 'pulldb list {customer_to_search}' to see available backups."
+                )
+            
+            # If date specified, find exact match; otherwise use latest
+            selected_backup = None
+            if req.date:
+                # Find backup matching the requested date
+                date_str = req.date.replace("-", "")
+                for backup in result.backups:
+                    if backup.date == date_str:
+                        selected_backup = backup
+                        break
+                if not selected_backup:
+                    available_dates = sorted(set(b.date for b in result.backups), reverse=True)[:5]
+                    raise HTTPException(
+                        status.HTTP_404_NOT_FOUND,
+                        detail=f"No backup found for '{customer_to_search}' on date {req.date}. "
+                               f"Available dates: {', '.join(available_dates)}. "
+                               f"Use 'pulldb list {customer_to_search}' to see all available backups."
+                    )
+            else:
+                # Use latest backup
+                selected_backup = result.backups[0]
+            
+            # Construct full S3 path
+            backup_path = f"s3://{selected_backup.bucket}/{selected_backup.key}"
+            
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to discover backup for '{customer_to_search}': {exc}"
+            ) from exc
+
     # Snapshot backup path and S3 location info
-    if req.backup_path:
-        opts["backup_path"] = req.backup_path
+    if backup_path:
+        opts["backup_path"] = backup_path
 
         # Parse backup path to extract bucket/key
-        parsed = parse_backup_path(req.backup_path)
+        parsed = parse_backup_path(backup_path)
         if parsed:
             bucket, key = parsed
             opts["s3_bucket"] = bucket
@@ -140,7 +206,7 @@ def _options_snapshot(
 
         # Find matching S3 location config
         location = find_location_for_backup_path(
-            req.backup_path,
+            backup_path,
             state.config.s3_backup_locations,
         )
         if location:
