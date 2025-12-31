@@ -779,6 +779,9 @@ def run_retention_cleanup_cmd(
     job_repo = get_job_repository()
     user_repo = get_user_repository()
     settings_repo = get_settings_repository()
+    
+    from pulldb.infra.factory import get_host_repository
+    host_repo = get_host_repository()
 
     # Get cleanup candidates
     from pulldb.worker.retention import RetentionService
@@ -849,7 +852,7 @@ def run_retention_cleanup_cmd(
 
     result = run_retention_cleanup(
         job_repo=job_repo,
-        user_repo=user_repo,
+        host_repo=host_repo,
         settings_repo=settings_repo,
     )
 
@@ -857,18 +860,18 @@ def run_retention_cleanup_cmd(
         click.echo(
             json.dumps(
                 {
-                    "cleaned": result.cleaned_count,
-                    "failed": result.failed_count,
-                    "skipped_locked": result.skipped_locked,
+                    "cleaned": result.databases_dropped,
+                    "skipped": result.databases_skipped,
+                    "candidates": result.candidates_found,
                     "errors": result.errors,
                 }
             )
         )
     else:
         click.echo("\nRetention Cleanup Complete:")
-        click.echo(f"  Cleaned: {result.cleaned_count}")
-        click.echo(f"  Skipped (locked): {result.skipped_locked}")
-        if result.failed_count:
-            click.echo(f"  Failed: {result.failed_count}")
+        click.echo(f"  Cleaned: {result.databases_dropped}")
+        click.echo(f"  Skipped: {result.databases_skipped}")
+        if result.errors:
+            click.echo(f"  Errors: {len(result.errors)}")
             for error in result.errors:
                 click.echo(f"    - {error}")
