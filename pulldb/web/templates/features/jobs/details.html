@@ -165,6 +165,85 @@
     </div>
     {% endif %}
 
+    {# Retention info for complete jobs #}
+    {% if job.status.value == 'complete' and job.expires_at %}
+    <div class="card card-padding">
+        <h3 class="card-header">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            Database Retention
+        </h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4);">
+            <div>
+                <div class="text-sm text-gray-500">Expiration Date</div>
+                {% if job.is_locked %}
+                <div class="text-lg">
+                    <span class="badge badge-info">Locked</span>
+                    <span class="text-muted">since {{ job.locked_at.strftime('%Y-%m-%d') if job.locked_at else 'unknown' }}</span>
+                </div>
+                {% elif job.is_expired %}
+                <div class="text-lg text-danger font-bold">
+                    {{ job.expires_at.strftime('%Y-%m-%d') }}
+                    <span class="badge badge-danger">Expired</span>
+                </div>
+                {% elif job.is_expiring(7) %}
+                <div class="text-lg text-warning font-bold">
+                    {{ job.expires_at.strftime('%Y-%m-%d') }}
+                    <span class="badge badge-warning">Expiring Soon</span>
+                </div>
+                {% else %}
+                <div class="text-lg">{{ job.expires_at.strftime('%Y-%m-%d') }}</div>
+                {% endif %}
+            </div>
+            {% if job.db_dropped_at %}
+            <div>
+                <div class="text-sm text-gray-500">Database Dropped</div>
+                <div class="text-lg text-danger">{{ job.db_dropped_at.strftime('%Y-%m-%d %H:%M') }}</div>
+            </div>
+            {% endif %}
+        </div>
+        
+        {# Actions for retention #}
+        {% if not job.db_dropped_at and can_manage_retention %}
+        <div class="mt-4">
+            <div class="action-buttons" style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+                {% if not job.is_locked %}
+                <form method="POST" action="/web/jobs/{{ job.id }}/extend" style="display: inline-flex; gap: 0.5rem; align-items: center;">
+                    <select name="months" class="form-select form-select-sm" style="width: auto;">
+                        {% for opt in retention_options %}
+                        <option value="{{ opt.months }}">{{ opt.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-secondary btn-sm">Extend</button>
+                </form>
+                <form method="POST" action="/web/jobs/{{ job.id }}/lock" style="display: inline;">
+                    <button type="submit" class="btn btn-secondary btn-sm" title="Prevent automatic cleanup">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-xs">
+                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                        Lock
+                    </button>
+                </form>
+                {% else %}
+                <form method="POST" action="/web/jobs/{{ job.id }}/unlock" style="display: inline;">
+                    <button type="submit" class="btn btn-secondary btn-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-xs">
+                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                        </svg>
+                        Unlock
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <div class="card card-padding">
         <div class="logs-header">
             <h3 class="card-header">Logs</h3>

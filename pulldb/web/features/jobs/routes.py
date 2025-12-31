@@ -217,6 +217,24 @@ def _derive_current_phase(
     return current_phase, phase_list
 
 
+def _get_retention_options(state: Any) -> list[dict[str, Any]]:
+    """Get retention extension options from settings.
+    
+    Returns a list of dicts with 'months' and 'label' keys.
+    Falls back to default options if settings unavailable.
+    """
+    if hasattr(state, "settings_repo") and state.settings_repo:
+        if hasattr(state.settings_repo, "get_retention_options"):
+            return state.settings_repo.get_retention_options()
+    
+    # Default fallback
+    return [
+        {"months": 1, "label": "1 month"},
+        {"months": 3, "label": "3 months"},
+        {"months": 6, "label": "6 months"},
+    ]
+
+
 @router.get("/{job_id}", response_class=HTMLResponse)
 async def job_details(
     request: Request,
@@ -304,6 +322,11 @@ async def job_details(
             "flash_type": flash_type,
             "current_phase": current_phase,
             "phase_list": phase_list,
+            # Retention management
+            "can_manage_retention": (
+                job.owner_user_id == user.user_id or user.is_admin
+            ) if job else False,
+            "retention_options": _get_retention_options(state),
         },
     )
 
@@ -905,3 +928,191 @@ async def bulk_delete_status(
         "errors": progress.get("errors", []),
         "completed_at": task.completed_at.isoformat() if task.completed_at else None,
     }
+
+
+# =============================================================================
+# Database Retention Actions (extend, lock, unlock)
+# =============================================================================
+
+
+@router.post("/{job_id}/extend")
+async def extend_job_retention(
+    request: Request,
+    job_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> RedirectResponse:
+    """Extend the retention period for a job's database."""
+    from urllib.parse import urlencode
+    from fastapi.concurrency import run_in_threadpool
+
+    base_url = f"/web/jobs/{job_id}"
+
+    # Parse form data
+    form = await request.form()
+    months_str = form.get("months", "1")
+    try:
+        months = int(months_str)
+    except (TypeError, ValueError):
+        months = 1
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': 'Job repository unavailable'})}",
+            status_code=303,
+        )
+
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': 'Job not found'})}",
+            status_code=303,
+        )
+
+    # Authorization: job owner or admin
+    if job.owner_user_id != user.user_id and not user.is_admin:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': 'Permission denied'})}",
+            status_code=303,
+        )
+
+    try:
+        from pulldb.worker.retention import RetentionService
+
+        settings_repo = getattr(state, "settings_repo", None)
+        retention_service = RetentionService(
+            job_repo=state.job_repo,
+            user_repo=state.user_repo,
+            settings_repo=settings_repo,
+        )
+        await run_in_threadpool(
+            retention_service.extend_job,
+            job_id,
+            months,
+            user.user_id,
+        )
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_success': f'Extended retention by {months} month(s)'})}",
+            status_code=303,
+        )
+    except Exception as e:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': str(e)})}",
+            status_code=303,
+        )
+
+
+@router.post("/{job_id}/lock")
+async def lock_job_database(
+    job_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> RedirectResponse:
+    """Lock a job's database to prevent automatic cleanup."""
+    from urllib.parse import urlencode
+    from fastapi.concurrency import run_in_threadpool
+
+    base_url = f"/web/jobs/{job_id}"
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': 'Job repository unavailable'})}",
+            status_code=303,
+        )
+
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': 'Job not found'})}",
+            status_code=303,
+        )
+
+    # Authorization: job owner or admin
+    if job.owner_user_id != user.user_id and not user.is_admin:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': 'Permission denied'})}",
+            status_code=303,
+        )
+
+    try:
+        from pulldb.worker.retention import RetentionService
+
+        settings_repo = getattr(state, "settings_repo", None)
+        retention_service = RetentionService(
+            job_repo=state.job_repo,
+            user_repo=state.user_repo,
+            settings_repo=settings_repo,
+        )
+        await run_in_threadpool(
+            retention_service.lock_job,
+            job_id,
+            user.user_id,
+            "Locked via job detail page",
+        )
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_success': 'Database locked'})}",
+            status_code=303,
+        )
+    except Exception as e:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': str(e)})}",
+            status_code=303,
+        )
+
+
+@router.post("/{job_id}/unlock")
+async def unlock_job_database(
+    job_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> RedirectResponse:
+    """Unlock a job's database to allow automatic cleanup."""
+    from urllib.parse import urlencode
+    from fastapi.concurrency import run_in_threadpool
+
+    base_url = f"/web/jobs/{job_id}"
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': 'Job repository unavailable'})}",
+            status_code=303,
+        )
+
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': 'Job not found'})}",
+            status_code=303,
+        )
+
+    # Authorization: admin only for unlock (managers can lock for team but admin for unlock)
+    # Actually, for simplicity, allow job owner or admin to unlock
+    if job.owner_user_id != user.user_id and not user.is_admin:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': 'Permission denied'})}",
+            status_code=303,
+        )
+
+    try:
+        from pulldb.worker.retention import RetentionService
+
+        settings_repo = getattr(state, "settings_repo", None)
+        retention_service = RetentionService(
+            job_repo=state.job_repo,
+            user_repo=state.user_repo,
+            settings_repo=settings_repo,
+        )
+        await run_in_threadpool(
+            retention_service.unlock_job,
+            job_id,
+            user.user_id,
+        )
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_success': 'Database unlocked'})}",
+            status_code=303,
+        )
+    except Exception as e:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': str(e)})}",
+            status_code=303,
+        )
