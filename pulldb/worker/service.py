@@ -35,6 +35,7 @@ from pulldb.infra.mysql import (
     HostRepository,
     JobRepository,
     MySQLPool,
+    SettingsRepository,
     UserRepository,
 )
 from pulldb.infra.s3 import S3Client
@@ -496,6 +497,7 @@ def main(argv: t.Sequence[str] | None = None) -> int:
             admin_task_repo = AdminTaskRepository(pool)
             user_repo = UserRepository(pool)
             audit_repo = AuditRepository(pool)
+            settings_repo = SettingsRepository(pool)
             admin_task_executor = AdminTaskExecutor(
                 task_repo=admin_task_repo,
                 job_repo=job_repo,
@@ -503,6 +505,7 @@ def main(argv: t.Sequence[str] | None = None) -> int:
                 host_repo=host_repo,
                 audit_repo=audit_repo,
                 pool=pool,
+                settings_repo=settings_repo,
             )
             logger.info("Admin task executor initialized")
     except Exception as exc:

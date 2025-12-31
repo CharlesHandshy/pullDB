@@ -79,11 +79,13 @@ class AdminTaskType(Enum):
         FORCE_DELETE_USER: Delete user with job history, optionally dropping databases.
         SCAN_USER_ORPHANS: Scan hosts for databases belonging to deleted users.
         BULK_DELETE_JOBS: Bulk delete job databases (user-initiated).
+        RETENTION_CLEANUP: Scheduled cleanup of expired databases.
     """
 
     FORCE_DELETE_USER = "force_delete_user"
     SCAN_USER_ORPHANS = "scan_user_orphans"
     BULK_DELETE_JOBS = "bulk_delete_jobs"
+    RETENTION_CLEANUP = "retention_cleanup"
 
 
 class AdminTaskStatus(Enum):

@@ -25,6 +25,7 @@ if t.TYPE_CHECKING:
         HostRepository,
         JobRepository,
         MySQLPool,
+        SettingsRepository,
         UserRepository,
     )
     from pulldb.infra.secrets import MySQLCredentials
@@ -59,6 +60,7 @@ class AdminTaskExecutor:
         host_repo: HostRepository,
         audit_repo: AuditRepository,
         pool: MySQLPool,
+        settings_repo: "SettingsRepository | None" = None,
     ) -> None:
         """Initialize admin task executor.
 
@@ -69,6 +71,7 @@ class AdminTaskExecutor:
             host_repo: Repository for host credentials.
             audit_repo: Repository for audit logging.
             pool: MySQL connection pool.
+            settings_repo: Repository for settings (required for retention cleanup).
         """
         self.task_repo = task_repo
         self.job_repo = job_repo
@@ -76,6 +79,7 @@ class AdminTaskExecutor:
         self.host_repo = host_repo
         self.audit_repo = audit_repo
         self.pool = pool
+        self.settings_repo = settings_repo
 
     def execute(self, task: AdminTask) -> None:
         """Execute an admin task.
@@ -104,6 +108,8 @@ class AdminTaskExecutor:
                 self._execute_scan_user_orphans(task)
             elif task.task_type == AdminTaskType.BULK_DELETE_JOBS:
                 self._execute_bulk_delete_jobs(task)
+            elif task.task_type == AdminTaskType.RETENTION_CLEANUP:
+                self._execute_retention_cleanup(task)
             else:
                 raise ValueError(f"Unknown task type: {task.task_type.value}")
 
@@ -947,3 +953,90 @@ class AdminTaskExecutor:
             f"skipped={len(skipped_list)}",
             extra={"task_id": task.task_id, "result": result},
         )
+
+    def _execute_retention_cleanup(self, task: AdminTask) -> None:
+        """Execute retention cleanup task.
+
+        Drops databases for expired jobs (past expiration + grace period).
+        Only processes complete, non-locked jobs with db_dropped_at IS NULL.
+
+        Args:
+            task: The admin task with optional parameters.
+        """
+        from pulldb.worker.cleanup import run_retention_cleanup
+
+        if not self.settings_repo:
+            raise ValueError("SettingsRepository required for retention cleanup")
+
+        params = task.parameters_json or {}
+        dry_run = params.get("dry_run", False)
+
+        # Log task start
+        self.audit_repo.log_action(
+            actor_user_id=task.requested_by,
+            action="retention_cleanup_started",
+            target_user_id=None,
+            detail="Starting retention cleanup of expired databases",
+            context={
+                "task_id": task.task_id,
+                "dry_run": dry_run,
+            },
+        )
+
+        try:
+            # Run the cleanup
+            cleanup_result = run_retention_cleanup(
+                job_repo=self.job_repo,
+                host_repo=self.host_repo,
+                settings_repo=self.settings_repo,
+                dry_run=dry_run,
+            )
+
+            # Build result for task
+            result: dict[str, t.Any] = {
+                "candidates_found": cleanup_result.candidates_found,
+                "databases_dropped": cleanup_result.databases_dropped,
+                "databases_skipped": cleanup_result.databases_skipped,
+                "errors": cleanup_result.errors,
+                "dropped_jobs": cleanup_result.dropped_jobs,
+                "grace_days": cleanup_result.grace_days,
+                "dry_run": dry_run,
+            }
+
+            # Log completion
+            self.audit_repo.log_action(
+                actor_user_id=task.requested_by,
+                action="retention_cleanup_completed",
+                target_user_id=None,
+                detail=(
+                    f"Retention cleanup complete: {cleanup_result.databases_dropped} dropped, "
+                    f"{cleanup_result.databases_skipped} skipped, {len(cleanup_result.errors)} errors"
+                ),
+                context={
+                    "task_id": task.task_id,
+                    **result,
+                },
+            )
+
+            # Mark task complete
+            self.task_repo.complete_task(task.task_id, result)
+
+            logger.info(
+                f"Retention cleanup task {task.task_id} completed: "
+                f"dropped={cleanup_result.databases_dropped}, "
+                f"skipped={cleanup_result.databases_skipped}, "
+                f"errors={len(cleanup_result.errors)}",
+                extra={"task_id": task.task_id, "result": result},
+            )
+
+        except Exception as e:
+            error_msg = f"Retention cleanup failed: {e}"
+            self.task_repo.fail_task(task.task_id, error_msg, {})
+            self.audit_repo.log_action(
+                actor_user_id=task.requested_by,
+                action="retention_cleanup_failed",
+                target_user_id=None,
+                detail=error_msg,
+                context={"task_id": task.task_id, "error": str(e)},
+            )
+            raise
