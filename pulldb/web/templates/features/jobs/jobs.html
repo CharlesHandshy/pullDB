@@ -183,7 +183,7 @@
         
         autoRefreshInterval = setInterval(() => {
             if (!autoRefreshPaused && table && document.visibilityState === 'visible') {
-                table.refresh();
+                table.refresh({ quiet: true });
             }
         }, CONFIG.jobsRefreshInterval * 1000);
     }

@@ -399,6 +399,10 @@ class LazyTable {
                 <button type="button" class="footer-clear-filters-btn hidden">Clear Filters</button>
             </div>
             <div class="footer-spacer"></div>
+            <div class="footer-status-indicator hidden">
+                <span class="footer-status-spinner"></span>
+                <span class="footer-status-text"></span>
+            </div>
             <div class="footer-actions"></div>
         `;
         
@@ -608,18 +612,41 @@ class LazyTable {
         this.distinctValues = {};
     }
 
-    async refresh() {
-        this.clearCache();
-        this.hideError();  // Auto-dismiss error on retry
-        this.showLoading();
-        try {
-            await this.fetchPage(0);
-            this.hideLoading();
-            this.render();
-            this.checkFetchNeeded();
-        } catch (error) {
-            this.hideLoading();
-            // Error already shown by fetchPage
+    /**
+     * Refresh table data
+     * @param {Object} options - Refresh options
+     * @param {boolean} options.quiet - If true, show footer spinner instead of overlay (for auto-refresh)
+     */
+    async refresh(options = {}) {
+        const { quiet = false } = options;
+        
+        if (quiet) {
+            // Quiet refresh: footer spinner, no cache clear, keep existing data visible
+            this.hideFooterError();
+            this.showFooterLoading();
+            try {
+                // Fetch page 0 without clearing cache - will update cache entry
+                await this.fetchPage(0);
+                this.hideFooterLoading();
+                this.render();
+            } catch (error) {
+                this.hideFooterLoading();
+                this.showFooterError('Refresh failed');
+            }
+        } else {
+            // Full refresh: overlay, clear cache
+            this.clearCache();
+            this.hideError();  // Auto-dismiss error on retry
+            this.showLoading();
+            try {
+                await this.fetchPage(0);
+                this.hideLoading();
+                this.render();
+                this.checkFetchNeeded();
+            } catch (error) {
+                this.hideLoading();
+                // Error already shown by fetchPage
+            }
         }
     }
 
@@ -940,6 +967,49 @@ class LazyTable {
 
     hideEmpty() {
         this.elements.emptyOverlay.classList.remove('visible');
+    }
+
+    // Footer status indicator (for quiet refresh)
+    showFooterLoading() {
+        const indicator = this.elements.footerContent.querySelector('.footer-status-indicator');
+        const spinner = indicator?.querySelector('.footer-status-spinner');
+        const text = indicator?.querySelector('.footer-status-text');
+        if (indicator) {
+            indicator.classList.remove('hidden', 'error');
+            indicator.classList.add('loading');
+            if (spinner) spinner.classList.remove('hidden');
+            if (text) text.textContent = '';
+        }
+    }
+
+    hideFooterLoading() {
+        const indicator = this.elements.footerContent.querySelector('.footer-status-indicator');
+        if (indicator) {
+            indicator.classList.remove('loading');
+            indicator.classList.add('hidden');
+        }
+    }
+
+    showFooterError(message = 'Error') {
+        const indicator = this.elements.footerContent.querySelector('.footer-status-indicator');
+        const spinner = indicator?.querySelector('.footer-status-spinner');
+        const text = indicator?.querySelector('.footer-status-text');
+        if (indicator) {
+            indicator.classList.remove('hidden', 'loading');
+            indicator.classList.add('error');
+            if (spinner) spinner.classList.add('hidden');
+            if (text) text.textContent = message;
+            // Auto-hide error after 5 seconds
+            setTimeout(() => this.hideFooterError(), 5000);
+        }
+    }
+
+    hideFooterError() {
+        const indicator = this.elements.footerContent.querySelector('.footer-status-indicator');
+        if (indicator && indicator.classList.contains('error')) {
+            indicator.classList.remove('error');
+            indicator.classList.add('hidden');
+        }
     }
 
     // =========================================================================
