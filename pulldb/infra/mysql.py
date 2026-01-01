@@ -2065,13 +2065,13 @@ class JobRepository:
             SELECT
                 id, owner_user_id, owner_username, owner_user_code, target,
                 staging_name, dbhost, status, submitted_at, started_at,
-                completed_at, finished_at, options_json, retry_count,
+                completed_at, options_json, retry_count,
                 error_detail, staging_cleaned_at
             FROM jobs
             WHERE staging_name IS NOT NULL
               AND staging_cleaned_at IS NULL
               AND status IN ('complete', 'failed', 'canceled')
-              AND finished_at < DATE_SUB(NOW(), INTERVAL %s HOUR)
+              AND completed_at < DATE_SUB(NOW(), INTERVAL %s HOUR)
         """
         params: list[t.Any] = [older_than_hours]
 

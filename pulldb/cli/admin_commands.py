@@ -257,7 +257,7 @@ def cleanup_cmd(
         for host, items in sorted(by_host.items()):
             click.echo(f"  {host}:")
             for item in items:
-                finished = item.finished_at
+                finished = item.completed_at
                 finished_str = finished.strftime("%Y-%m-%d") if finished else "?"
                 click.echo(
                     f"    - {item.staging_name} (job {item.status.value} {finished_str})"
