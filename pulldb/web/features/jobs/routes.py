@@ -713,6 +713,7 @@ async def api_jobs_paginated(
             "locked_at": getattr(j, "locked_at", None).isoformat() if getattr(j, "locked_at", None) else None,
             "is_locked": getattr(j, "locked_at", None) is not None,
             "db_dropped_at": getattr(j, "db_dropped_at", None).isoformat() if getattr(j, "db_dropped_at", None) else None,
+            "superseded_at": getattr(j, "superseded_at", None).isoformat() if getattr(j, "superseded_at", None) else None,
         })
     
     total_count = len(all_rows)

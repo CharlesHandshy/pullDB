@@ -531,24 +531,40 @@ class JobRepository:
         """Mark job as complete and set completed_at timestamp.
 
         Called by worker when job successfully finishes. Updates status to
-        'complete' and records completion time.
+        'complete', records completion time, and sets expires_at based on
+        the max_retention_months setting.
 
         Note:
             The worker_id column is intentionally retained after completion
             for debugging purposes (to identify which worker processed the job).
+            The expires_at is calculated as completed_at + max_retention_months
+            using the current setting value.
 
         Args:
             job_id: UUID of job.
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor()
+            # Get max_retention_months from settings (default 6)
+            cursor.execute(
+                """SELECT COALESCE(
+                    (SELECT CAST(setting_value AS UNSIGNED) FROM settings 
+                     WHERE setting_key = 'max_retention_months'),
+                    6
+                ) AS retention_months"""
+            )
+            row = cursor.fetchone()
+            retention_months = row[0] if row else 6
+            
             cursor.execute(
                 """
                 UPDATE jobs
-                SET status = 'complete', completed_at = UTC_TIMESTAMP(6)
+                SET status = 'complete', 
+                    completed_at = UTC_TIMESTAMP(6),
+                    expires_at = DATE_ADD(UTC_TIMESTAMP(6), INTERVAL %s MONTH)
                 WHERE id = %s
                 """,
-                (job_id,),
+                (retention_months, job_id),
             )
             conn.commit()
 
