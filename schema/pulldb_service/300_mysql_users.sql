@@ -64,6 +64,9 @@ GRANT SELECT, INSERT ON pulldb_service.audit_logs TO 'pulldb_api'@'localhost';
 -- admin_tasks: Create tasks and read status (worker updates)
 GRANT SELECT, INSERT ON pulldb_service.admin_tasks TO 'pulldb_api'@'localhost';
 
+-- disallowed_users: Full CRUD for admin disallowed username management
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.disallowed_users TO 'pulldb_api'@'localhost';
+
 -- -----------------------------------------------------------------------------
 -- pulldb_worker: Worker Service User
 -- -----------------------------------------------------------------------------
