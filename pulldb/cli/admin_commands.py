@@ -420,6 +420,24 @@ def hosts_add(hostname: str, max_concurrent: int, credential_ref: str | None) ->
     click.echo(f"✓ Host {hostname} added")
 
 
+@hosts_group.command("cred")
+@click.argument("hostname")
+def hosts_cred(hostname: str) -> None:
+    """Show the credential_ref for a hostname."""
+    from pulldb.infra.factory import get_host_repository
+
+    repo = get_host_repository()
+    host = repo.get_host_by_hostname(hostname)
+
+    if host is None:
+        raise click.ClickException(f"Host '{hostname}' not found.")
+
+    if host.credential_ref:
+        click.echo(host.credential_ref)
+    else:
+        click.echo("-")
+
+
 # =============================================================================
 # Users Command Group
 # =============================================================================

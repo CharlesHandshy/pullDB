@@ -6,6 +6,51 @@
 
 ---
 
+## 2026-01-01 | pulldb-admin Privilege Escalation & Security
+
+### Context
+Following from the pulldb-admin security audit, user requested implementation of seamless privilege escalation so admins can run `pulldb-admin` without manual `sudo -u pulldb_service` commands.
+
+### What Was Done
+
+**Admin Authorization System (already implemented)**
+- `_get_system_username()` returns SUDO_USER when running under sudo
+- `_check_admin_authorization()` verifies user exists in pullDB with admin role
+- Exit codes: 0=success, 1=error, 2=unauthorized, 3=connection_error
+
+**Lazy .env Loading (new)**
+- Moved .env loading from module import time to `_ensure_env_loaded()` function
+- Allows `--help` and `--version` to work without credentials
+- Error handling provides clear guidance when credentials unavailable
+
+**Wrapper Script + Sudoers Configuration**
+- `/usr/local/bin/pulldb-admin`: Bash wrapper that auto-escalates via `sudo -u pulldb_service`
+- `/etc/sudoers.d/pulldb-admin`: NOPASSWD rule allowing any user to run as pulldb_service
+- The CLI itself enforces admin role check using original SUDO_USER
+
+**Packaging Updates**
+- `packaging/debian/postinst`: Creates wrapper script and sudoers file during installation
+- `packaging/debian/postrm`: Removes both files during package removal/purge
+
+### Files Modified
+- `pulldb/cli/admin.py` (lazy env loading, improved error messages)
+- `packaging/debian/postinst` (wrapper + sudoers installation)
+- `packaging/debian/postrm` (cleanup of wrapper + sudoers)
+
+### Rationale
+- **Seamless UX**: Users just run `pulldb-admin <cmd>` without remembering sudo syntax
+- **Defense in depth**: Sudoers allows escalation, but CLI verifies admin role via SUDO_USER
+- **Security**: sudo protects SUDO_USER from spoofing; admin authorization is enforced in-app
+- **Clean help output**: `--help` works without credentials thanks to lazy loading
+
+### Testing
+- `pulldb-admin --help` works without credentials ✓
+- `pulldb-admin settings list` auto-escalates and succeeds for admin user ✓
+- `pulldb-admin jobs list --limit 1` works ✓
+- Non-admin users get clear authorization error ✓
+
+---
+
 ## 2025-12-31 | Database Retention & Cleanup System
 
 ### Context

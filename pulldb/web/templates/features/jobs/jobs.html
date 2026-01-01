@@ -241,6 +241,7 @@
         
         user: (val) => `<span class="font-mono cell-mono-sm">${val || '-'}</span>`,
         
+        // Status renderer for History view - shows actual status
         status: (val, row) => {
             const classes = {
                 'complete': 'badge-success',
@@ -256,6 +257,26 @@
                 cls += ' badge-cancel-pending';
             }
             return `<span class="badge ${cls}">${val}</span>`;
+        },
+        
+        // Status renderer for Active view - shows "Deployed" for complete jobs
+        activeStatus: (val, row) => {
+            const classes = {
+                'complete': 'badge-success',
+                'failed': 'badge-danger',
+                'running': 'badge-primary',
+                'queued': 'badge-neutral',
+                'canceled': 'badge-neutral',
+                'deleting': 'badge-warning badge-pulse',
+                'deleted': 'badge-neutral badge-deleted'
+            };
+            let cls = classes[val] || 'badge-neutral';
+            if (val === 'running' && row.cancel_requested_at) {
+                cls += ' badge-cancel-pending';
+            }
+            // Show "Deployed" for complete jobs in Active view (database is live)
+            const label = (val === 'complete') ? 'Deployed' : val;
+            return `<span class="badge ${cls}">${label}</span>`;
         },
         
         date: (val) => {
@@ -348,7 +369,7 @@
         active: [
             { key: 'id', label: 'Job ID', sortable: true, filterable: true, filterType: 'text', filterPlaceholder: 'b875* or *ef3c', width: '125px', render: Renderers.jobId },
             { key: 'owner_user_code', label: 'User', sortable: true, filterable: true, width: '95px', render: Renderers.user },
-            { key: 'status', label: 'Status', sortable: true, filterable: true, width: '100px', render: Renderers.status },
+            { key: 'status', label: 'Status', sortable: true, filterable: true, width: '100px', render: Renderers.activeStatus },
             { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '80px', render: Renderers.date },
             { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, maxWidth: '140px', render: Renderers.host },
             { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, maxWidth: '160px' },

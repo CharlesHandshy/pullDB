@@ -296,10 +296,34 @@ install_python_package() {
     find "${VENV_DIR}/lib" -type f -exec chmod 644 {} \;
     chmod 755 "${VENV_DIR}/bin/pulldb" "${VENV_DIR}/bin/pulldb-admin" 2>/dev/null || true
     
-    # Create symlinks in /usr/local/bin for system-wide access
+    # Create symlink for pulldb client CLI (no privilege escalation needed)
     ln -sf "${VENV_DIR}/bin/pulldb" /usr/local/bin/pulldb
-    ln -sf "${VENV_DIR}/bin/pulldb-admin" /usr/local/bin/pulldb-admin
-    echo "  Created symlinks: /usr/local/bin/pulldb, /usr/local/bin/pulldb-admin"
+    echo "  Created symlink: /usr/local/bin/pulldb"
+    
+    # Create wrapper script for pulldb-admin (requires pulldb_service credentials)
+    # The wrapper auto-escalates to pulldb_service user for AWS/MySQL access
+    cat > /usr/local/bin/pulldb-admin << 'WRAPPER_EOF'
+#!/bin/bash
+# pulldb-admin wrapper - auto-escalates to pulldb_service user
+# Admin authorization is enforced by the CLI itself (checks SUDO_USER)
+set -euo pipefail
+exec sudo -u pulldb_service /opt/pulldb.service/venv/bin/pulldb-admin "$@"
+WRAPPER_EOF
+    chmod 755 /usr/local/bin/pulldb-admin
+    echo "  Created wrapper script: /usr/local/bin/pulldb-admin"
+    
+    # Install sudoers rule for passwordless execution
+    # This allows any user to run pulldb-admin as pulldb_service without password
+    # The CLI itself enforces that the user has admin role in pullDB
+    cat > /etc/sudoers.d/pulldb-admin << 'SUDOERS_EOF'
+# pulldb-admin privilege escalation
+# Allows any user to run pulldb-admin as pulldb_service without password
+# Admin authorization is enforced by the CLI itself (checks original SUDO_USER)
+Cmnd_Alias PULLDB_ADMIN = /opt/pulldb.service/venv/bin/pulldb-admin
+ALL ALL=(pulldb_service) NOPASSWD: PULLDB_ADMIN
+SUDOERS_EOF
+    chmod 440 /etc/sudoers.d/pulldb-admin
+    echo "  Installed sudoers rule: /etc/sudoers.d/pulldb-admin"
 }
 
 check_database_schema() {
