@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from pulldb.domain.models import JobStatus, User, UserRole
 from pulldb.web.dependencies import get_api_state, require_login, templates
@@ -88,12 +88,7 @@ async def jobs_page(
             # Filter to owned databases only
             jobs = [
                 j for j in jobs 
-                if j.status in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELING)
-                or (
-                    j.status == JobStatus.COMPLETE 
-                    and getattr(j, "db_dropped_at", None) is None
-                    and getattr(j, "superseded_at", None) is None
-                )
+                if j.status in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELING, JobStatus.DEPLOYED)
             ]
         elif hasattr(state.job_repo, "get_owned_databases"):
             # New method: shows in-progress + complete (not dropped, not superseded)
@@ -242,7 +237,9 @@ def _derive_current_phase(
             break
 
     # Override for terminal states
-    if job_status == "complete":
+    if job_status == "deployed":
+        current_phase = "complete"
+    elif job_status == "complete":
         current_phase = "complete"
     elif job_status == "failed":
         current_phase = "failed"
@@ -643,11 +640,7 @@ async def api_jobs_paginated(
             # Filter to terminal statuses or dropped/superseded
             jobs = [
                 j for j in jobs 
-                if j.status in (JobStatus.FAILED, JobStatus.CANCELED, JobStatus.DELETED, JobStatus.DELETING)
-                or (
-                    j.status == JobStatus.COMPLETE
-                    and (getattr(j, "db_dropped_at", None) is not None or getattr(j, "superseded_at", None) is not None)
-                )
+                if j.status in (JobStatus.FAILED, JobStatus.CANCELED, JobStatus.DELETED, JobStatus.DELETING, JobStatus.COMPLETE)
             ]
         else:
             jobs = list(getattr(state.job_repo, "history_jobs", []))
@@ -1191,4 +1184,225 @@ async def unlock_job_database(
         return RedirectResponse(
             url=f"{base_url}?{urlencode({'delete_error': str(e)})}",
             status_code=303,
+        )
+
+
+@router.post("/{job_id}/user-complete")
+async def user_complete_job(
+    job_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> JSONResponse:
+    """Mark a deployed job as complete (user is done with the database).
+    
+    Moves the job from Active view to History view.
+    The database remains until cleanup runs based on retention settings.
+    """
+    from fastapi.concurrency import run_in_threadpool
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return JSONResponse(
+            content={"detail": "Job repository unavailable"},
+            status_code=503,
+        )
+
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        return JSONResponse(
+            content={"detail": "Job not found"},
+            status_code=404,
+        )
+
+    # Only deployed jobs can be marked complete
+    if job.status != JobStatus.DEPLOYED:
+        return JSONResponse(
+            content={"detail": f"Cannot mark {job.status.value} job as complete"},
+            status_code=400,
+        )
+
+    # Authorization: job owner, manager, or admin
+    if job.owner_user_id != user.user_id and not user.is_admin and user.role != UserRole.MANAGER:
+        return JSONResponse(
+            content={"detail": "Permission denied"},
+            status_code=403,
+        )
+
+    try:
+        await run_in_threadpool(
+            state.job_repo.mark_job_user_completed,
+            job_id,
+        )
+        return JSONResponse(
+            content={"status": "ok", "message": "Job marked as complete"},
+            status_code=200,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"detail": str(e)},
+            status_code=500,
+        )
+
+
+@router.post("/api/{job_id}/lock")
+async def api_lock_job(
+    job_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> JSONResponse:
+    """Lock a job's database via API (for AJAX calls)."""
+    from fastapi.concurrency import run_in_threadpool
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return JSONResponse(
+            content={"detail": "Job repository unavailable"},
+            status_code=503,
+        )
+
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        return JSONResponse(
+            content={"detail": "Job not found"},
+            status_code=404,
+        )
+
+    # Authorization: job owner, manager, or admin
+    if job.owner_user_id != user.user_id and not user.is_admin and user.role != UserRole.MANAGER:
+        return JSONResponse(
+            content={"detail": "Permission denied"},
+            status_code=403,
+        )
+
+    try:
+        from pulldb.worker.retention import RetentionService
+
+        settings_repo = getattr(state, "settings_repo", None)
+        retention_service = RetentionService(
+            job_repo=state.job_repo,
+            user_repo=state.user_repo,
+            settings_repo=settings_repo,
+        )
+        success = await run_in_threadpool(
+            retention_service.lock_job,
+            job_id,
+            user.user_id,
+            "Locked via Jobs page",
+        )
+        if not success:
+            return JSONResponse(
+                content={"detail": "Database could not be locked (may already be locked or not deployed)"},
+                status_code=400,
+            )
+        return JSONResponse(
+            content={"status": "ok", "message": "Database locked"},
+            status_code=200,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"detail": str(e)},
+            status_code=500,
+        )
+
+
+@router.post("/api/{job_id}/unlock")
+async def api_unlock_job(
+    job_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> JSONResponse:
+    """Unlock a job's database via API (for AJAX calls)."""
+    from fastapi.concurrency import run_in_threadpool
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return JSONResponse(
+            content={"detail": "Job repository unavailable"},
+            status_code=503,
+        )
+
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        return JSONResponse(
+            content={"detail": "Job not found"},
+            status_code=404,
+        )
+
+    # Authorization: job owner, manager, or admin
+    if job.owner_user_id != user.user_id and not user.is_admin and user.role != UserRole.MANAGER:
+        return JSONResponse(
+            content={"detail": "Permission denied"},
+            status_code=403,
+        )
+
+    try:
+        from pulldb.worker.retention import RetentionService
+
+        settings_repo = getattr(state, "settings_repo", None)
+        retention_service = RetentionService(
+            job_repo=state.job_repo,
+            user_repo=state.user_repo,
+            settings_repo=settings_repo,
+        )
+        success = await run_in_threadpool(
+            retention_service.unlock_job,
+            job_id,
+            user.user_id,
+        )
+        if not success:
+            return JSONResponse(
+                content={"detail": "Database could not be unlocked (may already be unlocked or not found)"},
+                status_code=400,
+            )
+        return JSONResponse(
+            content={"status": "ok", "message": "Database unlocked"},
+            status_code=200,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"detail": str(e)},
+            status_code=500,
+        )
+
+
+@router.post("/api/mark-expired")
+async def api_mark_jobs_expired(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> JSONResponse:
+    """Mark expired deployed jobs as 'expired' status.
+    
+    Called by frontend when it detects jobs with expires_at in the past.
+    Updates status from 'deployed' to 'expired' which moves them to History.
+    """
+    from fastapi.concurrency import run_in_threadpool
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return JSONResponse(
+            content={"detail": "Job repository unavailable"},
+            status_code=503,
+        )
+
+    try:
+        body = await request.json()
+        job_ids = body.get("job_ids", [])
+        
+        if not job_ids:
+            return JSONResponse(
+                content={"updated": 0},
+                status_code=200,
+            )
+        
+        # Use batch method to update all at once
+        updated = await run_in_threadpool(
+            state.job_repo.mark_jobs_expired_batch,
+            job_ids,
+        )
+        
+        return JSONResponse(
+            content={"updated": updated},
+            status_code=200,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"detail": str(e)},
+            status_code=500,
         )

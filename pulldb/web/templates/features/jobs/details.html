@@ -7,14 +7,16 @@
 {% endblock %}
 
 {% block content %}
-<div class="job-details-container" id="job-details-container" hx-get="{{ request.url.path }}" {% if job.status.value in ['running', 'queued'] %}hx-trigger="every 5s"{% endif %} hx-select=".job-details-container" hx-swap="outerHTML">
+<div class="job-details-page" id="job-details-container" hx-get="{{ request.url.path }}" {% if job.status.value in ['running', 'queued'] %}hx-trigger="every 5s"{% endif %} hx-select=".job-details-page" hx-swap="outerHTML">
+    
     {% if flash_message %}
     <div class="alert alert-{{ flash_type or 'info' }} mb-4">
         {{ flash_message }}
     </div>
     {% endif %}
-    
-    <div class="page-header-row mb-4">
+
+    <!-- Page Header -->
+    <div class="page-header-row mb-6">
         <div class="page-header-left">
             <h1 class="page-title">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
@@ -24,48 +26,14 @@
                     <line x1="16" y1="17" x2="8" y2="17"/>
                     <polyline points="10 9 9 9 8 9"/>
                 </svg>
-                Job Details: <span class="font-mono" title="{{ job.id }}">{{ job.id[:8] }}</span>
+                Job <code class="job-id-code" title="{{ job.id }}">{{ job.id[:8] }}</code>
             </h1>
-        </div>
-        <div class="page-header-actions">
-            {# Cancel is only possible before myloader starts - after that there are no more checkpoints #}
-            {% set past_last_checkpoint = current_phase in ['myloader', 'post_sql', 'atomic_rename', 'complete'] %}
-            {% if job.status.value in ['queued', 'running'] and can_cancel and not cancel_requested_at and not past_last_checkpoint %}
-            <form method="POST" action="/web/jobs/{{ job.id }}/cancel" id="cancel-job-form" style="display: inline;">
-                <button type="submit" class="btn btn-danger" aria-label="Cancel this restore job">Cancel Job</button>
-            </form>
-            <script>
-            (function() {
-                const form = document.getElementById('cancel-job-form');
-                if (form) {
-                    form.addEventListener('submit', async (e) => {
-                        e.preventDefault();
-                        const confirmed = await showConfirm('Are you sure you want to cancel this job?', {
-                            title: 'Cancel Job',
-                            okText: 'Cancel Job',
-                            type: 'danger'
-                        });
-                        if (confirmed) {
-                            const btn = form.querySelector('button');
-                            btn.disabled = true;
-                            btn.textContent = 'Canceling...';
-                            form.submit();
-                        }
-                    });
-                }
-            })();
-            </script>
-            {% elif cancel_requested_at and job.status.value == 'running' %}
-            <span class="badge badge-warning">Cancellation Pending</span>
-            {% elif job.status.value == 'running' and past_last_checkpoint %}
-            <span class="badge badge-neutral" title="Job is past the last cancellation checkpoint">Cannot Cancel</span>
-            {% endif %}
         </div>
     </div>
 
-    <!-- Phase Progress Indicator -->
+    <!-- Phase Progress -->
     {% if phase_list %}
-    <div class="phase-stepper card card-padding">
+    <div class="phase-stepper card">
         <div class="phase-stepper-track">
             {% for phase in phase_list %}
             <div class="phase-step phase-step--{{ phase.state }}" data-phase="{{ phase.id }}">
@@ -73,7 +41,7 @@
                     {% if phase.state == 'complete' %}
                     <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
                     {% elif phase.state == 'active' %}
-                    <div class="phase-step-spinner animate-spin"></div>
+                    <div class="phase-step-spinner"></div>
                     {% elif phase.state == 'failed' %}
                     <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
                     {% else %}
@@ -90,179 +58,326 @@
     </div>
     {% endif %}
 
-    <div class="card card-padding">
-        <div class="grid-2-col" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6);">
-            <div>
-                <h3 class="card-header">Status</h3>
-                <span class="badge 
-                    {% if job.status.value == 'complete' %}badge-success
-                    {% elif job.status.value == 'failed' %}badge-danger
-                    {% elif job.status.value == 'running' %}badge-primary
-                    {% elif job.status.value == 'deleted' %}badge-neutral badge-deleted
-                    {% elif job.status.value == 'deleting' %}badge-warning badge-pulse
-                    {% else %}badge-neutral{% endif %}"
-                    {% if job.status.value == 'running' and cancel_requested_at %}
-                    style="text-decoration: line-through; background-color: var(--danger-100); color: var(--danger-700); border-color: var(--danger-200);"
-                    {% endif %}
-                >
-                    {{ job.status.value }}
-                </span>
+    <!-- Job Details Card -->
+    <div class="card details-card">
+        <div class="details-grid">
+            <!-- Left Column -->
+            <div class="details-section">
+                <h3 class="details-section-title">Job Information</h3>
+                
+                <div class="detail-row">
+                    <span class="detail-label">Status</span>
+                    <span class="detail-value">
+                        <span class="badge 
+                            {% if job.status.value == 'deployed' %}badge-success
+                            {% elif job.status.value == 'complete' %}badge-success
+                            {% elif job.status.value == 'superseded' %}badge-neutral
+                            {% elif job.status.value == 'failed' %}badge-danger
+                            {% elif job.status.value == 'running' %}badge-primary
+                            {% elif job.status.value == 'queued' %}badge-warning
+                            {% elif job.status.value == 'deleted' %}badge-neutral
+                            {% elif job.status.value == 'deleting' %}badge-warning badge-pulse
+                            {% elif job.status.value == 'canceling' %}badge-warning badge-pulse
+                            {% elif job.status.value == 'canceled' %}badge-neutral
+                            {% else %}badge-neutral{% endif %}"
+                            {% if job.status.value == 'running' and cancel_requested_at %}
+                            style="text-decoration: line-through;"
+                            {% endif %}>
+                            {{ job.status.value | capitalize }}
+                        </span>
+                        {% if job.status.value == 'running' and cancel_requested_at %}
+                        <span class="badge badge-warning ml-2">Canceling...</span>
+                        {% endif %}
+                    </span>
+                </div>
+                
+                <div class="detail-row">
+                    <span class="detail-label">Job ID</span>
+                    <span class="detail-value"><code class="detail-code">{{ job.id }}</code></span>
+                </div>
+                
+                <div class="detail-row">
+                    <span class="detail-label">Owner</span>
+                    <span class="detail-value">{{ job.owner_username }}</span>
+                </div>
+                
+                <div class="detail-row">
+                    <span class="detail-label">Submitted</span>
+                    <span class="detail-value">{{ job.submitted_at.strftime('%Y-%m-%d %H:%M:%S') if job.submitted_at else '—' }}</span>
+                </div>
             </div>
-            <div>
-                <h3 class="card-header">Owner</h3>
-                <p>{{ job.owner_username }}</p>
-            </div>
-            <div>
-                <h3 class="card-header">Target Database</h3>
-                <p class="font-mono">{{ job.target }}</p>
-            </div>
-            <div>
-                <h3 class="card-header">Submitted</h3>
-                <p>{{ job.submitted_at.strftime('%Y-%m-%d %H:%M:%S') if job.submitted_at else '-' }}</p>
+
+            <!-- Right Column -->
+            <div class="details-section">
+                <h3 class="details-section-title">Target</h3>
+                
+                <div class="detail-row">
+                    <span class="detail-label">Database</span>
+                    <span class="detail-value"><code class="detail-code">{{ job.target }}</code></span>
+                </div>
+                
+                <div class="detail-row">
+                    <span class="detail-label">Host</span>
+                    <span class="detail-value">{{ job.db_host or '—' }}</span>
+                </div>
+                
+                {% if job.status.value in ['deployed', 'complete', 'superseded'] and job.expires_at %}
+                <div class="detail-row">
+                    <span class="detail-label">Expires</span>
+                    <span class="detail-value">
+                        {% if job.is_locked %}
+                        <span class="badge badge-info">Locked</span>
+                        <span class="text-muted">since {{ job.locked_at.strftime('%Y-%m-%d') if job.locked_at else 'unknown' }}</span>
+                        {% elif job.is_expired %}
+                        <span class="text-danger">{{ job.expires_at.strftime('%Y-%m-%d') }}</span>
+                        <span class="badge badge-danger ml-1">Expired</span>
+                        {% elif job.is_expiring(7) %}
+                        <span class="text-warning">{{ job.expires_at.strftime('%Y-%m-%d') }}</span>
+                        <span class="badge badge-warning ml-1">Soon</span>
+                        {% else %}
+                        {{ job.expires_at.strftime('%Y-%m-%d') }}
+                        {% endif %}
+                    </span>
+                </div>
+                {% endif %}
+                
+                {% if job.db_dropped_at %}
+                <div class="detail-row">
+                    <span class="detail-label">DB Dropped</span>
+                    <span class="detail-value text-danger">{{ job.db_dropped_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
 
+    <!-- Performance Profile -->
     {% if profile %}
-    <div class="card card-padding">
-        <h3 class="card-header">Performance Profile</h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-            <div class="stat-box">
-                <div class="text-sm text-gray-500">Total Duration</div>
-                <div class="text-xl font-bold">{{ "%.1f"|format(profile.total_duration_seconds) }}s</div>
+    <div class="card">
+        <div class="card-header-row">
+            <h3 class="card-title">Performance</h3>
+        </div>
+        <div class="profile-stats">
+            <div class="profile-stat">
+                <span class="profile-stat-value">{{ "%.1f"|format(profile.total_duration_seconds) }}s</span>
+                <span class="profile-stat-label">Total Duration</span>
             </div>
-            <div class="stat-box">
-                <div class="text-sm text-gray-500">Total Size</div>
-                <div class="text-xl font-bold">{{ "%.1f"|format(profile.total_bytes / 1024 / 1024) }} MB</div>
+            <div class="profile-stat">
+                <span class="profile-stat-value">{{ "%.1f"|format(profile.total_bytes / 1024 / 1024) }} MB</span>
+                <span class="profile-stat-label">Total Size</span>
             </div>
         </div>
         
-        <table class="table" style="width: 100%;">
-            <thead>
-                <tr>
-                    <th style="text-align: left;">Phase</th>
-                    <th style="text-align: right;">Duration</th>
-                    <th style="text-align: right;">Speed</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for phase_name, phase in profile.phases.items() %}
-                <tr>
-                    <td>{{ phase.phase }}</td>
-                    <td style="text-align: right;">{{ "%.1f"|format(phase.duration_seconds) if phase.duration_seconds else '-' }}s</td>
-                    <td style="text-align: right;">{{ "%.1f"|format(phase.mbps) if phase.mbps else '-' }} MB/s</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="profile-phases">
+            {% for phase_name, phase in profile.phases.items() %}
+            <div class="profile-phase">
+                <span class="profile-phase-name">{{ phase.phase }}</span>
+                <span class="profile-phase-duration">{{ "%.1f"|format(phase.duration_seconds) if phase.duration_seconds else '—' }}s</span>
+                <span class="profile-phase-speed">{{ "%.1f"|format(phase.mbps) if phase.mbps else '—' }} MB/s</span>
+            </div>
+            {% endfor %}
+        </div>
     </div>
     {% endif %}
 
+    <!-- Error Details -->
     {% if job.error_detail %}
-    <div class="card card-padding" style="border-color: var(--danger-200); background-color: var(--danger-50);">
-        <h3 class="card-header" style="color: var(--danger-700);">Error Details</h3>
-        <pre style="white-space: pre-wrap; color: var(--danger-700);">{{ job.error_detail }}</pre>
+    <div class="card card-error">
+        <div class="card-header-row">
+            <h3 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                Error Details
+            </h3>
+        </div>
+        <pre class="error-output">{{ job.error_detail }}</pre>
     </div>
     {% endif %}
 
-    {# Retention info for complete jobs #}
-    {% if job.status.value == 'complete' and job.expires_at %}
-    <div class="card card-padding">
-        <h3 class="card-header">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
-            </svg>
-            Database Retention
-        </h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4);">
-            <div>
-                <div class="text-sm text-gray-500">Expiration Date</div>
-                {% if job.is_locked %}
-                <div class="text-lg">
-                    <span class="badge badge-info">Locked</span>
-                    <span class="text-muted">since {{ job.locked_at.strftime('%Y-%m-%d') if job.locked_at else 'unknown' }}</span>
-                </div>
-                {% elif job.is_expired %}
-                <div class="text-lg text-danger font-bold">
-                    {{ job.expires_at.strftime('%Y-%m-%d') }}
-                    <span class="badge badge-danger">Expired</span>
-                </div>
-                {% elif job.is_expiring(7) %}
-                <div class="text-lg text-warning font-bold">
-                    {{ job.expires_at.strftime('%Y-%m-%d') }}
-                    <span class="badge badge-warning">Expiring Soon</span>
-                </div>
-                {% else %}
-                <div class="text-lg">{{ job.expires_at.strftime('%Y-%m-%d') }}</div>
-                {% endif %}
-            </div>
-            {% if job.db_dropped_at %}
-            <div>
-                <div class="text-sm text-gray-500">Database Dropped</div>
-                <div class="text-lg text-danger">{{ job.db_dropped_at.strftime('%Y-%m-%d %H:%M') }}</div>
-            </div>
-            {% endif %}
-        </div>
-        
-        {# Actions for retention #}
-        {% if not job.db_dropped_at and can_manage_retention %}
-        <div class="mt-4">
-            <div class="action-buttons" style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
-                {% if not job.is_locked %}
-                <form method="POST" action="/web/jobs/{{ job.id }}/extend" style="display: inline-flex; gap: 0.5rem; align-items: center;">
-                    <select name="months" class="form-select form-select-sm" style="width: auto;">
-                        {% for opt in retention_options %}
-                        <option value="{{ opt.months }}">{{ opt.label }}</option>
-                        {% endfor %}
-                    </select>
-                    <button type="submit" class="btn btn-secondary btn-sm">Extend</button>
-                </form>
-                <form method="POST" action="/web/jobs/{{ job.id }}/lock" style="display: inline;">
-                    <button type="submit" class="btn btn-secondary btn-sm" title="Prevent automatic cleanup">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-xs">
-                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                        </svg>
-                        Lock
-                    </button>
-                </form>
-                {% else %}
-                <form method="POST" action="/web/jobs/{{ job.id }}/unlock" style="display: inline;">
-                    <button type="submit" class="btn btn-secondary btn-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-xs">
-                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
-                            <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
-                        </svg>
-                        Unlock
-                    </button>
-                </form>
-                {% endif %}
-            </div>
-        </div>
-        {% endif %}
-    </div>
-    {% endif %}
-
-    <div class="card card-padding">
-        <div class="logs-header">
-            <h3 class="card-header">Logs</h3>
+    <!-- Logs -->
+    <div class="card">
+        <div class="card-header-row">
+            <h3 class="card-title">Execution Log</h3>
             {% if job.status.value in ['running', 'queued'] %}
-            <button type="button" class="btn btn-secondary btn-sm" id="auto-refresh-toggle" onclick="toggleAutoRefresh()">
-                <span id="refresh-icon">⏸</span> <span id="refresh-label">Pause</span>
+            <button type="button" class="btn btn-ghost btn-sm" id="auto-refresh-toggle" onclick="toggleAutoRefresh()">
+                <span id="refresh-icon">⏸</span>
+                <span id="refresh-label">Pause</span>
             </button>
             {% endif %}
         </div>
-        <div class="logs-container" id="logs-container" style="background: var(--gray-900); color: var(--gray-100); padding: var(--space-4); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 0.875rem; max-height: 400px; overflow-y: auto;">
+        
+        <div class="logs-container" id="logs-container">
+            {% if logs %}
+            {% set ns = namespace(current_type='') %}
             {% for log in logs %}
-            <div class="log-entry {% if log.event_type == 'backup_selected' %}log-entry--highlight{% endif %}">
-                <span style="color: var(--gray-500);">{{ log.logged_at.strftime('%H:%M:%S') }}</span>
-                <span class="log-event-type" style="color: var(--primary-400);">[{{ log.event_type }}]</span>
-                <span>{{ log.detail }}</span>
+            {% set is_new_block = log.event_type != ns.current_type %}
+            {% if is_new_block %}{% set ns.current_type = log.event_type %}{% endif %}
+            {% set data = log.detail | parse_json %}
+            
+            {% if is_new_block %}
+            <div class="log-block {% if log.event_type in ['failed', 'error'] %}log-block--error{% elif log.event_type in ['complete', 'deployed', 'restore_complete', 'atomic_rename_complete'] %}log-block--success{% endif %}">
+                <div class="log-header">
+                    <span class="log-timestamp">{{ log.logged_at.strftime('%H:%M:%S') }}</span>
+                    <span class="log-task">{{ log.event_type }}</span>
+                    {# Special header info for certain event types #}
+                    {% if log.event_type == 'post_sql_script_complete' and data is mapping %}
+                    <span class="log-header-meta">{{ data.total_scripts }} scripts from {{ data.source | default('templates') }}</span>
+                    {% elif log.event_type == 'restore_progress' and data is mapping %}
+                    <span class="log-header-meta">myloader progress</span>
+                    {% elif log.event_type == 'backup_selected' and data is mapping %}
+                    <span class="log-header-meta">{{ data.location | default('') }} / {{ data.location_format | default('') }}</span>
+                    {% elif log.event_type == 'restore_profile' and data is mapping %}
+                    <span class="log-header-meta">{{ data.total_duration_seconds | format_duration }} total</span>
+                    {% endif %}
+                </div>
+                <div class="log-details">
+            {% endif %}
+            
+                    {# Format based on event type #}
+                    {% if log.event_type == 'post_sql_script_complete' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">script</span>{{ data.script_name | default('?') }}</span>
+                        <span class="log-field"><span class="log-field-label">#</span>{{ data.script_index | default('?') }}</span>
+                        <span class="log-field"><span class="log-field-label">time</span>{{ data.duration_seconds | format_duration }}</span>
+                        <span class="log-field"><span class="log-field-label">rows</span>{{ data.rows_affected | default(0) }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'restore_progress' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">progress</span>{{ data.percent | format_percent }}</span>
+                        {% if data.detail is mapping %}
+                        {% if data.detail.file %}
+                        <span class="log-field"><span class="log-field-label">file</span>{{ data.detail.file }}</span>
+                        {% endif %}
+                        {% if data.detail.status %}
+                        <span class="log-field"><span class="log-field-label">status</span>{{ data.detail.status }}</span>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                    
+                    {% elif log.event_type == 'backup_selected' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">bucket</span>{{ data.bucket | default('?') }}</span>
+                        <span class="log-field"><span class="log-field-label">size</span>{{ "%.1f"|format((data.size_bytes|default(0)|int) / 1024 / 1024) }} MB</span>
+                    </div>
+                    <div class="log-detail log-detail--path">
+                        <span class="log-field-label">key</span>{{ data.key | default('?') }}
+                    </div>
+                    
+                    {% elif log.event_type in ['download_started'] and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">bucket</span>{{ data.bucket | default('?') }}</span>
+                    </div>
+                    <div class="log-detail log-detail--path">
+                        <span class="log-field-label">key</span>{{ data.key | default('?') }}
+                    </div>
+                    
+                    {% elif log.event_type in ['download_complete', 'extraction_complete'] and data is mapping %}
+                    <div class="log-detail log-detail--path">
+                        <span class="log-field-label">path</span>{{ data.path | default('?') }}
+                    </div>
+                    
+                    {% elif log.event_type == 'format_detected' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">version</span>{{ data.detected_version | default('?') }}</span>
+                        <span class="log-field"><span class="log-field-label">format</span>{{ data.format_tag | default('?') }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'restore_started' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">staging</span>{{ data.staging_db | default('?') }}</span>
+                        <span class="log-field"><span class="log-field-label">backup</span>{{ data.backup_filename | default('?') }}</span>
+                    </div>
+                    
+                    {% elif log.event_type in ['post_sql_started', 'metadata_started'] and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">staging</span>{{ data.staging_db | default('?') }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'post_sql_complete' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">scripts</span>{{ data.scripts_executed | default(0) }}</span>
+                        <span class="log-field"><span class="log-field-label">time</span>{{ data.duration_seconds | format_duration }}</span>
+                        <span class="log-field"><span class="log-field-label">source</span>{{ data.source | default('?') }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'metadata_complete' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">time</span>{{ data.duration_seconds | format_duration }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'atomic_rename_started' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">staging</span>{{ data.staging_db | default('?') }}</span>
+                        <span class="log-field"><span class="log-field-label">target</span>{{ data.target_db | default('?') }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'atomic_rename_complete' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">target</span>{{ data.target_db | default('?') }}</span>
+                        <span class="log-field"><span class="log-field-label">time</span>{{ data.duration_seconds | format_duration }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'restore_complete' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">target</span>{{ data.target | default('?') }}</span>
+                        <span class="log-field"><span class="log-field-label">backup</span>{{ data.backup_filename | default('?') }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'restore_profile' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">total</span>{{ data.total_duration_seconds | format_duration }}</span>
+                        <span class="log-field"><span class="log-field-label">size</span>{{ "%.1f"|format((data.total_bytes|default(0)|int) / 1024 / 1024) }} MB</span>
+                    </div>
+                    {% if data.phases is mapping %}
+                    {% for phase_name, phase in data.phases.items() %}
+                    <div class="log-detail log-detail--phase">
+                        <span class="log-phase-name">{{ phase_name }}</span>
+                        <span class="log-phase-duration">{{ phase.duration_seconds | format_duration if phase.duration_seconds else '—' }}</span>
+                        {% if phase.mbps %}
+                        <span class="log-phase-speed">{{ "%.1f"|format(phase.mbps) }} MB/s</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                    
+                    {% elif data is mapping %}
+                    {# Generic JSON formatting with special field handling #}
+                    <div class="log-detail log-detail--json">
+                        {% for key, val in data.items() %}
+                        <span class="log-json-field">
+                            <span class="log-json-key">{{ key }}</span>
+                            {% if key == 'percent' or key.endswith('_percent') %}
+                            <span class="log-json-value">{{ val | format_percent }}</span>
+                            {% elif key == 'duration_seconds' or key.endswith('_seconds') %}
+                            <span class="log-json-value">{{ val | format_duration }}</span>
+                            {% else %}
+                            <span class="log-json-value">{{ val }}</span>
+                            {% endif %}
+                        </span>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="log-detail">{{ log.detail | default('—', true) }}</div>
+                    {% endif %}
+                    
+            {% if loop.last or logs[loop.index].event_type != ns.current_type %}
+                </div>
             </div>
-            {% else %}
-            <div class="text-gray-500">No logs available.</div>
+            {% endif %}
             {% endfor %}
+            {% else %}
+            <div class="logs-empty">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="logs-empty-icon">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <p>No log entries yet</p>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -272,18 +387,14 @@
 (function() {
     const STORAGE_KEY = 'pulldb_job_autorefresh';
     const container = document.getElementById('job-details-container');
-    
-    // Scroll position preservation for logs container
     let logsWasAtBottom = true;
     
-    // Check if logs container is scrolled to bottom (within 50px tolerance)
     function isLogsAtBottom() {
         const logsContainer = document.getElementById('logs-container');
         if (!logsContainer) return true;
         return logsContainer.scrollHeight - logsContainer.scrollTop - logsContainer.clientHeight < 50;
     }
     
-    // Scroll logs to bottom
     function scrollLogsToBottom() {
         const logsContainer = document.getElementById('logs-container');
         if (logsContainer) {
@@ -291,35 +402,23 @@
         }
     }
     
-    // Before HTMX swap, save scroll position state
     document.body.addEventListener('htmx:beforeSwap', function(evt) {
         if (evt.detail.target && evt.detail.target.id === 'job-details-container') {
             logsWasAtBottom = isLogsAtBottom();
         }
     });
     
-    // After HTMX swap, restore scroll position if was at bottom
-    // Also check if job completed (no more hx-trigger attribute)
     document.body.addEventListener('htmx:afterSwap', function(evt) {
         if (evt.detail.target && evt.detail.target.id === 'job-details-container') {
             if (logsWasAtBottom) {
                 scrollLogsToBottom();
             }
-            
-            // Check if polling stopped (job completed/failed)
-            const newContainer = document.getElementById('job-details-container');
-            if (newContainer && !newContainer.hasAttribute('hx-trigger')) {
-                // Job is no longer active - show completion message
-                console.log('Job finished - polling stopped');
-            }
         }
     });
     
-    // Initialize from localStorage
     function initAutoRefresh() {
         const saved = localStorage.getItem(STORAGE_KEY);
         const isPaused = saved === 'paused';
-        
         if (isPaused) {
             pauseRefresh();
         } else {
@@ -354,7 +453,6 @@
         }
     }
     
-    // Expose toggle function globally
     window.toggleAutoRefresh = function() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved === 'paused') {
@@ -364,10 +462,7 @@
         }
     };
     
-    // Initialize on load
     initAutoRefresh();
-    
-    // Scroll to bottom on initial page load for running jobs
     scrollLogsToBottom();
 })();
 </script>

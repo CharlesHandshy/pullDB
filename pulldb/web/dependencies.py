@@ -172,6 +172,47 @@ from pulldb import __version__ as _app_version
 templates.env.globals["app_version"] = _app_version
 
 
+# =============================================================================
+# Custom Jinja2 Filters for Log Formatting
+# =============================================================================
+
+def _parse_log_json(detail: str | None) -> dict | str | None:
+    """Parse log detail as JSON if possible, otherwise return as-is."""
+    if not detail:
+        return None
+    try:
+        return json.loads(detail)
+    except (json.JSONDecodeError, TypeError):
+        return detail
+
+
+def _format_percent(value: float | int | str | None) -> str:
+    """Format a float/int as a percentage (0-100%)."""
+    if value is None:
+        return "—"
+    try:
+        num = float(value)
+        return f"{num:.0f}%"
+    except (ValueError, TypeError):
+        return str(value)
+
+
+def _format_duration(value: float | int | str | None) -> str:
+    """Format duration in seconds (no subseconds)."""
+    if value is None:
+        return "—"
+    try:
+        num = float(value)
+        return f"{num:.0f}s"
+    except (ValueError, TypeError):
+        return str(value)
+
+
+templates.env.filters["parse_json"] = _parse_log_json
+templates.env.filters["format_percent"] = _format_percent
+templates.env.filters["format_duration"] = _format_duration
+
+
 def get_api_state(request: Request) -> "APIState":
     """Get API state from request.
     

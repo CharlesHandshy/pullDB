@@ -83,7 +83,7 @@
                 <!-- Customer Tab Content -->
                 <div class="tab-content active" id="tab-customer">
                     <input type="hidden" name="s3env" value="prod">
-                    <input type="hidden" id="customer" name="customer" value="{{ form.customer if form else '' }}" required>
+                    <input type="hidden" id="customer" name="customer" value="{{ form.customer if form and form.customer else '' }}" required>
                     
                     <!-- Step 1: Date Range -->
                     <div class="source-step" id="step-date">
@@ -332,7 +332,7 @@
                                placeholder="abc"
                                pattern="[a-z]{0,3}"
                                maxlength="3"
-                               value="{{ form.suffix if form else '' }}">
+                               value="{{ form.suffix if form and form.suffix else '' }}">
                     </div>
                 </div>
                 
@@ -395,7 +395,7 @@ window.restoreConfig = {
     {% else %}
     userCodeMap: { '{{ user.username }}': '{{ user.user_code }}' },
     {% endif %}
-    initialCustomer: '{{ form.customer if form else '' }}',
+    initialCustomer: '{{ form.customer if form and form.customer else '' }}',
     currentUserCode: '{{ user.user_code }}'
 };
 </script>

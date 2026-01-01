@@ -2,33 +2,102 @@
    pullDB Job Details Page Styles
    HCA Layer: pages (Layer 4)
    
-   Purpose: Page-specific styles for the job details view.
+   Purpose: Clean, form-style job details with block-grouped logs.
    Depends: design-tokens.css, cards.css, badges.css
    ================================================================= */
 
 /* ===========================================
-   PAGE HEADER ACTIONS
+   PAGE LAYOUT
    =========================================== */
 
-.page-header-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
+.job-details-page {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.job-id-code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background: var(--gray-100);
+    padding: 0.1em 0.4em;
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .job-id-code {
+    background: var(--gray-800);
 }
 
 /* ===========================================
-   LOGS HEADER
+   DETAILS CARD - Form Style Layout
    =========================================== */
 
-.logs-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-3);
+.details-card {
+    padding: var(--space-6);
 }
 
-.logs-header .card-header {
-    margin-bottom: 0;
+.details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-8);
+}
+
+@media (max-width: 640px) {
+    .details-grid {
+        grid-template-columns: 1fr;
+        gap: var(--space-6);
+    }
+}
+
+.details-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.details-section-title {
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    margin: 0 0 var(--space-3) 0;
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.detail-row {
+    display: flex;
+    align-items: baseline;
+    padding: var(--space-2) 0;
+    gap: var(--space-3);
+}
+
+.detail-label {
+    width: 90px;
+    flex-shrink: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text-muted);
+}
+
+.detail-value {
+    flex: 1;
+    font-size: var(--text-sm);
+    color: var(--color-text-primary);
+}
+
+.detail-code {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    background: var(--gray-100);
+    padding: 0.15em 0.4em;
+    border-radius: var(--radius-sm);
+    word-break: break-all;
+}
+
+[data-theme="dark"] .detail-code {
+    background: var(--gray-800);
 }
 
 /* ===========================================
@@ -36,7 +105,8 @@
    =========================================== */
 
 .phase-stepper {
-    margin-bottom: var(--space-6);
+    margin-bottom: var(--space-4);
+    padding: var(--space-4) var(--space-5);
     overflow-x: auto;
 }
 
@@ -44,8 +114,8 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    min-width: 700px;
-    padding: var(--space-2) 0;
+    min-width: 600px;
+    padding: var(--space-1) 0;
 }
 
 .phase-step {
@@ -54,49 +124,50 @@
     align-items: center;
     gap: var(--space-2);
     flex-shrink: 0;
-    width: 80px;
+    width: 72px;
 }
 
 .phase-step-indicator {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border-radius: var(--radius-full);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     font-weight: var(--font-semibold);
     transition: all 0.2s ease;
 }
 
 .phase-step-indicator svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
 }
 
-/* Pending state */
+.phase-step-number {
+    font-size: var(--text-xs);
+}
+
+/* States */
 .phase-step--pending .phase-step-indicator {
     background: var(--gray-100);
     color: var(--gray-400);
     border: 2px solid var(--gray-300);
 }
 
-/* Active state */
 .phase-step--active .phase-step-indicator {
     background: var(--primary-100);
     color: var(--primary-600);
     border: 2px solid var(--primary-500);
-    box-shadow: 0 0 0 4px var(--primary-100);
+    box-shadow: 0 0 0 3px var(--primary-100);
 }
 
-/* Complete state */
 .phase-step--complete .phase-step-indicator {
     background: var(--success-500);
     color: white;
     border: 2px solid var(--success-500);
 }
 
-/* Failed state */
 .phase-step--failed .phase-step-indicator {
     background: var(--danger-500);
     color: white;
@@ -104,7 +175,7 @@
 }
 
 .phase-step-label {
-    font-size: var(--text-xs);
+    font-size: 0.65rem;
     font-weight: var(--font-medium);
     color: var(--gray-500);
     text-align: center;
@@ -124,12 +195,11 @@
     color: var(--danger-700);
 }
 
-/* Connector line between steps */
 .phase-step-connector {
     flex: 1;
     height: 2px;
-    margin-top: 15px;  /* Align with center of indicator */
-    min-width: 20px;
+    margin-top: 13px;
+    min-width: 16px;
 }
 
 .phase-step-connector--complete {
@@ -140,39 +210,20 @@
     background: var(--gray-300);
 }
 
-/* Spinner animation for active phase */
 .phase-step-spinner {
-    width: 18px;
-    height: 18px;
-    border: 3px solid var(--primary-200);
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--primary-200);
     border-top-color: var(--primary-600);
     border-radius: 50%;
-    animation: spin 1s linear infinite !important;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
 }
 
 /* Dark theme */
-@media (prefers-color-scheme: dark) {
-    .phase-step--pending .phase-step-indicator {
-        background: var(--gray-800);
-        color: var(--gray-500);
-        border-color: var(--gray-600);
-    }
-    
-    .phase-step--active .phase-step-indicator {
-        background: var(--primary-900);
-        box-shadow: 0 0 0 4px var(--primary-900);
-    }
-    
-    .phase-step-spinner {
-        border-color: var(--primary-800);
-        border-top-color: var(--primary-400);
-    }
-    
-    .phase-step-connector--pending {
-        background: var(--gray-600);
-    }
-}
-
 [data-theme="dark"] .phase-step--pending .phase-step-indicator {
     background: var(--gray-800);
     color: var(--gray-500);
@@ -181,7 +232,7 @@
 
 [data-theme="dark"] .phase-step--active .phase-step-indicator {
     background: var(--primary-900);
-    box-shadow: 0 0 0 4px var(--primary-900);
+    box-shadow: 0 0 0 3px var(--primary-900);
 }
 
 [data-theme="dark"] .phase-step-spinner {
@@ -194,572 +245,412 @@
 }
 
 /* ===========================================
-   LOG ENTRY HIGHLIGHT
+   CARD HEADER ROW
    =========================================== */
 
-.log-entry--highlight {
-    background: rgba(var(--primary-500-rgb, 59, 130, 246), 0.15);
-    padding: var(--space-2);
-    margin: var(--space-1) calc(-1 * var(--space-2));
-    border-radius: var(--radius-sm);
-    border-left: 3px solid var(--primary-500);
-}
-
-.log-event-type {
-    font-weight: var(--font-medium);
-}
-
-/* ===========================================
-   PAGE LAYOUT
-   =========================================== */
-
-.job-details-page {
-    max-width: var(--content-max-full);
-}
-
-/* ===========================================
-   JOB HEADER
-   =========================================== */
-
-.job-header {
+.card-header-row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
-    gap: var(--space-4);
-    margin-bottom: var(--space-6);
-}
-
-.job-header-info {
-    flex: 1;
-    min-width: 0;
-}
-
-.job-header-title {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    margin-bottom: var(--space-2);
-}
-
-.job-header-title h1 {
-    font-size: var(--text-2xl);
-    font-weight: var(--font-bold);
-    color: var(--color-text-primary);
-    margin: 0;
-}
-
-.job-header-meta {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    font-size: var(--text-sm);
-    color: var(--color-text-muted);
-}
-
-.job-header-actions {
-    display: flex;
-    gap: var(--space-2);
-    flex-shrink: 0;
-}
-
-/* ===========================================
-   JOB STATUS BANNER
-   =========================================== */
-
-.job-status-banner {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    padding: var(--space-4) var(--space-5);
-    border-radius: var(--radius-lg);
-    margin-bottom: var(--space-6);
-}
-
-.job-status-banner.status-queued {
-    background: var(--warning-50);
-    border: 1px solid var(--warning-200);
-}
-
-.job-status-banner.status-running {
-    background: var(--primary-50);
-    border: 1px solid var(--primary-200);
-}
-
-.job-status-banner.status-complete {
-    background: var(--success-50);
-    border: 1px solid var(--success-200);
-}
-
-.job-status-banner.status-failed {
-    background: var(--danger-50);
-    border: 1px solid var(--danger-200);
-}
-
-.job-status-banner.status-canceling {
-    background: var(--warning-50);
-    border: 1px solid var(--warning-200);
-}
-
-.job-status-banner.status-canceled {
-    background: var(--gray-100);
-    border: 1px solid var(--gray-300);
-}
-
-.job-status-icon {
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-full);
-    flex-shrink: 0;
-}
-
-.job-status-banner.status-queued .job-status-icon {
-    background: var(--warning-100);
-    color: var(--warning-600);
-}
-
-.job-status-banner.status-running .job-status-icon {
-    background: var(--primary-100);
-    color: var(--primary-600);
-}
-
-.job-status-banner.status-complete .job-status-icon {
-    background: var(--success-100);
-    color: var(--success-600);
-}
-
-.job-status-banner.status-failed .job-status-icon {
-    background: var(--danger-100);
-    color: var(--danger-600);
-}
-
-.job-status-banner.status-canceling .job-status-icon {
-    background: var(--warning-100);
-    color: var(--warning-600);
-}
-
-.job-status-banner.status-canceled .job-status-icon {
-    background: var(--gray-200);
-    color: var(--gray-600);
-}
-
-.job-status-icon svg {
-    width: 20px;
-    height: 20px;
-}
-
-.job-status-content {
-    flex: 1;
-}
-
-.job-status-label {
-    font-weight: var(--font-semibold);
-    font-size: var(--text-md);
-}
-
-.job-status-banner.status-queued .job-status-label { color: var(--warning-700); }
-.job-status-banner.status-running .job-status-label { color: var(--primary-700); }
-.job-status-banner.status-complete .job-status-label { color: var(--success-700); }
-.job-status-banner.status-failed .job-status-label { color: var(--danger-700); }
-.job-status-banner.status-canceling .job-status-label { color: var(--warning-700); }
-.job-status-banner.status-canceled .job-status-label { color: var(--gray-700); }
-
-.job-status-detail {
-    font-size: var(--text-sm);
-    margin-top: var(--space-1);
-}
-
-.job-status-banner.status-queued .job-status-detail { color: var(--warning-600); }
-.job-status-banner.status-running .job-status-detail { color: var(--primary-600); }
-.job-status-banner.status-complete .job-status-detail { color: var(--success-600); }
-.job-status-banner.status-failed .job-status-detail { color: var(--danger-600); }
-.job-status-banner.status-canceling .job-status-detail { color: var(--warning-600); }
-.job-status-banner.status-canceled .job-status-detail { color: var(--gray-600); }
-
-/* ===========================================
-   JOB DETAILS GRID
-   =========================================== */
-
-.job-details-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-6);
-    margin-bottom: var(--space-6);
-}
-
-@media (max-width: 768px) {
-    .job-details-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
-/* ===========================================
-   JOB INFO CARD
-   =========================================== */
-
-.job-info-card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-}
-
-.job-info-card-header {
     padding: var(--space-4) var(--space-5);
     border-bottom: 1px solid var(--color-border);
-    background: var(--gray-50);
 }
 
-.job-info-card-title {
+.card-title {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
     color: var(--color-text-primary);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
     margin: 0;
 }
 
-.job-info-card-title svg {
+.card-title .icon-sm {
     width: 16px;
     height: 16px;
-    color: var(--gray-500);
-}
-
-.job-info-card-body {
-    padding: var(--space-5);
+    opacity: 0.7;
 }
 
 /* ===========================================
-   JOB INFO LIST
+   PERFORMANCE PROFILE
    =========================================== */
 
-.job-info-list {
+.profile-stats {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--space-6);
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--color-border);
 }
 
-.job-info-item {
+.profile-stat {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
 }
 
-.job-info-label {
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.job-info-value {
-    font-size: var(--text-sm);
-    color: var(--color-text-primary);
-}
-
-.job-info-value.mono {
-    font-family: var(--font-mono);
-}
-
-/* ===========================================
-   PROGRESS SECTION
-   =========================================== */
-
-.job-progress-section {
-    margin-bottom: var(--space-6);
-}
-
-.job-progress-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-3);
-}
-
-.job-progress-title {
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-primary);
-}
-
-.job-progress-percent {
-    font-size: var(--text-sm);
+.profile-stat-value {
+    font-size: var(--text-xl);
     font-weight: var(--font-bold);
-    color: var(--primary-600);
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
 }
 
-.job-progress-bar {
-    height: 8px;
-    background: var(--gray-200);
-    border-radius: var(--radius-full);
-    overflow: hidden;
+.profile-stat-label {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
 }
 
-.job-progress-fill {
-    height: 100%;
-    background: var(--primary-500);
-    border-radius: var(--radius-full);
-    transition: width 0.3s ease;
+.profile-phases {
+    padding: var(--space-3) var(--space-5);
 }
 
-.job-progress-fill.complete {
-    background: var(--success-500);
-}
-
-.job-progress-fill.failed {
-    background: var(--danger-500);
-}
-
-/* ===========================================
-   LOG VIEWER
-   =========================================== */
-
-.job-log-section {
-    margin-top: var(--space-6);
-}
-
-.job-log-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-3);
-}
-
-.job-log-title {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
+.profile-phase {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: var(--space-4);
+    padding: var(--space-2) 0;
     font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.profile-phase:last-child {
+    border-bottom: none;
+}
+
+.profile-phase-name {
     color: var(--color-text-primary);
 }
 
-.job-log-title svg {
-    width: 16px;
-    height: 16px;
-    color: var(--gray-500);
-}
-
-.job-log-viewer {
-    background: var(--gray-900);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-}
-
-.job-log-content {
-    padding: var(--space-4);
-    max-height: 400px;
-    overflow-y: auto;
+.profile-phase-duration,
+.profile-phase-speed {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
-    line-height: var(--leading-relaxed);
-    color: var(--gray-300);
-}
-
-.job-log-line {
-    padding: var(--space-1) 0;
-}
-
-.job-log-line.error {
-    color: var(--danger-400);
-}
-
-.job-log-line.warning {
-    color: var(--warning-400);
-}
-
-.job-log-line.success {
-    color: var(--success-400);
-}
-
-.job-log-timestamp {
-    color: var(--gray-500);
-    margin-right: var(--space-2);
-}
-
-/* ===========================================
-   JOB DETAIL ROW (Inline layout)
-   =========================================== */
-
-.job-detail-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.job-detail-info {
-    display: flex;
-    flex-direction: column;
-}
-
-.job-detail-target {
-    font-weight: var(--font-semibold);
-    color: var(--color-text-primary);
-}
-
-.job-detail-meta {
-    font-size: var(--text-sm);
     color: var(--color-text-muted);
-    margin-top: var(--space-1);
-}
-
-.job-detail-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-}
-
-/* Detail cell (expandable) */
-.detail-cell {
-    max-width: 300px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.detail-cell:hover {
-    white-space: normal;
-    overflow: visible;
-    position: relative;
-    z-index: 10;
-    background: var(--color-surface);
-    box-shadow: var(--shadow-md);
-    padding: var(--space-2);
-    border-radius: var(--radius-sm);
+    text-align: right;
+    min-width: 70px;
 }
 
 /* ===========================================
-   EVENT TIMELINE
+   ERROR CARD
    =========================================== */
 
-.event-timeline {
-    position: relative;
-    padding-left: 24px;
+.card-error {
+    border-color: var(--danger-200);
+    background: var(--danger-50);
 }
 
-.event-timeline::before {
-    content: '';
-    position: absolute;
-    left: 7px;
-    top: 8px;
-    bottom: 8px;
-    width: 2px;
-    background: var(--gray-200);
+.card-error .card-title {
+    color: var(--danger-700);
 }
 
-.event-item {
-    position: relative;
-    padding-bottom: 1.5rem;
+.error-output {
+    margin: 0;
+    padding: var(--space-4) var(--space-5);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--danger-700);
+    background: transparent;
 }
 
-.event-item:last-child {
-    padding-bottom: 0;
+[data-theme="dark"] .card-error {
+    border-color: var(--danger-800);
+    background: rgba(239, 68, 68, 0.1);
 }
 
-.event-dot {
-    position: absolute;
-    left: -24px;
-    top: 4px;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--color-surface);
-    border: 2px solid var(--gray-300);
-    z-index: 1;
+[data-theme="dark"] .error-output {
+    color: var(--danger-300);
 }
 
-.event-item.event-complete .event-dot {
-    background: var(--success-500);
-    border-color: var(--success-500);
-}
+/* ===========================================
+   LOGS CONTAINER - Block Grouped Output
+   =========================================== */
 
-.event-item.event-error .event-dot,
-.event-item.event-failed .event-dot {
-    background: var(--danger-500);
-    border-color: var(--danger-500);
-}
-
-.event-item.event-running .event-dot,
-.event-item.event-start .event-dot {
-    background: var(--primary-500);
-    border-color: var(--primary-500);
-    animation: pulse 2s infinite;
-}
-
-.event-item.event-claimed .event-dot {
-    background: var(--primary-400);
-    border-color: var(--primary-400);
-}
-
-.event-content {
-    background: var(--gray-50);
-    border-radius: var(--radius-lg);
+.logs-container {
+    background: var(--gray-950);
+    color: var(--gray-100);
     padding: var(--space-4);
-    border: 1px solid var(--gray-100);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.6;
+    max-height: 500px;
+    overflow-y: auto;
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
-.event-header {
+/* Log Block - Contains header + details */
+.log-block {
+    padding-bottom: var(--space-3);
+    margin-bottom: var(--space-3);
+    border-bottom: 1px solid var(--gray-800);
+}
+
+.log-block:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+/* Log Header - Timestamp + Task on one line */
+.log-header {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    gap: var(--space-3);
     margin-bottom: var(--space-2);
 }
 
-.event-type {
+/* Timestamp */
+.log-timestamp {
+    color: var(--gray-500);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+    width: 70px;
+}
+
+/* Task/event type */
+.log-task {
+    color: var(--primary-400);
     font-weight: var(--font-semibold);
+    text-transform: lowercase;
+}
+
+/* Details container - indented to align with task */
+.log-details {
+    padding-left: calc(70px + var(--space-3));
+}
+
+/* Individual detail line */
+.log-detail {
+    color: var(--gray-300);
+    word-break: break-word;
+    white-space: pre-wrap;
+    padding: var(--space-1) 0;
+}
+
+/* Table-style detail row (post_sql_script_complete, restore_progress) */
+.log-detail--table {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    padding: var(--space-1) 0;
+}
+
+.log-field {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    color: var(--gray-200);
+}
+
+.log-field-label {
+    color: var(--gray-500);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* Path-style detail (long paths like S3 keys) */
+.log-detail--path {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: var(--space-1) 0;
+    color: var(--gray-300);
+    word-break: break-all;
+}
+
+.log-detail--path .log-field-label {
+    flex-shrink: 0;
+}
+
+/* Phase breakdown (restore_profile) */
+.log-detail--phase {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+    padding-left: var(--space-2);
+    border-left: 2px solid var(--gray-700);
+}
+
+.log-phase-name {
+    color: var(--gray-400);
+    min-width: 100px;
+}
+
+.log-phase-duration {
+    color: var(--gray-200);
+    min-width: 50px;
+}
+
+.log-phase-speed {
+    color: var(--gray-500);
+    font-size: 0.7rem;
+}
+
+/* JSON-style detail (generic parsed JSON) */
+.log-detail--json {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    padding: var(--space-1) 0;
+}
+
+.log-json-field {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-1);
+}
+
+.log-json-key {
+    color: var(--gray-500);
+    font-size: 0.65rem;
+}
+
+.log-json-key::after {
+    content: ':';
+}
+
+.log-json-value {
+    color: var(--gray-200);
+}
+
+/* Header metadata (script count, etc.) */
+.log-header-meta {
+    color: var(--gray-500);
+    font-style: italic;
+    font-weight: normal;
+}
+
+/* State-based colors - Error */
+.log-block--error .log-task {
+    color: var(--danger-400);
+}
+
+.log-block--error .log-detail {
+    color: var(--danger-300);
+}
+
+/* State-based colors - Success */
+.log-block--success .log-task {
+    color: var(--success-400);
+}
+
+.log-block--success .log-detail {
+    color: var(--success-300);
+}
+
+/* Empty state */
+.logs-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-8);
+    color: var(--gray-500);
+}
+
+.logs-empty-icon {
+    width: 40px;
+    height: 40px;
+    margin-bottom: var(--space-3);
+    opacity: 0.5;
+}
+
+.logs-empty p {
+    margin: 0;
+    font-family: var(--font-sans);
     font-size: var(--text-sm);
-    text-transform: capitalize;
 }
 
-.event-time {
-    font-size: var(--text-xs);
-    color: var(--color-text-muted);
-    font-family: var(--font-mono);
+/* Scrollbar styling for logs */
+.logs-container::-webkit-scrollbar {
+    width: 8px;
 }
 
-.event-message {
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
+.logs-container::-webkit-scrollbar-track {
+    background: var(--gray-900);
 }
 
-@keyframes pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(var(--primary-500-rgb, 59, 130, 246), 0.5); }
-    50% { box-shadow: 0 0 0 4px rgba(var(--primary-500-rgb, 59, 130, 246), 0); }
+.logs-container::-webkit-scrollbar-thumb {
+    background: var(--gray-700);
+    border-radius: 4px;
 }
 
-/* ===========================================
-   DARK MODE
-   =========================================== */
-
-[data-theme="dark"] .job-info-card {
-    background: var(--color-surface);
-    border-color: var(--color-border);
-}
-
-[data-theme="dark"] .job-info-card-header {
-    background: var(--gray-800);
-}
-
-[data-theme="dark"] .event-timeline::before {
+.logs-container::-webkit-scrollbar-thumb:hover {
     background: var(--gray-600);
 }
 
-[data-theme="dark"] .event-dot {
-    background: var(--color-surface);
-    border-color: var(--gray-500);
+/* ===========================================
+   BUTTON VARIANTS
+   =========================================== */
+
+.btn-ghost {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
 }
 
-[data-theme="dark"] .event-content {
+.btn-ghost:hover {
+    background: var(--gray-100);
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .btn-ghost:hover {
     background: var(--gray-800);
-    border-color: var(--gray-700);
 }
 
-[data-theme="dark"] .detail-cell:hover {
-    background: var(--color-surface);
+/* ===========================================
+   UTILITY CLASSES
+   =========================================== */
+
+.ml-1 {
+    margin-left: var(--space-1);
+}
+
+.ml-2 {
+    margin-left: var(--space-2);
+}
+
+.text-danger {
+    color: var(--danger-600);
+}
+
+.text-warning {
+    color: var(--warning-600);
+}
+
+.text-muted {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .text-danger {
+    color: var(--danger-400);
+}
+
+[data-theme="dark"] .text-warning {
+    color: var(--warning-400);
+}
+
+/* ===========================================
+   RESPONSIVE
+   =========================================== */
+
+@media (max-width: 640px) {
+    .log-entry {
+        grid-template-columns: 60px 90px 1fr;
+        gap: var(--space-2);
+        font-size: 0.7rem;
+    }
+    
+    .profile-stats {
+        flex-direction: column;
+        gap: var(--space-3);
+    }
+    
+    .phase-stepper {
+        padding: var(--space-3);
+    }
 }
