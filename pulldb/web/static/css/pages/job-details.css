@@ -584,6 +584,109 @@
 }
 
 /* ===========================================
+   PROGRESS BARS
+   =========================================== */
+
+/* Progress bar base container */
+.log-progress {
+    margin: var(--space-2) 0;
+}
+
+/* Progress bar track */
+.log-progress-bar-container {
+    height: 8px;
+    background: var(--gray-700);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    margin-bottom: var(--space-1);
+}
+
+/* Progress bar fill */
+.log-progress-bar {
+    height: 100%;
+    border-radius: var(--radius-full);
+    transition: width var(--transition-base);
+}
+
+/* Download progress (blue/info) */
+.log-progress--download .log-progress-bar {
+    background: var(--info-500);
+}
+
+/* Restore progress (green/success) */
+.log-progress--restore .log-progress-bar {
+    background: var(--success-500);
+}
+
+/* Complete state */
+.log-progress--complete .log-progress-bar {
+    background: var(--success-500);
+}
+
+.log-progress--complete .log-progress-stats-value {
+    color: var(--success-400);
+}
+
+/* Progress stats row */
+.log-progress-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    font-size: var(--text-xs);
+    color: var(--gray-400);
+}
+
+.log-progress-stats-value {
+    color: var(--gray-200);
+}
+
+/* Per-table progress list */
+.log-progress-tables {
+    margin-top: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.log-progress-table-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.log-progress-table-name {
+    width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--gray-300);
+    font-size: var(--text-xs);
+}
+
+.log-progress-table-bar-container {
+    flex: 1;
+    height: 4px;
+    background: var(--gray-700);
+    border-radius: var(--radius-full);
+}
+
+.log-progress-table-bar {
+    height: 100%;
+    background: var(--success-400);
+    border-radius: var(--radius-full);
+    transition: width var(--transition-fast);
+}
+
+.log-progress-table-percent {
+    width: 35px;
+    text-align: right;
+    color: var(--gray-400);
+    font-size: var(--text-xs);
+}
+
+/* ===========================================
    BUTTON VARIANTS
    =========================================== */
 

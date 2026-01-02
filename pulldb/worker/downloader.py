@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 import typing as t
 from typing import Any
 
@@ -73,7 +74,7 @@ def download_backup(
     spec: BackupSpec,
     job_id: str,
     dest_dir: str,
-    progress_callback: t.Callable[[int, int, float], None] | None = None,
+    progress_callback: t.Callable[[int, int, float, float], None] | None = None,
     cancel_check: t.Callable[[], bool] | None = None,
 ) -> str:
     """Download backup tar archive with disk capacity preflight.
@@ -83,7 +84,7 @@ def download_backup(
         spec: Discovered backup specification.
         job_id: Job identifier for logging.
         dest_dir: Directory to place downloaded file (created if absent).
-        progress_callback: Optional callback(downloaded_bytes, total_bytes, percent_complete).
+        progress_callback: Optional callback(downloaded_bytes, total_bytes, percent_complete, elapsed_seconds).
         cancel_check: Optional callback that returns True if cancellation requested.
 
     Returns:
@@ -125,7 +126,8 @@ def download_backup(
         ) from e
 
     body = response["Body"]  # Streaming body object
-    _stream_download(body, dest_path, job_id, spec.size_bytes, progress_callback, cancel_check)
+    start_time = time.monotonic()
+    _stream_download(body, dest_path, job_id, spec.size_bytes, start_time, progress_callback, cancel_check)
 
     logger.info(
         "Download complete",
@@ -145,7 +147,8 @@ def _stream_download(
     dest_path: str,
     job_id: str,
     total_bytes: int,
-    progress_callback: t.Callable[[int, int, float], None] | None = None,
+    start_time: float,
+    progress_callback: t.Callable[[int, int, float, float], None] | None = None,
     cancel_check: t.Callable[[], bool] | None = None,
 ) -> None:
     """Stream data from body to file with progress logging.
@@ -157,7 +160,8 @@ def _stream_download(
         dest_path: Local file path to write to.
         job_id: Job identifier for logging.
         total_bytes: Expected total size.
-        progress_callback: Called with (downloaded, total, percent) every 64MB.
+        start_time: Monotonic start time for elapsed calculation.
+        progress_callback: Called with (downloaded, total, percent, elapsed) every 64MB.
         cancel_check: Called every 128MB; raises CancellationError if returns True.
     """
     from pulldb.domain.errors import CancellationError
@@ -177,6 +181,7 @@ def _stream_download(
             # Progress callback every 64MB
             if downloaded >= next_progress:
                 percent = round((downloaded / total_bytes) * 100, 1) if total_bytes > 0 else 0.0
+                elapsed = time.monotonic() - start_time
                 logger.info(
                     "Download progress",
                     extra={
@@ -185,11 +190,12 @@ def _stream_download(
                         "downloaded_bytes": downloaded,
                         "total_bytes": total_bytes,
                         "percent_complete": percent,
+                        "elapsed_seconds": round(elapsed, 1),
                     },
                 )
                 if progress_callback:
                     try:
-                        progress_callback(downloaded, total_bytes, percent)
+                        progress_callback(downloaded, total_bytes, percent, elapsed)
                     except Exception:
                         # Don't let callback failure break download
                         pass

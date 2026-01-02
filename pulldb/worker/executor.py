@@ -210,7 +210,7 @@ class WorkerExecutorHooks:
             BackupSpec,
             str,
             str,
-            t.Callable[[int, int, float], None] | None,
+            t.Callable[[int, int, float, float], None] | None,
             t.Callable[[], bool] | None,
         ],
         str,
@@ -328,7 +328,9 @@ class WorkerJobExecutor:
                 {"bucket": backup_spec.bucket, "key": backup_spec.key},
             )
 
-            def _progress_callback(downloaded: int, total: int, percent: float) -> None:
+            def _progress_callback(
+                downloaded: int, total: int, percent: float, elapsed: float
+            ) -> None:
                 self._append_event(
                     job.id,
                     "download_progress",
@@ -336,6 +338,7 @@ class WorkerJobExecutor:
                         "downloaded_bytes": downloaded,
                         "total_bytes": total,
                         "percent_complete": percent,
+                        "elapsed_seconds": round(elapsed, 1),
                     },
                 )
 

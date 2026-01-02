@@ -210,6 +210,48 @@
         </div>
         
         <div class="logs-container" id="logs-container">
+            {# Download progress bar - shown when download is in progress #}
+            {% if download_stats %}
+            <div class="log-progress log-progress--download{% if download_stats.is_complete %} log-progress--complete{% endif %}" id="download-progress">
+                <div class="log-progress-header">
+                    <span class="log-progress-label">Download</span>
+                    <span class="log-progress-stats">
+                        {{ download_stats.downloaded_bytes | format_filesize }} / {{ download_stats.total_bytes | format_filesize }}
+                        <span class="log-progress-separator">•</span>
+                        {{ download_stats.speed_bps | format_speed }}
+                        {% if not download_stats.is_complete and download_stats.eta_seconds > 0 %}
+                        <span class="log-progress-separator">•</span>
+                        ETA {{ download_stats.eta_seconds | format_eta }}
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="log-progress-bar-container">
+                    <div class="log-progress-bar" style="width: {{ download_stats.percent_complete }}%"></div>
+                </div>
+                <div class="log-progress-percent">{{ "%.1f" | format(download_stats.percent_complete) }}%</div>
+            </div>
+            {% endif %}
+
+            {# Restore progress bar - shown when restore is in progress #}
+            {% if restore_stats %}
+            <div class="log-progress log-progress--restore{% if restore_stats.is_complete %} log-progress--complete{% endif %}" id="restore-progress">
+                <div class="log-progress-header">
+                    <span class="log-progress-label">Restore</span>
+                    <span class="log-progress-stats">
+                        {% if restore_stats.current_file %}
+                        {{ restore_stats.current_file }}
+                        {% elif restore_stats.status %}
+                        {{ restore_stats.status }}
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="log-progress-bar-container">
+                    <div class="log-progress-bar" style="width: {{ restore_stats.percent_complete }}%"></div>
+                </div>
+                <div class="log-progress-percent">{{ "%.1f" | format(restore_stats.percent_complete) }}%</div>
+            </div>
+            {% endif %}
+
             {% if logs %}
             {% set ns = namespace(current_type='') %}
             {% for log in logs %}

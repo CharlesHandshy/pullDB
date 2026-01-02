@@ -8,6 +8,7 @@ HCA Layer: shared (simulation infrastructure)
 
 from __future__ import annotations
 
+import json
 import random
 import typing as t
 import uuid
@@ -698,6 +699,29 @@ def _seed_job_events(
         event_id += 1
 
         if job.status == JobStatus.RUNNING:
+            # Add download progress event (simulating partial download)
+            download_progress = random.randint(30, 80)  # 30-80% complete
+            total_bytes = random.randint(500_000_000, 5_000_000_000)  # 500MB - 5GB
+            downloaded_bytes = int(total_bytes * download_progress / 100)
+            elapsed_seconds = random.randint(60, 600)  # 1-10 minutes
+            progress_detail = json.dumps({
+                "downloaded_bytes": downloaded_bytes,
+                "total_bytes": total_bytes,
+                "percent_complete": float(download_progress),
+                "elapsed_seconds": elapsed_seconds,
+            })
+            progress_time = dl_time + timedelta(seconds=random.randint(30, 180))
+            events.append(
+                _create_event(
+                    event_id,
+                    job.id,
+                    "download_progress",
+                    progress_detail,
+                    logged_at=progress_time,
+                )
+            )
+            event_id += 1
+
             # Restoring event for running jobs
             restore_time = dl_time + timedelta(minutes=random.randint(5, 20))
             events.append(
@@ -710,6 +734,28 @@ def _seed_job_events(
                 )
             )
             event_id += 1
+
+            # Add restore progress event for some jobs (50% chance)
+            if random.random() > 0.5:
+                restore_percent = random.randint(10, 60)  # 10-60% complete
+                restore_detail = json.dumps({
+                    "percent": float(restore_percent),
+                    "detail": {
+                        "file": random.choice(["users.sql", "orders.sql", "products.sql", "schema.sql"]),
+                        "status": "loading",
+                    }
+                })
+                restore_progress_time = restore_time + timedelta(seconds=random.randint(30, 300))
+                events.append(
+                    _create_event(
+                        event_id,
+                        job.id,
+                        "restore_progress",
+                        restore_detail,
+                        logged_at=restore_progress_time,
+                    )
+                )
+                event_id += 1
 
         elif job.status in (JobStatus.DEPLOYED, JobStatus.COMPLETE):
             # Full event sequence for deployed/completed jobs

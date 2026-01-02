@@ -1,5 +1,6 @@
 """Jobs routes for Web2 interface."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -286,6 +287,105 @@ def _get_retention_options(state: Any) -> list[dict[str, Any]]:
     ]
 
 
+def _calculate_download_stats(logs: list[Any]) -> dict[str, Any] | None:
+    """Extract latest download progress stats from job events.
+
+    Scans events for download_progress and download_complete to build
+    stats dict with: downloaded_bytes, total_bytes, percent_complete,
+    elapsed_seconds, speed_bps, eta_seconds, is_complete.
+
+    Returns None if no download progress events found.
+    """
+    latest_progress: dict[str, Any] | None = None
+    is_complete = False
+
+    for event in logs:
+        event_type = getattr(event, "event_type", "")
+        detail = getattr(event, "detail", None)
+
+        if event_type == "download_complete":
+            is_complete = True
+
+        if event_type == "download_progress" and detail:
+            # detail is dict or JSON string with: downloaded_bytes, total_bytes, percent_complete, elapsed_seconds
+            parsed_detail = detail
+            if isinstance(detail, str):
+                try:
+                    parsed_detail = json.loads(detail)
+                except (json.JSONDecodeError, TypeError):
+                    parsed_detail = None
+            if isinstance(parsed_detail, dict):
+                latest_progress = parsed_detail
+
+    if not latest_progress:
+        return None
+
+    downloaded = latest_progress.get("downloaded_bytes", 0)
+    total = latest_progress.get("total_bytes", 0)
+    elapsed = latest_progress.get("elapsed_seconds", 0)
+    percent = latest_progress.get("percent_complete", 0.0)
+
+    # Calculate speed and ETA
+    speed_bps = downloaded / elapsed if elapsed > 0 else 0
+    remaining_bytes = max(0, total - downloaded)
+    eta_seconds = remaining_bytes / speed_bps if speed_bps > 0 else 0
+
+    return {
+        "downloaded_bytes": downloaded,
+        "total_bytes": total,
+        "percent_complete": percent if not is_complete else 100.0,
+        "elapsed_seconds": elapsed,
+        "speed_bps": speed_bps,
+        "eta_seconds": eta_seconds,
+        "is_complete": is_complete,
+    }
+
+
+def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
+    """Extract latest restore progress stats from job events.
+
+    Scans events for restore_progress and restore_complete to build
+    stats dict with: percent_complete, current_file, is_complete,
+    and optionally table_progress dict.
+
+    Returns None if no restore progress events found.
+    """
+    latest_progress: dict[str, Any] | None = None
+    is_complete = False
+
+    for event in logs:
+        event_type = getattr(event, "event_type", "")
+        detail = getattr(event, "detail", None)
+
+        if event_type == "restore_complete":
+            is_complete = True
+
+        if event_type == "restore_progress" and detail:
+            parsed_detail = detail
+            if isinstance(detail, str):
+                try:
+                    parsed_detail = json.loads(detail)
+                except (json.JSONDecodeError, TypeError):
+                    parsed_detail = None
+            if isinstance(parsed_detail, dict):
+                latest_progress = parsed_detail
+
+    if not latest_progress:
+        return None
+
+    percent = latest_progress.get("percent", 0.0)
+    detail_info = latest_progress.get("detail", {})
+    current_file = detail_info.get("file", "") if isinstance(detail_info, dict) else ""
+    status = detail_info.get("status", "") if isinstance(detail_info, dict) else ""
+
+    return {
+        "percent_complete": percent if not is_complete else 100.0,
+        "current_file": current_file,
+        "status": status,
+        "is_complete": is_complete,
+    }
+
+
 @router.get("/{job_id}", response_class=HTMLResponse)
 async def job_details(
     request: Request,
@@ -306,6 +406,8 @@ async def job_details(
     job_can_cancel = False
     current_phase = "queued"
     phase_list: list[dict[str, Any]] = []
+    download_stats: dict[str, Any] | None = None
+    restore_stats: dict[str, Any] | None = None
 
     if hasattr(state, "job_repo") and state.job_repo:
         job = state.job_repo.get_job_by_id(job_id)
@@ -314,6 +416,12 @@ async def job_details(
 
             # Derive current phase for progress indicator
             current_phase, phase_list = _derive_current_phase(logs, job.status.value)
+
+            # Calculate download progress stats for progress bar
+            download_stats = _calculate_download_stats(logs)
+
+            # Calculate restore progress stats for progress bar
+            restore_stats = _calculate_restore_stats(logs)
 
             # Compute can_cancel for this user
             # Must have permission AND job must still be in cancelable state
@@ -380,6 +488,8 @@ async def job_details(
             "flash_type": flash_type,
             "current_phase": current_phase,
             "phase_list": phase_list,
+            "download_stats": download_stats,
+            "restore_stats": restore_stats,
             # Retention management
             "can_manage_retention": (
                 job.owner_user_id == user.user_id or user.is_admin

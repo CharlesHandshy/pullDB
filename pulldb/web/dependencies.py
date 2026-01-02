@@ -208,9 +208,64 @@ def _format_duration(value: float | int | str | None) -> str:
         return str(value)
 
 
+def _format_filesize(value: int | float | None) -> str:
+    """Format bytes as human-readable size."""
+    if value is None:
+        return "—"
+    try:
+        num = float(value)
+        for unit in ["B", "KB", "MB", "GB", "TB"]:
+            if abs(num) < 1024.0:
+                return f"{num:.1f} {unit}"
+            num /= 1024.0
+        return f"{num:.1f} PB"
+    except (ValueError, TypeError):
+        return str(value)
+
+
+def _format_speed(bytes_per_sec: float | None) -> str:
+    """Format bytes/second as MB/s."""
+    if bytes_per_sec is None or bytes_per_sec <= 0:
+        return "—"
+    mb_per_sec = bytes_per_sec / (1024 * 1024)
+    return f"{mb_per_sec:.1f} MB/s"
+
+
+def _format_eta(seconds: float | None) -> str:
+    """Format seconds as MM:SS or HH:MM:SS."""
+    if seconds is None or seconds <= 0:
+        return "—"
+    seconds = int(seconds)
+    if seconds < 3600:
+        return f"{seconds // 60}:{seconds % 60:02d}"
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    return f"{hours}:{minutes:02d}:{secs:02d}"
+
+
+def _format_number(value: int | float | None) -> str:
+    """Format number with K/M suffix."""
+    if value is None:
+        return "—"
+    try:
+        num = float(value)
+        if num >= 1_000_000:
+            return f"{num / 1_000_000:.1f}M"
+        if num >= 1_000:
+            return f"{num / 1_000:.1f}K"
+        return f"{int(num)}"
+    except (ValueError, TypeError):
+        return str(value)
+
+
 templates.env.filters["parse_json"] = _parse_log_json
 templates.env.filters["format_percent"] = _format_percent
 templates.env.filters["format_duration"] = _format_duration
+templates.env.filters["format_filesize"] = _format_filesize
+templates.env.filters["format_speed"] = _format_speed
+templates.env.filters["format_eta"] = _format_eta
+templates.env.filters["format_number"] = _format_number
 
 
 def get_api_state(request: Request) -> "APIState":
