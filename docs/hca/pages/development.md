@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 0.0.8 | **Last Updated**: December 2025
+> **Version**: 0.2.0 | **Last Updated**: January 2026
 
 This guide covers setting up a development environment, coding standards, testing, and contributing to pullDB.
 
@@ -318,7 +318,7 @@ make check  # if Makefile configured
 Version is set in `pulldb/__init__.py`:
 
 ```python
-__version__ = "0.0.8"
+__version__ = "0.2.0"
 ```
 
 Update when releasing. Also update:

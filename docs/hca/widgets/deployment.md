@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 0.0.8 | **Last Updated**: December 2025
+> **Version**: 0.2.0 | **Last Updated**: January 2026
 
 This guide covers deploying and operating pullDB services in production environments.
 
@@ -280,7 +280,7 @@ sudo journalctl -u pulldb-worker | grep -i "myloader.*error"
 
 ```bash
 # Install new package (handles stop/start)
-sudo dpkg -i pulldb_0.0.8_amd64.deb
+sudo dpkg -i pulldb_0.2.0_amd64.deb
 ```
 
 ### Manual Upgrade
@@ -293,7 +293,7 @@ sudo systemctl stop pulldb-worker pulldb-api
 sudo pulldb-migrate up --yes
 
 # 3. Update packages
-sudo /opt/pulldb.service/venv/bin/pip install pulldb==0.0.8
+sudo /opt/pulldb.service/venv/bin/pip install pulldb==0.2.0
 
 # 4. Restart services
 sudo systemctl start pulldb-worker pulldb-api

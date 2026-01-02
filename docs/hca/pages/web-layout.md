@@ -1,6 +1,6 @@
 # pullDB Web Layout Architecture
 
-> **Version**: 0.0.8 | **Updated**: December 2025
+> **Version**: 0.2.0 | **Updated**: January 2026
 
 ## Layout Wireframe
 
@@ -21,7 +21,7 @@
 │ │ H   │                                                           │
 │ │ O   │                                                           │
 │ │ V   ├───────────────────────────────────────────────────────────┤
-│ │ E   │ © 2025 pullDB • v0.0.8              Docs    GitHub        │
+│ │ E   │ © 2025 pullDB • v0.2.0              Docs    GitHub        │
 │ │ R   │ Service Titan / Field Routes  FOOTER                      │
 └───────┴───────────────────────────────────────────────────────────┘
 ```

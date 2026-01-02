@@ -1,6 +1,6 @@
 # pullDB Documentation
 
-> **Version**: 0.0.8 | **Start here to navigate all pullDB documentation**
+> **Version**: 0.2.0 | **Start here to navigate all pullDB documentation**
 
 ---
 
@@ -81,6 +81,6 @@ Historical and superseded documents are in `archived/`:
 
 ---
 
-*Last updated: December 2025*
+*Last updated: January 2026*
 
 *[HCA Documentation Root →](hca/README.md)*

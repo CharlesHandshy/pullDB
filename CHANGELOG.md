@@ -1,8 +1,44 @@
 CHANGELOG
 =========
 
-Unreleased
----------
+v0.2.0 - 2026-01-02
+-------------------
+### Real-Time Restore Progress & UI Polish
+
+Major release bringing live per-table progress tracking, inline progress bar percentages, and comprehensive status lifecycle improvements.
+
+### Highlights
+- **Processlist Monitoring**: Live per-table progress during myloader execution via MySQL SHOW PROCESSLIST
+- **Inline Progress Percentages**: Download/Restore progress bars now show % at end (matching table bars)
+- **LOAD DATA Support**: Processlist monitor handles both INSERT and LOAD DATA statements
+- **Database Retention Lifecycle**: Expiration, locking, extension for deployed databases
+- **Cancel Safety**: Jobs locked during restore cannot be canceled (protects myloader)
+- **Failed Job Cleanup**: Failed jobs release locks and become deletable
+
+### Added
+- `ProcesslistMonitor` class polls MySQL processlist for `/* Completed: XX% */` comments
+- `RE_LOAD_TABLE` regex for extracting table names from `LOAD DATA` statements
+- Per-table progress bars in restore UI showing individual table completion
+- `rows_per_second`, `eta_seconds`, `active_threads` in restore progress events
+- Database retention columns: `expires_at`, `locked_at`, `locked_by`, `db_dropped_at`
+- `can_cancel` flag prevents cancellation once restore begins
+- Schema migration `00830_database_retention.sql` for lifecycle tracking
+- Schema migration `00860_active_jobs_can_cancel.sql` for view update
+
+### Changed
+- Progress bars use flexbox row layout with percentage inline at end
+- `_calculate_restore_stats()` extracts nested processlist data from events
+- `mark_job_failed()` clears lock fields so failed jobs can be deleted
+- Processlist query detection requires both data operation AND completion comment
+- All job SELECT queries now include `can_cancel`, `cancel_requested_at`
+
+### Fixed
+- Processlist monitor detecting queries starting with `/* Completed: XX% */` comment
+- INSERT detection changed from `startswith()` to `in` check for comment prefix
+- Progress bar percentage positioned inline instead of below bar
+
+---
+
 ### Canceling Intermediate State
 
 - **CANCELING status**: New intermediate state for jobs being canceled

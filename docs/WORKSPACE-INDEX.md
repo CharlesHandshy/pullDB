@@ -3,8 +3,9 @@
 [← Back to Documentation Index](START-HERE.md)
 
 > **Purpose**: Comprehensive atomic-level index for AI model searching and navigation.  
-> **Last Updated**: 2025-12-31  
-> **File Count**: ~286 project files (excluding venv, .git, caches)
+> **Last Updated**: 2026-01-02  
+> **Version**: 0.2.0  
+> **File Count**: ~290 project files (excluding venv, .git, caches)
 
 ---
 
