@@ -27,6 +27,8 @@ BACKUP_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 # Systemd paths
 WORKER_UNIT_SOURCE="${INSTALL_PREFIX}/systemd/pulldb-worker.service"
 WORKER_UNIT_DEST="/etc/systemd/system/pulldb-worker.service"
+WORKER_TEMPLATE_SOURCE="${INSTALL_PREFIX}/systemd/pulldb-worker@.service"
+WORKER_TEMPLATE_DEST="/etc/systemd/system/pulldb-worker@.service"
 API_UNIT_SOURCE="${INSTALL_PREFIX}/systemd/pulldb-api.service"
 API_UNIT_DEST="/etc/systemd/system/pulldb-api.service"
 WEB_UNIT_SOURCE="${INSTALL_PREFIX}/systemd/pulldb-web.service"
@@ -490,6 +492,7 @@ install_systemd_units() {
     
     # Remove old copies if they exist (migrate to symlinks)
     [ -f "${WORKER_UNIT_DEST}" ] && [ ! -L "${WORKER_UNIT_DEST}" ] && rm -f "${WORKER_UNIT_DEST}"
+    [ -f "${WORKER_TEMPLATE_DEST}" ] && [ ! -L "${WORKER_TEMPLATE_DEST}" ] && rm -f "${WORKER_TEMPLATE_DEST}"
     [ -f "${API_UNIT_DEST}" ] && [ ! -L "${API_UNIT_DEST}" ] && rm -f "${API_UNIT_DEST}"
     [ -f "${WEB_UNIT_DEST}" ] && [ ! -L "${WEB_UNIT_DEST}" ] && rm -f "${WEB_UNIT_DEST}"
     
@@ -498,6 +501,13 @@ install_systemd_units() {
         ln -sf "${WORKER_UNIT_SOURCE}" "${WORKER_UNIT_DEST}"
         systemctl enable pulldb-worker.service >/dev/null 2>&1 || true
         echo "  Enabled pulldb-worker.service"
+    fi
+    
+    # Install worker template for multi-worker deployments
+    if [ -f "${WORKER_TEMPLATE_SOURCE}" ]; then
+        ln -sf "${WORKER_TEMPLATE_SOURCE}" "${WORKER_TEMPLATE_DEST}"
+        echo "  Installed pulldb-worker@.service (for multi-worker deployments)"
+        echo "    Usage: sudo systemctl start pulldb-worker@1 pulldb-worker@2"
     fi
     
     if [ -f "${API_UNIT_SOURCE}" ]; then
@@ -511,6 +521,17 @@ install_systemd_units() {
         # Don't auto-enable web service - let admin choose
         echo "  Installed pulldb-web.service (Web UI on port 8000)"
         echo "    To enable: sudo systemctl enable --now pulldb-web"
+    fi
+    
+    # Install retention cleanup timer
+    RETENTION_SERVICE="${INSTALL_PREFIX}/systemd/pulldb-retention.service"
+    RETENTION_TIMER="${INSTALL_PREFIX}/systemd/pulldb-retention.timer"
+    if [ -f "${RETENTION_SERVICE}" ] && [ -f "${RETENTION_TIMER}" ]; then
+        ln -sf "${RETENTION_SERVICE}" "/etc/systemd/system/pulldb-retention.service"
+        ln -sf "${RETENTION_TIMER}" "/etc/systemd/system/pulldb-retention.timer"
+        # Don't auto-enable - let admin choose
+        echo "  Installed pulldb-retention.timer (daily database cleanup)"
+        echo "    To enable: sudo systemctl enable --now pulldb-retention.timer"
     fi
     
     systemctl daemon-reload || true

@@ -13,22 +13,31 @@ set -e
 INSTALL_PREFIX="/opt/pulldb.service"
 SYSTEM_USER="pulldb_service"
 WORKER_UNIT_DEST="/etc/systemd/system/pulldb-worker.service"
+WORKER_TEMPLATE_DEST="/etc/systemd/system/pulldb-worker@.service"
 API_UNIT_DEST="/etc/systemd/system/pulldb-api.service"
 WEB_UNIT_DEST="/etc/systemd/system/pulldb-web.service"
+RETENTION_SERVICE_DEST="/etc/systemd/system/pulldb-retention.service"
+RETENTION_TIMER_DEST="/etc/systemd/system/pulldb-retention.timer"
 
 cleanup_systemd() {
     echo "Removing systemd units..."
     if command -v systemctl >/dev/null 2>&1; then
         systemctl stop pulldb-worker.service >/dev/null 2>&1 || true
         systemctl disable pulldb-worker.service >/dev/null 2>&1 || true
+        # Stop any running template instances (worker@1, worker@2, etc.)
+        systemctl stop 'pulldb-worker@*.service' >/dev/null 2>&1 || true
         systemctl stop pulldb-api.service >/dev/null 2>&1 || true
         systemctl disable pulldb-api.service >/dev/null 2>&1 || true
         systemctl stop pulldb-web.service >/dev/null 2>&1 || true
         systemctl disable pulldb-web.service >/dev/null 2>&1 || true
-        rm -f "${WORKER_UNIT_DEST}" "${API_UNIT_DEST}" "${WEB_UNIT_DEST}" || true
+        systemctl stop pulldb-retention.timer >/dev/null 2>&1 || true
+        systemctl disable pulldb-retention.timer >/dev/null 2>&1 || true
+        rm -f "${WORKER_UNIT_DEST}" "${WORKER_TEMPLATE_DEST}" "${API_UNIT_DEST}" "${WEB_UNIT_DEST}" || true
+        rm -f "${RETENTION_SERVICE_DEST}" "${RETENTION_TIMER_DEST}" || true
         systemctl daemon-reload || true
     else
-        rm -f "${WORKER_UNIT_DEST}" "${API_UNIT_DEST}" "${WEB_UNIT_DEST}" || true
+        rm -f "${WORKER_UNIT_DEST}" "${WORKER_TEMPLATE_DEST}" "${API_UNIT_DEST}" "${WEB_UNIT_DEST}" || true
+        rm -f "${RETENTION_SERVICE_DEST}" "${RETENTION_TIMER_DEST}" || true
     fi
 }
 
