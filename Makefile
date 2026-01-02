@@ -1,13 +1,16 @@
 PYTHON ?= python3
 PIP ?= pip
 
-.PHONY: all wheel client server server-signed client-signed all-signed clean help
+.PHONY: all wheel client server server-signed client-signed all-signed clean help dev-install
 
 help:
 	@echo "pullDB Build System"
 	@echo "==================="
 	@echo ""
-	@echo "Targets:"
+	@echo "Development:"
+	@echo "  make dev-install      - Install in dev mode + restore pulldb-admin wrapper"
+	@echo ""
+	@echo "Build Targets:"
 	@echo "  make all              - Build wheel + all .deb packages (server + client)"
 	@echo "  make wheel            - Build Python wheel only"
 	@echo "  make server           - Build server .deb (full install with services)"
@@ -65,3 +68,14 @@ clean:
 	rm -rf build/ dist/ *.egg-info pulldb.egg-info
 	rm -f *.deb
 	@echo "Clean complete."
+
+# Dev install with wrapper restoration
+# Use this instead of 'pip install -e .' to preserve pulldb-admin auto-escalation
+dev-install:
+	@echo "=== Dev Install ==="
+	$(PIP) install -e .
+	@echo ""
+	@echo "=== Restoring pulldb-admin wrapper ==="
+	./scripts/restore_admin_wrapper.sh
+	@echo ""
+	@echo "Dev install complete. pulldb-admin auto-escalation preserved."
