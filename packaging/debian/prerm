@@ -4,9 +4,15 @@ set -e
 WORKER_SERVICE="pulldb-worker.service"
 API_SERVICE="pulldb-api.service"
 WEB_SERVICE="pulldb-web.service"
+RETENTION_TIMER="pulldb-retention.timer"
 
 stop_services() {
     if command -v systemctl >/dev/null 2>&1; then
+        # Stop retention timer first
+        systemctl stop "${RETENTION_TIMER}" >/dev/null 2>&1 || true
+        systemctl disable "${RETENTION_TIMER}" >/dev/null 2>&1 || true
+        # Stop any worker template instances (worker@1, worker@2, etc.)
+        systemctl stop 'pulldb-worker@*.service' >/dev/null 2>&1 || true
         systemctl stop "${WORKER_SERVICE}" >/dev/null 2>&1 || true
         systemctl disable "${WORKER_SERVICE}" >/dev/null 2>&1 || true
         systemctl stop "${API_SERVICE}" >/dev/null 2>&1 || true

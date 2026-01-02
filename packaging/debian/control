@@ -4,7 +4,7 @@ Section: admin
 Priority: optional
 Architecture: amd64
 Maintainer: PestRoutes Engineering <engineering@pestroutes.com>
-Depends: python3 (>= 3.12), python3-venv, systemd, adduser, bash
+Depends: python3 (>= 3.12), python3-venv, systemd, adduser, bash, zstd, default-mysql-client | mysql-client
 Homepage: https://github.com/CharlesHandshy/pullDB
 Description: pullDB database restore tooling
  pullDB retrieves production backups and restores them into development

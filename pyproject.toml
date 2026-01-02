@@ -65,6 +65,21 @@ pulldb = [
     "web/shared/**/*",
     "web/widgets/**/*",
     "template_after_sql/**/*",
+    "binaries/myloader-*",
+]
+
+[tool.setuptools.exclude-package-data]
+pulldb = [
+    "binaries/*.tar",
+    "binaries/*.txt",
+    "binaries/*.log",
+    "binaries/*.example",
+    "binaries/mydumper-*",
+    "binaries/zstd-local/**",
+    "binaries/*-auth",
+    "binaries/dumps/**",
+    "binaries/actiontermiteaz/**",
+    "binaries/appalachian/**",
 ]
 
 [tool.mypy]
