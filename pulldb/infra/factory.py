@@ -118,6 +118,57 @@ def get_disallowed_user_repository() -> t.Any:
     return DisallowedUserRepository(pool)
 
 
+def get_audit_repository() -> t.Any:
+    """Get AuditRepository implementation.
+    
+    Returns:
+        AuditRepository for logging administrative actions.
+    """
+    if is_simulation_mode():
+        # Return None in simulation mode - audit logging is optional
+        return None
+
+    from pulldb.infra.mysql import AuditRepository
+
+    pool = _get_real_mysql_pool()
+    return AuditRepository(pool)
+
+
+def get_provisioning_service(actor_user_id: str) -> t.Any:
+    """Get HostProvisioningService instance.
+    
+    Creates a configured provisioning service with all dependencies injected.
+    Used by both CLI (pulldb-admin hosts provision) and Web UI.
+    
+    Args:
+        actor_user_id: UUID of the user performing operations.
+            Used for audit logging.
+    
+    Returns:
+        HostProvisioningService instance ready for use.
+    
+    Example:
+        >>> from pulldb.infra.factory import get_provisioning_service
+        >>>
+        >>> # For CLI, look up user_id from username
+        >>> user = get_user_repository().get_user_by_username("admin")
+        >>> service = get_provisioning_service(user.user_id)
+        >>>
+        >>> # For Web UI, use session user_id
+        >>> service = get_provisioning_service(current_user.user_id)
+    """
+    from pulldb.domain.services.provisioning import HostProvisioningService
+
+    host_repo = get_host_repository()
+    audit_repo = get_audit_repository()
+
+    return HostProvisioningService(
+        host_repo=host_repo,
+        audit_repo=audit_repo,
+        actor_user_id=actor_user_id,
+    )
+
+
 def _get_real_mysql_pool() -> t.Any:
     """Create real MySQL connection pool."""
     from pulldb.infra.mysql import MySQLPool

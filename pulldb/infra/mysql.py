@@ -2513,7 +2513,7 @@ class JobRepository:
                        superseded_at, superseded_by_job_id
                 FROM jobs
                 WHERE owner_user_id = %s
-                  AND status = 'complete'
+                  AND status = 'deployed'
                   AND db_dropped_at IS NULL
                   AND superseded_at IS NULL
                   AND (
@@ -2544,7 +2544,7 @@ class JobRepository:
     def get_cleanup_candidates(self, grace_days: int) -> list[Job]:
         """Get jobs eligible for automatic database cleanup.
 
-        Returns complete jobs that are:
+        Returns deployed jobs that are:
         - Past expiration + grace period
         - Not locked
         - Database not already dropped
@@ -2567,7 +2567,7 @@ class JobRepository:
                        expires_at, locked_at, locked_by, db_dropped_at,
                        superseded_at, superseded_by_job_id
                 FROM jobs
-                WHERE status = 'complete'
+                WHERE status = 'deployed'
                   AND locked_at IS NULL
                   AND db_dropped_at IS NULL
                   AND superseded_at IS NULL
@@ -4031,35 +4031,70 @@ class HostRepository:
                 raise ValueError(f"Host not found: {hostname}")
 
     def add_host(
-        self, hostname: str, max_concurrent: int, credential_ref: str | None
+        self,
+        hostname: str,
+        max_concurrent: int,
+        credential_ref: str | None,
+        host_id: str | None = None,
+        host_alias: str | None = None,
+        max_active_jobs: int | None = None,
     ) -> None:
         """Add a new database host.
 
         Args:
             hostname: Hostname of the database server.
-            max_concurrent: Maximum concurrent jobs allowed.
+            max_concurrent: Maximum concurrent running jobs allowed.
             credential_ref: AWS Secrets Manager reference.
+            host_id: Optional UUID (generated if not provided).
+            host_alias: Optional short alias for the host.
+            max_active_jobs: Optional max active jobs (defaults to 10).
 
         Raises:
             ValueError: If host already exists.
         """
         import uuid
-        host_id = str(uuid.uuid4())
+        if host_id is None:
+            host_id = str(uuid.uuid4())
+        if max_active_jobs is None:
+            max_active_jobs = 10
+
         try:
             with self.pool.connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO db_hosts (id, hostname, max_running_jobs, enabled, credential_ref)
-                        VALUES (%s, %s, %s, TRUE, %s)
+                        INSERT INTO db_hosts 
+                            (id, hostname, host_alias, max_running_jobs, max_active_jobs, 
+                             enabled, credential_ref)
+                        VALUES (%s, %s, %s, %s, %s, TRUE, %s)
                         """,
-                        (host_id, hostname, max_concurrent, credential_ref),
+                        (host_id, hostname, host_alias, max_concurrent, max_active_jobs, 
+                         credential_ref),
                     )
                     conn.commit()
         except mysql.connector.IntegrityError as e:
             if "Duplicate" in str(e):
                 raise ValueError(f"Host already exists: {hostname}") from e
             raise
+
+    def delete_host(self, hostname: str) -> None:
+        """Delete a database host by hostname.
+
+        Args:
+            hostname: Hostname to delete.
+
+        Raises:
+            ValueError: If host not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM db_hosts WHERE hostname = %s",
+                (hostname,),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError(f"Host not found: {hostname}")
 
     def enable_host(self, hostname: str) -> None:
         """Enable a database host.

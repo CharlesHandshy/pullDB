@@ -408,7 +408,10 @@ def hosts_disable(hostname: str) -> None:
     help="AWS Secrets Manager reference for credentials",
 )
 def hosts_add(hostname: str, max_concurrent: int, credential_ref: str | None) -> None:
-    """Add a new database host."""
+    """Add a new database host (simple registration only).
+    
+    For full provisioning with MySQL setup, use 'hosts provision' instead.
+    """
     from pulldb.infra.factory import get_host_repository
 
     repo = get_host_repository()
@@ -418,6 +421,272 @@ def hosts_add(hostname: str, max_concurrent: int, credential_ref: str | None) ->
         raise click.ClickException(str(e)) from e
 
     click.echo(f"✓ Host {hostname} added")
+
+
+@hosts_group.command("provision")
+@click.argument("host_alias")
+@click.option(
+    "--mysql-host",
+    required=True,
+    help="MySQL server hostname or IP address",
+)
+@click.option(
+    "--mysql-port",
+    type=int,
+    default=3306,
+    show_default=True,
+    help="MySQL port",
+)
+@click.option(
+    "--admin-user",
+    required=True,
+    help="MySQL admin username with CREATE USER privilege",
+)
+@click.option(
+    "--admin-password",
+    help="MySQL admin password (will prompt if not provided)",
+)
+@click.option(
+    "--max-running",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Maximum concurrent running jobs",
+)
+@click.option(
+    "--max-active",
+    type=int,
+    default=10,
+    show_default=True,
+    help="Maximum queued + running jobs",
+)
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of step-by-step progress",
+)
+def hosts_provision(
+    host_alias: str,
+    mysql_host: str,
+    mysql_port: int,
+    admin_user: str,
+    admin_password: str | None,
+    max_running: int,
+    max_active: int,
+    json_out: bool,
+) -> None:
+    """Provision a new target host with complete MySQL setup.
+    
+    This command performs all setup steps:
+    
+    \b
+    1. Test admin MySQL connection
+    2. Create pulldb_loader user on target host
+    3. Create pulldb_service database on target
+    4. Deploy pulldb_atomic_rename stored procedure
+    5. Store credentials in AWS Secrets Manager
+    6. Register host in pulldb database
+    
+    The admin credentials are only used during setup and not stored.
+    
+    Example:
+    
+    \b
+        pulldb-admin hosts provision dev-db-01 \\
+            --mysql-host 10.0.1.50 \\
+            --admin-user root
+    """
+    from dataclasses import asdict
+    from pulldb.infra.factory import get_provisioning_service, get_user_repository
+
+    # Prompt for password if not provided
+    if admin_password is None:
+        admin_password = click.prompt("MySQL admin password", hide_input=True)
+
+    # Get actor user_id (CLI runs as admin)
+    user_repo = get_user_repository()
+    admin_user_record = user_repo.get_user_by_username("admin")
+    if admin_user_record is None:
+        raise click.ClickException(
+            "Admin user not found. Ensure database is properly initialized."
+        )
+
+    service = get_provisioning_service(admin_user_record.user_id)
+
+    if not json_out:
+        click.echo(f"Provisioning host '{host_alias}' ({mysql_host}:{mysql_port})...")
+        click.echo()
+
+    result = service.provision_host(
+        host_alias=host_alias,
+        mysql_host=mysql_host,
+        mysql_port=mysql_port,
+        admin_username=admin_user,
+        admin_password=admin_password,
+        max_running_jobs=max_running,
+        max_active_jobs=max_active,
+    )
+
+    if json_out:
+        output: dict[str, t.Any] = {
+            "success": result.success,
+            "message": result.message,
+            "host_id": result.host_id,
+            "rollback_performed": result.rollback_performed,
+        }
+        if result.steps:
+            output["steps"] = [
+                {
+                    "name": step.name,
+                    "success": step.success,
+                    "message": step.message,
+                    "details": step.details,
+                }
+                for step in result.steps
+            ]
+        if result.error:
+            output["error"] = result.error
+        if result.suggestions:
+            output["suggestions"] = result.suggestions
+        click.echo(json.dumps(output, indent=2))
+    else:
+        # Step-by-step output
+        if result.steps:
+            for step in result.steps:
+                status = "✓" if step.success else "✗"
+                click.echo(f"  {status} {step.name}: {step.message}")
+                if step.details and not step.success:
+                    click.echo(f"      {step.details}")
+
+        click.echo()
+        if result.success:
+            click.echo(f"✓ Host '{host_alias}' provisioned successfully")
+            click.echo(f"  Host ID: {result.host_id}")
+        else:
+            click.echo(f"✗ Provisioning failed: {result.message}")
+            if result.suggestions:
+                click.echo("  Suggestions:")
+                for suggestion in result.suggestions:
+                    click.echo(f"    - {suggestion}")
+            if result.rollback_performed:
+                click.echo("  (Rollback performed - newly created resources cleaned up)")
+
+    if not result.success:
+        raise SystemExit(1)
+
+
+@hosts_group.command("test")
+@click.argument("mysql_host")
+@click.option(
+    "--mysql-port",
+    type=int,
+    default=3306,
+    show_default=True,
+    help="MySQL port",
+)
+@click.option(
+    "--username",
+    required=True,
+    help="MySQL username to test",
+)
+@click.option(
+    "--password",
+    help="MySQL password (will prompt if not provided)",
+)
+def hosts_test(
+    mysql_host: str,
+    mysql_port: int,
+    username: str,
+    password: str | None,
+) -> None:
+    """Test MySQL connection to a host.
+    
+    Used to verify admin credentials before provisioning.
+    """
+    from pulldb.infra.mysql_provisioning import test_admin_connection
+
+    # Prompt for password if not provided
+    if password is None:
+        password = click.prompt("MySQL password", hide_input=True)
+
+    click.echo(f"Testing connection to {mysql_host}:{mysql_port} as {username}...")
+
+    result = test_admin_connection(
+        host=mysql_host,
+        port=mysql_port,
+        username=username,
+        password=password,
+    )
+
+    if result.success:
+        click.echo(f"✓ {result.message}")
+    else:
+        click.echo(f"✗ {result.message}")
+        if result.error:
+            click.echo(f"  Error: {result.error}")
+        if result.suggestions:
+            click.echo("  Suggestions:")
+            for suggestion in result.suggestions:
+                click.echo(f"    - {suggestion}")
+        raise SystemExit(1)
+
+
+@hosts_group.command("remove")
+@click.argument("hostname")
+@click.option(
+    "--delete-secret",
+    is_flag=True,
+    help="Also delete AWS secret (credentials)",
+)
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help="Skip confirmation",
+)
+def hosts_remove(hostname: str, delete_secret: bool, force: bool) -> None:
+    """Remove a host from pulldb.
+    
+    By default only removes the database entry. Use --delete-secret
+    to also remove the AWS secret (credentials).
+    """
+    from pulldb.infra.factory import get_provisioning_service, get_user_repository
+
+    # Confirm deletion
+    if not force:
+        msg = f"Remove host '{hostname}'"
+        if delete_secret:
+            msg += " and AWS secret"
+        if not click.confirm(f"{msg}?"):
+            click.echo("Aborted.")
+            return
+
+    # Get actor user_id (CLI runs as admin)
+    user_repo = get_user_repository()
+    admin_user = user_repo.get_user_by_username("admin")
+    if admin_user is None:
+        raise click.ClickException(
+            "Admin user not found. Ensure database is properly initialized."
+        )
+
+    service = get_provisioning_service(admin_user.user_id)
+
+    result = service.delete_host(
+        hostname=hostname,
+        delete_secret=delete_secret,
+        force=force,
+    )
+
+    if result.success:
+        click.echo(f"✓ {result.message}")
+        if result.secret_deleted:
+            click.echo("  AWS secret also deleted")
+    else:
+        click.echo(f"✗ {result.message}")
+        if result.error:
+            click.echo(f"  Error: {result.error}")
+        raise SystemExit(1)
 
 
 @hosts_group.command("cred")

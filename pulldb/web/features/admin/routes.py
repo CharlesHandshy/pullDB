@@ -2553,14 +2553,14 @@ async def provision_host(
 ) -> dict:
     """Provision a new host with automated MySQL setup.
     
-    This endpoint:
-    1. Checks if host alias already exists (reuses if so)
-    2. Tests admin MySQL connection
-    3. Creates pulldb_loader user (or updates password)
-    4. Creates pulldb database if needed
-    5. Deploys stored procedure
-    6. Creates AWS secret (only if new, never overwrites others)
-    7. Registers/updates host in database
+    This endpoint uses the HostProvisioningService to:
+    1. Check if host alias already exists (reuses if so)
+    2. Test admin MySQL connection
+    3. Create pulldb_loader user (or updates password)
+    4. Create pulldb database if needed
+    5. Deploy stored procedure
+    6. Create AWS secret (only if new, never overwrites others)
+    7. Register/update host in database
     
     On failure, rolls back only newly-created resources:
     - Deletes AWS secret only if it was created in this operation
@@ -2568,14 +2568,7 @@ async def provision_host(
     
     Returns JSON with step-by-step results for UI display.
     """
-    from pulldb.infra.secrets import (
-        check_secret_exists,
-        safe_upsert_single_secret,
-        delete_secret_if_new,
-        generate_credential_ref,
-        get_secret_path_from_alias,
-    )
-    from pulldb.infra.mysql_provisioning import provision_host_full
+    from pulldb.infra.factory import is_simulation_mode, get_provisioning_service
     
     # Parse form data with proper type handling
     form_data = await request.form()
@@ -2596,58 +2589,30 @@ async def provision_host(
     max_running_jobs = get_form_int("max_running_jobs", 1)
     max_active_jobs = get_form_int("max_active_jobs", 10)
     
-    steps: list[dict[str, Any]] = []
-    result: dict[str, Any] = {
-        "success": False,
-        "message": "",
-        "host_id": None,
-        "steps": steps,
-        "rollback_performed": False,
-    }
-    
-    def add_step(name: str, success: bool, message: str, details: str | None = None) -> None:
-        steps.append({
-            "name": name,
-            "success": success,
-            "message": message,
-            "details": details,
-        })
-    
-    # Validate inputs
-    if not host_alias:
-        result["message"] = "Host alias is required"
-        return result
-    if not mysql_host:
-        result["message"] = "MySQL host is required"
-        return result
-    if not admin_username or not admin_password:
-        result["message"] = "Admin credentials are required"
-        return result
-    if max_running_jobs < 1:
-        result["message"] = "max_running_jobs must be at least 1"
-        return result
-    if max_active_jobs < 0:
-        result["message"] = "max_active_jobs cannot be negative"
-        return result
-    if max_active_jobs > 0 and max_running_jobs > max_active_jobs:
-        result["message"] = "max_running_jobs cannot exceed max_active_jobs"
-        return result
-    
-    # Check for simulation mode
-    from pulldb.infra.factory import is_simulation_mode
-    
+    # Check for simulation mode - handle specially
     if is_simulation_mode():
-        # Simulate successful provisioning without real MySQL/AWS calls
         import uuid as uuid_module
         
-        add_step("Check Host", True, f"New host '{host_alias}'")
-        add_step("Check Secret", True, "No existing credentials (simulated)", 
-                 f"Will create: /pulldb/mysql/{host_alias}")
-        add_step("MySQL Setup", True, 
-                 "User created, database exists, procedure deployed (simulated)",
-                 "User: pulldb_loader")
-        add_step("AWS Secret", True, "Credentials created (simulated)", 
-                 f"Path: /pulldb/mysql/{host_alias}")
+        steps: list[dict[str, Any]] = []
+        result: dict[str, Any] = {
+            "success": False,
+            "message": "",
+            "host_id": None,
+            "steps": steps,
+            "rollback_performed": False,
+        }
+        
+        steps.append({"name": "Check Host", "success": True, 
+                     "message": f"New host '{host_alias}'", "details": None})
+        steps.append({"name": "Check Secret", "success": True,
+                     "message": "No existing credentials (simulated)",
+                     "details": f"Will create: /pulldb/mysql/{host_alias}"})
+        steps.append({"name": "MySQL Setup", "success": True,
+                     "message": "User created, database exists, procedure deployed (simulated)",
+                     "details": "User: pulldb_loader"})
+        steps.append({"name": "AWS Secret", "success": True,
+                     "message": "Credentials created (simulated)",
+                     "details": f"Path: /pulldb/mysql/{host_alias}"})
         
         # Actually register host in simulated repo
         host_id = str(uuid_module.uuid4())
@@ -2660,10 +2625,11 @@ async def provision_host(
                 credential_ref=credential_ref,
                 host_id=host_id,
                 host_alias=host_alias,
-                max_running_jobs=max_running_jobs,
                 max_active_jobs=max_active_jobs,
             )
-            add_step("Register Host", True, "Host registered successfully (simulated)")
+            steps.append({"name": "Register Host", "success": True,
+                         "message": "Host registered successfully (simulated)",
+                         "details": None})
         
         result["success"] = True
         result["host_id"] = host_id
@@ -2671,152 +2637,37 @@ async def provision_host(
         result["simulation_mode"] = True
         return result
     
-    # Track what was newly created for rollback
-    secret_was_new = False
-    created_secret_path = None
+    # Use HostProvisioningService for real mode
+    service = get_provisioning_service(admin.user_id)
     
-    try:
-        # Step 1: Check existing host
-        existing_host = None
-        if hasattr(state, "host_repo") and state.host_repo:
-            if hasattr(state.host_repo, "get_host_by_alias"):
-                existing_host = state.host_repo.get_host_by_alias(host_alias)
-        
-        if existing_host:
-            add_step("Check Host", True, f"Host '{host_alias}' exists, will update")
-            result["host_id"] = existing_host.id
-        else:
-            add_step("Check Host", True, f"New host '{host_alias}'")
-        
-        # Step 2: Check existing AWS secret
-        secret_path = get_secret_path_from_alias(host_alias)
-        credential_ref = generate_credential_ref(host_alias)
-        
-        secret_check = check_secret_exists(secret_path, fetch_value=True)
-        if secret_check.error:
-            add_step("Check Secret", False, "Error checking AWS secret", secret_check.error)
-            result["message"] = f"AWS error: {secret_check.error}"
-            return result
-        
-        if secret_check.exists:
-            add_step("Check Secret", True, "Existing credentials found", 
-                     f"Secret: {secret_path}")
-        else:
-            add_step("Check Secret", True, "No existing credentials", 
-                     f"Will create: {secret_path}")
-        
-        # Step 3: Provision MySQL (test connection, create user, db, sproc)
-        prov_result, created_resources = provision_host_full(
-            mysql_host=mysql_host,
-            mysql_port=mysql_port,
-            admin_username=admin_username,
-            admin_password=admin_password,
-        )
-        
-        if not prov_result.success:
-            add_step("MySQL Setup", False, prov_result.message, 
-                     prov_result.error or "")
-            if prov_result.suggestions:
-                result["message"] = f"{prov_result.message}. Try: {prov_result.suggestions[0]}"
-            else:
-                result["message"] = prov_result.message
-            return result
-        
-        # prov_result.data is guaranteed non-None after success check
-        prov_data = prov_result.data or {}
-        loader_username = prov_data.get("loader_username", "pulldb_loader")
-        loader_password = prov_data.get("loader_password", "")
-        
-        user_action = "created" if created_resources["user_created"] else "updated"
-        db_action = "created" if created_resources["database_created"] else "exists"
-        
-        add_step("MySQL Setup", True, 
-                 f"User {user_action}, database {db_action}, procedure deployed",
-                 f"User: {loader_username}")
-        
-        # Step 4: Create or update AWS secret
-        secret_data = {
-            "host": mysql_host,
-            "password": loader_password,
-            "username": loader_username,
-            "port": mysql_port,
-        }
-        
-        upsert_result = safe_upsert_single_secret(
-            secret_path=secret_path,
-            secret_data=secret_data,
-        )
-        
-        if not upsert_result.success:
-            add_step("AWS Secret", False, "Failed to save credentials", 
-                     upsert_result.error or "")
-            result["message"] = f"AWS error: {upsert_result.error}"
-            return result
-        
-        secret_was_new = upsert_result.was_new
-        created_secret_path = secret_path
-        
-        secret_action = "created" if upsert_result.was_new else "updated"
-        add_step("AWS Secret", True, f"Credentials {secret_action}", 
-                 f"Path: {secret_path}")
-        
-        # Step 5: Register or update host in database
-        host_id = str(result["host_id"]) if result["host_id"] else str(uuid.uuid4())
-        
-        if hasattr(state, "host_repo") and state.host_repo:
-            if existing_host:
-                # Update existing host
-                if hasattr(state.host_repo, "update_host_config"):
-                    state.host_repo.update_host_config(
-                        host_id,
-                        host_alias=host_alias,
-                        credential_ref=credential_ref,
-                        max_running_jobs=max_running_jobs,
-                        max_active_jobs=max_active_jobs,
-                    )
-                add_step("Register Host", True, "Host configuration updated")
-            else:
-                # Add new host
-                state.host_repo.add_host(
-                    hostname=host_alias,
-                    max_concurrent=max_running_jobs,
-                    credential_ref=credential_ref,
-                )
-                result["host_id"] = host_id
-                add_step("Register Host", True, "Host registered successfully")
-        
-        # Audit log
-        if hasattr(state, "audit_repo") and state.audit_repo:
-            state.audit_repo.log_action(
-                actor_user_id=admin.user_id,
-                action="host_provisioned",
-                detail=f"Provisioned database host {host_alias} ({mysql_host}:{mysql_port})",
-                context={
-                    "host_id": result.get("host_id"),
-                    "host_alias": host_alias,
-                    "mysql_host": mysql_host,
-                    "mysql_port": mysql_port,
-                    "max_running_jobs": max_running_jobs,
-                    "max_active_jobs": max_active_jobs,
-                    "was_update": existing_host is not None,
-                },
-            )
-        
-        result["success"] = True
-        result["message"] = "Host provisioned successfully"
-        return result
-        
-    except Exception as e:
-        # Rollback: Delete secret only if it was newly created
-        if secret_was_new and created_secret_path:
-            delete_secret_if_new(created_secret_path, was_new=True)
-            result["rollback_performed"] = True
-            add_step("Rollback", True, "Cleaned up newly-created secret", 
-                     f"Deleted: {created_secret_path}")
-        
-        result["message"] = f"Unexpected error: {e}"
-        add_step("Error", False, str(e))
-        return result
+    prov_result = service.provision_host(
+        host_alias=host_alias,
+        mysql_host=mysql_host,
+        mysql_port=mysql_port,
+        admin_username=admin_username,
+        admin_password=admin_password,
+        max_running_jobs=max_running_jobs,
+        max_active_jobs=max_active_jobs,
+    )
+    
+    # Convert service result to API response format
+    steps_out: list[dict[str, Any]] = []
+    if prov_result.steps:
+        for step in prov_result.steps:
+            steps_out.append({
+                "name": step.name,
+                "success": step.success,
+                "message": step.message,
+                "details": step.details,
+            })
+    
+    return {
+        "success": prov_result.success,
+        "message": prov_result.message,
+        "host_id": prov_result.host_id,
+        "steps": steps_out,
+        "rollback_performed": prov_result.rollback_performed,
+    }
 
 
 # =============================================================================

@@ -350,9 +350,54 @@ class HostRepository(Protocol):
         ...
 
     def add_host(
-        self, hostname: str, max_concurrent: int, credential_ref: str | None
+        self,
+        hostname: str,
+        max_concurrent: int,
+        credential_ref: str | None,
+        host_id: str | None = None,
+        host_alias: str | None = None,
+        max_active_jobs: int | None = None,
     ) -> None:
-        """Add a new database host."""
+        """Add a new database host.
+        
+        Args:
+            hostname: Hostname of the database server.
+            max_concurrent: Maximum concurrent running jobs allowed.
+            credential_ref: AWS Secrets Manager reference.
+            host_id: Optional UUID (generated if not provided).
+            host_alias: Optional short alias for the host.
+            max_active_jobs: Optional max active jobs (defaults to 10).
+        """
+        ...
+
+    def update_host_config(
+        self,
+        host_id: str,
+        host_alias: str | None = None,
+        credential_ref: str | None = None,
+        max_running_jobs: int | None = None,
+        max_active_jobs: int | None = None,
+    ) -> None:
+        """Update an existing host's configuration.
+        
+        Args:
+            host_id: UUID of the host to update.
+            host_alias: New alias (if changing).
+            credential_ref: New credential reference (if changing).
+            max_running_jobs: New max running jobs (if changing).
+            max_active_jobs: New max active jobs (if changing).
+        """
+        ...
+
+    def delete_host(self, hostname: str) -> None:
+        """Delete a database host.
+        
+        Args:
+            hostname: Hostname to delete.
+            
+        Raises:
+            ValueError: If host not found.
+        """
         ...
 
     def enable_host(self, hostname: str) -> None:
