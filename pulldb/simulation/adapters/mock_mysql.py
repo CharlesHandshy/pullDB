@@ -208,7 +208,11 @@ class SimulatedJobRepository:
                 self.append_job_event(job_id, "complete", "User marked job complete")
 
     def mark_job_failed(self, job_id: str, error: str) -> None:
-        """Mark job as failed with error detail."""
+        """Mark job as failed with error detail.
+        
+        Clears the worker processing lock (locked_at/locked_by/can_cancel)
+        since failed jobs should be deletable and no longer need protection.
+        """
         with self.state.lock:
             job = self.state.jobs.get(job_id)
             if job:
@@ -218,6 +222,8 @@ class SimulatedJobRepository:
                     completed_at=datetime.now(UTC),
                     error_detail=error
                 )
+                # Clear the worker lock so failed jobs can be deleted
+                updated = replace(updated, locked_at=None, locked_by=None, can_cancel=True)
                 self.state.jobs[job_id] = updated
                 self.append_job_event(job_id, "failed", f"Job failed: {error}")
                 self._bus.emit(

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -45,6 +46,7 @@ from pulldb.worker.atomic_rename import (
     AtomicRenameSpec,
     atomic_rename_staging_to_target,
 )
+from pulldb.worker.dump_metadata import parse_dump_metadata
 from pulldb.worker.metadata import (
     MetadataConnectionSpec,
     MetadataSpec,
@@ -52,6 +54,10 @@ from pulldb.worker.metadata import (
 )
 from pulldb.worker.metadata_synthesis import ensure_compatible_metadata
 from pulldb.worker.post_sql import PostSQLConnectionSpec, execute_post_sql
+from pulldb.worker.processlist_monitor import (
+    ProcesslistMonitor,
+    ProcesslistMonitorConfig,
+)
 from pulldb.worker.staging import (
     StagingConnectionSpec,
     cleanup_orphaned_staging,
@@ -232,8 +238,15 @@ def run_myloader(
     *,
     timeout: float | None = None,
     progress_callback: Callable[[float, dict[str, Any]], None] | None = None,
+    processlist_monitor: ProcesslistMonitor | None = None,
 ) -> MyLoaderResult:
     """Execute myloader and return structured result.
+
+    Args:
+        spec: Myloader command specification.
+        timeout: Optional timeout in seconds.
+        progress_callback: Called with (percent, detail_dict) for progress updates.
+        processlist_monitor: Optional monitor for per-table progress from MySQL processlist.
 
     Raises:
         MyLoaderError: On non-zero exit, startup failure, or timeout.
@@ -248,45 +261,49 @@ def run_myloader(
     # Ensure metadata compatibility (synthesize if needed)
     ensure_compatible_metadata(spec.backup_dir)
 
-    # Count tasks for progress
+    # Parse dump metadata for row counts (used for rows/sec calculation)
+    dump_meta = parse_dump_metadata(spec.backup_dir)
+    total_rows = dump_meta.total_rows
+    logger.info(f"Dump metadata: {len(dump_meta.tables)} tables, {total_rows:,} total rows")
+
+    # Count tasks for file-based progress
     total_tasks = _count_restore_tasks(spec.backup_dir)
     completed_tasks = 0
     logger.info(f"Total restore tasks (files): {total_tasks}")
 
+    # Track rows for throughput calculation
+    restore_start_time = time.monotonic()
+    rows_restored = 0  # Estimated from file completions
+
+    # Build table -> row count mapping for row-based estimates
+    table_row_counts: dict[str, int] = {}
+    for t in dump_meta.tables:
+        table_row_counts[t.table] = t.rows
+
     # Regex for parsing myloader output
-    # Matches: "Thread 1 restoring ..." or "** Message: Thread 1 restoring ..."
     re_restoring = re.compile(r"(?:Thread \d+|Message: Thread \d+) restoring (.+)")
     re_finished = re.compile(
         r"(?:Thread \d+|Message: Thread \d+) finished restoring (.+)"
     )
-
-    # Matches verbose output: "** Message: <time>: Thread <id>: restoring <content> from <filename> ..."
-    # We capture the filename after "from" until " |" (progress bar) or ". Tables" (status) or end of line.
     re_verbose_restore = re.compile(
         r"Thread \d+: restoring .+ from (.+?)(?: \||\. Tables|$)"
     )
 
     def _progress_callback(line: str) -> None:
-        nonlocal completed_tasks
+        nonlocal completed_tasks, rows_restored
 
         filename = None
         is_finished = False
 
-        # Check for verbose output (matches both start/finish in one line effectively)
-        # This format is common in newer myloader versions or specific verbosity levels
+        # Check for verbose output
         match_verbose = re_verbose_restore.search(line)
         if match_verbose:
             raw_filename = match_verbose.group(1).strip()
-            # Clean up path if present (e.g. /tmp/.../file.sql) and remove trailing period if caught
             filename = Path(raw_filename).name.rstrip(".")
             is_finished = True
-
-        # Check for file completion (standard output)
         elif match_finish := re_finished.search(line):
             filename = match_finish.group(1).strip()
             is_finished = True
-
-        # Check for file start
         elif match_start := re_restoring.search(line):
             filename = match_start.group(1).strip()
             if progress_callback:
@@ -294,34 +311,77 @@ def run_myloader(
                     100.0,
                     (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0,
                 )
+                # Get processlist snapshot for per-table progress
+                tables_progress = {}
+                active_threads = 0
+                if processlist_monitor:
+                    snapshot = processlist_monitor.get_snapshot()
+                    if snapshot:
+                        active_threads = snapshot.active_threads
+                        for tbl_name, tbl_prog in snapshot.tables.items():
+                            tables_progress[tbl_name] = {
+                                "percent_complete": tbl_prog.percent_complete
+                            }
                 progress_callback(
                     percent,
-                    {"status": "started", "file": filename},
+                    {
+                        "status": "started",
+                        "file": filename,
+                        "active_threads": active_threads,
+                        "tables": tables_progress,
+                    },
                 )
             return
-
-        # Fallback for older myloader versions or different output
         elif ("Finished restoring" in line or "Completed" in line) and not is_finished:
-            # This might double count if regex matched, but "Finished restoring" usually refers to a table/file
-            # In myloader 0.9/0.19, "Thread X finished restoring Y" is the standard line.
             is_finished = True
             parts = line.strip().split()
             filename = parts[-1] if parts else "unknown"
 
         if is_finished and filename:
-            # Only increment if it looks like a file we counted (contains .sql)
-            # This filters out "index", "trigger", etc. which cause >100% progress
             if ".sql" in filename:
                 completed_tasks += 1
+                # Estimate rows restored from filename (table.sql -> table row count)
+                # Extract table name from filename like "database.table.00000.sql.gz"
+                parts = Path(filename).stem.replace(".sql", "").split(".")
+                if len(parts) >= 2:
+                    table_name = parts[1] if parts[0] != parts[1] else parts[0]
+                    rows_restored += table_row_counts.get(table_name, 0)
 
             percent = min(
                 100.0, (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0
             )
 
             if progress_callback:
+                # Calculate throughput and ETA
+                elapsed = time.monotonic() - restore_start_time
+                rows_per_second = int(rows_restored / elapsed) if elapsed > 0 else 0
+                remaining_rows = total_rows - rows_restored
+                eta_seconds = int(remaining_rows / rows_per_second) if rows_per_second > 0 else None
+
+                # Get processlist snapshot for per-table progress
+                tables_progress = {}
+                active_threads = 0
+                if processlist_monitor:
+                    snapshot = processlist_monitor.get_snapshot()
+                    if snapshot:
+                        active_threads = snapshot.active_threads
+                        for tbl_name, tbl_prog in snapshot.tables.items():
+                            tables_progress[tbl_name] = {
+                                "percent_complete": tbl_prog.percent_complete
+                            }
+
                 progress_callback(
                     percent,
-                    {"status": "finished", "file": filename},
+                    {
+                        "status": "finished",
+                        "file": filename,
+                        "rows_restored": rows_restored,
+                        "total_rows": total_rows,
+                        "rows_per_second": rows_per_second,
+                        "eta_seconds": eta_seconds,
+                        "active_threads": active_threads,
+                        "tables": tables_progress,
+                    },
                 )
 
             # Log every 10%
@@ -433,15 +493,43 @@ def orchestrate_restore_workflow(
                 "staging_db": staging_result.staging_db,
             }
         )
-        with time_operation(
-            "myloader_duration_seconds",
-            MetricLabels(job_id=job.id, target=job.target, phase="myloader"),
-        ):
-            myloader_result = run_myloader(
-                spec.myloader_spec,
-                timeout=spec.timeout,
-                progress_callback=spec.progress_callback,
+
+        # Start processlist monitor for per-table progress tracking
+        processlist_monitor: ProcesslistMonitor | None = None
+        try:
+            monitor_config = ProcesslistMonitorConfig(
+                mysql_host=spec.staging_conn.mysql_host,
+                mysql_port=spec.staging_conn.mysql_port,
+                mysql_user=spec.staging_conn.mysql_user,
+                mysql_password=spec.staging_conn.mysql_password,
+                staging_db=staging_result.staging_db,
+                poll_interval_seconds=2.0,
             )
+            processlist_monitor = ProcesslistMonitor(monitor_config)
+            processlist_monitor.start()
+            logger.info(f"Started processlist monitor for {staging_result.staging_db}")
+        except Exception as e:
+            # Non-fatal: continue without processlist monitoring
+            logger.warning(f"Failed to start processlist monitor: {e}")
+            processlist_monitor = None
+
+        try:
+            with time_operation(
+                "myloader_duration_seconds",
+                MetricLabels(job_id=job.id, target=job.target, phase="myloader"),
+            ):
+                myloader_result = run_myloader(
+                    spec.myloader_spec,
+                    timeout=spec.timeout,
+                    progress_callback=spec.progress_callback,
+                    processlist_monitor=processlist_monitor,
+                )
+        finally:
+            # Always stop the monitor
+            if processlist_monitor:
+                processlist_monitor.stop()
+                logger.info("Stopped processlist monitor")
+
         result["myloader"] = myloader_result
 
         # Helper to emit events if callback provided

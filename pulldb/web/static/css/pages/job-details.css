@@ -376,7 +376,8 @@
     font-family: var(--font-mono);
     font-size: 0.75rem;
     line-height: 1.6;
-    max-height: 500px;
+    flex: 1 1 auto;
+    min-height: 200px;
     overflow-y: auto;
     border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
@@ -584,6 +585,38 @@
 }
 
 /* ===========================================
+   LOGS CARD LAYOUT (Sticky Header + Progress)
+   =========================================== */
+
+.logs-card {
+    display: flex;
+    flex-direction: column;
+    max-height: 600px;
+    overflow: hidden;
+}
+
+.logs-header-sticky {
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--color-bg-card);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.logs-progress-sticky {
+    flex-shrink: 0;
+    padding: var(--space-3) var(--space-4);
+    background: var(--gray-900);
+    border-bottom: 1px solid var(--gray-700);
+}
+
+[data-theme="light"] .logs-progress-sticky {
+    background: var(--gray-100);
+    border-bottom-color: var(--gray-200);
+}
+
+/* ===========================================
    PROGRESS BARS
    =========================================== */
 
@@ -592,13 +625,28 @@
     margin: var(--space-2) 0;
 }
 
+.log-progress:first-child {
+    margin-top: 0;
+}
+
+.log-progress:last-child {
+    margin-bottom: 0;
+}
+
+/* Progress bar row (bar + percentage inline) */
+.log-progress-bar-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
 /* Progress bar track */
 .log-progress-bar-container {
+    flex: 1;
     height: 8px;
     background: var(--gray-700);
     border-radius: var(--radius-full);
     overflow: hidden;
-    margin-bottom: var(--space-1);
 }
 
 /* Progress bar fill */
@@ -627,6 +675,24 @@
     color: var(--success-400);
 }
 
+/* Progress header row */
+.log-progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-1);
+}
+
+.log-progress-label {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--gray-200);
+}
+
+[data-theme="light"] .log-progress-label {
+    color: var(--gray-700);
+}
+
 /* Progress stats row */
 .log-progress-stats {
     display: flex;
@@ -634,6 +700,22 @@
     gap: var(--space-1) var(--space-3);
     font-size: var(--text-xs);
     color: var(--gray-400);
+}
+
+.log-progress-separator {
+    color: var(--gray-600);
+}
+
+.log-progress-percent {
+    min-width: 45px;
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--gray-200);
+    text-align: right;
+}
+
+[data-theme="light"] .log-progress-percent {
+    color: var(--gray-700);
 }
 
 .log-progress-stats-value {

@@ -346,12 +346,13 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
 
     Scans events for restore_progress and restore_complete to build
     stats dict with: percent_complete, current_file, is_complete,
-    and optionally table_progress dict.
+    active_threads, and per-table progress from processlist.
 
     Returns None if no restore progress events found.
     """
     latest_progress: dict[str, Any] | None = None
     is_complete = False
+    has_restoring_event = False
 
     for event in logs:
         event_type = getattr(event, "event_type", "")
@@ -359,6 +360,9 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
 
         if event_type == "restore_complete":
             is_complete = True
+
+        if event_type == "restoring":
+            has_restoring_event = True
 
         if event_type == "restore_progress" and detail:
             parsed_detail = detail
@@ -370,19 +374,66 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
             if isinstance(parsed_detail, dict):
                 latest_progress = parsed_detail
 
+    # If we have restoring event but no progress, show indeterminate state
     if not latest_progress:
+        if has_restoring_event and not is_complete:
+            return {
+                "percent_complete": 0.0,
+                "current_file": "",
+                "status": "Loading...",
+                "is_complete": False,
+                "active_threads": 0,
+                "tables": {},
+                "rows_per_second": 0,
+                "eta_seconds": None,
+                "rows_restored": 0,
+                "total_rows": 0,
+            }
         return None
 
+    # Extract overall percent
     percent = latest_progress.get("percent", 0.0)
+    
+    # Extract detail info - contains file info AND processlist data
     detail_info = latest_progress.get("detail", {})
-    current_file = detail_info.get("file", "") if isinstance(detail_info, dict) else ""
-    status = detail_info.get("status", "") if isinstance(detail_info, dict) else ""
+    if not isinstance(detail_info, dict):
+        detail_info = {}
+    
+    current_file = detail_info.get("file", "")
+    status = detail_info.get("status", "")
+    
+    # Extract processlist-based progress from detail (new format)
+    active_threads = detail_info.get("active_threads", 0)
+    tables_data = detail_info.get("tables", {})
+    
+    # Extract throughput stats
+    rows_per_second = detail_info.get("rows_per_second", 0)
+    eta_seconds = detail_info.get("eta_seconds")
+    rows_restored = detail_info.get("rows_restored", 0)
+    total_rows = detail_info.get("total_rows", 0)
+    
+    # Normalize tables data for template
+    tables = {}
+    if isinstance(tables_data, dict):
+        for table_name, table_info in tables_data.items():
+            if isinstance(table_info, dict):
+                tables[table_name] = {
+                    "percent": table_info.get("percent_complete", 0.0),
+                }
+            elif isinstance(table_info, (int, float)):
+                tables[table_name] = {"percent": float(table_info)}
 
     return {
         "percent_complete": percent if not is_complete else 100.0,
         "current_file": current_file,
         "status": status,
         "is_complete": is_complete,
+        "active_threads": active_threads,
+        "tables": tables,
+        "rows_per_second": rows_per_second,
+        "eta_seconds": eta_seconds,
+        "rows_restored": rows_restored,
+        "total_rows": total_rows,
     }
 
 

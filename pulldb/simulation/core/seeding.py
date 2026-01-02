@@ -738,8 +738,19 @@ def _seed_job_events(
             # Add restore progress event for some jobs (50% chance)
             if random.random() > 0.5:
                 restore_percent = random.randint(10, 60)  # 10-60% complete
+                active_threads = random.randint(2, 8)
+                # Generate per-table progress simulating processlist data
+                table_names = ["users", "orders", "products", "schema", "inventory", "sessions", "logs"]
+                tables_progress = {}
+                for table in random.sample(table_names, min(active_threads, len(table_names))):
+                    tables_progress[table] = {
+                        "percent_complete": random.randint(5, 95),
+                    }
+                
                 restore_detail = json.dumps({
                     "percent": float(restore_percent),
+                    "active_threads": active_threads,
+                    "tables": tables_progress,
                     "detail": {
                         "file": random.choice(["users.sql", "orders.sql", "products.sql", "schema.sql"]),
                         "status": "loading",

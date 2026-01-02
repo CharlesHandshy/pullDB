@@ -198,8 +198,8 @@
     {% endif %}
 
     <!-- Logs -->
-    <div class="card">
-        <div class="card-header-row">
+    <div class="card logs-card">
+        <div class="card-header-row logs-header-sticky">
             <h3 class="card-title">Execution Log</h3>
             {% if job.status.value in ['running', 'queued'] %}
             <button type="button" class="btn btn-ghost btn-sm" id="auto-refresh-toggle" onclick="toggleAutoRefresh()">
@@ -209,8 +209,10 @@
             {% endif %}
         </div>
         
-        <div class="logs-container" id="logs-container">
-            {# Download progress bar - shown when download is in progress #}
+        {# Progress bars in sticky area - above scrollable logs #}
+        {% if download_stats or restore_stats %}
+        <div class="logs-progress-sticky">
+            {# Download progress bar #}
             {% if download_stats %}
             <div class="log-progress log-progress--download{% if download_stats.is_complete %} log-progress--complete{% endif %}" id="download-progress">
                 <div class="log-progress-header">
@@ -225,33 +227,60 @@
                         {% endif %}
                     </span>
                 </div>
-                <div class="log-progress-bar-container">
-                    <div class="log-progress-bar" style="width: {{ download_stats.percent_complete }}%"></div>
+                <div class="log-progress-bar-row">
+                    <div class="log-progress-bar-container">
+                        <div class="log-progress-bar" style="width: {{ download_stats.percent_complete }}%"></div>
+                    </div>
+                    <div class="log-progress-percent">{{ "%.1f" | format(download_stats.percent_complete) }}%</div>
                 </div>
-                <div class="log-progress-percent">{{ "%.1f" | format(download_stats.percent_complete) }}%</div>
             </div>
             {% endif %}
 
-            {# Restore progress bar - shown when restore is in progress #}
+            {# Restore progress bar - overall progress + per-table #}
             {% if restore_stats %}
             <div class="log-progress log-progress--restore{% if restore_stats.is_complete %} log-progress--complete{% endif %}" id="restore-progress">
                 <div class="log-progress-header">
                     <span class="log-progress-label">Restore</span>
                     <span class="log-progress-stats">
-                        {% if restore_stats.current_file %}
+                        {% if restore_stats.rows_per_second and restore_stats.rows_per_second > 0 %}
+                        {{ "{:,}".format(restore_stats.rows_per_second) }} rows/s
+                        {% if restore_stats.eta_seconds %}· {{ restore_stats.eta_seconds | format_duration }}{% endif %}
+                        {% elif restore_stats.active_threads and restore_stats.active_threads > 0 %}
+                        {{ restore_stats.active_threads }} thread{{ 's' if restore_stats.active_threads != 1 else '' }} active
+                        {% elif restore_stats.current_file %}
                         {{ restore_stats.current_file }}
                         {% elif restore_stats.status %}
                         {{ restore_stats.status }}
                         {% endif %}
                     </span>
                 </div>
-                <div class="log-progress-bar-container">
-                    <div class="log-progress-bar" style="width: {{ restore_stats.percent_complete }}%"></div>
+                <div class="log-progress-bar-row">
+                    <div class="log-progress-bar-container">
+                        <div class="log-progress-bar" style="width: {{ restore_stats.percent_complete }}%"></div>
+                    </div>
+                    <div class="log-progress-percent">{{ "%.1f" | format(restore_stats.percent_complete) }}%</div>
                 </div>
-                <div class="log-progress-percent">{{ "%.1f" | format(restore_stats.percent_complete) }}%</div>
+                
+                {# Per-table progress bars from processlist #}
+                {% if restore_stats.tables %}
+                <div class="log-progress-tables">
+                    {% for table_name, table in restore_stats.tables.items() %}
+                    <div class="log-progress-table-row">
+                        <span class="log-progress-table-name" title="{{ table_name }}">{{ table_name }}</span>
+                        <div class="log-progress-table-bar-container">
+                            <div class="log-progress-table-bar" style="width: {{ table.percent }}%"></div>
+                        </div>
+                        <span class="log-progress-table-percent">{{ "%.0f" | format(table.percent) }}%</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
             </div>
             {% endif %}
-
+        </div>
+        {% endif %}
+        
+        <div class="logs-container" id="logs-container">
             {% if logs %}
             {% set ns = namespace(current_type='') %}
             {% for log in logs %}

@@ -42,14 +42,14 @@ logger = logging.getLogger(__name__)
 
 _ACTIVE_JOBS_VIEW_QUERY = """
 SELECT id, owner_user_id, owner_username, owner_user_code, target,
-    staging_name, dbhost, status, submitted_at, started_at
+    staging_name, dbhost, status, submitted_at, started_at, can_cancel
 FROM active_jobs
 ORDER BY submitted_at ASC
 """
 
 _ACTIVE_JOBS_TABLE_QUERY = """
 SELECT id, owner_user_id, owner_username, owner_user_code, target,
-    staging_name, dbhost, status, submitted_at, started_at
+    staging_name, dbhost, status, submitted_at, started_at, can_cancel
 FROM jobs
 WHERE status IN ('queued','running')
 ORDER BY submitted_at ASC
@@ -231,7 +231,8 @@ class JobRepository:
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
-                       completed_at, options_json, retry_count, error_detail, worker_id
+                       completed_at, options_json, retry_count, error_detail, worker_id,
+                       can_cancel, cancel_requested_at
                 FROM jobs
                 WHERE status = 'queued'
                 ORDER BY submitted_at ASC
@@ -440,7 +441,8 @@ class JobRepository:
                     """
                     SELECT id, owner_user_id, owner_username, owner_user_code, target,
                            staging_name, dbhost, status, submitted_at, started_at,
-                           completed_at, options_json, retry_count, error_detail, worker_id
+                           completed_at, options_json, retry_count, error_detail, worker_id,
+                           can_cancel, cancel_requested_at
                     FROM jobs
                     WHERE id = %s
                        OR target = %s
@@ -458,7 +460,8 @@ class JobRepository:
                     """
                     SELECT id, owner_user_id, owner_username, owner_user_code, target,
                            staging_name, dbhost, status, submitted_at, started_at,
-                           completed_at, options_json, retry_count, error_detail, worker_id
+                           completed_at, options_json, retry_count, error_detail, worker_id,
+                           can_cancel, cancel_requested_at
                     FROM jobs
                     WHERE id LIKE %s
                        OR target LIKE %s
@@ -487,7 +490,8 @@ class JobRepository:
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
-                       completed_at, options_json, retry_count, error_detail, worker_id
+                       completed_at, options_json, retry_count, error_detail, worker_id,
+                       can_cancel, cancel_requested_at
                 FROM jobs
                 WHERE owner_user_code = %s
                 ORDER BY submitted_at DESC
@@ -667,14 +671,16 @@ class JobRepository:
         """Mark job as failed with error detail.
 
         Called by worker when job execution fails. Updates status to 'failed',
-        records completion time, stores error message, and clears any pending
-        cancellation request.
+        records completion time, stores error message, clears any pending
+        cancellation request, and releases the worker lock.
 
         Note:
             The worker_id column is intentionally retained after failure
             for debugging purposes (to identify which worker processed the job).
             The cancel_requested_at is cleared since the job has reached a
             terminal state and the cancellation is no longer relevant.
+            The locked_at/locked_by/can_cancel fields are cleared since
+            failed jobs should be deletable and no longer need protection.
 
         Args:
             job_id: UUID of job.
@@ -686,7 +692,8 @@ class JobRepository:
                 """
                 UPDATE jobs
                 SET status = 'failed', completed_at = UTC_TIMESTAMP(6),
-                    error_detail = %s, cancel_requested_at = NULL
+                    error_detail = %s, cancel_requested_at = NULL,
+                    locked_at = NULL, locked_by = NULL, can_cancel = TRUE
                 WHERE id = %s
                 """,
                 (error, job_id),
@@ -1037,7 +1044,7 @@ class JobRepository:
                 SELECT id, owner_user_id, owner_username, owner_user_code,
                        target, staging_name, dbhost, status, submitted_at,
                        started_at, completed_at, options_json, retry_count,
-                       error_detail, worker_id
+                       error_detail, worker_id, can_cancel, cancel_requested_at
                 FROM jobs
                 WHERE owner_user_code = %s
                 ORDER BY submitted_at DESC
@@ -1156,7 +1163,8 @@ class JobRepository:
                        j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
                        j.error_detail, j.expires_at, j.locked_at, j.locked_by,
-                       j.db_dropped_at, j.superseded_at, j.superseded_by_job_id
+                       j.db_dropped_at, j.superseded_at, j.superseded_by_job_id,
+                       j.can_cancel, j.cancel_requested_at
                 FROM jobs j
                 WHERE (
                     j.status IN ('queued', 'running', 'canceling', 'deployed')
@@ -1225,7 +1233,8 @@ class JobRepository:
                        j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
                        j.error_detail, j.expires_at, j.locked_at, j.locked_by,
-                       j.db_dropped_at, j.superseded_at, j.superseded_by_job_id
+                       j.db_dropped_at, j.superseded_at, j.superseded_by_job_id,
+                       j.can_cancel, j.cancel_requested_at
                 FROM jobs j
                 WHERE j.status IN ('failed', 'canceled', 'deleted', 'deleting', 'expired', 'complete', 'superseded')
             """
@@ -1292,7 +1301,8 @@ class JobRepository:
             query = """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
-                       completed_at, options_json, retry_count, error_detail, worker_id
+                       completed_at, options_json, retry_count, error_detail, worker_id,
+                       can_cancel, cancel_requested_at
                 FROM jobs
                 WHERE 1=1
             """
@@ -1360,7 +1370,8 @@ class JobRepository:
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
-                       completed_at, options_json, retry_count, error_detail, worker_id
+                       completed_at, options_json, retry_count, error_detail, worker_id,
+                       can_cancel, cancel_requested_at
                 FROM jobs
                 WHERE owner_user_id = %s
                 ORDER BY submitted_at DESC
@@ -1915,7 +1926,7 @@ class JobRepository:
                 SELECT id, owner_user_id, owner_username, owner_user_code,
                        target, staging_name, dbhost, status, submitted_at,
                        started_at, completed_at, options_json, retry_count,
-                       error_detail, worker_id
+                       error_detail, worker_id, can_cancel, cancel_requested_at
                 FROM jobs
                 WHERE target = %s AND dbhost = %s AND id LIKE %s
                 ORDER BY submitted_at DESC
@@ -2660,6 +2671,7 @@ class JobRepository:
             options_json=None,
             retry_count=0,
             error_detail=None,
+            can_cancel=bool(row.get("can_cancel", True)),
         )
 
     def _row_to_job_event(self, row: dict[str, t.Any]) -> JobEvent:

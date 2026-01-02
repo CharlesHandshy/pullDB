@@ -26,9 +26,11 @@ logger = get_logger("pulldb.worker.processlist_monitor")
 # myloader embeds: /* Completed: 45.67% */
 RE_COMPLETED = re.compile(r"/\*\s*Completed:\s*([\d.]+)%\s*\*/")
 
-# Regex to extract table name from INSERT query
+# Regex to extract table name from INSERT or LOAD DATA query
 # INSERT INTO `tablename` or INSERT INTO tablename
 RE_INSERT_TABLE = re.compile(r"INSERT\s+INTO\s+`?([^\s`(]+)`?", re.IGNORECASE)
+# LOAD DATA LOCAL INFILE '...' INTO TABLE `tablename`
+RE_LOAD_TABLE = re.compile(r"INTO\s+TABLE\s+`?([^\s`(]+)`?", re.IGNORECASE)
 
 
 @dataclass(slots=True)
@@ -161,7 +163,7 @@ class ProcesslistMonitor:
                         except Exception as e:
                             logger.warning(f"Progress callback error: {e}")
             except Exception as e:
-                logger.debug(f"Processlist poll error: {e}")
+                logger.warning(f"Processlist poll error: {e}")
 
             self._stop_event.wait(self._config.poll_interval_seconds)
 
@@ -197,7 +199,7 @@ class ProcesslistMonitor:
                 connection_timeout=5,
             )
         except Exception as e:
-            logger.debug(f"Connection failed: {e}")
+            logger.warning(f"Processlist monitor connection failed: {e}")
             return None
 
     def _execute_poll(self, conn: Any) -> ProcesslistSnapshot | None:
@@ -210,7 +212,7 @@ class ProcesslistMonitor:
             cursor.close()
             return snapshot
         except Exception as e:
-            logger.debug(f"Query failed: {e}")
+            logger.warning(f"Processlist query failed: {e}")
             return None
 
     def _parse_processlist_rows(
@@ -220,6 +222,17 @@ class ProcesslistMonitor:
         tables: dict[str, TableProgress] = {}
         active_threads = 0
 
+        # Debug: log all databases we see in processlist
+        all_dbs = set()
+        for row in rows:
+            db = row.get("db") or row.get("Db")
+            if db:
+                all_dbs.add(db)
+        if all_dbs:
+            logger.info(f"Processlist dbs seen: {all_dbs}, looking for: {self._config.staging_db}")
+
+        # Debug: log matching rows
+        matching_rows = 0
         for row in rows:
             # Filter for myloader threads on our staging DB
             db = row.get("db") or row.get("Db")
@@ -227,18 +240,29 @@ class ProcesslistMonitor:
 
             if db != self._config.staging_db:
                 continue
+            
+            matching_rows += 1
+            # Log the first few matching rows to debug
+            if matching_rows <= 2:
+                logger.info(f"Processlist row for {db}: Info type={type(info).__name__}, preview={str(info)[:60] if info else 'None'}")
 
             if not info or not isinstance(info, str):
                 continue
 
-            # Look for INSERT statements with completion comments
-            if not info.upper().startswith("INSERT"):
+            # Look for INSERT or LOAD statements - may start with /* Completed: XX% */ comment
+            # myloader uses INSERT for row-based imports, LOAD DATA for newer bulk imports
+            info_upper = info.upper()
+            has_completed = "/* COMPLETED:" in info_upper
+            has_data_op = "INSERT" in info_upper or "LOAD" in info_upper
+            if not (has_completed and has_data_op):
                 continue
 
             active_threads += 1
 
-            # Extract table name
+            # Extract table name - try INSERT pattern first, then LOAD DATA pattern
             table_match = RE_INSERT_TABLE.search(info)
+            if not table_match:
+                table_match = RE_LOAD_TABLE.search(info)
             if not table_match:
                 continue
             table_name = table_match.group(1)
@@ -249,11 +273,14 @@ class ProcesslistMonitor:
             # Update or create table progress
             self._update_table_progress(tables, table_name, percent)
 
-        return ProcesslistSnapshot(
+        snapshot = ProcesslistSnapshot(
             tables=tables,
             active_threads=active_threads,
             timestamp=time.monotonic(),
         )
+        if active_threads > 0 or tables:
+            logger.info(f"Processlist snapshot: {active_threads} threads, {len(tables)} tables: {list(tables.keys())[:5]}")
+        return snapshot
 
     def _extract_percent(self, info: str) -> float:
         """Extract completion percentage from query comment."""
