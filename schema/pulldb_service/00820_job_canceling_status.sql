@@ -1,4 +1,4 @@
--- 082_job_canceling_status.sql
+-- 00820_job_canceling_status.sql
 -- Add 'canceling' status for intermediate cancellation state
 -- Jobs in 'canceling' state have cancellation requested but worker is still
 -- cleaning up (myloader cannot be interrupted, only pre-restore stages can be)

@@ -1,4 +1,4 @@
--- 074_audit_logs.sql
+-- 00740_audit_logs.sql
 -- Audit log table for tracking manager/admin actions
 -- All users can view audit logs (transparency)
 

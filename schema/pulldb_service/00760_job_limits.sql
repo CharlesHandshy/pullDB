@@ -1,4 +1,4 @@
--- 076_job_limits.sql
+-- 00760_job_limits.sql
 -- Add job limit columns for per-host and per-user capacity management
 -- Implements dual-limit model: max_active_jobs (queued+running) and max_running_jobs (concurrent)
 

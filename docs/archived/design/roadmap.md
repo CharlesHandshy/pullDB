@@ -340,7 +340,7 @@ Implemented in v0.0.5 (November 2025):
 - [x] Deprecation of unsafe `get_next_queued_job()` + `mark_job_running()` pattern
 - [x] New `claim_next_job()` method for safe concurrent operation
 - [x] Concurrent worker tests with threading validation
-- [x] Schema: `worker_id` column consolidated into `010_jobs.sql`
+- [x] Schema: `worker_id` column consolidated into `00100_jobs.sql`
 
 Decision: Used MySQL `FOR UPDATE SKIP LOCKED` instead of external locking (Consul/DynamoDB)
 because MySQL is already the coordination database and this pattern is sufficient for

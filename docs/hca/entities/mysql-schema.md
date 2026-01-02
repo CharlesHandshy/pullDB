@@ -52,7 +52,7 @@ PULLDB_WORKER_MYSQL_USER=pulldb_worker
 
 ### Grant Statements
 
-See `schema/pulldb_service/300_mysql_users.sql` for complete grant statements.
+See `schema/pulldb_service/03000_mysql_users.sql` for complete grant statements.
 
 **API User (`pulldb_api`):**
 ```sql

@@ -54,8 +54,12 @@ class JobRepository(Protocol):
         """Get the most recent job submitted by a user."""
         ...
 
-    def mark_job_complete(self, job_id: str) -> None:
-        """Mark job as complete."""
+    def mark_job_deployed(self, job_id: str) -> None:
+        """Mark job as deployed (database live, user working with it)."""
+        ...
+
+    def mark_job_user_completed(self, job_id: str) -> None:
+        """Mark deployed job as user-completed (moves to History)."""
         ...
 
     def mark_job_failed(self, job_id: str, error: str) -> None:
@@ -64,6 +68,25 @@ class JobRepository(Protocol):
 
     def request_cancellation(self, job_id: str) -> bool:
         """Request cancellation of a job."""
+        ...
+
+    def lock_for_restore(self, job_id: str, worker_id: str) -> bool:
+        """Lock job for restore phase, preventing further cancellation.
+
+        Atomically verifies can_cancel=True AND cancel_requested_at IS NULL,
+        then sets can_cancel=False, locked_at, locked_by.
+
+        The lock prevents both service and user interruption during Loading
+        through Complete. Cleared by mark_job_deployed().
+
+        Args:
+            job_id: UUID of the job to lock.
+            worker_id: Identifier of the worker locking the job.
+
+        Returns:
+            True if lock was acquired successfully, False if job was already
+            canceled or cancel was requested (job should abort).
+        """
         ...
 
     def mark_job_canceled(self, job_id: str, reason: str | None = None) -> None:

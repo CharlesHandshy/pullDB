@@ -206,8 +206,8 @@ Both database types are dropped regardless of job status:
 ### Schema Migration
 
 ```sql
--- Migration: 080_job_delete_support.sql (adds deleting/deleted)
--- Migration: 082_job_canceling_status.sql (adds canceling)
+-- Migration: 00800_job_delete_support.sql (adds deleting/deleted)
+-- Migration: 00820_job_canceling_status.sql (adds canceling)
 ALTER TABLE jobs MODIFY status ENUM('queued','running','canceling','failed','complete','canceled','deleting','deleted');
 ALTER TABLE admin_tasks MODIFY task_type ENUM(..., 'bulk_delete_jobs');
 CREATE INDEX idx_jobs_deletable ON jobs(status, owner_user_id);
@@ -315,12 +315,12 @@ New tables added in Phase 4 for authentication and RBAC.
 
 | Migration | Table | Purpose |
 |-----------|-------|---------|
-| `070_auth_users_role.sql` | — | Adds `role` column to `auth_users` |
-| `071_auth_credentials.sql` | `auth_credentials` | Bcrypt password hashes |
-| `072_sessions.sql` | `sessions` | Session tokens with expiry |
-| `072_password_reset.sql` | `password_reset_tokens` | Password reset flow |
-| `073_manager_user_relationship.sql` | `manager_user_relationship` | Manager-to-user mapping |
-| `074_audit_logs.sql` | `audit_logs` | Security audit trail |
+| `00700_auth_users_role.sql` | — | Adds `role` column to `auth_users` |
+| `00710_auth_credentials.sql` | `auth_credentials` | Bcrypt password hashes |
+| `00720_sessions.sql` | `sessions` | Session tokens with expiry |
+| `00720_password_reset.sql` | `password_reset_tokens` | Password reset flow |
+| `00730_manager_user_relationship.sql` | `manager_user_relationship` | Manager-to-user mapping |
+| `00740_audit_logs.sql` | `audit_logs` | Security audit trail |
 
 ### Table: auth_credentials
 

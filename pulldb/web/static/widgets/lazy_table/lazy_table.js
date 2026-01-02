@@ -749,7 +749,12 @@ class LazyTable {
             
             if (col.type === 'actions') {
                 td.classList.add('lazy-table-td-actions');
-                td.innerHTML = this.renderActions(col.actions, row);
+                // Use custom render if provided, otherwise use built-in action renderer
+                if (col.render) {
+                    td.innerHTML = col.render(null, row, colIndex);
+                } else {
+                    td.innerHTML = this.renderActions(col.actions, row);
+                }
             } else {
                 const value = row[col.key];
                 if (col.render) {

@@ -180,7 +180,7 @@ class MockQueueRunner:
         next_phase = self._get_next_phase(current_phase)
         
         if next_phase == JobPhase.COMPLETE:
-            self.job_repo.mark_job_complete(job_id)
+            self.job_repo.mark_job_deployed(job_id)
         else:
             self._transition_to_phase(job, next_phase)
         
@@ -226,8 +226,8 @@ class MockQueueRunner:
                 return self.job_repo.get_job_by_id(job.id)  # type: ignore
         
         # All phases complete
-        logger.info(f"Job {job.id[:8]} completed successfully")
-        self.job_repo.mark_job_complete(job.id)
+        logger.info(f"Job {job.id[:8]} deployed successfully")
+        self.job_repo.mark_job_deployed(job.id)
         return self.job_repo.get_job_by_id(job.id)  # type: ignore
     
     def _transition_to_phase(self, job: Job, phase: JobPhase) -> None:

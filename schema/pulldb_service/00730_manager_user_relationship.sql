@@ -1,4 +1,4 @@
--- 073_manager_user_relationship.sql
+-- 00730_manager_user_relationship.sql
 -- Add manager_id to auth_users for hierarchical management
 -- Managers can only manage users they created/are assigned to
 

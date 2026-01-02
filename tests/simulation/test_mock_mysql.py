@@ -63,11 +63,11 @@ class TestMockRepositories(unittest.TestCase):
         self.assertEqual(claimed.status, JobStatus.RUNNING)
         self.assertEqual(claimed.worker_id, "worker-1")
         
-        # Complete job
-        self.job_repo.mark_job_complete("job-123")
-        completed = self.job_repo.get_job_by_id("job-123")
-        self.assertEqual(completed.status, JobStatus.COMPLETE)
-        self.assertIsNotNone(completed.completed_at)
+        # Deploy job
+        self.job_repo.mark_job_deployed("job-123")
+        deployed = self.job_repo.get_job_by_id("job-123")
+        self.assertEqual(deployed.status, JobStatus.DEPLOYED)
+        self.assertIsNotNone(deployed.completed_at)
 
     def test_host_management(self):
         self.host_repo.add_host("db-01", 5, None)
@@ -124,8 +124,8 @@ class TestMockRepositories(unittest.TestCase):
         claimed2 = self.job_repo.claim_next_job("worker-2")
         self.assertIsNone(claimed2)
         
-        # Complete first job
-        self.job_repo.mark_job_complete("job-1")
+        # Deploy first job
+        self.job_repo.mark_job_deployed("job-1")
         
         # Now second job should be claimable
         claimed2 = self.job_repo.claim_next_job("worker-2")

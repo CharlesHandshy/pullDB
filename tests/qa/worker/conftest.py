@@ -132,7 +132,7 @@ def mock_job_repo() -> MagicMock:
     mock.get_job.return_value = None
     mock.get_active_jobs.return_value = []
     mock.mark_job_running.return_value = None
-    mock.mark_job_completed.return_value = None
+    mock.mark_job_deployed.return_value = None
     mock.mark_job_failed.return_value = None
     mock.add_job_event.return_value = None
     return mock

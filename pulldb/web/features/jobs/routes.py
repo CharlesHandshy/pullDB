@@ -316,10 +316,17 @@ async def job_details(
             current_phase, phase_list = _derive_current_phase(logs, job.status.value)
 
             # Compute can_cancel for this user
+            # Must have permission AND job must still be in cancelable state
             job_owner = state.user_repo.get_user_by_id(job.owner_user_id)
             job_owner_manager_id = job_owner.manager_id if job_owner else None
-            job_can_cancel = can_cancel_job(
+            has_cancel_permission = can_cancel_job(
                 user, job.owner_user_id, job_owner_manager_id
+            )
+            # Job is cancelable if: permission + status + can_cancel flag
+            job_can_cancel = (
+                has_cancel_permission
+                and job.can_cancel
+                and job.status in (JobStatus.QUEUED, JobStatus.RUNNING)
             )
 
             # Try to get profile if job is complete
@@ -418,6 +425,10 @@ async def cancel_job(
     if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
         return redirect_error(f"Cannot cancel job (status: {job.status.value})")
 
+    # Check if job has already entered loading phase (can_cancel = False)
+    if not job.can_cancel:
+        return redirect_error("Cannot cancel: job has entered loading phase")
+
     # Authorization check: lookup job owner to get their manager_id
     job_owner = state.user_repo.get_user_by_id(job.owner_user_id)
     job_owner_manager_id = job_owner.manager_id if job_owner else None
@@ -458,7 +469,11 @@ async def cancel_job(
             msg = "Cancellation requested - worker will stop at next checkpoint"
             return redirect_success(msg)
     else:
-        # Cancellation was already requested or job state changed
+        # Cancellation failed - could be: already requested, job completed,
+        # or job entered loading phase between our check and the update
+        refreshed_job = state.job_repo.get_job_by_id(job_id)
+        if refreshed_job and not refreshed_job.can_cancel:
+            return redirect_error("Cannot cancel: job has entered loading phase")
         return redirect_error("Cancellation already requested or job completed")
 
 
@@ -657,8 +672,9 @@ async def api_jobs_paginated(
     all_rows = []
     for j in jobs:
         # Determine if user can cancel this job
+        # Requires: correct status + can_cancel flag from DB + permission
         can_cancel = False
-        if j.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+        if j.status in (JobStatus.QUEUED, JobStatus.RUNNING) and j.can_cancel:
             if user.is_admin:
                 can_cancel = True
             elif j.owner_user_id == user.user_id:

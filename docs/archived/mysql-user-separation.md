@@ -183,7 +183,7 @@ PULLDB_WORKER_COORDINATION_SECRET=aws-secretsmanager:/pulldb/mysql/worker-coordi
 
 ### Phase 1: Schema & Documentation
 - [x] Rename `schema/pulldb/` → `schema/pulldb_service/`
-- [x] Create `schema/pulldb_service/300_mysql_users.sql`
+- [x] Create `schema/pulldb_service/03000_mysql_users.sql`
 - [x] Update `docs/mysql-schema.md`
 - [ ] Update `docs/AWS-SETUP.md`
 
@@ -229,7 +229,7 @@ mysql -e "CREATE DATABASE pulldb_service;"
 mysqldump pulldb | mysql pulldb_service
 
 # 3. Create new users
-mysql < schema/pulldb_service/300_mysql_users.sql
+mysql < schema/pulldb_service/03000_mysql_users.sql
 
 # 4. Create secrets in AWS Secrets Manager
 aws secretsmanager create-secret \

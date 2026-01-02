@@ -1,4 +1,4 @@
--- 000_auth_users.sql
+-- 00000_auth_users.sql
 -- Core table definition: auth_users
 
 CREATE TABLE auth_users (

@@ -206,17 +206,17 @@ class TestSimulatedJobRepository:
         claimed = repo.claim_next_job("worker-1")
         assert claimed is None
 
-    def test_mark_job_complete(self) -> None:
-        """Job can be marked complete."""
+    def test_mark_job_deployed(self) -> None:
+        """Job can be marked deployed."""
         repo = SimulatedJobRepository()
         job = self._create_test_job()
         repo.enqueue_job(job)
         repo.claim_next_job("worker-1")
-        repo.mark_job_complete(job.id)
+        repo.mark_job_deployed(job.id)
 
         fetched = repo.get_job_by_id(job.id)
         assert fetched is not None
-        assert fetched.status == JobStatus.COMPLETE
+        assert fetched.status == JobStatus.DEPLOYED
 
     def test_mark_job_failed(self) -> None:
         """Job can be marked failed."""
@@ -437,13 +437,13 @@ class TestIntegrationScenarios:
         exit_code = executor.run_command(["myloader"])
         assert exit_code == 0
 
-        # Complete job
-        repo.mark_job_complete(job.id)
+        # Deploy job (marks database as live)
+        repo.mark_job_deployed(job.id)
 
         # Verify final state
         final_job = repo.get_job_by_id(job.id)
         assert final_job is not None
-        assert final_job.status == JobStatus.COMPLETE
+        assert final_job.status == JobStatus.DEPLOYED
 
         # Verify event sequence
         bus = get_event_bus()

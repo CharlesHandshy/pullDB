@@ -54,7 +54,7 @@ def jobs_group() -> None:
 @click.option(
     "--status",
     "status_filter",
-    type=click.Choice(["queued", "running", "complete", "failed", "canceled"]),
+    type=click.Choice(["queued", "running", "deployed", "complete", "failed", "canceled"]),
     help="Filter by job status",
 )
 @click.option(
@@ -178,7 +178,7 @@ def jobs_cancel(job_id: str, force: bool) -> None:
             )
         job = candidates[0]
 
-    if job.status.value in ("complete", "failed", "canceled"):
+    if job.status.value in ("deployed", "complete", "failed", "canceled"):
         raise click.ClickException(f"Job is already {job.status.value}, cannot cancel.")
 
     if repo.request_cancellation(job.id):

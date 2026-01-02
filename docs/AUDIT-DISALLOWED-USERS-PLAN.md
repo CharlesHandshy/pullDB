@@ -73,7 +73,7 @@ Two-phase implementation:
 ### 2.2 Database Layer
 | Task | File | Status |
 |------|------|--------|
-| Create migration `081_disallowed_users.sql` | `schema/pulldb_service/` | ✅ Done |
+| Create migration `00810_disallowed_users.sql` | `schema/pulldb_service/` | ✅ Done |
 | Add `DisallowedUser` dataclass | `pulldb/infra/mysql.py` | ✅ Done |
 | Add `DisallowedUserRepository` class | `pulldb/infra/mysql.py` | ✅ Done |
 | Add `get_disallowed_user_repository()` factory | `pulldb/infra/factory.py` | ✅ Done |

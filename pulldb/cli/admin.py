@@ -65,6 +65,7 @@ from pulldb.cli.admin_commands import (
     run_retention_cleanup_cmd,
     users_group,
 )
+from pulldb.cli.backup_commands import backups_group
 from pulldb.cli.secrets_commands import secrets_group
 from pulldb.cli.settings import settings_group
 
@@ -168,6 +169,7 @@ def cli(ctx: click.Context) -> None:
 cli.add_command(settings_group)
 cli.add_command(secrets_group)
 cli.add_command(jobs_group)
+cli.add_command(backups_group)
 cli.add_command(cleanup_cmd)
 cli.add_command(run_retention_cleanup_cmd)
 cli.add_command(hosts_group)

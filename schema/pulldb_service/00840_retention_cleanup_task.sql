@@ -1,4 +1,4 @@
--- 084_retention_cleanup_task.sql
+-- 00840_retention_cleanup_task.sql
 -- Add 'retention_cleanup' admin task type for scheduled database cleanup
 
 -- Add 'retention_cleanup' to admin_tasks.task_type ENUM

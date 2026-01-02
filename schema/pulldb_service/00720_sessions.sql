@@ -1,4 +1,4 @@
--- 072_sessions.sql
+-- 00720_sessions.sql
 -- Session management for web authentication
 -- Phase 4: Session-based auth
 

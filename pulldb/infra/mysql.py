@@ -364,7 +364,10 @@ class JobRepository:
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
-                       completed_at, options_json, retry_count, error_detail, worker_id
+                       completed_at, options_json, retry_count, error_detail, worker_id,
+                       staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id
                 FROM jobs
                 WHERE id = %s
                 """,
@@ -395,7 +398,10 @@ class JobRepository:
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
-                       completed_at, options_json, retry_count, error_detail, worker_id
+                       completed_at, options_json, retry_count, error_detail, worker_id,
+                       staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id
                 FROM jobs
                 WHERE id LIKE %s
                 ORDER BY submitted_at DESC
@@ -527,18 +533,20 @@ class JobRepository:
                 raise ValueError(f"Job {job_id} not found or not in queued status")
             conn.commit()
 
-    def mark_job_complete(self, job_id: str) -> None:
-        """Mark job as complete and set completed_at timestamp.
+    def mark_job_deployed(self, job_id: str) -> None:
+        """Mark job as deployed and set completed_at timestamp.
 
         Called by worker when job successfully finishes. Updates status to
-        'complete', records completion time, and sets expires_at based on
-        the max_retention_months setting.
+        'deployed', records completion time, sets expires_at based on
+        the max_retention_months setting, and clears the worker processing lock.
 
         Note:
-            The worker_id column is intentionally retained after completion
+            The worker_id column is intentionally retained after deployment
             for debugging purposes (to identify which worker processed the job).
             The expires_at is calculated as completed_at + max_retention_months
             using the current setting value.
+            The locked_at/locked_by fields are cleared since the database is now
+            available for user actions.
 
         Args:
             job_id: UUID of job.
@@ -559,14 +567,101 @@ class JobRepository:
             cursor.execute(
                 """
                 UPDATE jobs
-                SET status = 'complete', 
+                SET status = 'deployed', 
                     completed_at = UTC_TIMESTAMP(6),
-                    expires_at = DATE_ADD(UTC_TIMESTAMP(6), INTERVAL %s MONTH)
+                    expires_at = DATE_ADD(UTC_TIMESTAMP(6), INTERVAL %s MONTH),
+                    locked_at = NULL,
+                    locked_by = NULL
                 WHERE id = %s
                 """,
                 (retention_months, job_id),
             )
             conn.commit()
+
+    def mark_job_user_completed(self, job_id: str) -> None:
+        """Mark deployed job as user-completed, moving to History.
+
+        Called when user marks a deployed database as complete (done using it).
+        Changes status from 'deployed' to 'complete' which moves the job
+        to the History view. Also sets completed_at timestamp.
+
+        Args:
+            job_id: UUID of job.
+
+        Raises:
+            ValueError: If job not found or not in deployed status.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET status = 'complete', completed_at = UTC_TIMESTAMP(6)
+                WHERE id = %s AND status = 'deployed'
+                """,
+                (job_id,),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Job {job_id} not found or not in deployed status")
+            conn.commit()
+
+    def mark_job_expired(self, job_id: str) -> bool:
+        """Mark deployed job as expired when retention period has passed.
+
+        Called by frontend when it detects a deployed job with expires_at in the past.
+        Changes status from 'deployed' to 'expired' which moves the job
+        to the History view (cleanup window).
+
+        Args:
+            job_id: UUID of job.
+
+        Returns:
+            True if job was updated, False if not found or not eligible.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET status = 'expired'
+                WHERE id = %s 
+                  AND status = 'deployed'
+                  AND expires_at IS NOT NULL
+                  AND expires_at <= UTC_TIMESTAMP()
+                """,
+                (job_id,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def mark_jobs_expired_batch(self, job_ids: list[str]) -> int:
+        """Mark multiple deployed jobs as expired in a single transaction.
+
+        Args:
+            job_ids: List of job UUIDs to check and mark as expired.
+
+        Returns:
+            Number of jobs that were updated.
+        """
+        if not job_ids:
+            return 0
+            
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ", ".join(["%s"] * len(job_ids))
+            cursor.execute(
+                f"""
+                UPDATE jobs
+                SET status = 'expired'
+                WHERE id IN ({placeholders})
+                  AND status = 'deployed'
+                  AND expires_at IS NOT NULL
+                  AND expires_at <= UTC_TIMESTAMP()
+                """,
+                tuple(job_ids),
+            )
+            conn.commit()
+            return cursor.rowcount
 
     def mark_job_failed(self, job_id: str, error: str) -> None:
         """Mark job as failed with error detail.
@@ -652,13 +747,17 @@ class JobRepository:
         """Request cancellation of a job.
 
         Sets cancel_requested_at timestamp to signal worker to stop processing.
-        Only jobs in 'queued' or 'running' status can be canceled.
+        Only jobs that meet all criteria can be canceled:
+        - Status is 'queued' or 'running'
+        - can_cancel is TRUE (not yet in restore phase)
+        - No cancellation already requested
 
         Args:
             job_id: UUID of job to cancel.
 
         Returns:
-            True if cancellation was requested, False if job not in cancelable state.
+            True if cancellation was requested, False if job not in cancelable state
+            (either wrong status, already in restore phase, or already canceling).
 
         Raises:
             ValueError: If job not found.
@@ -669,7 +768,9 @@ class JobRepository:
                 """
                 UPDATE jobs
                 SET cancel_requested_at = UTC_TIMESTAMP(6)
-                WHERE id = %s AND status IN ('queued', 'running')
+                WHERE id = %s 
+                  AND status IN ('queued', 'running')
+                  AND can_cancel = TRUE
                   AND cancel_requested_at IS NULL
                 """,
                 (job_id,),
@@ -1031,7 +1132,7 @@ class JobRepository:
 
         Returns jobs that represent currently owned databases:
         - Queued/running/canceling jobs (in progress)
-        - Complete jobs where database still exists (not dropped, not superseded)
+        - Deployed jobs (database live, user actively working with it)
 
         Per retention-cleanup plan: "Shows all databases user currently owns
         (not cleaned up, not superseded)"
@@ -1048,7 +1149,8 @@ class JobRepository:
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
 
-            # Active (in-progress) OR complete with database still existing
+            # Active (in-progress) OR deployed (not expired)
+            # Note: Frontend checks for expired jobs and updates their status
             query = """
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
                        j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
@@ -1057,12 +1159,7 @@ class JobRepository:
                        j.db_dropped_at, j.superseded_at, j.superseded_by_job_id
                 FROM jobs j
                 WHERE (
-                    j.status IN ('queued', 'running', 'canceling')
-                    OR (
-                        j.status = 'complete'
-                        AND j.db_dropped_at IS NULL
-                        AND j.superseded_at IS NULL
-                    )
+                    j.status IN ('queued', 'running', 'canceling', 'deployed')
                 )
             """
 
@@ -1122,7 +1219,7 @@ class JobRepository:
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
 
-            # Failed/canceled/deleted OR complete but dropped/superseded
+            # Failed/canceled/deleted/expired/complete/superseded jobs go to History
             query = """
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
                        j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
@@ -1130,13 +1227,7 @@ class JobRepository:
                        j.error_detail, j.expires_at, j.locked_at, j.locked_by,
                        j.db_dropped_at, j.superseded_at, j.superseded_by_job_id
                 FROM jobs j
-                WHERE (
-                    j.status IN ('failed', 'canceled', 'deleted', 'deleting')
-                    OR (
-                        j.status = 'complete'
-                        AND (j.db_dropped_at IS NOT NULL OR j.superseded_at IS NOT NULL)
-                    )
-                )
+                WHERE j.status IN ('failed', 'canceled', 'deleted', 'deleting', 'expired', 'complete', 'superseded')
             """
 
             params: list[t.Any] = []
@@ -2004,6 +2095,8 @@ class JobRepository:
             worker_id=row.get("worker_id"),
             staging_cleaned_at=row.get("staging_cleaned_at"),
             current_operation=self._derive_operation(row),
+            cancel_requested_at=row.get("cancel_requested_at"),
+            can_cancel=row.get("can_cancel", True),
             # Retention & lifecycle fields
             expires_at=row.get("expires_at"),
             locked_at=row.get("locked_at"),
@@ -2179,6 +2272,45 @@ class JobRepository:
             conn.commit()
             return cursor.rowcount > 0
 
+    def lock_for_restore(self, job_id: str, worker_id: str) -> bool:
+        """Lock job for restore phase, preventing further cancellation.
+
+        This is the critical gate before myloader starts. It atomically:
+        1. Verifies can_cancel=TRUE AND cancel_requested_at IS NULL
+        2. Sets can_cancel=FALSE, locked_at, locked_by
+
+        The lock prevents both service and user interruption during Loading
+        through Complete. The lock is cleared by mark_job_deployed() once
+        the job reaches Deployed status.
+
+        If a cancellation was requested between the last checkpoint and this
+        call, the method returns False and the job should abort cleanly.
+
+        Args:
+            job_id: UUID of the job to lock.
+            worker_id: Identifier of the worker locking the job.
+
+        Returns:
+            True if lock was acquired successfully (proceed with restore).
+            False if job was already canceled or cancel was requested (abort job).
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE jobs 
+                SET can_cancel = FALSE,
+                    locked_at = UTC_TIMESTAMP(6),
+                    locked_by = %s
+                WHERE id = %s 
+                  AND can_cancel = TRUE 
+                  AND cancel_requested_at IS NULL
+                """,
+                (f"worker:{worker_id}", job_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
     def mark_db_dropped(self, job_id: str) -> None:
         """Mark that the actual database was dropped from target host.
 
@@ -2192,6 +2324,47 @@ class JobRepository:
                 (job_id,),
             )
             conn.commit()
+
+    def get_deployed_job_for_target(
+        self, target: str, dbhost: str, owner_user_id: str
+    ) -> Job | None:
+        """Get the deployed job for a target+host+user if one exists.
+
+        Used to check if a database already exists before allowing a new restore.
+        A deployed job means the database is live and in use.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+            owner_user_id: User ID who owns the job.
+
+        Returns:
+            Deployed Job if found, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail,
+                       worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id
+                FROM jobs
+                WHERE target = %s 
+                  AND dbhost = %s 
+                  AND owner_user_id = %s
+                  AND status = 'deployed'
+                  AND superseded_at IS NULL
+                  AND db_dropped_at IS NULL
+                ORDER BY submitted_at DESC
+                LIMIT 1
+                """,
+                (target, dbhost, owner_user_id),
+            )
+            row = cursor.fetchone()
+            return self._row_to_job(row) if row else None
 
     def get_latest_completed_job_for_target(
         self, target: str, dbhost: str, owner_user_id: str
@@ -2216,8 +2389,9 @@ class JobRepository:
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
                        completed_at, options_json, retry_count, error_detail,
-                       worker_id, staging_cleaned_at, expires_at, locked_at,
-                       locked_by, db_dropped_at, superseded_at, superseded_by_job_id
+                       worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -2235,6 +2409,10 @@ class JobRepository:
     def supersede_job(self, job_id: str, superseded_by_job_id: str) -> None:
         """Mark a job as superseded by a newer restore to the same target.
 
+        Sets status to 'superseded', records superseded_at timestamp,
+        and sets expires_at to 7 days from now (cleanup window for the record).
+        Note: Superseded jobs have no database to drop - it was replaced.
+
         Args:
             job_id: Job ID being superseded.
             superseded_by_job_id: Job ID of the new restore.
@@ -2244,7 +2422,11 @@ class JobRepository:
             cursor.execute(
                 """
                 UPDATE jobs 
-                SET superseded_at = UTC_TIMESTAMP(6), superseded_by_job_id = %s
+                SET superseded_at = UTC_TIMESTAMP(6), 
+                    superseded_by_job_id = %s,
+                    status = 'superseded',
+                    expires_at = DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 7 DAY),
+                    db_dropped_at = UTC_TIMESTAMP(6)
                 WHERE id = %s
                 """,
                 (superseded_by_job_id, job_id),
@@ -2273,8 +2455,9 @@ class JobRepository:
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
                        completed_at, options_json, retry_count, error_detail,
-                       worker_id, staging_cleaned_at, expires_at, locked_at,
-                       locked_by, db_dropped_at, superseded_at, superseded_by_job_id
+                       worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -2314,8 +2497,9 @@ class JobRepository:
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
                        completed_at, options_json, retry_count, error_detail,
-                       worker_id, staging_cleaned_at, expires_at, locked_at,
-                       locked_by, db_dropped_at, superseded_at, superseded_by_job_id
+                       worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id
                 FROM jobs
                 WHERE owner_user_id = %s
                   AND status = 'complete'
@@ -2368,8 +2552,9 @@ class JobRepository:
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
                        completed_at, options_json, retry_count, error_detail,
-                       worker_id, staging_cleaned_at, expires_at, locked_at,
-                       locked_by, db_dropped_at, superseded_at, superseded_by_job_id
+                       worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id
                 FROM jobs
                 WHERE status = 'complete'
                   AND locked_at IS NULL
@@ -2397,8 +2582,9 @@ class JobRepository:
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
                        completed_at, options_json, retry_count, error_detail,
-                       worker_id, staging_cleaned_at, expires_at, locked_at,
-                       locked_by, db_dropped_at, superseded_at, superseded_by_job_id
+                       worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id
                 FROM jobs
                 WHERE locked_at IS NOT NULL
                   AND db_dropped_at IS NULL
@@ -2426,8 +2612,9 @@ class JobRepository:
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
                        staging_name, dbhost, status, submitted_at, started_at,
                        completed_at, options_json, retry_count, error_detail,
-                       worker_id, staging_cleaned_at, expires_at, locked_at,
-                       locked_by, db_dropped_at, superseded_at, superseded_by_job_id
+                       worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id
                 FROM jobs
                 WHERE owner_user_id = %s
                   AND status = 'complete'

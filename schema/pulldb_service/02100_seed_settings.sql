@@ -1,4 +1,4 @@
--- 210_seed_settings.sql
+-- 02100_seed_settings.sql
 -- Seed data for settings table
 -- v0.0.6: Complete settings including Phase 1-2 features
 

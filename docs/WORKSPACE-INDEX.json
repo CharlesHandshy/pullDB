@@ -1346,67 +1346,67 @@
     "path": "schema/pulldb_service/",
     "files": [
       {
-        "name": "000_auth_users.sql",
+        "name": "00000_auth_users.sql",
         "purpose": "auth_users"
       },
       {
-        "name": "010_jobs.sql",
+        "name": "00100_jobs.sql",
         "purpose": "jobs"
       },
       {
-        "name": "020_job_events.sql",
+        "name": "00200_job_events.sql",
         "purpose": "job_events"
       },
       {
-        "name": "030_db_hosts.sql",
+        "name": "00300_db_hosts.sql",
         "purpose": "db_hosts"
       },
       {
-        "name": "040_locks.sql",
+        "name": "00400_locks.sql",
         "purpose": "locks"
       },
       {
-        "name": "050_settings.sql",
+        "name": "00500_settings.sql",
         "purpose": "settings"
       },
       {
-        "name": "060_active_jobs_view.sql",
+        "name": "00600_active_jobs_view.sql",
         "purpose": "active_jobs_view"
       },
       {
-        "name": "070_auth_users_role.sql",
+        "name": "00700_auth_users_role.sql",
         "purpose": "auth_users_role"
       },
       {
-        "name": "071_auth_credentials.sql",
+        "name": "00710_auth_credentials.sql",
         "purpose": "auth_credentials"
       },
       {
-        "name": "072_password_reset.sql",
+        "name": "00720_password_reset.sql",
         "purpose": "password_reset"
       },
       {
-        "name": "072_sessions.sql",
+        "name": "00720_sessions.sql",
         "purpose": "sessions"
       },
       {
-        "name": "073_manager_user_relationship.sql",
+        "name": "00730_manager_user_relationship.sql",
         "purpose": "manager_user_relationship"
       },
       {
-        "name": "074_audit_logs.sql",
+        "name": "00740_audit_logs.sql",
         "purpose": "audit_logs"
       },
       {
-        "name": "200_seed_db_hosts.sql",
+        "name": "02000_seed_db_hosts.sql",
         "purpose": "seed_db_hosts"
       },
       {
-        "name": "210_seed_settings.sql",
+        "name": "02100_seed_settings.sql",
         "purpose": "seed_settings"
       },
       {
-        "name": "300_mysql_users.sql",
+        "name": "03000_mysql_users.sql",
         "purpose": "mysql_users"
       }
     ]

@@ -426,6 +426,40 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
                    f"Unlock it first or use a different target name."
         )
 
+    # CRITICAL: Check if a deployed database already exists for this target
+    # If overwrite is not explicitly enabled, block the restore to prevent data loss
+    if hasattr(state.job_repo, "get_deployed_job_for_target"):
+        existing_deployed = state.job_repo.get_deployed_job_for_target(target, dbhost, user.user_id)
+        if existing_deployed:
+            if not req.overwrite:
+                emit_event(
+                    "job_enqueue_blocked",
+                    f"Restore blocked: database '{target}' on '{dbhost}' already exists (job {existing_deployed.id[:8]})",
+                    labels=MetricLabels(
+                        target=target,
+                        phase="enqueue",
+                        status="blocked",
+                    ),
+                )
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    detail=f"Database '{target}' already exists on '{dbhost}' (job {existing_deployed.id[:8]}). "
+                           f"Enable 'Allow Overwrite' to replace it, or use a different target name."
+                )
+            # Overwrite is enabled - supersede the existing deployed job
+            if not existing_deployed.locked_at:
+                state.job_repo.supersede_job(existing_deployed.id, "pending-" + target)
+                emit_event(
+                    "job_superseded",
+                    f"Job {existing_deployed.id[:8]} superseded for target {target} (overwrite enabled)",
+                    labels=MetricLabels(
+                        job_id=existing_deployed.id,
+                        target=target,
+                        phase="enqueue",
+                        status="superseded",
+                    ),
+                )
+
     # Phase 2: Concurrency controls - check limits before job creation
     check_concurrency_limits(state, user)
     

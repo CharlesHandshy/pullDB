@@ -1,4 +1,4 @@
--- 200_seed_db_hosts.sql
+-- 02000_seed_db_hosts.sql
 -- Seed data for db_hosts table
 
 INSERT INTO db_hosts (id, hostname, credential_ref, max_running_jobs, max_active_jobs, enabled) VALUES

@@ -1,4 +1,4 @@
--- 072_password_reset.sql
+-- 00720_password_reset.sql
 -- Add password reset flag to auth_credentials
 -- Phase 4: Manager/Admin can mark user password for reset
 

@@ -229,12 +229,12 @@
   },
   "phase4_schema": {
     "migrations": [
-      {"file": "070_auth_users_role.sql", "purpose": "adds role column to auth_users"},
-      {"file": "071_auth_credentials.sql", "table": "auth_credentials"},
-      {"file": "072_sessions.sql", "table": "sessions"},
-      {"file": "072_password_reset.sql", "table": "password_reset_tokens"},
-      {"file": "073_manager_user_relationship.sql", "table": "manager_user_relationship"},
-      {"file": "074_audit_logs.sql", "table": "audit_logs"}
+      {"file": "00700_auth_users_role.sql", "purpose": "adds role column to auth_users"},
+      {"file": "00710_auth_credentials.sql", "table": "auth_credentials"},
+      {"file": "00720_sessions.sql", "table": "sessions"},
+      {"file": "00720_password_reset.sql", "table": "password_reset_tokens"},
+      {"file": "00730_manager_user_relationship.sql", "table": "manager_user_relationship"},
+      {"file": "00740_audit_logs.sql", "table": "audit_logs"}
     ],
     "tables": ["auth_credentials", "sessions", "password_reset_tokens", "manager_user_relationship", "audit_logs"]
   }

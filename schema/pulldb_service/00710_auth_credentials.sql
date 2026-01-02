@@ -1,4 +1,4 @@
--- 071_auth_credentials.sql
+-- 00710_auth_credentials.sql
 -- Password and 2FA storage for web authentication
 -- Phase 4: Enhanced authentication
 

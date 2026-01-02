@@ -28,26 +28,32 @@ class JobStatus(Enum):
         QUEUED: Job submitted and waiting to be processed.
         RUNNING: Job currently being executed by worker.
         CANCELING: Cancellation requested, worker stopping at checkpoint.
+        DEPLOYED: Job finished, database is live, user actively working with it.
+        EXPIRED: Job's retention period has passed, pending cleanup.
         FAILED: Job execution failed with error.
-        COMPLETE: Job successfully completed.
+        COMPLETE: User marked done with database (moves to History).
         CANCELED: Job canceled by user (reserved for Phase 1).
         DELETING: Job databases being deleted (async bulk delete in progress).
         DELETED: Job databases deleted by user (soft delete complete).
+        SUPERSEDED: Job replaced by newer restore to same target.
     """
 
     QUEUED = "queued"
     RUNNING = "running"
     CANCELING = "canceling"  # Cancellation requested, stopping at checkpoint
+    DEPLOYED = "deployed"  # Database live, user actively working with it
+    EXPIRED = "expired"  # Retention period passed, pending cleanup
     FAILED = "failed"
-    COMPLETE = "complete"
+    COMPLETE = "complete"  # User marked done, moves to History
     CANCELED = "canceled"  # Reserved for Phase 1
     DELETING = "deleting"  # Async bulk delete in progress
     DELETED = "deleted"  # User-initiated database deletion
+    SUPERSEDED = "superseded"  # Replaced by newer restore to same target
 
 
 # Terminal states - jobs in these states have finished processing and
 # their staging databases are eligible for cleanup
-TERMINAL_STATUSES = frozenset({JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED, JobStatus.DELETED})
+TERMINAL_STATUSES = frozenset({JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED, JobStatus.DELETED, JobStatus.EXPIRED})
 
 # SQL-safe terminal status values for use in queries
 TERMINAL_STATUS_VALUES = frozenset({s.value for s in TERMINAL_STATUSES})
@@ -229,6 +235,8 @@ class Job:
     current_operation: str | None = None
     staging_cleaned_at: datetime | None = None
     cancel_requested_at: datetime | None = None
+    # Cancellation control: flips to False atomically when restore begins
+    can_cancel: bool = True
     # Retention & lifecycle fields (Phase: Database Retention)
     expires_at: datetime | None = None
     locked_at: datetime | None = None

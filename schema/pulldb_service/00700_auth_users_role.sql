@@ -1,4 +1,4 @@
--- 070_auth_users_role.sql
+-- 00700_auth_users_role.sql
 -- Add role column to auth_users (additive, non-breaking)
 -- Phase 4: RBAC support
 

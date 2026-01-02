@@ -1,4 +1,4 @@
--- 075_user_hosts.sql
+-- 00750_user_hosts.sql
 -- Junction table for user-to-database-host assignments
 -- Users can be assigned multiple database hosts, with one marked as default
 -- v0.0.7: Introduced for user-level host access control

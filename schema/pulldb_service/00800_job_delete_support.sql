@@ -1,4 +1,4 @@
--- 080_job_delete_support.sql
+-- 00800_job_delete_support.sql
 -- Add 'deleting' and 'deleted' statuses for user-initiated job database deletion
 -- Add 'bulk_delete_jobs' admin task type for bulk operations
 

@@ -143,19 +143,19 @@ tests/e2e (needs browser):         Not run (Playwright)
 
 ```
 schema/pulldb_service/
-├── 000_auth_users.sql       ✅
-├── 010_jobs.sql             ✅ (verified content)
-├── 020_job_events.sql       ✅
-├── 030_db_hosts.sql         ✅
-├── 040_locks.sql            ✅
-├── 050_settings.sql         ✅
-├── 060_active_jobs_view.sql ✅
-├── 070_auth_users_role.sql  ✅
-├── 071_auth_credentials.sql ✅
-├── 072_sessions.sql         ✅
-├── 200_seed_db_hosts.sql    ✅
-├── 210_seed_settings.sql    ✅
-└── 300_mysql_users.sql      ✅
+├── 00000_auth_users.sql       ✅
+├── 00100_jobs.sql             ✅ (verified content)
+├── 00200_job_events.sql       ✅
+├── 00300_db_hosts.sql         ✅
+├── 00400_locks.sql            ✅
+├── 00500_settings.sql         ✅
+├── 00600_active_jobs_view.sql ✅
+├── 00700_auth_users_role.sql  ✅
+├── 00710_auth_credentials.sql ✅
+├── 00720_sessions.sql         ✅
+├── 02000_seed_db_hosts.sql    ✅
+├── 02100_seed_settings.sql    ✅
+└── 03000_mysql_users.sql      ✅
 ```
 
 ### Jobs Table Key Features

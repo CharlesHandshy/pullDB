@@ -711,6 +711,15 @@ def cleanup_from_jobs(
     credentials = host_repo.get_host_credentials(dbhost)
 
     for candidate in candidates:
+        # Skip superseded jobs - they have no database (was replaced by newer restore)
+        if candidate.job_status == 'superseded':
+            logger.info(
+                "Skipping superseded job %s: database was replaced by newer restore",
+                candidate.matched_job_id,
+            )
+            result.databases_skipped += 1
+            continue
+
         # Safety check: verify no active jobs for this target
         if job_repo.has_active_jobs_for_target(candidate.target_name, dbhost):
             logger.warning(

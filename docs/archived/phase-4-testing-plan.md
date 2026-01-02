@@ -124,9 +124,9 @@ python -m pytest pulldb/tests/test_auth_repository.py \
 
 | Migration | Description |
 |-----------|-------------|
-| `070_auth_users_role.sql` | Add UserRole enum to auth_users |
-| `071_auth_credentials.sql` | Password hash storage table |
-| `072_sessions.sql` | Session management table |
+| `00700_auth_users_role.sql` | Add UserRole enum to auth_users |
+| `00710_auth_credentials.sql` | Password hash storage table |
+| `00720_sessions.sql` | Session management table |
 
 ---
 

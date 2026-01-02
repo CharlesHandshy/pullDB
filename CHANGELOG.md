@@ -13,7 +13,7 @@ Unreleased
 - `CANCELING` status in JobStatus enum (between RUNNING and FAILED)
 - `has_restore_started()` method in JobRepository to check if myloader began
 - `mark_job_canceling()` method to transition running jobs to canceling
-- Schema migration `082_job_canceling_status.sql`:
+- Schema migration `00820_job_canceling_status.sql`:
   - Adds 'canceling' to jobs.status ENUM
   - Updates active_jobs view to include canceling jobs
   - Updates active_target_key virtual column to block new submissions
@@ -59,7 +59,7 @@ Unreleased
 ### Added
 - `DELETING` status in JobStatus enum for visibility during bulk operations
 - `mark_job_deleting()` method in JobRepository
-- Schema migration `080_job_delete_support.sql` adds `deleting` to status ENUM
+- Schema migration `00800_job_delete_support.sql` adds `deleting` to status ENUM
 - `.badge-pulse` animation for visual feedback during deletion
 - Unit tests for `delete_job_databases` function
 
@@ -243,7 +243,7 @@ v0.0.6 - 2025-11-28
 - Schema changes:
   - `031_db_hosts_alias.sql` - host_alias column with unique index
   - `211_seed_cleanup_retention.sql` - seeds default retention (7 days)
-  - `worker_id` column consolidated into `010_jobs.sql` (removed `017_jobs_worker_id.sql`)
+  - `worker_id` column consolidated into `00100_jobs.sql` (removed `017_jobs_worker_id.sql`)
 - Code quality fixes from QA audit
 
 v0.0.5 - 2025-11-28

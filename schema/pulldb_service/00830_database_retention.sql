@@ -1,4 +1,4 @@
--- 083_database_retention.sql
+-- 00830_database_retention.sql
 -- Database Retention & Cleanup System
 -- v0.1.9: Adds expiration, locking, and lifecycle tracking for complete jobs
 --

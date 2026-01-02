@@ -1,4 +1,4 @@
--- 077_admin_tasks.sql
+-- 00770_admin_tasks.sql
 -- Admin background tasks queue for long-running operations
 -- Examples: force_delete_user (with database drops), scan_user_orphans
 

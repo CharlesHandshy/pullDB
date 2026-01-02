@@ -1,4 +1,4 @@
--- 020_job_events.sql
+-- 00200_job_events.sql
 -- Core table definition: job_events and supporting index
 
 CREATE TABLE job_events (

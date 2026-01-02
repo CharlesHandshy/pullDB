@@ -137,12 +137,12 @@ class TestJobRepository:
             and running.started_at is not None
         )
 
-        repo.mark_job_complete(job_id)
-        complete = repo.get_job_by_id(job_id)
+        repo.mark_job_deployed(job_id)
+        deployed = repo.get_job_by_id(job_id)
         assert (
-            complete is not None
-            and complete.status == JobStatus.COMPLETE
-            and complete.completed_at is not None
+            deployed is not None
+            and deployed.status == JobStatus.DEPLOYED
+            and deployed.completed_at is not None
         )
         self._cleanup_job(mysql_pool, job_id, target)
 
@@ -273,10 +273,10 @@ class TestJobRepository:
         repo.append_job_event(job_id, "running", "Started")
         repo.append_job_event(job_id, "complete", "Done")
 
-        # Use claim_next_job then mark complete
+        # Use claim_next_job then mark deployed
         claimed = repo.claim_next_job(worker_id="test-worker:1234")
         assert claimed is not None
-        repo.mark_job_complete(job_id)
+        repo.mark_job_deployed(job_id)
 
         # Prune with very long retention - should delete nothing
         deleted = repo.prune_job_events(retention_days=365)

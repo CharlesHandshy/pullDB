@@ -118,7 +118,7 @@
                 
                 <div class="detail-row">
                     <span class="detail-label">Host</span>
-                    <span class="detail-value">{{ job.db_host or '—' }}</span>
+                    <span class="detail-value">{{ job.dbhost or '—' }}</span>
                 </div>
                 
                 {% if job.status.value in ['deployed', 'complete', 'superseded'] and job.expires_at %}

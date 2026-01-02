@@ -1,4 +1,4 @@
--- 040_locks.sql
+-- 00400_locks.sql
 -- Core table definition: locks
 
 CREATE TABLE locks (

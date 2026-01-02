@@ -1,4 +1,4 @@
--- 010_jobs.sql
+-- 00100_jobs.sql
 -- Core table definition: jobs and associated indexes
 -- v0.0.7: Added 'canceling' status for intermediate cancellation state
 

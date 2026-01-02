@@ -493,8 +493,20 @@
 .cell-actions-retention {
     display: flex;
     align-items: center;
-    gap: var(--space-1);
+    justify-content: flex-end;
+    gap: 2px;
     flex-wrap: nowrap;
+}
+
+/* Action buttons in retention cell - tighter spacing */
+.cell-actions-retention .action-btn {
+    width: 24px;
+    height: 24px;
+}
+
+.cell-actions-retention .action-btn svg {
+    width: 14px;
+    height: 14px;
 }
 
 .cell-actions-retention .btn-xs {
@@ -505,34 +517,82 @@
     white-space: nowrap;
 }
 
-.cell-actions-retention .extend-group {
-    display: flex;
-    align-items: center;
-}
+/* ===========================================
+   EXPIRES SELECT (in-cell dropdown)
+   =========================================== */
 
-.cell-actions-retention .extend-select {
-    padding: 2px 4px;
+.extend-select {
+    padding: 3px 6px;
     font-size: 0.7rem;
-    border: 1px solid var(--color-border);
+    font-weight: 500;
+    border: 1px solid transparent;
     border-radius: var(--radius-sm);
-    background: var(--color-surface);
-    color: var(--color-text-primary);
     cursor: pointer;
-    min-width: 70px;
+    min-width: 55px;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 4px center;
+    padding-right: 18px;
 }
 
-.cell-actions-retention .extend-select:focus {
+.extend-select:hover {
+    border-color: var(--color-border-hover);
+}
+
+.extend-select:focus {
     outline: none;
     border-color: var(--color-primary);
     box-shadow: 0 0 0 2px var(--primary-100);
 }
 
-/* Dark mode adjustments */
-[data-theme="dark"] .cell-actions-retention .extend-select {
-    background: var(--color-bg-secondary);
-    border-color: var(--color-border);
+/* Color variants matching badge styles */
+.extend-select.expires-not-set {
+    background-color: var(--gray-100);
+    color: var(--gray-600);
 }
 
-[data-theme="dark"] .cell-actions-retention .extend-select:focus {
+.extend-select.expires-neutral {
+    background-color: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.extend-select.expires-warning {
+    background-color: var(--warning-100);
+    color: var(--warning-800);
+}
+
+.extend-select.expires-danger {
+    background-color: var(--danger-100);
+    color: var(--danger-700);
+}
+
+/* Dark mode */
+[data-theme="dark"] .extend-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 20 20' fill='%239ca3af'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd'/%3E%3C/svg%3E");
+}
+
+[data-theme="dark"] .extend-select.expires-not-set {
+    background-color: var(--gray-700);
+    color: var(--gray-300);
+}
+
+[data-theme="dark"] .extend-select.expires-neutral {
+    background-color: var(--gray-700);
+    color: var(--gray-200);
+}
+
+[data-theme="dark"] .extend-select.expires-warning {
+    background-color: var(--warning-900);
+    color: var(--warning-200);
+}
+
+[data-theme="dark"] .extend-select.expires-danger {
+    background-color: var(--danger-900);
+    color: var(--danger-200);
+}
+
+[data-theme="dark"] .extend-select:focus {
     box-shadow: 0 0 0 2px var(--primary-900);
 }

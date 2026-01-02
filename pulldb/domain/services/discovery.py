@@ -250,6 +250,21 @@ class DiscoveryService:
             )
             # Reconstruct full customer names by prepending the search prefix
             customers = [f"{search_prefix}{suffix}" for suffix in suffixes]
+
+            # Check for exact-match customer (e.g., "affordable" when searching "affordable*")
+            # S3 CommonPrefixes doesn't return the queried prefix itself, only children.
+            # We need an explicit check if the exact folder has content.
+            if search_prefix:
+                exact_folder = f"{prefix}{search_prefix}/"
+                try:
+                    exact_keys = s3.list_keys(
+                        bucket, exact_folder, profile=profile, max_keys=1
+                    )
+                    if exact_keys:
+                        customers.append(search_prefix)
+                except Exception:
+                    pass
+
             customer_set.update(customers)
         except Exception:
             pass
@@ -310,6 +325,21 @@ class DiscoveryService:
             )
             # Reconstruct full customer names by prepending the query prefix
             customers = [f"{query_lower}{suffix}" for suffix in suffixes]
+
+            # Check for exact-match customer (e.g., "affordable" when searching "affordable")
+            # S3 CommonPrefixes doesn't return the queried prefix itself, only children.
+            # We need an explicit check if the exact folder has content.
+            if query_lower:
+                exact_folder = f"{prefix}{query_lower}/"
+                try:
+                    exact_keys = s3.list_keys(
+                        bucket, exact_folder, profile=profile, max_keys=1
+                    )
+                    if exact_keys:
+                        customers.append(query_lower)
+                except Exception:
+                    pass
+
             customer_set.update(customers)
 
             # If query is short (3-4 chars), also cache the full list

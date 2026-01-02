@@ -88,7 +88,9 @@ class RetentionService:
 
         Args:
             job_id: Job ID to extend.
-            months: Number of months to extend from today.
+            months: Number of months to extend. If current expires_at is set,
+                   extends from that date; otherwise extends from today.
+                   months=0 means set to now (immediate cleanup).
             user_id: User performing the action (for audit).
 
         Returns:
@@ -99,9 +101,9 @@ class RetentionService:
             logger.warning("extend_job_not_found", job_id=job_id)
             return False
 
-        if job.status != JobStatus.COMPLETE:
+        if job.status not in (JobStatus.DEPLOYED, JobStatus.COMPLETE):
             logger.warning(
-                "extend_job_not_complete",
+                "extend_job_not_deployed",
                 job_id=job_id,
                 status=job.status.value,
             )
@@ -111,16 +113,31 @@ class RetentionService:
         if months > max_months:
             months = max_months
 
-        new_expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(
-            days=months * 30
-        )  # Approximate months
+        now = datetime.now(UTC).replace(tzinfo=None)
+        
+        if months == 0:
+            # Setting to "now" for immediate cleanup
+            new_expires_at = now
+            event_detail = f"Set expiration to now ({new_expires_at.isoformat()}) for immediate cleanup"
+        else:
+            # Extend from current expires_at if set, otherwise from today
+            base_date = job.expires_at if job.expires_at else now
+            # If base_date is in the past, use today instead
+            if base_date < now:
+                base_date = now
+            new_expires_at = base_date + timedelta(days=months * 30)
+            
+            if job.expires_at:
+                event_detail = f"Extended expiration by {months} month(s) from {job.expires_at.isoformat()} to {new_expires_at.isoformat()}"
+            else:
+                event_detail = f"Set expiration to {months} month(s) from now: {new_expires_at.isoformat()}"
+        
         self.job_repo.set_job_expiration(job_id, new_expires_at)
 
-        # Log the action
         self.job_repo.append_job_event(
             job_id,
             "expiration_extended",
-            f"Extended expiration by {months} months to {new_expires_at.isoformat()}",
+            event_detail,
         )
 
         logger.info(
@@ -148,9 +165,9 @@ class RetentionService:
             logger.warning("lock_job_not_found", job_id=job_id)
             return False
 
-        if job.status != JobStatus.COMPLETE:
+        if job.status not in (JobStatus.DEPLOYED, JobStatus.COMPLETE):
             logger.warning(
-                "lock_job_not_complete",
+                "lock_job_not_deployed",
                 job_id=job_id,
                 status=job.status.value,
             )

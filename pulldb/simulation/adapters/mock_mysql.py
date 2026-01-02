@@ -170,24 +170,42 @@ class SimulatedJobRepository:
                 return None
             return max(user_jobs, key=lambda j: j.submitted_at)
 
-    def mark_job_complete(self, job_id: str) -> None:
-        """Mark job as complete."""
+    def mark_job_deployed(self, job_id: str) -> None:
+        """Mark job as deployed (database is live).
+        
+        Clears the worker processing lock (locked_at/locked_by) since
+        the database is now available for user actions.
+        """
         with self.state.lock:
             job = self.state.jobs.get(job_id)
             if job:
                 updated = self._update_job_status(
                     job, 
-                    JobStatus.COMPLETE, 
+                    JobStatus.DEPLOYED, 
                     completed_at=datetime.now(UTC)
                 )
+                # Clear the worker lock
+                updated = replace(updated, locked_at=None, locked_by=None)
                 self.state.jobs[job_id] = updated
-                self.append_job_event(job_id, "complete", "Job completed successfully")
+                self.append_job_event(job_id, "deployed", "Job deployed successfully")
                 self._bus.emit(
                     EventType.JOB_COMPLETED,
                     "SimulatedJobRepository",
                     {"target": job.target},
                     job_id=job_id,
                 )
+
+    def mark_job_user_completed(self, job_id: str) -> None:
+        """Mark deployed job as complete (user is done with database)."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if job and job.status == JobStatus.DEPLOYED:
+                updated = self._update_job_status(
+                    job,
+                    JobStatus.COMPLETE,
+                )
+                self.state.jobs[job_id] = updated
+                self.append_job_event(job_id, "complete", "User marked job complete")
 
     def mark_job_failed(self, job_id: str, error: str) -> None:
         """Mark job as failed with error detail."""
@@ -215,12 +233,18 @@ class SimulatedJobRepository:
         This sets a flag that the worker should check. It does NOT
         immediately cancel the job - the worker is responsible for
         checking is_cancellation_requested() and calling mark_job_canceled().
+        
+        Only jobs that are cancelable (status=queued/running AND can_cancel=True)
+        can be canceled.
         """
         with self.state.lock:
             job = self.state.jobs.get(job_id)
             if not job:
                 return False
             if job.status in (JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED):
+                return False
+            # Check the can_cancel flag - if False, job is in loading phase
+            if not job.can_cancel:
                 return False
             
             # Set the cancellation flag and timestamp on the job
@@ -229,6 +253,51 @@ class SimulatedJobRepository:
             updated = replace(job, cancel_requested_at=now)
             self.state.jobs[job_id] = updated
             self.append_job_event(job_id, "cancellation_requested", "Job cancellation requested")
+            return True
+
+    def lock_for_restore(self, job_id: str, worker_id: str) -> bool:
+        """Lock job for restore phase, preventing further cancellation.
+
+        Atomically verifies can_cancel=True AND cancel_requested_at IS NULL,
+        then sets can_cancel=False, locked_at, locked_by.
+
+        The lock prevents both service and user interruption during Loading
+        through Complete. Cleared by mark_job_deployed().
+
+        Args:
+            job_id: UUID of the job to lock.
+            worker_id: Identifier of the worker locking the job.
+
+        Returns:
+            True if lock was acquired (proceed with restore).
+            False if job was canceled or cancel requested (abort).
+        """
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if not job:
+                return False
+            # Check gate conditions
+            if not job.can_cancel:
+                return False
+            if job.cancel_requested_at is not None:
+                return False
+            if job_id in self.state.cancellation_requested:
+                return False
+            
+            # Flip can_cancel and set worker lock
+            now = datetime.now(UTC)
+            updated = replace(
+                job,
+                can_cancel=False,
+                locked_at=now,
+                locked_by=f"worker:{worker_id}",
+            )
+            self.state.jobs[job_id] = updated
+            self.append_job_event(
+                job_id,
+                "restore_locked",
+                f"Job locked for restore by worker:{worker_id}",
+            )
             return True
 
     def mark_job_canceled(self, job_id: str, reason: str | None = None) -> None:

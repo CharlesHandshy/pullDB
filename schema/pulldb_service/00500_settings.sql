@@ -1,4 +1,4 @@
--- 050_settings.sql
+-- 00500_settings.sql
 -- Core table definition: settings
 
 CREATE TABLE settings (

@@ -88,9 +88,9 @@ class User:
 
 #### New Migration Files
 
-**`schema/pulldb_service/070_auth_users_role.sql`**
+**`schema/pulldb_service/00700_auth_users_role.sql`**
 ```sql
--- 070_auth_users_role.sql
+-- 00700_auth_users_role.sql
 -- Add role column to auth_users (additive, non-breaking)
 
 ALTER TABLE auth_users 
@@ -101,9 +101,9 @@ AFTER is_admin;
 UPDATE auth_users SET role = 'admin' WHERE is_admin = TRUE;
 ```
 
-**`schema/pulldb_service/071_auth_credentials.sql`**
+**`schema/pulldb_service/00710_auth_credentials.sql`**
 ```sql
--- 071_auth_credentials.sql
+-- 00710_auth_credentials.sql
 -- Password and 2FA storage for web authentication
 
 CREATE TABLE auth_credentials (
@@ -118,9 +118,9 @@ CREATE TABLE auth_credentials (
 );
 ```
 
-**`schema/pulldb_service/072_sessions.sql`**
+**`schema/pulldb_service/00720_sessions.sql`**
 ```sql
--- 072_sessions.sql
+-- 00720_sessions.sql
 -- Session management for web authentication
 
 CREATE TABLE sessions (
@@ -419,9 +419,9 @@ dependencies = [
 ### Step 1: Schema Migration (Zero Downtime)
 
 1. Run migrations during low-traffic window
-2. `070_auth_users_role.sql` - Adds column with default
-3. `071_auth_credentials.sql` - New table, no impact
-4. `072_sessions.sql` - New table, no impact
+2. `00700_auth_users_role.sql` - Adds column with default
+3. `00710_auth_credentials.sql` - New table, no impact
+4. `00720_sessions.sql` - New table, no impact
 
 ### Step 2: Code Deployment (Backward Compatible)
 
@@ -469,9 +469,9 @@ dependencies = [
 
 | Path | Purpose |
 |------|---------|
-| `schema/pulldb_service/070_auth_users_role.sql` | Role column migration |
-| `schema/pulldb_service/071_auth_credentials.sql` | Credentials table |
-| `schema/pulldb_service/072_sessions.sql` | Sessions table |
+| `schema/pulldb_service/00700_auth_users_role.sql` | Role column migration |
+| `schema/pulldb_service/00710_auth_credentials.sql` | Credentials table |
+| `schema/pulldb_service/00720_sessions.sql` | Sessions table |
 | `pulldb/auth/__init__.py` | Auth module init |
 | `pulldb/auth/repository.py` | AuthRepository |
 | `pulldb/auth/password.py` | Password hashing |

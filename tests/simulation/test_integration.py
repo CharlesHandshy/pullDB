@@ -266,10 +266,10 @@ class TestSimulationIntegration(unittest.TestCase):
         self.assertEqual(claimed_job.id, job_id)
         self.assertEqual(claimed_job.status, JobStatus.RUNNING)
 
-        # Mark complete
-        self.engine.job_repo.mark_job_complete(job_id)
-        completed_job = self.engine.job_repo.get_job_by_id(job_id)
-        self.assertEqual(completed_job.status, JobStatus.COMPLETE)
+        # Mark deployed
+        self.engine.job_repo.mark_job_deployed(job_id)
+        deployed_job = self.engine.job_repo.get_job_by_id(job_id)
+        self.assertEqual(deployed_job.status, JobStatus.DEPLOYED)
 
     def test_mock_s3_fixtures(self):
         """Test S3 fixture loading works."""

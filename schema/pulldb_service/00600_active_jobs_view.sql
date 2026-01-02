@@ -1,4 +1,4 @@
--- 060_active_jobs_view.sql
+-- 00600_active_jobs_view.sql
 -- Supporting view: active_jobs
 -- Includes canceling jobs as they are still operationally active
 

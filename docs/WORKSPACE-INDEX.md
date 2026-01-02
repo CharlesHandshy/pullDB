@@ -273,28 +273,28 @@
 
 | File | Purpose |
 |------|---------|
-| `000_auth_users.sql` | auth_users |
-| `010_jobs.sql` | jobs |
-| `020_job_events.sql` | job_events |
-| `030_db_hosts.sql` | db_hosts |
-| `040_locks.sql` | locks |
-| `050_settings.sql` | settings |
-| `060_active_jobs_view.sql` | active_jobs_view |
-| `070_auth_users_role.sql` | auth_users_role |
-| `071_auth_credentials.sql` | auth_credentials |
-| `072_password_reset.sql` | password_reset |
-| `072_sessions.sql` | sessions |
-| `073_manager_user_relationship.sql` | manager_user_relationship |
-| `074_audit_logs.sql` | audit_logs |
-| `075_user_hosts.sql` | user_hosts |
-| `076_job_limits.sql` | job_limits |
-| `077_admin_tasks.sql` | admin_tasks |
-| `080_job_delete_support.sql` | job_delete_support (deleting/deleted) |
-| `081_disallowed_users.sql` | disallowed_users |
-| `082_job_canceling_status.sql` | job_canceling_status (canceling) |
-| `200_seed_db_hosts.sql` | seed_db_hosts |
-| `210_seed_settings.sql` | seed_settings |
-| `300_mysql_users.sql` | mysql_users |
+| `00000_auth_users.sql` | auth_users |
+| `00100_jobs.sql` | jobs |
+| `00200_job_events.sql` | job_events |
+| `00300_db_hosts.sql` | db_hosts |
+| `00400_locks.sql` | locks |
+| `00500_settings.sql` | settings |
+| `00600_active_jobs_view.sql` | active_jobs_view |
+| `00700_auth_users_role.sql` | auth_users_role |
+| `00710_auth_credentials.sql` | auth_credentials |
+| `00720_password_reset.sql` | password_reset |
+| `00720_sessions.sql` | sessions |
+| `00730_manager_user_relationship.sql` | manager_user_relationship |
+| `00740_audit_logs.sql` | audit_logs |
+| `00750_user_hosts.sql` | user_hosts |
+| `00760_job_limits.sql` | job_limits |
+| `00770_admin_tasks.sql` | admin_tasks |
+| `00800_job_delete_support.sql` | job_delete_support (deleting/deleted) |
+| `00810_disallowed_users.sql` | disallowed_users |
+| `00820_job_canceling_status.sql` | job_canceling_status (canceling) |
+| `02000_seed_db_hosts.sql` | seed_db_hosts |
+| `02100_seed_settings.sql` | seed_settings |
+| `03000_mysql_users.sql` | mysql_users |
 
 ---
 

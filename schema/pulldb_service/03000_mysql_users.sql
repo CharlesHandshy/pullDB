@@ -1,4 +1,4 @@
--- 300_mysql_users.sql
+-- 03000_mysql_users.sql
 -- MySQL user grants for pullDB services
 --
 -- Three users with least-privilege access:

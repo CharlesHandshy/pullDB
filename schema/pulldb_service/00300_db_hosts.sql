@@ -1,4 +1,4 @@
--- 030_db_hosts.sql
+-- 00300_db_hosts.sql
 -- Core table definition: db_hosts
 -- v0.0.6: Added host_alias for short hostname support
 

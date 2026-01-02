@@ -589,8 +589,8 @@ def seed_history_jobs(
         ("usr-002", "devadmin", "devadm"),
     ]
 
-    # Status distribution: 80% complete, 20% failed
-    statuses = [JobStatus.COMPLETE] * 4 + [JobStatus.FAILED]
+    # Status distribution: 80% deployed (active DBs), 20% failed
+    statuses = [JobStatus.DEPLOYED] * 4 + [JobStatus.FAILED]
 
     jobs: list[Job] = []
     base_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
@@ -665,6 +665,7 @@ def _seed_job_events(
 
     if job.status in (
         JobStatus.RUNNING,
+        JobStatus.DEPLOYED,
         JobStatus.COMPLETE,
         JobStatus.FAILED,
         JobStatus.CANCELED,
@@ -710,8 +711,8 @@ def _seed_job_events(
             )
             event_id += 1
 
-        elif job.status == JobStatus.COMPLETE:
-            # Full event sequence for completed jobs
+        elif job.status in (JobStatus.DEPLOYED, JobStatus.COMPLETE):
+            # Full event sequence for deployed/completed jobs
             dl_complete = dl_time + timedelta(minutes=random.randint(2, 15))
             events.append(
                 _create_event(
@@ -1011,7 +1012,7 @@ def seed_dev_scenario(
         seed_history_jobs(state, 20, users)
         with state.lock:
             for job_id, job in state.jobs.items():
-                if job.status in (JobStatus.COMPLETE, JobStatus.FAILED):
+                if job.status in (JobStatus.DEPLOYED, JobStatus.COMPLETE, JobStatus.FAILED):
                     state.jobs[job_id] = replace(
                         job,
                         status=JobStatus.FAILED,

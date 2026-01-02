@@ -454,6 +454,20 @@ class WorkerJobExecutor:
                 progress_callback=_restore_progress_callback,
                 event_callback=_workflow_event_callback,
             )
+
+            # CRITICAL: Lock for restore - this is the point of no return.
+            # Atomically verify no cancellation was requested and flip can_cancel to FALSE.
+            # This prevents race conditions between cancel requests and restore start.
+            # Use job.worker_id which was set when the job was claimed.
+            worker_id = job.worker_id or "unknown"
+            if not self.job_repo.lock_for_restore(job.id, worker_id):
+                # Cancellation was requested between last checkpoint and now
+                logger.info(
+                    "Cancellation detected at restore gate, aborting before myloader",
+                    extra={"job_id": job.id, "phase": "restore_gate"},
+                )
+                raise CancellationError(job.id, "restore_gate")
+
             self._append_event(
                 job.id,
                 "restore_started",
@@ -512,13 +526,13 @@ class WorkerJobExecutor:
                 profiler.profile.to_dict(),
             )
 
-            self.job_repo.mark_job_complete(job.id)
+            self.job_repo.mark_job_deployed(job.id)
             logger.info(
-                "Job completed",
+                "Job deployed",
                 extra={
                     "job_id": job.id,
                     "target": job.target,
-                    "phase": "executor_complete",
+                    "phase": "executor_deployed",
                     "profile": profiler.profile.phase_breakdown,
                 },
             )

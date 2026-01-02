@@ -234,7 +234,7 @@ def _list_jobs(
 ) -> list[JobSummary]:
     statuses: list[str] = []
     if active:
-        statuses.extend([JobStatus.QUEUED.value, JobStatus.RUNNING.value])
+        statuses.extend([JobStatus.QUEUED.value, JobStatus.RUNNING.value, JobStatus.DEPLOYED.value])
     if history:
         statuses.extend(
             [
@@ -246,7 +246,7 @@ def _list_jobs(
 
     # Default to active if neither specified
     if not statuses:
-        statuses.extend([JobStatus.QUEUED.value, JobStatus.RUNNING.value])
+        statuses.extend([JobStatus.QUEUED.value, JobStatus.RUNNING.value, JobStatus.DEPLOYED.value])
 
     jobs = state.job_repo.get_recent_jobs(limit, statuses=statuses)
 
@@ -966,7 +966,7 @@ def _get_paginated_jobs(
     if view == "history":
         statuses = [JobStatus.COMPLETE.value, JobStatus.FAILED.value, JobStatus.CANCELED.value]
     else:
-        statuses = [JobStatus.QUEUED.value, JobStatus.RUNNING.value]
+        statuses = [JobStatus.QUEUED.value, JobStatus.RUNNING.value, JobStatus.DEPLOYED.value]
 
     # Apply status filter (supports multiple comma-separated statuses with OR logic)
     status_values = parse_multi_value_filter(status_filter)
@@ -1180,7 +1180,7 @@ async def get_distinct_values(
     if view == "history":
         statuses = [JobStatus.COMPLETE.value, JobStatus.FAILED.value, JobStatus.CANCELED.value]
     else:
-        statuses = [JobStatus.QUEUED.value, JobStatus.RUNNING.value]
+        statuses = [JobStatus.QUEUED.value, JobStatus.RUNNING.value, JobStatus.DEPLOYED.value]
 
     # Parse multi-value filters
     status_values = parse_multi_value_filter(filter_status)
@@ -1685,13 +1685,16 @@ def _cancel_job(state: APIState, job_id: str, user: User) -> CancelResponse:
             detail=f"Job {job_id} cannot be canceled (status: {job.status.value})",
         )
 
-    # For running jobs, check if myloader has started (point of no return)
+    # Check if job has entered loading phase (can_cancel = False)
+    # This is the authoritative check - more reliable than has_restore_started()
+    if not job.can_cancel:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot cancel: job has entered loading phase. Myloader cannot be safely interrupted.",
+        )
+
+    # For running jobs, transition to CANCELING state
     if job.status == JobStatus.RUNNING:
-        if state.job_repo.has_restore_started(job_id):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot cancel: restore is in progress. Myloader cannot be safely interrupted.",
-            )
         # Transition to CANCELING state
         was_updated = state.job_repo.mark_job_canceling(job_id)
         if not was_updated:

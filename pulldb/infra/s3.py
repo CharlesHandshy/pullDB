@@ -164,9 +164,23 @@ class S3Client:
         return self._clients[target_profile]
 
     def list_keys(
-        self, bucket: str, prefix: str, profile: str | None = None
+        self,
+        bucket: str,
+        prefix: str,
+        profile: str | None = None,
+        max_keys: int | None = None,
     ) -> list[str]:  # pragma: no cover - simple wrapper
-        """Return keys under prefix (non recursive)."""
+        """Return keys under prefix (non recursive).
+
+        Args:
+            bucket: S3 bucket name
+            prefix: Prefix to search under
+            profile: AWS profile to use
+            max_keys: Maximum number of keys to return (None = all)
+
+        Returns:
+            List of object keys
+        """
         client = self.get_client(profile)
         keys: list[str] = []
         continuation: str | None = None
@@ -175,10 +189,12 @@ class S3Client:
             page_count += 1
             if page_count % 10 == 0:
                 logger.info(f"Listing keys page {page_count} for {bucket}/{prefix}")
+            # Use max_keys for page size if specified and smaller than default
+            page_size = min(max_keys, 1000) if max_keys else 1000
             params: dict[str, t.Any] = {
                 "Bucket": bucket,
                 "Prefix": prefix,
-                "MaxKeys": 1000,
+                "MaxKeys": page_size,
             }
             if continuation:
                 params["ContinuationToken"] = continuation
@@ -187,6 +203,8 @@ class S3Client:
                 k = item.get("Key")
                 if isinstance(k, str):
                     keys.append(k)
+                    if max_keys and len(keys) >= max_keys:
+                        return keys
             if resp.get("IsTruncated"):
                 continuation = resp.get("NextContinuationToken")
             else:
