@@ -433,6 +433,15 @@ class WorkerJobExecutor:
                         },
                     )
 
+                # Always emit processlist updates (not throttled - these have table progress)
+                if detail.get("status") == "processlist_update":
+                    self._append_event(
+                        job.id,
+                        "restore_progress",
+                        {"percent": percent, "detail": detail},
+                    )
+                    return
+
                 # Emit progress event (throttled to every 5% or completion)
                 if percent >= 100.0 or (percent - last_percent_logged) >= 5.0:
                     self._append_event(

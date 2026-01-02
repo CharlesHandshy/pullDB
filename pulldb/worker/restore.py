@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -496,6 +497,37 @@ def orchestrate_restore_workflow(
 
         # Start processlist monitor for per-table progress tracking
         processlist_monitor: ProcesslistMonitor | None = None
+
+        # Shared state for progress updates from processlist monitor thread
+        progress_state_lock = threading.Lock()
+        progress_state: dict[str, Any] = {"percent": 0.0}
+
+        def on_processlist_poll(snapshot: Any) -> None:
+            """Emit progress events on each processlist poll (every 2s)."""
+            if not spec.progress_callback:
+                return
+            # Only emit when there's actual activity
+            if snapshot.active_threads == 0 and not snapshot.tables:
+                return
+            # Build tables progress dict
+            tables_progress: dict[str, dict[str, float]] = {}
+            for tbl_name, tbl_prog in snapshot.tables.items():
+                tables_progress[tbl_name] = {
+                    "percent_complete": tbl_prog.percent_complete
+                }
+            # Get current percent from shared state
+            with progress_state_lock:
+                current_percent = progress_state.get("percent", 0.0)
+            # Emit progress event with processlist data
+            spec.progress_callback(
+                current_percent,
+                {
+                    "status": "processlist_update",
+                    "active_threads": snapshot.active_threads,
+                    "tables": tables_progress,
+                },
+            )
+
         try:
             monitor_config = ProcesslistMonitorConfig(
                 mysql_host=spec.staging_conn.mysql_host,
@@ -505,13 +537,24 @@ def orchestrate_restore_workflow(
                 staging_db=staging_result.staging_db,
                 poll_interval_seconds=2.0,
             )
-            processlist_monitor = ProcesslistMonitor(monitor_config)
+            processlist_monitor = ProcesslistMonitor(
+                monitor_config, progress_callback=on_processlist_poll
+            )
             processlist_monitor.start()
             logger.info(f"Started processlist monitor for {staging_result.staging_db}")
         except Exception as e:
             # Non-fatal: continue without processlist monitoring
             logger.warning(f"Failed to start processlist monitor: {e}")
             processlist_monitor = None
+
+        # Wrap progress callback to update shared state for processlist thread
+        def wrapped_progress_callback(
+            percent: float, detail: dict[str, Any]
+        ) -> None:
+            with progress_state_lock:
+                progress_state["percent"] = percent
+            if spec.progress_callback:
+                spec.progress_callback(percent, detail)
 
         try:
             with time_operation(
@@ -521,7 +564,7 @@ def orchestrate_restore_workflow(
                 myloader_result = run_myloader(
                     spec.myloader_spec,
                     timeout=spec.timeout,
-                    progress_callback=spec.progress_callback,
+                    progress_callback=wrapped_progress_callback,
                     processlist_monitor=processlist_monitor,
                 )
         finally:
