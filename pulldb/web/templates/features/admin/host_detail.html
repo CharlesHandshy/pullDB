@@ -352,6 +352,14 @@
                                 const result = await response.json();
                                 stopAnimation();
 
+                                // Handle FastAPI error responses (like auth errors)
+                                if (result.detail) {
+                                    showRotationResult(false, result.detail);
+                                    const closeBtn = document.getElementById('rotation-close-btn');
+                                    closeBtn.addEventListener('click', () => closeRotationModal(false));
+                                    return;
+                                }
+
                                 // Update phases based on timing (completed phases)
                                 if (result.timing) {
                                     for (const [phase, timeMs] of Object.entries(result.timing)) {
@@ -386,7 +394,7 @@
                                     }
                                     showRotationResult(
                                         false,
-                                        result.error || result.message,
+                                        result.error || result.message || 'Unknown error occurred',
                                         result.suggestions,
                                         result.manual_fix_required ? result.manual_fix_instructions : null
                                     );
