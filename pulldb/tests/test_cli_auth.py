@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import os
+from datetime import datetime, timezone
 from unittest import mock
 
 import pytest
 
 from pulldb.cli.auth import (
     KEY_ID_DISPLAY_LENGTH,
+    SIGNATURE_TIMESTAMP_FORMAT,
+    compute_request_signature,
     get_api_key_credentials,
     get_auth_headers,
     get_auth_method,
     get_calling_username,
     get_current_username,
+    get_signature_timestamp,
 )
 
 
@@ -69,15 +75,15 @@ class TestGetAuthMethod:
             result = get_auth_method()
             assert result == "apikey"
 
-    def test_auto_detect_apikey_from_credentials(self) -> None:
-        """Should auto-detect apikey mode when credentials are set."""
+    def test_auto_detect_signed_from_credentials(self) -> None:
+        """Should auto-detect signed mode when credentials are set (most secure)."""
         with mock.patch.dict(
             os.environ,
             {"PULLDB_API_KEY": "key123", "PULLDB_API_SECRET": "secret456"},
             clear=True,
         ):
             result = get_auth_method()
-            assert result == "apikey"
+            assert result == "signed"
 
     def test_partial_credentials_not_detected(self) -> None:
         """Should not detect apikey mode with only key (no secret)."""
@@ -189,3 +195,128 @@ class TestGetCurrentUsername:
             ):
                 result = get_current_username()
                 assert f"[API Key: {'a' * KEY_ID_DISPLAY_LENGTH}...]" in result
+
+
+class TestSignedAuthentication:
+    """Tests for HMAC signature functions."""
+
+    def test_get_signature_timestamp_format(self) -> None:
+        """Should return timestamp in correct ISO 8601 format."""
+        timestamp = get_signature_timestamp()
+        # Should parse without error
+        parsed = datetime.strptime(timestamp, SIGNATURE_TIMESTAMP_FORMAT)
+        assert parsed is not None
+        # Should end with Z (UTC)
+        assert timestamp.endswith("Z")
+
+    def test_compute_request_signature_basic(self) -> None:
+        """Should compute consistent HMAC-SHA256 signature."""
+        method = "POST"
+        path = "/api/jobs"
+        body = '{"database":"test_db"}'
+        timestamp = "2026-01-03T15:42:00Z"
+        secret = "mysecret123"
+
+        sig1 = compute_request_signature(method, path, body, timestamp, secret)
+        sig2 = compute_request_signature(method, path, body, timestamp, secret)
+
+        # Should be consistent
+        assert sig1 == sig2
+        # Should be hex string
+        assert all(c in "0123456789abcdef" for c in sig1)
+        # Should be 64 chars (SHA256 hex)
+        assert len(sig1) == 64
+
+    def test_compute_request_signature_different_body_different_sig(self) -> None:
+        """Different body should produce different signature."""
+        method = "POST"
+        path = "/api/jobs"
+        timestamp = "2026-01-03T15:42:00Z"
+        secret = "mysecret123"
+
+        sig1 = compute_request_signature(method, path, '{"a":1}', timestamp, secret)
+        sig2 = compute_request_signature(method, path, '{"a":2}', timestamp, secret)
+
+        assert sig1 != sig2
+
+    def test_compute_request_signature_different_secret_different_sig(self) -> None:
+        """Different secret should produce different signature."""
+        method = "POST"
+        path = "/api/jobs"
+        body = '{"database":"test"}'
+        timestamp = "2026-01-03T15:42:00Z"
+
+        sig1 = compute_request_signature(method, path, body, timestamp, "secret1")
+        sig2 = compute_request_signature(method, path, body, timestamp, "secret2")
+
+        assert sig1 != sig2
+
+    def test_compute_request_signature_none_body(self) -> None:
+        """Should handle None body (GET requests)."""
+        method = "GET"
+        path = "/api/status"
+        timestamp = "2026-01-03T15:42:00Z"
+        secret = "mysecret123"
+
+        sig = compute_request_signature(method, path, None, timestamp, secret)
+        assert len(sig) == 64
+
+    def test_compute_request_signature_bytes_body(self) -> None:
+        """Should handle bytes body."""
+        method = "POST"
+        path = "/api/jobs"
+        body = b'{"database":"test"}'
+        timestamp = "2026-01-03T15:42:00Z"
+        secret = "mysecret123"
+
+        sig = compute_request_signature(method, path, body, timestamp, secret)
+        assert len(sig) == 64
+
+    def test_signed_mode_detected_with_credentials(self) -> None:
+        """Should auto-detect signed mode when credentials are set."""
+        with mock.patch.dict(
+            os.environ,
+            {"PULLDB_API_KEY": "key123", "PULLDB_API_SECRET": "secret456"},
+            clear=True,
+        ):
+            result = get_auth_method()
+            # With credentials and no explicit method, should default to signed
+            assert result == "signed"
+
+    def test_explicit_signed_method(self) -> None:
+        """Should respect PULLDB_AUTH_METHOD=signed."""
+        with mock.patch.dict(os.environ, {"PULLDB_AUTH_METHOD": "signed"}, clear=True):
+            result = get_auth_method()
+            assert result == "signed"
+
+    def test_signed_mode_returns_signature_headers(self) -> None:
+        """Should return signature headers in signed mode."""
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PULLDB_AUTH_METHOD": "signed",
+                "PULLDB_API_KEY": "testkey",
+                "PULLDB_API_SECRET": "testsecret",
+            },
+            clear=True,
+        ):
+            result = get_auth_headers(method="POST", path="/api/jobs", body='{"db":"test"}')
+
+            assert "X-API-Key" in result
+            assert result["X-API-Key"] == "testkey"
+            assert "X-Timestamp" in result
+            assert "X-Signature" in result
+            # Signature should be 64 hex chars
+            assert len(result["X-Signature"]) == 64
+
+    def test_signed_mode_without_credentials_falls_back(self) -> None:
+        """Should fall back to trusted if signed mode but no credentials."""
+        with mock.patch.dict(
+            os.environ, {"PULLDB_AUTH_METHOD": "signed", "USER": "fallbackuser"}, clear=True
+        ):
+            with mock.patch("subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 1
+                mock_run.return_value.stdout = ""
+                result = get_auth_headers(method="GET", path="/api/status")
+                # Should fall back to X-Trusted-User
+                assert "X-Trusted-User" in result

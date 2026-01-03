@@ -305,7 +305,9 @@ def _print_formatted_dict(
 def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
     base_url, timeout = _load_api_config()
     url = f"{base_url}{path}"
-    headers = get_auth_headers()
+    # Serialize body for signature computation (must match what requests sends)
+    body = json_module.dumps(payload, separators=(",", ":"), sort_keys=True)
+    headers = get_auth_headers(method="POST", path=path, body=body)
     try:
         response = requests_module.post(url, json=payload, headers=headers, timeout=timeout)
     except RequestException as exc:
@@ -348,7 +350,7 @@ def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
 def _api_get(path: str, params: dict[str, t.Any]) -> list[dict[str, t.Any]]:
     base_url, timeout = _load_api_config()
     url = f"{base_url}{path}"
-    headers = get_auth_headers()
+    headers = get_auth_headers(method="GET", path=path, body=None)
     try:
         response = requests_module.get(url, params=params, headers=headers, timeout=timeout)
     except RequestException as exc:
@@ -370,7 +372,7 @@ def _api_get_object(path: str, params: dict[str, t.Any]) -> dict[str, t.Any]:
     """GET request expecting object (dict) response."""
     base_url, timeout = _load_api_config()
     url = f"{base_url}{path}"
-    headers = get_auth_headers()
+    headers = get_auth_headers(method="GET", path=path, body=None)
     try:
         response = requests_module.get(url, params=params, headers=headers, timeout=timeout)
     except RequestException as exc:
