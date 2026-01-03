@@ -48,7 +48,7 @@ def test_parse_success_qatemplate_with_user() -> None:
 def test_parse_rejects_missing_mode() -> None:
     with pytest.raises(CLIParseError) as exc:
         parse_restore_args(["user=alphabetic"])
-    assert "Must specify exactly one" in str(exc.value)
+    assert "Must specify a customer" in str(exc.value)
 
 
 def test_parse_rejects_both_modes() -> None:

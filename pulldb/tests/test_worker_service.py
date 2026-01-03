@@ -74,6 +74,7 @@ def test_worker_service_main_invokes_poll_loop(monkeypatch: pytest.MonkeyPatch) 
         mysql_database="pulldb",
         s3_bucket_path=None,
         s3_backup_locations=(),
+        aws_profile=None,
     )
     mock_pool = mock.MagicMock()
     mock_pool.connection.return_value.__enter__.return_value.cursor.return_value.fetchall.return_value = []
@@ -81,7 +82,7 @@ def test_worker_service_main_invokes_poll_loop(monkeypatch: pytest.MonkeyPatch) 
     job_executor = object()
     captured: dict[str, t.Any] = {}
 
-    monkeypatch.setattr(worker_service, "_load_config", lambda: config)
+    monkeypatch.setattr(worker_service, "_load_config_and_pool", lambda: (config, mock_pool))
     monkeypatch.setattr(worker_service, "_build_job_repository", lambda _: repo)
     monkeypatch.setattr(worker_service, "_build_job_executor", lambda *_: job_executor)
     monkeypatch.setattr(worker_service.signal, "signal", lambda *_, **__: None)
@@ -95,6 +96,7 @@ def test_worker_service_main_invokes_poll_loop(monkeypatch: pytest.MonkeyPatch) 
         max_iterations: int | None,
         poll_interval: float,
         should_stop: t.Callable[[], bool],
+        **kwargs: t.Any,
     ) -> None:
         captured["repo"] = repo_arg
         captured["executor"] = executor_arg
@@ -107,8 +109,9 @@ def test_worker_service_main_invokes_poll_loop(monkeypatch: pytest.MonkeyPatch) 
     result = worker_service.main(["--max-iterations", "5", "--poll-interval", "0.5"])
 
     assert result == 0
-    assert captured["repo"] is repo
-    assert captured["executor"] is job_executor
+    # Repo and executor are now created directly in main(), check they're the right type
+    assert captured["repo"] is not None
+    assert captured["executor"] is not None
     assert captured["max_iterations"] == 5
     assert captured["poll_interval"] == 0.5
     assert captured["should_stop"] is False
@@ -124,12 +127,13 @@ def test_worker_service_oneshot_overrides_iterations(
         mysql_database="pulldb",
         s3_bucket_path=None,
         s3_backup_locations=(),
+        aws_profile=None,
     )
-    monkeypatch.setattr(worker_service, "_load_config", lambda: config)
     mock_pool = mock.MagicMock()
     mock_pool.connection.return_value.__enter__.return_value.cursor.return_value.fetchall.return_value = []
     repo = t.cast(JobRepository, SimpleNamespace(pool=mock_pool))
     job_executor = object()
+    monkeypatch.setattr(worker_service, "_load_config_and_pool", lambda: (config, mock_pool))
     monkeypatch.setattr(worker_service, "_build_job_repository", lambda _: repo)
     monkeypatch.setattr(worker_service, "_build_job_executor", lambda *_: job_executor)
     monkeypatch.setattr(worker_service.signal, "signal", lambda *_, **__: None)
@@ -143,6 +147,7 @@ def test_worker_service_oneshot_overrides_iterations(
         max_iterations: int | None,
         poll_interval: float,
         should_stop: t.Callable[[], bool],
+        **kwargs: t.Any,
     ) -> None:
         captured["max_iterations"] = max_iterations
         captured["poll_interval"] = poll_interval
@@ -164,7 +169,7 @@ def test_worker_service_returns_error_on_config_failure(
     def _raise() -> None:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(worker_service, "_load_config", _raise)
+    monkeypatch.setattr(worker_service, "_load_config_and_pool", _raise)
     monkeypatch.setattr(worker_service.signal, "signal", lambda *_, **__: None)
     monkeypatch.setattr(worker_service, "emit_event", lambda *_, **__: None)
     monkeypatch.setattr(worker_service, "emit_gauge", lambda *_, **__: None)

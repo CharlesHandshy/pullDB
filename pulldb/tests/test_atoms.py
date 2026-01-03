@@ -104,7 +104,8 @@ def test_atom_wd_stream() -> None:
         tmp_path = tmp.name
 
     try:
-        _stream_download(body, tmp_path, "job-1", len(data))
+        import time
+        _stream_download(body, tmp_path, "job-1", len(data), time.monotonic())
 
         assert os.path.exists(tmp_path)
         with open(tmp_path, "rb") as f:

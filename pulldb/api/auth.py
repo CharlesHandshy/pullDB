@@ -149,15 +149,26 @@ def validate_signature_timestamp(timestamp: str) -> bool:
 # These dependencies support HMAC signatures (CLI) and session cookies (Web UI).
 
 
-def _get_api_state() -> "APIState":
-    """Import get_api_state lazily to avoid circular imports."""
-    from pulldb.api.main import get_api_state
+# Note: We import get_api_state lazily at runtime to avoid circular imports.
+# The Depends() wrapper ensures FastAPI's dependency override system works.
+def _get_api_state_dependency() -> "APIState":
+    """Get API state - imported lazily to avoid circular imports.
+    
+    This function is used with Depends() in endpoint signatures.
+    FastAPI's dependency override system will work because we use
+    Depends(_get_api_state_dependency), not a direct function call.
+    """
+    from pulldb.api.main import get_api_state, app
+    
+    # Check if there's a dependency override for get_api_state
+    if get_api_state in app.dependency_overrides:
+        return app.dependency_overrides[get_api_state]()
     return get_api_state()
 
 
 async def get_authenticated_user(
     request: Request,
-    state: "APIState" = Depends(_get_api_state),
+    state: "APIState" = Depends(_get_api_state_dependency),
     x_session_token: str | None = Header(None, alias="X-Session-Token"),
     x_api_key: str | None = Header(None, alias="X-API-Key"),
     x_timestamp: str | None = Header(None, alias="X-Timestamp"),
@@ -312,7 +323,7 @@ async def get_manager_user(
 
 async def get_optional_user(
     request: Request,
-    state: "APIState" = Depends(_get_api_state),
+    state: "APIState" = Depends(_get_api_state_dependency),
     x_session_token: str | None = Header(None, alias="X-Session-Token"),
     x_api_key: str | None = Header(None, alias="X-API-Key"),
     x_timestamp: str | None = Header(None, alias="X-Timestamp"),

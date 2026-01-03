@@ -14,6 +14,8 @@ from pulldb.cli.main import cli
 def _base_url(monkeypatch: pytest.MonkeyPatch) -> str:
     base = "http://api.test"
     monkeypatch.setenv("PULLDB_API_URL", base)
+    monkeypatch.setenv("PULLDB_API_KEY", "test-key")
+    monkeypatch.setenv("PULLDB_API_SECRET", "test-secret")
     return base
 
 

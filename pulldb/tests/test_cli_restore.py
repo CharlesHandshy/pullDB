@@ -12,6 +12,8 @@ from pulldb.cli.main import cli
 def _base_url(monkeypatch: pytest.MonkeyPatch) -> str:
     base = "http://api.test"
     monkeypatch.setenv("PULLDB_API_URL", base)
+    monkeypatch.setenv("PULLDB_API_KEY", "test-key")
+    monkeypatch.setenv("PULLDB_API_SECRET", "test-secret")
     return base
 
 
@@ -30,7 +32,7 @@ def test_restore_rate_limit_user(monkeypatch: pytest.MonkeyPatch) -> None:
         status=429,
     )
     runner = CliRunner()
-    result = runner.invoke(cli, ["restore", "user=Jane.Doe", "customer=Acme"])
+    result = runner.invoke(cli, ["restore", "user=Jane.Doe", "customer=acme"])
     assert result.exit_code != 0
     assert "Rate limited" in result.output
     assert "User limit" in result.output
@@ -49,7 +51,7 @@ def test_restore_rate_limit_global(monkeypatch: pytest.MonkeyPatch) -> None:
         status=429,
     )
     runner = CliRunner()
-    result = runner.invoke(cli, ["restore", "user=Jane.Doe", "customer=Acme"])
+    result = runner.invoke(cli, ["restore", "user=Jane.Doe", "customer=acme"])
     assert result.exit_code != 0
     assert "Rate limited" in result.output
     assert "System at capacity" in result.output
@@ -67,7 +69,7 @@ def test_restore_rate_limit_generic(monkeypatch: pytest.MonkeyPatch) -> None:
         status=429,
     )
     runner = CliRunner()
-    result = runner.invoke(cli, ["restore", "user=Jane.Doe", "customer=Acme"])
+    result = runner.invoke(cli, ["restore", "user=Jane.Doe", "customer=acme"])
     assert result.exit_code != 0
     assert "Rate limited" in result.output
     assert "wait" in result.output.lower()
@@ -91,7 +93,7 @@ def test_restore_success(monkeypatch: pytest.MonkeyPatch) -> None:
         status=201,
     )
     runner = CliRunner()
-    result = runner.invoke(cli, ["restore", "user=Jane.Doe", "customer=Acme"])
+    result = runner.invoke(cli, ["restore", "user=Jane.Doe", "customer=acme"])
     assert result.exit_code == 0
-    assert "Job submitted successfully" in result.output
+    assert "Job queued successfully" in result.output
     assert "janedoacme" in result.output

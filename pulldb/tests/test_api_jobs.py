@@ -48,6 +48,19 @@ class FakeUserRepository:
             allowed_hosts=["dev-db-01"],  # Allow default host for tests
         )
 
+    def get_user_by_username(self, username: str) -> User | None:
+        """Return user by username (used by enqueue_job)."""
+        self.requested.append(username)
+        return User(
+            user_id="user-1",
+            username=username,
+            user_code="janedo",
+            is_admin=False,
+            role=UserRole.USER,
+            created_at=datetime(2025, 11, 3, 0, 0, tzinfo=UTC),
+            allowed_hosts=["dev-db-01"],  # Allow default host for tests
+        )
+
 
 class FakeJobRepository:
     """In-memory job repository stub for API tests."""
@@ -102,6 +115,18 @@ class FakeJobRepository:
 
     def get_cancel_requested_at(self, job_id: str) -> datetime | None:
         """Get cancel requested timestamp (stub returns None)."""
+        return None
+
+    def get_locked_by_target(
+        self, target: str, dbhost: str, user_id: str
+    ) -> Job | None:
+        """Check if target is locked (stub returns None - not locked)."""
+        return None
+
+    def get_deployed_job_for_target(
+        self, target: str, dbhost: str, user_id: str
+    ) -> Job | None:
+        """Get deployed job for target (stub returns None - no existing deploy)."""
         return None
 
 
@@ -232,7 +257,12 @@ def fake_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRepos]:
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient]:
+def client(fake_state: FakeRepos) -> Iterator[TestClient]:
+    """Create test client after fake_state is set up.
+    
+    Depends on fake_state to ensure dependency override is configured
+    before the client makes any requests.
+    """
     with TestClient(app) as test_client:
         yield test_client
 
@@ -260,8 +290,13 @@ def _build_job(**overrides: Any) -> Job:
 
 
 def test_submit_job_customer_success(client: TestClient, fake_state: FakeRepos) -> None:
+    # Use backup_path to bypass S3 discovery
     response = _post_json(
-        client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme-123"}
+        client, "/api/jobs", {
+            "user": "Jane.Doe",
+            "customer": "Acme-123",
+            "backup_path": "s3://test-bucket/backups/acme/20260103.tar"
+        }
     )
     assert response.status_code == 201
     data = cast(dict[str, Any], response.json())
@@ -277,7 +312,11 @@ def test_submit_job_conflict_returns_409(
         "Target 'janedoacme' already has an active job"
     )
     response = _post_json(
-        client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme-123"}
+        client, "/api/jobs", {
+            "user": "Jane.Doe",
+            "customer": "Acme-123",
+            "backup_path": "s3://test-bucket/backups/acme/20260103.tar"
+        }
     )
     assert response.status_code == 409
     detail = cast(dict[str, Any], response.json())["detail"]
@@ -338,7 +377,11 @@ def test_submit_job_unlimited_when_caps_are_zero(
     ]
 
     response = _post_json(
-        client, "/api/jobs", {"user": "Jane.Doe", "customer": "NewCust"}
+        client, "/api/jobs", {
+            "user": "Jane.Doe",
+            "customer": "NewCust",
+            "backup_path": "s3://test-bucket/backups/newcust/20260103.tar"
+        }
     )
     assert response.status_code == 201
     data = cast(dict[str, Any], response.json())
@@ -360,7 +403,11 @@ def test_submit_job_respects_per_user_limit(
     ]
 
     # Submit a new job (FakeUserRepository always returns user_id="user-1")
-    response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
+    response = _post_json(client, "/api/jobs", {
+        "user": "Jane.Doe",
+        "customer": "Acme",
+        "backup_path": "s3://test-bucket/backups/acme/20260103.tar"
+    })
 
     assert response.status_code == 429
     data = cast(dict[str, Any], response.json())
@@ -383,7 +430,11 @@ def test_submit_job_allows_under_per_user_limit(
         _build_job(id="job-2", owner_user_id="user-1", target="othercust2"),
     ]
 
-    response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
+    response = _post_json(client, "/api/jobs", {
+        "user": "Jane.Doe",
+        "customer": "Acme",
+        "backup_path": "s3://test-bucket/backups/acme/20260103.tar"
+    })
 
     assert response.status_code == 201
 
@@ -405,7 +456,11 @@ def test_submit_job_respects_global_limit(
         _build_job(id="job-5", owner_user_id="user-5", target="othercust5"),
     ]
 
-    response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
+    response = _post_json(client, "/api/jobs", {
+        "user": "Jane.Doe",
+        "customer": "Acme",
+        "backup_path": "s3://test-bucket/backups/acme/20260103.tar"
+    })
 
     assert response.status_code == 429
     data = cast(dict[str, Any], response.json())
@@ -428,7 +483,11 @@ def test_submit_job_global_limit_takes_precedence(
         _build_job(id="job-3", owner_user_id="other-user-3", target="othercust3"),
     ]
 
-    response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
+    response = _post_json(client, "/api/jobs", {
+        "user": "Jane.Doe",
+        "customer": "Acme",
+        "backup_path": "s3://test-bucket/backups/acme/20260103.tar"
+    })
 
     assert response.status_code == 429
     data = cast(dict[str, Any], response.json())
@@ -451,7 +510,11 @@ def test_submit_job_both_limits_satisfied(
         _build_job(id="job-4", owner_user_id="other-user", target="othercust4"),
     ]
 
-    response = _post_json(client, "/api/jobs", {"user": "Jane.Doe", "customer": "Acme"})
+    response = _post_json(client, "/api/jobs", {
+        "user": "Jane.Doe",
+        "customer": "Acme",
+        "backup_path": "s3://test-bucket/backups/acme/20260103.tar"
+    })
 
     # Under both limits (user: 1 < 3, global: 4 < 10)
     assert response.status_code == 201
