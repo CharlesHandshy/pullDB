@@ -119,19 +119,19 @@
                 <h2>Base URL</h2>
                 <div class="terminal-window" style="transform: none;">
                     <div class="terminal-body">
-                        <div class="terminal-line"><span class="output">https://pulldb.yourcompany.com/api/v1</span></div>
+                        <div class="terminal-line"><span class="output">http://pulldb-server:8080/api</span></div>
                     </div>
                 </div>
-                <p class="mt-4">Replace with your actual pullDB server URL.</p>
+                <p class="mt-4">Replace <code>pulldb-server</code> with your actual pullDB server hostname. Default port is 8080.</p>
             </section>
             
             <!-- Authentication -->
             <section class="content-section" id="authentication">
                 <h2>Authentication</h2>
-                <p>API requests require authentication via API key or session token.</p>
+                <p>pullDB supports two authentication methods depending on configuration (<code>PULLDB_AUTH_MODE</code>):</p>
                 
-                <h3>API Key Authentication</h3>
-                <p>Pass your API key in the <code>X-API-Key</code> header:</p>
+                <h3>Trusted Mode (CLI)</h3>
+                <p>For CLI tools, pass your username in the <code>X-Trusted-User</code> header:</p>
                 <div class="terminal-window" style="transform: none;">
                     <div class="terminal-header">
                         <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
@@ -144,8 +144,39 @@
                         </button>
                     </div>
                     <div class="terminal-body">
-                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">curl -H "X-API-Key: your-api-key" \</span></div>
-                        <div class="terminal-line"><span class="command">     https://pulldb.example.com/api/v1/jobs</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">curl -H "X-Trusted-User: jsmith" \</span></div>
+                        <div class="terminal-line"><span class="command">     http://pulldb-server:8080/api/jobs</span></div>
+                    </div>
+                </div>
+                
+                <h3>Session Mode (Web UI)</h3>
+                <p>For web applications, login via <code>/web/login</code> to obtain a session cookie, then include it:</p>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">curl</span>
+                        <button class="terminal-copy" onclick="copyTerminal(this)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">curl -b "session_token=abc123..." \</span></div>
+                        <div class="terminal-line"><span class="command">     http://pulldb-server:8080/api/jobs</span></div>
+                    </div>
+                </div>
+                
+                <div class="info-callout" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    <div>
+                        <strong>Note:</strong> Most users should use the <code>pulldb</code> CLI rather than calling the API directly.
+                        The CLI handles authentication automatically.
                     </div>
                 </div>
             </section>
@@ -158,14 +189,14 @@
                 <div class="endpoint-card">
                     <div class="endpoint-header">
                         <span class="method post">POST</span>
-                        <code class="endpoint-path">/jobs</code>
+                        <code class="endpoint-path">/api/jobs</code>
                     </div>
                     
                     <h3>Request Body</h3>
                     <div class="code-block">
                         <pre><code>{
-  "user": "charles",
-  "customer": "acme",
+  "user": "jsmith",
+  "customer": "acme_pest",
   "dbhost": "localhost",
   "date": "2026-01-01",
   "overwrite": false
@@ -186,25 +217,25 @@
                                 <td><code>user</code></td>
                                 <td>string</td>
                                 <td>Yes</td>
-                                <td>Username for job ownership</td>
+                                <td>User code for job ownership (e.g., "jsmith")</td>
                             </tr>
                             <tr>
                                 <td><code>customer</code></td>
                                 <td>string</td>
                                 <td>Yes*</td>
-                                <td>Customer ID</td>
+                                <td>Customer name matching S3 backup path</td>
                             </tr>
                             <tr>
                                 <td><code>qatemplate</code></td>
                                 <td>boolean</td>
                                 <td>Yes*</td>
-                                <td>Restore QA template instead</td>
+                                <td>Use QA template backup instead (default: false)</td>
                             </tr>
                             <tr>
                                 <td><code>dbhost</code></td>
                                 <td>string</td>
                                 <td>No</td>
-                                <td>Target database host (default: localhost)</td>
+                                <td>Target database host (default from settings)</td>
                             </tr>
                             <tr>
                                 <td><code>date</code></td>
@@ -213,22 +244,37 @@
                                 <td>Backup date (YYYY-MM-DD), defaults to latest</td>
                             </tr>
                             <tr>
+                                <td><code>env</code></td>
+                                <td>string</td>
+                                <td>No</td>
+                                <td>S3 environment: "staging" or "prod"</td>
+                            </tr>
+                            <tr>
                                 <td><code>overwrite</code></td>
                                 <td>boolean</td>
                                 <td>No</td>
                                 <td>Overwrite existing database (default: false)</td>
                             </tr>
+                            <tr>
+                                <td><code>suffix</code></td>
+                                <td>string</td>
+                                <td>No</td>
+                                <td>1-3 lowercase letter suffix for target (e.g., "dev")</td>
+                            </tr>
                         </tbody>
                     </table>
-                    <p class="text-muted">* Either <code>customer</code> or <code>qatemplate</code> required</p>
+                    <p class="text-muted">* Either <code>customer</code> or <code>qatemplate</code> required, not both</p>
                     
-                    <h3>Response</h3>
+                    <h3>Response (201 Created)</h3>
                     <div class="code-block">
                         <pre><code>{
   "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+  "target": "jsmith_acme_pest",
+  "staging_name": "pulldb_stg_7f3a2b1c",
   "status": "queued",
-  "target_db": "chrlesacme",
-  "created_at": "2026-01-02T10:42:15Z"
+  "owner_username": "jsmith",
+  "owner_user_code": "JSMITH",
+  "submitted_at": "2026-01-02T10:42:15Z"
 }</code></pre>
                     </div>
                 </div>
@@ -247,10 +293,10 @@
                     </div>
                     <div class="terminal-body">
                         <div class="terminal-line"><span class="prompt">$</span> <span class="command">curl -X POST \</span></div>
-                        <div class="terminal-line"><span class="command">     -H "X-API-Key: your-key" \</span></div>
+                        <div class="terminal-line"><span class="command">     -H "X-Trusted-User: jsmith" \</span></div>
                         <div class="terminal-line"><span class="command">     -H "Content-Type: application/json" \</span></div>
-                        <div class="terminal-line"><span class="command">     -d '{"user":"charles","customer":"acme"}' \</span></div>
-                        <div class="terminal-line"><span class="command">     https://pulldb.example.com/api/v1/jobs</span></div>
+                        <div class="terminal-line"><span class="command">     -d '{"user":"jsmith","customer":"acme_pest"}' \</span></div>
+                        <div class="terminal-line"><span class="command">     http://pulldb-server:8080/api/jobs</span></div>
                     </div>
                 </div>
             </section>
@@ -263,21 +309,25 @@
                 <div class="endpoint-card">
                     <div class="endpoint-header">
                         <span class="method get">GET</span>
-                        <code class="endpoint-path">/jobs/{job_id}</code>
+                        <code class="endpoint-path">/api/jobs/{job_id}</code>
                     </div>
                     
                     <h3>Response</h3>
                     <div class="code-block">
                         <pre><code>{
-  "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
-  "user": "charles",
-  "customer": "acme",
+  "id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+  "target": "jsmith_acme_pest",
   "status": "running",
-  "phase": "restoring",
-  "target_db": "chrlesacme",
+  "user_code": "JSMITH",
+  "owner_user_code": "JSMITH",
+  "submitted_at": "2026-01-02T10:42:15Z",
+  "started_at": "2026-01-02T10:42:18Z",
+  "completed_at": null,
+  "staging_name": "pulldb_stg_7f3a2b1c",
+  "current_operation": "downloading",
   "dbhost": "localhost",
-  "created_at": "2026-01-02T10:42:15Z",
-  "started_at": "2026-01-02T10:42:18Z"
+  "source": "acme_pest",
+  "can_cancel": true
 }</code></pre>
                     </div>
                 </div>
@@ -286,54 +336,64 @@
             <!-- List Jobs -->
             <section class="content-section" id="list-jobs">
                 <h2>List Jobs</h2>
-                <p>List jobs for the authenticated user.</p>
+                <p>List jobs with optional filtering.</p>
                 
                 <div class="endpoint-card">
                     <div class="endpoint-header">
                         <span class="method get">GET</span>
-                        <code class="endpoint-path">/jobs</code>
+                        <code class="endpoint-path">/api/jobs</code>
                     </div>
                     
                     <h3>Query Parameters</h3>
                     <table class="param-table">
                         <tbody>
                             <tr>
-                                <td><code>status</code></td>
-                                <td>string</td>
-                                <td>No</td>
-                                <td>Filter by status (queued, running, complete, failed, canceled)</td>
-                            </tr>
-                            <tr>
                                 <td><code>limit</code></td>
                                 <td>integer</td>
                                 <td>No</td>
-                                <td>Max results (default: 20)</td>
+                                <td>Max results (default: 100, max: 1000)</td>
                             </tr>
                             <tr>
-                                <td><code>offset</code></td>
-                                <td>integer</td>
+                                <td><code>active</code></td>
+                                <td>boolean</td>
                                 <td>No</td>
-                                <td>Pagination offset</td>
+                                <td>Only queued/running jobs (default: false)</td>
+                            </tr>
+                            <tr>
+                                <td><code>history</code></td>
+                                <td>boolean</td>
+                                <td>No</td>
+                                <td>Only completed/failed/canceled jobs (default: false)</td>
+                            </tr>
+                            <tr>
+                                <td><code>filter</code></td>
+                                <td>string</td>
+                                <td>No</td>
+                                <td>Filter by user code prefix</td>
                             </tr>
                         </tbody>
                     </table>
                     
                     <h3>Response</h3>
                     <div class="code-block">
-                        <pre><code>{
-  "jobs": [
-    {
-      "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
-      "status": "complete",
-      "customer": "acme",
-      ...
-    }
-  ],
-  "total": 42,
-  "limit": 20,
-  "offset": 0
-}</code></pre>
+                        <pre><code>[
+  {
+    "id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+    "target": "jsmith_acme_pest",
+    "status": "complete",
+    "user_code": "JSMITH",
+    "owner_user_code": "JSMITH",
+    "submitted_at": "2026-01-02T10:42:15Z",
+    "started_at": "2026-01-02T10:42:18Z",
+    "completed_at": "2026-01-02T10:45:30Z",
+    "dbhost": "localhost",
+    "source": "acme_pest",
+    "can_cancel": false
+  },
+  ...
+]</code></pre>
                     </div>
+                    <p class="text-muted">Response is an array of job summaries (not wrapped in an object).</p>
                 </div>
             </section>
             
@@ -344,16 +404,25 @@
                 
                 <div class="endpoint-card">
                     <div class="endpoint-header">
-                        <span class="method delete">DELETE</span>
-                        <code class="endpoint-path">/jobs/{job_id}</code>
+                        <span class="method post">POST</span>
+                        <code class="endpoint-path">/api/jobs/{job_id}/cancel</code>
                     </div>
                     
-                    <h3>Response</h3>
+                    <h3>Response (Queued Job)</h3>
                     <div class="code-block">
                         <pre><code>{
   "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
   "status": "canceled",
-  "message": "Job canceled successfully"
+  "message": "Job canceled successfully (was queued)"
+}</code></pre>
+                    </div>
+                    
+                    <h3>Response (Running Job)</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+  "status": "canceling",
+  "message": "Cancellation requested; worker will stop at next checkpoint"
 }</code></pre>
                     </div>
                 </div>
@@ -367,6 +436,7 @@
                     <div>
                         Returns <code>409 Conflict</code> if job is already in terminal state (complete, failed, canceled),
                         or if the job has entered the loading phase (myloader cannot be safely interrupted).
+                        Users can only cancel their own jobs unless they have manager or admin privileges.
                     </div>
                 </div>
             </section>
@@ -379,43 +449,60 @@
                 <div class="endpoint-card">
                     <div class="endpoint-header">
                         <span class="method get">GET</span>
-                        <code class="endpoint-path">/jobs/{job_id}/events</code>
+                        <code class="endpoint-path">/api/jobs/{job_id}/events</code>
                     </div>
+                    
+                    <h3>Query Parameters</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td><code>since_id</code></td>
+                                <td>integer</td>
+                                <td>No</td>
+                                <td>Return events after this event ID (for streaming/polling)</td>
+                            </tr>
+                        </tbody>
+                    </table>
                     
                     <h3>Response</h3>
                     <div class="code-block">
-                        <pre><code>{
-  "events": [
-    {
-      "timestamp": "2026-01-02T10:42:15Z",
-      "type": "status_change",
-      "message": "Job queued"
-    },
-    {
-      "timestamp": "2026-01-02T10:42:18Z",
-      "type": "status_change",
-      "message": "Job started by worker-01"
-    },
-    {
-      "timestamp": "2026-01-02T10:42:18Z",
-      "type": "phase_change",
-      "message": "Phase: downloading"
-    }
-  ]
-}</code></pre>
+                        <pre><code>[
+  {
+    "id": 1,
+    "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+    "event_type": "status_change",
+    "detail": "Job queued",
+    "logged_at": "2026-01-02T10:42:15Z"
+  },
+  {
+    "id": 2,
+    "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+    "event_type": "status_change",
+    "detail": "Job started by worker-01",
+    "logged_at": "2026-01-02T10:42:18Z"
+  },
+  {
+    "id": 3,
+    "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+    "event_type": "phase_change",
+    "detail": "Phase: downloading",
+    "logged_at": "2026-01-02T10:42:18Z"
+  }
+]</code></pre>
                     </div>
+                    <p class="text-muted">Response is an array of event objects (not wrapped). Use <code>since_id</code> for efficient polling in CLI streaming mode.</p>
                 </div>
             </section>
             
             <!-- Search Backups -->
             <section class="content-section" id="search-backups">
                 <h2>Search Backups</h2>
-                <p>Search for available customer backups.</p>
+                <p>Search for available customer backups in S3.</p>
                 
                 <div class="endpoint-card">
                     <div class="endpoint-header">
                         <span class="method get">GET</span>
-                        <code class="endpoint-path">/backups/search</code>
+                        <code class="endpoint-path">/api/backups/search</code>
                     </div>
                     
                     <h3>Query Parameters</h3>
@@ -425,7 +512,31 @@
                                 <td><code>customer</code></td>
                                 <td>string</td>
                                 <td>Yes</td>
-                                <td>Customer ID to search for</td>
+                                <td>Customer name or pattern (supports * and ? wildcards)</td>
+                            </tr>
+                            <tr>
+                                <td><code>environment</code></td>
+                                <td>string</td>
+                                <td>No</td>
+                                <td>S3 environment: staging, prod, or both (default: both)</td>
+                            </tr>
+                            <tr>
+                                <td><code>date_from</code></td>
+                                <td>string</td>
+                                <td>No</td>
+                                <td>Filter from date (YYYYMMDD). Default: 7 days ago</td>
+                            </tr>
+                            <tr>
+                                <td><code>limit</code></td>
+                                <td>integer</td>
+                                <td>No</td>
+                                <td>Max results per page (default: 5, max: 100)</td>
+                            </tr>
+                            <tr>
+                                <td><code>offset</code></td>
+                                <td>integer</td>
+                                <td>No</td>
+                                <td>Pagination offset (default: 0)</td>
                             </tr>
                         </tbody>
                     </table>
@@ -433,21 +544,23 @@
                     <h3>Response</h3>
                     <div class="code-block">
                         <pre><code>{
-  "customer": "acme",
   "backups": [
     {
-      "date": "2026-01-02",
-      "size_bytes": 2469606195,
-      "size_human": "2.3 GB",
-      "path": "s3://backups/daily/acme/"
-    },
-    {
-      "date": "2026-01-01",
-      "size_bytes": 2469606195,
-      "size_human": "2.3 GB",
-      "path": "s3://backups/daily/acme/"
+      "customer": "acmecorp",
+      "timestamp": "2026-01-02T03:00:00Z",
+      "date": "20260102",
+      "size_mb": 2354.8,
+      "environment": "prod",
+      "key": "backups/daily/acmecorp/20260102.sql.gz",
+      "bucket": "pulldb-backups-prod"
     }
-  ]
+  ],
+  "total": 12,
+  "query": "acmecorp",
+  "environment": "both",
+  "offset": 0,
+  "limit": 5,
+  "has_more": true
 }</code></pre>
                     </div>
                 </div>
@@ -479,7 +592,7 @@
                         </tr>
                         <tr>
                             <td><code>401</code></td>
-                            <td>Unauthorized (missing/invalid API key)</td>
+                            <td>Unauthorized (missing/invalid authentication)</td>
                         </tr>
                         <tr>
                             <td><code>403</code></td>
@@ -504,47 +617,49 @@
             <!-- Error Handling -->
             <section class="content-section" id="errors">
                 <h2>Error Handling</h2>
-                <p>Error responses include a JSON body with error details:</p>
+                <p>Error responses use standard FastAPI/HTTP format with a <code>detail</code> field:</p>
+                
+                <div class="code-block">
+                    <pre><code>{"detail": "No backup found for customer 'acme' on date '2026-01-01'"}</code></pre>
+                </div>
+                
+                <p style="margin-top: 16px;">For validation errors (422), the response includes field-level details:</p>
                 
                 <div class="code-block">
                     <pre><code>{
-  "error": {
-    "code": "BACKUP_NOT_FOUND",
-    "message": "No backup found for customer 'acme' on date '2026-01-01'",
-    "details": {
-      "customer": "acme",
-      "date": "2026-01-01"
+  "detail": [
+    {
+      "type": "string_type",
+      "loc": ["body", "target"],
+      "msg": "Input should be a valid string",
+      "input": null
     }
-  }
+  ]
 }</code></pre>
                 </div>
                 
-                <h3>Error Codes</h3>
+                <h3>Common Error Messages</h3>
                 <table class="param-table">
                     <tbody>
                         <tr>
-                            <td><code>INVALID_REQUEST</code></td>
-                            <td>Missing or invalid parameters</td>
+                            <td><code>User 'xxx' not found</code></td>
+                            <td>User doesn't exist in system</td>
                         </tr>
                         <tr>
-                            <td><code>USER_NOT_FOUND</code></td>
-                            <td>User doesn't exist</td>
+                            <td><code>User account is disabled</code></td>
+                            <td>User exists but is disabled</td>
                         </tr>
                         <tr>
-                            <td><code>USER_DISABLED</code></td>
-                            <td>User account is disabled</td>
-                        </tr>
-                        <tr>
-                            <td><code>BACKUP_NOT_FOUND</code></td>
-                            <td>Backup doesn't exist</td>
-                        </tr>
-                        <tr>
-                            <td><code>DATABASE_EXISTS</code></td>
-                            <td>Target database exists and overwrite=false</td>
-                        </tr>
-                        <tr>
-                            <td><code>JOB_NOT_FOUND</code></td>
+                            <td><code>Job not found</code></td>
                             <td>Job ID doesn't exist</td>
+                        </tr>
+                        <tr>
+                            <td><code>Cannot cancel job in state...</code></td>
+                            <td>Job already completed, failed, or canceled</td>
+                        </tr>
+                        <tr>
+                            <td><code>Cannot cancel during load phase</code></td>
+                            <td>myloader has started, cannot safely interrupt</td>
                         </tr>
                     </tbody>
                 </table>
