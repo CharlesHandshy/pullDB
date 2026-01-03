@@ -195,6 +195,9 @@ def _alter_mysql_password(
 ) -> tuple[bool, str | None]:
     """Execute ALTER USER to change the password.
 
+    Auto-detects the MySQL user's host specifier from mysql.user table.
+    Falls back to '%' if detection fails.
+
     Args:
         host: MySQL server hostname.
         port: MySQL server port.
@@ -217,10 +220,26 @@ def _alter_mysql_password(
         )
         cursor = conn.cursor()
 
-        # Execute ALTER USER
+        # Auto-detect the user's host specifier from mysql.user
+        # This handles both 'user@localhost' and 'user@%' cases
+        user_host = "%"  # Default fallback
+        try:
+            cursor.execute(
+                "SELECT Host FROM mysql.user WHERE User = %s ORDER BY Host LIMIT 1",
+                (current_username,),
+            )
+            row = cursor.fetchone()
+            if row:
+                user_host = row[0]
+                logger.debug(f"Detected MySQL user host: {current_username}@{user_host}")
+        except MySQLError:
+            # If we can't query mysql.user (permissions), fall back to '%'
+            logger.debug(f"Could not detect user host, using default: {current_username}@%")
+
+        # Execute ALTER USER with detected host
         cursor.execute(
-            f"ALTER USER '{current_username}'@'%%' IDENTIFIED BY %s",
-            (new_password,),
+            f"ALTER USER %s@%s IDENTIFIED BY %s",
+            (current_username, user_host, new_password),
         )
         cursor.execute("FLUSH PRIVILEGES")
         cursor.close()
@@ -230,7 +249,7 @@ def _alter_mysql_password(
     except MySQLError as e:
         error_code = e.errno if hasattr(e, "errno") else None
         if error_code == 1396:
-            return False, f"User '{current_username}'@'%' does not exist"
+            return False, f"User '{current_username}' does not exist in MySQL"
         elif error_code == 1045:
             return False, "Access denied - current password may be incorrect"
         elif error_code == 1227:
@@ -509,7 +528,8 @@ def rotate_host_secret(
                 f"  3. Update password value\n"
                 f"\n"
                 f"If you need to revert MySQL instead:\n"
-                f"  ALTER USER '{mysql_username}'@'%' IDENTIFIED BY '<old-password>';\n"
+                f"  ALTER USER '{mysql_username}'@'<host>' IDENTIFIED BY '<old-password>';\n"
+                f"  -- Replace <host> with 'localhost' or '%' depending on your user setup\n"
                 f"  FLUSH PRIVILEGES;"
             ),
             suggestions=[
@@ -529,8 +549,9 @@ def rotate_host_secret(
     logger.info(f"[rotate] Phase 7: Final round-trip verification for {hostname}")
 
     try:
-        # Fetch fresh from AWS
-        fresh_creds = resolver.resolve(credential_ref)
+        # Create a NEW resolver to ensure fresh fetch (no boto3 client caching)
+        fresh_resolver = CredentialResolver(aws_profile=aws_profile, aws_region=aws_region)
+        fresh_creds = fresh_resolver.resolve(credential_ref)
 
         # Verify it matches what we set
         if fresh_creds.password != generated_password:

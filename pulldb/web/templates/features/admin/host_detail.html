@@ -197,11 +197,12 @@
                     // Create the rotation progress modal
                     function createRotationModal() {
                         const modal = document.createElement('div');
-                        modal.className = 'modal-backdrop';
+                        modal.className = 'modal modal--rotation';
                         modal.id = 'rotation-modal';
                         modal.innerHTML = `
-                            <div class="modal rotation-modal">
-                                <div class="modal-header">
+                            <div class="modal-backdrop" onclick="closeRotationModal(false)"></div>
+                            <div class="modal-content">
+                                <div class="modal-header modal-header-warning">
                                     <h3 class="modal-title">
                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
                                             <path d="M23 4v6h-6"></path>
@@ -210,6 +211,12 @@
                                         </svg>
                                         Password Rotation
                                     </h3>
+                                    <button type="button" class="modal-close" onclick="closeRotationModal(false)">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <line x1="18" x2="6" y1="6" y2="18"/>
+                                            <line x1="6" x2="18" y1="6" y2="18"/>
+                                        </svg>
+                                    </button>
                                 </div>
                                 <div class="modal-body">
                                     <div class="rotation-checklist" id="rotation-checklist">
@@ -238,17 +245,19 @@
                                             </div>
                                         `).join('')}
                                     </div>
-                                    <div class="rotation-result" id="rotation-result" style="display: none;">
+                                    <div class="rotation-result is-hidden" id="rotation-result">
                                         <div class="rotation-result-icon"></div>
                                         <div class="rotation-result-message"></div>
                                     </div>
                                 </div>
-                                <div class="modal-footer" id="rotation-modal-footer" style="display: none;">
+                                <div class="modal-footer modal-hidden" id="rotation-modal-footer">
                                     <button type="button" class="btn btn-primary" id="rotation-close-btn">Close</button>
                                 </div>
                             </div>
                         `;
                         document.body.appendChild(modal);
+                        // Make closeRotationModal accessible from onclick handlers
+                        window.closeRotationModal = closeRotationModal;
                         return modal;
                     }
 
@@ -268,8 +277,8 @@
                         const msgEl = resultEl.querySelector('.rotation-result-message');
                         const footer = document.getElementById('rotation-modal-footer');
 
-                        resultEl.style.display = 'block';
-                        footer.style.display = 'flex';
+                        resultEl.classList.remove('is-hidden');
+                        footer.classList.remove('modal-hidden');
 
                         if (success) {
                             resultEl.className = 'rotation-result success';
@@ -279,7 +288,7 @@
                                     <polyline points="22 4 12 14.01 9 11.01"/>
                                 </svg>
                             `;
-                            msgEl.innerHTML = `<strong>Success!</strong><br>${message}`;
+                            msgEl.innerHTML = `<strong>Success!</strong>${message}`;
                         } else {
                             resultEl.className = 'rotation-result failed';
                             iconEl.innerHTML = `
@@ -289,7 +298,7 @@
                                     <line x1="9" y1="9" x2="15" y2="15"/>
                                 </svg>
                             `;
-                            let html = `<strong>Failed</strong><br>${message}`;
+                            let html = `<strong>Failed</strong>${message}`;
                             if (suggestions && suggestions.length > 0) {
                                 html += `<div class="rotation-suggestions"><strong>Suggestions:</strong><ul>${suggestions.map(s => `<li>${s}</li>`).join('')}</ul></div>`;
                             }
@@ -320,9 +329,8 @@
                             );
                             if (!confirmed) return;
 
-                            // Create and show modal
+                            // Create and show modal (modal CSS displays it automatically)
                             const modal = createRotationModal();
-                            modal.style.display = 'flex';
 
                             // Animate phases as "running" one by one
                             const animatePhases = () => {
@@ -343,7 +351,7 @@
                             const stopAnimation = animatePhases();
 
                             try {
-                                const response = await fetch('/api/admin/hosts/{{ host.id }}/rotate-secret', {
+                                const response = await fetch('/web/admin/api/hosts/{{ host.id }}/rotate-secret', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ password_length: 32 })
@@ -412,104 +420,6 @@
                     }
                 })();
                 </script>
-                <style>
-                /* Rotation Modal Styles */
-                .rotation-modal {
-                    max-width: 480px;
-                    width: 100%;
-                }
-                .rotation-checklist {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-2);
-                }
-                .rotation-step {
-                    display: flex;
-                    align-items: center;
-                    gap: var(--space-3);
-                    padding: var(--space-2) var(--space-3);
-                    border-radius: var(--radius-md);
-                    background: var(--bg-secondary);
-                    transition: all 0.2s ease;
-                }
-                .rotation-step-icon {
-                    width: 24px;
-                    height: 24px;
-                    flex-shrink: 0;
-                }
-                .rotation-step-icon svg {
-                    width: 24px;
-                    height: 24px;
-                    display: none;
-                }
-                .rotation-step .icon-pending { display: block; color: var(--text-muted); }
-                .rotation-step.running .icon-pending { display: none; }
-                .rotation-step.running .icon-running { display: block; color: var(--primary); animation: pulse 1s ease-in-out infinite; }
-                .rotation-step.success .icon-pending { display: none; }
-                .rotation-step.success .icon-success { display: block; color: var(--success); }
-                .rotation-step.failed .icon-pending { display: none; }
-                .rotation-step.failed .icon-failed { display: block; color: var(--danger); }
-                .rotation-step.success { background: color-mix(in srgb, var(--success) 10%, var(--bg-secondary)); }
-                .rotation-step.failed { background: color-mix(in srgb, var(--danger) 10%, var(--bg-secondary)); }
-                .rotation-step.running { background: color-mix(in srgb, var(--primary) 10%, var(--bg-secondary)); }
-                .rotation-step-label {
-                    flex: 1;
-                    font-size: var(--text-sm);
-                }
-                .rotation-step-time {
-                    font-size: var(--text-xs);
-                    color: var(--text-muted);
-                    font-family: var(--font-mono);
-                }
-                @keyframes pulse {
-                    0%, 100% { opacity: 1; }
-                    50% { opacity: 0.5; }
-                }
-                .rotation-result {
-                    margin-top: var(--space-4);
-                    padding: var(--space-3);
-                    border-radius: var(--radius-md);
-                    display: flex;
-                    gap: var(--space-3);
-                }
-                .rotation-result.success {
-                    background: color-mix(in srgb, var(--success) 15%, var(--bg-secondary));
-                    border: 1px solid var(--success);
-                }
-                .rotation-result.failed {
-                    background: color-mix(in srgb, var(--danger) 15%, var(--bg-secondary));
-                    border: 1px solid var(--danger);
-                }
-                .rotation-result-icon svg {
-                    width: 32px;
-                    height: 32px;
-                }
-                .rotation-result.success .rotation-result-icon { color: var(--success); }
-                .rotation-result.failed .rotation-result-icon { color: var(--danger); }
-                .rotation-result-message {
-                    flex: 1;
-                    font-size: var(--text-sm);
-                }
-                .rotation-suggestions {
-                    margin-top: var(--space-2);
-                }
-                .rotation-suggestions ul {
-                    margin: var(--space-1) 0 0 var(--space-4);
-                    padding: 0;
-                }
-                .rotation-manual-fix {
-                    margin-top: var(--space-2);
-                }
-                .rotation-manual-fix pre {
-                    margin-top: var(--space-1);
-                    padding: var(--space-2);
-                    background: var(--bg-primary);
-                    border-radius: var(--radius-sm);
-                    font-size: var(--text-xs);
-                    overflow-x: auto;
-                    white-space: pre-wrap;
-                }
-                </style>
             </div>
             {% elif host.credential_error %}
             <div class="card">

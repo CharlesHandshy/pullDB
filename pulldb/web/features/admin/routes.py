@@ -2467,6 +2467,90 @@ async def test_host_connection(
 
 
 # =============================================================================
+# Host Secret Rotation - API endpoint for Web UI
+# =============================================================================
+
+
+@router.post("/api/hosts/{host_id}/rotate-secret")
+async def api_rotate_host_secret(
+    host_id: str,
+    request: Request,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Rotate the MySQL password for a host and update AWS Secrets Manager.
+    
+    This is the Web UI API endpoint that wraps the secret rotation service.
+    Returns JSON with rotation result, timing information, and any error details.
+    """
+    from pulldb.domain.services.secret_rotation import rotate_host_secret
+    import time
+
+    result_data: dict[str, Any] = {
+        "success": False,
+        "message": "",
+        "timing": {},
+    }
+
+    try:
+        # Parse request body
+        body = await request.json()
+        password_length = body.get("password_length", 32)
+
+        # Get host using repository method
+        host_obj = None
+        if hasattr(state, "host_repo") and state.host_repo:
+            host_obj = state.host_repo.get_host_by_id(host_id)
+
+        if not host_obj:
+            result_data["message"] = f"Host not found: {host_id}"
+            return result_data
+
+        # Call the rotation service
+        rotation_result = rotate_host_secret(
+            host_id=host_id,
+            hostname=host_obj.hostname,
+            credential_ref=host_obj.credential_ref,
+            password_length=password_length,
+        )
+
+        # Build response
+        result_data["success"] = rotation_result.success
+        result_data["message"] = rotation_result.message
+        result_data["timing"] = rotation_result.timing
+
+        if not rotation_result.success:
+            result_data["phase"] = rotation_result.phase
+            result_data["error"] = rotation_result.error
+            if rotation_result.suggestions:
+                result_data["suggestions"] = rotation_result.suggestions
+            result_data["manual_fix_required"] = rotation_result.manual_fix_required
+            if rotation_result.manual_fix_instructions:
+                result_data["manual_fix_instructions"] = rotation_result.manual_fix_instructions
+
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="host_secret_rotated" if rotation_result.success else "host_secret_rotation_failed",
+                detail=f"{'Rotated' if rotation_result.success else 'Failed to rotate'} secret for host {host_obj.hostname}",
+                context={
+                    "host_id": host_id,
+                    "hostname": host_obj.hostname,
+                    "credential_ref": host_obj.credential_ref,
+                    "success": rotation_result.success,
+                    "phase": rotation_result.phase,
+                },
+            )
+
+        return result_data
+
+    except Exception as e:
+        result_data["message"] = str(e)
+        return result_data
+
+
+# =============================================================================
 # Host Provisioning - Automated Setup Flow
 # =============================================================================
 

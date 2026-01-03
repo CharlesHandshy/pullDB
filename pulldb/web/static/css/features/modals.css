@@ -731,3 +731,208 @@
     background: var(--color-surface-secondary);
     border-top-color: var(--color-border);
 }
+
+/* ===========================================
+   ROTATION PROGRESS MODAL
+   HCA: features/admin
+   Purpose: Step-by-step credential rotation progress display
+   =========================================== */
+
+.modal--rotation .modal-content {
+    max-width: 480px;
+}
+
+/* Checklist of rotation steps */
+.rotation-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.rotation-step {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-secondary);
+    transition: all var(--transition-base);
+}
+
+.rotation-step-icon {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.rotation-step-icon svg {
+    width: 24px;
+    height: 24px;
+    display: none;
+}
+
+/* Pending state (default) */
+.rotation-step .icon-pending {
+    display: block;
+    color: var(--color-text-muted);
+}
+
+/* Running state */
+.rotation-step.running .icon-pending {
+    display: none;
+}
+
+.rotation-step.running .icon-running {
+    display: block;
+    color: var(--primary-500);
+    animation: rotationPulse 1s ease-in-out infinite;
+}
+
+.rotation-step.running {
+    background: color-mix(in srgb, var(--primary-500) 10%, var(--color-bg-secondary));
+}
+
+/* Success state */
+.rotation-step.success .icon-pending {
+    display: none;
+}
+
+.rotation-step.success .icon-success {
+    display: block;
+    color: var(--success-500);
+}
+
+.rotation-step.success {
+    background: color-mix(in srgb, var(--success-500) 10%, var(--color-bg-secondary));
+}
+
+/* Failed state */
+.rotation-step.failed .icon-pending {
+    display: none;
+}
+
+.rotation-step.failed .icon-failed {
+    display: block;
+    color: var(--danger-500);
+}
+
+.rotation-step.failed {
+    background: color-mix(in srgb, var(--danger-500) 10%, var(--color-bg-secondary));
+}
+
+.rotation-step-label {
+    flex: 1;
+    font-size: var(--text-sm);
+    color: var(--color-text-primary);
+}
+
+.rotation-step-time {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+}
+
+@keyframes rotationPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Rotation result display */
+.rotation-result {
+    margin-top: var(--space-4);
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
+}
+
+.rotation-result.is-hidden {
+    display: none;
+}
+
+.rotation-result.success {
+    background: color-mix(in srgb, var(--success-500) 12%, var(--color-bg-secondary));
+    border: 1px solid var(--success-300);
+}
+
+.rotation-result.failed {
+    background: color-mix(in srgb, var(--danger-500) 12%, var(--color-bg-secondary));
+    border: 1px solid var(--danger-300);
+}
+
+.rotation-result-icon {
+    flex-shrink: 0;
+}
+
+.rotation-result-icon svg {
+    width: 32px;
+    height: 32px;
+}
+
+.rotation-result.success .rotation-result-icon {
+    color: var(--success-600);
+}
+
+.rotation-result.failed .rotation-result-icon {
+    color: var(--danger-600);
+}
+
+.rotation-result-message {
+    flex: 1;
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+    color: var(--color-text-primary);
+}
+
+.rotation-result-message strong {
+    display: block;
+    margin-bottom: var(--space-1);
+}
+
+/* Suggestions list */
+.rotation-suggestions {
+    margin-top: var(--space-3);
+}
+
+.rotation-suggestions strong {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+}
+
+.rotation-suggestions ul {
+    margin: var(--space-2) 0 0 var(--space-4);
+    padding: 0;
+    font-size: var(--text-sm);
+}
+
+.rotation-suggestions li {
+    margin-bottom: var(--space-1);
+}
+
+/* Manual fix instructions */
+.rotation-manual-fix {
+    margin-top: var(--space-3);
+}
+
+.rotation-manual-fix strong {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+}
+
+.rotation-manual-fix pre {
+    margin-top: var(--space-2);
+    padding: var(--space-3);
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
