@@ -16,7 +16,7 @@ import click
 from dotenv import load_dotenv
 
 from pulldb import __version__
-from pulldb.cli.auth import get_auth_headers, get_calling_username
+from pulldb.cli.auth import get_auth_headers, get_calling_username, get_current_username
 from pulldb.cli.parse import CLIParseError, parse_restore_args
 
 

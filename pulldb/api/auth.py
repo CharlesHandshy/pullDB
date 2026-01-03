@@ -1,13 +1,13 @@
 """FastAPI authentication dependencies for pullDB.
 
-Phase 4: Provides authentication middleware that supports both
-trusted CLI mode and session-based web authentication.
+Provides secure authentication middleware using HMAC-signed requests
+for CLI/API access and session cookies for web UI.
 
-Authentication Modes (PULLDB_AUTH_MODE environment variable):
-- 'trusted': Accept X-Trusted-User header only (CLI mode, default)
-- 'session': Require X-Session-Token header only (web mode)
-- 'both': Accept either authentication method (transition mode)
-- 'signed': Require HMAC signature verification (secure CLI mode)
+Authentication Methods:
+- HMAC Signed: X-API-Key + X-Timestamp + X-Signature (CLI, programmatic)
+- Session Cookie: session_token httponly cookie (Web UI)
+
+The X-Trusted-User header is NO LONGER SUPPORTED (deprecated for security).
 
 Unified Auth Pattern:
 All authenticated endpoints should use the dependency functions:
@@ -15,8 +15,8 @@ All authenticated endpoints should use the dependency functions:
 - get_admin_user: Requires admin role
 - get_manager_user: Requires manager or admin role
 
-These dependencies support BOTH headers AND cookies for maximum compatibility
-with CLI tools (headers) and web UI (httponly cookies).
+These dependencies support BOTH HMAC signatures AND cookies for maximum
+compatibility with CLI tools and web UI.
 """
 
 from __future__ import annotations
@@ -39,18 +39,6 @@ if TYPE_CHECKING:
 # Constants for HMAC signature verification
 SIGNATURE_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 SIGNATURE_MAX_AGE_SECONDS = 300  # 5 minutes - reject old requests
-
-
-def get_auth_mode() -> str:
-    """Get current authentication mode from environment.
-
-    Returns:
-        One of: 'trusted', 'session', 'both', 'signed'
-    """
-    mode = os.getenv("PULLDB_AUTH_MODE", "trusted").lower()
-    if mode not in ("trusted", "session", "both", "signed"):
-        return "trusted"
-    return mode
 
 
 def get_api_secret(key_id: str) -> str | None:
@@ -155,181 +143,10 @@ def validate_signature_timestamp(timestamp: str) -> bool:
         return False
 
 
-async def get_current_user_optional(
-    x_trusted_user: str | None = Header(None, alias="X-Trusted-User"),
-    x_session_token: str | None = Header(None, alias="X-Session-Token"),
-) -> tuple[str | None, str | None]:
-    """Extract authentication headers without validation.
-
-    This is a low-level dependency that just extracts headers.
-    Use get_current_user for full validation.
-
-    Returns:
-        Tuple of (trusted_user, session_token)
-    """
-    return x_trusted_user, x_session_token
-
-
-async def authenticate_user(
-    state: APIState,
-    x_trusted_user: str | None,
-    x_session_token: str | None,
-) -> User:
-    """Authenticate user from request headers.
-
-    Authentication modes (PULLDB_AUTH_MODE):
-    - 'trusted': Only X-Trusted-User header (CLI)
-    - 'session': Only X-Session-Token header (web)
-    - 'both': Accept either (transition)
-
-    Args:
-        state: API state with repositories.
-        x_trusted_user: Value of X-Trusted-User header.
-        x_session_token: Value of X-Session-Token header.
-
-    Returns:
-        Authenticated User object.
-
-    Raises:
-        HTTPException 401: Invalid or missing authentication.
-        HTTPException 403: User account is disabled.
-    """
-    auth_mode = get_auth_mode()
-    user = None
-
-    # Try trusted mode first (if enabled)
-    if auth_mode in ("trusted", "both") and x_trusted_user:
-        user = await run_in_threadpool(
-            state.user_repo.get_user_by_username, x_trusted_user
-        )
-        if user and user.disabled_at:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User account is disabled",
-            )
-        if user:
-            return user
-
-    # Try session mode (if enabled and auth_repo available)
-    if (
-        auth_mode in ("session", "both")
-        and x_session_token
-        and hasattr(state, "auth_repo")
-        and state.auth_repo
-    ):
-        user_id = await run_in_threadpool(
-            state.auth_repo.validate_session, x_session_token
-        )
-        if user_id:
-            user = await run_in_threadpool(
-                state.user_repo.get_user_by_id, user_id
-            )
-            if user and user.disabled_at:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="User account is disabled",
-                )
-            if user:
-                return user
-
-    # No valid authentication found
-    if auth_mode == "trusted":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="X-Trusted-User header required",
-        )
-    elif auth_mode == "session":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Valid session token required",
-        )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required (X-Trusted-User or session token)",
-        )
-
-
 # =============================================================================
-# Unified Auth Dependencies (Use these in all endpoints)
+# FastAPI Dependencies (Use these in all endpoints)
 # =============================================================================
-# These dependencies support BOTH headers AND cookies for maximum compatibility
-# with CLI tools (headers) and web UI (httponly cookies).
-
-
-async def authenticate_user_optional(
-    state: "APIState",
-    x_trusted_user: str | None,
-    x_session_token: str | None,
-) -> "User | None":
-    """Authenticate user if credentials provided, return None otherwise.
-
-    This is for endpoints that need to support unauthenticated access in
-    trusted mode but should validate user when auth is provided.
-
-    Returns:
-        Authenticated User object, or None if no credentials provided.
-
-    Raises:
-        HTTPException 401: Invalid credentials (credentials provided but bad).
-        HTTPException 403: User account is disabled.
-    """
-    auth_mode = get_auth_mode()
-
-    # In pure session mode, always require auth
-    if auth_mode == "session" and not x_session_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Valid session token required",
-        )
-
-    # No credentials provided
-    if not x_trusted_user and not x_session_token:
-        return None
-
-    # Credentials provided - validate them
-    user = None
-
-    # Try trusted mode first (if enabled)
-    if auth_mode in ("trusted", "both") and x_trusted_user:
-        user = await run_in_threadpool(
-            state.user_repo.get_user_by_username, x_trusted_user
-        )
-        if user and user.disabled_at:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User account is disabled",
-            )
-        if user:
-            return user
-
-    # Try session mode (if enabled and auth_repo available)
-    if (
-        auth_mode in ("session", "both")
-        and x_session_token
-        and hasattr(state, "auth_repo")
-        and state.auth_repo
-    ):
-        user_id = await run_in_threadpool(
-            state.auth_repo.validate_session, x_session_token
-        )
-        if user_id:
-            user = await run_in_threadpool(
-                state.user_repo.get_user_by_id, user_id
-            )
-            if user and user.disabled_at:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="User account is disabled",
-                )
-            if user:
-                return user
-
-    # Credentials provided but invalid
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid authentication credentials",
-    )
+# These dependencies support HMAC signatures (CLI) and session cookies (Web UI).
 
 
 def _get_api_state() -> "APIState":
@@ -341,21 +158,21 @@ def _get_api_state() -> "APIState":
 async def get_authenticated_user(
     request: Request,
     state: "APIState" = Depends(_get_api_state),
-    x_trusted_user: str | None = Header(None, alias="X-Trusted-User"),
     x_session_token: str | None = Header(None, alias="X-Session-Token"),
     x_api_key: str | None = Header(None, alias="X-API-Key"),
     x_timestamp: str | None = Header(None, alias="X-Timestamp"),
     x_signature: str | None = Header(None, alias="X-Signature"),
 ) -> "User":
-    """Unified auth dependency supporting headers, cookies, and signatures.
+    """Unified auth dependency supporting HMAC signatures and session cookies.
 
     Use this for ALL endpoints requiring authentication.
 
     Supports:
-    - HMAC signature (X-API-Key + X-Timestamp + X-Signature) - most secure
-    - X-Trusted-User header (CLI mode)
+    - HMAC signature (X-API-Key + X-Timestamp + X-Signature) - CLI/programmatic
     - X-Session-Token header (programmatic API)
     - session_token cookie (Web UI httponly cookie)
+
+    NOTE: X-Trusted-User header is NO LONGER SUPPORTED (deprecated).
 
     Usage:
         @app.get("/api/example")
@@ -367,9 +184,7 @@ async def get_authenticated_user(
         async def example(user: User = Depends(get_authenticated_user)) -> Response:
             ...
     """
-    auth_mode = get_auth_mode()
-
-    # Try signed authentication first (if credentials provided)
+    # Try HMAC signed authentication first (CLI/programmatic)
     if x_api_key and x_timestamp and x_signature:
         # Validate timestamp is recent (prevent replay attacks)
         if not validate_signature_timestamp(x_timestamp):
@@ -426,17 +241,29 @@ async def get_authenticated_user(
             detail="User not found for API key",
         )
 
-    # Signed mode requires signature headers
-    if auth_mode == "signed":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="HMAC signature required (X-API-Key, X-Timestamp, X-Signature)",
-        )
-
-    # Cookie fallback for web UI (httponly cookies can't be sent as headers)
+    # Try session authentication (Web UI)
     session_token = x_session_token or request.cookies.get("session_token")
+    if session_token and hasattr(state, "auth_repo") and state.auth_repo:
+        user_id = await run_in_threadpool(
+            state.auth_repo.validate_session, session_token
+        )
+        if user_id:
+            user = await run_in_threadpool(
+                state.user_repo.get_user_by_id, user_id
+            )
+            if user and user.disabled_at:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User account is disabled",
+                )
+            if user:
+                return user
 
-    return await authenticate_user(state, x_trusted_user, session_token)
+    # No valid authentication found
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required. Use HMAC signature (CLI) or session cookie (Web UI).",
+    )
 
 
 async def get_admin_user(
@@ -467,7 +294,7 @@ async def get_manager_user(
     """Auth dependency requiring manager or admin role.
 
     Use this for manager-level endpoints. Builds on get_authenticated_user
-    so it inherits all auth methods (signed, trusted, session).
+    so it inherits all auth methods (signed, session).
 
     Usage:
         @app.get("/api/manager/team")
@@ -486,7 +313,6 @@ async def get_manager_user(
 async def get_optional_user(
     request: Request,
     state: "APIState" = Depends(_get_api_state),
-    x_trusted_user: str | None = Header(None, alias="X-Trusted-User"),
     x_session_token: str | None = Header(None, alias="X-Session-Token"),
     x_api_key: str | None = Header(None, alias="X-API-Key"),
     x_timestamp: str | None = Header(None, alias="X-Timestamp"),
@@ -494,15 +320,12 @@ async def get_optional_user(
 ) -> "User | None":
     """Optional auth dependency - returns user if authenticated, None otherwise.
 
-    Use this for endpoints that need to support unauthenticated access in
-    trusted mode but should validate and enforce user when auth is provided.
+    For endpoints that can work with or without authentication.
+    If credentials are provided, they MUST be valid.
 
-    Supports all auth methods: signed, trusted, session.
-    In session-only or signed-only mode, auth is still required.
+    Supports: HMAC signatures (CLI) and session cookies (Web UI).
     """
-    auth_mode = get_auth_mode()
-
-    # Try signed authentication first (if credentials provided)
+    # Try HMAC signed authentication first
     if x_api_key and x_timestamp and x_signature:
         # Validate timestamp is recent (prevent replay attacks)
         if not validate_signature_timestamp(x_timestamp):
@@ -559,15 +382,26 @@ async def get_optional_user(
             detail="User not found for API key",
         )
 
-    # Signed mode requires signature headers
-    if auth_mode == "signed":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="HMAC signature required (X-API-Key, X-Timestamp, X-Signature)",
-        )
-
+    # Try session authentication (Web UI)
     session_token = x_session_token or request.cookies.get("session_token")
-    return await authenticate_user_optional(state, x_trusted_user, session_token)
+    if session_token and hasattr(state, "auth_repo") and state.auth_repo:
+        user_id = await run_in_threadpool(
+            state.auth_repo.validate_session, session_token
+        )
+        if user_id:
+            user = await run_in_threadpool(
+                state.user_repo.get_user_by_id, user_id
+            )
+            if user and user.disabled_at:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User account is disabled",
+                )
+            if user:
+                return user
+
+    # No authentication provided - return None (allowed for optional endpoints)
+    return None
 
 
 def validate_job_submission_user(

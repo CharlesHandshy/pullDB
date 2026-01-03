@@ -1,22 +1,22 @@
 """CLI authentication module for pullDB.
 
-Provides authentication headers for API requests. Supports multiple auth methods:
+Provides HMAC-signed authentication headers for API requests.
 
-1. X-Trusted-User header (default) - Uses system username detection
-2. API Key authentication (future) - Uses stored key/secret pair
-3. Signed requests (most secure) - HMAC signature for request integrity
+All API requests are cryptographically signed using HMAC-SHA256 to:
+- Verify the request came from someone with the secret key
+- Prevent request tampering (body is part of signature)
+- Prevent replay attacks (timestamp is part of signature)
 
-Environment variables:
-- PULLDB_API_KEY: API key ID for key-based auth
-- PULLDB_API_SECRET: API secret for key-based auth
-- PULLDB_AUTH_METHOD: 'trusted' (default), 'apikey', or 'signed'
+Required environment variables:
+- PULLDB_API_KEY: API key ID (identifies the caller)
+- PULLDB_API_SECRET: API secret key (used for HMAC signing, never transmitted)
 
-When API keys are configured, they take precedence over trusted-user mode.
+Optional:
+- PULLDB_API_KEY_USER: Username associated with this API key (server-side config)
 """
 
 from __future__ import annotations
 
-import base64
 import getpass
 import hashlib
 import hmac
@@ -32,6 +32,9 @@ SIGNATURE_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 def get_calling_username() -> str:
     """Get the original SSH user, even after sudo su -.
+
+    This is used to identify the local system user for job submissions.
+    Authentication is done separately via HMAC signatures.
 
     Detection order:
     1. SUDO_USER - works for plain 'sudo' commands
@@ -67,40 +70,36 @@ def get_calling_username() -> str:
     return os.environ.get("USER") or getpass.getuser() or "unknown"
 
 
-def get_auth_method() -> str:
-    """Get configured authentication method.
-
-    Returns:
-        'signed' for HMAC-signed requests (most secure)
-        'apikey' for simple API key auth
-        'trusted' for X-Trusted-User header (default)
-    """
-    # Check for explicit method override
-    method = os.environ.get("PULLDB_AUTH_METHOD", "").lower()
-    if method in ("signed", "hmac"):
-        return "signed"
-    if method in ("apikey", "api_key", "key"):
-        return "apikey"
-
-    # Auto-detect: if API key is set, use signed mode (most secure)
-    if os.environ.get("PULLDB_API_KEY") and os.environ.get("PULLDB_API_SECRET"):
-        return "signed"
-
-    return "trusted"
-
-
-def get_api_key_credentials() -> tuple[str, str] | None:
+def get_api_credentials() -> tuple[str, str]:
     """Get API key credentials from environment.
-    
+
     Returns:
-        Tuple of (key_id, secret) if configured, None otherwise.
+        Tuple of (key_id, secret)
+
+    Raises:
+        RuntimeError: If credentials are not configured.
     """
     key_id = os.environ.get("PULLDB_API_KEY")
     secret = os.environ.get("PULLDB_API_SECRET")
 
-    if key_id and secret:
-        return key_id, secret
-    return None
+    if not key_id or not secret:
+        raise RuntimeError(
+            "API credentials not configured. Set PULLDB_API_KEY and PULLDB_API_SECRET "
+            "environment variables. See: pulldb docs authentication"
+        )
+
+    return key_id, secret
+
+
+def has_api_credentials() -> bool:
+    """Check if API credentials are configured.
+
+    Returns:
+        True if both PULLDB_API_KEY and PULLDB_API_SECRET are set.
+    """
+    return bool(
+        os.environ.get("PULLDB_API_KEY") and os.environ.get("PULLDB_API_SECRET")
+    )
 
 
 def compute_request_signature(
@@ -160,73 +159,53 @@ def get_auth_headers(
     path: str = "/",
     body: str | bytes | None = None,
 ) -> dict[str, str]:
-    """Get authentication headers for API requests.
+    """Get HMAC-signed authentication headers for API requests.
 
-    Returns headers based on configured auth method:
-    - Signed: HMAC signature for request integrity (most secure)
-    - API Key: Authorization: Basic base64(key:secret)
-    - Trusted: X-Trusted-User: <username>
+    All requests are signed with HMAC-SHA256 covering:
+    - HTTP method
+    - Request path
+    - Timestamp (for replay protection)
+    - Body hash (for tamper protection)
 
     Args:
-        method: HTTP method (GET, POST, etc.) - needed for signed mode
-        path: Request path - needed for signed mode
-        body: Request body - needed for signed mode
+        method: HTTP method (GET, POST, etc.)
+        path: Request path (e.g., /api/jobs)
+        body: Request body (JSON string or bytes), None for GET requests
 
     Returns:
-        Dictionary of headers to include in requests.
+        Dictionary with X-API-Key, X-Timestamp, X-Signature headers.
+
+    Raises:
+        RuntimeError: If API credentials are not configured.
     """
-    headers: dict[str, str] = {}
-    auth_method = get_auth_method()
+    key_id, secret = get_api_credentials()
+    timestamp = get_signature_timestamp()
+    signature = compute_request_signature(method, path, body, timestamp, secret)
 
-    if auth_method == "signed":
-        credentials = get_api_key_credentials()
-        if credentials:
-            key_id, secret = credentials
-            timestamp = get_signature_timestamp()
-            signature = compute_request_signature(method, path, body, timestamp, secret)
-
-            headers["X-API-Key"] = key_id
-            headers["X-Timestamp"] = timestamp
-            headers["X-Signature"] = signature
-            return headers
-
-    if auth_method == "apikey":
-        credentials = get_api_key_credentials()
-        if credentials:
-            key_id, secret = credentials
-            # Use HTTP Basic auth format
-            auth_string = f"{key_id}:{secret}"
-            encoded = base64.b64encode(auth_string.encode()).decode()
-            headers["Authorization"] = f"Basic {encoded}"
-            return headers
-
-    # Default to trusted mode
-    username = get_calling_username()
-    headers["X-Trusted-User"] = username
-    return headers
+    return {
+        "X-API-Key": key_id,
+        "X-Timestamp": timestamp,
+        "X-Signature": signature,
+    }
 
 
 def get_current_username() -> str:
-    """Get the username that will be used for API authentication.
+    """Get display name for the current API authentication.
 
-    For trusted mode, returns the detected system username.
-    For API key/signed mode, returns the key ID (for display purposes).
+    Returns the API key ID (truncated for display) or indicates
+    that credentials are not configured.
 
     Returns:
-        Username or key identifier.
+        Display string for the authenticated identity.
     """
-    method = get_auth_method()
+    if has_api_credentials():
+        key_id, _ = get_api_credentials()
+        # Truncate long key IDs for display
+        if len(key_id) > KEY_ID_DISPLAY_LENGTH:
+            return f"[API Key: {key_id[:KEY_ID_DISPLAY_LENGTH]}...]"
+        return f"[API Key: {key_id}]"
 
-    if method in ("apikey", "signed"):
-        credentials = get_api_key_credentials()
-        if credentials:
-            key_id, _ = credentials
-            # Truncate long key IDs for display
-            if len(key_id) > KEY_ID_DISPLAY_LENGTH:
-                return f"[API Key: {key_id[:KEY_ID_DISPLAY_LENGTH]}...]"
-            return f"[API Key: {key_id}]"
-
-    return get_calling_username()
+    return "[No API credentials configured]"
 
 
 # Type alias for type hints

@@ -14,39 +14,10 @@ from pulldb.api.auth import (
     SIGNATURE_MAX_AGE_SECONDS,
     SIGNATURE_TIMESTAMP_FORMAT,
     get_api_secret,
-    get_auth_mode,
     get_user_for_api_key,
     validate_signature_timestamp,
     verify_signature,
 )
-
-
-class TestGetAuthMode:
-    """Tests for get_auth_mode function."""
-
-    def test_default_is_trusted(self) -> None:
-        """Should default to trusted mode."""
-        with mock.patch.dict(os.environ, {}, clear=True):
-            result = get_auth_mode()
-            assert result == "trusted"
-
-    def test_signed_mode(self) -> None:
-        """Should recognize signed mode."""
-        with mock.patch.dict(os.environ, {"PULLDB_AUTH_MODE": "signed"}, clear=True):
-            result = get_auth_mode()
-            assert result == "signed"
-
-    def test_both_mode(self) -> None:
-        """Should recognize both mode."""
-        with mock.patch.dict(os.environ, {"PULLDB_AUTH_MODE": "both"}, clear=True):
-            result = get_auth_mode()
-            assert result == "both"
-
-    def test_invalid_mode_defaults_to_trusted(self) -> None:
-        """Invalid mode should default to trusted."""
-        with mock.patch.dict(os.environ, {"PULLDB_AUTH_MODE": "invalid"}, clear=True):
-            result = get_auth_mode()
-            assert result == "trusted"
 
 
 class TestGetApiSecret:

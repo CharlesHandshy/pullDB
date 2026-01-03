@@ -53,7 +53,7 @@ class TestAPIAuthIntegration:
         # Check if routes are registered
         routes = {r.path for r in app.routes}
         assert "/web/login" in routes
-        assert "/web/dashboard" in routes
+        assert "/web/dashboard/" in routes  # Note: trailing slash
         
         # Check if endpoint is reachable
         response = client.get("/web/login")
@@ -81,7 +81,7 @@ class TestAPIAuthIntegration:
         )
 
         assert response.status_code == 303
-        assert response.headers["location"] == "/web/dashboard"
+        assert response.headers["location"] == "/web/dashboard/"
 
     def test_login_endpoint_rejects_invalid(self, client: TestClient) -> None:
         """Login endpoint should reject invalid credentials."""
@@ -134,7 +134,8 @@ class TestAPIAuthIntegration:
 
     def test_dashboard_requires_auth(self, client: TestClient) -> None:
         """Dashboard endpoint should require authentication."""
-        response = client.get("/web/dashboard", follow_redirects=False)
+        # Request with trailing slash to hit actual route (not redirect)
+        response = client.get("/web/dashboard/", follow_redirects=False)
         
         assert response.status_code == 303
         assert response.headers["location"] == "/web/login"

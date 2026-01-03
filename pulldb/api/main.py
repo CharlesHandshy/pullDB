@@ -1145,24 +1145,15 @@ async def get_paginated_jobs(
     filter_submitted_at: str | None = fastapi.Query(None, alias="filter_submitted_at", description="Filter by date (MM/DD/YYYY, wildcards: *)"),
     days: int = fastapi.Query(30, ge=1, le=365, description="History retention days"),
     state: APIState = fastapi.Depends(get_api_state),
-    x_trusted_user: str | None = fastapi.Header(None, alias="X-Trusted-User"),
-    x_session_token: str | None = fastapi.Header(None, alias="X-Session-Token"),
+    user: OptionalUser = None,
 ) -> PaginatedJobsResponse:
     """Get paginated jobs for LazyTable widget.
 
     Supports server-side pagination, sorting, and filtering.
     Used by the LazyTable widget on the jobs page.
 
-    If authenticated, includes can_cancel permission for each job.
+    If authenticated (HMAC signed or session cookie), includes can_cancel permission for each job.
     """
-    from pulldb.api.auth import authenticate_user
-
-    # Try to authenticate user (optional - for can_cancel computation)
-    user = None
-    try:
-        user = await authenticate_user(state, x_trusted_user, x_session_token)
-    except Exception:
-        pass  # Continue without user for unauthenticated requests
 
     # Merge filter_owner_user_code with filter_user_code (column key is owner_user_code)
     effective_user_filter = filter_user_code or filter_owner_user_code

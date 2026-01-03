@@ -128,14 +128,20 @@
             <!-- Authentication -->
             <section class="content-section" id="authentication">
                 <h2>Authentication</h2>
-                <p>pullDB supports two authentication methods depending on configuration (<code>PULLDB_AUTH_MODE</code>):</p>
+                <p>pullDB uses HMAC-signed requests for secure authentication. All API requests must include signature headers.</p>
                 
-                <h3>Trusted Mode (CLI)</h3>
-                <p>For CLI tools, pass your username in the <code>X-Trusted-User</code> header:</p>
+                <h3>HMAC Signed Authentication (CLI/Programmatic)</h3>
+                <p>CLI tools and programmatic clients must sign every request with HMAC-SHA256. Required headers:</p>
+                <ul style="margin: 12px 0; padding-left: 24px;">
+                    <li><code>X-API-Key</code>: Your API key identifier</li>
+                    <li><code>X-Timestamp</code>: ISO 8601 UTC timestamp (e.g., <code>2026-01-03T15:42:00Z</code>)</li>
+                    <li><code>X-Signature</code>: HMAC-SHA256 signature (hex-encoded)</li>
+                </ul>
+                
                 <div class="terminal-window" style="transform: none;">
                     <div class="terminal-header">
                         <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
-                        <span class="terminal-title">curl</span>
+                        <span class="terminal-title">curl with HMAC signature</span>
                         <button class="terminal-copy" onclick="copyTerminal(this)">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -144,17 +150,27 @@
                         </button>
                     </div>
                     <div class="terminal-body">
-                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">curl -H "X-Trusted-User: jsmith" \</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">curl -H "X-API-Key: $PULLDB_API_KEY" \</span></div>
+                        <div class="terminal-line"><span class="command">     -H "X-Timestamp: 2026-01-03T15:42:00Z" \</span></div>
+                        <div class="terminal-line"><span class="command">     -H "X-Signature: a1b2c3d4e5f6..." \</span></div>
                         <div class="terminal-line"><span class="command">     http://pulldb-server:8080/api/jobs</span></div>
                     </div>
                 </div>
                 
-                <h3>Session Mode (Web UI)</h3>
-                <p>For web applications, login via <code>/web/login</code> to obtain a session cookie, then include it:</p>
+                <h4>Signature Computation</h4>
+                <p>The signature is computed over a canonical string:</p>
+                <div class="code-block">
+                    <pre><code>string_to_sign = f"{METHOD}\n{PATH}\n{TIMESTAMP}\n{BODY_SHA256}"
+signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
+                </div>
+                <p class="text-muted">Where <code>BODY_SHA256</code> is the SHA256 hash of the request body (or empty string for GET).</p>
+                
+                <h3>Session Cookie (Web UI)</h3>
+                <p>For web applications, login via <code>/web/login</code> to obtain a session cookie:</p>
                 <div class="terminal-window" style="transform: none;">
                     <div class="terminal-header">
                         <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
-                        <span class="terminal-title">curl</span>
+                        <span class="terminal-title">curl with session cookie</span>
                         <button class="terminal-copy" onclick="copyTerminal(this)">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -176,7 +192,19 @@
                     </svg>
                     <div>
                         <strong>Note:</strong> Most users should use the <code>pulldb</code> CLI rather than calling the API directly.
-                        The CLI handles authentication automatically.
+                        The CLI handles HMAC signing automatically using <code>PULLDB_API_KEY</code> and <code>PULLDB_API_SECRET</code> environment variables.
+                    </div>
+                </div>
+                
+                <div class="info-callout warning" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Security:</strong> The <code>X-Trusted-User</code> header is no longer supported and will be rejected.
+                        All requests must use HMAC signatures or session cookies.
                     </div>
                 </div>
             </section>
@@ -184,7 +212,7 @@
             <!-- Submit Job -->
             <section class="content-section" id="submit-job">
                 <h2>Submit Job</h2>
-                <p>Create a new restore job.</p>
+                <p>Create a new restore job. Requires HMAC authentication.</p>
                 
                 <div class="endpoint-card">
                     <div class="endpoint-header">
@@ -235,19 +263,13 @@
                                 <td><code>dbhost</code></td>
                                 <td>string</td>
                                 <td>No</td>
-                                <td>Target database host (default from settings)</td>
+                                <td>Target database host (default from user settings)</td>
                             </tr>
                             <tr>
                                 <td><code>date</code></td>
                                 <td>string</td>
                                 <td>No</td>
                                 <td>Backup date (YYYY-MM-DD), defaults to latest</td>
-                            </tr>
-                            <tr>
-                                <td><code>env</code></td>
-                                <td>string</td>
-                                <td>No</td>
-                                <td>S3 environment: "staging" or "prod"</td>
                             </tr>
                             <tr>
                                 <td><code>overwrite</code></td>
@@ -260,6 +282,12 @@
                                 <td>string</td>
                                 <td>No</td>
                                 <td>1-3 lowercase letter suffix for target (e.g., "dev")</td>
+                            </tr>
+                            <tr>
+                                <td><code>backup_path</code></td>
+                                <td>string</td>
+                                <td>No</td>
+                                <td>Full S3 path to specific backup (overrides customer/date lookup)</td>
                             </tr>
                         </tbody>
                     </table>
@@ -293,7 +321,9 @@
                     </div>
                     <div class="terminal-body">
                         <div class="terminal-line"><span class="prompt">$</span> <span class="command">curl -X POST \</span></div>
-                        <div class="terminal-line"><span class="command">     -H "X-Trusted-User: jsmith" \</span></div>
+                        <div class="terminal-line"><span class="command">     -H "X-API-Key: $PULLDB_API_KEY" \</span></div>
+                        <div class="terminal-line"><span class="command">     -H "X-Timestamp: 2026-01-03T15:42:00Z" \</span></div>
+                        <div class="terminal-line"><span class="command">     -H "X-Signature: $SIGNATURE" \</span></div>
                         <div class="terminal-line"><span class="command">     -H "Content-Type: application/json" \</span></div>
                         <div class="terminal-line"><span class="command">     -d '{"user":"jsmith","customer":"acme_pest"}' \</span></div>
                         <div class="terminal-line"><span class="command">     http://pulldb-server:8080/api/jobs</span></div>
@@ -400,7 +430,7 @@
             <!-- Cancel Job -->
             <section class="content-section" id="cancel-job">
                 <h2>Cancel Job</h2>
-                <p>Cancel a queued or running job.</p>
+                <p>Cancel a queued or running job. Requires authentication.</p>
                 
                 <div class="endpoint-card">
                     <div class="endpoint-header">
@@ -437,6 +467,7 @@
                         Returns <code>409 Conflict</code> if job is already in terminal state (complete, failed, canceled),
                         or if the job has entered the loading phase (myloader cannot be safely interrupted).
                         Users can only cancel their own jobs unless they have manager or admin privileges.
+                        Returns <code>401 Unauthorized</code> if authentication headers are missing.
                     </div>
                 </div>
             </section>
@@ -497,7 +528,7 @@
             <!-- Search Backups -->
             <section class="content-section" id="search-backups">
                 <h2>Search Backups</h2>
-                <p>Search for available customer backups in S3.</p>
+                <p>Search for available customer backups in S3. Authentication optional but recommended.</p>
                 
                 <div class="endpoint-card">
                     <div class="endpoint-header">
@@ -513,12 +544,6 @@
                                 <td>string</td>
                                 <td>Yes</td>
                                 <td>Customer name or pattern (supports * and ? wildcards)</td>
-                            </tr>
-                            <tr>
-                                <td><code>environment</code></td>
-                                <td>string</td>
-                                <td>No</td>
-                                <td>S3 environment: staging, prod, or both (default: both)</td>
                             </tr>
                             <tr>
                                 <td><code>date_from</code></td>
@@ -557,7 +582,7 @@
   ],
   "total": 12,
   "query": "acmecorp",
-  "environment": "both",
+  "environment": "prod",
   "offset": 0,
   "limit": 5,
   "has_more": true
@@ -641,6 +666,22 @@
                 <h3>Common Error Messages</h3>
                 <table class="param-table">
                     <tbody>
+                        <tr>
+                            <td><code>Authentication required</code></td>
+                            <td>No HMAC signature or session cookie provided</td>
+                        </tr>
+                        <tr>
+                            <td><code>Invalid API key</code></td>
+                            <td>API key not recognized</td>
+                        </tr>
+                        <tr>
+                            <td><code>Invalid request signature</code></td>
+                            <td>HMAC signature doesn't match (possibly tampered request)</td>
+                        </tr>
+                        <tr>
+                            <td><code>Request timestamp expired</code></td>
+                            <td>Timestamp older than 5 minutes (replay protection)</td>
+                        </tr>
                         <tr>
                             <td><code>User 'xxx' not found</code></td>
                             <td>User doesn't exist in system</td>
