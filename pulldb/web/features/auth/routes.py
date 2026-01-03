@@ -74,7 +74,23 @@ async def login_submit(
     # Create session
     _, session_token = state.auth_repo.create_session(user.user_id)
 
-    response = RedirectResponse(url="/web/dashboard/", status_code=303)
+    # Check if maintenance acknowledgment is required (once per day at login)
+    redirect_url = "/web/dashboard/"
+    if hasattr(state, "user_repo") and state.user_repo:
+        if hasattr(state.user_repo, "needs_maintenance_ack"):
+            if state.user_repo.needs_maintenance_ack(user.user_id):
+                # Check if there are actually maintenance items
+                if hasattr(state, "job_repo") and state.job_repo:
+                    if hasattr(state.job_repo, "get_maintenance_items"):
+                        items = state.job_repo.get_maintenance_items(
+                            user.user_id,
+                            notice_days=7,
+                            grace_days=7,
+                        )
+                        if items.expired or items.expiring or items.locked:
+                            redirect_url = "/web/maintenance"
+
+    response = RedirectResponse(url=redirect_url, status_code=303)
     response.set_cookie(
         key="session_token",
         value=session_token,
@@ -473,6 +489,7 @@ async def maintenance_page(
                 state.job_repo.get_maintenance_items,
                 user.user_id,
                 expiring_notice_days,
+                7,  # grace_days
             )
             expired_jobs = items.expired
             expiring_jobs = items.expiring
@@ -590,9 +607,11 @@ async def maintenance_submit(
     # Mark maintenance as acknowledged (even if there were errors)
     if hasattr(state, "user_repo") and state.user_repo:
         if hasattr(state.user_repo, "set_last_maintenance_ack"):
+            from datetime import datetime, UTC
             await run_in_threadpool(
                 state.user_repo.set_last_maintenance_ack,
                 user.user_id,
+                datetime.now(UTC),
             )
     
     # If there were errors, show them
@@ -617,6 +636,7 @@ async def maintenance_submit(
                     state.job_repo.get_maintenance_items,
                     user.user_id,
                     expiring_notice_days,
+                    7,  # grace_days
                 )
                 expired_jobs = items.expired
                 expiring_jobs = items.expiring

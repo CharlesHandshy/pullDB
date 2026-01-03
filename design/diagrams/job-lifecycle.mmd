@@ -1,0 +1,44 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9'}}}%%
+stateDiagram-v2
+    [*] --> queued: Submit Job
+    
+    queued --> running: Worker Claims
+    queued --> canceled: User Cancels
+    
+    running --> downloading: Start Download
+    
+    state running {
+        downloading --> extracting: Download Complete
+        extracting --> restoring: Extract Complete
+        restoring --> post_sql: myloader Complete
+        post_sql --> finalizing: Scripts Complete
+        finalizing --> [*]: Atomic Rename
+    }
+    
+    running --> completed: All Steps Success
+    running --> failed: Error Occurred
+    running --> canceled: Cancel Requested
+    
+    completed --> [*]
+    failed --> [*]
+    canceled --> [*]
+    
+    note right of queued
+        Job waits in MySQL queue
+        for available worker
+    end note
+    
+    note right of downloading
+        S3 backup fetched to
+        local workspace
+    end note
+    
+    note right of restoring
+        myloader restores to
+        staging database
+    end note
+    
+    note right of finalizing
+        Atomic table rename
+        staging → target
+    end note

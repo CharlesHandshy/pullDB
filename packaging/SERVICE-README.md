@@ -198,6 +198,26 @@ sudo cat /opt/pulldb.service/ADMIN_CREDENTIALS.txt
 > sudo rm /opt/pulldb.service/ADMIN_CREDENTIALS.txt
 > ```
 
+### Built-in Accounts
+
+| Username | User Code | UUID | Password | Can Login? |
+|----------|-----------|------|----------|------------|
+| `admin` | `ADMINN` | `00000000-...-000002` | Random (displayed at install) | ✅ Yes |
+| `pulldb_service` | `SBCACC` | `00000000-...-000001` | None | ❌ No |
+
+**About `admin` account:**
+- Human administrator account for web UI and CLI
+- Password randomly generated during fresh install
+- Password displayed at end of install and saved to `/opt/pulldb.service/ADMIN_CREDENTIALS.txt`
+- Created by SQL seed, password set by postinst
+
+**About `pulldb_service` account:**
+- Used by systemd services and scheduled tasks (e.g., `pulldb-retention.timer`)
+- When `pulldb-admin` runs as the Linux `pulldb_service` user, this account provides authorization
+- Has admin role for full CLI access
+- Cannot be used for web login (no password)
+- User code: `SBCACC` (Service Bootstrap CLI Admin Account)
+
 ### Accessing the Web UI
 
 1. Enable and start the web service:

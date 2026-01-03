@@ -6,9 +6,9 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 
 **Related:** [Deployment](deployment.md) · [policies/](policies/) · [terraform/](terraform/)
 
-Last updated: 2025-12-26
-Current version: v0.1.0
-Phases complete: 0-4
+Last updated: 2026-01-28
+Current version: v0.2.0
+Phases complete: 0-5
 
 ---
 
@@ -30,6 +30,8 @@ Phases complete: 0-4
 - Restore workflow facts
 - System Paths & Service Locations
 - Lessons Learned & Troubleshooting
+  - **Packaging & Installation Lessons (Jan 2026)** (NEW)
+  - Phase 2 Lessons (Nov 2025)
 - Quick commands & verification
 - Purge candidates (files/docs to archive)
 - Machine-readable index (JSON)
@@ -747,6 +749,52 @@ This file should be created and applied in the production account only. Keep sec
   - **Socket Locations**: `/var/run/mysqld/mysqld.sock` (Debian/Ubuntu), `/tmp/mysql.sock` (macOS), `/var/lib/mysql/mysql.sock` (RHEL).
   - **Priority**: DATABASE_URL (override) → socket auth (localhost) → AWS Secrets Manager (remote/fallback).
 - **Migration Baseline**: When installing on an existing database, use `pulldb-migrate baseline` to mark all migrations as applied without running them. This prevents migration errors from schema drift.
+
+### Packaging & Installation Lessons (Jan 2026)
+
+- **dpkg Lock During preinst/postinst**:
+  - **Problem**: Attempted to install Python 3.12 via apt-get inside preinst script.
+  - **Reality**: dpkg holds exclusive lock on /var/lib/dpkg/lock during package installation phases.
+  - **Fix**: preinst should only CHECK for dependencies, not install them.
+  - **Pattern**: Exit with helpful message if dependency missing; document pre-installation steps.
+
+- **deadsnakes PPA Dropped Ubuntu 20.04 (Focal)**:
+  - **Discovery Date**: January 2026
+  - **Problem**: `ppa:deadsnakes/ppa` no longer publishes Python 3.10+ for Ubuntu 20.04 (focal).
+  - **Supported**: Only Ubuntu 22.04 (jammy) and later.
+  - **Workaround**: Build Python 3.12 from source on Ubuntu 20.04 (~10 min build time).
+  - **Commands**:
+    ```bash
+    sudo apt install -y build-essential libssl-dev zlib1g-dev \
+      libbz2-dev libreadline-dev libsqlite3-dev libffi-dev liblzma-dev
+    cd /tmp && wget https://www.python.org/ftp/python/3.12.8/Python-3.12.8.tgz
+    tar xzf Python-3.12.8.tgz && cd Python-3.12.8
+    ./configure --enable-optimizations --prefix=/usr/local
+    make -j$(nproc) && sudo make altinstall
+    sudo ln -sf /usr/local/bin/python3.12 /usr/bin/python3.12
+    ```
+  - **Recommendation**: Upgrade to Ubuntu 22.04+ where possible.
+
+- **CAP_NET_BIND_SERVICE for Port 80**:
+  - **Problem**: pulldb-web failed to bind port 80 with "Permission denied" when running as non-root.
+  - **Solution**: Grant `CAP_NET_BIND_SERVICE` capability via systemd.
+  - **Implementation**:
+    ```bash
+    sudo mkdir -p /etc/systemd/system/pulldb-web.service.d
+    cat <<EOF | sudo tee /etc/systemd/system/pulldb-web.service.d/override.conf
+    [Service]
+    AmbientCapabilities=CAP_NET_BIND_SERVICE
+    EOF
+    sudo systemctl daemon-reload && sudo systemctl restart pulldb-web
+    ```
+  - **Alternatives**: Use reverse proxy (nginx/caddy), socket activation, or authbind.
+  - **Security Note**: CAP_NET_BIND_SERVICE is least privilege; only allows binding ports <1024.
+
+- **Environment Variable Precedence (systemd vs .env)**:
+  - **Problem**: Same variable defined in both `/opt/pulldb/.env` and systemd `Environment=`.
+  - **Resolution**: systemd `Environment=` wins (process environment overrides dotenv).
+  - **Pattern**: Use `.env` for defaults, systemd overrides for deployment-specific values.
+  - **Debugging**: `systemctl show pulldb-api --property=Environment` shows effective values.
 
 ### Phase 2 Lessons (Nov 2025)
 

@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Troubleshooting - pullDB Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../css/help.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
+    
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    
+    <!-- Navigation -->
+    <nav class="nav-glass">
+        <div class="nav-container">
+            <a href="../../index.html" class="nav-logo">
+                <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                </svg>
+                <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
+            </a>
+            
+            <div class="nav-links">
+                <a href="../getting-started.html" class="nav-link">Getting Started</a>
+                <a href="../cli/index.html" class="nav-link">CLI</a>
+                <a href="../api/index.html" class="nav-link">API</a>
+                <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
+            </div>
+            
+            <div class="nav-actions">
+                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span class="search-hint">/</span>
+                </button>
+                <button class="theme-toggle" @click="toggleTheme()">
+                    <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg x-show="theme === 'dark'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Search Modal -->
+    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+        <div class="search-container" @click.stop>
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <kbd class="search-kbd">ESC</kbd>
+            </div>
+            <div class="search-results" x-show="searchQuery.length > 0">
+                <template x-for="(result, index) in searchResults" :key="result.id">
+                    <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
+                        <div class="result-content">
+                            <div class="result-title" x-html="result.title"></div>
+                            <div class="result-preview" x-html="result.preview"></div>
+                        </div>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Page Layout with Sidebar -->
+    <div class="page-layout">
+        <aside class="page-sidebar">
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Issues By Phase</div>
+                    <a href="#download-issues" class="sidebar-link">Download Issues</a>
+                    <a href="#restore-issues" class="sidebar-link">Restore Issues</a>
+                    <a href="#permission-issues" class="sidebar-link">Permission Issues</a>
+                    <a href="#connection-issues" class="sidebar-link">Connection Issues</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Common Problems</div>
+                    <a href="#job-stuck" class="sidebar-link">Job Stuck</a>
+                    <a href="#slow-restore" class="sidebar-link">Slow Restore</a>
+                    <a href="#disk-space" class="sidebar-link">Disk Space</a>
+                </div>
+            </nav>
+        </aside>
+        
+        <main class="page-content">
+            <div class="breadcrumbs">
+                <a href="../../index.html">Help</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span>Troubleshooting</span>
+            </div>
+            
+            <h1 class="page-title">Troubleshooting</h1>
+            <p class="page-description">
+                Common issues and their solutions. Can't find what you're looking for? 
+                Use the <a href="#" @click.prevent="openSearch()" style="color: var(--color-primary);">search</a> 
+                or check the <a href="../cli/index.html" style="color: var(--color-primary);">CLI reference</a>.
+            </p>
+            
+            <!-- Quick Diagnostic -->
+            <section class="content-section">
+                <h2>Quick Diagnostic</h2>
+                <p>Start here to quickly identify your issue:</p>
+                
+                <div class="diagnostic-cards">
+                    <a href="#download-issues" class="diagnostic-card">
+                        <div class="diagnostic-icon error">📥</div>
+                        <div>
+                            <h3>Download Failed</h3>
+                            <p>S3, network, or permission errors</p>
+                        </div>
+                    </a>
+                    <a href="#restore-issues" class="diagnostic-card">
+                        <div class="diagnostic-icon warning">🔄</div>
+                        <div>
+                            <h3>Restore Failed</h3>
+                            <p>myloader, MySQL, or data errors</p>
+                        </div>
+                    </a>
+                    <a href="#job-stuck" class="diagnostic-card">
+                        <div class="diagnostic-icon info">⏳</div>
+                        <div>
+                            <h3>Job Stuck</h3>
+                            <p>Not progressing or queued too long</p>
+                        </div>
+                    </a>
+                    <a href="#permission-issues" class="diagnostic-card">
+                        <div class="diagnostic-icon error">🔐</div>
+                        <div>
+                            <h3>Permission Denied</h3>
+                            <p>Access or authentication issues</p>
+                        </div>
+                    </a>
+                </div>
+            </section>
+            
+            <!-- Download Issues -->
+            <section class="content-section" id="download-issues">
+                <h2>Download Issues</h2>
+                
+                <div class="accordion" x-data="{ open: null }">
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 1 ? null : 1" :class="{ 'active': open === 1 }">
+                            <span>❌ "Access Denied" when downloading from S3</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 1" x-transition:enter="accordion-enter" x-transition:leave="accordion-leave">
+                            <p><strong>Symptoms:</strong> Job fails in <code>downloading</code> phase with S3 access error.</p>
+                            
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>AWS credentials expired or missing</li>
+                                <li>IAM role doesn't have S3 read permissions</li>
+                                <li>Wrong S3 bucket or path configured</li>
+                            </ul>
+                            
+                            <p><strong>Solutions:</strong></p>
+                            <ol>
+                                <li>Check your AWS credentials are current:
+                                    <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                        <div class="terminal-body">
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">aws sts get-caller-identity</span></div>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li>Verify S3 access:
+                                    <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                        <div class="terminal-body">
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">aws s3 ls s3://your-bucket/backups/</span></div>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li>Contact your admin to verify IAM permissions</li>
+                            </ol>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 2 ? null : 2" :class="{ 'active': open === 2 }">
+                            <span>❌ "Backup not found" error</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 2" x-transition>
+                            <p><strong>Symptoms:</strong> Job fails immediately with "backup not found" message.</p>
+                            
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>Customer ID misspelled</li>
+                                <li>Backup doesn't exist for requested date</li>
+                                <li>Backup was deleted or moved</li>
+                            </ul>
+                            
+                            <p><strong>Solutions:</strong></p>
+                            <ol>
+                                <li>Verify available backups:
+                                    <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                        <div class="terminal-body">
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb list &lt;customer&gt;</span></div>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li>Double-check customer ID spelling</li>
+                                <li>Try without <code>date=</code> to get latest backup</li>
+                            </ol>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 3 ? null : 3" :class="{ 'active': open === 3 }">
+                            <span>❌ Download times out</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 3" x-transition>
+                            <p><strong>Symptoms:</strong> Download starts but times out before completing.</p>
+                            
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>Network connectivity issues</li>
+                                <li>Very large backup file</li>
+                                <li>S3 throttling</li>
+                            </ul>
+                            
+                            <p><strong>Solutions:</strong></p>
+                            <ol>
+                                <li>Check network connectivity</li>
+                                <li>For large backups, expect longer times (check <code>pulldb events</code> for progress)</li>
+                                <li>Retry the job - transient network issues often resolve</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Restore Issues -->
+            <section class="content-section" id="restore-issues">
+                <h2>Restore Issues</h2>
+                
+                <div class="accordion" x-data="{ open: null }">
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 1 ? null : 1" :class="{ 'active': open === 1 }">
+                            <span>❌ myloader fails with "Can't create database"</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 1" x-transition>
+                            <p><strong>Symptoms:</strong> Job fails in <code>restoring</code> phase with CREATE DATABASE error.</p>
+                            
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>MySQL staging user lacks CREATE privilege</li>
+                                <li>Database name collision</li>
+                            </ul>
+                            
+                            <p><strong>Solutions:</strong></p>
+                            <ol>
+                                <li>Contact admin to verify staging user permissions</li>
+                                <li>Check for orphaned staging databases:
+                                    <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                        <div class="terminal-body">
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb-admin cleanup --dry-run</span></div>
+                                        </div>
+                                    </div>
+                                </li>
+                            </ol>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 2 ? null : 2" :class="{ 'active': open === 2 }">
+                            <span>❌ "Database already exists"</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 2" x-transition>
+                            <p><strong>Symptoms:</strong> Job fails in <code>finalizing</code> phase because target database exists.</p>
+                            
+                            <p><strong>Solution:</strong> Add <code>overwrite</code> to replace the existing database:</p>
+                            <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                <div class="terminal-body">
+                                    <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme overwrite</span></div>
+                                </div>
+                            </div>
+                            
+                            <div class="info-callout warning" style="margin-top: 16px;">
+                                <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                    <line x1="12" y1="9" x2="12" y2="13"/>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                </svg>
+                                <div>
+                                    <strong>Warning:</strong> <code>overwrite</code> will delete the existing database. Make sure you don't need it!
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 3 ? null : 3" :class="{ 'active': open === 3 }">
+                            <span>❌ Post-SQL scripts fail</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 3" x-transition>
+                            <p><strong>Symptoms:</strong> Job fails in <code>post_sql</code> phase.</p>
+                            
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>Schema changed and script references missing columns</li>
+                                <li>Script has SQL syntax errors</li>
+                                <li>Large UPDATE times out</li>
+                            </ul>
+                            
+                            <p><strong>Solutions:</strong></p>
+                            <ol>
+                                <li>Check job events for the exact error:
+                                    <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                        <div class="terminal-body">
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb events &lt;job_id&gt;</span></div>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li>Contact admin to review/update post-SQL scripts</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Permission Issues -->
+            <section class="content-section" id="permission-issues">
+                <h2>Permission Issues</h2>
+                
+                <div class="accordion" x-data="{ open: null }">
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 1 ? null : 1" :class="{ 'active': open === 1 }">
+                            <span>❌ "User not authorized"</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 1" x-transition>
+                            <p><strong>Symptoms:</strong> Can't submit jobs or run commands.</p>
+                            
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>Username not registered in system</li>
+                                <li>User account disabled</li>
+                            </ul>
+                            
+                            <p><strong>Solutions:</strong></p>
+                            <ol>
+                                <li>Verify your username is correct</li>
+                                <li>Contact admin to enable your account</li>
+                            </ol>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 2 ? null : 2" :class="{ 'active': open === 2 }">
+                            <span>❌ Can't connect to restored database</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 2" x-transition>
+                            <p><strong>Symptoms:</strong> Job completes but you can't access the database.</p>
+                            
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>MySQL user doesn't have GRANT on the restored database</li>
+                                <li>Host restriction on MySQL user</li>
+                            </ul>
+                            
+                            <p><strong>Solutions:</strong></p>
+                            <ol>
+                                <li>Verify database exists:
+                                    <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                        <div class="terminal-body">
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">mysql -e "SHOW DATABASES LIKE '%yourcode%'"</span></div>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li>Contact admin to verify MySQL permissions</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Connection Issues -->
+            <section class="content-section" id="connection-issues">
+                <h2>Connection Issues</h2>
+                
+                <div class="accordion" x-data="{ open: null }">
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 1 ? null : 1" :class="{ 'active': open === 1 }">
+                            <span>❌ "Connection refused" to pullDB service</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 1" x-transition>
+                            <p><strong>Symptoms:</strong> CLI commands fail with connection errors.</p>
+                            
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>pullDB service not running</li>
+                                <li>Firewall blocking port</li>
+                                <li>Wrong API URL configured</li>
+                            </ul>
+                            
+                            <p><strong>Solutions:</strong></p>
+                            <ol>
+                                <li>Check your configuration:
+                                    <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                        <div class="terminal-body">
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">cat ~/.pulldb/config</span></div>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li>Verify service is reachable</li>
+                                <li>Contact admin if service is down</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Job Stuck -->
+            <section class="content-section" id="job-stuck">
+                <h2>Job Stuck</h2>
+                
+                <div class="accordion" x-data="{ open: null }">
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 1 ? null : 1" :class="{ 'active': open === 1 }">
+                            <span>⏳ Job stuck in QUEUED state</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 1" x-transition>
+                            <p><strong>Symptoms:</strong> Job stays in QUEUED for more than a few minutes.</p>
+                            
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>No workers running</li>
+                                <li>All workers busy with other jobs</li>
+                                <li>Worker crashed</li>
+                            </ul>
+                            
+                            <p><strong>Solutions:</strong></p>
+                            <ol>
+                                <li>Check how many jobs are ahead of you:
+                                    <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                        <div class="terminal-body">
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb status</span></div>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li>If stuck for >5 minutes with no queue, contact admin</li>
+                            </ol>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 2 ? null : 2" :class="{ 'active': open === 2 }">
+                            <span>⏳ Job stuck in RUNNING state</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 2" x-transition>
+                            <p><strong>Symptoms:</strong> Job shows RUNNING but no progress for a long time.</p>
+                            
+                            <p><strong>Solutions:</strong></p>
+                            <ol>
+                                <li>Check events for the current phase:
+                                    <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                        <div class="terminal-body">
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb events &lt;job_id&gt; --follow</span></div>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li><code>downloading</code> - Large backup, check progress %</li>
+                                <li><code>restoring</code> - Large database, can take 10+ minutes</li>
+                                <li>If truly stuck, cancel and retry:
+                                    <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                        <div class="terminal-body">
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb cancel &lt;job_id&gt;</span></div>
+                                        </div>
+                                    </div>
+                                </li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Slow Restore -->
+            <section class="content-section" id="slow-restore">
+                <h2>Slow Restore</h2>
+                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Expected restore times</strong><br>
+                        Small databases (&lt;1GB): 2-5 minutes<br>
+                        Medium databases (1-5GB): 5-15 minutes<br>
+                        Large databases (5-20GB): 15-45 minutes
+                    </div>
+                </div>
+                
+                <p>If your restore is slower than expected:</p>
+                <ul>
+                    <li>Check which phase is taking longest with <code>pulldb events</code></li>
+                    <li><strong>Downloading slow:</strong> Network or S3 throughput issue</li>
+                    <li><strong>Restoring slow:</strong> MySQL I/O or table complexity (indexes)</li>
+                    <li>Contact admin if consistently slower than expected</li>
+                </ul>
+            </section>
+            
+            <!-- Disk Space -->
+            <section class="content-section" id="disk-space">
+                <h2>Disk Space Issues</h2>
+                
+                <div class="accordion" x-data="{ open: null }">
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 1 ? null : 1" :class="{ 'active': open === 1 }">
+                            <span>❌ "No space left on device"</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 1" x-transition>
+                            <p><strong>Symptoms:</strong> Job fails with disk space errors.</p>
+                            
+                            <p><strong>Space requirements:</strong></p>
+                            <ul>
+                                <li>Download: Size of compressed backup</li>
+                                <li>Extract: 2-3x compressed size</li>
+                                <li>Total: ~4x compressed backup size</li>
+                            </ul>
+                            
+                            <p><strong>Solutions:</strong></p>
+                            <ol>
+                                <li>Check available space:
+                                    <div class="terminal-window" style="transform: none; margin: 12px 0;">
+                                        <div class="terminal-body">
+                                            <div class="terminal-line"><span class="prompt">$</span> <span class="command">df -h</span></div>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li>Clean up old files or contact admin</li>
+                                <li>Request admin run cleanup for orphaned files</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Still Need Help -->
+            <section class="help-footer">
+                <div class="help-card">
+                    <h2>Still Need Help?</h2>
+                    <p>If you can't find a solution here:</p>
+                    <ul>
+                        <li>Run <code>pulldb events &lt;job_id&gt;</code> and share the output</li>
+                        <li>Note the exact error message</li>
+                        <li>Contact your pullDB administrator</li>
+                    </ul>
+                </div>
+            </section>
+            
+        </main>
+    </div>
+    
+    <script src="../../js/help.js"></script>
+    <script src="../../js/search.js"></script>
+    <script>
+        // Highlight current sidebar link based on scroll
+        document.addEventListener('DOMContentLoaded', () => {
+            const sections = document.querySelectorAll('.content-section[id]');
+            const links = document.querySelectorAll('.sidebar-link');
+            
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        links.forEach(link => link.classList.remove('active'));
+                        const activeLink = document.querySelector(`.sidebar-link[href="#${entry.target.id}"]`);
+                        if (activeLink) activeLink.classList.add('active');
+                    }
+                });
+            }, { rootMargin: '-20% 0px -70% 0px' });
+            
+            sections.forEach(section => observer.observe(section));
+        });
+    </script>
+</body>
+</html>

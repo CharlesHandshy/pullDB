@@ -38,6 +38,7 @@ mkdir -p "$DEBIAN_DIR"
 # Copy control file and inject version
 cp packaging/debian/control "$DEBIAN_DIR/control"
 sed -i "s/^Version:.*/Version: ${VERSION}/" "$DEBIAN_DIR/control"
+cp packaging/debian/preinst "$DEBIAN_DIR/preinst"
 cp packaging/debian/postinst "$DEBIAN_DIR/postinst"
 cp packaging/debian/prerm "$DEBIAN_DIR/prerm"
 cp packaging/debian/postrm "$DEBIAN_DIR/postrm"
@@ -47,7 +48,7 @@ SERVICE_USER=${SERVICE_USER:-pulldb_service}
 sed -i "s/SYSTEM_USER=\"pulldb_service\"/SYSTEM_USER=\"${SERVICE_USER}\"/" "$DEBIAN_DIR/postinst"
 sed -i "s/SYSTEM_GROUP=\"pulldb_service\"/SYSTEM_GROUP=\"${SERVICE_USER}\"/" "$DEBIAN_DIR/postinst"
 
-chmod 0755 "$DEBIAN_DIR/postinst" "$DEBIAN_DIR/prerm" "$DEBIAN_DIR/postrm"
+chmod 0755 "$DEBIAN_DIR/preinst" "$DEBIAN_DIR/postinst" "$DEBIAN_DIR/prerm" "$DEBIAN_DIR/postrm"
 
 # Lay down application skeleton under /opt/pulldb.service (installed path)
 APP_ROOT="$WORKDIR/opt/pulldb.service"

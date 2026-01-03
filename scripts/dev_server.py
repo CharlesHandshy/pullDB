@@ -219,6 +219,35 @@ def create_dev_app():
         if "static-images" not in [r.name for r in app.routes if hasattr(r, 'name')]:
             app.mount("/static/images", StaticFiles(directory=str(images_dir)), name="static-images")
 
+    # Favicon routes - browsers request these from root URL
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        """Serve favicon from /static/images with 1-day cache."""
+        from fastapi.responses import FileResponse
+        favicon_path = images_dir / "favicon.ico"
+        if favicon_path.exists():
+            return FileResponse(
+                favicon_path,
+                media_type="image/x-icon",
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Favicon not found")
+
+    @app.get("/apple-touch-icon.png", include_in_schema=False)
+    async def apple_touch_icon():
+        """Serve Apple touch icon from /static/images with 1-day cache."""
+        from fastapi.responses import FileResponse
+        icon_path = images_dir / "apple-touch-icon.png"
+        if icon_path.exists():
+            return FileResponse(
+                icon_path,
+                media_type="image/png",
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Apple touch icon not found")
+
     # Mount static files (CSS, JS, etc.) - unified location
     static_dir = Path(__file__).parent.parent / "pulldb" / "web" / "static"
     if static_dir.exists():
@@ -658,14 +687,14 @@ def main() -> None:
     print("    devuser    - USER role")
     print("    devmanager - MANAGER role")
     print("    devadmin   - ADMIN role")
-    print("\n  Open: http://127.0.0.1:8000/web/login")
+    print("\n  Open: http://127.0.0.1:8111/web/login")
     print("  Dev toolbar: Press Ctrl+` to toggle")
     print("=" * 60 + "\n")
 
     # Create app using the real API app with dependency overrides
     app = create_dev_app()
 
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=8111, log_level="info")
 
 
 if __name__ == "__main__":

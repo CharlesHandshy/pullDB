@@ -84,6 +84,7 @@ DISALLOWED_USERS_HARDCODED: frozenset[str] = frozenset({
     "admin",
     # Reserved pullDB names
     "pulldb",
+    "pulldb_service",  # Service Bootstrap/CLI Admin Account (SBCACC)
     "system",
     "service",
     "api",

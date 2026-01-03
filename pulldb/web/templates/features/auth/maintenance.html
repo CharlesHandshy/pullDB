@@ -18,8 +18,10 @@
 
     <div class="alert alert-info mb-4">
         {{ icon('info', size='16') }}
-        Review your databases below. You can extend retention, lock databases to prevent cleanup, 
-        or unlock previously locked databases. Click <strong>Acknowledge</strong> when done.
+        <div>
+            Review your databases below. You can extend retention, lock databases to prevent cleanup, 
+            or unlock previously locked databases. Click <strong>Acknowledge</strong> when done.
+        </div>
     </div>
 
     {% if errors %}

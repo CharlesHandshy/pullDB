@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLI Reference - pullDB Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../css/help.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
+    
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    
+    <!-- Navigation (same as index) -->
+    <nav class="nav-glass">
+        <div class="nav-container">
+            <a href="../../index.html" class="nav-logo">
+                <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                </svg>
+                <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
+            </a>
+            
+            <div class="nav-links">
+                <a href="../getting-started.html" class="nav-link">Getting Started</a>
+                <a href="index.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">CLI</a>
+                <a href="../api/index.html" class="nav-link">API</a>
+                <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
+            </div>
+            
+            <div class="nav-actions">
+                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span class="search-hint">/</span>
+                </button>
+                <button class="theme-toggle" @click="toggleTheme()">
+                    <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg x-show="theme === 'dark'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Search Modal (same as index) -->
+    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+        <div class="search-container" @click.stop>
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()" @keydown.arrow-down.prevent="navigateResults(1)" @keydown.arrow-up.prevent="navigateResults(-1)" @keydown.enter.prevent="selectResult()">
+                <kbd class="search-kbd">ESC</kbd>
+            </div>
+            <div class="search-results" x-show="searchQuery.length > 0">
+                <template x-for="(result, index) in searchResults" :key="result.id">
+                    <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
+                        <div class="result-content">
+                            <div class="result-title" x-html="result.title"></div>
+                            <div class="result-preview" x-html="result.preview"></div>
+                        </div>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Page Layout with Sidebar -->
+    <div class="page-layout">
+        <!-- Sidebar -->
+        <aside class="page-sidebar">
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">User Commands</div>
+                    <a href="#restore" class="sidebar-link active">restore</a>
+                    <a href="#status" class="sidebar-link">status</a>
+                    <a href="#events" class="sidebar-link">events</a>
+                    <a href="#cancel" class="sidebar-link">cancel</a>
+                    <a href="#history" class="sidebar-link">history</a>
+                    <a href="#search" class="sidebar-link">search</a>
+                    <a href="#list" class="sidebar-link">list</a>
+                    <a href="#profile" class="sidebar-link">profile</a>
+                    <a href="#hosts" class="sidebar-link">hosts</a>
+                    <a href="#register" class="sidebar-link">register</a>
+                    <a href="#setpass" class="sidebar-link">setpass</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Admin Commands</div>
+                    <a href="#admin-settings" class="sidebar-link">settings</a>
+                    <a href="#admin-jobs" class="sidebar-link">jobs</a>
+                    <a href="#admin-users" class="sidebar-link">users</a>
+                    <a href="#admin-hosts" class="sidebar-link">hosts</a>
+                    <a href="#admin-backups" class="sidebar-link">backups</a>
+                    <a href="#admin-cleanup" class="sidebar-link">cleanup</a>
+                    <a href="#admin-disallow" class="sidebar-link">disallow</a>
+                    <a href="#admin-secrets" class="sidebar-link">secrets</a>
+                    <a href="#admin-retention" class="sidebar-link">run-retention-cleanup</a>
+                </div>
+            </nav>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="page-content">
+            <div class="breadcrumbs">
+                <a href="../../index.html">Help</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span>CLI Reference</span>
+            </div>
+            
+            <h1 class="page-title">CLI Reference</h1>
+            <p class="page-description">
+                Complete reference for pullDB command-line tools. The <code>pulldb</code> command is for 
+                end users to submit and monitor restore jobs. The <code>pulldb-admin</code> command is 
+                for system administrators.
+            </p>
+            
+            <!-- Quick Reference -->
+            <section class="content-section">
+                <h2>Quick Reference</h2>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons">
+                            <span class="btn-close"></span>
+                            <span class="btn-minimize"></span>
+                            <span class="btn-maximize"></span>
+                        </div>
+                        <span class="terminal-title">Quick Reference</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="comment"># Submit a restore</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore &lt;customer&gt;</span></div>
+                        <div class="terminal-line"></div>
+                        <div class="terminal-line"><span class="comment"># Check your last job status</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb status</span></div>
+                        <div class="terminal-line"></div>
+                        <div class="terminal-line"><span class="comment"># Stream events in real-time</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb status --rt</span></div>
+                        <div class="terminal-line"></div>
+                        <div class="terminal-line"><span class="comment"># Cancel a job</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb cancel &lt;job_id&gt;</span></div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Restore Command -->
+            <section class="content-section" id="restore">
+                <h2>pulldb restore</h2>
+                <p>Submit a restore job to download a backup from S3 and restore it to your development database.</p>
+                
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb restore &lt;customer&gt; [options]</code>
+                        <span class="command-badge">User Command</span>
+                    </div>
+                    
+                    <h3>Parameters</h3>
+                    <table class="param-table">
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Required</th>
+                                <th>Default</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>&lt;customer&gt;</td>
+                                <td>Yes*</td>
+                                <td>-</td>
+                                <td>Customer ID (positional, lowercase letters only)</td>
+                            </tr>
+                            <tr>
+                                <td>qatemplate</td>
+                                <td>Yes*</td>
+                                <td>-</td>
+                                <td>Restore QA template instead of customer</td>
+                            </tr>
+                            <tr>
+                                <td>dbhost=</td>
+                                <td>No</td>
+                                <td>localhost</td>
+                                <td>Target database host</td>
+                            </tr>
+                            <tr>
+                                <td>suffix=</td>
+                                <td>No</td>
+                                <td>-</td>
+                                <td>Suffix for target database (1-3 lowercase letters)</td>
+                            </tr>
+                            <tr>
+                                <td>date=</td>
+                                <td>No</td>
+                                <td>Latest</td>
+                                <td>Specific backup date (YYYY-MM-DD)</td>
+                            </tr>
+                            <tr>
+                                <td>s3env=</td>
+                                <td>No</td>
+                                <td>prod</td>
+                                <td>S3 environment (staging|prod|both)</td>
+                            </tr>
+                            <tr>
+                                <td>overwrite</td>
+                                <td>No</td>
+                                <td>false</td>
+                                <td>Overwrite existing target database</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p class="text-muted">* Either <code>&lt;customer&gt;</code> or <code>qatemplate</code> is required, but not both. Username is auto-detected from your SSH session.</p>
+                    
+                    <h3>Target Database Naming</h3>
+                    <p>Your restored database is named using your <strong>user code</strong> (first 6 alpha characters of username). All names use <strong>lowercase letters only [a-z]</strong> — no uppercase, numbers, symbols, or spaces:</p>
+                    <pre><code>&lt;usercode&gt;&lt;customer&gt;&lt;suffix&gt;</code></pre>
+                    <p>Example: User <code>charles</code> (code: <code>chrles</code>) restoring customer <code>acme</code> with suffix <code>dev</code>:</p>
+                    <ul>
+                        <li><strong>Target database:</strong> <code>chrlesacme</code> (or <code>chrlesacmedev</code> with suffix)</li>
+                        <li><strong>Staging (temp):</strong> <code>chrlesacmeabcdefgh</code> (8-char job ID prefix appended)</li>
+                    </ul>
+                </div>
+                
+                <h3>Examples</h3>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">Examples</span>
+                        <button class="terminal-copy" onclick="copyTerminal(this)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="comment"># Basic restore - latest backup</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme</span></div>
+                        <div class="terminal-line"></div>
+                        <div class="terminal-line"><span class="comment"># Restore specific date</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme date=2026-01-01</span></div>
+                        <div class="terminal-line"></div>
+                        <div class="terminal-line"><span class="comment"># Restore to remote host</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme dbhost=dev-db-01</span></div>
+                        <div class="terminal-line"></div>
+                        <div class="terminal-line"><span class="comment"># Restore with suffix for multiple copies</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme suffix=dev</span></div>
+                        <div class="terminal-line"></div>
+                        <div class="terminal-line"><span class="comment"># Overwrite existing database</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme overwrite</span></div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Status Command -->
+            <section class="content-section" id="status">
+                <h2>pulldb status</h2>
+                <p>Check the status of your jobs. Without arguments, shows your last submitted job.</p>
+                
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb status [job_id] [options]</code>
+                        <span class="command-badge">User Command</span>
+                    </div>
+                    
+                    <h3>Arguments &amp; Options</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td>job_id</td>
+                                <td>Optional</td>
+                                <td>-</td>
+                                <td>Specific job ID (or prefix) to check</td>
+                            </tr>
+                            <tr>
+                                <td>--active</td>
+                                <td>Optional</td>
+                                <td>false</td>
+                                <td>Show only active jobs (queued/running)</td>
+                            </tr>
+                            <tr>
+                                <td>--history</td>
+                                <td>Optional</td>
+                                <td>false</td>
+                                <td>Show historical jobs (completed/failed/canceled)</td>
+                            </tr>
+                            <tr>
+                                <td>--status</td>
+                                <td>Optional</td>
+                                <td>-</td>
+                                <td>Filter by status (queued|running|complete|failed|canceled)</td>
+                            </tr>
+                            <tr>
+                                <td>--limit</td>
+                                <td>Optional</td>
+                                <td>100</td>
+                                <td>Maximum number of jobs to display</td>
+                            </tr>
+                            <tr>
+                                <td>--rt</td>
+                                <td>Optional</td>
+                                <td>false</td>
+                                <td>Stream job events in realtime (auto-exits when job completes)</td>
+                            </tr>
+                            <tr>
+                                <td>--json</td>
+                                <td>Optional</td>
+                                <td>false</td>
+                                <td>Output JSON instead of table</td>
+                            </tr>
+                            <tr>
+                                <td>--wide</td>
+                                <td>Optional</td>
+                                <td>false</td>
+                                <td>Show additional columns (staging_name)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h3>Output</h3>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">Status Output</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb status</span></div>
+                        <div class="terminal-line output">Your last submitted job:</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">  STATUS   : <span class="status-badge running">running</span></div>
+                        <div class="terminal-line output">  OPERATION: Restore progress</div>
+                        <div class="terminal-line output">  JOB_ID   : <span class="highlight">7f3a2b1c</span></div>
+                        <div class="terminal-line output">  CUSTOMER : acme</div>
+                        <div class="terminal-line output">  TARGET   : chrlesacme</div>
+                        <div class="terminal-line output">  DB       : localhost</div>
+                        <div class="terminal-line output">  USER     : chrles</div>
+                        <div class="terminal-line output">  SUBMITTED: 2026-01-03T10:42:15</div>
+                        <div class="terminal-line output">  STARTED  : 2026-01-03T10:42:18</div>
+                    </div>
+                </div>
+                
+                <h3>Job States</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px;">
+                    <span class="status-badge queued">QUEUED</span>
+                    <span class="status-badge running">RUNNING</span>
+                    <span class="status-badge complete">COMPLETE</span>
+                    <span class="status-badge" style="background: var(--color-info-bg); color: var(--color-info);">DEPLOYED</span>
+                    <span class="status-badge failed">FAILED</span>
+                    <span class="status-badge canceled">CANCELED</span>
+                </div>
+                <p class="mt-4">See <a href="../concepts/job-lifecycle.html" style="color: var(--color-primary);">Job Lifecycle</a> for detailed state descriptions.</p>
+            </section>
+            
+            <!-- Events Command -->
+            <section class="content-section" id="events">
+                <h2>pulldb events</h2>
+                <p>Show event log for a specific job. Use <code>-f/--follow</code> to stream events in realtime.</p>
+                
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb events &lt;job_id&gt; [options]</code>
+                        <span class="command-badge">User Command</span>
+                    </div>
+                    
+                    <h3>Options</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td>-f, --follow</td>
+                                <td>No</td>
+                                <td>false</td>
+                                <td>Follow mode: stream new events as they occur (Ctrl+C to stop)</td>
+                            </tr>
+                            <tr>
+                                <td>--full</td>
+                                <td>No</td>
+                                <td>false</td>
+                                <td>Show full event details without truncation</td>
+                            </tr>
+                            <tr>
+                                <td>--limit</td>
+                                <td>No</td>
+                                <td>100</td>
+                                <td>Maximum number of events to show</td>
+                            </tr>
+                            <tr>
+                                <td>--json</td>
+                                <td>No</td>
+                                <td>false</td>
+                                <td>Output JSON instead of table</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h3>Example Output (Table Mode)</h3>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">Events Table</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb events 7f3a2b1c</span></div>
+                        <div class="terminal-line output">Events for job 7f3a2b1c...</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">TIMESTAMP            EVENT TYPE        DETAIL</div>
+                        <div class="terminal-line output">-------------------  ----------------  ----------------------------------</div>
+                        <div class="terminal-line output">2026-01-03 10:42:36  queued            Job submitted</div>
+                        <div class="terminal-line output">2026-01-03 10:42:56  running           Job started by worker (target:...)</div>
+                        <div class="terminal-line output">2026-01-03 10:43:27  download_complete {"path":"/mnt/data/work/pulldb..."}</div>
+                        <div class="terminal-line output">2026-01-03 10:43:30  restore_started   {"backup_filename":"daily_mydump..."}</div>
+                        <div class="terminal-line output">2026-01-03 10:45:30  restore_complete  myloader finished</div>
+                        <div class="terminal-line output">2026-01-03 10:45:34  complete          Job finished successfully</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">Total: 6 event(s)</div>
+                    </div>
+                </div>
+                
+                <h3>Streaming Mode</h3>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">Events Stream</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb events 7f3a2b1c -f</span></div>
+                        <div class="terminal-line output">(Ctrl+C to stop)</div>
+                        <div class="terminal-line output">[10:42:36] queued: Job submitted</div>
+                        <div class="terminal-line output">[10:42:56] running: Job started by worker (target: chrlesacme)</div>
+                        <div class="terminal-line output">[10:43:27] download_complete: 2.3 GB downloaded</div>
+                        <div class="terminal-line output">[10:43:30] restore_started: myloader running</div>
+                        <div class="terminal-line output">[10:45:30] restore_complete: myloader finished</div>
+                        <div class="terminal-line output">[10:45:34] complete: Job finished successfully</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">Job 7f3a2b1c finished with status: deployed</div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Cancel Command -->
+            <section class="content-section" id="cancel">
+                <h2>pulldb cancel</h2>
+                <p>Cancel a running or queued job. Gracefully stops the job and cleans up resources.</p>
+                
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb cancel &lt;job_id&gt; [options]</code>
+                        <span class="command-badge">User Command</span>
+                    </div>
+                    
+                    <h3>Options</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td>-f, --force</td>
+                                <td>No</td>
+                                <td>false</td>
+                                <td>Skip confirmation prompt</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h3>What Gets Cleaned Up</h3>
+                <ul>
+                    <li>Staging database is dropped (if created)</li>
+                    <li>Downloaded backup files are removed</li>
+                    <li>S3 download is aborted (if in progress)</li>
+                </ul>
+                
+                <h3>Cancellation Window</h3>
+                <p>Jobs can only be canceled <strong>before</strong> the myloader restore process begins. Once myloader starts loading data into the database, cancellation is blocked to prevent database corruption.</p>
+                <p>If you attempt to cancel during the loading phase, you'll receive: <code>"Cannot cancel: job has entered loading phase. Myloader cannot be safely interrupted."</code></p>
+                
+                <p class="mt-4"><strong>Note:</strong> Completed jobs cannot be canceled. The database will remain until overwritten by a new restore with <code>overwrite</code> flag.</p>
+            </section>
+            
+            <!-- History Command -->
+            <section class="content-section" id="history">
+                <h2>pulldb history</h2>
+                <p>Show job history (completed/failed/canceled jobs).</p>
+                
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb history [options]</code>
+                        <span class="command-badge">User Command</span>
+                    </div>
+                    
+                    <h3>Options</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td>--days</td>
+                                <td>No</td>
+                                <td>30</td>
+                                <td>Show jobs from last N days</td>
+                            </tr>
+                            <tr>
+                                <td>--limit</td>
+                                <td>No</td>
+                                <td>50</td>
+                                <td>Limit number of rows</td>
+                            </tr>
+                            <tr>
+                                <td>--status</td>
+                                <td>No</td>
+                                <td>all</td>
+                                <td>Filter by status (complete|failed|canceled)</td>
+                            </tr>
+                            <tr>
+                                <td>--user</td>
+                                <td>No</td>
+                                <td>-</td>
+                                <td>Filter by user code</td>
+                            </tr>
+                            <tr>
+                                <td>--target</td>
+                                <td>No</td>
+                                <td>-</td>
+                                <td>Filter by target database name</td>
+                            </tr>
+                            <tr>
+                                <td>--dbhost</td>
+                                <td>No</td>
+                                <td>-</td>
+                                <td>Filter by database host</td>
+                            </tr>
+                            <tr>
+                                <td>--wide</td>
+                                <td>No</td>
+                                <td>false</td>
+                                <td>Show additional columns including error details</td>
+                            </tr>
+                            <tr>
+                                <td>--json</td>
+                                <td>No</td>
+                                <td>false</td>
+                                <td>Output JSON instead of table</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- Search Command -->
+            <section class="content-section" id="search">
+                <h2>pulldb search</h2>
+                <p>Search for customers by name pattern. Use wildcards (* or ?) for partial matches.</p>
+                
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb search &lt;query&gt; [options]</code>
+                        <span class="command-badge">User Command</span>
+                    </div>
+                    
+                    <h3>Parameters</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td>limit=N</td>
+                                <td>No</td>
+                                <td>20</td>
+                                <td>Maximum results to show</td>
+                            </tr>
+                            <tr>
+                                <td>json</td>
+                                <td>No</td>
+                                <td>false</td>
+                                <td>Output JSON instead of list</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h3>Example</h3>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">Search Customers</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb search action</span></div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">Customers matching 'action':</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">  action</div>
+                        <div class="terminal-line output">  actionpest</div>
+                        <div class="terminal-line output">  actiontermite</div>
+                        <div class="terminal-line output">  actionplus</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">4 customer(s) found.</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">Use 'pulldb list &lt;customer&gt;' to see available backups.</div>
+                    </div>
+                </div>
+                
+                <p class="tip mt-4"><strong>Tip:</strong> Use <code>pulldb list &lt;customer&gt;</code> to see available backups for a specific customer.</p>
+            </section>
+            
+            <!-- List Command -->
+            <section class="content-section" id="list">
+                <h2>pulldb list</h2>
+                <p>List available backups for a specific customer. Shows backup dates, sizes, and environments.</p>
+                
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb list &lt;customer&gt; [options]</code>
+                        <span class="command-badge">User Command</span>
+                    </div>
+                    
+                    <h3>Parameters</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td>date=YYYYMMDD</td>
+                                <td>No</td>
+                                <td>-</td>
+                                <td>Start date (show backups from this date onwards)</td>
+                            </tr>
+                            <tr>
+                                <td>limit=N</td>
+                                <td>No</td>
+                                <td>10</td>
+                                <td>Maximum backups to show</td>
+                            </tr>
+                            <tr>
+                                <td>s3env=</td>
+                                <td>No</td>
+                                <td>prod</td>
+                                <td>S3 environment (staging|prod|both)</td>
+                            </tr>
+                            <tr>
+                                <td>json</td>
+                                <td>No</td>
+                                <td>false</td>
+                                <td>Output JSON instead of table</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h3>Example</h3>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">List Backups</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb list actionpest</span></div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">Backups for 'actionpest':</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">DATE        TIME (UTC)  SIZE        ENV   FILENAME</div>
+                        <div class="terminal-line output">----------  ----------  ----------  ----  -----------------------------------------</div>
+                        <div class="terminal-line output">2026-01-03  07:00:00    2.3 GB      prod  daily_mydump_actionpest_20260103-070000.zst</div>
+                        <div class="terminal-line output">2026-01-02  07:00:00    2.3 GB      prod  daily_mydump_actionpest_20260102-070000.zst</div>
+                        <div class="terminal-line output">2026-01-01  07:00:00    2.2 GB      prod  daily_mydump_actionpest_20260101-070000.zst</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">3 backup(s) found.</div>
+                    </div>
+                </div>
+                
+                <p class="tip mt-4"><strong>Tip:</strong> Use <code>pulldb search &lt;pattern&gt;</code> to find customers by name.</p>
+            </section>
+            <section class="content-section" id="profile">
+                <h2>pulldb profile</h2>
+                <p>View performance breakdown for a completed job.</p>
+                
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb profile &lt;job_id&gt; [--json]</code>
+                        <span class="command-badge">User Command</span>
+                    </div>
+                    
+                    <h3>Options</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td>--json</td>
+                                <td>No</td>
+                                <td>false</td>
+                                <td>Output JSON instead of formatted display</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h3>Example Output</h3>
+                <div class="code-block">
+                    <pre><code>Performance Profile: abc12345-678...
+============================================================
+Status: Complete
+Total Duration: 3m 42s
+Total Data: 1.24 GB
+
+Phase Breakdown:
+------------------------------------------------------------
+PHASE               DURATION        %   THROUGHPUT
+---------------- ------------ -------- ------------
+discovery               850ms     0.4%            -
+download            1m 15s      33.8%    16.8 MB/s
+extraction              28.3s    12.7%    43.8 MB/s
+myloader            1m 45s      47.3%     9.2 MB/s
+post_sql                 8.2s     3.7%            -
+metadata                420ms     0.2%            -
+atomic_rename            12ms     0.0%            -
+------------------------------------------------------------
+
+💡 Tip: myloader took 47% of total time.</code></pre>
+                </div>
+                
+                <p class="mt-4">Shows timing for each phase: discovery, download, extraction, myloader, post_sql, metadata, atomic_rename. Throughput metrics shown for data-intensive phases.</p>
+            </section>
+            
+            <!-- Hosts Command -->
+            <section class="content-section" id="hosts">
+                <h2>pulldb hosts</h2>
+                <p>List available database hosts you can restore to.</p>
+                
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb hosts [--json]</code>
+                        <span class="command-badge">User Command</span>
+                    </div>
+                    
+                    <h3>Options</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td>--json</td>
+                                <td>No</td>
+                                <td>false</td>
+                                <td>Output JSON instead of formatted table</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h3>Example Output</h3>
+                <div class="code-block">
+                    <pre><code>Available Database Hosts
+==================================================
+ALIAS            HOSTNAME
+---------------- --------------------------------
+dev              dev-mysql.internal.example.com
+staging          staging-mysql.internal.example.com
+prod-replica     prod-ro.internal.example.com
+---------------- --------------------------------
+
+Total: 3 host(s)
+
+Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;</code></pre>
+                </div>
+            </section>
+            
+            <!-- Register Command -->
+            <section class="content-section" id="register">
+                <h2>pulldb register</h2>
+                <p>Register a new pullDB account. Creates a user account linked to your SSH username.</p>
+                
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb register [--password TEXT]</code>
+                        <span class="command-badge">User Command</span>
+                    </div>
+                    
+                    <h3>Options</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td>--password</td>
+                                <td>No</td>
+                                <td>-</td>
+                                <td>Password for the new account (minimum 8 characters). If not provided, you'll be prompted.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h3>Example</h3>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">Register Account</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb register</span></div>
+                        <div class="terminal-line output">Registering new pullDB account...</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">Username: charles</div>
+                        <div class="terminal-line output">User code: chrles</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">Enter password (min 8 characters): ********</div>
+                        <div class="terminal-line output">Confirm password: ********</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">Account created successfully!</div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Setpass Command -->
+            <section class="content-section" id="setpass">
+                <h2>pulldb setpass</h2>
+                <p>Set a new password. Required after a password reset or first-time setup with a temporary password.</p>
+                
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb setpass [options]</code>
+                        <span class="command-badge">User Command</span>
+                    </div>
+                    
+                    <h3>Options</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td>--current-password</td>
+                                <td>No</td>
+                                <td>-</td>
+                                <td>Current password (or temporary password if first-time setup)</td>
+                            </tr>
+                            <tr>
+                                <td>--new-password</td>
+                                <td>No</td>
+                                <td>-</td>
+                                <td>New password</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h3>Example</h3>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">Change Password</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb setpass</span></div>
+                        <div class="terminal-line output">Current password: ********</div>
+                        <div class="terminal-line output">New password: ********</div>
+                        <div class="terminal-line output">Confirm new password: ********</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">Password updated successfully.</div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Admin Commands Section -->
+            <section class="content-section" id="admin-commands">
+                <h2>Admin Commands</h2>
+                <p>The <code>pulldb-admin</code> command provides system administration capabilities. Requires admin role.</p>
+            </section>
+            
+            <!-- Admin Settings -->
+            <section class="content-section" id="admin-settings">
+                <h3>pulldb-admin settings</h3>
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb-admin settings &lt;action&gt;</code>
+                        <span class="command-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">Admin</span>
+                    </div>
+                    
+                    <h4 style="margin-top: 16px;">Actions</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>list</td><td colspan="3">List all settings with their current values</td></tr>
+                            <tr><td>get &lt;key&gt;</td><td colspan="3">Get the value of a specific setting</td></tr>
+                            <tr><td>set &lt;key&gt; &lt;value&gt;</td><td colspan="3">Set a setting value in BOTH database and .env</td></tr>
+                            <tr><td>reset &lt;key&gt;</td><td colspan="3">Remove a setting from the database</td></tr>
+                            <tr><td>diff</td><td colspan="3">Show differences between database and .env file</td></tr>
+                            <tr><td>pull</td><td colspan="3">Sync settings from database to .env file</td></tr>
+                            <tr><td>push</td><td colspan="3">Sync settings from .env file to database</td></tr>
+                            <tr><td>export</td><td colspan="3">Export all current settings</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- Admin Jobs -->
+            <section class="content-section" id="admin-jobs">
+                <h3>pulldb-admin jobs</h3>
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb-admin jobs &lt;action&gt;</code>
+                        <span class="command-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">Admin</span>
+                    </div>
+                    
+                    <h4 style="margin-top: 16px;">Actions</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>list [--active]</td><td colspan="3">List jobs, optionally only active (queued/running)</td></tr>
+                            <tr><td>cancel &lt;job_id&gt;</td><td colspan="3">Cancel any user's job</td></tr>
+                        </tbody>
+                    </table>
+                    
+                    <h4 style="margin-top: 16px;">List Options</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>--active</td><td colspan="3">Show only queued/running jobs</td></tr>
+                            <tr><td>--limit</td><td colspan="3">Number of jobs to show (default: 20)</td></tr>
+                            <tr><td>--user</td><td colspan="3">Filter by username or user_code</td></tr>
+                            <tr><td>--dbhost</td><td colspan="3">Filter by target database host</td></tr>
+                            <tr><td>--status</td><td colspan="3">Filter by status (queued|running|deployed|complete|failed|canceled)</td></tr>
+                            <tr><td>--json</td><td colspan="3">Output JSON instead of table</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- Admin Cleanup -->
+            <section class="content-section" id="admin-cleanup">
+                <h3>pulldb-admin cleanup</h3>
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb-admin cleanup [options]</code>
+                        <span class="command-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">Admin</span>
+                    </div>
+                    <p style="margin-top: 12px;">Cleanup orphaned staging databases and work files.</p>
+                    
+                    <h4 style="margin-top: 16px;">Options</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>--dry-run</td><td colspan="3">Preview what would be cleaned (no changes made)</td></tr>
+                            <tr><td>--execute</td><td colspan="3">Actually perform the cleanup</td></tr>
+                            <tr><td>--dbhost</td><td colspan="3">Target specific database host (default: all hosts)</td></tr>
+                            <tr><td>--older-than</td><td colspan="3">Only clean items older than N hours (default: 24)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- Admin Users -->
+            <section class="content-section" id="admin-users">
+                <h3>pulldb-admin users</h3>
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb-admin users &lt;action&gt;</code>
+                        <span class="command-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">Admin</span>
+                    </div>
+                    
+                    <h4 style="margin-top: 16px;">Actions</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>list</td><td colspan="3">List all users</td></tr>
+                            <tr><td>show &lt;username&gt;</td><td colspan="3">Show user details</td></tr>
+                            <tr><td>enable &lt;username&gt;</td><td colspan="3">Enable a user</td></tr>
+                            <tr><td>disable &lt;username&gt;</td><td colspan="3">Disable a user</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- Admin Hosts -->
+            <section class="content-section" id="admin-hosts">
+                <h3>pulldb-admin hosts</h3>
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb-admin hosts &lt;action&gt;</code>
+                        <span class="command-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">Admin</span>
+                    </div>
+                    
+                    <h4 style="margin-top: 16px;">Actions</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>list</td><td colspan="3">List all registered database hosts</td></tr>
+                            <tr><td>add &lt;hostname&gt;</td><td colspan="3">Add a new database host (simple registration)</td></tr>
+                            <tr><td>provision &lt;hostname&gt;</td><td colspan="3">Provision a new target host with full setup</td></tr>
+                            <tr><td>enable &lt;hostname&gt;</td><td colspan="3">Enable a database host (allow new jobs)</td></tr>
+                            <tr><td>disable &lt;hostname&gt;</td><td colspan="3">Disable a database host (prevent new jobs)</td></tr>
+                            <tr><td>remove &lt;hostname&gt;</td><td colspan="3">Remove a host from pulldb</td></tr>
+                            <tr><td>test &lt;hostname&gt;</td><td colspan="3">Test MySQL connection to a host</td></tr>
+                            <tr><td>cred &lt;hostname&gt;</td><td colspan="3">Show the credential_ref for a host</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- Admin Backups -->
+            <section class="content-section" id="admin-backups">
+                <h3>pulldb-admin backups</h3>
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb-admin backups &lt;action&gt;</code>
+                        <span class="command-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">Admin</span>
+                    </div>
+                    <p style="margin-top: 12px;">List and search S3 backup archives.</p>
+                    
+                    <h4 style="margin-top: 16px;">Actions</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>list</td><td colspan="3">List customers with aggregated backup statistics</td></tr>
+                            <tr><td>search &lt;pattern&gt;</td><td colspan="3">Search backups by customer pattern</td></tr>
+                        </tbody>
+                    </table>
+                    
+                    <h4 style="margin-top: 16px;">Options</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>--env</td><td colspan="3">Environment to search (staging|prod|both, default: prod)</td></tr>
+                            <tr><td>-v, --verbose</td><td colspan="3">Show detailed progress</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- Admin Disallow -->
+            <section class="content-section" id="admin-disallow">
+                <h3>pulldb-admin disallow</h3>
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb-admin disallow &lt;action&gt;</code>
+                        <span class="command-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">Admin</span>
+                    </div>
+                    <p style="margin-top: 12px;">Manage disallowed usernames (prevent specific usernames from registering).</p>
+                    
+                    <h4 style="margin-top: 16px;">Actions</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>list</td><td colspan="3">List all disallowed usernames</td></tr>
+                            <tr><td>add &lt;username&gt;</td><td colspan="3">Add a username to the disallowed list</td></tr>
+                            <tr><td>remove &lt;username&gt;</td><td colspan="3">Remove a username from the disallowed list</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- Admin Secrets -->
+            <section class="content-section" id="admin-secrets">
+                <h3>pulldb-admin secrets</h3>
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb-admin secrets &lt;action&gt;</code>
+                        <span class="command-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">Admin</span>
+                    </div>
+                    <p style="margin-top: 12px;">Manage AWS Secrets Manager credentials for database hosts.</p>
+                    
+                    <h4 style="margin-top: 16px;">Actions</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>list</td><td colspan="3">List all secrets with the given prefix</td></tr>
+                            <tr><td>get &lt;name&gt;</td><td colspan="3">Get a secret's value</td></tr>
+                            <tr><td>set &lt;name&gt;</td><td colspan="3">Create or update a secret</td></tr>
+                            <tr><td>delete &lt;name&gt;</td><td colspan="3">Delete a secret</td></tr>
+                            <tr><td>rotate &lt;name&gt;</td><td colspan="3">Rotate a secret's password</td></tr>
+                            <tr><td>test &lt;name&gt;</td><td colspan="3">Test MySQL connectivity using a secret</td></tr>
+                        </tbody>
+                    </table>
+                    
+                    <h4 style="margin-top: 16px;">Global Options</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>--profile</td><td colspan="3">AWS profile to use</td></tr>
+                            <tr><td>--region</td><td colspan="3">AWS region</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- Admin Run Retention Cleanup -->
+            <section class="content-section" id="admin-retention">
+                <h3>pulldb-admin run-retention-cleanup</h3>
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb-admin run-retention-cleanup [options]</code>
+                        <span class="command-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">Admin</span>
+                    </div>
+                    <p style="margin-top: 12px;">Run database retention cleanup to drop expired databases. Usually run automatically by the retention timer.</p>
+                    
+                    <h4 style="margin-top: 16px;">Options</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>--dry-run</td><td colspan="3">Preview what would be cleaned (no changes made)</td></tr>
+                            <tr><td>--json</td><td colspan="3">Output JSON instead of human-readable text</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+        </main>
+    </div>
+    
+    <script src="../../js/help.js"></script>
+    <script src="../../js/terminal.js"></script>
+    <script src="../../js/search.js"></script>
+    <script>
+        // Highlight current sidebar link based on scroll
+        document.addEventListener('DOMContentLoaded', () => {
+            const sections = document.querySelectorAll('.content-section[id]');
+            const links = document.querySelectorAll('.sidebar-link');
+            
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        links.forEach(link => link.classList.remove('active'));
+                        const activeLink = document.querySelector(`.sidebar-link[href="#${entry.target.id}"]`);
+                        if (activeLink) activeLink.classList.add('active');
+                    }
+                });
+            }, { rootMargin: '-20% 0px -70% 0px' });
+            
+            sections.forEach(section => observer.observe(section));
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9', 'primaryTextColor': '#fff', 'primaryBorderColor': '#2c5282', 'lineColor': '#718096', 'secondaryColor': '#48bb78', 'tertiaryColor': '#ed8936'}}}%%
+flowchart TB
+    subgraph clients["Client Layer"]
+        cli["CLI<br/>(pulldb)"]
+        browser["Web Browser"]
+    end
+
+    subgraph service["Service Layer (EC2 Instance)"]
+        subgraph api_layer["API Services"]
+            api["pulldb-api<br/>:8080"]
+            web["pulldb-web<br/>:8000"]
+        end
+        
+        subgraph worker_layer["Worker Services"]
+            worker1["pulldb-worker@1"]
+            worker2["pulldb-worker@2"]
+            worker3["pulldb-worker@3"]
+        end
+    end
+
+    subgraph data["Data Layer"]
+        mysql_coord[("MySQL<br/>Coordination DB<br/>pulldb_service")]
+        mysql_target[("MySQL<br/>Target Hosts<br/>Customer DBs")]
+    end
+
+    subgraph aws["AWS Services"]
+        s3[("S3 Buckets<br/>Backups")]
+        secrets["Secrets Manager<br/>Credentials"]
+    end
+
+    %% Client connections
+    cli -->|"HTTP :8080<br/>X-Pulldb-User"| api
+    browser -->|"HTTP :8000<br/>Session Cookie"| web
+    
+    %% API to MySQL
+    api -->|"pulldb_api user"| mysql_coord
+    web -->|"pulldb_api user"| mysql_coord
+    
+    %% Worker polling
+    worker1 -->|"poll queue"| mysql_coord
+    worker2 -->|"poll queue"| mysql_coord
+    worker3 -->|"poll queue"| mysql_coord
+    
+    %% Worker to AWS
+    worker1 -->|"download backups"| s3
+    worker2 -->|"download backups"| s3
+    worker3 -->|"download backups"| s3
+    
+    %% Worker to target MySQL
+    worker1 -->|"myloader restore"| mysql_target
+    worker2 -->|"myloader restore"| mysql_target
+    worker3 -->|"myloader restore"| mysql_target
+    
+    %% Secrets resolution
+    api -.->|"resolve creds"| secrets
+    web -.->|"resolve creds"| secrets
+    worker1 -.->|"resolve creds"| secrets
+    
+    %% Styling
+    classDef clientClass fill:#4a90d9,stroke:#2c5282,color:#fff
+    classDef apiClass fill:#48bb78,stroke:#276749,color:#fff
+    classDef workerClass fill:#ed8936,stroke:#c05621,color:#fff
+    classDef dataClass fill:#9f7aea,stroke:#6b46c1,color:#fff
+    classDef awsClass fill:#f56565,stroke:#c53030,color:#fff
+    
+    class cli,browser clientClass
+    class api,web apiClass
+    class worker1,worker2,worker3 workerClass
+    class mysql_coord,mysql_target dataClass
+    class s3,secrets awsClass

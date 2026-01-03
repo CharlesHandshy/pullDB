@@ -87,6 +87,7 @@ INSERT IGNORE INTO disallowed_users (username, reason, is_hardcoded, created_by)
 ('admin', 'Generic admin account', TRUE, NULL),
 -- Reserved pullDB names
 ('pulldb', 'pullDB service name', TRUE, NULL),
+('pulldb_service', 'Service Bootstrap/CLI Admin Account (SBCACC)', TRUE, NULL),
 ('system', 'Reserved system name', TRUE, NULL),
 ('service', 'Reserved service name', TRUE, NULL),
 ('api', 'Reserved API name', TRUE, NULL),

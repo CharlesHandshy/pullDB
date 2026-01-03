@@ -1,0 +1,73 @@
+#!/bin/bash
+# =============================================================================
+# pulldb preinst - Runs BEFORE package installation
+# =============================================================================
+# Automatically installs Python 3.12 from deadsnakes PPA if not present.
+# This keeps system Python untouched while satisfying the python3.12 dependency.
+# =============================================================================
+set -e
+
+log_info()  { echo "[pulldb] $*"; }
+log_error() { echo "[pulldb] ERROR: $*" >&2; }
+
+install_python312() {
+    log_info "Python 3.12 not found. Installing from deadsnakes PPA..."
+    
+    # Fix any stale apt lists first
+    rm -f /var/lib/apt/lists/lock 2>/dev/null || true
+    rm -rf /var/lib/apt/lists/* 2>/dev/null || true
+    
+    # Install prerequisites for add-apt-repository
+    log_info "Updating package lists..."
+    apt-get update --allow-releaseinfo-change -qq 2>/dev/null || apt-get update -qq 2>/dev/null || true
+    
+    log_info "Installing software-properties-common..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq software-properties-common 2>/dev/null || true
+    
+    # Add deadsnakes PPA (non-interactive, ignore errors if already added)
+    log_info "Adding deadsnakes PPA..."
+    DEBIAN_FRONTEND=noninteractive add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null || true
+    
+    log_info "Updating package lists again..."
+    apt-get update --allow-releaseinfo-change -qq 2>/dev/null || apt-get update -qq 2>/dev/null || true
+    
+    # Install Python 3.12
+    log_info "Installing python3.12 and python3.12-venv..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3.12 python3.12-venv 2>&1 || {
+        log_error "apt-get install failed. Attempting manual fix..."
+        apt-get update --fix-missing 2>/dev/null || true
+        DEBIAN_FRONTEND=noninteractive apt-get install -y python3.12 python3.12-venv
+    }
+    
+    if command -v python3.12 &>/dev/null; then
+        log_info "Python 3.12 installed successfully: $(python3.12 --version)"
+    else
+        log_error "Failed to install Python 3.12"
+        exit 1
+    fi
+}
+
+case "$1" in
+    install|upgrade)
+        # Check if python3.12 is available
+        if ! command -v python3.12 &>/dev/null; then
+            install_python312
+        else
+            log_info "Python 3.12 already available: $(python3.12 --version)"
+        fi
+        
+        # Verify python3.12-venv is available
+        if ! python3.12 -m venv --help &>/dev/null 2>&1; then
+            log_info "Installing python3.12-venv..."
+            apt-get install -y python3.12-venv >/dev/null 2>&1
+        fi
+        
+        log_info "System Python unchanged: $(python3 --version)"
+        ;;
+    abort-upgrade)
+        ;;
+    *)
+        ;;
+esac
+
+exit 0

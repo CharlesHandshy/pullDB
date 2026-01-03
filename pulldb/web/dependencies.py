@@ -332,10 +332,8 @@ def require_login(
     Raises:
         SessionExpiredError: If no valid session exists
         PasswordResetRequiredError: If user must change password first
-        MaintenanceRequiredError: If user must acknowledge maintenance items
     """
     from pulldb.web.exceptions import (
-        MaintenanceRequiredError,
         PasswordResetRequiredError,
         SessionExpiredError,
     )
@@ -354,24 +352,8 @@ def require_login(
                     is_htmx = request.headers.get("HX-Request") == "true"
                     raise PasswordResetRequiredError(is_htmx=is_htmx)
     
-    # Check if maintenance acknowledgment is required (exempt maintenance route)
-    # Only check for non-HTMX requests to avoid interrupting partial updates
-    if not current_path.startswith("/web/maintenance"):
-        is_htmx = request.headers.get("HX-Request") == "true"
-        if not is_htmx:
-            if hasattr(state, "user_repo") and state.user_repo:
-                if hasattr(state.user_repo, "needs_maintenance_ack"):
-                    if state.user_repo.needs_maintenance_ack(user.user_id):
-                        # Check if there are actually maintenance items
-                        if hasattr(state, "job_repo") and state.job_repo:
-                            if hasattr(state.job_repo, "get_maintenance_items"):
-                                items = state.job_repo.get_maintenance_items(
-                                    user.user_id,
-                                    notice_days=7,  # Will be replaced with setting
-                                    grace_days=7,
-                                )
-                                if items.expired or items.expiring or items.locked:
-                                    raise MaintenanceRequiredError(is_htmx=False)
+    # NOTE: Maintenance check is done only at login time (not on every request)
+    # This provides once-per-day enforcement without blocking normal navigation
     
     return user
 

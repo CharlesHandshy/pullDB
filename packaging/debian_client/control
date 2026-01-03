@@ -4,9 +4,10 @@ Section: admin
 Priority: optional
 Architecture: amd64
 Maintainer: PestRoutes Engineering <engineering@pestroutes.com>
-Depends: python3 (>= 3.12), python3-venv, bash, adduser
+Pre-Depends: software-properties-common
+Depends: bash, adduser
 Homepage: https://github.com/CharlesHandshy/pullDB
 Description: pullDB client CLI
  The standalone client CLI for pullDB.
  Installs to /opt/pulldb.client as the pulldb_service user.
- Shared user with the pulldb server package.
+ Python 3.12 is automatically installed from deadsnakes PPA during setup.

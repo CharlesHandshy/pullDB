@@ -40,9 +40,10 @@ mkdir -p "$DEBIAN_DIR"
 cp packaging/debian_client/control "$DEBIAN_DIR/control"
 sed -i "s/^Version:.*/Version: ${VERSION}/" "$DEBIAN_DIR/control"
 
+cp packaging/debian_client/preinst "$DEBIAN_DIR/preinst"
 cp packaging/debian_client/postinst "$DEBIAN_DIR/postinst"
 cp packaging/debian_client/postrm "$DEBIAN_DIR/postrm"
-chmod 0755 "$DEBIAN_DIR/postinst" "$DEBIAN_DIR/postrm"
+chmod 0755 "$DEBIAN_DIR/preinst" "$DEBIAN_DIR/postinst" "$DEBIAN_DIR/postrm"
 
 # Lay down application skeleton under /opt/pulldb.client
 APP_ROOT="$WORKDIR/opt/pulldb.client"
@@ -68,8 +69,15 @@ else
     echo "Copyright 2025 PestRoutes Engineering" > "$DOC_DIR/copyright"
 fi
 
+# Copy installer script (for systems needing Python 3.12 setup)
+cp packaging/install-pulldb-client.sh "$DOC_DIR/"
+
 dpkg-deb --build "$WORKDIR" "$PKGNAME"
 echo "Built $PKGNAME (Version=${VERSION})"
+
+# Also copy installer script alongside the deb for convenience
+cp packaging/install-pulldb-client.sh "install-pulldb-client.sh"
+echo "Installer script: install-pulldb-client.sh"
 
 # GPG sign the package (if GPG_KEY_ID is set)
 if [[ -n "${GPG_KEY_ID:-}" ]]; then

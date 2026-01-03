@@ -13,10 +13,11 @@
 ### Section A: Service Installation
 - [A.1 Overview](#a1-overview)
 - [A.2 Prerequisites](#a2-prerequisites)
-- [A.3 EC2 Instance Profile Setup](#a3-ec2-instance-profile-setup)
-- [A.4 Cross-Account S3 Access](#a4-cross-account-s3-access)
-- [A.5 Secrets Manager Configuration](#a5-secrets-manager-configuration)
-- [A.6 Service Verification](#a6-service-verification)
+- [A.3 Security Groups Configuration](#a3-security-groups-configuration)
+- [A.4 EC2 Instance Profile Setup](#a4-ec2-instance-profile-setup)
+- [A.5 Cross-Account S3 Access](#a5-cross-account-s3-access)
+- [A.6 Secrets Manager Configuration](#a6-secrets-manager-configuration)
+- [A.7 Service Verification](#a7-service-verification)
 
 ### Section B: Developer Test Environment
 - [B.1 Overview](#b1-overview)
@@ -106,7 +107,183 @@ The pullDB service uses EC2 instance profiles for AWS authentication (no stored 
 
 ---
 
-## A.3 EC2 Instance Profile Setup
+## A.3 Security Groups Configuration
+
+Security groups control network access between pullDB components. Configure these **before** installing the service.
+
+### Network Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         VPC (10.40.0.0/16)                              │
+│                                                                          │
+│  ┌────────────────────┐              ┌────────────────────────────┐    │
+│  │ Client Machines    │              │ pullDB Service Instance    │    │
+│  │ (Developer/User)   │──TCP:8000──▶│                            │    │
+│  │                    │              │ ┌──────────────────────┐  │    │
+│  │ SG: pulldb-client  │              │ │ pulldb-web  :8000    │  │    │
+│  └────────────────────┘              │ │ pulldb-api  :8080    │  │    │
+│                                       │ └──────────────────────┘  │    │
+│                                       │           │               │    │
+│                                       │           ▼               │    │
+│                                       │ ┌──────────────────────┐  │    │
+│                                       │ │ MySQL :3306          │  │    │
+│                                       │ │ (coordination DB)    │  │    │
+│                                       │ └──────────────────────┘  │    │
+│                                       │                            │    │
+│                                       │ SG: pulldb-service         │    │
+│                                       └────────────────────────────┘    │
+│                                                    │                     │
+└────────────────────────────────────────────────────┼─────────────────────┘
+                                                     │
+                                                     ▼
+                                          ┌──────────────────┐
+                                          │ S3 (via HTTPS)   │
+                                          │ Cross-Account    │
+                                          └──────────────────┘
+```
+
+### Step A.3.1: Create Service Security Group
+
+This security group is attached to the EC2 instance running pullDB services.
+
+```bash
+# Create the service security group
+aws ec2 create-security-group \
+    --group-name pulldb-service \
+    --description "pullDB service instance - API and Web UI" \
+    --vpc-id vpc-XXXXXXXXX \
+    --tag-specifications 'ResourceType=security-group,Tags=[{Key=Service,Value=pulldb}]'
+
+# Get the security group ID
+SG_SERVICE=$(aws ec2 describe-security-groups \
+    --filters "Name=group-name,Values=pulldb-service" \
+    --query "SecurityGroups[0].GroupId" --output text)
+
+echo "Service SG: $SG_SERVICE"
+```
+
+### Step A.3.2: Configure Service Inbound Rules
+
+```bash
+# Allow Web UI access (port 8000) from client CIDR
+aws ec2 authorize-security-group-ingress \
+    --group-id $SG_SERVICE \
+    --protocol tcp \
+    --port 8000 \
+    --cidr 10.40.0.0/16 \
+    --tag-specifications 'ResourceType=security-group-rule,Tags=[{Key=Name,Value=pulldb-web-ui}]'
+
+# Allow API access (port 8080) from client CIDR - if running API separately
+aws ec2 authorize-security-group-ingress \
+    --group-id $SG_SERVICE \
+    --protocol tcp \
+    --port 8080 \
+    --cidr 10.40.0.0/16 \
+    --tag-specifications 'ResourceType=security-group-rule,Tags=[{Key=Name,Value=pulldb-api}]'
+
+# Allow SSH access (port 22) from bastion/admin CIDR
+aws ec2 authorize-security-group-ingress \
+    --group-id $SG_SERVICE \
+    --protocol tcp \
+    --port 22 \
+    --cidr 10.40.1.0/24 \
+    --tag-specifications 'ResourceType=security-group-rule,Tags=[{Key=Name,Value=ssh-admin}]'
+```
+
+### Step A.3.3: Create Client Security Group
+
+This security group is attached to machines that need to access pullDB (developer workstations, CI/CD).
+
+```bash
+# Create client security group
+aws ec2 create-security-group \
+    --group-name pulldb-client \
+    --description "Machines that access pullDB service" \
+    --vpc-id vpc-XXXXXXXXX \
+    --tag-specifications 'ResourceType=security-group,Tags=[{Key=Service,Value=pulldb}]'
+
+SG_CLIENT=$(aws ec2 describe-security-groups \
+    --filters "Name=group-name,Values=pulldb-client" \
+    --query "SecurityGroups[0].GroupId" --output text)
+```
+
+### Step A.3.4: Configure Client Outbound Rules
+
+```bash
+# Allow outbound to pullDB Web UI (port 8000)
+aws ec2 authorize-security-group-egress \
+    --group-id $SG_CLIENT \
+    --protocol tcp \
+    --port 8000 \
+    --source-group $SG_SERVICE \
+    --tag-specifications 'ResourceType=security-group-rule,Tags=[{Key=Name,Value=pulldb-web-out}]'
+
+# Allow outbound to pullDB API (port 8080) - if using CLI directly
+aws ec2 authorize-security-group-egress \
+    --group-id $SG_CLIENT \
+    --protocol tcp \
+    --port 8080 \
+    --source-group $SG_SERVICE \
+    --tag-specifications 'ResourceType=security-group-rule,Tags=[{Key=Name,Value=pulldb-api-out}]'
+```
+
+### Security Group Rules Summary
+
+#### pulldb-service (Inbound)
+
+| Type | Protocol | Port | Source | Description |
+|------|----------|------|--------|-------------|
+| Custom TCP | TCP | 8000 | 10.40.0.0/16 | Web UI access |
+| Custom TCP | TCP | 8080 | 10.40.0.0/16 | REST API access |
+| SSH | TCP | 22 | 10.40.1.0/24 | Admin SSH access |
+| MySQL | TCP | 3306 | 127.0.0.1/32 | Localhost only (coordination DB) |
+
+#### pulldb-client (Outbound)
+
+| Type | Protocol | Port | Destination | Description |
+|------|----------|------|-------------|-------------|
+| Custom TCP | TCP | 8000 | sg-pulldb-service | Web UI access |
+| Custom TCP | TCP | 8080 | sg-pulldb-service | REST API (CLI) |
+| HTTPS | TCP | 443 | 0.0.0.0/0 | AWS APIs (S3, Secrets Manager) |
+
+### MySQL Access Notes
+
+The pullDB worker connects to **target MySQL hosts** to perform restores. These hosts need their own security groups allowing:
+
+```bash
+# On target MySQL hosts, allow inbound from pulldb-service
+aws ec2 authorize-security-group-ingress \
+    --group-id $SG_TARGET_MYSQL \
+    --protocol tcp \
+    --port 3306 \
+    --source-group $SG_SERVICE \
+    --tag-specifications 'ResourceType=security-group-rule,Tags=[{Key=Name,Value=pulldb-restore}]'
+```
+
+### VPC Endpoints (Recommended)
+
+For security and performance, create VPC endpoints for AWS services:
+
+```bash
+# S3 Gateway Endpoint (free, recommended)
+aws ec2 create-vpc-endpoint \
+    --vpc-id vpc-XXXXXXXXX \
+    --service-name com.amazonaws.us-east-1.s3 \
+    --route-table-ids rtb-XXXXXXXXX
+
+# Secrets Manager Interface Endpoint (reduces cross-AZ traffic)
+aws ec2 create-vpc-endpoint \
+    --vpc-id vpc-XXXXXXXXX \
+    --service-name com.amazonaws.us-east-1.secretsmanager \
+    --vpc-endpoint-type Interface \
+    --subnet-ids subnet-XXXXXXXXX \
+    --security-group-ids $SG_SERVICE
+```
+
+---
+
+## A.4 EC2 Instance Profile Setup
 
 All commands run in the **development account (345321506926)**.
 
@@ -265,7 +442,7 @@ aws ec2 associate-iam-instance-profile \
 
 ---
 
-## A.4 Cross-Account S3 Access
+## A.5 Cross-Account S3 Access
 
 ### Staging Account (333204494849)
 
@@ -323,7 +500,7 @@ aws iam create-role \
 
 ---
 
-## A.5 Secrets Manager Configuration
+## A.6 Secrets Manager Configuration
 
 Create MySQL credential secrets in the development account.
 
@@ -430,7 +607,7 @@ PULLDB_MYSQL_DATABASE=pulldb_service
 
 ---
 
-## A.6 Service Verification
+## A.7 Service Verification
 
 Run these commands **on the EC2 instance** after installing the pullDB package.
 

@@ -1,19 +1,16 @@
 #!/bin/bash
-# dev-rebuild.sh - Complete clean rebuild and deploy for development
+# dev-rebuild.sh - Complete clean rebuild and deploy for production
 # Usage: ./scripts/dev-rebuild.sh
 
 set -e
 
 cd /home/charleshandshy/Projects/pullDB
 
-echo "=== Cleaning build artifacts ==="
-rm -rf dist/ build/ *.egg-info
+echo "=== Running make clean ==="
+make clean
 
-echo "=== Building Python wheel ==="
-python3 -m build
-
-echo "=== Building Debian package ==="
-./scripts/build_deb.sh
+echo "=== Building all packages (wheel + server + client) ==="
+make all
 
 # Get the version from the built package
 DEB_FILE=$(ls -t pulldb_*.deb 2>/dev/null | head -1)
@@ -32,6 +29,9 @@ sudo dpkg -P pulldb 2>/dev/null || true
 
 echo "=== Installing new package ==="
 sudo DEBIAN_FRONTEND=noninteractive dpkg -i "$DEB_FILE"
+
+echo "=== Enabling services ==="
+sudo systemctl enable pulldb-api pulldb-web pulldb-worker@1 pulldb-worker@2 pulldb-worker@3
 
 echo "=== Starting services ==="
 sudo systemctl start pulldb-api

@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pullDB Help Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/help.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
+    
+    <!-- Animated Background -->
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    
+    <!-- Navigation -->
+    <nav class="nav-glass">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                </svg>
+                <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
+            </a>
+            
+            <div class="nav-links">
+                <a href="pages/getting-started.html" class="nav-link">Getting Started</a>
+                <a href="pages/cli/index.html" class="nav-link">CLI</a>
+                <a href="pages/api/index.html" class="nav-link">API</a>
+                <a href="pages/concepts/job-lifecycle.html" class="nav-link">Concepts</a>
+            </div>
+            
+            <div class="nav-actions">
+                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span class="search-hint">/</span>
+                </button>
+                <button class="theme-toggle" @click="toggleTheme()" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
+                    <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg x-show="theme === 'dark'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Search Modal -->
+    <div class="search-modal" x-show="searchOpen" x-transition:enter="modal-enter" x-transition:leave="modal-leave" @click.self="closeSearch()">
+        <div class="search-container" @click.stop>
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input 
+                    type="text" 
+                    class="search-input" 
+                    placeholder="Search documentation..."
+                    x-model="searchQuery"
+                    x-ref="searchInput"
+                    @input="performSearch()"
+                    @keydown.arrow-down.prevent="navigateResults(1)"
+                    @keydown.arrow-up.prevent="navigateResults(-1)"
+                    @keydown.enter.prevent="selectResult()"
+                >
+                <kbd class="search-kbd">ESC</kbd>
+            </div>
+            
+            <div class="search-results" x-show="searchQuery.length > 0">
+                <template x-if="searchResults.length === 0 && searchQuery.length > 0">
+                    <div class="search-empty">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <circle cx="11" cy="11" r="8"/>
+                            <path d="M21 21l-4.35-4.35"/>
+                        </svg>
+                        <p>No results found for "<span x-text="searchQuery"></span>"</p>
+                    </div>
+                </template>
+                <template x-for="(result, index) in searchResults" :key="result.id">
+                    <a 
+                        :href="result.url" 
+                        class="search-result"
+                        :class="{ 'active': selectedIndex === index }"
+                        @mouseenter="selectedIndex = index"
+                    >
+                        <div class="result-icon" :class="'icon-' + result.type">
+                            <template x-if="result.type === 'cli'">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="4 17 10 11 4 5"/>
+                                    <line x1="12" y1="19" x2="20" y2="19"/>
+                                </svg>
+                            </template>
+                            <template x-if="result.type === 'api'">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                </svg>
+                            </template>
+                            <template x-if="result.type === 'concept'">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                                </svg>
+                            </template>
+                            <template x-if="result.type === 'guide'">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                                </svg>
+                            </template>
+                        </div>
+                        <div class="result-content">
+                            <div class="result-title" x-html="result.title"></div>
+                            <div class="result-preview" x-html="result.preview"></div>
+                        </div>
+                        <div class="result-category" x-text="result.category"></div>
+                    </a>
+                </template>
+            </div>
+            
+            <div class="search-footer">
+                <div class="search-hints">
+                    <span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span>
+                    <span><kbd>↵</kbd> Select</span>
+                    <span><kbd>ESC</kbd> Close</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <div class="hero-badge">
+                <span class="badge-dot"></span>
+                <span>v0.2.0</span>
+            </div>
+            <h1 class="hero-title">
+                <span class="title-gradient">pullDB</span> Help Center
+            </h1>
+            <p class="hero-subtitle">
+                Everything you need to master database restores. 
+                Interactive guides, live examples, and instant answers.
+            </p>
+            
+            <div class="hero-search" @click="openSearch()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <span>Search documentation...</span>
+                <kbd>/</kbd>
+            </div>
+            
+            <div class="hero-stats">
+                <div class="stat">
+                    <span class="stat-value">20+</span>
+                    <span class="stat-label">CLI Commands</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value">15+</span>
+                    <span class="stat-label">API Endpoints</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value">50+</span>
+                    <span class="stat-label">Code Examples</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Floating Terminal Preview -->
+        <div class="hero-terminal">
+            <div class="terminal-window">
+                <div class="terminal-header">
+                    <div class="terminal-buttons">
+                        <span class="btn-close"></span>
+                        <span class="btn-minimize"></span>
+                        <span class="btn-maximize"></span>
+                    </div>
+                    <span class="terminal-title">Terminal</span>
+                </div>
+                <div class="terminal-body" id="hero-terminal-body">
+                    <!-- Animated by terminal.js -->
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Categories Grid -->
+    <section class="categories">
+        <div class="container">
+            <h2 class="section-title">Explore Documentation</h2>
+            <p class="section-subtitle">Choose a category to dive in</p>
+            
+            <div class="category-grid">
+                <!-- Getting Started -->
+                <a href="pages/getting-started.html" class="category-card" data-category="start">
+                    <div class="card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                        </svg>
+                    </div>
+                    <h3 class="card-title">Getting Started</h3>
+                    <p class="card-desc">Install pullDB and run your first restore in under 5 minutes</p>
+                    <div class="card-meta">
+                        <span class="meta-time">5 min read</span>
+                        <span class="meta-arrow">→</span>
+                    </div>
+                </a>
+                
+                <!-- CLI Reference -->
+                <a href="pages/cli/index.html" class="category-card" data-category="cli">
+                    <div class="card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="4 17 10 11 4 5"/>
+                            <line x1="12" y1="19" x2="20" y2="19"/>
+                        </svg>
+                    </div>
+                    <h3 class="card-title">CLI Reference</h3>
+                    <p class="card-desc">Complete command reference with interactive examples</p>
+                    <div class="card-meta">
+                        <span class="meta-badge">20+ commands</span>
+                        <span class="meta-arrow">→</span>
+                    </div>
+                </a>
+                
+                <!-- API Documentation -->
+                <a href="pages/api/index.html" class="category-card" data-category="api">
+                    <div class="card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                        </svg>
+                    </div>
+                    <h3 class="card-title">API Reference</h3>
+                    <p class="card-desc">REST API endpoints, authentication, and code samples</p>
+                    <div class="card-meta">
+                        <span class="meta-badge">15+ endpoints</span>
+                        <span class="meta-arrow">→</span>
+                    </div>
+                </a>
+                
+                <!-- Web UI Guide - Coming Soon -->
+                <div class="category-card" data-category="web" style="opacity: 0.6; cursor: default;">
+                    <div class="card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <line x1="3" y1="9" x2="21" y2="9"/>
+                            <line x1="9" y1="21" x2="9" y2="9"/>
+                        </svg>
+                    </div>
+                    <h3 class="card-title">Web Interface</h3>
+                    <p class="card-desc">Navigate the dashboard, submit jobs, and monitor progress</p>
+                    <div class="card-meta">
+                        <span class="meta-badge">Coming Soon</span>
+                    </div>
+                </div>
+                
+                <!-- Core Concepts -->
+                <a href="pages/concepts/job-lifecycle.html" class="category-card" data-category="concept">
+                    <div class="card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                    </div>
+                    <h3 class="card-title">Core Concepts</h3>
+                    <p class="card-desc">Job lifecycle, atomic rename, authentication & roles</p>
+                    <div class="card-meta">
+                        <span class="meta-badge">Interactive</span>
+                        <span class="meta-arrow">→</span>
+                    </div>
+                </a>
+                
+                <!-- Troubleshooting -->
+                <a href="pages/troubleshooting/index.html" class="category-card" data-category="trouble">
+                    <div class="card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                        </svg>
+                    </div>
+                    <h3 class="card-title">Troubleshooting</h3>
+                    <p class="card-desc">Common issues, error messages, and solutions</p>
+                    <div class="card-meta">
+                        <span class="meta-badge">FAQ</span>
+                        <span class="meta-arrow">→</span>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Quick Actions -->
+    <section class="quick-actions">
+        <div class="container">
+            <h2 class="section-title">Popular Topics</h2>
+            <div class="action-pills">
+                <a href="pages/cli/index.html#restore" class="pill">
+                    <span class="pill-icon">📦</span> Submit a Restore
+                </a>
+                <a href="pages/concepts/job-lifecycle.html#states" class="pill">
+                    <span class="pill-icon">🔄</span> Job States
+                </a>
+                <a href="pages/api/index.html#authentication" class="pill">
+                    <span class="pill-icon">🔐</span> API Auth
+                </a>
+                <a href="pages/troubleshooting/index.html#permission-denied" class="pill">
+                    <span class="pill-icon">🚫</span> Permission Denied
+                </a>
+                <a href="pages/cli/index.html#status" class="pill">
+                    <span class="pill-icon">📊</span> Check Status
+                </a>
+                <a href="pages/concepts/job-lifecycle.html#atomic-rename" class="pill">
+                    <span class="pill-icon">⚡</span> Atomic Rename
+                </a>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Interactive Demo Section -->
+    <section class="demo-section">
+        <div class="container">
+            <div class="demo-header">
+                <h2 class="section-title">Try It Now</h2>
+                <p class="section-subtitle">See pullDB in action with these interactive demos</p>
+            </div>
+            
+            <div class="demo-tabs" x-data="{ activeTab: 'restore' }">
+                <div class="tab-buttons">
+                    <button class="tab-btn" :class="{ 'active': activeTab === 'restore' }" @click="activeTab = 'restore'">
+                        Submit Restore
+                    </button>
+                    <button class="tab-btn" :class="{ 'active': activeTab === 'status' }" @click="activeTab = 'status'">
+                        Check Status
+                    </button>
+                    <button class="tab-btn" :class="{ 'active': activeTab === 'cancel' }" @click="activeTab = 'cancel'">
+                        Cancel Job
+                    </button>
+                </div>
+                
+                <div class="tab-content">
+                    <!-- Restore Tab -->
+                    <div class="tab-panel" x-show="activeTab === 'restore'" x-transition>
+                        <div class="demo-grid">
+                            <div class="demo-terminal">
+                                <div class="terminal-window">
+                                    <div class="terminal-header">
+                                        <div class="terminal-buttons">
+                                            <span class="btn-close"></span>
+                                            <span class="btn-minimize"></span>
+                                            <span class="btn-maximize"></span>
+                                        </div>
+                                        <span class="terminal-title">pulldb restore</span>
+                                        <button class="terminal-copy" onclick="copyTerminal(this)" title="Copy command">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <div class="terminal-body">
+                                        <div class="terminal-line"><span class="comment"># Submit a restore job for customer "acme"</span></div>
+                                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme</span></div>
+                                        <div class="terminal-line output">Job queued successfully!</div>
+                                        <div class="terminal-line output">  customer:     acme</div>
+                                        <div class="terminal-line output">  target:       <span class="highlight">chrlesacme</span></div>
+                                        <div class="terminal-line output">  staging_name: chrlesacme7f3a2b1c</div>
+                                        <div class="terminal-line output">  job_id:       <span class="highlight">7f3a2b1c-85a1-4da2-...</span></div>
+                                        <div class="terminal-line output">  status:       queued</div>
+                                        <div class="terminal-line output">  user:         charles (chrles)</div>
+                                        <div class="terminal-line output"></div>
+                                        <div class="terminal-line output">Use 'pulldb status' to monitor progress.</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="demo-explanation">
+                                <h4>What's happening?</h4>
+                                <ol>
+                                    <li>pullDB searches S3 for the latest backup matching "acme"</li>
+                                    <li>A job is created with your user code prefix (chrles)</li>
+                                    <li>The job enters the queue for processing</li>
+                                    <li>Worker downloads, extracts, and restores the backup</li>
+                                </ol>
+                                <a href="pages/cli/index.html#restore" class="demo-link">Learn more about restore options →</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Status Tab -->
+                    <div class="tab-panel" x-show="activeTab === 'status'" x-transition>
+                        <div class="demo-grid">
+                            <div class="demo-terminal">
+                                <div class="terminal-window">
+                                    <div class="terminal-header">
+                                        <div class="terminal-buttons">
+                                            <span class="btn-close"></span>
+                                            <span class="btn-minimize"></span>
+                                            <span class="btn-maximize"></span>
+                                        </div>
+                                        <span class="terminal-title">pulldb status</span>
+                                        <button class="terminal-copy" onclick="copyTerminal(this)" title="Copy command">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <div class="terminal-body">
+                                        <div class="terminal-line"><span class="comment"># Check status of your last job</span></div>
+                                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb status</span></div>
+                                        <div class="terminal-line output">Your last submitted job:</div>
+                                        <div class="terminal-line output"></div>
+                                        <div class="terminal-line output">  STATUS   : <span class="status-badge running">running</span></div>
+                                        <div class="terminal-line output">  OPERATION: Restore progress</div>
+                                        <div class="terminal-line output">  JOB_ID   : <span class="highlight">7f3a2b1c</span></div>
+                                        <div class="terminal-line output">  CUSTOMER : acme</div>
+                                        <div class="terminal-line output">  TARGET   : chrlesacme</div>
+                                        <div class="terminal-line output">  DB       : localhost</div>
+                                        <div class="terminal-line output">  USER     : chrles</div>
+                                        <div class="terminal-line output">  SUBMITTED: 2026-01-03T10:42:15</div>
+                                        <div class="terminal-line output">  STARTED  : 2026-01-03T10:42:18</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="demo-explanation">
+                                <h4>Status Information</h4>
+                                <ul>
+                                    <li><strong>STATUS:</strong> Current job state (queued, running, complete, failed, canceled)</li>
+                                    <li><strong>OPERATION:</strong> What the job is currently doing</li>
+                                    <li><strong>Use --rt:</strong> Stream events in realtime with <code>pulldb status --rt</code></li>
+                                </ul>
+                                <a href="pages/cli/index.html#status" class="demo-link">View all status options →</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Cancel Tab -->
+                    <div class="tab-panel" x-show="activeTab === 'cancel'" x-transition>
+                        <div class="demo-grid">
+                            <div class="demo-terminal">
+                                <div class="terminal-window">
+                                    <div class="terminal-header">
+                                        <div class="terminal-buttons">
+                                            <span class="btn-close"></span>
+                                            <span class="btn-minimize"></span>
+                                            <span class="btn-maximize"></span>
+                                        </div>
+                                        <span class="terminal-title">pulldb cancel</span>
+                                        <button class="terminal-copy" onclick="copyTerminal(this)" title="Copy command">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <div class="terminal-body">
+                                        <div class="terminal-line"><span class="comment"># Cancel a running job</span></div>
+                                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb cancel 7f3a2b1c</span></div>
+                                        <div class="terminal-line output">Requesting cancellation for job: 7f3a2b1c...</div>
+                                        <div class="terminal-line output">Are you sure you want to cancel this job? [y/N]: y</div>
+                                        <div class="terminal-line output"><span class="success">✓</span> Job 7f3a2b1c... canceled successfully.</div>
+                                        <div class="terminal-line output">  Cancellation complete</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="demo-explanation">
+                                <h4>Cancellation Notes</h4>
+                                <ul>
+                                    <li>Cancellation is graceful—no data corruption</li>
+                                    <li>Staging databases are automatically cleaned up</li>
+                                    <li>Downloaded files are removed from disk</li>
+                                </ul>
+                                <a href="pages/concepts/job-lifecycle.html#canceled" class="demo-link">Learn about job cleanup →</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <span class="footer-logo">pullDB</span>
+                    <p class="footer-tagline">Fast, reliable database restores</p>
+                </div>
+                <div class="footer-links">
+                    <div class="footer-col">
+                        <h4>Documentation</h4>
+                        <a href="pages/getting-started.html">Getting Started</a>
+                        <a href="pages/cli/index.html">CLI Reference</a>
+                        <a href="pages/api/index.html">API Docs</a>
+                    </div>
+                    <div class="footer-col">
+                        <h4>Resources</h4>
+                        <a href="pages/troubleshooting/index.html">Troubleshooting</a>
+                        <a href="pages/concepts/job-lifecycle.html">Concepts</a>
+                        <a href="/api/docs" target="_blank">OpenAPI Spec</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2026 pullDB. Built with care.</p>
+                <p class="footer-version">Help Center v1.0.0</p>
+            </div>
+        </div>
+    </footer>
+    
+    <script src="js/help.js"></script>
+    <script src="js/terminal.js"></script>
+    <script src="js/search.js"></script>
+</body>
+</html>

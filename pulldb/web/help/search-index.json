@@ -1,0 +1,142 @@
+{
+  "version": "1.0",
+  "generated": "build_help_search_index.py",
+  "pages": [
+    {
+      "id": "index",
+      "url": "index.html",
+      "title": "pullDB Help Center",
+      "keywords": [
+        "Try It Now",
+        "pulldb status --rt",
+        "Explore Documentation",
+        "Popular Topics"
+      ],
+      "content": "ESC No results found for \" \" ↑ ↓ Navigate ↵ Select ESC Close v0.2.0 Everything you need to master database restores. Interactive guides, live examples, and instant answers. Search documentation... / 20+ CLI Commands 15+ API Endpoints 50+ Code Examples Terminal Choose a category to dive in Getting Started Install pullDB and run your first restore in under 5 minutes 5 min read → CLI Reference Complete command reference with interactive examples 20+ commands → API Reference REST API endpoints, authentication, and code samples 15+ endpoints → Web Interface Navigate the dashboard, submit jobs, and monitor progress Coming Soon Core Concepts Job lifecycle, atomic rename, authentication & roles Interactive → Troubleshooting Common issues, error messages, and solutions FAQ → 📦 Submit a Restore 🔄 Job States 🔐 API Auth 🚫 Permission Denied 📊 Check Status ⚡ Atomic Rename See pullDB in action with these interactive demos Submit Restore Check Status Cancel Job pulldb restore # Submit a restore job fo",
+      "preview": "ESC No results found for \" \" ↑ ↓ Navigate ↵ Select ESC Close v0.2.0 Everything you need to master database restores. Interactive guides, live examples, and instant answers. Search documentation... / 2..."
+    },
+    {
+      "id": "pages-api-index",
+      "url": "pages/api/index.html",
+      "title": "API Reference",
+      "keywords": [
+        "409",
+        "status",
+        "DATABASE_EXISTS",
+        "USER_DISABLED",
+        "500",
+        "Error Handling",
+        "/jobs",
+        "{\n  \"job_id\": \"7f3a2b1c-85a1-4da2-9c8e-1234567890ab\",\n  \"status\": \"queued\",\n  \"target_db\": \"chrlesacme\",\n  \"created_at\": \"2026-01-02T10:42:15Z\"\n}",
+        "{\n  \"user\": \"charles\",\n  \"customer\": \"acme\",\n  \"dbhost\": \"localhost\",\n  \"date\": \"2026-01-01\",\n  \"overwrite\": false\n}",
+        "201",
+        "Search Backups",
+        "{\n  \"events\": [\n    {\n      \"timestamp\": \"2026-01-02T10:42:15Z\",\n      \"type\": \"status_change\",\n      \"message\": \"Job queued\"\n    },\n    {\n      \"timestamp\": \"2026-01-02T10:42:18Z\",\n      \"type\": \"status_change\",\n      \"message\": \"Job started by worker-01\"\n    },\n    {\n      \"timestamp\": \"2026-01-02T10:42:18Z\",\n      \"type\": \"phase_change\",\n      \"message\": \"Phase: downloading\"\n    }\n  ]\n}",
+        "{\n  \"customer\": \"acme\",\n  \"backups\": [\n    {\n      \"date\": \"2026-01-02\",\n      \"size_bytes\": 2469606195,\n      \"size_human\": \"2.3 GB\",\n      \"path\": \"s3://backups/daily/acme/\"\n    },\n    {\n      \"date\": \"2026-01-01\",\n      \"size_bytes\": 2469606195,\n      \"size_human\": \"2.3 GB\",\n      \"path\": \"s3://backups/daily/acme/\"\n    }\n  ]\n}",
+        "{\n  \"job_id\": \"7f3a2b1c-85a1-4da2-9c8e-1234567890ab\",\n  \"user\": \"charles\",\n  \"customer\": \"acme\",\n  \"status\": \"running\",\n  \"phase\": \"restoring\",\n  \"target_db\": \"chrlesacme\",\n  \"dbhost\": \"localhost\",\n  \"created_at\": \"2026-01-02T10:42:15Z\",\n  \"started_at\": \"2026-01-02T10:42:18Z\"\n}",
+        "X-API-Key",
+        "limit",
+        "404",
+        "JOB_NOT_FOUND",
+        "{\n  \"error\": {\n    \"code\": \"BACKUP_NOT_FOUND\",\n    \"message\": \"No backup found for customer 'acme' on date '2026-01-01'\",\n    \"details\": {\n      \"customer\": \"acme\",\n      \"date\": \"2026-01-01\"\n    }\n  }\n}",
+        "customer"
+      ],
+      "content": "ESC Help API Reference pullDB provides a RESTful API for programmatic access. The API uses JSON for request and response bodies. Most users will use the CLI, but the API is available for integration into other tools. https://pulldb.yourcompany.com/api/v1 Replace with your actual pullDB server URL. API requests require authentication via API key or session token. API Key Authentication Pass your API key in the header: curl $ curl -H \"X-API-Key: your-api-key\" \\ https://pulldb.example.com/api/v1/jobs Create a new restore job. POST Request Body Field Type Required Description string Yes Username for job ownership string Yes* Customer ID boolean Yes* Restore QA template instead string No Target database host (default: localhost) string No Backup date (YYYY-MM-DD), defaults to latest boolean No Overwrite existing database (default: false) * Either or required Response Example curl $ curl -X POST \\ -H \"X-API-Key: your-key\" \\ -H \"Content-Type: application/json\" \\ -d '{\"user\":\"charles\",\"custome",
+      "preview": "ESC Help API Reference pullDB provides a RESTful API for programmatic access. The API uses JSON for request and response bodies. Most users will use the CLI, but the API is available for integration i..."
+    },
+    {
+      "id": "pages-cli-index",
+      "url": "pages/cli/index.html",
+      "title": "CLI Reference",
+      "keywords": [
+        "pulldb-admin jobs <action>",
+        "pulldb search",
+        "pulldb cancel",
+        "acme",
+        "<usercode><customer><suffix>",
+        "pulldb-admin cleanup [options]",
+        "pulldb-admin",
+        "Admin Commands",
+        "pulldb cancel <job_id>",
+        "chrlesacmeabcdefgh",
+        "pulldb-admin hosts <action>",
+        "pulldb list",
+        "pulldb profile",
+        "pulldb events",
+        "overwrite",
+        "pulldb profile <job_id>",
+        "pulldb status [job_id] [options]",
+        "pulldb",
+        "pulldb history [options]",
+        "-f/--follow"
+      ],
+      "content": "ESC Help CLI Reference Complete reference for pullDB command-line tools. The command is for end users to submit and monitor restore jobs. The command is for system administrators. Quick Reference # Submit a restore $ pulldb restore <customer> # Check your last job status $ pulldb status # Stream events in real-time $ pulldb status --rt # Cancel a job $ pulldb cancel <job_id> Submit a restore job to download a backup from S3 and restore it to your development database. User Command Parameters Parameter Required Default Description <customer> Yes* - Customer ID (positional, lowercase letters only) qatemplate Yes* - Restore QA template instead of customer dbhost= No localhost Target database host suffix= No - Suffix for target database (1-3 lowercase letters) date= No Latest Specific backup date (YYYY-MM-DD) s3env= No prod S3 environment (staging|prod|both) overwrite No false Overwrite existing target database * Either or is required, but not both. Username is auto-detected from your SSH ",
+      "preview": "ESC Help CLI Reference Complete reference for pullDB command-line tools. The command is for end users to submit and monitor restore jobs. The command is for system administrators. Quick Reference # Su..."
+    },
+    {
+      "id": "pages-concepts-job-lifecycle",
+      "url": "pages/concepts/job-lifecycle.html",
+      "title": "Job Lifecycle",
+      "keywords": [
+        "Related Pages",
+        "Failure Modes",
+        "Job States",
+        "RUNNING",
+        "pulldb cancel",
+        "Overview",
+        "State Transitions",
+        "Processing Phases",
+        "overwrite",
+        "myloader",
+        "pulldb list <customer>"
+      ],
+      "content": "ESC Help Concepts Job Lifecycle Understanding how restore jobs move through the system from submission to completion. This knowledge helps you monitor progress, diagnose issues, and understand what's happening behind the scenes. When you submit a restore job, it goes through a series of states and phases . States represent the overall job status (queued, running, complete), while phases describe what the worker is doing during the running state. stateDiagram-v2 [*] --> QUEUED: Submit job QUEUED --> RUNNING: Worker picks up RUNNING --> COMPLETE: Success RUNNING --> FAILED: Error QUEUED --> CANCELED: User cancels RUNNING --> CANCELED: User cancels COMPLETE --> [*] FAILED --> [*] CANCELED --> [*] QUEUED ⏳ Job is waiting for a worker to pick it up. Jobs are processed in FIFO order. Duration: Typically seconds RUNNING ⚙️ A worker is actively processing this job. See phases for what happens during this state. Duration: 2-15 minutes typical COMPLETE ✅ Job finished successfully. Your database ",
+      "preview": "ESC Help Concepts Job Lifecycle Understanding how restore jobs move through the system from submission to completion. This knowledge helps you monitor progress, diagnose issues, and understand what's..."
+    },
+    {
+      "id": "pages-getting-started",
+      "url": "pages/getting-started.html",
+      "title": "Getting Started",
+      "keywords": [
+        "Submit Your First Restore",
+        "Connect to Your Database",
+        "date=YYYY-MM-DD",
+        "myloader",
+        "7f3a2b1c",
+        "Watch It Work",
+        "List Available Backups",
+        "Prerequisites",
+        "What's Next?",
+        "pulldb"
+      ],
+      "content": "ESC Help Getting Started Get from zero to your first restored database in under 5 minutes. This guide covers everything you need to start using pullDB. ~5 minutes 1 Before you start, make sure you have: Access to a machine with installed A valid username registered in the system Knowledge of at least one customer ID with available backups Not sure about your username? Contact your team admin or check with whoever manages your pullDB installation. 2 List backups for a customer to see what's available: List Backups $ pulldb list acme Backups for 'acme': DATE TIME (UTC) SIZE ENV FILENAME ---------- ---------- ------ ---- ---------------------------------- 2026-01-02 08:37:36 2.3 GB prod daily_mydumper_acme_2026-01-02... 2026-01-01 08:42:29 2.3 GB prod daily_mydumper_acme_2026-01-01... 2025-12-31 08:40:46 2.2 GB prod daily_mydumper_acme_2025-12-31... 3 backup(s) found. Restore with: pulldb restore acme Tip: The highlighted date is the most recent backup. Use to restore a specific version. ",
+      "preview": "ESC Help Getting Started Get from zero to your first restored database in under 5 minutes. This guide covers everything you need to start using pullDB. ~5 minutes 1 Before you start, make sure you hav..."
+    },
+    {
+      "id": "pages-troubleshooting-index",
+      "url": "pages/troubleshooting/index.html",
+      "title": "Troubleshooting",
+      "keywords": [
+        "Still Need Help?",
+        "Quick Diagnostic",
+        "Restore Issues",
+        "restoring",
+        "Download Issues",
+        "pulldb events <job_id>",
+        "Disk Space Issues",
+        "Slow Restore",
+        "Connection Issues",
+        "post_sql",
+        "Job Stuck",
+        "pulldb events",
+        "overwrite",
+        "Permission Issues",
+        "finalizing",
+        "date=",
+        "downloading"
+      ],
+      "content": "ESC Help Troubleshooting Common issues and their solutions. Can't find what you're looking for? Use the search or check the CLI reference . Start here to quickly identify your issue: 📥 Download Failed S3, network, or permission errors 🔄 Restore Failed myloader, MySQL, or data errors ⏳ Job Stuck Not progressing or queued too long 🔐 Permission Denied Access or authentication issues ❌ \"Access Denied\" when downloading from S3 Symptoms: Job fails in phase with S3 access error. Causes: AWS credentials expired or missing IAM role doesn't have S3 read permissions Wrong S3 bucket or path configured Solutions: Check your AWS credentials are current: $ aws sts get-caller-identity Verify S3 access: $ aws s3 ls s3://your-bucket/backups/ Contact your admin to verify IAM permissions ❌ \"Backup not found\" error Symptoms: Job fails immediately with \"backup not found\" message. Causes: Customer ID misspelled Backup doesn't exist for requested date Backup was deleted or moved Solutions: Verify available ba",
+      "preview": "ESC Help Troubleshooting Common issues and their solutions. Can't find what you're looking for? Use the search or check the CLI reference . Start here to quickly identify your issue: 📥 Download Failed..."
+    }
+  ]
+}

@@ -4,6 +4,43 @@
 
 The pullDB client provides command-line access to the pullDB restore service. It communicates with the pullDB API server to submit restore jobs and check their status.
 
+## System Requirements
+
+| Component | Requirement |
+|-----------|-------------|
+| **Operating System** | Ubuntu 22.04+ (recommended) or Ubuntu 20.04 (legacy) |
+| **Python** | 3.12+ |
+| **Network** | Outbound access to pullDB API server (port 8000) |
+
+### Ubuntu 20.04 (Legacy Support)
+
+Ubuntu 20.04 requires building Python 3.12 from source before installing the client:
+
+```bash
+# Install build dependencies
+sudo apt-get update
+sudo apt-get install -y build-essential zlib1g-dev libncurses5-dev \
+    libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev \
+    libsqlite3-dev wget libbz2-dev
+
+# Download and build Python 3.12 (~10 minutes)
+cd /tmp
+wget https://www.python.org/ftp/python/3.12.4/Python-3.12.4.tgz
+tar -xf Python-3.12.4.tgz
+cd Python-3.12.4
+./configure --enable-optimizations --prefix=/usr/local
+make -j$(nproc)
+sudo make altinstall
+
+# Verify
+python3.12 --version
+
+# Then install pulldb-client
+sudo dpkg -i pulldb-client_*.deb
+```
+
+> **Note**: System Python 3.8 remains unchanged. Consider upgrading to Ubuntu 22.04 LTS.
+
 ## Related Packages
 
 | Package | Purpose | Install Path |

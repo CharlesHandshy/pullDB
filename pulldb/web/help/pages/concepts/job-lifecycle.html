@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Lifecycle - pullDB Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../css/help.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default',
+            flowchart: {
+                curve: 'basis',
+                padding: 20
+            }
+        });
+        // Re-render on theme change
+        window.updateMermaidTheme = (isDark) => {
+            mermaid.initialize({ 
+                theme: isDark ? 'dark' : 'default',
+                flowchart: { curve: 'basis', padding: 20 }
+            });
+            document.querySelectorAll('.mermaid').forEach(el => {
+                const code = el.getAttribute('data-mermaid');
+                if (code) {
+                    el.innerHTML = code;
+                    el.removeAttribute('data-processed');
+                }
+            });
+            mermaid.init();
+        };
+    </script>
+</head>
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
+    
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    
+    <!-- Navigation -->
+    <nav class="nav-glass">
+        <div class="nav-container">
+            <a href="../../index.html" class="nav-logo">
+                <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                </svg>
+                <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
+            </a>
+            
+            <div class="nav-links">
+                <a href="../getting-started.html" class="nav-link">Getting Started</a>
+                <a href="../cli/index.html" class="nav-link">CLI</a>
+                <a href="../api/index.html" class="nav-link">API</a>
+                <a href="job-lifecycle.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">Concepts</a>
+            </div>
+            
+            <div class="nav-actions">
+                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span class="search-hint">/</span>
+                </button>
+                <button class="theme-toggle" @click="toggleTheme(); window.updateMermaidTheme && window.updateMermaidTheme(theme === 'dark')">
+                    <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg x-show="theme === 'dark'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Search Modal -->
+    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+        <div class="search-container" @click.stop>
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <kbd class="search-kbd">ESC</kbd>
+            </div>
+            <div class="search-results" x-show="searchQuery.length > 0">
+                <template x-for="(result, index) in searchResults" :key="result.id">
+                    <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
+                        <div class="result-content">
+                            <div class="result-title" x-html="result.title"></div>
+                            <div class="result-preview" x-html="result.preview"></div>
+                        </div>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Page Layout with Sidebar -->
+    <div class="page-layout">
+        <aside class="page-sidebar">
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Concepts</div>
+                    <a href="job-lifecycle.html" class="sidebar-link active">Job Lifecycle</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">On This Page</div>
+                    <a href="#overview" class="sidebar-link">Overview</a>
+                    <a href="#states" class="sidebar-link">Job States</a>
+                    <a href="#phases" class="sidebar-link">Processing Phases</a>
+                    <a href="#transitions" class="sidebar-link">State Transitions</a>
+                    <a href="#failure-modes" class="sidebar-link">Failure Modes</a>
+                </div>
+            </nav>
+        </aside>
+        
+        <main class="page-content">
+            <div class="breadcrumbs">
+                <a href="../../index.html">Help</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <a href="job-lifecycle.html">Concepts</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span>Job Lifecycle</span>
+            </div>
+            
+            <h1 class="page-title">Job Lifecycle</h1>
+            <p class="page-description">
+                Understanding how restore jobs move through the system from submission to completion.
+                This knowledge helps you monitor progress, diagnose issues, and understand what's happening behind the scenes.
+            </p>
+            
+            <!-- Overview Section -->
+            <section class="content-section" id="overview">
+                <h2>Overview</h2>
+                <p>
+                    When you submit a restore job, it goes through a series of <strong>states</strong> and 
+                    <strong>phases</strong>. States represent the overall job status (queued, running, complete), 
+                    while phases describe what the worker is doing during the running state.
+                </p>
+                
+                <div class="diagram-container">
+                    <div class="mermaid" data-mermaid="stateDiagram-v2
+    [*] --> QUEUED: Submit job
+    QUEUED --> RUNNING: Worker picks up
+    RUNNING --> COMPLETE: Success
+    RUNNING --> FAILED: Error
+    QUEUED --> CANCELED: User cancels
+    RUNNING --> CANCELED: User cancels
+    COMPLETE --> [*]
+    FAILED --> [*]
+    CANCELED --> [*]">
+stateDiagram-v2
+    [*] --> QUEUED: Submit job
+    QUEUED --> RUNNING: Worker picks up
+    RUNNING --> COMPLETE: Success
+    RUNNING --> FAILED: Error
+    QUEUED --> CANCELED: User cancels
+    RUNNING --> CANCELED: User cancels
+    COMPLETE --> [*]
+    FAILED --> [*]
+    CANCELED --> [*]
+                    </div>
+                </div>
+            </section>
+            
+            <!-- States Section -->
+            <section class="content-section" id="states">
+                <h2>Job States</h2>
+                
+                <div class="state-cards">
+                    <div class="state-card queued">
+                        <div class="state-header">
+                            <span class="state-badge queued">QUEUED</span>
+                            <span class="state-emoji">⏳</span>
+                        </div>
+                        <p>Job is waiting for a worker to pick it up. Jobs are processed in FIFO order.</p>
+                        <div class="state-meta">
+                            <span><strong>Duration:</strong> Typically seconds</span>
+                        </div>
+                    </div>
+                    
+                    <div class="state-card running">
+                        <div class="state-header">
+                            <span class="state-badge running">RUNNING</span>
+                            <span class="state-emoji">⚙️</span>
+                        </div>
+                        <p>A worker is actively processing this job. See <a href="#phases">phases</a> for what happens during this state.</p>
+                        <div class="state-meta">
+                            <span><strong>Duration:</strong> 2-15 minutes typical</span>
+                        </div>
+                    </div>
+                    
+                    <div class="state-card complete">
+                        <div class="state-header">
+                            <span class="state-badge complete">COMPLETE</span>
+                            <span class="state-emoji">✅</span>
+                        </div>
+                        <p>Job finished successfully. Your database is ready to use.</p>
+                        <div class="state-meta">
+                            <span><strong>Next step:</strong> Connect to your database</span>
+                        </div>
+                    </div>
+                    
+                    <div class="state-card failed">
+                        <div class="state-header">
+                            <span class="state-badge failed">FAILED</span>
+                            <span class="state-emoji">❌</span>
+                        </div>
+                        <p>Something went wrong. Check events for details and see <a href="#failure-modes">failure modes</a>.</p>
+                        <div class="state-meta">
+                            <span><strong>Next step:</strong> Review error, possibly retry</span>
+                        </div>
+                    </div>
+                    
+                    <div class="state-card canceled">
+                        <div class="state-header">
+                            <span class="state-badge canceled">CANCELED</span>
+                            <span class="state-emoji">🚫</span>
+                        </div>
+                        <p>User canceled the job. Resources have been cleaned up.</p>
+                        <div class="state-meta">
+                            <span><strong>Next step:</strong> Submit a new job if needed</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Phases Section -->
+            <section class="content-section" id="phases">
+                <h2>Processing Phases</h2>
+                <p>
+                    While a job is in the <code>RUNNING</code> state, the worker progresses through several phases.
+                    Each phase performs a specific task in the restore pipeline.
+                </p>
+                
+                <div class="diagram-container">
+                    <div class="mermaid" data-mermaid="flowchart LR
+    subgraph RUNNING
+    A[downloading] --> B[extracting]
+    B --> C[restoring]
+    C --> D[post_sql]
+    D --> E[finalizing]
+    end
+    E --> F((COMPLETE))">
+flowchart LR
+    subgraph RUNNING
+    A[downloading] --> B[extracting]
+    B --> C[restoring]
+    C --> D[post_sql]
+    D --> E[finalizing]
+    end
+    E --> F((COMPLETE))
+                    </div>
+                </div>
+                
+                <div class="phase-list">
+                    <div class="phase-item">
+                        <div class="phase-icon">📥</div>
+                        <div class="phase-content">
+                            <h3>downloading</h3>
+                            <p>Downloads the compressed backup from S3 to local storage. Progress is tracked and reported.</p>
+                            <div class="phase-details">
+                                <span><strong>Typical time:</strong> 30s - 5min</span>
+                                <span><strong>Depends on:</strong> Backup size, network speed</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="phase-item">
+                        <div class="phase-icon">📦</div>
+                        <div class="phase-content">
+                            <h3>extracting</h3>
+                            <p>Decompresses the backup archive. Output size is typically 2-3x the compressed size.</p>
+                            <div class="phase-details">
+                                <span><strong>Typical time:</strong> 15s - 2min</span>
+                                <span><strong>Depends on:</strong> Backup size, CPU speed</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="phase-item">
+                        <div class="phase-icon">🔄</div>
+                        <div class="phase-content">
+                            <h3>restoring</h3>
+                            <p>
+                                Runs <code>myloader</code> to load the data into a <strong>staging database</strong>.
+                                This is usually the longest phase.
+                            </p>
+                            <div class="phase-details">
+                                <span><strong>Typical time:</strong> 1-10min</span>
+                                <span><strong>Depends on:</strong> Data size, DB performance, indexes</span>
+                            </div>
+                            <p style="margin-top: 8px; font-size: 13px; color: var(--warning-color);">
+                                <strong>⚠️ Note:</strong> Jobs cannot be canceled once this phase begins.
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="phase-item">
+                        <div class="phase-icon">🔧</div>
+                        <div class="phase-content">
+                            <h3>post_sql</h3>
+                            <p>
+                                Executes post-restore SQL scripts. These typically anonymize sensitive data
+                                (emails, passwords, PII) making the database safe for development.
+                            </p>
+                            <div class="phase-details">
+                                <span><strong>Typical time:</strong> 5-30s</span>
+                                <span><strong>Depends on:</strong> Script complexity</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="phase-item">
+                        <div class="phase-icon">✨</div>
+                        <div class="phase-content">
+                            <h3>finalizing</h3>
+                            <p>
+                                Performs the <a href="atomic-rename.html">atomic rename</a> from staging to target database.
+                                This is instantaneous and ensures zero downtime.
+                            </p>
+                            <div class="phase-details">
+                                <span><strong>Typical time:</strong> &lt;1s</span>
+                                <span><strong>Guarantee:</strong> Atomic, no partial states</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- State Transitions Section -->
+            <section class="content-section" id="transitions">
+                <h2>State Transitions</h2>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>Trigger</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="state-badge queued" style="font-size: 11px;">QUEUED</span></td>
+                            <td><span class="state-badge running" style="font-size: 11px;">RUNNING</span></td>
+                            <td>Worker claims job from queue</td>
+                        </tr>
+                        <tr>
+                            <td><span class="state-badge running" style="font-size: 11px;">RUNNING</span></td>
+                            <td><span class="state-badge complete" style="font-size: 11px;">COMPLETE</span></td>
+                            <td>All phases finish successfully</td>
+                        </tr>
+                        <tr>
+                            <td><span class="state-badge running" style="font-size: 11px;">RUNNING</span></td>
+                            <td><span class="state-badge failed" style="font-size: 11px;">FAILED</span></td>
+                            <td>Unrecoverable error in any phase</td>
+                        </tr>
+                        <tr>
+                            <td><span class="state-badge queued" style="font-size: 11px;">QUEUED</span></td>
+                            <td><span class="state-badge canceled" style="font-size: 11px;">CANCELED</span></td>
+                            <td>User runs <code>pulldb cancel</code></td>
+                        </tr>
+                        <tr>
+                            <td><span class="state-badge running" style="font-size: 11px;">RUNNING</span></td>
+                            <td><span class="state-badge canceled" style="font-size: 11px;">CANCELED</span></td>
+                            <td>User runs <code>pulldb cancel</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="info-callout" style="margin-top: 24px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>No going back</strong><br>
+                        Once a job reaches a terminal state (COMPLETE, FAILED, CANCELED), it cannot be modified.
+                        To retry, submit a new job.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Failure Modes Section -->
+            <section class="content-section" id="failure-modes">
+                <h2>Failure Modes</h2>
+                <p>When a job fails, the error message and phase indicate what went wrong:</p>
+                
+                <div class="accordion" x-data="{ open: null }">
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 1 ? null : 1" :class="{ 'active': open === 1 }">
+                            <span>S3 Download Failed</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 1" x-collapse>
+                            <p><strong>Phase:</strong> downloading</p>
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>S3 credentials expired or invalid</li>
+                                <li>Backup file doesn't exist (wrong date?)</li>
+                                <li>Network connectivity issues</li>
+                                <li>S3 bucket permissions</li>
+                            </ul>
+                            <p><strong>Resolution:</strong> Check your S3 configuration and try again. Verify the backup exists with <code>pulldb list &lt;customer&gt;</code>.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 2 ? null : 2" :class="{ 'active': open === 2 }">
+                            <span>myloader Failed</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 2" x-collapse>
+                            <p><strong>Phase:</strong> restoring</p>
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>Corrupted backup file</li>
+                                <li>MySQL connection issues</li>
+                                <li>Insufficient disk space</li>
+                                <li>MySQL permissions for staging user</li>
+                            </ul>
+                            <p><strong>Resolution:</strong> Check disk space and MySQL connectivity. Review myloader logs in job events.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 3 ? null : 3" :class="{ 'active': open === 3 }">
+                            <span>Database Already Exists</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 3" x-collapse>
+                            <p><strong>Phase:</strong> finalizing</p>
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>Target database exists and <code>overwrite</code> flag not set</li>
+                            </ul>
+                            <p><strong>Resolution:</strong> Either add <code>overwrite</code> to your command or manually drop the existing database.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <button class="accordion-trigger" @click="open = open === 4 ? null : 4" :class="{ 'active': open === 4 }">
+                            <span>Post-SQL Script Failed</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content" x-show="open === 4" x-collapse>
+                            <p><strong>Phase:</strong> post_sql</p>
+                            <p><strong>Causes:</strong></p>
+                            <ul>
+                                <li>SQL syntax error in post-SQL script</li>
+                                <li>Referenced table/column doesn't exist</li>
+                                <li>Timeout on large UPDATE statements</li>
+                            </ul>
+                            <p><strong>Resolution:</strong> Review the post-SQL script and check the error message in job events.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Related Pages -->
+            <section class="related-pages">
+                <h2>Related Pages</h2>
+                <div class="related-cards">
+                    <a href="atomic-rename.html" class="related-card">
+                        <h3>Atomic Rename</h3>
+                        <p>How pullDB ensures zero-downtime database switches</p>
+                    </a>
+                    <a href="staging-databases.html" class="related-card">
+                        <h3>Staging Databases</h3>
+                        <p>Understanding temporary staging databases</p>
+                    </a>
+                    <a href="../troubleshooting/index.html" class="related-card">
+                        <h3>Troubleshooting</h3>
+                        <p>Common issues and how to resolve them</p>
+                    </a>
+                </div>
+            </section>
+            
+        </main>
+    </div>
+    
+    <script src="../../js/help.js"></script>
+    <script src="../../js/search.js"></script>
+    <script>
+        // Add Alpine.js collapse plugin behavior
+        document.addEventListener('alpine:init', () => {
+            Alpine.directive('collapse', (el, { expression }, { effect, cleanup }) => {
+                let height = el.scrollHeight;
+                el.style.overflow = 'hidden';
+                el.style.maxHeight = '0px';
+                el.style.transition = 'max-height 0.3s ease';
+                
+                effect(() => {
+                    if (el.__x_is_shown) {
+                        el.style.maxHeight = height + 'px';
+                    } else {
+                        el.style.maxHeight = '0px';
+                    }
+                });
+            });
+        });
+        
+        // Highlight current sidebar link based on scroll
+        document.addEventListener('DOMContentLoaded', () => {
+            const sections = document.querySelectorAll('.content-section[id]');
+            const links = document.querySelectorAll('.sidebar-link[href^="#"]');
+            
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        links.forEach(link => {
+                            if (link.getAttribute('href').startsWith('#')) {
+                                link.classList.remove('active');
+                            }
+                        });
+                        const activeLink = document.querySelector(`.sidebar-link[href="#${entry.target.id}"]`);
+                        if (activeLink) activeLink.classList.add('active');
+                    }
+                });
+            }, { rootMargin: '-20% 0px -70% 0px' });
+            
+            sections.forEach(section => observer.observe(section));
+        });
+    </script>
+</body>
+</html>

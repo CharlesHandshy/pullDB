@@ -15,6 +15,7 @@ import pydantic
 import uvicorn
 from fastapi import Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from pulldb.api.auth import AdminUser, AuthUser, ManagerUser, OptionalUser, validate_job_submission_user
@@ -75,10 +76,51 @@ if WEB_ENABLED:
         )
         from pulldb.web.dependencies import WEB_DIR
 
+        # Mount images from pulldb/images (must be before /static)
+        IMAGES_DIR = WEB_DIR.parent / "images"
+        if IMAGES_DIR.exists():
+            app.mount("/static/images", StaticFiles(directory=str(IMAGES_DIR)), name="static-images")
+
+        # Mount help documentation site (standalone at /web/help/)
+        help_dir = WEB_DIR / "help"
+        if help_dir.exists():
+            app.mount("/web/help", StaticFiles(directory=str(help_dir), html=True), name="help-docs")
+
         # Mount static files for CSS, JS, fonts
         static_dir = WEB_DIR / "static"
         if static_dir.exists():
             app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+        # Favicon routes - browsers request these from root URL
+        @app.get("/favicon.ico", include_in_schema=False)
+        async def favicon():
+            """Serve favicon from /static/images with 1-day cache."""
+            favicon_path = IMAGES_DIR / "favicon.ico"
+            if favicon_path.exists():
+                return FileResponse(
+                    favicon_path,
+                    media_type="image/x-icon",
+                    headers={"Cache-Control": "public, max-age=86400"},
+                )
+            raise HTTPException(status_code=404, detail="Favicon not found")
+
+        @app.get("/apple-touch-icon.png", include_in_schema=False)
+        async def apple_touch_icon():
+            """Serve Apple touch icon from /static/images with 1-day cache."""
+            icon_path = IMAGES_DIR / "apple-touch-icon.png"
+            if icon_path.exists():
+                return FileResponse(
+                    icon_path,
+                    media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=86400"},
+                )
+            raise HTTPException(status_code=404, detail="Apple touch icon not found")
+
+        # Root URL redirect - browsers hitting / should go to login
+        @app.get("/", include_in_schema=False)
+        async def root_redirect():
+            """Redirect root URL to web login page."""
+            return RedirectResponse(url="/web/login", status_code=302)
 
         app.include_router(web_router)
         app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
@@ -3302,10 +3344,51 @@ def main_web(argv: list[str] | None = None) -> int:
         )
         from pulldb.web.dependencies import WEB_DIR
 
+        # Mount images from pulldb/images (must be before /static)
+        IMAGES_DIR = WEB_DIR.parent / "images"
+        if IMAGES_DIR.exists():
+            web_app.mount("/static/images", StaticFiles(directory=str(IMAGES_DIR)), name="static-images")
+
+        # Mount help documentation site (standalone at /web/help/)
+        help_dir = WEB_DIR / "help"
+        if help_dir.exists():
+            web_app.mount("/web/help", StaticFiles(directory=str(help_dir), html=True), name="help-docs")
+
         # Mount static files for CSS, JS, fonts
         static_dir = WEB_DIR / "static"
         if static_dir.exists():
             web_app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+        # Favicon routes - browsers request these from root URL
+        @web_app.get("/favicon.ico", include_in_schema=False)
+        async def favicon():
+            """Serve favicon from /static/images with 1-day cache."""
+            favicon_path = IMAGES_DIR / "favicon.ico"
+            if favicon_path.exists():
+                return FileResponse(
+                    favicon_path,
+                    media_type="image/x-icon",
+                    headers={"Cache-Control": "public, max-age=86400"},
+                )
+            raise HTTPException(status_code=404, detail="Favicon not found")
+
+        @web_app.get("/apple-touch-icon.png", include_in_schema=False)
+        async def apple_touch_icon():
+            """Serve Apple touch icon from /static/images with 1-day cache."""
+            icon_path = IMAGES_DIR / "apple-touch-icon.png"
+            if icon_path.exists():
+                return FileResponse(
+                    icon_path,
+                    media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=86400"},
+                )
+            raise HTTPException(status_code=404, detail="Apple touch icon not found")
+
+        # Root URL redirect - browsers hitting / should go to login
+        @web_app.get("/", include_in_schema=False)
+        async def root_redirect():
+            """Redirect root URL to web login page."""
+            return RedirectResponse(url="/web/login", status_code=302)
 
         web_app.include_router(web_router)
         web_app.add_exception_handler(SessionExpiredError, create_session_expired_handler())

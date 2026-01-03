@@ -275,7 +275,7 @@ install_python_package() {
         find "${VENV_DIR}/lib" -type d -name '~*' -exec rm -rf {} + 2>/dev/null || true
     else
         echo "  Creating new virtual environment..."
-        python3 -m venv "${VENV_DIR}"
+        python3.12 -m venv "${VENV_DIR}"
     fi
     
     # Install/upgrade the wheel
@@ -369,8 +369,11 @@ check_database_schema() {
             done
             echo "  Database schema applied successfully"
             
-            # Create initial admin user
+            # Create initial admin user (may already exist from seed SQL, but function is idempotent)
             create_admin_user
+            
+            # Create service account for systemd/scheduled tasks
+            create_service_account
         else
             echo "  FATAL: Schema directory not found: ${SCHEMA_DIR}"
             exit 1
@@ -434,22 +437,22 @@ run_database_migrations() {
 }
 
 create_admin_user() {
-    echo "  Creating initial admin user..."
+    echo "  Setting admin user password..."
     
-    # Check if admin user already exists
-    if mysql -N -e "SELECT 1 FROM pulldb_service.auth_users WHERE username='admin'" 2>/dev/null | grep -q 1; then
-        echo "  Admin user already exists"
+    # Check if admin user exists (created by seed SQL)
+    if ! mysql -N -e "SELECT 1 FROM pulldb_service.auth_users WHERE username='admin'" 2>/dev/null | grep -q 1; then
+        echo "  Warning: Admin user not found in database (seed SQL may have failed)"
+        return
+    fi
+    
+    # Check if password is already set (not NULL)
+    if mysql -N -e "SELECT 1 FROM pulldb_service.auth_credentials c JOIN pulldb_service.auth_users u ON c.user_id = u.user_id WHERE u.username='admin' AND c.password_hash IS NOT NULL" 2>/dev/null | grep -q 1; then
+        echo "  Admin user password already set"
         return
     fi
     
     # Generate random password (16 chars alphanumeric)
     ADMIN_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16)
-    
-    # Generate UUID for user_id
-    ADMIN_UUID=$(cat /proc/sys/kernel/random/uuid)
-    
-    # Generate 6-char user code
-    ADMIN_CODE=$(head -c 6 /dev/urandom | base64 | tr -dc 'A-Z0-9' | head -c 6)
     
     # Hash password using Python/bcrypt
     ADMIN_HASH=$("${INSTALL_PREFIX}/venv/bin/python3" -c "
@@ -464,22 +467,58 @@ print(bcrypt.hashpw(password, salt).decode('utf-8'))
         return
     fi
     
-    # Insert admin user
+    # Get the admin user_id from the seed
+    ADMIN_UUID=$(mysql -N -e "SELECT user_id FROM pulldb_service.auth_users WHERE username='admin'" 2>/dev/null)
+    
+    if [ -z "$ADMIN_UUID" ]; then
+        echo "  Warning: Could not find admin user_id"
+        return
+    fi
+    
+    # Update the password hash (credentials row created by seed SQL)
     mysql pulldb_service -e "
-INSERT INTO auth_users (user_id, username, user_code, is_admin, role)
-VALUES ('${ADMIN_UUID}', 'admin', '${ADMIN_CODE}', TRUE, 'admin');
-
-INSERT INTO auth_credentials (user_id, password_hash)
-VALUES ('${ADMIN_UUID}', '${ADMIN_HASH}');
+UPDATE auth_credentials SET password_hash = '${ADMIN_HASH}' WHERE user_id = '${ADMIN_UUID}';
 " 2>/dev/null || {
-        echo "  Warning: Failed to create admin user"
+        echo "  Warning: Failed to set admin password"
         return
     }
     
     # Store password for display at end of install
     INITIAL_ADMIN_PASSWORD="${ADMIN_PASSWORD}"
     export INITIAL_ADMIN_PASSWORD
-    echo "  Admin user created successfully"
+    echo "  Admin user password set successfully"
+}
+
+create_service_account() {
+    echo "  Creating service account (pulldb_service)..."
+    
+    # Service Bootstrap/CLI Admin Account (SBCACC)
+    # This account allows systemd services and scheduled tasks to run admin CLI commands.
+    # When pulldb-admin runs as the pulldb_service Linux user, it looks up this account.
+    
+    # Check if service account already exists
+    if mysql -N -e "SELECT 1 FROM pulldb_service.auth_users WHERE username='pulldb_service'" 2>/dev/null | grep -q 1; then
+        echo "  Service account already exists"
+        return
+    fi
+    
+    # Use a well-known fixed UUID for the service account (consistent across installs)
+    SERVICE_UUID="00000000-0000-0000-0000-000000000001"
+    SERVICE_CODE="SBCACC"
+    
+    # Insert service account (no password - system account, not for web login)
+    mysql pulldb_service -e "
+INSERT INTO auth_users (user_id, username, user_code, is_admin, role)
+VALUES ('${SERVICE_UUID}', 'pulldb_service', '${SERVICE_CODE}', TRUE, 'admin');
+
+INSERT INTO auth_credentials (user_id, password_hash)
+VALUES ('${SERVICE_UUID}', NULL);
+" 2>/dev/null || {
+        echo "  Warning: Failed to create service account"
+        return
+    }
+    
+    echo "  Service account created successfully"
 }
 
 install_systemd_units() {

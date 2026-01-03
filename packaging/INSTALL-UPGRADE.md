@@ -9,6 +9,65 @@ This guide covers installing and upgrading pullDB packages on a database server.
 
 ---
 
+## System Requirements
+
+### Recommended
+
+| Component | Requirement |
+|-----------|-------------|
+| **Operating System** | Ubuntu 22.04 LTS or Ubuntu 24.04 LTS |
+| **Python** | 3.12+ (included in Ubuntu 22.04+) |
+| **MySQL** | 8.0+ |
+| **Disk Space** | 50GB+ for work directory |
+| **Memory** | 4GB+ RAM |
+
+### Legacy Support (Ubuntu 20.04)
+
+Ubuntu 20.04 ships with Python 3.8, but pullDB requires Python 3.12+.
+
+**Option 1: Build Python 3.12 from source** (recommended for Ubuntu 20.04):
+
+```bash
+# Install build dependencies
+sudo apt-get update
+sudo apt-get install -y build-essential zlib1g-dev libncurses5-dev \
+    libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev \
+    libsqlite3-dev wget libbz2-dev
+
+# Download Python 3.12
+cd /tmp
+wget https://www.python.org/ftp/python/3.12.4/Python-3.12.4.tgz
+tar -xf Python-3.12.4.tgz
+cd Python-3.12.4
+
+# Build and install (takes ~10 minutes)
+./configure --enable-optimizations --prefix=/usr/local
+make -j$(nproc)
+sudo make altinstall
+
+# Verify installation
+python3.12 --version
+# Python 3.12.4
+
+# Now install pullDB
+sudo dpkg -i pulldb-client_*.deb
+# or
+sudo dpkg -i pulldb_*.deb
+```
+
+> **Note**: `make altinstall` installs Python 3.12 alongside system Python 3.8.
+> System Python remains unchanged. Ubuntu 20.04 will reach end of standard support
+> in April 2025; consider upgrading to Ubuntu 22.04 LTS.
+
+**Option 2: Upgrade to Ubuntu 22.04** (recommended for production):
+
+Ubuntu 22.04 includes Python 3.10 by default, and Python 3.12 is available via:
+```bash
+sudo apt-get install python3.12 python3.12-venv
+```
+
+---
+
 ## Available Packages
 
 | Package | Purpose | Install Path |
@@ -43,14 +102,17 @@ sudo dpkg -i pulldb_0.2.0_amd64.deb
 ```
 
 The package will:
-- Create system user `pulldb_service`
+- Create Linux system user `pulldb_service`
 - Install files to `/opt/pulldb.service/`
 - Create `pulldb_service` database and apply schema (if MySQL accessible)
 - **Create initial admin user with random password** (displayed at end of install)
+- **Create `pulldb_service` service account** (for systemd scheduled tasks)
 - Set up systemd services (enabled but may not start without config)
 
 > **IMPORTANT**: Save the admin credentials displayed at the end of installation!
 > They are also saved to `/opt/pulldb.service/ADMIN_CREDENTIALS.txt` (root-only readable).
+
+**Note on Service Account**: The `pulldb_service` account in the database is a Service Bootstrap/CLI Admin Account (SBCACC). It allows systemd services like `pulldb-retention.timer` to execute admin CLI commands. This account has no password and cannot be used for web login.
 
 #### Step 2: Configure Environment
 

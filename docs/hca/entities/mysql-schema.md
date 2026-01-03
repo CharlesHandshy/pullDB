@@ -111,6 +111,25 @@ CREATE TABLE auth_users (
 - `is_admin`: reserved for future admin tooling; prototype treats every authenticated user the same.
 - `disabled_at`: soft-delete marker so audit history remains intact.
 
+**Built-in Accounts:**
+
+| Username | User Code | UUID | Role | Purpose |
+|----------|-----------|------|------|---------|
+| `admin` | `ADMINN` | `00000000-0000-0000-0000-000000000002` | admin | Human administrator (password set at install) |
+| `pulldb_service` | `SBCACC` | `00000000-0000-0000-0000-000000000001` | admin | Service Bootstrap/CLI Admin Account for systemd tasks |
+
+The `pulldb_service` account:
+- Has a fixed UUID: `00000000-0000-0000-0000-000000000001`
+- Has no password (cannot login via web UI)
+- Enables systemd services (e.g., `pulldb-retention.timer`) to run `pulldb-admin` commands
+- Created by `schema/pulldb_service/02050_seed_service_account.sql`
+
+The `admin` account:
+- Has a fixed UUID: `00000000-0000-0000-0000-000000000002`
+- Password is generated randomly during install and displayed to the administrator
+- Created by `schema/pulldb_service/02040_seed_admin_account.sql`
+- Password set by `packaging/debian/postinst`
+
 **Phase 4 Addition**: The `role` column was added to support role-based access control:
 
 ```sql

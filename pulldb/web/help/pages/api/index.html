@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Reference - pullDB Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../css/help.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
+    
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    
+    <!-- Navigation -->
+    <nav class="nav-glass">
+        <div class="nav-container">
+            <a href="../../index.html" class="nav-logo">
+                <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                </svg>
+                <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
+            </a>
+            
+            <div class="nav-links">
+                <a href="../getting-started.html" class="nav-link">Getting Started</a>
+                <a href="../cli/index.html" class="nav-link">CLI</a>
+                <a href="index.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">API</a>
+                <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
+            </div>
+            
+            <div class="nav-actions">
+                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span class="search-hint">/</span>
+                </button>
+                <button class="theme-toggle" @click="toggleTheme()">
+                    <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg x-show="theme === 'dark'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Search Modal -->
+    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+        <div class="search-container" @click.stop>
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <kbd class="search-kbd">ESC</kbd>
+            </div>
+            <div class="search-results" x-show="searchQuery.length > 0">
+                <template x-for="(result, index) in searchResults" :key="result.id">
+                    <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
+                        <div class="result-content">
+                            <div class="result-title" x-html="result.title"></div>
+                            <div class="result-preview" x-html="result.preview"></div>
+                        </div>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Page Layout with Sidebar -->
+    <div class="page-layout">
+        <aside class="page-sidebar">
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Endpoints</div>
+                    <a href="#authentication" class="sidebar-link">Authentication</a>
+                    <a href="#submit-job" class="sidebar-link">Submit Job</a>
+                    <a href="#get-job" class="sidebar-link">Get Job Status</a>
+                    <a href="#list-jobs" class="sidebar-link">List Jobs</a>
+                    <a href="#cancel-job" class="sidebar-link">Cancel Job</a>
+                    <a href="#events" class="sidebar-link">Get Events</a>
+                    <a href="#search-backups" class="sidebar-link">Search Backups</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Reference</div>
+                    <a href="#status-codes" class="sidebar-link">Status Codes</a>
+                    <a href="#errors" class="sidebar-link">Error Handling</a>
+                </div>
+            </nav>
+        </aside>
+        
+        <main class="page-content">
+            <div class="breadcrumbs">
+                <a href="../../index.html">Help</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span>API Reference</span>
+            </div>
+            
+            <h1 class="page-title">API Reference</h1>
+            <p class="page-description">
+                pullDB provides a RESTful API for programmatic access. The API uses JSON for request and response bodies.
+                Most users will use the CLI, but the API is available for integration into other tools.
+            </p>
+            
+            <!-- Base URL -->
+            <section class="content-section">
+                <h2>Base URL</h2>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="output">https://pulldb.yourcompany.com/api/v1</span></div>
+                    </div>
+                </div>
+                <p class="mt-4">Replace with your actual pullDB server URL.</p>
+            </section>
+            
+            <!-- Authentication -->
+            <section class="content-section" id="authentication">
+                <h2>Authentication</h2>
+                <p>API requests require authentication via API key or session token.</p>
+                
+                <h3>API Key Authentication</h3>
+                <p>Pass your API key in the <code>X-API-Key</code> header:</p>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">curl</span>
+                        <button class="terminal-copy" onclick="copyTerminal(this)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">curl -H "X-API-Key: your-api-key" \</span></div>
+                        <div class="terminal-line"><span class="command">     https://pulldb.example.com/api/v1/jobs</span></div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Submit Job -->
+            <section class="content-section" id="submit-job">
+                <h2>Submit Job</h2>
+                <p>Create a new restore job.</p>
+                
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="method post">POST</span>
+                        <code class="endpoint-path">/jobs</code>
+                    </div>
+                    
+                    <h3>Request Body</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "user": "charles",
+  "customer": "acme",
+  "dbhost": "localhost",
+  "date": "2026-01-01",
+  "overwrite": false
+}</code></pre>
+                    </div>
+                    
+                    <table class="param-table">
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>user</code></td>
+                                <td>string</td>
+                                <td>Yes</td>
+                                <td>Username for job ownership</td>
+                            </tr>
+                            <tr>
+                                <td><code>customer</code></td>
+                                <td>string</td>
+                                <td>Yes*</td>
+                                <td>Customer ID</td>
+                            </tr>
+                            <tr>
+                                <td><code>qatemplate</code></td>
+                                <td>boolean</td>
+                                <td>Yes*</td>
+                                <td>Restore QA template instead</td>
+                            </tr>
+                            <tr>
+                                <td><code>dbhost</code></td>
+                                <td>string</td>
+                                <td>No</td>
+                                <td>Target database host (default: localhost)</td>
+                            </tr>
+                            <tr>
+                                <td><code>date</code></td>
+                                <td>string</td>
+                                <td>No</td>
+                                <td>Backup date (YYYY-MM-DD), defaults to latest</td>
+                            </tr>
+                            <tr>
+                                <td><code>overwrite</code></td>
+                                <td>boolean</td>
+                                <td>No</td>
+                                <td>Overwrite existing database (default: false)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p class="text-muted">* Either <code>customer</code> or <code>qatemplate</code> required</p>
+                    
+                    <h3>Response</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+  "status": "queued",
+  "target_db": "chrlesacme",
+  "created_at": "2026-01-02T10:42:15Z"
+}</code></pre>
+                    </div>
+                </div>
+                
+                <h3>Example</h3>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">curl</span>
+                        <button class="terminal-copy" onclick="copyTerminal(this)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">curl -X POST \</span></div>
+                        <div class="terminal-line"><span class="command">     -H "X-API-Key: your-key" \</span></div>
+                        <div class="terminal-line"><span class="command">     -H "Content-Type: application/json" \</span></div>
+                        <div class="terminal-line"><span class="command">     -d '{"user":"charles","customer":"acme"}' \</span></div>
+                        <div class="terminal-line"><span class="command">     https://pulldb.example.com/api/v1/jobs</span></div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Get Job -->
+            <section class="content-section" id="get-job">
+                <h2>Get Job Status</h2>
+                <p>Get the current status of a job.</p>
+                
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="method get">GET</span>
+                        <code class="endpoint-path">/jobs/{job_id}</code>
+                    </div>
+                    
+                    <h3>Response</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+  "user": "charles",
+  "customer": "acme",
+  "status": "running",
+  "phase": "restoring",
+  "target_db": "chrlesacme",
+  "dbhost": "localhost",
+  "created_at": "2026-01-02T10:42:15Z",
+  "started_at": "2026-01-02T10:42:18Z"
+}</code></pre>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- List Jobs -->
+            <section class="content-section" id="list-jobs">
+                <h2>List Jobs</h2>
+                <p>List jobs for the authenticated user.</p>
+                
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="method get">GET</span>
+                        <code class="endpoint-path">/jobs</code>
+                    </div>
+                    
+                    <h3>Query Parameters</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td><code>status</code></td>
+                                <td>string</td>
+                                <td>No</td>
+                                <td>Filter by status (queued, running, complete, failed, canceled)</td>
+                            </tr>
+                            <tr>
+                                <td><code>limit</code></td>
+                                <td>integer</td>
+                                <td>No</td>
+                                <td>Max results (default: 20)</td>
+                            </tr>
+                            <tr>
+                                <td><code>offset</code></td>
+                                <td>integer</td>
+                                <td>No</td>
+                                <td>Pagination offset</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <h3>Response</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "jobs": [
+    {
+      "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+      "status": "complete",
+      "customer": "acme",
+      ...
+    }
+  ],
+  "total": 42,
+  "limit": 20,
+  "offset": 0
+}</code></pre>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Cancel Job -->
+            <section class="content-section" id="cancel-job">
+                <h2>Cancel Job</h2>
+                <p>Cancel a queued or running job.</p>
+                
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="method delete">DELETE</span>
+                        <code class="endpoint-path">/jobs/{job_id}</code>
+                    </div>
+                    
+                    <h3>Response</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+  "status": "canceled",
+  "message": "Job canceled successfully"
+}</code></pre>
+                    </div>
+                </div>
+                
+                <div class="info-callout warning" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        Returns <code>409 Conflict</code> if job is already in terminal state (complete, failed, canceled),
+                        or if the job has entered the loading phase (myloader cannot be safely interrupted).
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Events -->
+            <section class="content-section" id="events">
+                <h2>Get Events</h2>
+                <p>Get timeline of events for a job.</p>
+                
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="method get">GET</span>
+                        <code class="endpoint-path">/jobs/{job_id}/events</code>
+                    </div>
+                    
+                    <h3>Response</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "events": [
+    {
+      "timestamp": "2026-01-02T10:42:15Z",
+      "type": "status_change",
+      "message": "Job queued"
+    },
+    {
+      "timestamp": "2026-01-02T10:42:18Z",
+      "type": "status_change",
+      "message": "Job started by worker-01"
+    },
+    {
+      "timestamp": "2026-01-02T10:42:18Z",
+      "type": "phase_change",
+      "message": "Phase: downloading"
+    }
+  ]
+}</code></pre>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Search Backups -->
+            <section class="content-section" id="search-backups">
+                <h2>Search Backups</h2>
+                <p>Search for available customer backups.</p>
+                
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="method get">GET</span>
+                        <code class="endpoint-path">/backups/search</code>
+                    </div>
+                    
+                    <h3>Query Parameters</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td><code>customer</code></td>
+                                <td>string</td>
+                                <td>Yes</td>
+                                <td>Customer ID to search for</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <h3>Response</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "customer": "acme",
+  "backups": [
+    {
+      "date": "2026-01-02",
+      "size_bytes": 2469606195,
+      "size_human": "2.3 GB",
+      "path": "s3://backups/daily/acme/"
+    },
+    {
+      "date": "2026-01-01",
+      "size_bytes": 2469606195,
+      "size_human": "2.3 GB",
+      "path": "s3://backups/daily/acme/"
+    }
+  ]
+}</code></pre>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Status Codes -->
+            <section class="content-section" id="status-codes">
+                <h2>HTTP Status Codes</h2>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>200</code></td>
+                            <td>Success</td>
+                        </tr>
+                        <tr>
+                            <td><code>201</code></td>
+                            <td>Created (job submitted)</td>
+                        </tr>
+                        <tr>
+                            <td><code>400</code></td>
+                            <td>Bad Request (invalid parameters)</td>
+                        </tr>
+                        <tr>
+                            <td><code>401</code></td>
+                            <td>Unauthorized (missing/invalid API key)</td>
+                        </tr>
+                        <tr>
+                            <td><code>403</code></td>
+                            <td>Forbidden (insufficient permissions)</td>
+                        </tr>
+                        <tr>
+                            <td><code>404</code></td>
+                            <td>Not Found (job/backup doesn't exist)</td>
+                        </tr>
+                        <tr>
+                            <td><code>409</code></td>
+                            <td>Conflict (e.g., can't cancel completed job)</td>
+                        </tr>
+                        <tr>
+                            <td><code>500</code></td>
+                            <td>Internal Server Error</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+            
+            <!-- Error Handling -->
+            <section class="content-section" id="errors">
+                <h2>Error Handling</h2>
+                <p>Error responses include a JSON body with error details:</p>
+                
+                <div class="code-block">
+                    <pre><code>{
+  "error": {
+    "code": "BACKUP_NOT_FOUND",
+    "message": "No backup found for customer 'acme' on date '2026-01-01'",
+    "details": {
+      "customer": "acme",
+      "date": "2026-01-01"
+    }
+  }
+}</code></pre>
+                </div>
+                
+                <h3>Error Codes</h3>
+                <table class="param-table">
+                    <tbody>
+                        <tr>
+                            <td><code>INVALID_REQUEST</code></td>
+                            <td>Missing or invalid parameters</td>
+                        </tr>
+                        <tr>
+                            <td><code>USER_NOT_FOUND</code></td>
+                            <td>User doesn't exist</td>
+                        </tr>
+                        <tr>
+                            <td><code>USER_DISABLED</code></td>
+                            <td>User account is disabled</td>
+                        </tr>
+                        <tr>
+                            <td><code>BACKUP_NOT_FOUND</code></td>
+                            <td>Backup doesn't exist</td>
+                        </tr>
+                        <tr>
+                            <td><code>DATABASE_EXISTS</code></td>
+                            <td>Target database exists and overwrite=false</td>
+                        </tr>
+                        <tr>
+                            <td><code>JOB_NOT_FOUND</code></td>
+                            <td>Job ID doesn't exist</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+            
+        </main>
+    </div>
+    
+    <script src="../../js/help.js"></script>
+    <script src="../../js/search.js"></script>
+    <script>
+        // Highlight current sidebar link based on scroll
+        document.addEventListener('DOMContentLoaded', () => {
+            const sections = document.querySelectorAll('.content-section[id]');
+            const links = document.querySelectorAll('.sidebar-link');
+            
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        links.forEach(link => link.classList.remove('active'));
+                        const activeLink = document.querySelector(`.sidebar-link[href="#${entry.target.id}"]`);
+                        if (activeLink) activeLink.classList.add('active');
+                    }
+                });
+            }, { rootMargin: '-20% 0px -70% 0px' });
+            
+            sections.forEach(section => observer.observe(section));
+        });
+    </script>
+</body>
+</html>

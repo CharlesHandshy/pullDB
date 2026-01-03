@@ -561,7 +561,11 @@ class LazyTable {
         });
         
         try {
-            const response = await fetch(url.toString());
+            const response = await fetch(url.toString(), {
+                headers: {
+                    'HX-Request': 'true'  // Mark as AJAX request for server-side checks
+                }
+            });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();

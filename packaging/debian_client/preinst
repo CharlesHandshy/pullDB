@@ -1,0 +1,51 @@
+#!/bin/bash
+# =============================================================================
+# pulldb-client preinst - Runs BEFORE package installation
+# =============================================================================
+# Checks for Python 3.12 and provides instructions if not found.
+# NOTE: Cannot install packages here because dpkg holds the lock!
+# =============================================================================
+
+log_info()  { echo "[pulldb-client] $*"; }
+log_error() { echo "[pulldb-client] ERROR: $*" >&2; }
+
+case "$1" in
+    install|upgrade)
+        # Check if python3.12 is available
+        if ! command -v python3.12 &>/dev/null; then
+            log_error "Python 3.12 is required but not installed."
+            echo ""
+            echo "Please install Python 3.12 first by running:"
+            echo ""
+            echo "  sudo add-apt-repository -y ppa:deadsnakes/ppa"
+            echo "  sudo apt-get update"
+            echo "  sudo apt-get install -y python3.12 python3.12-venv"
+            echo ""
+            echo "Then retry: sudo dpkg -i pulldb-client_*.deb"
+            echo ""
+            echo "Or use the included installer script:"
+            echo "  sudo ./install-pulldb-client.sh pulldb-client_*.deb"
+            echo ""
+            exit 1
+        else
+            log_info "Python 3.12 found: $(python3.12 --version)"
+        fi
+        
+        # Verify python3.12-venv is available
+        if ! python3.12 -m venv --help &>/dev/null 2>&1; then
+            log_error "python3.12-venv is required but not installed."
+            echo ""
+            echo "Please install it: sudo apt-get install -y python3.12-venv"
+            echo ""
+            exit 1
+        fi
+        
+        log_info "System Python unchanged: $(python3 --version)"
+        ;;
+    abort-upgrade)
+        ;;
+    *)
+        ;;
+esac
+
+exit 0
