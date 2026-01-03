@@ -16,6 +16,7 @@ import click
 from dotenv import load_dotenv
 
 from pulldb import __version__
+from pulldb.cli.auth import get_auth_headers, get_calling_username
 from pulldb.cli.parse import CLIParseError, parse_restore_args
 
 
@@ -48,42 +49,9 @@ else:
     Response = t.cast(type, requests_module.Response)
 
 
-def _get_calling_username() -> str:
-    """Get the original SSH user, even after sudo su -.
-
-    Detection order:
-    1. SUDO_USER - works for plain 'sudo' commands
-    2. 'who am i' - works after 'sudo su -' by checking TTY owner
-    3. USER - fallback to current user
-
-    Returns:
-        The original SSH username that initiated the session.
-    """
-    import subprocess
-
-    # Try SUDO_USER first (works for plain sudo)
-    sudo_user = os.environ.get("SUDO_USER")
-    if sudo_user and sudo_user != "root":
-        return sudo_user
-
-    # Fall back to 'who am i' (works after sudo su -)
-    # This returns the user who owns the current TTY/pts
-    try:
-        result = subprocess.run(
-            ["who", "am", "i"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            # Output format: "username pts/0 2025-12-31 10:00 (192.168.1.1)"
-            parts = result.stdout.split()
-            if parts and parts[0] != "root":
-                return parts[0]
-    except Exception:
-        pass  # Fall through to USER
-
-    return os.environ.get("USER") or "unknown"
+# Note: _get_calling_username is imported from pulldb.cli.auth
+# Keeping a local alias for backward compatibility with any internal references
+_get_calling_username = get_calling_username
 
 
 def _load_api_config() -> tuple[str, float]:
@@ -337,8 +305,9 @@ def _print_formatted_dict(
 def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
     base_url, timeout = _load_api_config()
     url = f"{base_url}{path}"
+    headers = get_auth_headers()
     try:
-        response = requests_module.post(url, json=payload, timeout=timeout)
+        response = requests_module.post(url, json=payload, headers=headers, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
             f"Failed to reach pullDB API at {url}: {exc}. "
@@ -379,8 +348,9 @@ def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
 def _api_get(path: str, params: dict[str, t.Any]) -> list[dict[str, t.Any]]:
     base_url, timeout = _load_api_config()
     url = f"{base_url}{path}"
+    headers = get_auth_headers()
     try:
-        response = requests_module.get(url, params=params, timeout=timeout)
+        response = requests_module.get(url, params=params, headers=headers, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
             f"Failed to reach pullDB API at {url}: {exc}. "
@@ -400,8 +370,9 @@ def _api_get_object(path: str, params: dict[str, t.Any]) -> dict[str, t.Any]:
     """GET request expecting object (dict) response."""
     base_url, timeout = _load_api_config()
     url = f"{base_url}{path}"
+    headers = get_auth_headers()
     try:
-        response = requests_module.get(url, params=params, timeout=timeout)
+        response = requests_module.get(url, params=params, headers=headers, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
             f"Failed to reach pullDB API at {url}: {exc}. "
