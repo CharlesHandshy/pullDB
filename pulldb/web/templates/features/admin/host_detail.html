@@ -153,9 +153,18 @@
                                    placeholder="Leave blank to keep">
                         </div>
                     </div>
-                    <div class="form-actions">
+                    <div class="form-actions" style="gap: var(--space-2); flex-wrap: wrap;">
                         <button type="submit" class="btn btn-warning btn-sm" id="update-secret-btn">
                             Update Secret
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="quick-rotate-btn"
+                                title="Generate new password and update MySQL + AWS atomically">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                                <path d="M23 4v6h-6"></path>
+                                <path d="M1 20v-6h6"></path>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            </svg>
+                            Quick Rotate
                         </button>
                     </div>
                 </form>
@@ -171,6 +180,61 @@
                                 type: 'warning'
                             });
                             if (confirmed) form.submit();
+                        });
+                    }
+
+                    // Quick Rotate button handler
+                    const rotateBtn = document.getElementById('quick-rotate-btn');
+                    if (rotateBtn) {
+                        rotateBtn.addEventListener('click', async () => {
+                            const confirmed = await showConfirm(
+                                'Generate a new random password and update both MySQL server and AWS Secrets Manager?',
+                                {
+                                    title: 'Quick Rotate Password',
+                                    okText: 'Rotate',
+                                    type: 'warning'
+                                }
+                            );
+                            if (!confirmed) return;
+
+                            rotateBtn.disabled = true;
+                            rotateBtn.innerHTML = '<span class="spinner"></span> Rotating...';
+
+                            try {
+                                const response = await fetch('/api/admin/hosts/{{ host.id }}/rotate-secret', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ password_length: 32 })
+                                });
+
+                                const result = await response.json();
+
+                                if (result.success) {
+                                    await showAlert('Password rotated successfully! Page will refresh.', { type: 'success' });
+                                    window.location.reload();
+                                } else {
+                                    let errorMsg = result.error || result.message;
+                                    if (result.suggestions && result.suggestions.length > 0) {
+                                        errorMsg += '\n\nSuggestions:\n• ' + result.suggestions.join('\n• ');
+                                    }
+                                    if (result.manual_fix_required && result.manual_fix_instructions) {
+                                        errorMsg += '\n\n' + result.manual_fix_instructions;
+                                    }
+                                    await showAlert(errorMsg, { type: 'error', title: 'Rotation Failed' });
+                                }
+                            } catch (err) {
+                                await showAlert('Failed to rotate: ' + err.message, { type: 'error' });
+                            } finally {
+                                rotateBtn.disabled = false;
+                                rotateBtn.innerHTML = `
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                                        <path d="M23 4v6h-6"></path>
+                                        <path d="M1 20v-6h6"></path>
+                                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                    </svg>
+                                    Quick Rotate
+                                `;
+                            }
                         });
                     }
                 })();
