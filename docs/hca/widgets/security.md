@@ -313,30 +313,41 @@ print(f"Host: {creds.host}, Password: {creds.password}")
 
 ### Secrets Rotation
 
-#### Rotation Procedure
+pullDB provides unified secret rotation via CLI and Web UI. Both use the same atomic 7-phase workflow.
 
-1. **Generate new password**:
-   ```bash
-   NEW_PASSWORD=$(openssl rand -base64 32)
-   ```
+#### CLI Rotation
 
-2. **Update MySQL user**:
-   ```sql
-   ALTER USER 'pulldb_api'@'localhost' IDENTIFIED BY 'new_password';
-   FLUSH PRIVILEGES;
-   ```
+```bash
+# Rotate credentials for a host (by alias, hostname, or host_id)
+pulldb-admin secrets rotate-host mydb
 
-3. **Update Secrets Manager**:
-   ```bash
-   aws secretsmanager update-secret \
-       --secret-id /pulldb/mysql/api \
-       --secret-string "{\"password\":\"$NEW_PASSWORD\",\"host\":\"localhost\"}"
-   ```
+# With custom password length (default: 32)
+pulldb-admin secrets rotate-host --length 48 mydb
 
-4. **Restart services** (credentials cached at startup):
-   ```bash
-   sudo systemctl restart pulldb-api pulldb-worker
-   ```
+# JSON output for scripting
+pulldb-admin secrets rotate-host --json mydb
+
+# Skip confirmation prompt
+pulldb-admin secrets rotate-host --yes mydb
+```
+
+#### Web UI Rotation
+
+Navigate to **Admin → Hosts → [Host Detail]** and click the **Quick Rotate** button. A modal displays real-time progress through all phases.
+
+#### Rotation Phases
+
+The rotation service performs these steps atomically:
+
+1. **fetch_credentials** - Fetch current credentials from AWS Secrets Manager
+2. **validate_current** - Verify current credentials work on MySQL
+3. **generate_password** - Generate cryptographically secure password
+4. **mysql_update** - Update MySQL user password (ALTER USER)
+5. **verify_new_password** - Verify new password works on MySQL
+6. **aws_update** - Update AWS Secrets Manager secret
+7. **final_verify** - Round-trip verification (AWS → MySQL)
+
+If MySQL update succeeds but AWS update fails, the service provides manual fix instructions to prevent credential desync.
 
 #### Rotation Schedule
 

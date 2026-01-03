@@ -390,8 +390,10 @@ pulldb-admin secrets test /pulldb/mysql/coordination-db --username=pulldb_api
 pulldb-admin secrets delete /pulldb/mysql/old-secret
 pulldb-admin secrets delete /pulldb/mysql/old-secret --force  # immediate
 
-# Rotate password (update secret only, not MySQL user)
-pulldb-admin secrets rotate /pulldb/mysql/coordination-db
+# Rotate host credentials (atomic MySQL + AWS update)
+pulldb-admin secrets rotate-host mydb              # By alias or hostname
+pulldb-admin secrets rotate-host --length 48 mydb  # Custom password length
+pulldb-admin secrets rotate-host --json mydb       # JSON output for scripting
 ```
 
 **Secrets JSON Format:**

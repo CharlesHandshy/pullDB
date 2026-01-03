@@ -57,6 +57,10 @@ pulldb-admin hosts list|add|enable|disable
 
 # Manage users
 pulldb-admin users list|show|enable|disable
+
+# Manage secrets
+pulldb-admin secrets rotate-host <hostname>
+pulldb-admin secrets verify
 ```
 
 ---
@@ -412,6 +416,45 @@ pulldb-admin users show <username>      # Show user details
 pulldb-admin users enable <username>    # Enable a user
 pulldb-admin users disable <username>   # Disable a user
 ```
+
+---
+
+### secrets
+
+Manage MySQL credentials stored in AWS Secrets Manager.
+
+**Subcommands:**
+
+```bash
+pulldb-admin secrets rotate-host <hostname> [--yes]   # Rotate host credentials
+pulldb-admin secrets verify                           # Verify all secrets
+```
+
+**rotate-host** - Atomically rotates MySQL credentials for a host:
+
+1. Validates current credentials work
+2. Generates new secure password
+3. Updates MySQL user password
+4. Updates AWS Secrets Manager
+5. Verifies new credentials work
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--yes`, `-y` | Skip confirmation prompt |
+
+**Example:**
+
+```bash
+# Rotate credentials for localhost (interactive)
+pulldb-admin secrets rotate-host localhost
+
+# Non-interactive rotation
+pulldb-admin secrets rotate-host localhost --yes
+```
+
+> **Alternative:** Use the **Quick Rotate** button in the Web UI at Admin → Hosts → [hostname] for a visual rotation workflow with progress tracking.
 
 ---
 
