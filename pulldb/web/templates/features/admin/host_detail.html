@@ -183,6 +183,129 @@
                         });
                     }
 
+                    // Rotation phases in order
+                    const ROTATION_PHASES = [
+                        { key: 'validate', label: 'Validate current credentials' },
+                        { key: 'generate', label: 'Generate new password' },
+                        { key: 'mysql_update', label: 'Update MySQL password' },
+                        { key: 'mysql_verify', label: 'Verify MySQL connection' },
+                        { key: 'aws_update', label: 'Update AWS secret' },
+                        { key: 'aws_verify', label: 'Verify AWS secret' },
+                        { key: 'final_verify', label: 'Final verification' }
+                    ];
+
+                    // Create the rotation progress modal
+                    function createRotationModal() {
+                        const modal = document.createElement('div');
+                        modal.className = 'modal-backdrop';
+                        modal.id = 'rotation-modal';
+                        modal.innerHTML = `
+                            <div class="modal rotation-modal">
+                                <div class="modal-header">
+                                    <h3 class="modal-title">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                                            <path d="M23 4v6h-6"></path>
+                                            <path d="M1 20v-6h6"></path>
+                                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                        </svg>
+                                        Password Rotation
+                                    </h3>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="rotation-checklist" id="rotation-checklist">
+                                        ${ROTATION_PHASES.map(p => `
+                                            <div class="rotation-step" data-phase="${p.key}">
+                                                <div class="rotation-step-icon">
+                                                    <svg class="icon-pending" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <circle cx="12" cy="12" r="10"/>
+                                                    </svg>
+                                                    <svg class="icon-running" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <circle cx="12" cy="12" r="10"/>
+                                                        <path d="M12 6v6l4 2"/>
+                                                    </svg>
+                                                    <svg class="icon-success" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                                                        <polyline points="22 4 12 14.01 9 11.01"/>
+                                                    </svg>
+                                                    <svg class="icon-failed" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <circle cx="12" cy="12" r="10"/>
+                                                        <line x1="15" y1="9" x2="9" y2="15"/>
+                                                        <line x1="9" y1="9" x2="15" y2="15"/>
+                                                    </svg>
+                                                </div>
+                                                <span class="rotation-step-label">${p.label}</span>
+                                                <span class="rotation-step-time"></span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                    <div class="rotation-result" id="rotation-result" style="display: none;">
+                                        <div class="rotation-result-icon"></div>
+                                        <div class="rotation-result-message"></div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer" id="rotation-modal-footer" style="display: none;">
+                                    <button type="button" class="btn btn-primary" id="rotation-close-btn">Close</button>
+                                </div>
+                            </div>
+                        `;
+                        document.body.appendChild(modal);
+                        return modal;
+                    }
+
+                    function updatePhaseStatus(phase, status, timeMs = null) {
+                        const step = document.querySelector(`.rotation-step[data-phase="${phase}"]`);
+                        if (!step) return;
+                        step.className = `rotation-step ${status}`;
+                        if (timeMs !== null) {
+                            const timeEl = step.querySelector('.rotation-step-time');
+                            if (timeEl) timeEl.textContent = `${(timeMs / 1000).toFixed(2)}s`;
+                        }
+                    }
+
+                    function showRotationResult(success, message, suggestions = [], manualFix = null) {
+                        const resultEl = document.getElementById('rotation-result');
+                        const iconEl = resultEl.querySelector('.rotation-result-icon');
+                        const msgEl = resultEl.querySelector('.rotation-result-message');
+                        const footer = document.getElementById('rotation-modal-footer');
+
+                        resultEl.style.display = 'block';
+                        footer.style.display = 'flex';
+
+                        if (success) {
+                            resultEl.className = 'rotation-result success';
+                            iconEl.innerHTML = `
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                                    <polyline points="22 4 12 14.01 9 11.01"/>
+                                </svg>
+                            `;
+                            msgEl.innerHTML = `<strong>Success!</strong><br>${message}`;
+                        } else {
+                            resultEl.className = 'rotation-result failed';
+                            iconEl.innerHTML = `
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <line x1="15" y1="9" x2="9" y2="15"/>
+                                    <line x1="9" y1="9" x2="15" y2="15"/>
+                                </svg>
+                            `;
+                            let html = `<strong>Failed</strong><br>${message}`;
+                            if (suggestions && suggestions.length > 0) {
+                                html += `<div class="rotation-suggestions"><strong>Suggestions:</strong><ul>${suggestions.map(s => `<li>${s}</li>`).join('')}</ul></div>`;
+                            }
+                            if (manualFix) {
+                                html += `<div class="rotation-manual-fix"><strong>Manual Fix Required:</strong><pre>${manualFix}</pre></div>`;
+                            }
+                            msgEl.innerHTML = html;
+                        }
+                    }
+
+                    function closeRotationModal(reload = false) {
+                        const modal = document.getElementById('rotation-modal');
+                        if (modal) modal.remove();
+                        if (reload) window.location.reload();
+                    }
+
                     // Quick Rotate button handler
                     const rotateBtn = document.getElementById('quick-rotate-btn');
                     if (rotateBtn) {
@@ -197,8 +320,27 @@
                             );
                             if (!confirmed) return;
 
-                            rotateBtn.disabled = true;
-                            rotateBtn.innerHTML = '<span class="spinner"></span> Rotating...';
+                            // Create and show modal
+                            const modal = createRotationModal();
+                            modal.style.display = 'flex';
+
+                            // Animate phases as "running" one by one
+                            const animatePhases = () => {
+                                let currentPhase = 0;
+                                const interval = setInterval(() => {
+                                    if (currentPhase > 0) {
+                                        // Previous stays running until we get actual results
+                                    }
+                                    if (currentPhase < ROTATION_PHASES.length) {
+                                        updatePhaseStatus(ROTATION_PHASES[currentPhase].key, 'running');
+                                        currentPhase++;
+                                    } else {
+                                        clearInterval(interval);
+                                    }
+                                }, 300);
+                                return () => clearInterval(interval);
+                            };
+                            const stopAnimation = animatePhases();
 
                             try {
                                 const response = await fetch('/api/admin/hosts/{{ host.id }}/rotate-secret', {
@@ -208,37 +350,158 @@
                                 });
 
                                 const result = await response.json();
+                                stopAnimation();
+
+                                // Update phases based on timing (completed phases)
+                                if (result.timing) {
+                                    for (const [phase, timeMs] of Object.entries(result.timing)) {
+                                        updatePhaseStatus(phase, 'success', timeMs);
+                                    }
+                                }
 
                                 if (result.success) {
-                                    await showAlert('Password rotated successfully! Page will refresh.', { type: 'success' });
-                                    window.location.reload();
+                                    // Mark all phases as success
+                                    ROTATION_PHASES.forEach(p => {
+                                        const step = document.querySelector(`.rotation-step[data-phase="${p.key}"]`);
+                                        if (step && !step.classList.contains('success')) {
+                                            updatePhaseStatus(p.key, 'success');
+                                        }
+                                    });
+                                    showRotationResult(true, 'Password rotated successfully! Click Close to refresh.');
+
+                                    const closeBtn = document.getElementById('rotation-close-btn');
+                                    closeBtn.addEventListener('click', () => closeRotationModal(true));
                                 } else {
-                                    let errorMsg = result.error || result.message;
-                                    if (result.suggestions && result.suggestions.length > 0) {
-                                        errorMsg += '\n\nSuggestions:\n• ' + result.suggestions.join('\n• ');
+                                    // Mark failed phase
+                                    if (result.phase) {
+                                        updatePhaseStatus(result.phase, 'failed');
+                                        // Mark subsequent phases as pending
+                                        let foundFailed = false;
+                                        ROTATION_PHASES.forEach(p => {
+                                            if (p.key === result.phase) foundFailed = true;
+                                            else if (foundFailed) {
+                                                updatePhaseStatus(p.key, 'pending');
+                                            }
+                                        });
                                     }
-                                    if (result.manual_fix_required && result.manual_fix_instructions) {
-                                        errorMsg += '\n\n' + result.manual_fix_instructions;
-                                    }
-                                    await showAlert(errorMsg, { type: 'error', title: 'Rotation Failed' });
+                                    showRotationResult(
+                                        false,
+                                        result.error || result.message,
+                                        result.suggestions,
+                                        result.manual_fix_required ? result.manual_fix_instructions : null
+                                    );
+
+                                    const closeBtn = document.getElementById('rotation-close-btn');
+                                    closeBtn.addEventListener('click', () => closeRotationModal(false));
                                 }
                             } catch (err) {
-                                await showAlert('Failed to rotate: ' + err.message, { type: 'error' });
-                            } finally {
-                                rotateBtn.disabled = false;
-                                rotateBtn.innerHTML = `
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
-                                        <path d="M23 4v6h-6"></path>
-                                        <path d="M1 20v-6h6"></path>
-                                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                                    </svg>
-                                    Quick Rotate
-                                `;
+                                stopAnimation();
+                                showRotationResult(false, 'Request failed: ' + err.message);
+                                const closeBtn = document.getElementById('rotation-close-btn');
+                                closeBtn.addEventListener('click', () => closeRotationModal(false));
                             }
                         });
                     }
                 })();
                 </script>
+                <style>
+                /* Rotation Modal Styles */
+                .rotation-modal {
+                    max-width: 480px;
+                    width: 100%;
+                }
+                .rotation-checklist {
+                    display: flex;
+                    flex-direction: column;
+                    gap: var(--space-2);
+                }
+                .rotation-step {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-3);
+                    padding: var(--space-2) var(--space-3);
+                    border-radius: var(--radius-md);
+                    background: var(--bg-secondary);
+                    transition: all 0.2s ease;
+                }
+                .rotation-step-icon {
+                    width: 24px;
+                    height: 24px;
+                    flex-shrink: 0;
+                }
+                .rotation-step-icon svg {
+                    width: 24px;
+                    height: 24px;
+                    display: none;
+                }
+                .rotation-step .icon-pending { display: block; color: var(--text-muted); }
+                .rotation-step.running .icon-pending { display: none; }
+                .rotation-step.running .icon-running { display: block; color: var(--primary); animation: pulse 1s ease-in-out infinite; }
+                .rotation-step.success .icon-pending { display: none; }
+                .rotation-step.success .icon-success { display: block; color: var(--success); }
+                .rotation-step.failed .icon-pending { display: none; }
+                .rotation-step.failed .icon-failed { display: block; color: var(--danger); }
+                .rotation-step.success { background: color-mix(in srgb, var(--success) 10%, var(--bg-secondary)); }
+                .rotation-step.failed { background: color-mix(in srgb, var(--danger) 10%, var(--bg-secondary)); }
+                .rotation-step.running { background: color-mix(in srgb, var(--primary) 10%, var(--bg-secondary)); }
+                .rotation-step-label {
+                    flex: 1;
+                    font-size: var(--text-sm);
+                }
+                .rotation-step-time {
+                    font-size: var(--text-xs);
+                    color: var(--text-muted);
+                    font-family: var(--font-mono);
+                }
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.5; }
+                }
+                .rotation-result {
+                    margin-top: var(--space-4);
+                    padding: var(--space-3);
+                    border-radius: var(--radius-md);
+                    display: flex;
+                    gap: var(--space-3);
+                }
+                .rotation-result.success {
+                    background: color-mix(in srgb, var(--success) 15%, var(--bg-secondary));
+                    border: 1px solid var(--success);
+                }
+                .rotation-result.failed {
+                    background: color-mix(in srgb, var(--danger) 15%, var(--bg-secondary));
+                    border: 1px solid var(--danger);
+                }
+                .rotation-result-icon svg {
+                    width: 32px;
+                    height: 32px;
+                }
+                .rotation-result.success .rotation-result-icon { color: var(--success); }
+                .rotation-result.failed .rotation-result-icon { color: var(--danger); }
+                .rotation-result-message {
+                    flex: 1;
+                    font-size: var(--text-sm);
+                }
+                .rotation-suggestions {
+                    margin-top: var(--space-2);
+                }
+                .rotation-suggestions ul {
+                    margin: var(--space-1) 0 0 var(--space-4);
+                    padding: 0;
+                }
+                .rotation-manual-fix {
+                    margin-top: var(--space-2);
+                }
+                .rotation-manual-fix pre {
+                    margin-top: var(--space-1);
+                    padding: var(--space-2);
+                    background: var(--bg-primary);
+                    border-radius: var(--radius-sm);
+                    font-size: var(--text-xs);
+                    overflow-x: auto;
+                    white-space: pre-wrap;
+                }
+                </style>
             </div>
             {% elif host.credential_error %}
             <div class="card">

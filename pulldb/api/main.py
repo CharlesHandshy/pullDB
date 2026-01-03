@@ -3113,7 +3113,7 @@ def _rotate_host_secret(
         suggestions=result.suggestions,
         manual_fix_required=result.manual_fix_required,
         manual_fix_instructions=result.manual_fix_instructions,
-        timing=result.timing if result.success else None,
+        timing=result.timing,  # Always include timing to show completed phases
     )
 
 
