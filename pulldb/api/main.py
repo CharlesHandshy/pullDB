@@ -3006,6 +3006,147 @@ async def delete_single_orphan_database(
     return await run_in_threadpool(_delete_orphans, state, request)
 
 
+# ---------------------------------------------------------------------------
+# Host Secret Rotation API - Admin endpoint for credential rotation
+# ---------------------------------------------------------------------------
+
+
+class RotateHostSecretRequest(pydantic.BaseModel):
+    """Request to rotate credentials for a database host."""
+
+    new_password: str | None = pydantic.Field(
+        default=None,
+        description="Explicit new password. If not provided, a secure random password is generated.",
+    )
+    password_length: int = pydantic.Field(
+        default=32,
+        ge=16,
+        le=64,
+        description="Length of generated password (if not providing explicit password)",
+    )
+
+
+class RotateHostSecretResponse(pydantic.BaseModel):
+    """Response from host secret rotation."""
+
+    success: bool
+    message: str
+    error: str | None = None
+    phase: str | None = None
+    suggestions: list[str] | None = None
+    manual_fix_required: bool = False
+    manual_fix_instructions: str | None = None
+    timing: dict[str, float] | None = None
+
+
+def _rotate_host_secret(
+    state: APIState,
+    host_id: str,
+    request: RotateHostSecretRequest,
+    user: User,
+) -> RotateHostSecretResponse:
+    """Execute host secret rotation."""
+    from pulldb.domain.services.secret_rotation import rotate_host_secret
+
+    # Get host
+    if not hasattr(state, "host_repo") or not state.host_repo:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Host repository not available",
+        )
+
+    # Look up host by id (use hasattr pattern for Protocol compatibility)
+    host = None
+    if hasattr(state.host_repo, "get_host_by_id"):
+        host = state.host_repo.get_host_by_id(host_id)
+    if not host:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Host {host_id} not found",
+        )
+
+    if not host.credential_ref:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Host does not have a credential reference configured",
+        )
+
+    if not host.credential_ref.startswith("aws-secretsmanager:"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Host credential reference is not an AWS Secrets Manager secret",
+        )
+
+    # Execute rotation
+    result = rotate_host_secret(
+        host_id=host_id,
+        hostname=host.hostname,
+        credential_ref=host.credential_ref,
+        new_password=request.new_password,
+        password_length=request.password_length,
+    )
+
+    # Audit log
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        state.audit_repo.log_action(
+            actor_user_id=user.user_id,
+            action="host_secret_rotated" if result.success else "host_secret_rotation_failed",
+            detail=(
+                f"Rotated credentials for host {host.hostname}"
+                if result.success
+                else f"Failed to rotate credentials for host {host.hostname}: {result.error}"
+            ),
+            context={
+                "host_id": host_id,
+                "hostname": host.hostname,
+                "success": result.success,
+                "phase": result.phase,
+                "error": result.error,
+            },
+        )
+
+    return RotateHostSecretResponse(
+        success=result.success,
+        message=result.message,
+        error=result.error,
+        phase=result.phase,
+        suggestions=result.suggestions,
+        manual_fix_required=result.manual_fix_required,
+        manual_fix_instructions=result.manual_fix_instructions,
+        timing=result.timing if result.success else None,
+    )
+
+
+@app.post(
+    "/api/admin/hosts/{host_id}/rotate-secret",
+    response_model=RotateHostSecretResponse,
+)
+async def rotate_host_secret_endpoint(
+    host_id: str,
+    request: RotateHostSecretRequest,
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> RotateHostSecretResponse:
+    """Rotate credentials for a database host (admin only).
+
+    This endpoint performs a safe, atomic credential rotation:
+    1. Fetches current credentials from AWS Secrets Manager
+    2. Validates current credentials work on MySQL
+    3. Verifies user has ALTER USER privilege
+    4. Generates or uses provided new password
+    5. Updates MySQL user password (ALTER USER)
+    6. Verifies new password works
+    7. Updates AWS Secrets Manager
+    8. Verifies round-trip (AWS → MySQL)
+
+    FAIL HARD: Any failure returns detailed diagnostic information.
+    If MySQL succeeds but AWS fails, provides manual fix instructions.
+
+    Both CLI (`pulldb-admin secrets rotate`) and Web UI use this endpoint.
+    """
+    return await run_in_threadpool(_rotate_host_secret, state, host_id, request, user)
+
+
 def create_app() -> fastapi.FastAPI:
     return app
 
