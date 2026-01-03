@@ -489,13 +489,24 @@ def rotate_secret(
     new_password: str | None,
     length: int,
 ) -> None:
-    """Rotate a secret's password.
+    """[DEPRECATED] Rotate only AWS secret - does NOT update MySQL.
+
+    ⚠ WARNING: This command only updates AWS Secrets Manager, not MySQL.
+    Use 'pulldb-admin secrets rotate-host' for safe atomic rotation.
 
     SECRET_ID is the secret name (e.g., /pulldb/mysql/coordination-db)
-
-    Generates a new password and updates the secret.
-    Note: This does NOT update the MySQL user password - that must be done separately.
     """
+    # Show deprecation warning
+    click.echo(click.style(
+        "⚠ DEPRECATED: This command only updates AWS Secrets Manager.",
+        fg="yellow", bold=True
+    ))
+    click.echo(click.style(
+        "  Use 'pulldb-admin secrets rotate-host <host>' for safe atomic rotation.",
+        fg="yellow"
+    ))
+    click.echo("")
+
     client = _get_secrets_manager_client(ctx.obj["profile"], ctx.obj["region"])
 
     # Get current secret
@@ -532,3 +543,142 @@ def rotate_secret(
 
     except ClientError as e:
         raise click.ClickException(f"AWS error: {e}") from e
+
+
+@secrets_group.command("rotate-host")
+@click.argument("hostname")
+@click.option("--new-password", help="New password (generates random if not provided)")
+@click.option(
+    "--length",
+    type=int,
+    default=DEFAULT_PASSWORD_LENGTH,
+    help="Generated password length (16-64)",
+)
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of formatted text",
+)
+@click.confirmation_option(prompt="Rotate host credentials? This will update MySQL and AWS.")
+def rotate_host_secret(
+    hostname: str,
+    new_password: str | None,
+    length: int,
+    json_out: bool,
+) -> None:
+    """Safely rotate credentials for a database host.
+
+    HOSTNAME is the database host identifier (short name, hostname, or host_id).
+
+    This performs ATOMIC credential rotation:
+
+    \b
+    1. Fetch current credentials from AWS Secrets Manager
+    2. Validate current credentials work on MySQL
+    3. Verify user has ALTER USER privilege
+    4. Generate or use provided new password
+    5. Update MySQL user password (ALTER USER)
+    6. Verify new password works on MySQL
+    7. Update AWS Secrets Manager
+    8. Final round-trip verification (AWS → MySQL)
+
+    If step 5-6 succeeds but step 7 fails, provides manual fix instructions.
+    Includes automatic rollback if verification fails after MySQL update.
+
+    \b
+    Examples:
+        pulldb-admin secrets rotate-host mydb        # By short name
+        pulldb-admin secrets rotate-host db.example.com  # By hostname
+        pulldb-admin secrets rotate-host --length 48 mydb  # Custom length
+    """
+    from pulldb.domain.services.secret_rotation import rotate_host_secret as do_rotation
+    from pulldb.infra.factory import get_host_repository
+
+    # Look up host by alias, hostname, or id
+    repo = get_host_repository()
+    host = None
+
+    # Try by alias first (most common usage)
+    host = repo.get_host_by_alias(hostname)
+
+    # Try by hostname
+    if not host:
+        host = repo.get_host_by_hostname(hostname)
+
+    # Try by host_id (if available)
+    if not host and hasattr(repo, "get_host_by_id"):
+        host = repo.get_host_by_id(hostname)
+
+    if not host:
+        raise click.ClickException(
+            f"Host not found: {hostname}\n"
+            f"Use 'pulldb-admin hosts list' to see available hosts."
+        )
+
+    if not host.credential_ref:
+        raise click.ClickException(
+            f"Host {host.host_alias or host.hostname} does not have a credential reference configured.\n"
+            "Configure credentials in Admin → Hosts → Edit Host."
+        )
+
+    if not host.credential_ref.startswith("aws-secretsmanager:"):
+        raise click.ClickException(
+            f"Host {host.host_alias or host.hostname} credential reference is not AWS Secrets Manager.\n"
+            f"  Current: {host.credential_ref}\n"
+            "Only aws-secretsmanager:// references are supported for rotation."
+        )
+
+    click.echo(f"Rotating credentials for host: {click.style(host.host_alias or host.hostname, fg='cyan', bold=True)}")
+    click.echo(f"  Hostname: {host.hostname}")
+    click.echo(f"  Credential ref: {host.credential_ref}")
+    click.echo("")
+
+    # Execute rotation
+    result = do_rotation(
+        host_id=host.id,
+        hostname=host.hostname,
+        credential_ref=host.credential_ref,
+        new_password=new_password,
+        password_length=length,
+    )
+
+    if json_out:
+        import json as json_module
+        output = {
+            "success": result.success,
+            "message": result.message,
+            "error": result.error,
+            "phase": result.phase,
+            "suggestions": result.suggestions,
+            "manual_fix_required": result.manual_fix_required,
+            "timing": result.timing,
+        }
+        click.echo(json_module.dumps(output, indent=2))
+        if not result.success:
+            raise SystemExit(1)
+        return
+
+    if result.success:
+        click.echo(click.style("✓ Credentials rotated successfully!", fg="green", bold=True))
+        click.echo("")
+        click.echo("Rotation phases completed:")
+        for phase, duration in (result.timing or {}).items():
+            click.echo(f"  ✓ {phase}: {duration:.2f}s")
+    else:
+        click.echo(click.style("✗ Rotation failed!", fg="red", bold=True))
+        click.echo(f"  Phase: {result.phase}")
+        click.echo(f"  Error: {result.error}")
+
+        if result.suggestions:
+            click.echo("")
+            click.echo(click.style("Suggestions:", fg="yellow"))
+            for suggestion in result.suggestions:
+                click.echo(f"  • {suggestion}")
+
+        if result.manual_fix_required and result.manual_fix_instructions:
+            click.echo("")
+            click.echo(click.style("⚠ MANUAL FIX REQUIRED:", fg="red", bold=True))
+            click.echo(result.manual_fix_instructions)
+
+        raise SystemExit(1)

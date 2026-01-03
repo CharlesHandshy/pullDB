@@ -1055,10 +1055,24 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                             <tr><td>get &lt;name&gt;</td><td colspan="3">Get a secret's value</td></tr>
                             <tr><td>set &lt;name&gt;</td><td colspan="3">Create or update a secret</td></tr>
                             <tr><td>delete &lt;name&gt;</td><td colspan="3">Delete a secret</td></tr>
-                            <tr><td>rotate &lt;name&gt;</td><td colspan="3">Rotate a secret's password</td></tr>
+                            <tr><td>rotate &lt;name&gt;</td><td colspan="3">[DEPRECATED] Rotate only AWS secret (use rotate-host instead)</td></tr>
+                            <tr><td style="white-space: nowrap;"><strong>rotate-host &lt;host&gt;</strong></td><td colspan="3"><strong>Safely rotate credentials</strong> - atomic MySQL + AWS update with verification</td></tr>
                             <tr><td>test &lt;name&gt;</td><td colspan="3">Test MySQL connectivity using a secret</td></tr>
                         </tbody>
                     </table>
+                    
+                    <h4 style="margin-top: 16px;">rotate-host Details</h4>
+                    <p>Performs atomic credential rotation for a database host:</p>
+                    <ol style="margin: 8px 0; padding-left: 24px; color: var(--color-text-secondary);">
+                        <li>Validates current credentials work on MySQL</li>
+                        <li>Verifies user has ALTER USER privilege</li>
+                        <li>Generates new secure password (or uses provided)</li>
+                        <li>Updates MySQL user password (ALTER USER)</li>
+                        <li>Verifies new password works</li>
+                        <li>Updates AWS Secrets Manager</li>
+                        <li>Final round-trip verification</li>
+                    </ol>
+                    <p style="color: var(--color-warning);">If MySQL succeeds but AWS fails, provides manual fix instructions.</p>
                     
                     <h4 style="margin-top: 16px;">Global Options</h4>
                     <table class="param-table">
