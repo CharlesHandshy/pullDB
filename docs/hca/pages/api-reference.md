@@ -1,8 +1,9 @@
 # pullDB REST API Reference
 
-> **Complete API documentation for pullDB v0.2.0**
+> **Complete API documentation for pullDB v0.1.0**
 >
-> The pullDB API is a FastAPI-based REST service running on port **8000** (web) or **8080** (API-only mode).
+> The pullDB API is a FastAPI-based REST service running on port **8080** (combined API + Web UI).
+> In web-only mode, the service runs on port **8000**.
 > Interactive documentation is available at `/api/docs` (Swagger) and `/api/redoc` (ReDoc) when the service is running.
 
 ## Table of Contents
@@ -33,7 +34,7 @@ pullDB supports three authentication modes configured via `PULLDB_AUTH_MODE`:
 ### Trusted Mode (CLI)
 
 ```bash
-curl -H "X-Pulldb-User: jsmith" http://localhost:8000/api/jobs
+curl -H "X-Pulldb-User: jsmith" http://localhost:8080/api/jobs
 ```
 
 ### Session Mode (Web UI)
@@ -41,7 +42,7 @@ curl -H "X-Pulldb-User: jsmith" http://localhost:8000/api/jobs
 Login via `/web/login` to obtain a session cookie, then include it in requests:
 
 ```bash
-curl -b "session_token=abc123..." http://localhost:8000/api/jobs
+curl -b "session_token=abc123..." http://localhost:8080/api/jobs
 ```
 
 ### Role-Based Access Control (RBAC)
@@ -58,9 +59,9 @@ curl -b "session_token=abc123..." http://localhost:8000/api/jobs
 
 | Environment | URL |
 |-------------|-----|
-| Production | `http://pulldb-server:8000/api` |
-| Development | `http://localhost:8000/api` |
-| API-Only Mode | `http://localhost:8080/api` |
+| Production | `http://pulldb-server:8080/api` |
+| Development | `http://localhost:8080/api` |
+| Web-Only Mode | `http://localhost:8080/api` |
 
 All endpoints are prefixed with `/api`.
 
@@ -74,7 +75,7 @@ Health check endpoint. Returns `200 OK` if the service is running.
 
 **Request:**
 ```bash
-curl http://localhost:8000/api/health
+curl http://localhost:8080/api/health
 ```
 
 **Response:**
@@ -92,7 +93,7 @@ System status with queue depth and active restore count.
 
 **Request:**
 ```bash
-curl http://localhost:8000/api/status
+curl http://localhost:8080/api/status
 ```
 
 **Response:**
@@ -116,23 +117,23 @@ Submit a new restore job.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `user` | string | ✅ | User code (e.g., `cust_12345`) |
+| `user` | string | ✅ | User code (e.g., `jsmith`) |
 | `customer` | string | ❌ | Customer name for backup search |
-| `qatemplate` | boolean | ❌ | Use QA template instead of customer backup |
+| `qatemplate` | boolean | ❌ | Use QA template instead of customer backup (default: false) |
 | `dbhost` | string | ❌ | Target database host (default from settings) |
 | `date` | string | ❌ | Specific backup date `YYYY-MM-DD` |
 | `env` | string | ❌ | S3 environment: `staging` or `prod` |
-| `overwrite` | boolean | ❌ | Overwrite existing database |
-| `suffix` | string | ❌ | 1-3 letter suffix for target database |
+| `overwrite` | boolean | ❌ | Overwrite existing database (default: false) |
+| `suffix` | string | ❌ | 1-3 lowercase letter suffix for target database (pattern: `^[a-z]{1,3}$`) |
 | `backup_path` | string | ❌ | Full S3 path to specific backup |
 
 **Example - Customer Restore:**
 ```bash
-curl -X POST http://localhost:8000/api/jobs \
+curl -X POST http://localhost:8080/api/jobs \
   -H "Content-Type: application/json" \
   -H "X-Pulldb-User: jsmith" \
   -d '{
-    "user": "cust_12345",
+    "user": "jsmith",
     "customer": "acme_pest",
     "dbhost": "dev-mysql-01"
   }'
@@ -140,11 +141,11 @@ curl -X POST http://localhost:8000/api/jobs \
 
 **Example - QA Template:**
 ```bash
-curl -X POST http://localhost:8000/api/jobs \
+curl -X POST http://localhost:8080/api/jobs \
   -H "Content-Type: application/json" \
   -H "X-Pulldb-User: jsmith" \
   -d '{
-    "user": "cust_12345",
+    "user": "jsmith",
     "qatemplate": true
   }'
 ```
@@ -186,7 +187,7 @@ List jobs with optional filters.
 
 **Example:**
 ```bash
-curl "http://localhost:8000/api/jobs?active=true&limit=10"
+curl "http://localhost:8080/api/jobs?active=true&limit=10"
 ```
 
 **Response:**
@@ -217,7 +218,7 @@ curl "http://localhost:8000/api/jobs?active=true&limit=10"
 Shortcut for listing only active jobs.
 
 ```bash
-curl "http://localhost:8000/api/jobs/active"
+curl "http://localhost:8080/api/jobs/active"
 ```
 
 ---
@@ -227,31 +228,40 @@ curl "http://localhost:8000/api/jobs/active"
 Shortcut for listing completed/failed/canceled jobs.
 
 ```bash
-curl "http://localhost:8000/api/jobs/history?limit=50"
+curl "http://localhost:8080/api/jobs/history?limit=50"
 ```
 
 ---
 
 ### GET /api/jobs/paginated
 
-Paginated job listing with cursor-based pagination.
+Paginated job listing for LazyTable widget with offset-based pagination.
 
 **Query Parameters:**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `cursor` | string | Pagination cursor from previous response |
-| `limit` | integer | Page size (default 25, max 100) |
-| `status` | string | Filter by status |
-| `user_code` | string | Filter by user code |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | integer | 0 | Page number (0-indexed) |
+| `pageSize` | integer | 50 | Page size (10-200) |
+| `view` | string | `active` | View: `active` or `history` |
+| `sortColumn` | string | - | Column to sort by |
+| `sortDirection` | string | - | Sort direction: `asc` or `desc` |
+| `filter_status` | string | - | Filter by status (comma-separated for OR) |
+| `filter_dbhost` | string | - | Filter by host (comma-separated for OR) |
+| `filter_user_code` | string | - | Filter by user code (comma-separated for OR) |
+| `filter_target` | string | - | Filter by target (substring match) |
+| `filter_id` | string | - | Filter by job ID (wildcards: `*`) |
+| `filter_submitted_at` | string | - | Filter by date MM/DD/YYYY (wildcards: `*`) |
+| `days` | integer | 30 | History retention days (1-365) |
 
 **Response:**
 ```json
 {
-  "items": [...],
-  "next_cursor": "eyJ0cyI6IjIwMjYtMDEtMDIifQ==",
-  "has_more": true,
-  "total": 156
+  "rows": [...],
+  "totalCount": 156,
+  "filteredCount": 42,
+  "page": 0,
+  "pageSize": 50
 }
 ```
 
@@ -262,7 +272,7 @@ Paginated job listing with cursor-based pagination.
 Get detailed information about a specific job.
 
 ```bash
-curl "http://localhost:8000/api/jobs/8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f"
+curl "http://localhost:8080/api/jobs/8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f"
 ```
 
 ---
@@ -273,7 +283,7 @@ Resolve a short job ID prefix to full job ID.
 
 **Example:**
 ```bash
-curl "http://localhost:8000/api/jobs/resolve/8b4c4a3a"
+curl "http://localhost:8080/api/jobs/resolve/8b4c4a3a"
 ```
 
 **Response (single match):**
@@ -304,7 +314,7 @@ curl "http://localhost:8000/api/jobs/resolve/8b4c4a3a"
 Get event log for a job.
 
 ```bash
-curl "http://localhost:8000/api/jobs/8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f/events"
+curl "http://localhost:8080/api/jobs/8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f/events"
 ```
 
 **Response:**
@@ -334,20 +344,39 @@ curl "http://localhost:8000/api/jobs/8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f/events
 Get performance breakdown for a completed job.
 
 ```bash
-curl "http://localhost:8000/api/jobs/8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f/profile"
+curl "http://localhost:8080/api/jobs/8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f/profile"
 ```
 
 **Response:**
 ```json
 {
   "job_id": "8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f",
-  "total_seconds": 245.5,
+  "started_at": "2026-01-02T15:30:05Z",
+  "completed_at": "2026-01-02T15:34:10Z",
+  "total_duration_seconds": 245.5,
+  "total_bytes": 1234567890,
   "phases": {
-    "download": 45.2,
-    "extract": 12.8,
-    "restore": 180.5,
-    "post_sql": 7.0
-  }
+    "download": {
+      "phase": "download",
+      "started_at": "2026-01-02T15:30:05Z",
+      "completed_at": "2026-01-02T15:30:50Z",
+      "duration_seconds": 45.2,
+      "bytes_processed": 1234567890,
+      "bytes_per_second": 27312345.1,
+      "mbps": 26.0,
+      "metadata": {}
+    },
+    "extraction": {...},
+    "myloader": {...},
+    "post_sql": {...}
+  },
+  "phase_breakdown_percent": {
+    "download": 18.4,
+    "extraction": 5.2,
+    "myloader": 73.5,
+    "post_sql": 2.9
+  },
+  "error": null
 }
 ```
 
@@ -355,18 +384,28 @@ curl "http://localhost:8000/api/jobs/8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f/profil
 
 ### POST /api/jobs/{job_id}/cancel
 
-Cancel a running or queued job.
+Cancel a running or queued job. Users can cancel their own jobs. Managers can cancel team member jobs. Admins can cancel any job.
 
 ```bash
-curl -X POST "http://localhost:8000/api/jobs/8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f/cancel" \
+curl -X POST "http://localhost:8080/api/jobs/8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f/cancel" \
   -H "X-Pulldb-User: jsmith"
 ```
 
-**Response (200 OK):**
+**Response (200 OK - Queued Job):**
 ```json
 {
-  "message": "Cancel requested for job 8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f",
-  "job_id": "8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f"
+  "job_id": "8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f",
+  "status": "canceled",
+  "message": "Job canceled successfully (was queued)"
+}
+```
+
+**Response (200 OK - Running Job):**
+```json
+{
+  "job_id": "8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f",
+  "status": "canceling",
+  "message": "Cancellation requested; worker will stop at next checkpoint"
 }
 ```
 
@@ -374,21 +413,60 @@ curl -X POST "http://localhost:8000/api/jobs/8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6
 
 ### GET /api/jobs/my-last
 
-Get the authenticated user's most recent job.
+Get the authenticated user's most recent job. Requires `user_code` query parameter.
 
 ```bash
-curl -H "X-Pulldb-User: jsmith" "http://localhost:8000/api/jobs/my-last"
+curl "http://localhost:8080/api/jobs/my-last?user_code=jsmith"
+```
+
+**Response:**
+```json
+{
+  "job": {
+    "id": "8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f",
+    "target": "jsmith_acme",
+    "status": "complete",
+    ...
+  },
+  "user_code": "jsmith"
+}
 ```
 
 ---
 
 ### GET /api/jobs/search
 
-Search jobs by target prefix.
+Search jobs by ID, target, username, or user code. **Minimum 4 characters required.**
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `q` | string | - | Search query (min 4 chars) |
+| `limit` | integer | 50 | Max results (1-200) |
+| `exact` | boolean | false | Force exact matching |
 
 ```bash
-curl "http://localhost:8000/api/jobs/search?q=cust_123"
+curl "http://localhost:8080/api/jobs/search?q=jsmith&limit=10"
 ```
+
+**Response:**
+```json
+{
+  "query": "jsmith",
+  "count": 3,
+  "exact_match": true,
+  "jobs": [
+    {
+      "id": "8b4c4a3a-...",
+      "target": "jsmith_acme",
+      "status": "complete",
+      "user_code": "jsmith",
+      "owner_username": "jsmith",
+      ...
+    }
+  ]
+}
 
 ---
 
@@ -399,14 +477,14 @@ curl "http://localhost:8000/api/jobs/search?q=cust_123"
 Get user information by username.
 
 ```bash
-curl "http://localhost:8000/api/users/jsmith"
+curl "http://localhost:8080/api/users/jsmith"
 ```
 
 **Response:**
 ```json
 {
   "username": "jsmith",
-  "user_code": "jsmith",
+  "user_code": "JSMITH",
   "is_admin": false,
   "is_disabled": false,
   "has_password": true
@@ -420,7 +498,7 @@ curl "http://localhost:8000/api/users/jsmith"
 Get a user's most recent job (by user code).
 
 ```bash
-curl "http://localhost:8000/api/users/cust_12345/last-job"
+curl "http://localhost:8080/api/users/cust_12345/last-job"
 ```
 
 **Response:**
@@ -440,23 +518,24 @@ curl "http://localhost:8000/api/users/cust_12345/last-job"
 
 ### POST /api/auth/register
 
-Register a new user account.
+Register a new user account. Account is created in **disabled state** and must be enabled by an administrator.
 
 **Request Body:**
 ```json
 {
   "username": "newuser",
-  "password": "securepassword123",
-  "user_code": "newuser"
+  "password": "securepassword123"
 }
 ```
+
+> **Note:** `user_code` is auto-generated from the username. Password must be at least 8 characters.
 
 **Response (201 Created):**
 ```json
 {
-  "user_id": "usr_abc123",
   "username": "newuser",
-  "message": "User registered successfully"
+  "user_code": "NEWUSE",
+  "message": "Account created successfully. Contact an administrator to enable your account."
 }
 ```
 
@@ -484,7 +563,7 @@ Change user password.
 List available database hosts for restore targets.
 
 ```bash
-curl "http://localhost:8000/api/hosts"
+curl "http://localhost:8080/api/hosts"
 ```
 
 **Response:**
@@ -516,16 +595,17 @@ Search for available backups in S3.
 
 **Query Parameters:**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `customer` | string | Customer name to search |
-| `env` | string | Environment: `staging` or `prod` |
-| `date` | string | Specific date `YYYY-MM-DD` |
-| `limit` | integer | Max results |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `customer` | string | - | Customer name or wildcard pattern (supports `*` and `?`) |
+| `environment` | string | `both` | Environment: `staging`, `prod`, or `both` |
+| `date_from` | string | 7 days ago | Start date filter `YYYYMMDD` |
+| `limit` | integer | 5 | Max results per page (1-100) |
+| `offset` | integer | 0 | Pagination offset |
 
 **Example:**
 ```bash
-curl "http://localhost:8000/api/backups/search?customer=acme&env=staging&limit=5"
+curl "http://localhost:8080/api/backups/search?customer=acme&environment=staging&limit=5"
 ```
 
 **Response:**
@@ -533,14 +613,21 @@ curl "http://localhost:8000/api/backups/search?customer=acme&env=staging&limit=5
 {
   "backups": [
     {
-      "path": "s3://pestroutesrdsdbs/daily/stg/acme_pest/daily_mydumper_2026-01-02.tar",
       "customer": "acme_pest",
-      "date": "2026-01-02",
-      "size_bytes": 1234567890,
-      "env": "staging"
+      "timestamp": "2026-01-02T00:00:00Z",
+      "date": "20260102",
+      "size_mb": 1234.5,
+      "environment": "staging",
+      "key": "daily/stg/acme_pest/daily_mydumper_2026-01-02.tar",
+      "bucket": "pestroutesrdsdbs"
     }
   ],
-  "total": 1
+  "total": 1,
+  "query": "acme",
+  "environment": "staging",
+  "offset": 0,
+  "limit": 5,
+  "has_more": false
 }
 ```
 
@@ -551,7 +638,7 @@ curl "http://localhost:8000/api/backups/search?customer=acme&env=staging&limit=5
 Search for customer names.
 
 ```bash
-curl "http://localhost:8000/api/customers/search?q=acme"
+curl "http://localhost:8080/api/customers/search?q=acme"
 ```
 
 ---
@@ -565,7 +652,7 @@ These endpoints require `MANAGER` or `ADMIN` role.
 List team members and their jobs.
 
 ```bash
-curl -H "X-Pulldb-User: manager1" "http://localhost:8000/api/manager/team"
+curl -H "X-Pulldb-User: manager1" "http://localhost:8080/api/manager/team"
 ```
 
 ---
@@ -580,44 +667,105 @@ Get distinct user codes in the manager's team.
 
 These endpoints require `ADMIN` role.
 
-### POST /api/admin/settings
+### POST /api/admin/jobs/bulk-cancel
 
-Update system settings.
+Bulk cancel jobs matching filters.
 
-### GET /api/admin/users
+**Request Body:**
+```json
+{
+  "view": "active",
+  "filter_status": "queued",
+  "filter_dbhost": "dev-mysql-01",
+  "filter_user_code": "jsmith",
+  "filter_target": "acme",
+  "confirmation": "CANCEL ALL"
+}
+```
 
-List all users.
+### POST /api/admin/prune-logs
 
-### POST /api/admin/users/{user_id}/disable
+Prune old job event logs from database.
 
-Disable a user account.
-
-### DELETE /api/admin/staging/{staging_name}
+### POST /api/admin/cleanup-staging
 
 Clean up orphaned staging databases.
+
+### GET /api/admin/orphan-databases
+
+List orphaned staging databases across all hosts.
+
+### GET /api/admin/orphan-databases/paginated
+
+Paginated list of orphan databases for LazyTable widget.
+
+### GET /api/admin/orphan-databases/{dbhost}/{db_name}/meta
+
+Get metadata from `pullDB` table inside an orphan database.
+
+### DELETE /api/admin/orphan-databases/{dbhost}/{db_name}
+
+Delete a single orphan database.
+
+### POST /api/admin/delete-orphans
+
+Bulk delete orphan databases.
+
+### POST /api/admin/hosts/{host_id}/rotate-secret
+
+Rotate MySQL credentials for a database host. Performs atomic 7-phase rotation:
+
+1. Fetch current credentials from AWS Secrets Manager
+2. Validate current credentials work on MySQL
+3. Generate new secure password
+4. Update MySQL user password
+5. Verify new password works
+6. Update AWS Secrets Manager
+7. Final verification (AWS → MySQL round-trip)
+
+**Request Body:**
+```json
+{
+  "new_password": null,
+  "password_length": 32
+}
+```
 
 ---
 
 ## Dropdown Endpoints
 
-These endpoints power the web UI autocomplete dropdowns.
+These endpoints power the web UI autocomplete dropdowns. Each returns a standard response format:
+
+```json
+{
+  "results": [{"value": "...", "label": "...", "sublabel": "..."}],
+  "total": 1
+}
+```
 
 ### GET /api/dropdown/customers
 
+Search customers for dropdown. **Minimum 5 characters required.**
+
 ```bash
-curl "http://localhost:8000/api/dropdown/customers?q=acme&limit=10"
+curl "http://localhost:8080/api/dropdown/customers?q=actionp&limit=10"
 ```
 
 ### GET /api/dropdown/users
 
+Search users for dropdown. **Minimum 3 characters required.**
+
 ```bash
-curl "http://localhost:8000/api/dropdown/users?q=jsmith&limit=10"
+curl "http://localhost:8080/api/dropdown/users?q=jsm&limit=10"
 ```
 
 ### GET /api/dropdown/hosts
 
+Search hosts for dropdown. **Minimum 3 characters required.**
+
 ```bash
-curl "http://localhost:8000/api/dropdown/hosts?q=dev&limit=10"
+curl "http://localhost:8080/api/dropdown/hosts?q=dev&limit=10"
 ```
 
 ---
@@ -681,9 +829,9 @@ All errors return JSON with a `detail` field:
 
 When the service is running, interactive API documentation is available:
 
-- **Swagger UI**: `http://localhost:8000/api/docs`
-- **ReDoc**: `http://localhost:8000/api/redoc`
-- **OpenAPI JSON**: `http://localhost:8000/api/openapi.json`
+- **Swagger UI**: `http://localhost:8080/api/docs`
+- **ReDoc**: `http://localhost:8080/api/redoc`
+- **OpenAPI JSON**: `http://localhost:8080/api/openapi.json`
 
 ---
 
