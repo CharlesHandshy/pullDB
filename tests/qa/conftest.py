@@ -22,7 +22,8 @@ import pytest
 # Configuration
 # ---------------------------------------------------------------------------
 
-API_BASE_URL = os.getenv("PULLDB_QA_API_URL", "http://localhost:8000")
+# API runs on port 8080, Web UI runs on port 8000
+API_BASE_URL = os.getenv("PULLDB_QA_API_URL", "http://localhost:8080")
 VENV_PATH = os.getenv("PULLDB_VENV", "/home/charleshandshy/Projects/pullDB/venv")
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -89,6 +90,20 @@ def cli_runner(cli_env: dict):
         return result
     
     return run
+
+
+@pytest.fixture
+def require_registered_user(cli_runner):
+    """Skip test if user is not registered with pullDB.
+    
+    QA CLI tests require a registered user to run commands.
+    Use this fixture to skip tests gracefully when running in
+    development environments without user registration.
+    """
+    # Run a simple command to check registration status
+    result = cli_runner(["history", "--limit", "1"], check=False)
+    if "not registered" in result.stdout or "must register" in result.stdout.lower():
+        pytest.skip("User not registered - CLI tests require registered user")
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +209,12 @@ def db_connection(db_config: dict):
 
 @pytest.fixture
 def sample_job_id() -> str:
-    """A known completed job ID for testing."""
+    """A known completed job ID for testing.
+    
+    Note: CLI tests in test_cli.py define their own fixtures
+    with mocked API responses. This fixture is for other QA tests
+    that use real API calls.
+    """
     return "75777a4c-3dd9-48dd-b39c-62d8b35934da"
 
 
@@ -206,8 +226,78 @@ def sample_user_code() -> str:
 
 @pytest.fixture
 def sample_search_term() -> str:
-    """A known search term that returns results."""
+    """A known search term that returns results.
+    
+    Note: CLI tests in test_cli.py define their own fixtures
+    with mocked API responses. This fixture is for other QA tests
+    that use real API calls.
+    """
     return "action"
+
+
+# ---------------------------------------------------------------------------
+# Mock Fixtures for API Tests (no real database required)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mock_job_repo(sample_job_id):
+    """Mock job repository with test data for isolated API tests."""
+    from unittest.mock import Mock
+    from datetime import datetime, timezone
+    from pulldb.domain.models import Job, JobStatus
+    
+    repo = Mock()
+    
+    # Create a mock job object
+    mock_job = Mock(spec=Job)
+    mock_job.id = sample_job_id
+    mock_job.target = "test_database"
+    mock_job.status = JobStatus.COMPLETE
+    mock_job.owner_user_code = "testuser"
+    mock_job.submitted_at = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    
+    # Configure repository methods
+    repo.get_job_by_id.return_value = mock_job
+    repo.find_jobs_by_prefix.return_value = [mock_job]
+    
+    # Mock event for profile endpoint - detail must be JSON string
+    import json
+    mock_event = Mock()
+    mock_event.event_type = "restore_profile"
+    mock_event.detail = json.dumps({
+        "job_id": sample_job_id,
+        "started_at": "2025-01-01T12:00:00+00:00",
+        "completed_at": "2025-01-01T12:02:00+00:00",
+        "total_duration_seconds": 120.0,
+        "total_bytes": 1024000,
+        "phases": {},
+        "phase_breakdown": {},
+    })
+    repo.get_job_events.return_value = [mock_event]
+    
+    return repo
+
+
+@pytest.fixture
+def mock_api_state(mock_job_repo):
+    """Mock API state with injected mock repositories."""
+    from unittest.mock import Mock
+    
+    state = Mock()
+    state.job_repo = mock_job_repo
+    return state
+
+
+@pytest.fixture
+def api_client_with_mocks(mock_api_state):
+    """FastAPI TestClient with mocked dependencies (no real DB required)."""
+    from fastapi.testclient import TestClient
+    from pulldb.api.main import app, get_api_state
+    
+    app.dependency_overrides[get_api_state] = lambda: mock_api_state
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +309,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "smoke: Quick smoke tests (< 1 min)")
     config.addinivalue_line("markers", "api: API endpoint tests")
     config.addinivalue_line("markers", "cli: CLI command tests")
-    config.addinivalue_line("markers", "web: Web UI tests (requires Playwright)")
+    config.addinivalue_line("markers", "web: Web UI tests (TestClient-based, no live server required)")
+    config.addinivalue_line("markers", "web_playwright: Web UI tests requiring Playwright + live server")
     config.addinivalue_line("markers", "db: Database tests (requires MySQL)")
     config.addinivalue_line("markers", "slow: Slow tests (> 30 seconds)")

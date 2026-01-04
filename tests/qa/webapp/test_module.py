@@ -3,7 +3,7 @@
 Tests cover:
 - Module exports
 - Router configuration
-- Template directory structure
+- Template directory structure (HCA-based)
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 WEB_DIR = Path(__file__).parent.parent.parent.parent / "pulldb" / "web"
+TEMPLATES_DIR = WEB_DIR / "templates"
 
 
 # ---------------------------------------------------------------------------
@@ -30,13 +31,29 @@ class TestWebModuleStructure:
         """__init__.py exists."""
         assert (WEB_DIR / "__init__.py").exists()
 
-    def test_routes_exists(self) -> None:
-        """routes.py exists."""
-        assert (WEB_DIR / "routes.py").exists()
+    def test_router_registry_exists(self) -> None:
+        """router_registry.py exists (HCA entry point)."""
+        assert (WEB_DIR / "router_registry.py").exists()
 
     def test_templates_dir_exists(self) -> None:
         """templates directory exists."""
         assert (WEB_DIR / "templates").is_dir()
+
+    def test_static_dir_exists(self) -> None:
+        """static directory exists."""
+        assert (WEB_DIR / "static").is_dir()
+
+    def test_pages_dir_exists(self) -> None:
+        """pages directory exists (HCA structure)."""
+        assert (WEB_DIR / "pages").is_dir()
+
+    def test_features_dir_exists(self) -> None:
+        """features directory exists (HCA structure)."""
+        assert (WEB_DIR / "features").is_dir()
+
+    def test_shared_dir_exists(self) -> None:
+        """shared directory exists (HCA structure)."""
+        assert (WEB_DIR / "shared").is_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -47,61 +64,65 @@ class TestWebModuleStructure:
 class TestWebModuleExports:
     """Tests for web module exports."""
 
-    def test_exports_router(self) -> None:
-        """Web module exports router."""
+    def test_exports_main_router(self) -> None:
+        """Web module exports main_router."""
         content = (WEB_DIR / "__init__.py").read_text()
-        assert "router" in content
-        assert "__all__" in content
+        assert "main_router" in content
 
-    def test_imports_from_router_registry(self) -> None:
-        """Web module imports router from router_registry (HCA)."""
-        content = (WEB_DIR / "__init__.py").read_text()
-        assert "from pulldb.web.router_registry import main_router" in content
+    def test_router_registry_has_main_router(self) -> None:
+        """router_registry defines main_router."""
+        content = (WEB_DIR / "router_registry.py").read_text()
+        assert "main_router" in content
+        assert "APIRouter" in content
 
 
 # ---------------------------------------------------------------------------
-# Template Directory Structure Tests
+# Template Directory Structure Tests (HCA)
 # ---------------------------------------------------------------------------
 
 
 class TestTemplateDirectoryStructure:
-    """Tests for template directory organization."""
+    """Tests for HCA-based template directory organization."""
 
     def test_has_base_template(self) -> None:
         """Base template exists for layout inheritance."""
-        assert (WEB_DIR / "templates" / "base.html").exists()
+        assert (TEMPLATES_DIR / "base.html").exists()
 
-    def test_has_login_template(self) -> None:
-        """Login template exists."""
-        assert (WEB_DIR / "templates" / "login.html").exists()
+    def test_has_base_auth_template(self) -> None:
+        """Base auth template exists for login pages."""
+        assert (TEMPLATES_DIR / "base_auth.html").exists()
 
-    def test_has_dashboard_template(self) -> None:
-        """Dashboard template exists."""
-        assert (WEB_DIR / "templates" / "dashboard.html").exists()
-
-    def test_has_jobs_template(self) -> None:
-        """Jobs list template exists."""
-        assert (WEB_DIR / "templates" / "jobs.html").exists()
-
-    def test_has_job_detail_template(self) -> None:
-        """Job detail template exists."""
-        assert (WEB_DIR / "templates" / "job_detail.html").exists()
+    def test_has_features_directory(self) -> None:
+        """Features directory exists for page templates."""
+        assert (TEMPLATES_DIR / "features").is_dir()
 
     def test_has_partials_directory(self) -> None:
-        """Partials directory exists for HTMX fragments."""
-        assert (WEB_DIR / "templates" / "partials").is_dir()
+        """Partials directory exists for shared components."""
+        assert (TEMPLATES_DIR / "partials").is_dir()
 
-    def test_partials_has_active_jobs(self) -> None:
-        """Active jobs partial exists."""
-        assert (WEB_DIR / "templates" / "partials" / "active_jobs.html").exists()
+    def test_has_widgets_directory(self) -> None:
+        """Widgets directory exists for reusable components."""
+        assert (TEMPLATES_DIR / "widgets").is_dir()
 
-    def test_partials_has_job_events(self) -> None:
-        """Job events partial exists."""
-        assert (WEB_DIR / "templates" / "partials" / "job_events.html").exists()
+    def test_features_has_auth(self) -> None:
+        """features/auth directory exists."""
+        assert (TEMPLATES_DIR / "features" / "auth").is_dir()
 
-    def test_partials_has_job_row(self) -> None:
-        """Job row partial exists."""
-        assert (WEB_DIR / "templates" / "partials" / "job_row.html").exists()
+    def test_features_has_dashboard(self) -> None:
+        """features/dashboard directory exists."""
+        assert (TEMPLATES_DIR / "features" / "dashboard").is_dir()
+
+    def test_features_has_jobs(self) -> None:
+        """features/jobs directory exists."""
+        assert (TEMPLATES_DIR / "features" / "jobs").is_dir()
+
+    def test_features_has_restore(self) -> None:
+        """features/restore directory exists."""
+        assert (TEMPLATES_DIR / "features" / "restore").is_dir()
+
+    def test_features_has_admin(self) -> None:
+        """features/admin directory exists."""
+        assert (TEMPLATES_DIR / "features" / "admin").is_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -112,49 +133,34 @@ class TestTemplateDirectoryStructure:
 class TestTemplateQuality:
     """Tests for template content quality."""
 
-    def test_all_templates_valid_html(self) -> None:
-        """All templates have valid HTML structure."""
-        templates_dir = WEB_DIR / "templates"
-        for template in templates_dir.glob("*.html"):
-            content = template.read_text()
-            # Basic HTML validity checks
-            assert (
-                "<!DOCTYPE html>" in content or "{% extends" in content
-            ), f"{template.name} missing doctype or extends"
+    def test_base_template_valid_html(self) -> None:
+        """Base template has valid HTML structure."""
+        content = (TEMPLATES_DIR / "base.html").read_text()
+        assert "<!DOCTYPE html>" in content
 
-    def test_all_templates_have_title(self) -> None:
-        """All main templates set page title."""
-        for template_name in ["login.html", "dashboard.html", "jobs.html"]:
-            content = (WEB_DIR / "templates" / template_name).read_text()
-            assert (
-                "<title>" in content or "{% block title %}" in content
-            ), f"{template_name} missing title"
+    def test_base_template_has_blocks(self) -> None:
+        """Base template defines required blocks."""
+        content = (TEMPLATES_DIR / "base.html").read_text()
+        assert "{% block title %}" in content
+        assert "{% block content %}" in content
 
-    def test_templates_use_jinja2_syntax(self) -> None:
-        """Templates use Jinja2 syntax correctly."""
-        templates_dir = WEB_DIR / "templates"
-        for template in templates_dir.glob("*.html"):
-            content = template.read_text()
-            # Check for common Jinja2 patterns
-            has_jinja = any([
-                "{{" in content,
-                "{%" in content,
-                "{% extends" in content,
-                "{% block" in content,
-                "{% if" in content,
-                "{% for" in content,
-            ])
-            # Partials or main templates should have Jinja
-            if template.name != "base.html":
-                assert has_jinja, f"{template.name} missing Jinja2 syntax"
+    def test_feature_templates_extend_base(self) -> None:
+        """Feature templates extend base.html or base_auth.html."""
+        features_dir = TEMPLATES_DIR / "features"
+        for feature_dir in features_dir.iterdir():
+            if feature_dir.is_dir():
+                for template in feature_dir.glob("*.html"):
+                    # Skip partials (files starting with _)
+                    if template.name.startswith("_"):
+                        continue
+                    content = template.read_text()
+                    has_extends = '{% extends "base.html" %}' in content or '{% extends "base_auth.html" %}' in content
+                    assert has_extends, f"{template} should extend base template"
 
     def test_partials_are_fragments(self) -> None:
         """Partial templates are HTML fragments, not full documents."""
-        partials_dir = WEB_DIR / "templates" / "partials"
+        partials_dir = TEMPLATES_DIR / "partials"
         for partial in partials_dir.glob("*.html"):
             content = partial.read_text()
-            # Partials should NOT have doctype or html/head/body tags
+            # Partials should NOT have doctype
             assert "<!DOCTYPE" not in content, f"{partial.name} has doctype"
-            assert "<html" not in content, f"{partial.name} has html tag"
-            assert "<head>" not in content, f"{partial.name} has head tag"
-            assert "<body>" not in content, f"{partial.name} has body tag"

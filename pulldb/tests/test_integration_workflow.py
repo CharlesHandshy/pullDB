@@ -51,8 +51,10 @@ def fake_myloader(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def _fake_run(
         spec: MyLoaderSpec,
+        *,
         timeout: float | None = None,
         progress_callback: object = None,
+        processlist_monitor: object = None,
     ) -> MyLoaderResult:
         now = datetime.now(UTC)
         return MyLoaderResult(
@@ -156,14 +158,9 @@ def test_restore_workflow_happy_path(
 
     result = orchestrate_restore_workflow(spec)
 
-    # Validate result keys and basic invariants
-    assert set(result.keys()) == {
-        "staging",
-        "myloader",
-        "post_sql",
-        "metadata",
-        "atomic_rename",
-    }
+    # Validate required result keys are present (may include additional duration keys)
+    required_keys = {"staging", "myloader", "post_sql", "metadata", "atomic_rename"}
+    assert required_keys.issubset(set(result.keys()))
     myloader_result = result["myloader"]
     assert isinstance(myloader_result, MyLoaderResult)
     assert myloader_result.exit_code == 0

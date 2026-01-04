@@ -103,19 +103,21 @@ class TestStreamDownload:
 
     def test_writes_data_to_file(self, tmp_path) -> None:
         """Data is written to destination file."""
+        import time
         dest_path = str(tmp_path / "test.tar")
         data = b"test data content"
 
         mock_body = MagicMock()
         mock_body.read.side_effect = [data, b""]
 
-        _stream_download(mock_body, dest_path, SAMPLE_JOB_ID, len(data), None)
+        _stream_download(mock_body, dest_path, SAMPLE_JOB_ID, len(data), time.monotonic(), None)
 
         with open(dest_path, "rb") as f:
             assert f.read() == data
 
     def test_calls_progress_callback(self, tmp_path) -> None:
         """Progress callback is invoked during download."""
+        import time
         dest_path = str(tmp_path / "test.tar")
         # Create data larger than progress interval
         chunk_size = PROGRESS_INTERVAL_MB * 1024 * 1024
@@ -126,11 +128,11 @@ class TestStreamDownload:
 
         progress_calls = []
 
-        def progress_callback(downloaded: int, total: int, percent: float) -> None:
-            progress_calls.append((downloaded, total, percent))
+        def progress_callback(downloaded: int, total: int, percent: float, elapsed: float) -> None:
+            progress_calls.append((downloaded, total, percent, elapsed))
 
         _stream_download(
-            mock_body, dest_path, SAMPLE_JOB_ID, chunk_size, progress_callback
+            mock_body, dest_path, SAMPLE_JOB_ID, chunk_size, time.monotonic(), progress_callback
         )
 
         assert len(progress_calls) >= 1
@@ -139,6 +141,7 @@ class TestStreamDownload:
 
     def test_handles_callback_exception(self, tmp_path) -> None:
         """Download continues even if callback raises exception."""
+        import time
         dest_path = str(tmp_path / "test.tar")
         chunk_size = PROGRESS_INTERVAL_MB * 1024 * 1024
         data = b"x" * chunk_size
@@ -146,12 +149,12 @@ class TestStreamDownload:
         mock_body = MagicMock()
         mock_body.read.side_effect = [data, b""]
 
-        def failing_callback(downloaded: int, total: int, percent: float) -> None:
+        def failing_callback(downloaded: int, total: int, percent: float, elapsed: float) -> None:
             raise RuntimeError("Callback failed")
 
         # Should not raise despite callback failure
         _stream_download(
-            mock_body, dest_path, SAMPLE_JOB_ID, chunk_size, failing_callback
+            mock_body, dest_path, SAMPLE_JOB_ID, chunk_size, time.monotonic(), failing_callback
         )
 
         # File should still be written
@@ -160,18 +163,20 @@ class TestStreamDownload:
 
     def test_reads_in_chunks(self, tmp_path) -> None:
         """Data is read in BUFFER_SIZE chunks."""
+        import time
         dest_path = str(tmp_path / "test.tar")
 
         mock_body = MagicMock()
         mock_body.read.side_effect = [b"chunk1", b"chunk2", b""]
 
-        _stream_download(mock_body, dest_path, SAMPLE_JOB_ID, 12, None)
+        _stream_download(mock_body, dest_path, SAMPLE_JOB_ID, 12, time.monotonic(), None)
 
         # Verify read was called with BUFFER_SIZE
         mock_body.read.assert_called_with(BUFFER_SIZE)
 
     def test_cancel_check_raises_cancellation_error(self, tmp_path) -> None:
         """Cancel check triggers CancellationError when it returns True."""
+        import time
         dest_path = str(tmp_path / "test.tar")
         # Create data larger than cancel check interval (128MB)
         chunk_size = CANCEL_CHECK_INTERVAL_MB * 1024 * 1024
@@ -186,7 +191,7 @@ class TestStreamDownload:
 
         with pytest.raises(CancellationError) as exc_info:
             _stream_download(
-                mock_body, dest_path, SAMPLE_JOB_ID, chunk_size * 2, None, cancel_check
+                mock_body, dest_path, SAMPLE_JOB_ID, chunk_size * 2, time.monotonic(), None, cancel_check
             )
 
         assert exc_info.value.detail["job_id"] == SAMPLE_JOB_ID
@@ -194,6 +199,7 @@ class TestStreamDownload:
 
     def test_cancel_check_not_triggered_when_returns_false(self, tmp_path) -> None:
         """Download continues when cancel_check returns False."""
+        import time
         dest_path = str(tmp_path / "test.tar")
         chunk_size = CANCEL_CHECK_INTERVAL_MB * 1024 * 1024
         data = b"x" * chunk_size
@@ -206,7 +212,7 @@ class TestStreamDownload:
 
         # Should complete without error
         _stream_download(
-            mock_body, dest_path, SAMPLE_JOB_ID, chunk_size * 2, None, cancel_check
+            mock_body, dest_path, SAMPLE_JOB_ID, chunk_size * 2, time.monotonic(), None, cancel_check
         )
 
         # File should be written completely
@@ -330,8 +336,8 @@ class TestDownloadBackup:
         dest_dir = str(tmp_path)
         progress_calls = []
 
-        def callback(downloaded: int, total: int, percent: float) -> None:
-            progress_calls.append((downloaded, total, percent))
+        def callback(downloaded: int, total: int, percent: float, elapsed: float) -> None:
+            progress_calls.append((downloaded, total, percent, elapsed))
 
         mock_usage = MagicMock()
         mock_usage.free = 1024 * 1024 * 1024 * 100

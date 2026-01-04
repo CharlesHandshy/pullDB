@@ -165,11 +165,15 @@ class _FakeCursor:
         """
         self._databases = list(all_databases)
         self._orphans_to_drop = orphans_to_drop
+        self._last_query: str = ""
 
     def execute(self, sql: str) -> None:
         """Simulate SQL execution."""
+        self._last_query = sql
         if sql == "SHOW DATABASES":
             return  # fetchall() will return _databases
+        elif sql.startswith("SELECT db FROM information_schema.processlist"):
+            return  # fetchall() will return empty list (no active connections)
         elif sql.startswith("DROP DATABASE"):
             # Extract database name from DROP statement
             # Format: DROP DATABASE IF EXISTS `dbname`
@@ -178,7 +182,9 @@ class _FakeCursor:
                 self._databases.remove(db_name)
 
     def fetchall(self) -> list[tuple[str]]:
-        """Return current list of databases as tuples."""
+        """Return result based on last query."""
+        if "information_schema.processlist" in self._last_query:
+            return []  # No active connections
         return [(db,) for db in self._databases]
 
     def close(self) -> None:

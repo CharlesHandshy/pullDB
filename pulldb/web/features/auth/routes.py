@@ -3,7 +3,7 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from pulldb.domain.models import User
 from pulldb.web.dependencies import get_api_state, get_session_user, templates
@@ -68,6 +68,14 @@ async def login_submit(
         return templates.TemplateResponse(
             "features/auth/login.html",
             {"request": request, "error": "Account is disabled"},
+            status_code=403,
+        )
+
+    # Check if user is locked (system account)
+    if user.locked:
+        return templates.TemplateResponse(
+            "features/auth/login.html",
+            {"request": request, "error": "Account is locked"},
             status_code=403,
         )
 
@@ -252,6 +260,11 @@ async def profile_page(
     # Format member since date
     member_since = user.created_at.strftime("%b %Y") if user.created_at else "N/A"
 
+    # Get existing API keys
+    api_keys = []
+    if hasattr(state, "auth_repo") and state.auth_repo:
+        api_keys = state.auth_repo.list_api_keys_for_user(user.user_id)
+
     return templates.TemplateResponse(
         "features/auth/profile.html",
         {
@@ -261,8 +274,114 @@ async def profile_page(
             "breadcrumbs": get_breadcrumbs("profile"),
             "manager_username": manager_username,
             "member_since": member_since,
+            "api_keys": api_keys,
         },
     )
+
+
+# =============================================================================
+# API Key Management
+# =============================================================================
+
+
+@router.post("/auth/api-key/generate")
+async def generate_api_key(
+    request: Request,
+    user: User | None = Depends(get_session_user),
+    state: Any = Depends(get_api_state),
+) -> Response:
+    """Generate a new API key and return credentials file for download.
+
+    This creates a new API key and immediately returns a downloadable
+    credentials file. The secret is only shown once - it cannot be
+    retrieved again.
+    """
+    if not user:
+        return RedirectResponse(url="/web/login", status_code=303)
+
+    if not hasattr(state, "auth_repo") or not state.auth_repo:
+        return templates.TemplateResponse(
+            "features/auth/profile.html",
+            {
+                "request": request,
+                "user": user,
+                "error": "API key service unavailable",
+                "active_nav": "profile",
+            },
+            status_code=503,
+        )
+
+    # Generate new API key
+    from fastapi.concurrency import run_in_threadpool
+
+    try:
+        key_id, secret = await run_in_threadpool(
+            state.auth_repo.create_api_key,
+            user.user_id,
+            f"Web-generated key for {user.username}",
+        )
+    except Exception as e:
+        return templates.TemplateResponse(
+            "features/auth/profile.html",
+            {
+                "request": request,
+                "user": user,
+                "error": f"Failed to generate API key: {e}",
+                "active_nav": "profile",
+            },
+            status_code=500,
+        )
+
+    # Create credentials file content
+    credentials_content = f"""# pullDB CLI credentials
+# Generated for {user.username} on {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+# 
+# IMPORTANT: Keep this file secure - do not share the secret!
+# Save this file to: ~/.pulldb/credentials
+# Set permissions: chmod 600 ~/.pulldb/credentials
+
+PULLDB_API_KEY={key_id}
+PULLDB_API_SECRET={secret}
+"""
+
+    # Return as downloadable file
+    return Response(
+        content=credentials_content,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f"attachment; filename=pulldb-credentials-{user.user_code}.txt"
+        },
+    )
+
+
+@router.post("/auth/api-key/{key_id}/revoke", response_class=HTMLResponse)
+async def revoke_api_key(
+    request: Request,
+    key_id: str,
+    user: User | None = Depends(get_session_user),
+    state: Any = Depends(get_api_state),
+) -> Any:
+    """Revoke an existing API key."""
+    if not user:
+        return RedirectResponse(url="/web/login", status_code=303)
+
+    if not hasattr(state, "auth_repo") or not state.auth_repo:
+        return RedirectResponse(url="/web/auth/profile?error=service_unavailable", status_code=303)
+
+    from fastapi.concurrency import run_in_threadpool
+
+    # Verify the key belongs to this user before revoking
+    key_user_id = await run_in_threadpool(
+        state.auth_repo.get_api_key_user, key_id
+    )
+
+    if key_user_id != user.user_id:
+        return RedirectResponse(url="/web/auth/profile?error=not_authorized", status_code=303)
+
+    # Revoke the key
+    await run_in_threadpool(state.auth_repo.revoke_api_key, key_id)
+
+    return RedirectResponse(url="/web/auth/profile?success=key_revoked", status_code=303)
 
 
 @router.post("/auth/change-password", response_class=HTMLResponse)

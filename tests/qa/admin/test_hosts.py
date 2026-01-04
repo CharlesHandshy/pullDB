@@ -54,7 +54,7 @@ class TestHostsList:
 
         result = runner.invoke(cli, ["hosts", "list"])
         assert_success(result)
-        assert_contains(result, "HOSTNAME", "MAX_CONCURRENT", "ENABLED")
+        assert_contains(result, "HOSTNAME", "MAX_RUNNING", "ENABLED")
 
     def test_hosts_list_empty(
         self,
@@ -227,9 +227,9 @@ class TestHostsAdd:
         mock_mysql_pool: MagicMock,
     ) -> None:
         """pulldb-admin hosts add duplicate shows error."""
-        # Simulate duplicate key error
-        mock_mysql_pool._mock_cursor.execute.side_effect = Exception(
-            "Duplicate entry 'existing-host' for key 'PRIMARY'"
+        # Simulate duplicate key error via repository
+        mock_mysql_pool._host_repo.add_host.side_effect = ValueError(
+            "Host 'existing-host.example.com' already exists"
         )
 
         result = runner.invoke(cli, ["hosts", "add", "existing-host.example.com"])

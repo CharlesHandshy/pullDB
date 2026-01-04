@@ -41,43 +41,61 @@ SIGNATURE_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 SIGNATURE_MAX_AGE_SECONDS = 300  # 5 minutes - reject old requests
 
 
-def get_api_secret(key_id: str) -> str | None:
+def get_api_secret(key_id: str, auth_repo: object | None = None) -> str | None:
     """Get API secret for a given key ID.
 
-    For now, uses a simple environment variable lookup.
-    In production, this would query a database of API keys.
+    Checks database first (via auth_repo), falls back to environment variables
+    for backward compatibility during migration.
 
     Args:
         key_id: The API key identifier
+        auth_repo: Optional AuthRepository for database lookup
 
     Returns:
         The secret associated with the key, or None if not found
     """
-    # Simple implementation: check if key matches configured key
+    # Priority 1: Database lookup (if auth_repo available)
+    if auth_repo and hasattr(auth_repo, "get_api_key_secret"):
+        secret = auth_repo.get_api_key_secret(key_id)
+        if secret:
+            return secret
+
+    # Priority 2: Environment variable (backward compatibility)
     configured_key = os.getenv("PULLDB_API_KEY")
     configured_secret = os.getenv("PULLDB_API_SECRET")
 
     if configured_key and configured_secret and key_id == configured_key:
         return configured_secret
+
     return None
 
 
-def get_user_for_api_key(key_id: str) -> str | None:
+def get_user_for_api_key(key_id: str, auth_repo: object | None = None) -> str | None:
     """Get username associated with an API key.
 
-    For now, uses environment variable. In production, would query database.
+    Checks database first (via auth_repo), falls back to environment variables.
 
     Args:
         key_id: The API key identifier
+        auth_repo: Optional AuthRepository for database lookup
 
     Returns:
         Username associated with the key, or None if not found
     """
+    # Priority 1: Database lookup (if auth_repo available)
+    if auth_repo and hasattr(auth_repo, "get_api_key_user"):
+        user_id = auth_repo.get_api_key_user(key_id)
+        if user_id:
+            # Return user_id - the caller will look up username
+            return user_id
+
+    # Priority 2: Environment variable (backward compatibility)
     configured_key = os.getenv("PULLDB_API_KEY")
     configured_user = os.getenv("PULLDB_API_KEY_USER")
 
     if configured_key and key_id == configured_key:
         return configured_user or "api-user"
+
     return None
 
 
@@ -204,8 +222,9 @@ async def get_authenticated_user(
                 detail="Request timestamp expired or invalid",
             )
 
-        # Get secret for this API key
-        secret = get_api_secret(x_api_key)
+        # Get secret for this API key (try database first, then env vars)
+        auth_repo = state.auth_repo if hasattr(state, "auth_repo") else None
+        secret = get_api_secret(x_api_key, auth_repo)
         if not secret:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -229,20 +248,35 @@ async def get_authenticated_user(
             )
 
         # Signature valid - get user for this API key
-        username = get_user_for_api_key(x_api_key)
-        if not username:
+        user_or_username = get_user_for_api_key(x_api_key, auth_repo)
+        if not user_or_username:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="API key has no associated user",
             )
 
-        user = await run_in_threadpool(
-            state.user_repo.get_user_by_username, username
-        )
+        # If we got a user_id from database, look up by ID; otherwise by username
+        # Check if it looks like a UUID (36 chars with hyphens)
+        if len(user_or_username) == 36 and user_or_username.count("-") == 4:
+            # It's a user_id from the database
+            user = await run_in_threadpool(
+                state.user_repo.get_user_by_id, user_or_username
+            )
+        else:
+            # It's a username from env var
+            user = await run_in_threadpool(
+                state.user_repo.get_user_by_username, user_or_username
+            )
+
         if user and user.disabled_at:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User account is disabled",
+            )
+        if user and user.locked:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is locked",
             )
         if user:
             return user
@@ -266,6 +300,11 @@ async def get_authenticated_user(
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="User account is disabled",
+                )
+            if user and user.locked:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Account is locked",
                 )
             if user:
                 return user

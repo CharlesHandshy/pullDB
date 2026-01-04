@@ -15,9 +15,9 @@ from pulldb.domain.models import User, UserRole
 class TestUserRoleEnum:
     """Tests for UserRole enum values and behavior."""
 
-    def test_userrole_has_three_values(self) -> None:
-        """UserRole enum has exactly three values."""
-        assert len(UserRole) == 3
+    def test_userrole_has_four_values(self) -> None:
+        """UserRole enum has exactly four values (USER, MANAGER, ADMIN, SERVICE)."""
+        assert len(UserRole) == 4
 
     def test_userrole_user_value(self) -> None:
         """USER role has value 'user'."""
@@ -30,6 +30,10 @@ class TestUserRoleEnum:
     def test_userrole_admin_value(self) -> None:
         """ADMIN role has value 'admin'."""
         assert UserRole.ADMIN.value == "admin"
+
+    def test_userrole_service_value(self) -> None:
+        """SERVICE role has value 'service'."""
+        assert UserRole.SERVICE.value == "service"
 
     def test_userrole_from_string_user(self) -> None:
         """UserRole can be created from 'user' string."""

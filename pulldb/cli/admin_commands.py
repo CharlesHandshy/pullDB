@@ -735,6 +735,11 @@ def users_list(json_out: bool) -> None:
             d["active_jobs"] = summary.active_jobs_count
             if d.get("created_at"):
                 d["created_at"] = d["created_at"].isoformat()
+            if d.get("disabled_at"):
+                d["disabled_at"] = d["disabled_at"].isoformat()
+            # Convert UserRole enum to string for JSON serialization
+            if d.get("role"):
+                d["role"] = d["role"].value
             users_dict.append(d)
         click.echo(json.dumps(users_dict, indent=2))
         return

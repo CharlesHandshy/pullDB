@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock
 
+import pytest
+
 from pulldb.domain.config import Config, S3BackupLocationConfig
 from pulldb.domain.errors import BackupDiscoveryError, BackupValidationError
 from pulldb.domain.models import Job, JobStatus
@@ -69,6 +71,7 @@ def _make_executor(
     *,
     locations: tuple[S3BackupLocationConfig, ...],
     hooks: WorkerExecutorHooks | None = None,
+    s3_client: S3Client | None = None,
 ) -> WorkerJobExecutor:
     config = Config(
         mysql_host="localhost",
@@ -80,7 +83,7 @@ def _make_executor(
     deps = WorkerExecutorDependencies(
         job_repo=MagicMock(spec=JobRepository),
         host_repo=MagicMock(spec=HostRepository),
-        s3_client=cast(S3Client, object()),
+        s3_client=s3_client if s3_client else cast(S3Client, object()),
     )
     return WorkerJobExecutor(
         config=config,
@@ -126,70 +129,35 @@ def test_build_lookup_targets_function_includes_aliases() -> None:
     assert targets == ["qatemplate", "qatemplate_legacy", "qaengiqatemplate"]
 
 
-def test_discover_backup_iterates_locations(tmp_path: Path) -> None:
-    job = _job()
-    first = _location("staging", "staging-bucket", "daily/stg")
-    second = _location("prod", "prod-bucket", "daily/prod", format_tag="prod")
-    calls: list[tuple[str, str, str]] = []
+def test_discover_backup_with_backup_path(tmp_path: Path) -> None:
+    """Test that backup_path in options_json is used directly."""
+    backup_path = "s3://prod-bucket/daily/prod/daily_mydumper_acme_2024-01-01T00-00-00Z_Mon_dbimp.tar"
+    job = _job(options_json={"customer_id": "acme", "backup_path": backup_path})
+    location = _location("prod", "prod-bucket", "daily/prod", format_tag="prod")
 
-    def fake_discover(
-        _client: S3Client,
-        bucket: str,
-        prefix: str,
-        target: str,
-        profile: str | None = None,
-    ) -> BackupSpec:
-        calls.append((bucket, prefix, target))
-        if bucket == "staging-bucket":
-            raise BackupValidationError(job.id, f"s3://{bucket}/{prefix}", ["tar"])
-        return BackupSpec(
-            bucket=bucket,
-            key=f"{prefix}daily_mydumper_{target}_2024-01-01T00-00-00Z_Mon_dbimp.tar",
-            target=target,
-            timestamp=datetime(2024, 1, 1),
-            size_bytes=123,
-            profile=profile,
-            format_tag="prod" if bucket == "prod-bucket" else "legacy",
-        )
+    # Mock S3 client to return size for the backup
+    mock_s3 = MagicMock(spec=S3Client)
+    mock_s3.get_object_size.return_value = 12345
 
-    hooks = WorkerExecutorHooks(discover_backup=fake_discover)
-    executor = _make_executor(tmp_path, locations=(first, second), hooks=hooks)
+    executor = _make_executor(tmp_path, locations=(location,), s3_client=mock_s3)
 
-    spec, location, lookup_target = executor.discover_backup_for_job(job)
+    spec, returned_location, lookup_target = executor.discover_backup_for_job(job)
 
-    assert location.name == "prod"
-    assert lookup_target == "acme"
     assert spec.bucket == "prod-bucket"
-    assert spec.format_tag == "prod"
-    assert calls == [
-        ("staging-bucket", "daily/stg/", "acme"),
-        ("staging-bucket", "daily/stg/", "qaengiacme"),
-        ("prod-bucket", "daily/prod/", "acme"),
-    ]
+    assert "acme" in spec.key
+    assert returned_location.name == "prod"
+    assert spec.size_bytes == 12345
+    mock_s3.get_object_size.assert_called_once()
 
 
-def test_discover_backup_raises_when_all_locations_fail(tmp_path: Path) -> None:
-    job = _job()
+def test_discover_backup_raises_when_backup_path_missing(tmp_path: Path) -> None:
+    """Test that BackupDiscoveryError is raised when backup_path not in options."""
+    job = _job()  # No backup_path in options_json
     location = _location("prod", "prod-bucket", "daily/prod")
 
-    def fail_discover(
-        _client: S3Client,
-        _bucket: str,
-        _prefix: str,
-        _target: str,
-        profile: str | None = None,
-    ) -> BackupSpec:
-        raise BackupValidationError(job.id, "s3://prod-bucket/daily/prod/", ["tar"])
+    executor = _make_executor(tmp_path, locations=(location,))
 
-    hooks = WorkerExecutorHooks(discover_backup=fail_discover)
-    executor = _make_executor(tmp_path, locations=(location,), hooks=hooks)
-
-    try:
+    with pytest.raises(BackupDiscoveryError) as exc_info:
         executor.discover_backup_for_job(job)
-    except BackupDiscoveryError as exc:
-        detail = exc.detail
-        assert isinstance(detail, dict)
-        assert detail["job_id"] == job.id
-        assert len(detail["attempts"]) == 2
-    else:  # pragma: no cover - defensive guard
-        raise AssertionError("Expected BackupDiscoveryError when all locations fail")
+
+    assert "backup_path" in str(exc_info.value)

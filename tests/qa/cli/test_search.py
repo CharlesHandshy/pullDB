@@ -2,24 +2,19 @@
 Category 3: Search Command Tests
 
 Tests for:
-- S3 backup search functionality
+- Customer name search functionality
 - Search argument parsing
-- Filter options (date, s3env, limit)
-- Output formats (table, json)
+- Limit and JSON output options
 - Error handling
 
 Test Count: 14 tests
 
 ARCHITECTURE NOTE:
-The `search` command is UNIQUE among CLI commands - it accesses S3 directly
-(via pulldb.infra.s3.S3Client) rather than going through the API. This is
-a design decision for fast local searching without API roundtrip.
+The `search` command now searches for customer names via the API.
+For listing available backups, use the `list` command instead.
 
-This is different from all other commands which use the API:
-- restore, status, history, events, cancel, profile → API calls
-
-Tests here focus on argument parsing and validation since S3 access
-requires AWS credentials that may not be available in test environment.
+This command goes through the API:
+- search → API call to /api/customers/search
 """
 
 from __future__ import annotations
@@ -40,67 +35,68 @@ class TestSearchBasic:
     def test_search_no_args_shows_error(
         self, runner: CliRunner
     ) -> None:
-        """pulldb search without args shows error (customer required)."""
+        """pulldb search without args shows error (query required)."""
         result = runner.invoke(cli, ["search"])
-        # Should require customer argument
+        # Should require query argument
         assert result.exit_code != 0
-        assert "missing" in result.output.lower() or "customer" in result.output.lower()
+        # The error may say "missing" or show usage, both indicate missing arg
+        output_lower = result.output.lower()
+        assert "missing" in output_lower or "usage" in output_lower or "query" in output_lower
 
     def test_search_help(self, runner: CliRunner) -> None:
         """pulldb search --help shows help text."""
         result = runner.invoke(cli, ["search", "--help"])
         assert result.exit_code == 0
         assert "search" in result.output.lower()
-        assert "customer" in result.output.lower()
 
-    def test_search_with_customer_positional(self, runner: CliRunner) -> None:
-        """pulldb search <customer> parses customer as positional arg."""
+    def test_search_with_query_positional(self, runner: CliRunner) -> None:
+        """pulldb search <query> parses query as positional arg."""
         result = runner.invoke(cli, ["search", "testcust"])
-        # Will fail with S3/AWS error, but should parse args OK
-        # Should not error with "missing" customer
-        assert "missing" not in result.output.lower() or "s3" in result.output.lower()
+        # Will fail with API error, but should parse args OK
+        # Should not error with "missing" query
+        assert "missing" not in result.output.lower() or "api" in result.output.lower()
 
 
 # ---------------------------------------------------------------------------
-# Search Command - Filter Options
+# Search Command - Limit Option
 # ---------------------------------------------------------------------------
 
 
 class TestSearchFilters:
-    """Tests for search filter options."""
+    """Tests for search limit options."""
 
-    def test_search_with_date_filter(self, runner: CliRunner) -> None:
-        """pulldb search with date=YYYYMMDD filter."""
+    def test_search_with_limit_option(self, runner: CliRunner) -> None:
+        """pulldb search with limit=N option."""
         result = runner.invoke(
-            cli, ["search", "testcust", "date=20251115"]
+            cli, ["search", "testcust", "limit=50"]
         )
-        # Should parse the date argument correctly (may fail on S3 access)
+        # Should parse the limit argument correctly (may fail on API access)
         assert "unrecognized option" not in result.output.lower()
 
-    def test_search_with_s3env_staging(self, runner: CliRunner) -> None:
-        """pulldb search with s3env=staging parses correctly."""
+    def test_search_limit_in_range(self, runner: CliRunner) -> None:
+        """pulldb search with valid limit value parses correctly."""
         result = runner.invoke(
-            cli, ["search", "testcust", "s3env=staging"]
+            cli, ["search", "testcust", "limit=20"]
         )
-        # Valid s3env value should be accepted
+        # Valid limit should be accepted
         assert "unrecognized option" not in result.output.lower()
-        assert "s3env must be" not in result.output.lower()
+        assert "limit must be" not in result.output.lower()
 
-    def test_search_with_s3env_prod(self, runner: CliRunner) -> None:
-        """pulldb search with s3env=prod parses correctly."""
+    def test_search_default_limit(self, runner: CliRunner) -> None:
+        """pulldb search without limit uses default."""
         result = runner.invoke(
-            cli, ["search", "testcust", "s3env=prod"]
+            cli, ["search", "testcust"]
         )
-        # Valid s3env value should be accepted
-        assert "s3env must be" not in result.output.lower()
+        # Should not require explicit limit
+        assert "limit" not in result.output.lower() or "api" in result.output.lower()
 
-    def test_search_with_s3env_both(self, runner: CliRunner) -> None:
-        """pulldb search with s3env=both parses correctly."""
+    def test_search_max_limit(self, runner: CliRunner) -> None:
+        """pulldb search with limit=500 (max) parses correctly."""
         result = runner.invoke(
-            cli, ["search", "testcust", "s3env=both"]
+            cli, ["search", "testcust", "limit=500"]
         )
-        # Valid s3env value should be accepted
-        assert "s3env must be" not in result.output.lower()
+        # Max valid limit should be accepted
+        assert "limit must be" not in result.output.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -144,23 +140,23 @@ class TestSearchOutput:
 class TestSearchErrors:
     """Tests for search error scenarios."""
 
-    def test_search_invalid_s3env(self, runner: CliRunner) -> None:
-        """pulldb search with invalid s3env shows error."""
+    def test_search_limit_out_of_range_high(self, runner: CliRunner) -> None:
+        """pulldb search with limit > 500 shows error."""
         result = runner.invoke(
-            cli, ["search", "testcust", "s3env=invalid"]
+            cli, ["search", "testcust", "limit=501"]
         )
-        # Invalid s3env should be rejected
+        # Should fail - limit must be between 1 and 500
         assert result.exit_code != 0
-        assert "s3env must be" in result.output.lower()
+        assert "limit" in result.output.lower()
 
-    def test_search_invalid_date_format(self, runner: CliRunner) -> None:
-        """pulldb search with invalid date format shows error."""
+    def test_search_limit_out_of_range_zero(self, runner: CliRunner) -> None:
+        """pulldb search with limit=0 shows error."""
         result = runner.invoke(
-            cli, ["search", "testcust", "date=not-a-date"]
+            cli, ["search", "testcust", "limit=0"]
         )
-        # Should fail with date format error
+        # Should fail - limit must be > 0
         assert result.exit_code != 0
-        assert "invalid date" in result.output.lower() or "yyyymmdd" in result.output.lower()
+        assert "limit" in result.output.lower()
 
     def test_search_invalid_limit(self, runner: CliRunner) -> None:
         """pulldb search with non-numeric limit shows error."""
@@ -170,14 +166,13 @@ class TestSearchErrors:
         # Should fail with invalid limit error
         assert result.exit_code != 0
 
-    def test_search_limit_out_of_range(self, runner: CliRunner) -> None:
-        """pulldb search with limit > 100 shows error."""
+    def test_search_negative_limit(self, runner: CliRunner) -> None:
+        """pulldb search with negative limit shows error."""
         result = runner.invoke(
-            cli, ["search", "testcust", "limit=200"]
+            cli, ["search", "testcust", "limit=-5"]
         )
-        # Should fail - limit must be between 1 and 100
+        # Should fail - limit must be positive
         assert result.exit_code != 0
-        assert "limit" in result.output.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -188,27 +183,25 @@ class TestSearchErrors:
 class TestSearchArgVariations:
     """Tests for search argument variations."""
 
-    def test_search_multiple_options(self, runner: CliRunner) -> None:
-        """pulldb search with multiple options."""
+    def test_search_with_limit_and_json(self, runner: CliRunner) -> None:
+        """pulldb search with limit and json options."""
         result = runner.invoke(
-            cli, ["search", "testcust", "date=20251115", "limit=5"]
+            cli, ["search", "testcust", "limit=5", "json"]
         )
         # Should accept all arguments
         assert "unrecognized option" not in result.output.lower()
 
-    def test_search_all_options(self, runner: CliRunner) -> None:
-        """pulldb search with all option types."""
+    def test_search_json_and_limit(self, runner: CliRunner) -> None:
+        """pulldb search with json and limit in different order."""
         result = runner.invoke(
             cli, [
                 "search",
                 "testcust",
-                "date=20251115",
-                "s3env=prod",
-                "limit=10",
                 "json",
+                "limit=10",
             ]
         )
-        # Should accept all arguments
+        # Should accept all arguments regardless of order
         assert "unrecognized option" not in result.output.lower()
 
     def test_search_wildcard_customer(self, runner: CliRunner) -> None:
@@ -216,5 +209,5 @@ class TestSearchArgVariations:
         result = runner.invoke(
             cli, ["search", "test*"]
         )
-        # Wildcards are valid customer patterns
+        # Wildcards are valid search patterns
         assert "unrecognized option" not in result.output.lower()

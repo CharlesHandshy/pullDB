@@ -8,11 +8,15 @@ single responsibility.
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from pulldb.domain.errors import LockedUserError
 from pulldb.infra.mysql import MySQLPool
+
+logger = logging.getLogger(__name__)
 
 
 class AuthRepository:
@@ -43,6 +47,29 @@ class AuthRepository:
         """
         self.pool = pool
 
+    def _check_user_not_locked(self, user_id: str, action: str) -> None:
+        """Raise LockedUserError if user is locked.
+
+        Must be called before any user modification operation.
+
+        Args:
+            user_id: UUID of the user to check.
+            action: Description of blocked action.
+
+        Raises:
+            LockedUserError: If user is locked.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT username, locked_at FROM auth_users WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            if row and row[1] is not None:  # locked_at is not null
+                logger.warning(f"Blocked attempt to {action} locked user: {row[0]}")
+                raise LockedUserError(row[0], action)
+
     def get_password_hash(self, user_id: str) -> str | None:
         """Get stored password hash for user.
 
@@ -71,7 +98,11 @@ class AuthRepository:
         Args:
             user_id: UUID of the user.
             password_hash: Bcrypt hash of the password.
+
+        Raises:
+            LockedUserError: If user is locked.
         """
+        self._check_user_not_locked(user_id, "set password for")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             # Use INSERT ... ON DUPLICATE KEY UPDATE for upsert
@@ -111,7 +142,11 @@ class AuthRepository:
 
         Args:
             user_id: UUID of the user.
+
+        Raises:
+            LockedUserError: If user is locked.
         """
+        self._check_user_not_locked(user_id, "force password reset for")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -134,7 +169,11 @@ class AuthRepository:
 
         Args:
             user_id: UUID of the user.
+
+        Raises:
+            LockedUserError: If user is locked.
         """
+        self._check_user_not_locked(user_id, "clear password reset for")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -271,6 +310,266 @@ class AuthRepository:
             )
             row = cursor.fetchone()
             return bool(row and row.get("totp_enabled"))
+
+    # =========================================================================
+    # API Key Methods (for CLI/programmatic authentication)
+    # =========================================================================
+
+    def create_api_key(
+        self,
+        user_id: str,
+        name: str | None = None,
+    ) -> tuple[str, str]:
+        """Create a new API key for a user.
+
+        Generates a key_id and secret, stores the hashed secret in the database,
+        and returns both the key_id and plaintext secret. The secret is only
+        returned once - it cannot be retrieved later.
+
+        Args:
+            user_id: UUID of the user.
+            name: Optional friendly name for the key.
+
+        Returns:
+            Tuple of (key_id, secret) - secret is only returned once!
+        """
+        from pulldb.auth.password import hash_password
+
+        # Generate key_id (public identifier)
+        key_id = "key_" + secrets.token_hex(16)
+
+        # Generate secret (private, used for HMAC signing)
+        secret = secrets.token_hex(32)
+
+        # Hash the secret for audit purposes
+        secret_hash = hash_password(secret)
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO api_keys
+                    (key_id, user_id, key_secret_hash, key_secret, name, created_at)
+                VALUES (%s, %s, %s, %s, %s, UTC_TIMESTAMP(6))
+                """,
+                (key_id, user_id, secret_hash, secret, name),
+            )
+            conn.commit()
+
+        return key_id, secret
+
+    def verify_api_key(self, key_id: str, secret: str) -> str | None:
+        """Verify an API key and return the associated user_id.
+
+        Checks that the key exists, is active, and the secret matches.
+
+        Args:
+            key_id: The public key identifier.
+            secret: The plaintext secret to verify.
+
+        Returns:
+            user_id if valid, None if invalid or inactive.
+        """
+        from pulldb.auth.password import verify_password
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT user_id, key_secret_hash, is_active, expires_at
+                FROM api_keys
+                WHERE key_id = %s
+                """,
+                (key_id,),
+            )
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            # Check if active
+            if not row.get("is_active"):
+                return None
+
+            # Check expiration
+            expires_at = row.get("expires_at")
+            if expires_at and expires_at < datetime.now(UTC):
+                return None
+
+            # Verify secret
+            secret_hash = row.get("key_secret_hash")
+            if not secret_hash or not verify_password(secret, secret_hash):
+                return None
+
+            # Update last_used_at
+            cursor.execute(
+                "UPDATE api_keys SET last_used_at = UTC_TIMESTAMP(6) WHERE key_id = %s",
+                (key_id,),
+            )
+            conn.commit()
+
+            return row.get("user_id")
+
+    def get_api_key_user(self, key_id: str) -> str | None:
+        """Get the user_id associated with an API key.
+
+        Does NOT verify the secret - use verify_api_key for authentication.
+        Used for looking up the user after signature verification.
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            user_id if key exists and is active, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT user_id, is_active, expires_at
+                FROM api_keys
+                WHERE key_id = %s
+                """,
+                (key_id,),
+            )
+            row = cursor.fetchone()
+
+            if not row or not row.get("is_active"):
+                return None
+
+            # Check expiration
+            expires_at = row.get("expires_at")
+            if expires_at and expires_at < datetime.now(UTC):
+                return None
+
+            return row.get("user_id")
+
+    def get_api_key_secret_hash(self, key_id: str) -> str | None:
+        """Get the secret hash for an API key (for HMAC verification).
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            Secret hash if key is active, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT key_secret_hash, is_active, expires_at
+                FROM api_keys
+                WHERE key_id = %s
+                """,
+                (key_id,),
+            )
+            row = cursor.fetchone()
+
+            if not row or not row.get("is_active"):
+                return None
+
+            # Check expiration
+            expires_at = row.get("expires_at")
+            if expires_at and expires_at < datetime.now(UTC):
+                return None
+
+            return row.get("key_secret_hash")
+
+    def get_api_key_secret(self, key_id: str) -> str | None:
+        """Get the plaintext secret for an API key (for HMAC verification).
+
+        This is needed because HMAC verification requires the plaintext secret
+        to compute the expected signature.
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            Plaintext secret if key is active, None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT key_secret, is_active, expires_at
+                FROM api_keys
+                WHERE key_id = %s
+                """,
+                (key_id,),
+            )
+            row = cursor.fetchone()
+
+            if not row or not row.get("is_active"):
+                return None
+
+            # Check expiration
+            expires_at = row.get("expires_at")
+            if expires_at and expires_at < datetime.now(UTC):
+                return None
+
+            return row.get("key_secret")
+
+    def revoke_api_key(self, key_id: str) -> bool:
+        """Revoke an API key (mark inactive).
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            True if key was revoked, False if not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE api_keys SET is_active = FALSE WHERE key_id = %s",
+                (key_id,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_api_keys_for_user(self, user_id: str) -> int:
+        """Delete all API keys for a user.
+
+        Used when deleting a user account.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Number of keys deleted.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM api_keys WHERE user_id = %s",
+                (user_id,),
+            )
+            conn.commit()
+            return cursor.rowcount
+
+    def list_api_keys_for_user(self, user_id: str) -> list[dict]:
+        """List all API keys for a user.
+
+        Does NOT return the secret - that's only available at creation time.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            List of key info dicts (key_id, name, is_active, created_at, last_used_at).
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT key_id, name, is_active, created_at, last_used_at, expires_at
+                FROM api_keys
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                """,
+                (user_id,),
+            )
+            return list(cursor.fetchall())
 
     def create_session(
         self,
@@ -511,7 +810,11 @@ class AuthRepository:
             host_ids: List of host IDs to assign.
             default_host_id: Host ID to mark as default (must be in host_ids).
             assigned_by: UUID of admin making the assignment.
+
+        Raises:
+            LockedUserError: If user is locked.
         """
+        self._check_user_not_locked(user_id, "assign hosts for")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
 

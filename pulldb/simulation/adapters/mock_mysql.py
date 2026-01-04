@@ -12,6 +12,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import typing as t
 
+from pulldb.domain.errors import LockedUserError
 from pulldb.domain.models import (
     DBHost,
     Job,
@@ -906,6 +907,425 @@ class SimulatedJobRepository:
             self.state.jobs[job_id] = updated_job
             return True
 
+    # ==================== Database Retention & Lifecycle Methods ====================
+
+    def count_jobs_by_host(self, hostname: str) -> int:
+        """Count total jobs (all statuses) for a specific host."""
+        with self.state.lock:
+            return sum(1 for j in self.state.jobs.values() if j.dbhost == hostname)
+
+    def count_jobs_by_user(self, user_code: str) -> int:
+        """Count total jobs (all statuses) for a specific user."""
+        with self.state.lock:
+            return sum(1 for j in self.state.jobs.values() if j.owner_user_code == user_code)
+
+    def get_all_locked_databases(self) -> list[Job]:
+        """Get all locked databases across all users (manager report)."""
+        with self.state.lock:
+            locked = [
+                j for j in self.state.jobs.values()
+                if j.locked_at is not None and j.db_dropped_at is None
+            ]
+            return sorted(locked, key=lambda j: (j.owner_username, j.locked_at or datetime.min.replace(tzinfo=UTC)))
+
+    def get_cancel_requested_at(self, job_id: str) -> datetime | None:
+        """Get the timestamp when cancellation was requested for a job."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            return job.cancel_requested_at if job else None
+
+    def get_current_operation(self, job_id: str) -> str | None:
+        """Get user-friendly current operation string for a job."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if not job:
+                return None
+            
+            # Get latest event
+            job_events = [e for e in self.state.job_events if e.job_id == job_id]
+            if job_events:
+                latest = max(job_events, key=lambda e: e.id)
+                event_type = latest.event_type
+                detail = latest.detail or ""
+                
+                # Map event types to user-friendly strings
+                if event_type == "download_progress":
+                    return f"Downloading({detail})"
+                elif event_type == "restore_progress":
+                    return f"Restoring({detail})"
+                elif event_type == "restore_started":
+                    return "Restoring"
+                elif event_type == "download_started":
+                    return "Downloading"
+                elif event_type == "queued":
+                    return "Queued"
+                elif event_type == "running":
+                    return "Starting"
+                elif event_type == "deployed":
+                    return "Deployed"
+                elif event_type == "failed":
+                    return "Failed"
+                elif event_type == "canceled":
+                    return "Canceled"
+            
+            # Fallback to status
+            return job.status.value.capitalize()
+
+    def get_deployed_job_for_target(
+        self, target: str, dbhost: str, owner_user_id: str
+    ) -> Job | None:
+        """Get the deployed job for a target+host+user if one exists."""
+        with self.state.lock:
+            for job in self.state.jobs.values():
+                if (
+                    job.target == target
+                    and job.dbhost == dbhost
+                    and job.owner_user_id == owner_user_id
+                    and job.status == JobStatus.DEPLOYED
+                    and job.superseded_at is None
+                    and job.db_dropped_at is None
+                ):
+                    return job
+            return None
+
+    def get_job_history_v2(
+        self,
+        limit: int = 100,
+        retention_days: int | None = None,
+        user_code: str | None = None,
+        target: str | None = None,
+        dbhost: str | None = None,
+        status: str | None = None,
+    ) -> list[Job]:
+        """Get historical jobs (History view)."""
+        history_statuses = (
+            JobStatus.FAILED, JobStatus.CANCELED, JobStatus.COMPLETE,
+            # Also include deleted/deleting/expired/superseded if they exist
+        )
+        with self.state.lock:
+            jobs = [
+                j for j in self.state.jobs.values()
+                if j.status in history_statuses or j.status.value in (
+                    'deleted', 'deleting', 'expired', 'superseded'
+                )
+            ]
+            
+            if retention_days is not None:
+                cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+                jobs = [j for j in jobs if j.completed_at and j.completed_at >= cutoff]
+            
+            if user_code:
+                jobs = [j for j in jobs if j.owner_user_code == user_code]
+            if target:
+                jobs = [j for j in jobs if j.target == target]
+            if dbhost:
+                jobs = [j for j in jobs if j.dbhost == dbhost]
+            if status:
+                jobs = [j for j in jobs if j.status.value == status]
+            
+            return sorted(
+                jobs, 
+                key=lambda j: j.completed_at or datetime.min.replace(tzinfo=UTC), 
+                reverse=True
+            )[:limit]
+
+    def get_latest_completed_job_for_target(
+        self, target: str, dbhost: str, owner_user_id: str
+    ) -> Job | None:
+        """Get the most recent completed job for a target+host+user."""
+        with self.state.lock:
+            completed = [
+                j for j in self.state.jobs.values()
+                if (
+                    j.target == target
+                    and j.dbhost == dbhost
+                    and j.owner_user_id == owner_user_id
+                    and j.status == JobStatus.COMPLETE
+                    and j.superseded_at is None
+                )
+            ]
+            if not completed:
+                return None
+            return max(completed, key=lambda j: j.completed_at or datetime.min.replace(tzinfo=UTC))
+
+    def get_locked_by_target(
+        self, target: str, dbhost: str, owner_user_id: str
+    ) -> Job | None:
+        """Find a locked job for a specific target+host+user combination."""
+        with self.state.lock:
+            for job in self.state.jobs.values():
+                if (
+                    job.target == target
+                    and job.dbhost == dbhost
+                    and job.owner_user_id == owner_user_id
+                    and job.locked_at is not None
+                    and job.db_dropped_at is None
+                    and job.superseded_at is None
+                ):
+                    return job
+            return None
+
+    def get_maintenance_items(
+        self, user_id: str, notice_days: int, grace_days: int
+    ) -> "MaintenanceItems":
+        """Get maintenance items for a user's daily modal."""
+        from pulldb.domain.models import MaintenanceItems
+
+        expired: list[Job] = []
+        expiring: list[Job] = []
+        locked: list[Job] = []
+
+        with self.state.lock:
+            for job in self.state.jobs.values():
+                if (
+                    job.owner_user_id != user_id
+                    or job.status != JobStatus.DEPLOYED
+                    or job.db_dropped_at is not None
+                    or job.superseded_at is not None
+                ):
+                    continue
+                
+                if job.is_locked and job.is_expired:
+                    locked.append(job)
+                elif job.is_expired:
+                    expired.append(job)
+                elif job.is_expiring(notice_days):
+                    expiring.append(job)
+
+        return MaintenanceItems(expired=expired, expiring=expiring, locked=locked)
+
+    def get_owned_databases(
+        self,
+        limit: int = 100,
+        user_code: str | None = None,
+        target: str | None = None,
+        dbhost: str | None = None,
+    ) -> list[Job]:
+        """Get databases user currently owns (Active view)."""
+        active_statuses = (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.DEPLOYED)
+        # Also include 'canceling' if it exists as a status
+        
+        with self.state.lock:
+            jobs = [
+                j for j in self.state.jobs.values()
+                if j.status in active_statuses or j.status.value == 'canceling'
+            ]
+            
+            if user_code:
+                jobs = [j for j in jobs if j.owner_user_code == user_code]
+            if target:
+                jobs = [j for j in jobs if j.target == target]
+            if dbhost:
+                jobs = [j for j in jobs if j.dbhost == dbhost]
+            
+            return sorted(jobs, key=lambda j: j.submitted_at, reverse=True)[:limit]
+
+    def get_user_active_databases(self, user_id: str) -> list[Job]:
+        """Get all active (non-dropped, non-superseded) databases for a user."""
+        with self.state.lock:
+            jobs = [
+                j for j in self.state.jobs.values()
+                if (
+                    j.owner_user_id == user_id
+                    and j.status == JobStatus.COMPLETE
+                    and j.db_dropped_at is None
+                    and j.superseded_at is None
+                )
+            ]
+            
+            # Sort by: locked first, then expiring soon, then others
+            def sort_key(j: Job) -> tuple[int, datetime]:
+                if j.locked_at is not None:
+                    priority = 0
+                elif j.expires_at and j.expires_at < datetime.now(UTC) + timedelta(days=7):
+                    priority = 1
+                else:
+                    priority = 2
+                return (priority, j.expires_at or datetime.max.replace(tzinfo=UTC))
+            
+            return sorted(jobs, key=sort_key)
+
+    def get_user_target_databases(self, user_id: str) -> list[dict[str, str]]:
+        """Get unique target databases created by a user."""
+        with self.state.lock:
+            seen: set[tuple[str, str]] = set()
+            results: list[dict[str, str]] = []
+            
+            for job in self.state.jobs.values():
+                if job.owner_user_id == user_id:
+                    key = (job.target, job.dbhost)
+                    if key not in seen:
+                        seen.add(key)
+                        results.append({"name": job.target, "host": job.dbhost})
+            
+            return sorted(results, key=lambda x: (x["name"], x["host"]))
+
+    def hard_delete_job(self, job_id: str) -> bool:
+        """Hard delete a job record and its events."""
+        with self.state.lock:
+            if job_id not in self.state.jobs:
+                return False
+            
+            # Delete events first
+            self.state.job_events = [
+                e for e in self.state.job_events if e.job_id != job_id
+            ]
+            # Delete the job
+            del self.state.jobs[job_id]
+            return True
+
+    def has_restore_started(self, job_id: str) -> bool:
+        """Check if myloader restore has started for a job."""
+        with self.state.lock:
+            return any(
+                e.job_id == job_id and e.event_type == 'restore_started'
+                for e in self.state.job_events
+            )
+
+    def lock_job(self, job_id: str, locked_by: str) -> bool:
+        """Lock a job's database to protect from cleanup and overwrites."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if not job or job.locked_at is not None:
+                return False
+            
+            updated = replace(job, locked_at=datetime.now(UTC), locked_by=locked_by)
+            self.state.jobs[job_id] = updated
+            return True
+
+    def unlock_job(self, job_id: str) -> bool:
+        """Unlock a job's database."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if not job or job.locked_at is None:
+                return False
+            
+            updated = replace(job, locked_at=None, locked_by=None)
+            self.state.jobs[job_id] = updated
+            return True
+
+    def mark_db_dropped(self, job_id: str) -> None:
+        """Mark that the actual database was dropped from target host."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if job:
+                updated = replace(job, db_dropped_at=datetime.now(UTC))
+                self.state.jobs[job_id] = updated
+
+    def mark_job_canceling(self, job_id: str) -> bool:
+        """Transition a running job to canceling state."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if not job or job.status != JobStatus.RUNNING:
+                return False
+            
+            # Use 'canceling' status if available, otherwise use CANCELED
+            try:
+                canceling_status = JobStatus('canceling')
+            except ValueError:
+                canceling_status = JobStatus.CANCELED
+            
+            updated = replace(
+                job, 
+                status=canceling_status,
+                cancel_requested_at=datetime.now(UTC)
+            )
+            self.state.jobs[job_id] = updated
+            return True
+
+    def mark_job_deleted(self, job_id: str, detail: str | None = None) -> None:
+        """Mark job as deleted (soft delete complete)."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if job:
+                # Use 'deleted' status if available
+                try:
+                    deleted_status = JobStatus('deleted')
+                except ValueError:
+                    deleted_status = JobStatus.CANCELED  # fallback
+                
+                error_detail = detail or "Databases deleted by user"
+                updated = replace(
+                    job,
+                    status=deleted_status,
+                    completed_at=job.completed_at or datetime.now(UTC),
+                    error_detail=error_detail,
+                )
+                self.state.jobs[job_id] = updated
+
+    def mark_job_deleting(self, job_id: str) -> None:
+        """Mark job as deleting (async delete in progress)."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if job:
+                # Use 'deleting' status if available
+                try:
+                    deleting_status = JobStatus('deleting')
+                except ValueError:
+                    deleting_status = JobStatus.CANCELED  # fallback
+                
+                updated = replace(job, status=deleting_status)
+                self.state.jobs[job_id] = updated
+
+    def mark_job_expired(self, job_id: str) -> bool:
+        """Mark deployed job as expired when retention period has passed."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if not job:
+                return False
+            if job.status != JobStatus.DEPLOYED:
+                return False
+            if not job.expires_at or job.expires_at > datetime.now(UTC):
+                return False
+            
+            # Use 'expired' status if available
+            try:
+                expired_status = JobStatus('expired')
+            except ValueError:
+                expired_status = JobStatus.COMPLETE  # fallback
+            
+            updated = replace(job, status=expired_status)
+            self.state.jobs[job_id] = updated
+            return True
+
+    def mark_jobs_expired_batch(self, job_ids: list[str]) -> int:
+        """Mark multiple deployed jobs as expired in a single transaction."""
+        count = 0
+        for job_id in job_ids:
+            if self.mark_job_expired(job_id):
+                count += 1
+        return count
+
+    def set_job_expiration(self, job_id: str, expires_at: datetime) -> None:
+        """Set expiration date for a job's database."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if job:
+                updated = replace(job, expires_at=expires_at)
+                self.state.jobs[job_id] = updated
+
+    def supersede_job(self, job_id: str, superseded_by_job_id: str) -> None:
+        """Mark a job as superseded by a newer restore to the same target."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if job:
+                # Use 'superseded' status if available
+                try:
+                    superseded_status = JobStatus('superseded')
+                except ValueError:
+                    superseded_status = JobStatus.COMPLETE  # fallback
+                
+                now = datetime.now(UTC)
+                updated = replace(
+                    job,
+                    superseded_at=now,
+                    superseded_by_job_id=superseded_by_job_id,
+                    status=superseded_status,
+                    expires_at=now + timedelta(days=7),
+                    db_dropped_at=now,
+                )
+                self.state.jobs[job_id] = updated
+
 
 class SimulatedUserRepository:
     """In-memory implementation of UserRepository.
@@ -918,6 +1338,26 @@ class SimulatedUserRepository:
     def __init__(self) -> None:
         """Initialize the repository with shared simulation state."""
         self.state = get_simulation_state()
+
+    # ==================== Locked User Guards ====================
+
+    def _check_user_not_locked(self, user_id: str, action: str) -> None:
+        """Raise LockedUserError if user is locked.
+        
+        Must be called with state.lock held.
+        """
+        user = self.state.users.get(user_id)
+        if user and user.locked_at is not None:
+            raise LockedUserError(user.username, action)
+
+    def _check_user_not_locked_by_username(self, username: str, action: str) -> None:
+        """Raise LockedUserError if user is locked (by username).
+        
+        Must be called with state.lock held.
+        """
+        for user in self.state.users.values():
+            if user.username == username and user.locked_at is not None:
+                raise LockedUserError(user.username, action)
 
     # ==================== Public API ====================
 
@@ -1058,6 +1498,7 @@ class SimulatedUserRepository:
     def enable_user(self, username: str) -> None:
         """Enable a user."""
         with self.state.lock:
+            self._check_user_not_locked_by_username(username, "enable")
             user = self.get_user_by_username(username)
             if not user:
                 raise ValueError(f"User not found: {username}")
@@ -1070,6 +1511,7 @@ class SimulatedUserRepository:
     def disable_user(self, username: str) -> None:
         """Disable a user."""
         with self.state.lock:
+            self._check_user_not_locked_by_username(username, "disable")
             user = self.get_user_by_username(username)
             if not user:
                 raise ValueError(f"User not found: {username}")
@@ -1082,6 +1524,7 @@ class SimulatedUserRepository:
     def enable_user_by_id(self, user_id: str) -> None:
         """Enable a user by ID."""
         with self.state.lock:
+            self._check_user_not_locked(user_id, "enable")
             user = self.state.users.get(user_id)
             if not user:
                 raise ValueError(f"User not found: {user_id}")
@@ -1094,6 +1537,7 @@ class SimulatedUserRepository:
     def disable_user_by_id(self, user_id: str) -> None:
         """Disable a user by ID."""
         with self.state.lock:
+            self._check_user_not_locked(user_id, "disable")
             user = self.state.users.get(user_id)
             if not user:
                 raise ValueError(f"User not found: {user_id}")
@@ -1125,17 +1569,23 @@ class SimulatedUserRepository:
             return sorted(self.state.users.values(), key=lambda u: u.username)
 
     def get_users_managed_by(self, manager_id: str) -> list[User]:
-        """Get all users managed by a specific manager."""
+        """Get all users managed by a specific manager.
+        
+        Excludes SERVICE role accounts and locked users.
+        """
         with self.state.lock:
             managed = [
                 user for user in self.state.users.values()
                 if user.manager_id == manager_id
+                and user.role != UserRole.SERVICE
+                and user.locked_at is None
             ]
             return sorted(managed, key=lambda u: u.username)
 
     def set_user_manager(self, user_id: str, manager_id: str | None) -> None:
         """Set or clear the manager for a user."""
         with self.state.lock:
+            self._check_user_not_locked(user_id, "set manager for")
             user = self.state.users.get(user_id)
             if not user:
                 raise ValueError(f"User not found: {user_id}")
@@ -1148,6 +1598,7 @@ class SimulatedUserRepository:
     def update_user_role(self, user_id: str, role: UserRole) -> None:
         """Update a user's role."""
         with self.state.lock:
+            self._check_user_not_locked(user_id, "update role for")
             user = self.state.users.get(user_id)
             if not user:
                 raise ValueError(f"User not found: {user_id}")
@@ -1163,6 +1614,7 @@ class SimulatedUserRepository:
         Users with ANY jobs cannot be deleted (preserves history).
         """
         with self.state.lock:
+            self._check_user_not_locked(user_id, "delete")
             user = self.state.users.get(user_id)
             if not user:
                 raise ValueError(f"User not found: {user_id}")
@@ -1209,6 +1661,7 @@ class SimulatedUserRepository:
         count = 0
         with self.state.lock:
             for user_id in user_ids:
+                self._check_user_not_locked(user_id, "disable")
                 user = self.state.users.get(user_id)
                 if user and user.disabled_at is None:
                     updated = replace(user, disabled_at=datetime.now(UTC))
@@ -1225,6 +1678,7 @@ class SimulatedUserRepository:
         count = 0
         with self.state.lock:
             for user_id in user_ids:
+                self._check_user_not_locked(user_id, "enable")
                 user = self.state.users.get(user_id)
                 if user and user.disabled_at is not None:
                     updated = replace(user, disabled_at=None)
@@ -1241,6 +1695,7 @@ class SimulatedUserRepository:
         count = 0
         with self.state.lock:
             for user_id in user_ids:
+                self._check_user_not_locked(user_id, "reassign")
                 user = self.state.users.get(user_id)
                 if user:
                     updated = replace(user, manager_id=new_manager_id)
@@ -1251,12 +1706,17 @@ class SimulatedUserRepository:
         return count
 
     def get_all_managers(self) -> list[User]:
-        """Get all users with manager or admin role."""
+        """Get all users with manager or admin role.
+        
+        Excludes SERVICE role and locked users - they cannot be assigned
+        as managers for other users.
+        """
         with self.state.lock:
             managers = [
                 user for user in self.state.users.values()
                 if user.role in (UserRole.MANAGER, UserRole.ADMIN)
                 and user.disabled_at is None
+                and user.locked_at is None  # Locked users cannot be managers
             ]
             return sorted(managers, key=lambda u: u.username)
 
@@ -1288,6 +1748,7 @@ class SimulatedUserRepository:
             max_active_jobs: New limit (None = system default, 0 = unlimited).
         """
         with self.state.lock:
+            self._check_user_not_locked(user_id, "update max active jobs for")
             user = self.state.users.get(user_id)
             if not user:
                 raise ValueError(f"User not found: {user_id}")
@@ -1660,6 +2121,17 @@ class SimulatedAuthRepository:
         """Initialize the repository with shared simulation state."""
         self.state = get_simulation_state()
 
+    # ==================== Locked User Guards ====================
+
+    def _check_user_not_locked(self, user_id: str, action: str) -> None:
+        """Raise LockedUserError if user is locked.
+        
+        Must be called with state.lock held.
+        """
+        user = self.state.users.get(user_id)
+        if user and user.locked_at is not None:
+            raise LockedUserError(user.username, action)
+
     def get_password_hash(self, user_id: str) -> str | None:
         """Get stored password hash for user."""
         with self.state.lock:
@@ -1671,6 +2143,7 @@ class SimulatedAuthRepository:
     def set_password_hash(self, user_id: str, password_hash: str) -> None:
         """Set password hash for user."""
         with self.state.lock:
+            self._check_user_not_locked(user_id, "set password for")
             if user_id not in self.state.auth_credentials:
                 self.state.auth_credentials[user_id] = {}
             self.state.auth_credentials[user_id]['password_hash'] = password_hash
@@ -1687,6 +2160,7 @@ class SimulatedAuthRepository:
     def mark_password_reset(self, user_id: str) -> None:
         """Mark a user's password for reset."""
         with self.state.lock:
+            self._check_user_not_locked(user_id, "mark password reset for")
             if user_id not in self.state.auth_credentials:
                 self.state.auth_credentials[user_id] = {}
             self.state.auth_credentials[user_id]['password_reset_at'] = datetime.now(UTC)
@@ -1695,6 +2169,7 @@ class SimulatedAuthRepository:
     def clear_password_reset(self, user_id: str) -> None:
         """Clear the password reset flag after user sets new password."""
         with self.state.lock:
+            self._check_user_not_locked(user_id, "clear password reset for")
             if user_id in self.state.auth_credentials:
                 self.state.auth_credentials[user_id]['password_reset_at'] = None
                 self.state.auth_credentials[user_id]['updated_at'] = datetime.now(UTC)
@@ -1917,6 +2392,7 @@ class SimulatedAuthRepository:
     ) -> None:
         """Set database hosts for a user (replaces all existing assignments)."""
         with self.state.lock:
+            self._check_user_not_locked(user_id, "assign hosts for")
             # Auto-default: if only one host, it becomes the default
             if len(host_ids) == 1:
                 default_host_id = host_ids[0]

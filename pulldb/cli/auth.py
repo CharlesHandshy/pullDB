@@ -7,9 +7,12 @@ All API requests are cryptographically signed using HMAC-SHA256 to:
 - Prevent request tampering (body is part of signature)
 - Prevent replay attacks (timestamp is part of signature)
 
-Required environment variables:
-- PULLDB_API_KEY: API key ID (identifies the caller)
-- PULLDB_API_SECRET: API secret key (used for HMAC signing, never transmitted)
+Credential sources (in priority order):
+1. Environment variables: PULLDB_API_KEY and PULLDB_API_SECRET
+2. Config file: ~/.pulldb/credentials
+
+The config file is automatically created during `pulldb register` and
+stores the API key and secret for future CLI use.
 
 Optional:
 - PULLDB_API_KEY_USER: Username associated with this API key (server-side config)
@@ -23,11 +26,14 @@ import hmac
 import os
 import subprocess
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 # Constants
 KEY_ID_DISPLAY_LENGTH = 20
 SIGNATURE_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+CONFIG_DIR = Path.home() / ".pulldb"
+CREDENTIALS_FILE = CONFIG_DIR / "credentials"
 
 
 def get_calling_username() -> str:
@@ -70,8 +76,71 @@ def get_calling_username() -> str:
     return os.environ.get("USER") or getpass.getuser() or "unknown"
 
 
+def _load_credentials_from_file() -> tuple[str, str] | None:
+    """Load API credentials from config file.
+
+    Returns:
+        Tuple of (key_id, secret) if file exists and is valid, None otherwise.
+    """
+    if not CREDENTIALS_FILE.exists():
+        return None
+
+    try:
+        content = CREDENTIALS_FILE.read_text(encoding="utf-8")
+        key_id = None
+        secret = None
+
+        for line in content.splitlines():
+            line = line.strip()
+            if line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+
+            if key == "PULLDB_API_KEY":
+                key_id = value
+            elif key == "PULLDB_API_SECRET":
+                secret = value
+
+        if key_id and secret:
+            return key_id, secret
+    except Exception:
+        pass
+
+    return None
+
+
+def save_credentials_to_file(key_id: str, secret: str) -> None:
+    """Save API credentials to config file.
+
+    Creates ~/.pulldb/credentials with restricted permissions (600).
+
+    Args:
+        key_id: The API key identifier.
+        secret: The API secret.
+    """
+    # Create directory if needed
+    CONFIG_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+    # Write credentials file with restricted permissions
+    content = f"""# pullDB CLI credentials
+# Generated automatically during registration
+# Keep this file secure - do not share the secret!
+
+PULLDB_API_KEY={key_id}
+PULLDB_API_SECRET={secret}
+"""
+
+    # Write atomically with restricted permissions
+    CREDENTIALS_FILE.write_text(content, encoding="utf-8")
+    CREDENTIALS_FILE.chmod(0o600)
+
+
 def get_api_credentials() -> tuple[str, str]:
-    """Get API key credentials from environment.
+    """Get API key credentials from environment or config file.
+
+    Checks environment variables first, then falls back to config file.
 
     Returns:
         Tuple of (key_id, secret)
@@ -79,27 +148,36 @@ def get_api_credentials() -> tuple[str, str]:
     Raises:
         RuntimeError: If credentials are not configured.
     """
+    # Priority 1: Environment variables
     key_id = os.environ.get("PULLDB_API_KEY")
     secret = os.environ.get("PULLDB_API_SECRET")
 
-    if not key_id or not secret:
-        raise RuntimeError(
-            "API credentials not configured. Set PULLDB_API_KEY and PULLDB_API_SECRET "
-            "environment variables. See: pulldb docs authentication"
-        )
+    if key_id and secret:
+        return key_id, secret
 
-    return key_id, secret
+    # Priority 2: Config file
+    file_creds = _load_credentials_from_file()
+    if file_creds:
+        return file_creds
+
+    raise RuntimeError(
+        "API credentials not configured. Run 'pulldb register' to create an account, "
+        "or set PULLDB_API_KEY and PULLDB_API_SECRET environment variables."
+    )
 
 
 def has_api_credentials() -> bool:
     """Check if API credentials are configured.
 
     Returns:
-        True if both PULLDB_API_KEY and PULLDB_API_SECRET are set.
+        True if credentials are available from env or config file.
     """
-    return bool(
-        os.environ.get("PULLDB_API_KEY") and os.environ.get("PULLDB_API_SECRET")
-    )
+    # Check environment first
+    if os.environ.get("PULLDB_API_KEY") and os.environ.get("PULLDB_API_SECRET"):
+        return True
+
+    # Check config file
+    return _load_credentials_from_file() is not None
 
 
 def compute_request_signature(

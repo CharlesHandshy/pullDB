@@ -1,14 +1,14 @@
 {
-  "timestamp": "2025-12-16T00:36:50.515329",
+  "timestamp": "2026-01-04T02:10:34.494692",
   "total_pages": 23,
-  "pages_with_errors": 0,
-  "pages_with_warnings": 1,
+  "pages_with_errors": 1,
+  "pages_with_warnings": 2,
   "pages": [
     {
       "url": "/web/login",
       "name": "Login Page",
       "status_code": 200,
-      "load_time_ms": 661.79,
+      "load_time_ms": 542.31,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/auth/login_page.png",
       "issues": [],
       "checks": {
@@ -20,281 +20,292 @@
     {
       "url": "/web/auth/profile",
       "name": "Profile Page",
-      "status_code": 200,
-      "load_time_ms": 525.54,
+      "status_code": 500,
+      "load_time_ms": 514.52,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/auth/profile_page.png",
-      "issues": [],
+      "issues": [
+        {
+          "severity": "error",
+          "category": "server",
+          "message": "Internal server error returned"
+        },
+        {
+          "severity": "warning",
+          "category": "content",
+          "message": "Page appears mostly empty (1 visible elements)"
+        }
+      ],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 409
+        "body_text_length": 21
       }
     },
     {
       "url": "/web/change-password",
       "name": "Change Password",
       "status_code": 200,
-      "load_time_ms": 521.2,
+      "load_time_ms": 544.04,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/auth/change_password.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 397
+        "body_text_length": 331
       }
     },
     {
       "url": "/web/dashboard",
       "name": "Dashboard",
       "status_code": 200,
-      "load_time_ms": 521.12,
+      "load_time_ms": 555.05,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/dashboard/dashboard.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 397
+        "body_text_length": 405
       }
     },
     {
       "url": "/web/jobs",
       "name": "Jobs List",
       "status_code": 200,
-      "load_time_ms": 620.6,
+      "load_time_ms": 589.09,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/jobs_list.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 821
+        "body_text_length": 406
       }
     },
     {
       "url": "/web/jobs?view=active",
       "name": "Jobs Active Tab",
       "status_code": 200,
-      "load_time_ms": 609.94,
+      "load_time_ms": 584.42,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/jobs_active_tab.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 821
+        "body_text_length": 406
       }
     },
     {
       "url": "/web/jobs?view=history",
       "name": "Jobs History Tab",
       "status_code": 200,
-      "load_time_ms": 610.78,
+      "load_time_ms": 583.15,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/jobs_history_tab.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 821
+        "body_text_length": 318
       }
     },
     {
       "url": "/web/jobs/job-001",
       "name": "Job Detail - Queued",
       "status_code": 200,
-      "load_time_ms": 530.87,
+      "load_time_ms": 536.18,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/job_detail_-_queued.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 256
+        "body_text_length": 410
       }
     },
     {
       "url": "/web/jobs/job-002",
       "name": "Job Detail - Running",
       "status_code": 200,
-      "load_time_ms": 518.45,
+      "load_time_ms": 536.05,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/job_detail_-_running.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 314
+        "body_text_length": 488
       }
     },
     {
       "url": "/web/jobs/job-003",
       "name": "Job Detail - Complete",
       "status_code": 200,
-      "load_time_ms": 521.42,
+      "load_time_ms": 536.8,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/job_detail_-_complete.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 263
+        "body_text_length": 462
       }
     },
     {
       "url": "/web/jobs/job-004",
       "name": "Job Detail - Failed",
       "status_code": 200,
-      "load_time_ms": 519.02,
+      "load_time_ms": 535.67,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/job_detail_-_failed.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 296
+        "body_text_length": 439
       }
     },
     {
       "url": "/web/restore",
       "name": "New Restore",
       "status_code": 200,
-      "load_time_ms": 542.35,
+      "load_time_ms": 543.59,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/restore/new_restore.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 559
+        "body_text_length": 591
       }
     },
     {
       "url": "/web/manager",
       "name": "Manager Dashboard",
       "status_code": 200,
-      "load_time_ms": 611.24,
+      "load_time_ms": 571.74,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/manager/manager_dashboard.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 777
+        "body_text_length": 300
       }
     },
     {
       "url": "/web/admin",
       "name": "Admin Dashboard",
       "status_code": 200,
-      "load_time_ms": 529.43,
+      "load_time_ms": 537.73,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/admin_dashboard.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 380
+        "body_text_length": 644
       }
     },
     {
       "url": "/web/admin/styleguide",
       "name": "Style Guide",
       "status_code": 200,
-      "load_time_ms": 529.75,
+      "load_time_ms": 547.33,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/style_guide.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 3249
+        "body_text_length": 3416
       }
     },
     {
       "url": "/web/admin/users",
       "name": "Users Management",
       "status_code": 200,
-      "load_time_ms": 584.37,
+      "load_time_ms": 592.45,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/users_management.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 554
+        "body_text_length": 619
       }
     },
     {
       "url": "/web/admin/hosts",
       "name": "Hosts Management",
       "status_code": 200,
-      "load_time_ms": 536.68,
+      "load_time_ms": 678.0,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/hosts_management.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 237
+        "body_text_length": 364
       }
     },
     {
       "url": "/web/admin/settings",
       "name": "System Settings",
       "status_code": 200,
-      "load_time_ms": 545.4,
+      "load_time_ms": 565.24,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/system_settings.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 2327
+        "body_text_length": 461
       }
     },
     {
       "url": "/web/admin/prune-logs/preview",
       "name": "Prune Logs",
       "status_code": 200,
-      "load_time_ms": 586.63,
+      "load_time_ms": 575.89,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/prune_logs.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 582
+        "body_text_length": 711
       }
     },
     {
       "url": "/web/admin/cleanup-staging/preview",
       "name": "Cleanup Staging",
       "status_code": 200,
-      "load_time_ms": 580.65,
+      "load_time_ms": 576.71,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/cleanup_staging.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 714
+        "body_text_length": 844
       }
     },
     {
       "url": "/web/admin/orphans/preview",
       "name": "Orphan Databases",
       "status_code": 200,
-      "load_time_ms": 570.98,
+      "load_time_ms": 563.1,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/orphan_databases.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 622
+        "body_text_length": 791
       }
     },
     {
       "url": "/web/admin/audit",
       "name": "Audit Logs",
       "status_code": 200,
-      "load_time_ms": 574.95,
+      "load_time_ms": 567.53,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/audit/audit_logs.png",
       "issues": [],
       "checks": {
         "has_head": true,
         "has_body": true,
-        "body_text_length": 323
+        "body_text_length": 305
       }
     },
     {
       "url": "/web/nonexistent-page-404",
       "name": "404 Error Page",
       "status_code": 404,
-      "load_time_ms": 511.38,
+      "load_time_ms": 514.4,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/errors/404_error_page.png",
       "issues": [
         {

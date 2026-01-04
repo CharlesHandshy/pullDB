@@ -91,7 +91,11 @@ class TestUserRepositoryRoleField:
             self._cleanup_user(mysql_pool, user.user_id)
 
     def test_role_field_all_values(self, mysql_pool: Any) -> None:
-        """All three role values can be stored and retrieved."""
+        """Role values USER, MANAGER, ADMIN can be stored and retrieved.
+        
+        Note: SERVICE role is also valid but not tested here as it's
+        primarily for system accounts and tested in test_locked_user.py.
+        """
         repo = UserRepository(mysql_pool)
         test_cases = [
             ("user", UserRole.USER),

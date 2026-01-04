@@ -511,6 +511,9 @@ class RegisterResponse(pydantic.BaseModel):
     username: str
     user_code: str
     message: str
+    # API credentials - returned only at registration time
+    api_key: str | None = None
+    api_secret: str | None = None
 
 
 @app.post("/api/auth/register", status_code=status.HTTP_201_CREATED, response_model=RegisterResponse)
@@ -599,6 +602,21 @@ async def register_user(
         password_hash,
     )
 
+    # Generate API credentials for CLI access
+    # The secret is only returned once - stored hashed in DB
+    api_key: str | None = None
+    api_secret: str | None = None
+    try:
+        api_key, api_secret = await run_in_threadpool(
+            state.auth_repo.create_api_key,
+            user.user_id,
+            f"CLI key for {user.username}",
+        )
+    except Exception:
+        # API key creation failed - continue without it (table may not exist)
+        # User can still use web UI, admin can create key later
+        pass
+
     # Disable the account (requires admin/manager approval)
     await run_in_threadpool(
         state.user_repo.disable_user,
@@ -618,6 +636,8 @@ async def register_user(
     return RegisterResponse(
         username=user.username,
         user_code=user.user_code,
+        api_key=api_key,
+        api_secret=api_secret,
         message="Account created successfully. Contact an administrator to enable your account.",
     )
 

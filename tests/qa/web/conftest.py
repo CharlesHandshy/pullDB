@@ -65,8 +65,8 @@ def web_server() -> Generator[str, None, None]:
     os.chdir(original_dir)
 
 
-@pytest.fixture
-def base_url(web_server: str) -> str:
+@pytest.fixture(scope="module")
+def graph_base_url(web_server: str) -> str:
     """Get the base URL for the web server."""
     return web_server
 
@@ -76,22 +76,22 @@ def base_url(web_server: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def index_url(base_url: str) -> str:
+@pytest.fixture(scope="module")
+def index_url(graph_base_url: str) -> str:
     """URL for the main index page."""
-    return f"{base_url}/index.html"
+    return f"{graph_base_url}/index.html"
 
 
-@pytest.fixture
-def flow_url(base_url: str) -> str:
+@pytest.fixture(scope="module")
+def flow_url(graph_base_url: str) -> str:
     """URL for the flow chart page."""
-    return f"{base_url}/flow.html"
+    return f"{graph_base_url}/flow.html"
 
 
-@pytest.fixture
-def code_url(base_url: str) -> str:
+@pytest.fixture(scope="module")
+def code_url(graph_base_url: str) -> str:
     """URL for the code graph page."""
-    return f"{base_url}/code.html"
+    return f"{graph_base_url}/code.html"
 
 
 # ---------------------------------------------------------------------------

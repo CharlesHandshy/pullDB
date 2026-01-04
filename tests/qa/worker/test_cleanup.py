@@ -319,11 +319,11 @@ class TestDropDatabase:
                 "pulldb.worker.cleanup._database_exists", return_value=False
             ) as mock_exists,
         ):
-            result = _drop_database(mock_credentials, "testdb")
+            result = _drop_database(mock_credentials, "testdb_abcdef123456")
 
         assert result is True
-        mock_cursor.execute.assert_called_once_with("DROP DATABASE IF EXISTS `testdb`")
-        mock_exists.assert_called_once_with(mock_credentials, "testdb")
+        mock_cursor.execute.assert_called_once_with("DROP DATABASE IF EXISTS `testdb_abcdef123456`")
+        mock_exists.assert_called_once_with(mock_credentials, "testdb_abcdef123456")
 
     def test_returns_false_when_drop_fails(self) -> None:
         """Returns False when verification shows database still exists."""
@@ -343,7 +343,7 @@ class TestDropDatabase:
                 "pulldb.worker.cleanup._database_exists", return_value=True
             ) as mock_exists,
         ):
-            result = _drop_database(mock_credentials, "testdb")
+            result = _drop_database(mock_credentials, "testdb_abcdef123456")
 
         assert result is False
-        mock_exists.assert_called_once_with(mock_credentials, "testdb")
+        mock_exists.assert_called_once_with(mock_credentials, "testdb_abcdef123456")

@@ -250,7 +250,7 @@ class TestStatusFiltering:
     def test_status_filter_json(
         self, runner: CliRunner, mock_api_env: str
     ) -> None:
-        """pulldb status --filter='{"status":"failed"}' filters jobs."""
+        """pulldb status --status failed filters jobs by status."""
         responses.add(
             responses.GET,
             f"{MOCK_API_BASE}/api/jobs",
@@ -265,7 +265,7 @@ class TestStatusFiltering:
             status=200,
         )
         result = runner.invoke(
-            cli, ["status", "--filter", '{"status":"failed"}']
+            cli, ["status", "--status", "failed"]
         )
         assert result.exit_code in [0, 1]
 

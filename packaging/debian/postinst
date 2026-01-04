@@ -475,9 +475,12 @@ print(bcrypt.hashpw(password, salt).decode('utf-8'))
         return
     fi
     
-    # Update the password hash (credentials row created by seed SQL)
+    # Update the password hash AND set password_reset_at to force reset on first login
     mysql pulldb_service -e "
-UPDATE auth_credentials SET password_hash = '${ADMIN_HASH}' WHERE user_id = '${ADMIN_UUID}';
+UPDATE auth_credentials 
+SET password_hash = '${ADMIN_HASH}',
+    password_reset_at = UTC_TIMESTAMP(6)
+WHERE user_id = '${ADMIN_UUID}';
 " 2>/dev/null || {
         echo "  Warning: Failed to set admin password"
         return
@@ -507,9 +510,10 @@ create_service_account() {
     SERVICE_CODE="SBCACC"
     
     # Insert service account (no password - system account, not for web login)
+    # Uses SERVICE role and is locked to prevent modification via UI/API
     mysql pulldb_service -e "
-INSERT INTO auth_users (user_id, username, user_code, is_admin, role)
-VALUES ('${SERVICE_UUID}', 'pulldb_service', '${SERVICE_CODE}', TRUE, 'admin');
+INSERT INTO auth_users (user_id, username, user_code, is_admin, role, locked_at)
+VALUES ('${SERVICE_UUID}', 'pulldb_service', '${SERVICE_CODE}', TRUE, 'service', NOW(6));
 
 INSERT INTO auth_credentials (user_id, password_hash)
 VALUES ('${SERVICE_UUID}', NULL);

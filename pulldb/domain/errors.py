@@ -486,3 +486,27 @@ class CancellationError(JobExecutionError):
                 "phase": phase,
             },
         )
+
+
+class LockedUserError(Exception):
+    """Raised when attempting to modify a locked user account.
+
+    Locked users are system-protected accounts (e.g., pulldb_service) that
+    cannot be modified via the admin UI, API, or CLI. They can only be
+    unlocked via direct SQL updates.
+
+    Attributes:
+        username: The username of the locked user.
+        action: The action that was attempted (e.g., "disable", "delete").
+    """
+
+    def __init__(self, username: str, action: str) -> None:
+        """Initialize locked user error.
+
+        Args:
+            username: Username of the locked user.
+            action: Operation that was blocked (e.g., "enable", "delete").
+        """
+        self.username = username
+        self.action = action
+        super().__init__(f"Cannot {action} locked user: {username}")

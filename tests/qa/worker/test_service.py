@@ -198,25 +198,28 @@ class TestMetricsEmission:
 class TestZombieCleanup:
     """Tests for zombie job detection and cleanup."""
 
-    def test_cleanup_zombies_skips_when_multiple_workers(self) -> None:
-        """Skips cleanup when multiple workers detected."""
+    def test_cleanup_zombies_skips_when_lock_not_acquired(self) -> None:
+        """Skips cleanup when advisory lock is held by another worker."""
         from pulldb.worker.service import _cleanup_zombies
 
         mock_job_repo = MagicMock()
+        mock_pool = MagicMock()
+        
+        # Simulate lock not acquired (another worker holds it)
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (0,)  # Lock not acquired
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_pool.connection.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_pool.connection.return_value.__exit__ = MagicMock(return_value=False)
 
-        # Simulate multiple worker PIDs
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "123\n456\n"  # Two PIDs
+        _cleanup_zombies(mock_job_repo, mock_pool)
 
-        with patch("subprocess.run", return_value=mock_result):
-            _cleanup_zombies(mock_job_repo)
-
-        # Should not mark any jobs failed
+        # Should not mark any jobs failed since lock wasn't acquired
         mock_job_repo.mark_job_failed.assert_not_called()
 
     def test_cleanup_zombies_marks_running_jobs_failed(self) -> None:
-        """Marks running jobs as failed when single worker."""
+        """Marks running jobs as failed when lock acquired."""
         from pulldb.domain.models import JobStatus
         from pulldb.worker.service import _cleanup_zombies
 
@@ -228,25 +231,31 @@ class TestZombieCleanup:
         mock_job_repo = MagicMock()
         mock_job_repo.get_active_jobs.return_value = [mock_job]
 
-        # Simulate single worker PID
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "123\n"  # Single PID
+        mock_pool = MagicMock()
+        # Simulate lock acquired successfully
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (1,)  # Lock acquired
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_pool.connection.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_pool.connection.return_value.__exit__ = MagicMock(return_value=False)
 
-        with patch("subprocess.run", return_value=mock_result):
-            _cleanup_zombies(mock_job_repo)
+        _cleanup_zombies(mock_job_repo, mock_pool)
 
         mock_job_repo.mark_job_failed.assert_called_once()
 
-    def test_cleanup_zombies_handles_pgrep_not_found(self) -> None:
-        """Handles missing pgrep gracefully."""
+    def test_cleanup_zombies_handles_pool_exception(self) -> None:
+        """Handles pool connection errors gracefully."""
         from pulldb.worker.service import _cleanup_zombies
 
         mock_job_repo = MagicMock()
+        mock_pool = MagicMock()
+        
+        # Simulate pool connection failure
+        mock_pool.connection.side_effect = Exception("Connection failed")
 
-        with patch("subprocess.run", side_effect=FileNotFoundError()):
-            # Should not raise
-            _cleanup_zombies(mock_job_repo)
+        # Should not raise
+        _cleanup_zombies(mock_job_repo, mock_pool)
 
         mock_job_repo.mark_job_failed.assert_not_called()
 
@@ -270,18 +279,21 @@ class TestMainEntryPoint:
         monkeypatch.setenv("PULLDB_MYSQL_DATABASE", "pulldb")
 
         # Mock dependencies
+        mock_cfg = MagicMock()
+        mock_cfg.mysql_host = "localhost"
+        mock_cfg.mysql_database = "pulldb"
+        mock_pool = MagicMock()
+        mock_job_repo = MagicMock()
+        mock_job_executor = MagicMock()
+
         with (
-            patch("pulldb.worker.service._load_config") as mock_config,
-            patch("pulldb.worker.service._build_job_repository"),
-            patch("pulldb.worker.service._build_job_executor"),
+            patch("pulldb.worker.service._load_config_and_pool", return_value=(mock_cfg, mock_pool)),
+            patch("pulldb.worker.service.JobRepository", return_value=mock_job_repo),
+            patch("pulldb.worker.service._build_job_executor", return_value=mock_job_executor),
             patch("pulldb.worker.service.run_poll_loop"),
             patch("pulldb.worker.service._cleanup_zombies"),
+            patch("pulldb.worker.service.is_simulation_mode", return_value=True),
         ):
-            mock_cfg = MagicMock()
-            mock_cfg.mysql_host = "localhost"
-            mock_cfg.mysql_database = "pulldb"
-            mock_config.return_value = mock_cfg
-
             result = main(["--oneshot", "--poll-interval", "0.001"])
 
             assert result == 0

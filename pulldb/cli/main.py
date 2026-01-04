@@ -1971,10 +1971,30 @@ def register_cmd(ctx: click.Context, password: str) -> None:
         if response.status_code == 201:
             data = response.json()
             user_code = data.get("user_code", "unknown")
+            api_key = data.get("api_key")
+            api_secret = data.get("api_secret")
+
             click.echo("✓ Account created successfully!")
             click.echo("")
             click.echo(f"  Username:  {username}")
             click.echo(f"  User Code: {user_code}")
+
+            # Save API credentials to config file
+            if api_key and api_secret:
+                from pulldb.cli.auth import save_credentials_to_file
+
+                try:
+                    save_credentials_to_file(api_key, api_secret)
+                    click.echo("")
+                    click.echo("✓ API credentials saved to ~/.pulldb/credentials")
+                except Exception as exc:
+                    click.echo("")
+                    click.echo(f"⚠ Could not save credentials: {exc}")
+                    click.echo("")
+                    click.echo("Save these credentials manually:")
+                    click.echo(f"  PULLDB_API_KEY={api_key}")
+                    click.echo(f"  PULLDB_API_SECRET={api_secret}")
+
             click.echo("")
             click.echo("Your account is pending approval.")
             click.echo("Contact an administrator to enable your account.")
@@ -1996,7 +2016,6 @@ def register_cmd(ctx: click.Context, password: str) -> None:
 
     except RequestException as exc:
         raise click.ClickException(f"Cannot connect to API: {exc}") from exc
-
 
 @cli.command("setpass", help="Set a new password (required after password reset)")
 @click.option(

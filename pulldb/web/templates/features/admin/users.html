@@ -5,6 +5,32 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/pages/admin.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
+<style>
+/* Locked user styles */
+.user-icon-sm.locked {
+    position: relative;
+}
+.user-icon-sm .lock-overlay {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 14px;
+    height: 14px;
+    background: var(--bg-primary);
+    border-radius: 2px;
+    color: var(--text-warning);
+}
+.role-badge.service {
+    background: var(--bg-warning-subtle, rgba(245, 158, 11, 0.1));
+    color: var(--text-warning, #f59e0b);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+.role-badge.muted {
+    background: var(--bg-muted, rgba(100, 116, 139, 0.1));
+    color: var(--text-muted, #64748b);
+}
+</style>
 {% endblock %}
 
 {% block content %}
@@ -343,16 +369,24 @@
     
     // User icon SVG for blocked icon display (matches host icon style)
     const userIconSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+    // Lock icon overlay for locked/system users
+    const lockOverlaySvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="lock-overlay"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
     
     // Column renderers
     const renderUsername = (val, row) => {
         const disabledClass = row.disabled ? ' disabled' : '';
-        return `<span class="user-cell"><div class="user-icon-sm${disabledClass}">${userIconSvg}</div><span class="user-name">${val || '-'}</span></span>`;
+        const lockedClass = row.locked ? ' locked' : '';
+        const lockIcon = row.locked ? lockOverlaySvg : '';
+        return `<span class="user-cell"><div class="user-icon-sm${disabledClass}${lockedClass}">${userIconSvg}${lockIcon}</div><span class="user-name">${val || '-'}</span></span>`;
     };
     
     const renderUserCode = (val) => `<code class="cell-code">${val}</code>`;
     
     const renderManager = (val, row) => {
+        // Locked users show static "None" badge - cannot be managed
+        if (row.locked) {
+            return `<span class="role-badge muted">None</span>`;
+        }
         return `<select class="manager-select" data-user-id="${row.user_id}" onchange="updateManager(this)">
             ${buildManagerOptions(row.manager_id)}
         </select>`;
@@ -360,11 +394,16 @@
     
     const renderRole = (val, row) => {
         const isCurrentUser = row.user_id === currentUserId;
+        const isLocked = row.locked;
+        // Locked user shows SERVICE badge (system account)
+        if (isLocked) {
+            return `<span class="role-badge service">service</span>`;
+        }
         // Current user sees static badge (cannot change own role)
         if (isCurrentUser) {
             return `<span class="role-badge ${val}">${val}</span>`;
         }
-        // Other users get a dropdown
+        // Other users get a dropdown (SERVICE not offered - only for system accounts)
         return `<select class="role-select" data-user-id="${row.user_id}" data-username="${row.username}" onchange="updateRole(this)">
             <option value="user"${val === 'user' ? ' selected' : ''}>user</option>
             <option value="manager"${val === 'manager' ? ' selected' : ''}>manager</option>
@@ -382,16 +421,18 @@
     
     const renderStatus = (val, row) => {
         const isCurrentUser = row.user_id === currentUserId;
-        const cursorStyle = isCurrentUser ? 'cursor: not-allowed; opacity: 0.6;' : 'cursor: pointer;';
-        const titleAttr = isCurrentUser ? 'title="Cannot modify your own account"' : 'title="Click to toggle status"';
+        const isLocked = row.locked;
+        const isProtected = isCurrentUser || isLocked;
+        const cursorStyle = isProtected ? 'cursor: not-allowed; opacity: 0.6;' : 'cursor: pointer;';
+        const titleAttr = isLocked ? 'title="System account - protected"' : (isCurrentUser ? 'title="Cannot modify your own account"' : 'title="Click to toggle status"');
         
         if (row.disabled) {
-            return `<span class="status-badge disabled" style="${cursorStyle}" ${titleAttr} onclick="toggleUserStatus('${row.user_id}', '${row.username}', true)">
+            return `<span class="status-badge disabled" style="${cursorStyle}" ${titleAttr} onclick="${isProtected ? '' : `toggleUserStatus('${row.user_id}', '${row.username}', true)`}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/></svg>
                 Disabled
             </span>`;
         }
-        return `<span class="status-badge enabled" style="${cursorStyle}" ${titleAttr} onclick="toggleUserStatus('${row.user_id}', '${row.username}', false)">
+        return `<span class="status-badge enabled" style="${cursorStyle}" ${titleAttr} onclick="${isProtected ? '' : `toggleUserStatus('${row.user_id}', '${row.username}', false)`}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
             Enabled
         </span>`;
@@ -399,7 +440,45 @@
     
     const renderActions = (val, row) => {
         const isCurrentUser = row.user_id === currentUserId;
+        const isLocked = row.locked;
         let html = '<div class="cell-actions">';
+        
+        // For locked users, show all buttons as disabled with "System account" tooltip
+        if (isLocked) {
+            const disabledTitle = 'System account - protected';
+            // Hosts button - disabled
+            html += `<button class="action-btn action-btn-disabled" title="${disabledTitle}" aria-label="${disabledTitle}" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                </svg>
+            </button>`;
+            // Password reset - disabled
+            html += `<button class="action-btn action-btn-disabled" title="${disabledTitle}" aria-label="${disabledTitle}" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                </svg>
+            </button>`;
+            // Temp password - disabled
+            html += `<button class="action-btn action-btn-disabled" title="${disabledTitle}" aria-label="${disabledTitle}" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+            </button>`;
+            // Delete - disabled
+            html += `<button class="action-btn action-btn-disabled" title="${disabledTitle}" aria-label="${disabledTitle}" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    <line x1="10" x2="10" y1="11" y2="17"/>
+                    <line x1="14" x2="14" y1="11" y2="17"/>
+                </svg>
+            </button>`;
+            html += '</div>';
+            return html;
+        }
         
         // Hosts button - database icon
         html += `<button class="action-btn action-btn-primary" title="Manage Database Hosts" aria-label="Manage database hosts for ${row.username}" onclick="showHostsModal('${row.user_id}', '${row.username}')">

@@ -7,16 +7,17 @@
 --
 -- Key properties:
 --   - Username matches Linux system user: pulldb_service
---   - Admin role for full CLI access
+--   - SERVICE role for full CLI access (same as admin but identifies system accounts)
 --   - No password (system account, not for interactive login)
---   - Cannot be disabled (required for system operations)
+--   - Locked (cannot be modified via UI/API, only direct SQL)
+--   - Cannot be disabled or deleted (required for system operations)
 --
 -- See also: packaging/debian/postinst (creates this during fresh install)
 
 -- Only insert if not exists (idempotent)
 -- Use fixed UUID for consistency: 00000000-0000-0000-0000-000000000001
-INSERT IGNORE INTO auth_users (user_id, username, user_code, is_admin, role)
-VALUES ('00000000-0000-0000-0000-000000000001', 'pulldb_service', 'SBCACC', TRUE, 'admin');
+INSERT IGNORE INTO auth_users (user_id, username, user_code, is_admin, role, locked_at)
+VALUES ('00000000-0000-0000-0000-000000000001', 'pulldb_service', 'SBCACC', TRUE, 'service', NOW(6));
 
 -- Service account has no password (cannot login via web UI)
 -- The auth_credentials entry is optional but we create it for consistency

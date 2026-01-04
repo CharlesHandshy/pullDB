@@ -37,6 +37,30 @@ SAMPLE_TARGET = "charleqatemplate"
 
 
 # ---------------------------------------------------------------------------
+# User Registration Mock (Autouse)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def mock_user_registered(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Auto-mock user as registered and enabled for all CLI tests.
+
+    This fixture runs automatically for all tests in tests/qa/cli/.
+    It patches _get_user_state to return ENABLED state, bypassing the
+    actual API call that checks user registration.
+    """
+    from pulldb.cli.main import UserState
+
+    def _mock_get_user_state(username: str) -> tuple[str, str | None, bool]:
+        """Return enabled user state for testing."""
+        return UserState.ENABLED, SAMPLE_USER_CODE, True
+
+    monkeypatch.setattr(
+        "pulldb.cli.main._get_user_state",
+        _mock_get_user_state,
+    )
+
+
+# ---------------------------------------------------------------------------
 # CLI Runner Fixtures
 # ---------------------------------------------------------------------------
 

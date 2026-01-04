@@ -182,6 +182,59 @@ def _get_managed_user_codes(state: Any, user: User) -> list[str]:
     return managed_codes
 
 
+def _deduplicate_logs(logs: list[Any]) -> list[Any]:
+    """Deduplicate consecutive restore_progress events with same percent/status.
+
+    Processlist updates emit events every 2 seconds, creating repetitive entries
+    like "52% processlist_update" repeated many times. This collapses consecutive
+    duplicates to reduce noise in the execution log display.
+
+    Only deduplicates restore_progress events; other event types pass through unchanged.
+    """
+    if not logs:
+        return logs
+
+    deduplicated: list[Any] = []
+    last_key: tuple[str, float, str] | None = None
+
+    for event in logs:
+        event_type = getattr(event, "event_type", "")
+
+        # Only deduplicate restore_progress events
+        if event_type == "restore_progress":
+            detail = getattr(event, "detail", None)
+            percent = 0.0
+            status = ""
+
+            if detail:
+                parsed = detail
+                if isinstance(detail, str):
+                    try:
+                        parsed = json.loads(detail)
+                    except (json.JSONDecodeError, TypeError):
+                        parsed = {}
+                if isinstance(parsed, dict):
+                    percent = parsed.get("percent", 0.0)
+                    detail_info = parsed.get("detail", {})
+                    if isinstance(detail_info, dict):
+                        status = detail_info.get("status", "")
+
+            current_key = (event_type, percent, status)
+
+            # Skip if same as last restore_progress event
+            if current_key == last_key:
+                continue
+
+            last_key = current_key
+        else:
+            # Reset tracking when we see a non-restore_progress event
+            last_key = None
+
+        deduplicated.append(event)
+
+    return deduplicated
+
+
 # Phase definitions for job progress display
 JOB_PHASES = [
     ("queued", "Queued"),
@@ -463,16 +516,19 @@ async def job_details(
     if hasattr(state, "job_repo") and state.job_repo:
         job = state.job_repo.get_job_by_id(job_id)
         if job:
-            logs = state.job_repo.get_job_events(job_id)
+            raw_logs = state.job_repo.get_job_events(job_id)
 
-            # Derive current phase for progress indicator
-            current_phase, phase_list = _derive_current_phase(logs, job.status.value)
+            # Derive current phase for progress indicator (uses raw logs)
+            current_phase, phase_list = _derive_current_phase(raw_logs, job.status.value)
 
-            # Calculate download progress stats for progress bar
-            download_stats = _calculate_download_stats(logs)
+            # Calculate download progress stats for progress bar (uses raw logs)
+            download_stats = _calculate_download_stats(raw_logs)
 
-            # Calculate restore progress stats for progress bar
-            restore_stats = _calculate_restore_stats(logs)
+            # Calculate restore progress stats for progress bar (uses raw logs)
+            restore_stats = _calculate_restore_stats(raw_logs)
+
+            # Deduplicate logs for display (collapse repetitive processlist updates)
+            logs = _deduplicate_logs(raw_logs)
 
             # Compute can_cancel for this user
             # Must have permission AND job must still be in cancelable state

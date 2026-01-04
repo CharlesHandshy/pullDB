@@ -56,7 +56,11 @@ class TestJobSubmission:
 
         response = client.post(
             "/api/jobs",
-            json={"user": SAMPLE_USERNAME, "qatemplate": True},
+            json={
+                "user": SAMPLE_USERNAME,
+                "qatemplate": True,
+                "backup_path": "s3://test-bucket/backups/qatemplate/20250101/backup.tar.gz",
+            },
         )
         data = assert_success(response, 201)
         assert_contains(data, "job_id", "target", "staging_name", "status")
@@ -73,7 +77,11 @@ class TestJobSubmission:
 
         response = client.post(
             "/api/jobs",
-            json={"user": SAMPLE_USERNAME, "customer": "ACME Corp"},
+            json={
+                "user": SAMPLE_USERNAME,
+                "customer": "ACME Corp",
+                "backup_path": "s3://test-bucket/backups/acme/20250101/backup.tar.gz",
+            },
         )
         data = assert_success(response, 201)
         assert "acme" in data["target"].lower()
@@ -134,6 +142,7 @@ class TestJobSubmission:
                 "qatemplate": True,
                 "date": "2025-01-15",
                 "env": "prod",
+                "backup_path": "s3://test-bucket/backups/qatemplate/20250115/backup.tar.gz",
             },
         )
         data = assert_success(response, 201)
@@ -176,7 +185,8 @@ class TestConcurrencyLimits:
             json={"user": SAMPLE_USERNAME, "qatemplate": True},
         )
         assert_error(response, 429)
-        assert "user limit" in response.json()["detail"].lower()
+        # Error message is "You have N active jobs (limit: N). Please wait for a job to finish."
+        assert "active jobs" in response.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -336,7 +346,7 @@ class TestJobCancellation:
 
         response = client.post(f"/api/jobs/{SAMPLE_JOB_ID}/cancel")
         data = assert_success(response)
-        assert data["status"] == "pending"
+        assert data["status"] == "canceling"
         assert "checkpoint" in data["message"].lower()
 
     def test_cancel_completed_job(

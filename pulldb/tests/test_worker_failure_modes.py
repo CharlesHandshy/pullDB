@@ -190,11 +190,15 @@ def test_cleanup_orphaned_staging_drop_permission_error() -> None:
     with mock.patch("mysql.connector.connect") as mock_connect:
         mock_cursor = mock_connect.return_value.cursor.return_value
         # Mock SHOW DATABASES
-        mock_cursor.fetchall.return_value = [("target_000000000000",)]
+        mock_cursor.fetchall.side_effect = [
+            [("target_000000000000",)],  # SHOW DATABASES (first call)
+            [],  # SELECT db FROM information_schema.processlist
+        ]
 
         # Mock DROP DATABASE to raise
         mock_cursor.execute.side_effect = [
             None,  # SHOW DATABASES
+            None,  # SELECT db FROM information_schema.processlist
             mysql.connector.Error(msg="Access denied for DROP"),  # DROP
         ]
 

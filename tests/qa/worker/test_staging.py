@@ -198,7 +198,11 @@ class TestCleanupOrphanedStaging:
     def test_successful_cleanup_no_orphans(self, conn_spec) -> None:
         """Cleanup succeeds with no orphans to drop."""
         mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = [("mysql",), ("information_schema",)]
+        mock_cursor.fetchall.side_effect = [
+            [("mysql",), ("information_schema",)],  # SHOW DATABASES
+            [],  # information_schema.processlist (no active connections)
+            [("mysql",), ("information_schema",)],  # SHOW DATABASES verification
+        ]
 
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
@@ -213,12 +217,12 @@ class TestCleanupOrphanedStaging:
 
     def test_successful_cleanup_with_orphans(self, conn_spec) -> None:
         """Cleanup drops orphaned databases."""
-        # First call returns databases including orphan
-        # Second call returns databases without orphan (after drop)
+        # Calls: SHOW DATABASES, processlist, DROP, SHOW DATABASES (verify)
         mock_cursor = MagicMock()
         mock_cursor.fetchall.side_effect = [
-            [("mysql",), ("charleqatemplate_aaaaaaaaaaaa",)],  # before cleanup
-            [("mysql",)],  # after cleanup
+            [("mysql",), ("charleqatemplate_aaaaaaaaaaaa",)],  # SHOW DATABASES
+            [],  # information_schema.processlist (no active connections)
+            [("mysql",)],  # SHOW DATABASES verification (orphan dropped)
         ]
 
         mock_conn = MagicMock()
@@ -264,20 +268,20 @@ class TestCleanupOrphanedStaging:
         import mysql.connector
 
         mock_cursor = MagicMock()
-        # First execute is SHOW DATABASES (success)
-        # Second execute is DROP (failure)
-        call_count = [0]
+        # Calls: SHOW DATABASES, processlist, DROP (fails)
+        # fetchall calls:
+        #   1. SHOW DATABASES - returns databases including orphan
+        #   2. processlist - returns empty (no active connections, so DROP proceeds)
+        mock_cursor.fetchall.side_effect = [
+            [("mysql",), ("charleqatemplate_aaaaaaaaaaaa",)],  # SHOW DATABASES
+            [],  # processlist - no active connections
+        ]
 
         def execute_side_effect(sql):
-            call_count[0] += 1
             if "DROP" in sql:
                 raise mysql.connector.Error("Drop denied")
 
         mock_cursor.execute.side_effect = execute_side_effect
-        mock_cursor.fetchall.return_value = [
-            ("mysql",),
-            ("charleqatemplate_aaaaaaaaaaaa",),
-        ]
 
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
@@ -290,10 +294,11 @@ class TestCleanupOrphanedStaging:
     def test_staging_collision_raises_error(self, conn_spec) -> None:
         """Raises error if staging name exists after cleanup."""
         mock_cursor = MagicMock()
-        # Second fetch includes the new staging name (collision)
+        # Calls: SHOW DATABASES, processlist, SHOW DATABASES (verify)
         mock_cursor.fetchall.side_effect = [
-            [("mysql",)],  # before cleanup
-            [("mysql",), (SAMPLE_STAGING_NAME,)],  # after - collision!
+            [("mysql",)],  # SHOW DATABASES (no orphans)
+            [],  # information_schema.processlist (no active connections)
+            [("mysql",), (SAMPLE_STAGING_NAME,)],  # SHOW DATABASES verify - collision!
         ]
 
         mock_conn = MagicMock()
@@ -307,7 +312,11 @@ class TestCleanupOrphanedStaging:
     def test_closes_connection_on_success(self, conn_spec) -> None:
         """Connection is closed after successful cleanup."""
         mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = [("mysql",)]
+        mock_cursor.fetchall.side_effect = [
+            [("mysql",)],  # SHOW DATABASES
+            [],  # information_schema.processlist (no active connections)
+            [("mysql",)],  # SHOW DATABASES verification
+        ]
 
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor

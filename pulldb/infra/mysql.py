@@ -21,6 +21,7 @@ import mysql.connector
 from mysql.connector import errorcode
 from mysql.connector import errors as mysql_errors
 
+from pulldb.domain.errors import LockedUserError
 from pulldb.domain.models import (
     AdminTask,
     AdminTaskStatus,
@@ -2726,7 +2727,7 @@ class UserRepository:
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
-                       disabled_at, manager_id, max_active_jobs
+                       disabled_at, manager_id, max_active_jobs, locked_at
                 FROM auth_users
                 WHERE username = %s
                 """,
@@ -2778,7 +2779,7 @@ class UserRepository:
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
-                       disabled_at, manager_id, max_active_jobs
+                       disabled_at, manager_id, max_active_jobs, locked_at
                 FROM auth_users
                 WHERE user_id = %s
                 """,
@@ -2826,7 +2827,7 @@ class UserRepository:
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
-                       disabled_at, manager_id, max_active_jobs
+                       disabled_at, manager_id, max_active_jobs, locked_at
                 FROM auth_users
                 ORDER BY username
                 """
@@ -2867,7 +2868,7 @@ class UserRepository:
                 cursor.execute(
                     """
                     SELECT user_id, username, user_code, is_admin, role,
-                           created_at, disabled_at, manager_id
+                           created_at, disabled_at, manager_id, locked_at
                     FROM auth_users
                     WHERE user_id = %s
                     """,
@@ -3058,7 +3059,9 @@ class UserRepository:
 
         Raises:
             ValueError: If user not found.
+            LockedUserError: If user is locked.
         """
+        self._check_user_not_locked_by_username(username, "enable")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -3077,7 +3080,9 @@ class UserRepository:
 
         Raises:
             ValueError: If user not found.
+            LockedUserError: If user is locked.
         """
+        self._check_user_not_locked_by_username(username, "disable")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -3096,7 +3101,9 @@ class UserRepository:
 
         Raises:
             ValueError: If user not found.
+            LockedUserError: If user is locked.
         """
+        self._check_user_not_locked(user_id, "enable")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -3115,7 +3122,9 @@ class UserRepository:
 
         Raises:
             ValueError: If user not found.
+            LockedUserError: If user is locked.
         """
+        self._check_user_not_locked(user_id, "disable")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -3270,7 +3279,54 @@ class UserRepository:
             allowed_hosts=row.get("allowed_hosts"),
             default_host=row.get("default_host"),
             last_maintenance_ack=row.get("last_maintenance_ack"),
+            locked_at=row.get("locked_at"),
         )
+
+    def _check_user_not_locked(self, user_id: str, action: str) -> None:
+        """Raise LockedUserError if user is locked.
+
+        Must be called before any user modification operation.
+
+        Args:
+            user_id: UUID of the user to check.
+            action: Description of blocked action (e.g., "enable", "delete").
+
+        Raises:
+            LockedUserError: If user is locked.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT username, locked_at FROM auth_users WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            if row and row[1] is not None:  # locked_at is not null
+                logger.warning(f"Blocked attempt to {action} locked user: {row[0]}")
+                raise LockedUserError(row[0], action)
+
+    def _check_user_not_locked_by_username(self, username: str, action: str) -> None:
+        """Raise LockedUserError if user is locked (by username lookup).
+
+        For methods that take username instead of user_id.
+
+        Args:
+            username: Username of the user to check.
+            action: Description of blocked action.
+
+        Raises:
+            LockedUserError: If user is locked.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT username, locked_at FROM auth_users WHERE username = %s",
+                (username,),
+            )
+            row = cursor.fetchone()
+            if row and row[1] is not None:
+                logger.warning(f"Blocked attempt to {action} locked user: {row[0]}")
+                raise LockedUserError(row[0], action)
 
     def get_users_managed_by(self, manager_id: str) -> list[User]:
         """Get all users managed by a specific manager.
@@ -3280,15 +3336,18 @@ class UserRepository:
 
         Returns:
             List of User instances managed by this manager.
+            Excludes SERVICE role accounts and locked users.
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
-                       disabled_at, manager_id
+                       disabled_at, manager_id, locked_at
                 FROM auth_users
                 WHERE manager_id = %s
+                  AND role != 'service'
+                  AND locked_at IS NULL
                 ORDER BY username
                 """,
                 (manager_id,),
@@ -3305,7 +3364,9 @@ class UserRepository:
 
         Raises:
             ValueError: If user not found.
+            LockedUserError: If user is locked.
         """
+        self._check_user_not_locked(user_id, "change manager for")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -3325,7 +3386,9 @@ class UserRepository:
 
         Raises:
             ValueError: If user not found.
+            LockedUserError: If user is locked.
         """
+        self._check_user_not_locked(user_id, "change role for")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -3345,7 +3408,9 @@ class UserRepository:
 
         Raises:
             ValueError: If user not found or limit invalid.
+            LockedUserError: If user is locked.
         """
+        self._check_user_not_locked(user_id, "change job limit for")
         if max_active_jobs is not None and max_active_jobs < 0:
             raise ValueError("max_active_jobs cannot be negative")
 
@@ -3378,7 +3443,7 @@ class UserRepository:
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
-                       disabled_at, manager_id
+                       disabled_at, manager_id, locked_at
                 FROM auth_users
                 WHERE (username LIKE %s OR user_code LIKE %s)
                 AND disabled_at IS NULL
@@ -3416,7 +3481,9 @@ class UserRepository:
 
         Raises:
             ValueError: If user not found or has any jobs.
+            LockedUserError: If user is locked.
         """
+        self._check_user_not_locked(user_id, "delete")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             
@@ -3473,9 +3540,15 @@ class UserRepository:
 
         Returns:
             Number of users actually disabled.
+
+        Raises:
+            LockedUserError: If any user is locked.
         """
         if not user_ids:
             return 0
+        # Check for locked users first
+        for uid in user_ids:
+            self._check_user_not_locked(uid, "disable")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             placeholders = ", ".join(["%s"] * len(user_ids))
@@ -3499,9 +3572,15 @@ class UserRepository:
 
         Returns:
             Number of users actually enabled.
+
+        Raises:
+            LockedUserError: If any user is locked.
         """
         if not user_ids:
             return 0
+        # Check for locked users first
+        for uid in user_ids:
+            self._check_user_not_locked(uid, "enable")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             placeholders = ", ".join(["%s"] * len(user_ids))
@@ -3526,9 +3605,15 @@ class UserRepository:
 
         Returns:
             Number of users actually reassigned.
+
+        Raises:
+            LockedUserError: If any user is locked.
         """
         if not user_ids:
             return 0
+        # Check for locked users first
+        for uid in user_ids:
+            self._check_user_not_locked(uid, "reassign manager for")
         with self.pool.connection() as conn:
             cursor = conn.cursor()
             placeholders = ", ".join(["%s"] * len(user_ids))
@@ -3544,7 +3629,9 @@ class UserRepository:
             return int(cursor.rowcount)
 
     def get_all_managers(self) -> list[User]:
-        """Get all users with manager or admin role.
+        """Get all users with manager or admin role who can manage other users.
+
+        SERVICE role users are excluded - system accounts cannot be managers.
 
         Returns:
             List of users who can manage other users.
@@ -3554,10 +3641,11 @@ class UserRepository:
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
-                       disabled_at, manager_id
+                       disabled_at, manager_id, locked_at
                 FROM auth_users
                 WHERE role IN ('manager', 'admin')
                 AND disabled_at IS NULL
+                AND locked_at IS NULL
                 ORDER BY username
                 """
             )

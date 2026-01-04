@@ -128,8 +128,11 @@ def _check_admin_authorization(ctx: click.Context) -> None:
                 click.style("Account not authorized.", fg="red", bold=True)
             )
 
-        # Check for admin role (handle both enum and string comparison)
-        is_admin = user.is_admin or str(user.role).lower() in ("admin", "userrole.admin")
+        # Check for admin/service role (handle both enum and string comparison)
+        # SERVICE role has same CLI permissions as admin (for system accounts like pulldb_service)
+        is_admin = user.is_admin or str(user.role).lower() in (
+            "admin", "userrole.admin", "service", "userrole.service"
+        )
         if not is_admin:
             raise click.ClickException(
                 click.style("Account not authorized.", fg="red", bold=True)

@@ -94,7 +94,7 @@ async def admin_page(
 def _enrich_user(user_obj: Any, job_repo: Any) -> dict:
     """Enrich user object with computed fields for template.
     
-    Adds: active_jobs, total_jobs, disabled (bool from disabled_at)
+    Adds: active_jobs, total_jobs, disabled (bool from disabled_at), locked (bool from locked_at)
     """
     active_jobs = 0
     total_jobs = 0
@@ -116,12 +116,14 @@ def _enrich_user(user_obj: Any, job_repo: Any) -> dict:
         "manager_id": getattr(user_obj, "manager_id", None),
         "created_at": user_obj.created_at,
         "disabled_at": user_obj.disabled_at,
+        "locked_at": getattr(user_obj, "locked_at", None),
         "allowed_hosts": getattr(user_obj, "allowed_hosts", None),
         "default_host": getattr(user_obj, "default_host", None),
         # Computed fields
         "active_jobs": active_jobs,
         "total_jobs": total_jobs,
         "disabled": user_obj.disabled_at is not None,
+        "locked": getattr(user_obj, "locked_at", None) is not None,
     }
 
 
@@ -138,18 +140,21 @@ async def list_users(
         raw_users = state.user_repo.list_users()
     
     # Convert managers to simple dicts for JSON serialization
+    # Include SERVICE role in managers list as they have similar permissions
     managers = [
         {"user_id": u.user_id, "username": u.username}
         for u in raw_users 
-        if u.role.value in ("manager", "admin")
+        if u.role.value in ("manager", "admin", "service")
     ]
     
     stats = {
         "total": len(raw_users),
         "admins": len([u for u in raw_users if u.role.value == "admin"]),
         "managers": len([u for u in raw_users if u.role.value == "manager"]),
+        "service": len([u for u in raw_users if u.role.value == "service"]),
         "active": len([u for u in raw_users if not u.disabled_at]),
         "disabled": len([u for u in raw_users if u.disabled_at]),
+        "locked": len([u for u in raw_users if getattr(u, "locked_at", None)]),
     }
 
     return templates.TemplateResponse(
@@ -1010,7 +1015,8 @@ async def api_users_paginated(
             "manager_username": manager_username,
             "created_at": u.created_at.isoformat() if u.created_at else None,
             "disabled": u.disabled_at is not None,
-            "status": "disabled" if u.disabled_at else "enabled",
+            "locked": getattr(u, "locked_at", None) is not None,
+            "status": "locked" if getattr(u, "locked_at", None) else ("disabled" if u.disabled_at else "enabled"),
             "password_reset_pending": password_reset_pending,
             "active_jobs": job_counts.get(u.user_code, 0),
         })
@@ -1022,8 +1028,10 @@ async def api_users_paginated(
         "total": total_count,
         "admins": len([u for u in all_users if u["role"] == "admin"]),
         "managers": len([u for u in all_users if u["role"] == "manager"]),
-        "active": len([u for u in all_users if not u["disabled"]]),
+        "service": len([u for u in all_users if u["role"] == "service"]),
+        "active": len([u for u in all_users if not u["disabled"] and not u["locked"]]),
         "disabled": len([u for u in all_users if u["disabled"]]),
+        "locked": len([u for u in all_users if u["locked"]]),
     }
     
     # Apply filters
@@ -1126,11 +1134,12 @@ async def api_users_distinct(
         manager_username = ""
         if u.manager_id and u.manager_id in user_map:
             manager_username = user_map[u.manager_id].username
+        locked = getattr(u, "locked_at", None) is not None
         users_data.append({
             "username": u.username,
             "user_code": u.user_code,
             "role": u.role.value,
-            "status": "disabled" if u.disabled_at else "enabled",
+            "status": "locked" if locked else ("disabled" if u.disabled_at else "enabled"),
             "manager_username": manager_username,
             "_user": u,  # Keep reference to original
         })

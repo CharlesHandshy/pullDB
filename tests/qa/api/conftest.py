@@ -122,10 +122,47 @@ def mock_api_state() -> Generator[MockAPIState, None, None]:
 
 
 @pytest.fixture
-def client(mock_api_state: MockAPIState) -> TestClient:
-    """FastAPI test client with mocked state."""
+def mock_admin_user() -> User:
+    """Mock admin user for authenticated endpoints."""
+    from pulldb.domain.models import UserRole
+    return User(
+        user_id="admin-1",
+        username="admin",
+        user_code="admin",
+        is_admin=True,
+        role=UserRole.ADMIN,
+        created_at=datetime.now(UTC),
+        disabled_at=None,
+        allowed_hosts=[SAMPLE_DBHOST],
+    )
+
+
+@pytest.fixture
+def client(mock_api_state: MockAPIState, mock_admin_user: User) -> Generator[TestClient, None, None]:
+    """FastAPI test client with mocked state and auth dependencies."""
     from pulldb.api.main import app
-    return TestClient(app)
+    from pulldb.api.auth import get_authenticated_user, get_admin_user, get_manager_user
+    
+    # Override auth dependencies to return mock admin user
+    async def mock_auth_user():
+        return mock_admin_user
+    
+    async def mock_admin():
+        return mock_admin_user
+    
+    async def mock_manager():
+        return mock_admin_user
+    
+    app.dependency_overrides[get_authenticated_user] = mock_auth_user
+    app.dependency_overrides[get_admin_user] = mock_admin
+    app.dependency_overrides[get_manager_user] = mock_manager
+    
+    yield TestClient(app)
+    
+    # Clean up overrides
+    app.dependency_overrides.pop(get_authenticated_user, None)
+    app.dependency_overrides.pop(get_admin_user, None)
+    app.dependency_overrides.pop(get_manager_user, None)
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +182,7 @@ def sample_user() -> User:
         role=UserRole.USER,
         created_at=datetime.now(UTC),
         disabled_at=None,
+        allowed_hosts=[SAMPLE_DBHOST],
     )
 
 
@@ -160,6 +198,7 @@ def user_factory() -> Callable[..., User]:
         is_admin: bool = False,
         role: UserRole = UserRole.USER,
         disabled: bool = False,
+        allowed_hosts: list[str] | None = None,
     ) -> User:
         return User(
             user_id=user_id,
@@ -169,6 +208,7 @@ def user_factory() -> Callable[..., User]:
             role=role,
             created_at=datetime.now(UTC),
             disabled_at=datetime.now(UTC) if disabled else None,
+            allowed_hosts=allowed_hosts if allowed_hosts is not None else [SAMPLE_DBHOST],
         )
     return _create
 
@@ -294,6 +334,9 @@ def configure_job_repo(
     events: list[JobEvent] | None = None,
     active_count: int = 0,
     user_active_count: int = 0,
+    has_active_for_target: bool = False,
+    locked_job: Job | None = None,
+    deployed_job: Job | None = None,
 ) -> None:
     """Configure mock job repository."""
     repo = state._mock_job_repo
@@ -306,6 +349,9 @@ def configure_job_repo(
     repo.count_active_jobs_for_user.return_value = user_active_count
     repo.enqueue_job.return_value = None
     repo.request_cancellation.return_value = True
+    repo.has_active_jobs_for_target.return_value = has_active_for_target
+    repo.get_locked_by_target.return_value = locked_job
+    repo.get_deployed_job_for_target.return_value = deployed_job
 
 
 def configure_settings_repo(

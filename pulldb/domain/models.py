@@ -69,11 +69,13 @@ class UserRole(Enum):
         USER: Standard user - can only manage own jobs.
         MANAGER: Operational oversight - can view/cancel any job.
         ADMIN: Full system access - can manage users and configuration.
+        SERVICE: System account - same as admin but locked (pulldb_service).
     """
 
     USER = "user"
     MANAGER = "manager"
     ADMIN = "admin"
+    SERVICE = "service"
 
 
 class AdminTaskType(Enum):
@@ -146,21 +148,22 @@ class User:
     allowed_hosts: list[str] | None = None
     default_host: str | None = None
     last_maintenance_ack: datetime | None = None  # Date only, stored as datetime
+    locked_at: datetime | None = None  # System-protected accounts
 
     @property
     def is_manager_or_above(self) -> bool:
-        """Check if user has manager or admin role."""
-        return self.role in (UserRole.MANAGER, UserRole.ADMIN)
+        """Check if user has manager, admin, or service role."""
+        return self.role in (UserRole.MANAGER, UserRole.ADMIN, UserRole.SERVICE)
 
     @property
     def can_view_all_jobs(self) -> bool:
-        """Check if user can view all jobs (manager and admin)."""
-        return self.role in (UserRole.MANAGER, UserRole.ADMIN)
+        """Check if user can view all jobs (manager, admin, service)."""
+        return self.role in (UserRole.MANAGER, UserRole.ADMIN, UserRole.SERVICE)
 
     @property
     def can_create_users(self) -> bool:
-        """Check if user can create new users (manager and admin)."""
-        return self.role in (UserRole.MANAGER, UserRole.ADMIN)
+        """Check if user can create new users (manager, admin, service)."""
+        return self.role in (UserRole.MANAGER, UserRole.ADMIN, UserRole.SERVICE)
 
     @property
     def is_managed(self) -> bool:
@@ -171,6 +174,11 @@ class User:
     def disabled(self) -> bool:
         """Check if user account is disabled."""
         return self.disabled_at is not None
+
+    @property
+    def locked(self) -> bool:
+        """Check if user account is locked (system-protected)."""
+        return self.locked_at is not None
 
     @property
     def has_any_hosts(self) -> bool:

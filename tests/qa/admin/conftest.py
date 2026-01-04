@@ -56,61 +56,94 @@ def isolated_runner() -> CliRunner:
 
 
 # ---------------------------------------------------------------------------
+# Admin Authorization Bypass Fixture
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def bypass_admin_auth() -> Generator[None, None, None]:
+    """Bypass admin authorization check for tests.
+    
+    The admin CLI checks if the current user has admin role before
+    executing commands. This fixture bypasses that check for all tests.
+    """
+    with patch("pulldb.cli.admin._check_admin_authorization"):
+        yield
+
+
+# ---------------------------------------------------------------------------
 # Mock MySQL Fixtures
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
 def mock_mysql_pool() -> Generator[MagicMock, None, None]:
-    """Mock the MySQL pool for admin commands."""
-    with patch("pulldb.cli.admin_commands._get_mysql_pool") as mock_pool:
+    """Mock the repositories for admin commands.
+    
+    The admin commands use repository pattern via pulldb.infra.factory,
+    not direct MySQL connections. This fixture mocks those factories.
+    """
+    with patch("pulldb.infra.factory.get_job_repository") as mock_job_repo, \
+         patch("pulldb.infra.factory.get_host_repository") as mock_host_repo, \
+         patch("pulldb.infra.factory.get_user_repository") as mock_user_repo, \
+         patch("pulldb.infra.factory.get_disallowed_user_repository") as mock_disallow_repo:
+        
+        # Create mock repositories
+        job_repo = MagicMock()
+        host_repo = MagicMock()
+        user_repo = MagicMock()
+        disallow_repo = MagicMock()
+        
+        mock_job_repo.return_value = job_repo
+        mock_host_repo.return_value = host_repo
+        mock_user_repo.return_value = user_repo
+        mock_disallow_repo.return_value = disallow_repo
+        
+        # Create a combined mock object for backward compatibility
         pool = MagicMock()
-        conn = MagicMock()
+        pool._job_repo = job_repo
+        pool._host_repo = host_repo
+        pool._user_repo = user_repo
+        pool._disallow_repo = disallow_repo
+        
+        # Simulate cursor-like interface for test helpers
         cursor = MagicMock()
-        
-        # Set up context manager chain
-        pool.connection.return_value.__enter__ = MagicMock(return_value=conn)
-        pool.connection.return_value.__exit__ = MagicMock(return_value=False)
-        conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
-        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
-        
-        mock_pool.return_value = pool
-        
-        # Attach cursor for test access
         pool._mock_cursor = cursor
-        pool._mock_conn = conn
+        pool._mock_conn = MagicMock()
         
         yield pool
 
 
 @pytest.fixture
 def mock_settings_mysql_pool() -> Generator[MagicMock, None, None]:
-    """Mock the MySQL pool for settings commands."""
-    with patch("pulldb.cli.settings._get_mysql_pool") as mock_pool:
+    """Mock the settings repository for settings commands.
+    
+    Settings commands use the repository pattern via pulldb.infra.factory.
+    """
+    with patch("pulldb.infra.factory.get_settings_repository") as mock_settings_repo:
+        settings_repo = MagicMock()
+        settings_repo.get_all_settings.return_value = {}
+        mock_settings_repo.return_value = settings_repo
+        
+        # Create a pool-like object for backward compatibility
         pool = MagicMock()
-        conn = MagicMock()
-        cursor = MagicMock()
-        
-        # Set up context manager chain
-        pool.connection.return_value.__enter__ = MagicMock(return_value=conn)
-        pool.connection.return_value.__exit__ = MagicMock(return_value=False)
-        conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
-        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
-        
-        mock_pool.return_value = pool
-        pool._mock_cursor = cursor
-        pool._mock_conn = conn
+        pool._settings_repo = settings_repo
+        pool._mock_cursor = MagicMock()
+        pool._mock_conn = MagicMock()
         
         yield pool
 
 
 @pytest.fixture
 def mock_settings_repo() -> Generator[MagicMock, None, None]:
-    """Mock the SettingsRepository for settings commands."""
-    with patch("pulldb.cli.settings._get_settings_repo") as mock_repo:
+    """Mock the SettingsRepository for settings commands.
+    
+    Settings commands use pulldb.infra.factory.get_settings_repository.
+    """
+    with patch("pulldb.infra.factory.get_settings_repository") as mock_factory:
         repo = MagicMock()
         repo.get_all_settings.return_value = {}
-        mock_repo.return_value = repo
+        mock_factory.return_value = repo
         yield repo
 
 
@@ -332,7 +365,7 @@ def mock_admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Mock Cursor Configuration Helpers
+# Mock Repository Configuration Helpers
 # ---------------------------------------------------------------------------
 
 
@@ -341,7 +374,120 @@ def configure_cursor_for_query(
     rows: list[tuple],
     columns: list[str],
 ) -> None:
-    """Configure mock cursor to return specified rows and columns."""
+    """Configure repository mocks to return data based on rows/columns.
+    
+    This helper bridges the old cursor-based test design to repository pattern.
+    It infers which repository method to mock based on the column names and
+    configures appropriate return values.
+    """
+    from pulldb.domain.models import DBHost, Job, JobStatus, User, UserRole
+    
+    # Determine which type of data based on columns
+    if "hostname" in columns and "max_concurrent_jobs" in columns:
+        # Hosts data - configure host repository
+        hosts = []
+        for row in rows:
+            # Map tuple to DBHost using column positions
+            col_map = {c: i for i, c in enumerate(columns)}
+            hosts.append(DBHost(
+                id=str(row[col_map.get("id", 0)] if "id" in col_map else 1),
+                hostname=row[col_map["hostname"]],
+                credential_ref=row[col_map.get("credential_reference", col_map.get("credential_ref", 3))] or "",
+                max_running_jobs=row[col_map.get("max_concurrent_jobs", col_map.get("max_running_jobs", 1))],
+                max_active_jobs=row[col_map.get("max_active_jobs", 1)] if "max_active_jobs" in col_map else 10,
+                enabled=row[col_map.get("enabled", 2)],
+                created_at=row[col_map.get("created_at", 4)] if "created_at" in col_map else datetime(2025, 1, 15),
+            ))
+        if hasattr(mock_pool, "_host_repo"):
+            mock_pool._host_repo.get_all_hosts.return_value = hosts
+            mock_pool._host_repo.list_hosts.return_value = hosts
+    
+    elif "target" in columns and "dbhost" in columns:
+        # Jobs data - configure job repository
+        jobs = []
+        for row in rows:
+            col_map = {c: i for i, c in enumerate(columns)}
+            status_val = row[col_map.get("status", 1)]
+            status = JobStatus(status_val) if isinstance(status_val, str) else status_val
+            job_id = row[col_map.get("id", col_map.get("job_id", 0))]
+            target_val = row[col_map["target"]]
+            # Handle staging_name
+            if "staging_name" in col_map:
+                staging_name = row[col_map["staging_name"]]
+            else:
+                staging_name = f"{target_val}_{str(job_id)[:12]}"
+            jobs.append(Job(
+                id=job_id,
+                owner_user_id=str(row[col_map.get("user_id", 0)] if "user_id" in col_map else 1),
+                owner_username=row[col_map.get("username", 4)],
+                owner_user_code=row[col_map.get("user_code", 5)],
+                target=target_val,
+                staging_name=staging_name,
+                dbhost=row[col_map["dbhost"]],
+                status=status,
+                submitted_at=row[col_map.get("submitted_at", 6)] or datetime(2025, 1, 15),
+                started_at=row[col_map.get("started_at", 7)] if "started_at" in col_map else None,
+                completed_at=row[col_map.get("finished_at", col_map.get("completed_at", 8))] if "finished_at" in col_map or "completed_at" in col_map else None,
+                current_operation=row[col_map.get("current_operation", 9)] if "current_operation" in col_map else None,
+            ))
+        if hasattr(mock_pool, "_job_repo"):
+            mock_pool._job_repo.list_jobs.return_value = jobs
+            mock_pool._job_repo.find_orphaned_staging_databases.return_value = jobs
+    
+    elif "staging_name" in columns and "finished_at" in columns:
+        # Orphan cleanup data - configure job repository
+        jobs = []
+        for row in rows:
+            col_map = {c: i for i, c in enumerate(columns)}
+            status_val = row[col_map.get("status", 3)]
+            status = JobStatus(status_val) if isinstance(status_val, str) else status_val
+            jobs.append(Job(
+                id=row[col_map.get("id", col_map.get("job_id", 0))],
+                owner_user_id="1",
+                owner_username="test",
+                owner_user_code="test01",
+                target=row[col_map.get("staging_name", 1)].rsplit("_", 1)[0] if "staging_name" in col_map else "test",
+                staging_name=row[col_map.get("staging_name", 1)],
+                dbhost=row[col_map.get("dbhost", 2)],
+                status=status,
+                submitted_at=datetime(2025, 1, 15),
+                completed_at=row[col_map.get("finished_at", 4)] if "finished_at" in col_map else None,
+            ))
+        if hasattr(mock_pool, "_job_repo"):
+            mock_pool._job_repo.find_orphaned_staging_databases.return_value = jobs
+    
+    elif "username" in columns and "user_code" in columns:
+        # Users data - configure user repository
+        from pulldb.domain.models import UserSummary  # May need to handle this
+        users = []
+        for row in rows:
+            col_map = {c: i for i, c in enumerate(columns)}
+            user = User(
+                user_id=str(row[col_map.get("id", col_map.get("user_id", 0))]),
+                username=row[col_map["username"]],
+                user_code=row[col_map["user_code"]],
+                is_admin=row[col_map.get("is_admin", 3)] if "is_admin" in col_map else False,
+                role=UserRole.ADMIN if row[col_map.get("is_admin", 3)] else UserRole.USER if "is_admin" in col_map else UserRole.USER,
+                created_at=row[col_map.get("created_at", 5)] if "created_at" in col_map else datetime(2025, 1, 15),
+                disabled_at=datetime.now() if row[col_map.get("disabled", 4)] else None if "disabled" in col_map else None,
+            )
+            users.append(user)
+        if hasattr(mock_pool, "_user_repo"):
+            # The list command uses get_users_with_job_counts which returns UserSummary objects
+            # Create minimal UserSummary-like objects
+            class UserSummaryMock:
+                def __init__(self, user, active_jobs):
+                    self.user = user
+                    self.active_jobs_count = active_jobs
+            
+            summaries = []
+            for i, user in enumerate(users):
+                col_map = {c: j for j, c in enumerate(columns)}
+                active_jobs = rows[i][col_map.get("active_jobs", 6)] if "active_jobs" in col_map else 0
+                summaries.append(UserSummaryMock(user, active_jobs))
+            mock_pool._user_repo.get_users_with_job_counts.return_value = summaries
+    
+    # Also set cursor for backward compatibility
     cursor = mock_pool._mock_cursor
     cursor.fetchall.return_value = rows
     cursor.fetchone.return_value = rows[0] if rows else None
@@ -352,9 +498,37 @@ def configure_cursor_for_update(
     mock_pool: MagicMock,
     rowcount: int = 1,
 ) -> None:
-    """Configure mock cursor for UPDATE/INSERT operations."""
+    """Configure repository mocks for UPDATE/INSERT operations.
+    
+    For repository pattern, this configures enable/disable methods to succeed or fail.
+    """
     cursor = mock_pool._mock_cursor
     cursor.rowcount = rowcount
+    
+    # Configure repository methods based on rowcount
+    if hasattr(mock_pool, "_host_repo"):
+        if rowcount > 0:
+            mock_pool._host_repo.enable_host.return_value = None
+            mock_pool._host_repo.disable_host.return_value = None
+            mock_pool._host_repo.add_host.return_value = None
+        else:
+            mock_pool._host_repo.enable_host.side_effect = ValueError("Host not found")
+            mock_pool._host_repo.disable_host.side_effect = ValueError("Host not found")
+    
+    if hasattr(mock_pool, "_user_repo"):
+        if rowcount > 0:
+            mock_pool._user_repo.enable_user.return_value = None
+            mock_pool._user_repo.disable_user.return_value = None
+        else:
+            mock_pool._user_repo.enable_user.side_effect = ValueError("User not found")
+            mock_pool._user_repo.disable_user.side_effect = ValueError("User not found")
+    
+    if hasattr(mock_pool, "_job_repo"):
+        if rowcount > 0:
+            mock_pool._job_repo.request_cancellation.return_value = True
+            mock_pool._job_repo.mark_staging_cleaned.return_value = None
+        else:
+            mock_pool._job_repo.request_cancellation.return_value = False
 
 
 def configure_cursor_fetchone(
@@ -362,11 +536,76 @@ def configure_cursor_fetchone(
     row: tuple | None,
     columns: list[str] | None = None,
 ) -> None:
-    """Configure mock cursor fetchone result."""
+    """Configure repository mocks for single-record fetch operations.
+    
+    This is used for operations like jobs cancel (get_job_by_id) and users show.
+    """
+    from pulldb.domain.models import Job, JobStatus, User, UserRole
+    
     cursor = mock_pool._mock_cursor
     cursor.fetchone.return_value = row
     if columns:
         cursor.description = [(col,) for col in columns]
+    
+    # Configure repository based on data type
+    if row is None:
+        if hasattr(mock_pool, "_job_repo"):
+            mock_pool._job_repo.get_job_by_id.return_value = None
+            mock_pool._job_repo.find_jobs_by_prefix.return_value = []
+        if hasattr(mock_pool, "_user_repo"):
+            mock_pool._user_repo.get_user_detail.return_value = None
+        return
+    
+    # If row is a single status value (from old job cancel tests)
+    if len(row) == 1 and isinstance(row[0], str):
+        status_val = row[0]
+        if hasattr(mock_pool, "_job_repo"):
+            # Create a mock job with this status
+            job = Job(
+                id=SAMPLE_JOB_ID,
+                owner_user_id="1",
+                owner_username=SAMPLE_USERNAME,
+                owner_user_code=SAMPLE_USER_CODE,
+                target=SAMPLE_TARGET,
+                staging_name=SAMPLE_STAGING_NAME,
+                dbhost=SAMPLE_DBHOST,
+                status=JobStatus(status_val),
+                submitted_at=datetime(2025, 1, 15),
+            )
+            mock_pool._job_repo.get_job_by_id.return_value = job
+            mock_pool._job_repo.find_jobs_by_prefix.return_value = [job]
+        return
+    
+    # Full user detail row
+    if columns and "total_jobs" in columns:
+        col_map = {c: i for i, c in enumerate(columns)}
+        user = User(
+            user_id=str(row[col_map.get("id", 0)]),
+            username=row[col_map["username"]],
+            user_code=row[col_map["user_code"]],
+            is_admin=row[col_map.get("is_admin", 3)] if "is_admin" in col_map else False,
+            role=UserRole.ADMIN if row[col_map.get("is_admin", 3)] else UserRole.USER if "is_admin" in col_map else UserRole.USER,
+            created_at=row[col_map.get("created_at", 5)] if "created_at" in col_map else datetime(2025, 1, 15),
+            disabled_at=datetime.now() if row[col_map.get("disabled", 4)] else None if "disabled" in col_map else None,
+        )
+        
+        class UserDetailMock:
+            def __init__(self, user, total, complete, failed, active):
+                self.user = user
+                self.total_jobs = total
+                self.complete_jobs = complete
+                self.failed_jobs = failed
+                self.active_jobs = active
+        
+        detail = UserDetailMock(
+            user,
+            row[col_map.get("total_jobs", 6)] if "total_jobs" in col_map else 0,
+            row[col_map.get("complete_jobs", 7)] if "complete_jobs" in col_map else 0,
+            row[col_map.get("failed_jobs", 8)] if "failed_jobs" in col_map else 0,
+            row[col_map.get("active_jobs", 9)] if "active_jobs" in col_map else 0,
+        )
+        if hasattr(mock_pool, "_user_repo"):
+            mock_pool._user_repo.get_user_detail.return_value = detail
 
 
 # ---------------------------------------------------------------------------

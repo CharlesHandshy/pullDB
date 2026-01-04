@@ -67,6 +67,9 @@ GRANT SELECT, INSERT ON pulldb_service.admin_tasks TO 'pulldb_api'@'localhost';
 -- disallowed_users: Full CRUD for admin disallowed username management
 GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.disallowed_users TO 'pulldb_api'@'localhost';
 
+-- api_keys: Full CRUD for API key management (registration creates keys)
+GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.api_keys TO 'pulldb_api'@'localhost';
+
 -- -----------------------------------------------------------------------------
 -- pulldb_worker: Worker Service User
 -- -----------------------------------------------------------------------------
