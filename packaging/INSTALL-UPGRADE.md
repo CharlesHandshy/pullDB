@@ -1,6 +1,6 @@
 # pullDB Installation & Upgrade Guide
 
-> **Version**: 0.2.0 | **Last Updated**: January 2, 2026
+> **Version**: 0.2.0 | **Last Updated**: January 4, 2026
 
 This guide covers installing and upgrading pullDB packages on a database server.
 

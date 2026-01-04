@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 0.0.8 | **Last Updated**: December 2025
+> **Version**: 0.2.0 | **Last Updated**: January 2026
 
 pullDB provides two command-line interfaces:
 - **`pulldb`** - End-user CLI for submitting and monitoring restore jobs

@@ -1,4 +1,35 @@
 {
+  "version": "0.2.0",
+  "last_updated": "2026-01-04",
+  "package": {
+    "wheel": "pulldb-0.2.0-py3-none-any.whl",
+    "myloader": "myloader-0.19.3-3",
+    "schema_files": 33,
+    "systemd_units": 6,
+    "after_sql_templates": 12
+  },
+  "entry_points": {
+    "pulldb": "pulldb.cli.main:main",
+    "pulldb-admin": "pulldb.cli.admin:main",
+    "pulldb-api": "pulldb.api.main:main",
+    "pulldb-web": "pulldb.api.main:main_web",
+    "pulldb-worker": "pulldb.worker.service:main"
+  },
+  "default_accounts": {
+    "admin": {
+      "uuid": "00000000-0000-0000-0000-000000000002",
+      "role": "admin",
+      "password": "random 16-char bcrypt",
+      "seed_file": "02040_seed_admin_account.sql"
+    },
+    "pulldb_service": {
+      "uuid": "00000000-0000-0000-0000-000000000001",
+      "role": "service",
+      "password": null,
+      "locked": true,
+      "seed_file": "02050_seed_service_account.sql"
+    }
+  },
   "cli_architecture": {
     "principle": "CLIs are thin interface clients to server applications",
     "pulldb_cli": {
@@ -29,6 +60,7 @@
     "instance_profile": "pulldb-instance-profile"
   },
   "secrets": {
+    "coordination_db": "/pulldb/mysql/coordination-db",
     "api": "/pulldb/mysql/api",
     "worker": "/pulldb/mysql/worker",
     "loader": "/pulldb/mysql/loader"
@@ -37,6 +69,7 @@
     "canonical_doc": "docs/mysql-schema.md",
     "database": "pulldb_service",
     "schema_dir": "schema/pulldb_service/",
+    "schema_file_count": 33,
     "hosts_table": "db_hosts"
   },
   "mysql_users": {
@@ -47,18 +80,23 @@
   "env_vars": {
     "api_user": "PULLDB_API_MYSQL_USER",
     "worker_user": "PULLDB_WORKER_MYSQL_USER",
-    "database": "PULLDB_MYSQL_DATABASE"
+    "database": "PULLDB_MYSQL_DATABASE",
+    "coordination_secret": "PULLDB_COORDINATION_SECRET"
   },
   "paths": {
     "install_root": "/opt/pulldb.service",
     "venv": "/opt/pulldb.service/venv",
     "logs": "/opt/pulldb.service/logs",
     "work_directory": "/opt/pulldb.service/work",
+    "schema_dir": "/opt/pulldb.service/schema/pulldb_service",
     "systemd_api": "/etc/systemd/system/pulldb-api.service",
-    "systemd_worker": "/etc/systemd/system/pulldb-worker.service"
+    "systemd_worker": "/etc/systemd/system/pulldb-worker.service",
+    "systemd_web": "/etc/systemd/system/pulldb-web.service",
+    "admin_credentials": "/opt/pulldb.service/ADMIN_CREDENTIALS.txt"
   },
   "binaries": {
     "myloader_path": "/opt/pulldb.service/bin/",
+    "myloader_binary": "myloader-0.19.3-3",
     "myloader_source": "pulldb/binaries/"
   },
   "lessons_learned": [

@@ -65,8 +65,9 @@ class TestGetApiCredentials:
     def test_raises_when_not_configured(self) -> None:
         """Should raise RuntimeError when no API key configured."""
         with mock.patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(RuntimeError, match="API credentials not configured"):
-                get_api_credentials()
+            with mock.patch("pulldb.cli.auth._load_credentials_from_file", return_value=None):
+                with pytest.raises(RuntimeError, match="API credentials not configured"):
+                    get_api_credentials()
 
     def test_returns_credentials_when_configured(self) -> None:
         """Should return tuple of (key, secret) when configured."""
@@ -81,8 +82,9 @@ class TestGetApiCredentials:
     def test_raises_when_only_key(self) -> None:
         """Should raise when only key is set (no secret)."""
         with mock.patch.dict(os.environ, {"PULLDB_API_KEY": "mykey"}, clear=True):
-            with pytest.raises(RuntimeError, match="API credentials not configured"):
-                get_api_credentials()
+            with mock.patch("pulldb.cli.auth._load_credentials_from_file", return_value=None):
+                with pytest.raises(RuntimeError, match="API credentials not configured"):
+                    get_api_credentials()
 
 
 class TestHasApiCredentials:
@@ -91,7 +93,8 @@ class TestHasApiCredentials:
     def test_returns_false_when_not_configured(self) -> None:
         """Should return False when no API key configured."""
         with mock.patch.dict(os.environ, {}, clear=True):
-            assert has_api_credentials() is False
+            with mock.patch("pulldb.cli.auth._load_credentials_from_file", return_value=None):
+                assert has_api_credentials() is False
 
     def test_returns_true_when_configured(self) -> None:
         """Should return True when both key and secret are set."""
@@ -105,7 +108,8 @@ class TestHasApiCredentials:
     def test_returns_false_when_only_key(self) -> None:
         """Should return False when only key is set."""
         with mock.patch.dict(os.environ, {"PULLDB_API_KEY": "mykey"}, clear=True):
-            assert has_api_credentials() is False
+            with mock.patch("pulldb.cli.auth._load_credentials_from_file", return_value=None):
+                assert has_api_credentials() is False
 
 
 class TestGetAuthHeaders:
@@ -130,8 +134,9 @@ class TestGetAuthHeaders:
     def test_raises_when_not_configured(self) -> None:
         """Should raise RuntimeError when credentials not configured."""
         with mock.patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(RuntimeError, match="API credentials not configured"):
-                get_auth_headers()
+            with mock.patch("pulldb.cli.auth._load_credentials_from_file", return_value=None):
+                with pytest.raises(RuntimeError, match="API credentials not configured"):
+                    get_auth_headers()
 
     def test_get_request_no_body(self) -> None:
         """Should work for GET requests with no body."""
@@ -173,8 +178,9 @@ class TestGetCurrentUsername:
     def test_returns_not_configured_when_missing(self) -> None:
         """Should indicate when credentials are not configured."""
         with mock.patch.dict(os.environ, {}, clear=True):
-            result = get_current_username()
-            assert "No API credentials" in result
+            with mock.patch("pulldb.cli.auth._load_credentials_from_file", return_value=None):
+                result = get_current_username()
+                assert "No API credentials" in result
 
 
 class TestSignedAuthentication:

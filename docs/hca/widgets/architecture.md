@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 0.0.8 | **Last Updated**: November 2025
+> **Version**: 0.2.0 | **Last Updated**: January 2026
 
 This document describes the pullDB system architecture, components, and data flow.
 

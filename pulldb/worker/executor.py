@@ -415,11 +415,17 @@ class WorkerJobExecutor:
 
             # Progress callback for restore phase
             last_percent_logged = -1.0
+            # Deduplication state for processlist_update events
+            # Key: (rounded_percent, active_threads, tuple of (table, rounded_pct))
+            last_processlist_key: tuple[int, int, tuple[tuple[str, int], ...]] | None = (
+                None
+            )
 
             def _restore_progress_callback(
                 percent: float, detail: dict[str, t.Any]
             ) -> None:
                 nonlocal last_percent_logged
+                nonlocal last_processlist_key
 
                 # Log file statistics as requested
                 if detail.get("status") == "finished":
@@ -433,8 +439,28 @@ class WorkerJobExecutor:
                         },
                     )
 
-                # Always emit processlist updates (not throttled - these have table progress)
+                # Deduplicate processlist updates - only emit when meaningful change occurs
+                # Emits when: overall percent changes by 1%+ OR any table progress changes by 1%+
                 if detail.get("status") == "processlist_update":
+                    # Build dedup key: overall percent (1% increments) + active threads + per-table progress
+                    tables = detail.get("tables", {})
+                    table_progress = tuple(
+                        sorted(
+                            (name, int(info.get("percent_complete", 0)))
+                            for name, info in tables.items()
+                        )
+                    )
+                    current_key = (
+                        int(percent),
+                        detail.get("active_threads", 0),
+                        table_progress,
+                    )
+
+                    # Skip if identical to last emitted event
+                    if current_key == last_processlist_key:
+                        return
+
+                    last_processlist_key = current_key
                     self._append_event(
                         job.id,
                         "restore_progress",

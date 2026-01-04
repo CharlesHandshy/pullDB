@@ -1,6 +1,6 @@
 # pullDB REST API Reference
 
-> **Complete API documentation for pullDB v0.1.0**
+> **Complete API documentation for pullDB v0.2.0**
 >
 > The pullDB API is a FastAPI-based REST service running on port **8080** (combined API + Web UI).
 > In web-only mode, the service runs on port **8000**.

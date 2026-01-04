@@ -3,7 +3,7 @@
 [← Back to Documentation Index](START-HERE.md)
 
 > **Purpose**: Comprehensive atomic-level index for AI model searching and navigation.  
-> **Last Updated**: 2026-01-02  
+> **Last Updated**: 2026-01-04  
 > **Version**: 0.2.0  
 > **File Count**: ~290 project files (excluding venv, .git, caches)
 
@@ -16,7 +16,7 @@
 | Python Source | 91 | `pulldb/` |
 | Tests | 137 | `pulldb/tests/`, `tests/` |
 | Shell Scripts | 42 | `scripts/` |
-| SQL Schema | 22 | `schema/pulldb_service/` |
+| SQL Schema | 33 | `schema/pulldb_service/` |
 | Documentation | 35+ | `docs/` |
 | Copilot Instructions | 6 | `.github/` |
 
@@ -283,6 +283,7 @@
 | `00600_active_jobs_view.sql` | active_jobs_view |
 | `00700_auth_users_role.sql` | auth_users_role |
 | `00710_auth_credentials.sql` | auth_credentials |
+| `00715_api_keys.sql` | api_keys (CLI registration) |
 | `00720_password_reset.sql` | password_reset |
 | `00720_sessions.sql` | sessions |
 | `00730_manager_user_relationship.sql` | manager_user_relationship |
@@ -293,9 +294,19 @@
 | `00800_job_delete_support.sql` | job_delete_support (deleting/deleted) |
 | `00810_disallowed_users.sql` | disallowed_users |
 | `00820_job_canceling_status.sql` | job_canceling_status (canceling) |
+| `00830_database_retention.sql` | database_retention |
+| `00840_retention_cleanup_task.sql` | retention_cleanup_task |
+| `00850_deployed_status.sql` | deployed_status |
+| `00860_active_jobs_can_cancel.sql` | active_jobs_can_cancel view |
+| `00860_expired_status.sql` | expired_status |
+| `00870_superseded_status.sql` | superseded_status |
+| `00880_can_cancel_column.sql` | can_cancel column |
+| `00890_user_locked_service_role.sql` | locked_at column + SERVICE role |
 | `02000_seed_db_hosts.sql` | seed_db_hosts |
+| `02040_seed_admin_account.sql` | seed admin user |
+| `02050_seed_service_account.sql` | seed service account (pulldb_service) |
 | `02100_seed_settings.sql` | seed_settings |
-| `03000_mysql_users.sql` | mysql_users |
+| `03000_mysql_users.sql` | mysql_users (api, worker, loader) |
 
 ---
 

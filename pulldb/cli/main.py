@@ -180,8 +180,7 @@ def _resolve_job_id(job_id_or_prefix: str) -> str:
         response = requests_module.get(url, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
-            f"Failed to reach pullDB API: {exc}. "
-            "Ensure the API service is running."
+            "Cannot connect to pullDB service. Is the API running?"
         ) from exc
 
     if response.status_code == 404:
@@ -194,7 +193,7 @@ def _resolve_job_id(job_id_or_prefix: str) -> str:
 
     data = _parse_json_response(response)
     if not isinstance(data, dict):
-        raise click.ClickException("Unexpected API response format.")
+        raise click.ClickException("Received invalid response from server.")
 
     resolved_id = data.get("resolved_id")
     matches = data.get("matches", [])
@@ -305,15 +304,17 @@ def _print_formatted_dict(
 def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
     base_url, timeout = _load_api_config()
     url = f"{base_url}{path}"
-    # Serialize body for signature computation (must match what requests sends)
+    # Serialize body for signature computation - MUST send this exact body
+    # to match the signature. Using json=payload would re-serialize differently.
     body = json_module.dumps(payload, separators=(",", ":"), sort_keys=True)
     headers = get_auth_headers(method="POST", path=path, body=body)
+    headers["Content-Type"] = "application/json"
     try:
-        response = requests_module.post(url, json=payload, headers=headers, timeout=timeout)
+        # Send pre-serialized body directly (not json=payload) to match signature
+        response = requests_module.post(url, data=body, headers=headers, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
-            f"Failed to reach pullDB API at {url}: {exc}. "
-            "Ensure the API service is running and reachable."
+            "Cannot connect to pullDB service. Is the API running?"
         ) from exc
     # Handle rate limiting (HTTP 429) with user-friendly message
     if response.status_code == 429:
@@ -344,7 +345,7 @@ def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
     payload = _parse_json_response(response)
     if isinstance(payload, dict):
         return payload
-    raise click.ClickException("Unexpected API response: expected object payload.")
+    raise click.ClickException("Received invalid response from server.")
 
 
 def _api_get(path: str, params: dict[str, t.Any]) -> list[dict[str, t.Any]]:
@@ -355,17 +356,14 @@ def _api_get(path: str, params: dict[str, t.Any]) -> list[dict[str, t.Any]]:
         response = requests_module.get(url, params=params, headers=headers, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
-            f"Failed to reach pullDB API at {url}: {exc}. "
-            "Ensure the API service is running and reachable."
+            "Cannot connect to pullDB service. Is the API running?"
         ) from exc
     if response.status_code >= 400:
         raise click.ClickException(_format_api_error(response))
     payload = _parse_json_response(response)
     if isinstance(payload, list):
         return payload
-    raise click.ClickException(
-        "Unexpected API response: expected list payload from status endpoint."
-    )
+    raise click.ClickException("Received invalid response from server.")
 
 
 def _api_get_object(path: str, params: dict[str, t.Any]) -> dict[str, t.Any]:
@@ -377,15 +375,14 @@ def _api_get_object(path: str, params: dict[str, t.Any]) -> dict[str, t.Any]:
         response = requests_module.get(url, params=params, headers=headers, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
-            f"Failed to reach pullDB API at {url}: {exc}. "
-            "Ensure the API service is running and reachable."
+            "Cannot connect to pullDB service. Is the API running?"
         ) from exc
     if response.status_code >= 400:
         raise click.ClickException(_format_api_error(response))
     payload = _parse_json_response(response)
     if isinstance(payload, dict):
         return payload
-    raise click.ClickException("Unexpected API response: expected object payload.")
+    raise click.ClickException("Received invalid response from server.")
 
 
 def _parse_json_response(response: Response) -> t.Any:
@@ -393,12 +390,23 @@ def _parse_json_response(response: Response) -> t.Any:
         return response.json()
     except ValueError as exc:
         raise click.ClickException(
-            "pullDB API returned a non-JSON response. "
-            f"Status {response.status_code}, content: {response.text[:200]}"
+            "Received invalid response from server. Please try again."
         ) from exc
 
 
 def _format_api_error(response: Response) -> str:
+    """Format API error response into a human-friendly message.
+
+    Maps HTTP status codes to user-friendly categories and extracts
+    the detail message without exposing technical HTTP codes.
+
+    Args:
+        response: The HTTP response object.
+
+    Returns:
+        Human-readable error message.
+    """
+    # Extract detail message from JSON response
     detail: str | None = None
     try:
         payload = response.json()
@@ -408,12 +416,43 @@ def _format_api_error(response: Response) -> str:
         raw_detail = payload.get("detail") or payload.get("message")
         if isinstance(raw_detail, str) and raw_detail.strip():
             detail = raw_detail.strip()
-    if detail:
-        return f"API error ({response.status_code}): {detail}"
-    text = response.text.strip()
-    if text:
-        return f"API error ({response.status_code}): {text[:200]}"
-    return f"API error ({response.status_code}): {response.reason}"
+
+    # If no JSON detail, try raw text
+    if not detail:
+        text = response.text.strip()
+        if text:
+            detail = text[:200]
+
+    # Map status codes to human-friendly categories
+    status = response.status_code
+    if status == 400:
+        # Bad request - validation error
+        return detail or "Invalid request. Please check your input."
+    elif status == 401:
+        return detail or "Not authenticated. Run 'pulldb register' to create an account."
+    elif status == 403:
+        return detail or "Permission denied. You don't have access to this resource."
+    elif status == 404:
+        return detail or "Not found. The requested resource doesn't exist."
+    elif status == 409:
+        # Conflict - already in progress, etc. (just show the message)
+        return detail or "Conflict. The operation cannot be completed."
+    elif status == 422:
+        # Validation error
+        return detail or "Validation error. Please check your input."
+    elif status == 429:
+        # Rate limit (handled separately in _api_post, but just in case)
+        return detail or "Rate limited. Please wait before trying again."
+    elif status >= 500:
+        # Server error - show detail if available, otherwise generic
+        if detail:
+            return f"Server error: {detail}"
+        return "Server error. Please try again or contact support."
+    else:
+        # Unknown error - include code for debugging
+        if detail:
+            return detail
+        return f"Request failed ({status}): {response.reason or 'Unknown error'}"
 
 
 def _parse_iso(value: t.Any) -> datetime | None:
@@ -651,7 +690,7 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     api_response = _api_post("/api/jobs", payload)
 
     if not isinstance(api_response, dict):
-        raise click.ClickException("Unexpected API response when submitting job.")
+        raise click.ClickException("Received invalid response from server.")
 
     job_id = str(api_response.get("job_id", ""))
     target = str(api_response.get("target", ""))
@@ -1315,8 +1354,19 @@ def _dump_job_events(job_id: str) -> None:
 
 
 def _stream_job_events(job_id: str) -> None:
+    """Stream job events with deduplication and in-place progress updates.
+
+    For TTY output, restore progress is shown as in-place updates (52% -> 53%)
+    rather than flooding the terminal with repetitive lines.
+    For piped output, duplicate progress events are simply filtered.
+    """
+    import sys
+
     last_id: int | None = None
-    click.echo(f"(Ctrl+C to stop)")
+    last_progress_percent: int | None = None  # Track last displayed progress
+    is_tty = sys.stdout.isatty()
+
+    click.echo("(Ctrl+C to stop)")
     while True:
         params: dict[str, t.Any] = {}
         if last_id is not None:
@@ -1334,7 +1384,33 @@ def _stream_job_events(job_id: str) -> None:
             ts_str = ts.strftime("%H:%M:%S") if ts else "??:??:??"
             event_type = event.get("event_type", "unknown")
             detail = event.get("detail") or ""
-            click.echo(f"[{ts_str}] {event_type}: {detail}")
+
+            # Deduplicate restore_progress events - only show when percent changes
+            if event_type == "restore_progress" and isinstance(detail, dict):
+                percent = int(detail.get("percent", 0))
+                if percent == last_progress_percent:
+                    last_id = int(event["id"])
+                    continue  # Skip duplicate
+                last_progress_percent = percent
+
+                # Format compact progress line
+                inner = detail.get("detail", {})
+                status = inner.get("status", "")
+                threads = inner.get("active_threads", "?")
+                progress_line = f"[{ts_str}] restore: {percent}% ({threads} threads) {status}"
+
+                if is_tty:
+                    # In-place update for TTY - overwrite current line
+                    click.echo(f"\r{progress_line:<70}", nl=False)
+                else:
+                    click.echo(progress_line)
+            else:
+                # Non-progress events: print normally
+                if is_tty and last_progress_percent is not None:
+                    click.echo()  # Finish the in-place line with newline
+                click.echo(f"[{ts_str}] {event_type}: {detail}")
+                last_progress_percent = None  # Reset so next progress starts fresh
+
             last_id = int(event["id"])
 
         # Check if job is still active
@@ -1342,6 +1418,8 @@ def _stream_job_events(job_id: str) -> None:
             job_data = _api_get_object(f"/api/jobs/{job_id}", {})
             status = job_data.get("status")
             if status not in ("queued", "running", "canceling"):
+                if is_tty and last_progress_percent is not None:
+                    click.echo()  # Finish any in-place line
                 click.echo(f"\nJob {job_id[:8]} finished with status: {status}")
                 return
         except _APIError:
@@ -1744,8 +1822,7 @@ def profile_cmd(job_id: str, json_out: bool) -> None:
         response = requests_module.get(url, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
-            f"Failed to reach pullDB API: {exc}. "
-            "Ensure the API service is running and reachable."
+            "Cannot connect to pullDB service. Is the API running?"
         ) from exc
 
     if response.status_code == 404:
@@ -1756,7 +1833,7 @@ def profile_cmd(job_id: str, json_out: bool) -> None:
 
     profile = _parse_json_response(response)
     if not isinstance(profile, dict):
-        raise click.ClickException("Unexpected API response: expected object payload.")
+        raise click.ClickException("Received invalid response from server.")
 
     if json_out:
         click.echo(json_module.dumps(profile, indent=2, default=str))
@@ -1891,8 +1968,7 @@ def hosts_cmd(json_out: bool) -> None:
         response = requests_module.get(url, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
-            f"Failed to reach pullDB API: {exc}. "
-            "Ensure the API service is running and reachable."
+            "Cannot connect to pullDB service. Is the API running?"
         ) from exc
 
     if response.status_code >= 400:
@@ -1900,7 +1976,7 @@ def hosts_cmd(json_out: bool) -> None:
 
     data = _parse_json_response(response)
     if not isinstance(data, dict):
-        raise click.ClickException("Unexpected API response: expected object payload.")
+        raise click.ClickException("Received invalid response from server.")
 
     hosts = data.get("hosts", [])
 

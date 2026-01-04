@@ -190,12 +190,13 @@ def _deduplicate_logs(logs: list[Any]) -> list[Any]:
     duplicates to reduce noise in the execution log display.
 
     Only deduplicates restore_progress events; other event types pass through unchanged.
+    Uses integer percent to avoid float precision issues (51.001 vs 51.002).
     """
     if not logs:
         return logs
 
     deduplicated: list[Any] = []
-    last_key: tuple[str, float, str] | None = None
+    last_key: tuple[str, int, str] | None = None
 
     for event in logs:
         event_type = getattr(event, "event_type", "")
@@ -203,7 +204,7 @@ def _deduplicate_logs(logs: list[Any]) -> list[Any]:
         # Only deduplicate restore_progress events
         if event_type == "restore_progress":
             detail = getattr(event, "detail", None)
-            percent = 0.0
+            percent = 0
             status = ""
 
             if detail:
@@ -214,7 +215,8 @@ def _deduplicate_logs(logs: list[Any]) -> list[Any]:
                     except (json.JSONDecodeError, TypeError):
                         parsed = {}
                 if isinstance(parsed, dict):
-                    percent = parsed.get("percent", 0.0)
+                    # Use integer percent to avoid float precision issues
+                    percent = int(parsed.get("percent", 0))
                     detail_info = parsed.get("detail", {})
                     if isinstance(detail_info, dict):
                         status = detail_info.get("status", "")

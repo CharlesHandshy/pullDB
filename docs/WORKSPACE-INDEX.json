@@ -1,9 +1,10 @@
 {
   "meta": {
     "version": "2.0.0",
-    "generated": "2025-12-12",
+    "generated": "2026-01-04",
     "file_count": 91,
     "test_count": 137,
+    "schema_file_count": 33,
     "purpose": "Atomic-level workspace index for AI model searching"
   },
   "architecture": {

@@ -6,6 +6,111 @@
 
 ---
 
+## 2026-01-04 | Restore Progress Log Deduplication
+
+### Context
+User requested cleanup of repetitive log output during restore operations. The `processlist_update` events were flooding job_events table and CLI output with identical messages like "progress 53% status processlist_update" repeated every 2 seconds.
+
+### What Was Done
+
+**Research Phase** (via subagent)
+- Identified root cause: ProcesslistMonitor polls MySQL `SHOW PROCESSLIST` every 2 seconds
+- Found event chain: ProcesslistMonitor → restore.py callback → executor.py `_restore_progress_callback` → job_events table
+- Discovered processlist_update events bypassed the 5% throttle (comment: "not throttled - these have table progress")
+- Confirmed Web UI already has `_deduplicate_logs()` - no changes needed there
+
+**Implementation** (user-confirmed design decisions)
+- Keep 2-second poll interval (needed for responsive progress)
+- Use 1% increments for deduplication (not 10%)
+- Silent skip for duplicates (no debug logs)
+
+**executor.py Changes** ([pulldb/worker/executor.py](pulldb/worker/executor.py#L408-L460))
+- Added `last_processlist_key` state variable in closure
+- Created deduplication key: `(int(percent), active_threads, tuple(sorted((table, int(pct)))))`
+- Only emits when overall percent OR any table's percent changes by 1%+
+- Reduces database writes from ~30/minute to only meaningful progress updates
+
+**CLI Changes** ([pulldb/cli/main.py](pulldb/cli/main.py#L1320-L1390))
+- Added `last_progress_percent` tracking for 1% change detection
+- Added TTY detection (`sys.stdout.isatty()`)
+- TTY mode: In-place line updates using `\r` carriage return
+- Non-TTY mode: Filtered output (only 1% changes shown)
+- Added comprehensive docstring explaining behavior
+
+### Rationale
+- **FAIL HARD compliance**: Dedup is transparent - events still emitted on meaningful changes
+- **UX improvement**: CLI shows clean "restore: 52% (4 threads)" with in-place updates instead of flooding terminal
+- **Performance**: Fewer database writes, smaller job_events table
+- **Backwards compatible**: Web UI already had dedup, CLI now matches
+
+### Files Modified
+- [pulldb/worker/executor.py](pulldb/worker/executor.py#L408-L460) - Added processlist deduplication logic
+- [pulldb/cli/main.py](pulldb/cli/main.py#L1320-L1390) - Added TTY-aware progress display
+
+### Testing
+- ✅ Syntax validation passed (`py_compile`)
+- ✅ Import verification passed
+- ✅ Executor tests: 20 passed
+- ✅ CLI tests: 8 passed (qa/test_cli.py)
+- ⚠️ Pre-existing failures in test_cli_auth.py (unrelated to this change)
+
+---
+
+## 2026-01-04 | Package v0.2.0 Full Audit & Documentation Update
+
+### Context
+User requested comprehensive audit of the install package, setup scripts, default accounts, and AWS Secrets Manager configuration, followed by updates to all knowledge bases, indexes, system documentation, and package documentation.
+
+### What Was Done
+
+**Package Audit Completed**
+- Verified Debian package `pulldb_0.2.0_amd64.deb` (6.5MB) contains all required components
+- Confirmed 33 SQL schema files in package (including new 00715, 00890, 02040, 02050)
+- Verified myloader binary (0.19.3-3), systemd units (6 files), after-SQL templates (12 scripts)
+- Validated entry points match pyproject.toml (pulldb, pulldb-admin, pulldb-api, pulldb-web, pulldb-worker)
+
+**Default Account Audit**
+- Admin account: Created by seed SQL (02040_seed_admin_account.sql) with NULL password, postinst generates random 16-char password with bcrypt hash
+- Service account (pulldb_service): Created by seed SQL (02050_seed_service_account.sql) with SERVICE role, locked, no password
+- Both use well-known fixed UUIDs for consistency across installs
+
+**AWS Secrets Manager Audit**
+- Confirmed credential resolver supports `aws-secretsmanager:` prefix
+- Secrets structure: `{"host": "...", "password": "..."}` (username from env vars)
+- Service-specific MySQL users documented (pulldb_api, pulldb_worker, pulldb_loader)
+
+**Documentation Updates**
+- `docs/KNOWLEDGE-POOL.md`: Added Package Contents Summary section, default accounts table, updated date to 2026-01-04
+- `docs/KNOWLEDGE-POOL.json`: Added version, package, entry_points, default_accounts, paths, secrets sections
+- `docs/WORKSPACE-INDEX.md`: Updated schema file count from 22 to 33, expanded schema table with all 33 files
+- `docs/WORKSPACE-INDEX.json`: Updated generated date, added schema_file_count
+- `docs/STYLE-GUIDE.md`: Updated version to 1.2.0 and date
+- `docs/THEME-CONFORMITY-INDEX.md`: Updated date
+- `docs/hca/widgets/architecture.md`: Updated to v0.2.0, January 2026
+- `docs/hca/pages/cli-reference.md`: Updated to v0.2.0, January 2026
+- `docs/hca/pages/api-reference.md`: Updated to v0.2.0
+- `packaging/INSTALL-UPGRADE.md`: Updated date to January 4, 2026
+
+### Files Modified
+- `docs/KNOWLEDGE-POOL.md` (package summary, accounts, index updates)
+- `docs/KNOWLEDGE-POOL.json` (comprehensive schema updates)
+- `docs/WORKSPACE-INDEX.md` (schema count and table)
+- `docs/WORKSPACE-INDEX.json` (metadata updates)
+- `docs/STYLE-GUIDE.md` (version bump)
+- `docs/THEME-CONFORMITY-INDEX.md` (date update)
+- `docs/hca/widgets/architecture.md` (version update)
+- `docs/hca/pages/cli-reference.md` (version update)
+- `docs/hca/pages/api-reference.md` (version update)
+- `packaging/INSTALL-UPGRADE.md` (date update)
+
+### Rationale
+- **Single source of truth**: All version references now consistently show 0.2.0
+- **Package completeness**: Documented all components for fresh install verification
+- **Knowledge accessibility**: Added machine-readable JSON facts for automation
+- **Audit trail**: Default account creation flow now fully documented
+
+---
+
 ## 2026-01-01 | pulldb-admin Privilege Escalation & Security
 
 ### Context

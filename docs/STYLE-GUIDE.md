@@ -1,7 +1,7 @@
 # pullDB Web UI Style Guide
 
-> **Version**: 1.1.0  
-> **Last Updated**: December 15, 2025  
+> **Version**: 1.2.0  
+> **Last Updated**: January 4, 2026  
 > **Status**: Stable
 
 This document establishes the design system and style standards for the pullDB web interface. It serves as the single source of truth for UI consistency.

@@ -6,22 +6,55 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 
 **Related:** [Deployment](deployment.md) · [policies/](policies/) · [terraform/](terraform/)
 
-Last updated: 2026-01-28
+Last updated: 2026-01-04
 Current version: v0.2.0
 Phases complete: 0-5
 
 ---
 
+## Package Contents Summary (v0.2.0)
+
+| Component | Path in Package | Size |
+|-----------|-----------------|------|
+| Python wheel | `/opt/pulldb.service/dist/pulldb-0.2.0-py3-none-any.whl` | ~5MB |
+| myloader binary | `/opt/pulldb.service/bin/myloader-0.19.3-3` | 8.4MB |
+| Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 33 SQL files |
+| Systemd units | `/opt/pulldb.service/systemd/` | 6 files |
+| Config templates | `/opt/pulldb.service/env.example`, `aws.config.example` | - |
+| After-SQL templates | `/opt/pulldb.service/template_after_sql/` | 12 customer scripts |
+| Install scripts | `/opt/pulldb.service/scripts/` | 10 scripts |
+
+### Entry Points
+
+| Command | Module | Purpose |
+|---------|--------|---------|
+| `pulldb` | `pulldb.cli.main:main` | User CLI (own jobs) |
+| `pulldb-admin` | `pulldb.cli.admin:main` | Admin CLI (system ops) |
+| `pulldb-api` | `pulldb.api.main:main` | REST API (port 8080) |
+| `pulldb-web` | `pulldb.api.main:main_web` | Web UI (port 8000) |
+| `pulldb-worker` | `pulldb.worker.service:main` | Background job processor |
+
+### Default Accounts (Fresh Install)
+
+| Account | UUID | Role | Password | Notes |
+|---------|------|------|----------|-------|
+| `admin` | `00000000-...0002` | admin | Random 16-char, bcrypt | Force reset on first login |
+| `pulldb_service` | `00000000-...0001` | service | NULL | System account, locked |
+
+---
+
 ## Index (categories)
-- **Authentication & Sessions** (NEW - Phase 4)
-- **RBAC Permission Matrix** (NEW - Phase 4)
-- **Simulation Framework** (NEW - Phase 4)
+- **Package Contents Summary** (NEW - v0.2.0)
+- **Default Accounts & Provisioning** (NEW - v0.2.0)
+- **Authentication & Sessions** (Phase 4)
+- **RBAC Permission Matrix** (Phase 4)
+- **Simulation Framework** (Phase 4)
 - CLI Architecture & Scope
 - Web UI Layout Architecture
 - Web UI Style Guide
-- Web UI HCA Architecture (NEW)
+- Web UI HCA Architecture
 - S3 Multi-Location Configuration (v0.0.7)
-- **Phase 4 Schema Tables** (NEW)
+- **Phase 4 Schema Tables**
 - Accounts & ARNs
 - S3 buckets & paths
 - IAM roles & policies
@@ -30,7 +63,7 @@ Phases complete: 0-5
 - Restore workflow facts
 - System Paths & Service Locations
 - Lessons Learned & Troubleshooting
-  - **Packaging & Installation Lessons (Jan 2026)** (NEW)
+  - **Packaging & Installation Lessons (Jan 2026)**
   - Phase 2 Lessons (Nov 2025)
 - Quick commands & verification
 - Purge candidates (files/docs to archive)
@@ -698,6 +731,7 @@ This file should be created and applied in the production account only. Keep sec
 - S3 preflight: require `*-schema-create.sql.{gz,zst}` exists and `free_space >= tar_size * 1.8` before extraction
 - Post-restore SQL: executed from `customers_after_sql/` or `qa_template_after_sql/` in lexicographic order
 - Atomic rename via stored procedure: `pulldb_atomic_rename` / `pulldb_atomic_rename_preview` exists and is versioned
+- **Progress deduplication** (v0.2.0): ProcesslistMonitor polls every 2s but events only emit when overall percent OR any table's percent changes by 1%+. Dedup key: `(int(percent), active_threads, tuple(sorted(table_progress)))`. CLI uses TTY detection for in-place line updates (`\r`). Web UI has `_deduplicate_logs()`.
 
 ## Database Schema (Quick Reference)
 - **Canonical Source**: `docs/mysql-schema.md` (Read this for full column definitions)
