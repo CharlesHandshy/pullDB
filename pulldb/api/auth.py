@@ -375,6 +375,9 @@ async def get_optional_user(
 
     Supports: HMAC signatures (CLI) and session cookies (Web UI).
     """
+    # Get auth_repo from state for database lookups
+    auth_repo = state.auth_repo if hasattr(state, "auth_repo") else None
+    
     # Try HMAC signed authentication first
     if x_api_key and x_timestamp and x_signature:
         # Validate timestamp is recent (prevent replay attacks)
@@ -384,8 +387,8 @@ async def get_optional_user(
                 detail="Request timestamp expired or invalid",
             )
 
-        # Get secret for this API key
-        secret = get_api_secret(x_api_key)
+        # Get secret for this API key (check database first, then env vars)
+        secret = get_api_secret(x_api_key, auth_repo)
         if not secret:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -409,20 +412,35 @@ async def get_optional_user(
             )
 
         # Signature valid - get user for this API key
-        username = get_user_for_api_key(x_api_key)
-        if not username:
+        user_or_username = get_user_for_api_key(x_api_key, auth_repo)
+        if not user_or_username:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="API key has no associated user",
             )
 
-        user = await run_in_threadpool(
-            state.user_repo.get_user_by_username, username
-        )
+        # If we got a user_id from database, look up by ID; otherwise by username
+        # Check if it looks like a UUID (36 chars with hyphens)
+        if len(user_or_username) == 36 and user_or_username.count("-") == 4:
+            # It's a user_id from the database
+            user = await run_in_threadpool(
+                state.user_repo.get_user_by_id, user_or_username
+            )
+        else:
+            # It's a username from env var
+            user = await run_in_threadpool(
+                state.user_repo.get_user_by_username, user_or_username
+            )
+            
         if user and user.disabled_at:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User account is disabled",
+            )
+        if user and user.locked:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is locked",
             )
         if user:
             return user
