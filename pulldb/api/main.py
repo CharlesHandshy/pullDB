@@ -503,6 +503,7 @@ class RegisterRequest(pydantic.BaseModel):
 
     username: str = pydantic.Field(min_length=1)
     password: str = pydantic.Field(min_length=8)
+    host_name: str | None = pydantic.Field(default=None, max_length=255)
 
 
 class RegisterResponse(pydantic.BaseModel):
@@ -519,6 +520,7 @@ class RegisterResponse(pydantic.BaseModel):
 @app.post("/api/auth/register", status_code=status.HTTP_201_CREATED, response_model=RegisterResponse)
 async def register_user(
     request: RegisterRequest,
+    fastapi_request: fastapi.Request,
     state: APIState = Depends(get_api_state),
 ) -> RegisterResponse:
     """Self-register a new user account.
@@ -604,13 +606,22 @@ async def register_user(
 
     # Generate API credentials for CLI access
     # The secret is only returned once - stored hashed in DB
+    # Get client IP for tracking
+    client_ip = fastapi_request.client.host if fastapi_request.client else None
+
     api_key: str | None = None
     api_secret: str | None = None
     try:
+        # Use provided host_name or default to username for first registration
+        key_name = f"CLI key for {request.host_name or user.username}"
         api_key, api_secret = await run_in_threadpool(
             state.auth_repo.create_api_key,
             user.user_id,
-            f"CLI key for {user.username}",
+            key_name,
+            host_name=request.host_name,
+            created_from_ip=client_ip,
+            # First key at registration is NOT auto-approved - admin must approve user AND key
+            auto_approve=False,
         )
     except Exception:
         # API key creation failed - continue without it (table may not exist)
@@ -639,6 +650,128 @@ async def register_user(
         api_key=api_key,
         api_secret=api_secret,
         message="Account created successfully. Contact an administrator to enable your account.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Multi-Host API Key Management
+# ---------------------------------------------------------------------------
+
+
+class RequestHostKeyRequest(pydantic.BaseModel):
+    """Request body for requesting an API key from a new host."""
+
+    username: str = pydantic.Field(min_length=1)
+    password: str = pydantic.Field(min_length=1)
+    host_name: str = pydantic.Field(min_length=1, max_length=255)
+
+
+class RequestHostKeyResponse(pydantic.BaseModel):
+    """Response for host key request."""
+
+    username: str
+    user_code: str
+    host_name: str
+    api_key: str
+    api_secret: str
+    message: str
+
+
+@app.post("/api/auth/request-host-key", response_model=RequestHostKeyResponse)
+async def request_host_key(
+    request: RequestHostKeyRequest,
+    fastapi_request: fastapi.Request,
+    state: APIState = Depends(get_api_state),
+) -> RequestHostKeyResponse:
+    """Request an API key for a new host.
+
+    Authenticates using username/password and creates a new API key
+    for use from a different host machine. The key is created in a
+    PENDING state and must be approved by an administrator before
+    it can be used.
+
+    Used by CLI's `pulldb request-host-key` command when setting up
+    access from a second (or subsequent) machine.
+
+    Args:
+        username: User's username
+        password: User's current password
+        host_name: Hostname of the machine requesting the key (auto-detected by CLI)
+
+    Returns:
+        API credentials to save in ~/.pulldb/credentials
+        (but unusable until admin approval)
+    """
+    from pulldb.auth.password import verify_password
+
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Verify user exists
+    user = await run_in_threadpool(
+        state.user_repo.get_user_by_username, request.username
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+        )
+
+    if user.disabled_at:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is disabled. Contact an administrator.",
+        )
+
+    # Verify password
+    existing_hash = await run_in_threadpool(
+        state.auth_repo.get_password_hash, user.user_id
+    )
+    if not existing_hash or not verify_password(request.password, existing_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+        )
+
+    # Get client IP
+    client_ip = fastapi_request.client.host if fastapi_request.client else None
+
+    # Create API key (inactive, pending approval)
+    try:
+        api_key, api_secret = await run_in_threadpool(
+            state.auth_repo.create_api_key,
+            user.user_id,
+            f"CLI key for {request.host_name}",
+            host_name=request.host_name,
+            created_from_ip=client_ip,
+            auto_approve=False,  # Always require admin approval for new host keys
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create API key: {exc}",
+        ) from exc
+
+    # Log audit event
+    if state.audit_repo:
+        await run_in_threadpool(
+            state.audit_repo.log_action,
+            actor_user_id=user.user_id,
+            action="api_key_requested",
+            target_user_id=user.user_id,
+            detail=f"User {user.username} requested API key for host '{request.host_name}' from {client_ip}",
+        )
+
+    return RequestHostKeyResponse(
+        username=user.username,
+        user_code=user.user_code,
+        host_name=request.host_name,
+        api_key=api_key,
+        api_secret=api_secret,
+        message="API key created successfully. Contact an administrator to approve the key before it can be used.",
     )
 
 
@@ -3156,6 +3289,284 @@ async def rotate_host_secret_endpoint(
     Both CLI (`pulldb-admin secrets rotate`) and Web UI use this endpoint.
     """
     return await run_in_threadpool(_rotate_host_secret, state, host_id, request, user)
+
+
+# ---------------------------------------------------------------------------
+# Admin API Key Management
+# ---------------------------------------------------------------------------
+
+
+class APIKeyInfo(pydantic.BaseModel):
+    """Information about an API key."""
+
+    key_id: str
+    user_id: str
+    username: str
+    name: str | None
+    host_name: str | None
+    created_from_ip: str | None
+    is_active: bool
+    is_approved: bool
+    approved_at: datetime | None
+    approved_by: str | None
+    created_at: datetime
+    last_used_at: datetime | None
+    last_used_ip: str | None
+    expires_at: datetime | None
+
+
+class PendingKeysResponse(pydantic.BaseModel):
+    """Response for pending API keys list."""
+
+    keys: list[APIKeyInfo]
+    total: int
+
+
+class ApproveKeyRequest(pydantic.BaseModel):
+    """Request to approve an API key."""
+
+    key_id: str
+
+
+class ApproveKeyResponse(pydantic.BaseModel):
+    """Response for key approval."""
+
+    key_id: str
+    message: str
+
+
+class RevokeKeyRequest(pydantic.BaseModel):
+    """Request to revoke an API key."""
+
+    key_id: str
+    reason: str | None = None
+
+
+class RevokeKeyResponse(pydantic.BaseModel):
+    """Response for key revocation."""
+
+    key_id: str
+    message: str
+
+
+class UserKeysResponse(pydantic.BaseModel):
+    """Response for a user's API keys."""
+
+    username: str
+    keys: list[APIKeyInfo]
+    total: int
+
+
+def _get_api_key_info(state: APIState, key_data: dict, user_lookup: dict[str, str]) -> APIKeyInfo:
+    """Convert raw key data to APIKeyInfo model."""
+    user_id = key_data["user_id"]
+    username = user_lookup.get(user_id, "unknown")
+    return APIKeyInfo(
+        key_id=key_data["key_id"],
+        user_id=user_id,
+        username=username,
+        name=key_data.get("name"),
+        host_name=key_data.get("host_name"),
+        created_from_ip=key_data.get("created_from_ip"),
+        is_active=bool(key_data.get("is_active", False)),
+        is_approved=key_data.get("approved_at") is not None,
+        approved_at=key_data.get("approved_at"),
+        approved_by=key_data.get("approved_by"),
+        created_at=key_data.get("created_at", datetime.now(UTC)),
+        last_used_at=key_data.get("last_used_at"),
+        last_used_ip=key_data.get("last_used_ip"),
+        expires_at=key_data.get("expires_at"),
+    )
+
+
+@app.get("/api/admin/keys/pending", response_model=PendingKeysResponse)
+async def get_pending_api_keys(
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> PendingKeysResponse:
+    """List all API keys pending approval (admin only).
+
+    Returns keys that have been requested but not yet approved.
+    Used by admin to see which users need key approval.
+    """
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Get pending keys from repository
+    pending_keys = await run_in_threadpool(state.auth_repo.get_pending_api_keys)
+
+    # Build username lookup for all user_ids
+    user_ids = list({k["user_id"] for k in pending_keys})
+    user_lookup: dict[str, str] = {}
+    for uid in user_ids:
+        u = await run_in_threadpool(state.user_repo.get_user_by_id, uid)
+        if u:
+            user_lookup[uid] = u.username
+
+    keys = [_get_api_key_info(state, k, user_lookup) for k in pending_keys]
+
+    return PendingKeysResponse(keys=keys, total=len(keys))
+
+
+@app.post("/api/admin/keys/approve", response_model=ApproveKeyResponse)
+async def approve_api_key(
+    request: ApproveKeyRequest,
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> ApproveKeyResponse:
+    """Approve a pending API key (admin only).
+
+    Marks the key as active and records the approving admin.
+    The key can then be used for CLI authentication.
+    """
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Approve the key
+    success = await run_in_threadpool(
+        state.auth_repo.approve_api_key,
+        request.key_id,
+        user.user_id,
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"API key '{request.key_id}' not found or already approved",
+        )
+
+    # Get key info for audit
+    key_info = await run_in_threadpool(
+        state.auth_repo.get_api_key_info,
+        request.key_id,
+    )
+
+    # Log audit event
+    if state.audit_repo and key_info:
+        target_user = await run_in_threadpool(
+            state.user_repo.get_user_by_id,
+            key_info["user_id"],
+        )
+        await run_in_threadpool(
+            state.audit_repo.log_action,
+            actor_user_id=user.user_id,
+            action="api_key_approved",
+            target_user_id=key_info["user_id"],
+            detail=f"Admin {user.username} approved API key '{request.key_id}' "
+            f"for user {target_user.username if target_user else 'unknown'} "
+            f"(host: {key_info.get('host_name', 'unknown')})",
+        )
+
+    return ApproveKeyResponse(
+        key_id=request.key_id,
+        message="API key approved successfully",
+    )
+
+
+@app.post("/api/admin/keys/revoke", response_model=RevokeKeyResponse)
+async def revoke_api_key(
+    request: RevokeKeyRequest,
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> RevokeKeyResponse:
+    """Revoke an API key (admin only).
+
+    Marks the key as inactive and records revocation.
+    The key can no longer be used for authentication.
+    """
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Get key info before revoking for audit
+    key_info = await run_in_threadpool(
+        state.auth_repo.get_api_key_info,
+        request.key_id,
+    )
+
+    if not key_info:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"API key '{request.key_id}' not found",
+        )
+
+    # Revoke the key by setting is_active=FALSE
+    await run_in_threadpool(
+        state.auth_repo.revoke_api_key,
+        request.key_id,
+    )
+
+    # Log audit event
+    if state.audit_repo:
+        target_user = await run_in_threadpool(
+            state.user_repo.get_user_by_id,
+            key_info["user_id"],
+        )
+        detail = f"Admin {user.username} revoked API key '{request.key_id}' for user {target_user.username if target_user else 'unknown'}"
+        if request.reason:
+            detail += f" (reason: {request.reason})"
+        await run_in_threadpool(
+            state.audit_repo.log_action,
+            actor_user_id=user.user_id,
+            action="api_key_revoked",
+            target_user_id=key_info["user_id"],
+            detail=detail,
+        )
+
+    return RevokeKeyResponse(
+        key_id=request.key_id,
+        message="API key revoked successfully",
+    )
+
+
+@app.get("/api/admin/users/{user_id}/keys", response_model=UserKeysResponse)
+async def get_user_api_keys(
+    user_id: str,
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> UserKeysResponse:
+    """List all API keys for a specific user (admin only).
+
+    Returns all keys (active, inactive, pending) for the specified user.
+    """
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Verify user exists
+    target_user = await run_in_threadpool(
+        state.user_repo.get_user_by_id, user_id
+    )
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User '{user_id}' not found",
+        )
+
+    # Get all keys for user
+    keys_data = await run_in_threadpool(
+        state.auth_repo.get_all_api_keys,
+        user_id=user_id,
+    )
+
+    user_lookup = {user_id: target_user.username}
+    keys = [_get_api_key_info(state, k, user_lookup) for k in keys_data]
+
+    return UserKeysResponse(
+        username=target_user.username,
+        keys=keys,
+        total=len(keys),
+    )
 
 
 def create_app() -> fastapi.FastAPI:

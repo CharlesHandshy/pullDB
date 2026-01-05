@@ -13,7 +13,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from pulldb.domain.errors import LockedUserError
+from pulldb.domain.errors import KeyPendingApprovalError, LockedUserError
 from pulldb.infra.mysql import MySQLPool
 
 logger = logging.getLogger(__name__)
@@ -319,6 +319,10 @@ class AuthRepository:
         self,
         user_id: str,
         name: str | None = None,
+        host_name: str | None = None,
+        created_from_ip: str | None = None,
+        auto_approve: bool = False,
+        approved_by: str | None = None,
     ) -> tuple[str, str]:
         """Create a new API key for a user.
 
@@ -326,9 +330,17 @@ class AuthRepository:
         and returns both the key_id and plaintext secret. The secret is only
         returned once - it cannot be retrieved later.
 
+        New keys are created inactive (is_active=FALSE) and unapproved
+        (approved_at=NULL) by default. They must be approved by an admin
+        before they can be used.
+
         Args:
             user_id: UUID of the user.
-            name: Optional friendly name for the key.
+            name: Optional friendly name for the key (auto-generated if not provided).
+            host_name: Hostname where key was requested (auto-detected by CLI).
+            created_from_ip: IP address of the request.
+            auto_approve: If True, automatically approve the key (for admin-created keys).
+            approved_by: User ID of admin approving (required if auto_approve=True).
 
         Returns:
             Tuple of (key_id, secret) - secret is only returned once!
@@ -344,16 +356,32 @@ class AuthRepository:
         # Hash the secret for audit purposes
         secret_hash = hash_password(secret)
 
+        # Determine approval status
+        is_active = auto_approve
+        approved_at = "UTC_TIMESTAMP(6)" if auto_approve else None
+
         with self.pool.connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO api_keys
-                    (key_id, user_id, key_secret_hash, key_secret, name, created_at)
-                VALUES (%s, %s, %s, %s, %s, UTC_TIMESTAMP(6))
-                """,
-                (key_id, user_id, secret_hash, secret, name),
-            )
+            if auto_approve:
+                cursor.execute(
+                    """
+                    INSERT INTO api_keys
+                        (key_id, user_id, key_secret_hash, key_secret, name, 
+                         host_name, created_from_ip, is_active, approved_at, approved_by, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, UTC_TIMESTAMP(6), %s, UTC_TIMESTAMP(6))
+                    """,
+                    (key_id, user_id, secret_hash, secret, name, host_name, created_from_ip, approved_by),
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO api_keys
+                        (key_id, user_id, key_secret_hash, key_secret, name, 
+                         host_name, created_from_ip, is_active, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE, UTC_TIMESTAMP(6))
+                    """,
+                    (key_id, user_id, secret_hash, secret, name, host_name, created_from_ip),
+                )
             conn.commit()
 
         return key_id, secret
@@ -420,13 +448,16 @@ class AuthRepository:
             key_id: The public key identifier.
 
         Returns:
-            user_id if key exists and is active, None otherwise.
+            user_id if key exists, is active, and is approved. None otherwise.
+
+        Raises:
+            KeyPendingApprovalError: If key exists but is not yet approved.
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT user_id, is_active, expires_at
+                SELECT user_id, is_active, approved_at, expires_at
                 FROM api_keys
                 WHERE key_id = %s
                 """,
@@ -434,7 +465,15 @@ class AuthRepository:
             )
             row = cursor.fetchone()
 
-            if not row or not row.get("is_active"):
+            if not row:
+                return None
+
+            # Check if pending approval (key exists but not approved)
+            if row.get("approved_at") is None:
+                raise KeyPendingApprovalError(key_id)
+
+            # Check if active
+            if not row.get("is_active"):
                 return None
 
             # Check expiration
@@ -451,13 +490,16 @@ class AuthRepository:
             key_id: The public key identifier.
 
         Returns:
-            Secret hash if key is active, None otherwise.
+            Secret hash if key is active and approved, None otherwise.
+
+        Raises:
+            KeyPendingApprovalError: If key exists but is not yet approved.
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT key_secret_hash, is_active, expires_at
+                SELECT key_secret_hash, is_active, approved_at, expires_at
                 FROM api_keys
                 WHERE key_id = %s
                 """,
@@ -465,7 +507,14 @@ class AuthRepository:
             )
             row = cursor.fetchone()
 
-            if not row or not row.get("is_active"):
+            if not row:
+                return None
+
+            # Check if pending approval
+            if row.get("approved_at") is None:
+                raise KeyPendingApprovalError(key_id)
+
+            if not row.get("is_active"):
                 return None
 
             # Check expiration
@@ -485,13 +534,16 @@ class AuthRepository:
             key_id: The public key identifier.
 
         Returns:
-            Plaintext secret if key is active, None otherwise.
+            Plaintext secret if key is active and approved, None otherwise.
+
+        Raises:
+            KeyPendingApprovalError: If key exists but is not yet approved.
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT key_secret, is_active, expires_at
+                SELECT key_secret, is_active, approved_at, expires_at
                 FROM api_keys
                 WHERE key_id = %s
                 """,
@@ -499,7 +551,14 @@ class AuthRepository:
             )
             row = cursor.fetchone()
 
-            if not row or not row.get("is_active"):
+            if not row:
+                return None
+
+            # Check if pending approval
+            if row.get("approved_at") is None:
+                raise KeyPendingApprovalError(key_id)
+
+            if not row.get("is_active"):
                 return None
 
             # Check expiration
@@ -562,12 +621,176 @@ class AuthRepository:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT key_id, name, is_active, created_at, last_used_at, expires_at
+                SELECT key_id, name, host_name, is_active, approved_at, 
+                       created_at, created_from_ip, last_used_at, last_used_ip, expires_at
                 FROM api_keys
                 WHERE user_id = %s
                 ORDER BY created_at DESC
                 """,
                 (user_id,),
+            )
+            return list(cursor.fetchall())
+
+    def get_pending_api_keys(self) -> list[dict]:
+        """Get all API keys pending admin approval.
+
+        Returns keys where approved_at IS NULL, ordered by creation time.
+
+        Returns:
+            List of pending key dicts with user info (username, host_name, etc.).
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT k.key_id, k.name, k.host_name, k.created_at, k.created_from_ip,
+                       u.username, u.user_id
+                FROM api_keys k
+                JOIN auth_users u ON k.user_id = u.user_id
+                WHERE k.approved_at IS NULL
+                ORDER BY k.created_at ASC
+                """,
+            )
+            return list(cursor.fetchall())
+
+    def approve_api_key(self, key_id: str, approved_by: str) -> bool:
+        """Approve an API key (make it active and usable).
+
+        Sets approved_at to current time and is_active to TRUE.
+
+        Args:
+            key_id: The public key identifier to approve.
+            approved_by: User ID of the admin approving the key.
+
+        Returns:
+            True if key was approved, False if not found or already approved.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE api_keys 
+                SET approved_at = UTC_TIMESTAMP(6), 
+                    approved_by = %s, 
+                    is_active = TRUE
+                WHERE key_id = %s AND approved_at IS NULL
+                """,
+                (approved_by, key_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_api_key_info(self, key_id: str) -> dict | None:
+        """Get full info about an API key.
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            Dict with key info including username, or None if not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT k.key_id, k.name, k.host_name, k.is_active, k.approved_at,
+                       k.approved_by, k.created_at, k.created_from_ip, 
+                       k.last_used_at, k.last_used_ip, k.expires_at,
+                       u.username, u.user_id, u.user_code
+                FROM api_keys k
+                JOIN auth_users u ON k.user_id = u.user_id
+                WHERE k.key_id = %s
+                """,
+                (key_id,),
+            )
+            return cursor.fetchone()
+
+    def update_api_key_last_used(
+        self, key_id: str, ip_address: str | None = None
+    ) -> None:
+        """Update last_used_at and last_used_ip for an API key.
+
+        Called after successful authentication to track key usage.
+
+        Args:
+            key_id: The public key identifier.
+            ip_address: IP address of the request (optional).
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE api_keys 
+                SET last_used_at = UTC_TIMESTAMP(6), last_used_ip = %s
+                WHERE key_id = %s
+                """,
+                (ip_address, key_id),
+            )
+            conn.commit()
+
+    def delete_expired_pending_keys(self, max_age_days: int = 7) -> int:
+        """Delete pending keys that were never approved.
+
+        Removes keys where approved_at IS NULL and created_at is older
+        than max_age_days.
+
+        Args:
+            max_age_days: Maximum age in days for pending keys (default: 7).
+
+        Returns:
+            Number of keys deleted.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM api_keys
+                WHERE approved_at IS NULL
+                  AND created_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)
+                """,
+                (max_age_days,),
+            )
+            conn.commit()
+            return cursor.rowcount
+
+    def get_all_api_keys(
+        self, include_inactive: bool = False, username: str | None = None
+    ) -> list[dict]:
+        """Get all API keys with filtering options.
+
+        Args:
+            include_inactive: If True, include revoked keys.
+            username: If provided, filter to keys for this username only.
+
+        Returns:
+            List of key info dicts with user details.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            
+            conditions = []
+            params: list = []
+            
+            if not include_inactive:
+                conditions.append("k.is_active = TRUE")
+            
+            if username:
+                conditions.append("u.username = %s")
+                params.append(username)
+            
+            where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+            
+            cursor.execute(
+                f"""
+                SELECT k.key_id, k.name, k.host_name, k.is_active, k.approved_at,
+                       k.created_at, k.created_from_ip, k.last_used_at, k.last_used_ip,
+                       u.username, u.user_id, u.user_code
+                FROM api_keys k
+                JOIN auth_users u ON k.user_id = u.user_id
+                {where_clause}
+                ORDER BY k.created_at DESC
+                """,
+                params,
             )
             return list(cursor.fetchall())
 

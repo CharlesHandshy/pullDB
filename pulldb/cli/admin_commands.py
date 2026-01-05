@@ -841,6 +841,262 @@ def users_show(username: str) -> None:
 
 
 # =============================================================================
+# API Keys Command Group
+# =============================================================================
+
+
+@click.group(name="keys", help="Manage API keys for CLI authentication")
+def keys_group() -> None:
+    """API Keys management command group."""
+    pass
+
+
+@keys_group.command("pending")
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of table",
+)
+def keys_pending(json_out: bool) -> None:
+    """List API keys pending approval.
+
+    Shows keys that have been requested but not yet approved by an admin.
+    """
+    from pulldb.infra.factory import get_auth_repository, get_user_repository
+
+    auth_repo = get_auth_repository()
+    user_repo = get_user_repository()
+
+    pending = auth_repo.get_pending_api_keys()
+
+    # Build username lookup
+    user_ids = list({k["user_id"] for k in pending})
+    user_lookup: dict[str, str] = {}
+    for uid in user_ids:
+        u = user_repo.get_user_by_id(uid)
+        if u:
+            user_lookup[uid] = u.username
+
+    if json_out:
+        import json
+
+        output = []
+        for key in pending:
+            output.append(
+                {
+                    "key_id": key["key_id"],
+                    "username": user_lookup.get(key["user_id"], "unknown"),
+                    "host_name": key.get("host_name"),
+                    "created_from_ip": key.get("created_from_ip"),
+                    "created_at": key["created_at"].isoformat() if key.get("created_at") else None,
+                }
+            )
+        click.echo(json.dumps(output, indent=2))
+        return
+
+    if not pending:
+        click.echo("No pending API keys.")
+        return
+
+    click.echo("Pending API Keys:\n")
+    click.echo(f"{'KEY_ID':<40} {'USERNAME':<15} {'HOSTNAME':<20} {'CREATED':<20}")
+    click.echo("-" * 95)
+
+    for key in pending:
+        username = user_lookup.get(key["user_id"], "unknown")
+        host = key.get("host_name") or "-"
+        created = key.get("created_at")
+        created_str = created.strftime("%Y-%m-%d %H:%M") if created else "-"
+        click.echo(f"{key['key_id']:<40} {username:<15} {host:<20} {created_str:<20}")
+
+    click.echo(f"\nTotal: {len(pending)} pending key(s)")
+    click.echo("\nUse 'pulldb-admin keys approve <key_id>' to approve a key.")
+
+
+@keys_group.command("approve")
+@click.argument("key_id")
+def keys_approve(key_id: str) -> None:
+    """Approve a pending API key.
+
+    After approval, the key can be used for CLI authentication.
+    """
+    from pulldb.infra.factory import get_auth_repository, get_user_repository
+
+    auth_repo = get_auth_repository()
+    user_repo = get_user_repository()
+
+    # Get admin user ID (current system user)
+    import os
+
+    admin_username = os.environ.get("SUDO_USER") or os.environ.get("USER") or "admin"
+    admin_user = user_repo.get_user_by_username(admin_username)
+    if not admin_user:
+        raise click.ClickException(f"Admin user '{admin_username}' not found in pullDB")
+    if not admin_user.is_admin:
+        raise click.ClickException(f"User '{admin_username}' is not an admin")
+
+    # Get key info first
+    key_info = auth_repo.get_api_key_info(key_id)
+    if not key_info:
+        raise click.ClickException(f"API key '{key_id}' not found")
+
+    if key_info.get("approved_at"):
+        raise click.ClickException(f"API key '{key_id}' is already approved")
+
+    # Approve the key
+    success = auth_repo.approve_api_key(key_id, admin_user.user_id)
+    if not success:
+        raise click.ClickException(f"Failed to approve API key '{key_id}'")
+
+    # Get target user info
+    target_user = user_repo.get_user_by_id(key_info["user_id"])
+    target_name = target_user.username if target_user else "unknown"
+    host_name = key_info.get("host_name") or "unknown"
+
+    click.echo(f"✓ API key '{key_id}' approved")
+    click.echo(f"  User: {target_name}")
+    click.echo(f"  Host: {host_name}")
+    click.echo(f"\nThe user can now use the CLI from '{host_name}'.")
+
+
+@keys_group.command("revoke")
+@click.argument("key_id")
+@click.option(
+    "--reason",
+    default=None,
+    help="Reason for revocation (logged for audit)",
+)
+def keys_revoke(key_id: str, reason: str | None) -> None:
+    """Revoke an API key.
+
+    The key will no longer work for authentication.
+    """
+    from pulldb.infra.factory import get_auth_repository, get_user_repository
+
+    auth_repo = get_auth_repository()
+    user_repo = get_user_repository()
+
+    # Get key info first
+    key_info = auth_repo.get_api_key_info(key_id)
+    if not key_info:
+        raise click.ClickException(f"API key '{key_id}' not found")
+
+    # Revoke the key
+    success = auth_repo.revoke_api_key(key_id)
+    if not success:
+        raise click.ClickException(f"Failed to revoke API key '{key_id}'")
+
+    # Get target user info
+    target_user = user_repo.get_user_by_id(key_info["user_id"])
+    target_name = target_user.username if target_user else "unknown"
+    host_name = key_info.get("host_name") or "unknown"
+
+    click.echo(f"✓ API key '{key_id}' revoked")
+    click.echo(f"  User: {target_name}")
+    click.echo(f"  Host: {host_name}")
+    if reason:
+        click.echo(f"  Reason: {reason}")
+
+
+@keys_group.command("list")
+@click.argument("username", required=False)
+@click.option(
+    "--all",
+    "show_all",
+    is_flag=True,
+    help="Show all keys (including revoked)",
+)
+@click.option(
+    "--json",
+    "json_out",
+    is_flag=True,
+    help="Output JSON instead of table",
+)
+def keys_list(username: str | None, show_all: bool, json_out: bool) -> None:
+    """List API keys for a user (or all users).
+
+    Without arguments, lists all active keys.
+    With USERNAME, lists keys for that user only.
+    """
+    from pulldb.infra.factory import get_auth_repository, get_user_repository
+
+    auth_repo = get_auth_repository()
+    user_repo = get_user_repository()
+
+    # If username provided, get user_id
+    user_id: str | None = None
+    if username:
+        user = user_repo.get_user_by_username(username)
+        if not user:
+            raise click.ClickException(f"User '{username}' not found")
+        user_id = user.user_id
+
+    # Get keys
+    keys = auth_repo.get_all_api_keys(
+        user_id=user_id,
+        include_inactive=show_all,
+    )
+
+    # Build username lookup
+    user_ids = list({k["user_id"] for k in keys})
+    user_lookup: dict[str, str] = {}
+    for uid in user_ids:
+        u = user_repo.get_user_by_id(uid)
+        if u:
+            user_lookup[uid] = u.username
+
+    if json_out:
+        import json
+
+        output = []
+        for key in keys:
+            output.append(
+                {
+                    "key_id": key["key_id"],
+                    "username": user_lookup.get(key["user_id"], "unknown"),
+                    "host_name": key.get("host_name"),
+                    "is_active": bool(key.get("is_active")),
+                    "approved": key.get("approved_at") is not None,
+                    "last_used_at": key["last_used_at"].isoformat() if key.get("last_used_at") else None,
+                    "created_at": key["created_at"].isoformat() if key.get("created_at") else None,
+                }
+            )
+        click.echo(json.dumps(output, indent=2))
+        return
+
+    if not keys:
+        if username:
+            click.echo(f"No API keys found for user '{username}'.")
+        else:
+            click.echo("No API keys found.")
+        return
+
+    click.echo("API Keys:\n")
+    click.echo(f"{'KEY_ID':<40} {'USERNAME':<15} {'HOST':<15} {'STATUS':<12} {'LAST_USED':<20}")
+    click.echo("-" * 102)
+
+    for key in keys:
+        uname = user_lookup.get(key["user_id"], "unknown")
+        host = (key.get("host_name") or "-")[:15]
+        
+        # Determine status
+        if not key.get("is_active"):
+            status = "revoked"
+        elif key.get("approved_at"):
+            status = "active"
+        else:
+            status = "pending"
+        
+        last_used = key.get("last_used_at")
+        last_used_str = last_used.strftime("%Y-%m-%d %H:%M") if last_used else "never"
+        
+        click.echo(f"{key['key_id']:<40} {uname:<15} {host:<15} {status:<12} {last_used_str:<20}")
+
+    click.echo(f"\nTotal: {len(keys)} key(s)")
+
+
+# =============================================================================
 # Disallow Command Group
 # =============================================================================
 

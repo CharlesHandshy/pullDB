@@ -510,3 +510,25 @@ class LockedUserError(Exception):
         self.username = username
         self.action = action
         super().__init__(f"Cannot {action} locked user: {username}")
+
+
+class KeyPendingApprovalError(Exception):
+    """Raised when attempting to use an API key that is pending admin approval.
+
+    New API keys created via request-host-key are inactive until an admin
+    approves them. This error indicates the key exists but cannot be used yet.
+
+    Attributes:
+        key_id: The public key identifier that is pending approval.
+    """
+
+    def __init__(self, key_id: str) -> None:
+        """Initialize key pending approval error.
+
+        Args:
+            key_id: The public key identifier (key_xxxxx...).
+        """
+        self.key_id = key_id
+        super().__init__(
+            f"API key pending approval: {key_id}. Contact an administrator to approve your key."
+        )

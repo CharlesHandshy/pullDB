@@ -62,6 +62,7 @@ from pulldb.cli.admin_commands import (
     disallow_group,
     hosts_group,
     jobs_group,
+    keys_group,
     run_retention_cleanup_cmd,
     users_group,
 )
@@ -177,6 +178,7 @@ cli.add_command(cleanup_cmd)
 cli.add_command(run_retention_cleanup_cmd)
 cli.add_command(hosts_group)
 cli.add_command(users_group)
+cli.add_command(keys_group)
 cli.add_command(disallow_group)
 
 

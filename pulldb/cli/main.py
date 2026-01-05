@@ -2027,6 +2027,8 @@ def register_cmd(ctx: click.Context, password: str) -> None:
     Example:
         pulldb register
     """
+    import socket
+
     username = ctx.obj.get("username") or _get_calling_username()
     base_url, timeout = _load_api_config()
 
@@ -2034,11 +2036,15 @@ def register_cmd(ctx: click.Context, password: str) -> None:
     if len(password) < 8:
         raise click.ClickException("Password must be at least 8 characters")
 
+    # Auto-detect hostname for tracking
+    host_name = socket.gethostname()
+
     # Call API to register
     url = f"{base_url}/api/auth/register"
     payload = {
         "username": username,
         "password": password,
+        "host_name": host_name,
     }
 
     try:
@@ -2168,6 +2174,111 @@ def setpass_cmd(ctx: click.Context, current_password: str, new_password: str) ->
         else:
             error_msg = _format_api_error(response)
             raise click.ClickException(f"Password change failed: {error_msg}")
+
+    except RequestException as exc:
+        raise click.ClickException(f"Cannot connect to API: {exc}") from exc
+
+
+@cli.command("request-host-key", help="Request an API key for a new host machine")
+@click.option(
+    "--password",
+    prompt=True,
+    hide_input=True,
+    help="Your current password",
+)
+@click.option(
+    "--host-name",
+    default=None,
+    help="Hostname for this machine (auto-detected if not provided)",
+)
+@click.pass_context
+def request_host_key_cmd(
+    ctx: click.Context, password: str, host_name: str | None
+) -> None:
+    """Request an API key for a new host machine.
+
+    Use this command when you already have a pullDB account but need
+    to access pullDB from a different machine. The new API key will
+    be created in a pending state and must be approved by an
+    administrator before it can be used.
+
+    After requesting:
+    1. Credentials are saved to ~/.pulldb/credentials
+    2. Contact an administrator to approve the key
+    3. Once approved, you can use 'pulldb restore' from this machine
+
+    If you don't have an account yet, use 'pulldb register' instead.
+
+    Example:
+        pulldb request-host-key
+        pulldb request-host-key --host-name="my-laptop"
+    """
+    import socket
+
+    username = ctx.obj.get("username") or _get_calling_username()
+    base_url, timeout = _load_api_config()
+
+    # Auto-detect hostname if not provided
+    if not host_name:
+        host_name = socket.gethostname()
+
+    # Call API to request host key
+    url = f"{base_url}/api/auth/request-host-key"
+    payload = {
+        "username": username,
+        "password": password,
+        "host_name": host_name,
+    }
+
+    try:
+        response = requests_module.post(url, json=payload, timeout=timeout)
+
+        if response.status_code == 200:
+            data = response.json()
+            api_key = data.get("api_key")
+            api_secret = data.get("api_secret")
+            user_code = data.get("user_code", "unknown")
+
+            click.echo("✓ API key requested successfully!")
+            click.echo("")
+            click.echo(f"  Username:  {username}")
+            click.echo(f"  User Code: {user_code}")
+            click.echo(f"  Hostname:  {host_name}")
+
+            # Save API credentials to config file
+            if api_key and api_secret:
+                from pulldb.cli.auth import save_credentials_to_file
+
+                try:
+                    save_credentials_to_file(api_key, api_secret)
+                    click.echo("")
+                    click.echo("✓ API credentials saved to ~/.pulldb/credentials")
+                except Exception as exc:
+                    click.echo("")
+                    click.echo(f"⚠ Could not save credentials: {exc}")
+                    click.echo("")
+                    click.echo("Save these credentials manually:")
+                    click.echo(f"  PULLDB_API_KEY={api_key}")
+                    click.echo(f"  PULLDB_API_SECRET={api_secret}")
+
+            click.echo("")
+            click.echo("⚠ Your API key is PENDING APPROVAL")
+            click.echo("Contact an administrator to approve your key.")
+            click.echo("Commands will fail with 'API key pending approval' until approved.")
+
+        elif response.status_code == 401:
+            raise click.ClickException("Invalid username or password.")
+        elif response.status_code == 403:
+            raise click.ClickException(
+                "Your account is disabled. Contact an administrator."
+            )
+        elif response.status_code == 503:
+            raise click.ClickException(
+                "Authentication service not available. Contact an administrator."
+            )
+        else:
+            error_msg = _format_api_error(response)
+            raise click.ClickException(f"Request failed: {error_msg}")
 
     except RequestException as exc:
         raise click.ClickException(f"Cannot connect to API: {exc}") from exc
