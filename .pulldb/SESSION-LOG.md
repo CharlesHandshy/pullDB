@@ -6,6 +6,52 @@
 
 ---
 
+## 2026-01-05 | Multi-Host API Key - Documentation Complete
+
+### Context
+Final documentation updates for the multi-host API key system.
+
+### What Was Done
+- Updated CLI Reference (`docs/hca/pages/cli-reference.md`):
+  - Added `register`, `request-host-key`, `setpass`, `hosts` to Quick Reference
+  - Added `pulldb-admin keys pending/approve/revoke/list` to Quick Reference
+  - Added full sections documenting all authentication commands
+
+- Updated Admin Guide (`docs/hca/pages/admin-guide.md`):
+  - Added User Management section with lifecycle diagram
+  - Added API Key Management section with approval workflow
+  - Documented security considerations and two-step activation
+
+- Updated Auth Guide (`docs/hca/pages/auth-guide.md`):
+  - Updated Overview to include API Key as third auth method
+  - Added complete API Key Authentication section
+  - Updated CLI Authentication to reference API keys as preferred
+  - Added troubleshooting entries for key errors
+
+### Git Commits (feature/multi-host-api-keys)
+1. `ce3c08a` - feat: multi-host API key management with admin approval
+2. `8b2033c` - feat(security): harden all CLI endpoints with API key auth
+3. `ffd149b` - feat(admin): notify about pending API keys when enabling user
+4. `2dfad26` - feat(web): add API Keys management page for admins
+5. `d1f7cab` - docs(cli): document authentication commands in CLI reference
+6. `013c600` - docs: add User Management and API Key sections to guides
+
+### Feature Complete
+All components implemented:
+- ✅ Schema migration 003 (host tracking columns)
+- ✅ Auth repository methods
+- ✅ KeyPendingApprovalError exception
+- ✅ API auth handles pending approval
+- ✅ request-host-key endpoint + CLI command
+- ✅ Register with host tracking
+- ✅ Admin API + CLI commands
+- ✅ Secure CLI endpoints (~20+ endpoints)
+- ✅ Admin notification for pending keys
+- ✅ Web UI key management page
+- ✅ Documentation (CLI, Admin, Auth guides)
+
+---
+
 ## 2026-01-05 | Multi-Host API Key Security Hardening (Complete)
 
 ### Context

@@ -12,11 +12,178 @@ This guide covers system administration tasks: schema migrations, cleanup operat
 
 ## Table of Contents
 
-1. [Schema Migrations](#schema-migrations)
-2. [Staging Cleanup](#staging-cleanup)
-3. [Settings Management](#settings-management)
-4. [Health Monitoring](#health-monitoring)
-5. [Troubleshooting](#troubleshooting)
+1. [User Management](#user-management)
+2. [API Key Management](#api-key-management)
+3. [Schema Migrations](#schema-migrations)
+4. [Staging Cleanup](#staging-cleanup)
+5. [Settings Management](#settings-management)
+6. [Health Monitoring](#health-monitoring)
+7. [Troubleshooting](#troubleshooting)
+
+---
+
+## User Management
+
+Administrators can manage users via CLI or Web UI.
+
+### User Lifecycle
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  1. User registers (CLI or Web)                                   │
+│        pulldb register OR /web/register                          │
+│                                                                   │
+│  2. User is created in DISABLED state                            │
+│        (Cannot use CLI without API key approval)                 │
+│                                                                   │
+│  3. Admin enables user                                           │
+│        pulldb-admin users enable <username>                      │
+│                                                                   │
+│  4. Admin approves pending API keys                              │
+│        pulldb-admin keys approve <key_id>                        │
+│                                                                   │
+│  5. User can now use CLI and API                                 │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### User Commands
+
+```bash
+# List all users
+pulldb-admin users list
+
+# Enable a disabled user
+pulldb-admin users enable jsmith
+# Shows if user has pending API keys that need approval
+
+# Disable a user (revokes access)
+pulldb-admin users disable jsmith
+
+# Force password reset on next login
+pulldb-admin users force-reset jsmith
+
+# Promote to admin
+pulldb-admin users promote jsmith
+
+# Demote from admin
+pulldb-admin users demote jsmith
+```
+
+### Web UI User Management
+
+Navigate to **Administration > Users** to:
+- View all users with status
+- Enable/disable users
+- Promote/demote admins
+
+---
+
+## API Key Management
+
+pullDB uses HMAC-signed API keys for secure CLI authentication across multiple hosts. Each key is tied to a specific host and requires admin approval before use.
+
+### How API Keys Work
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  CLI Request with API Key                                         │
+│                                                                   │
+│  1. CLI sends signed request:                                    │
+│     X-API-Key: abc123...                                         │
+│     X-Timestamp: 1737123456                                      │
+│     X-Signature: HMAC-SHA256(method|path|timestamp)              │
+│                                                                   │
+│  2. Server validates:                                            │
+│     - Key exists and not revoked                                 │
+│     - Key is approved (not pending)                              │
+│     - Timestamp within 5 minute window                           │
+│     - Signature matches                                          │
+│                                                                   │
+│  3. Request proceeds as authenticated user                       │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Key States
+
+| State | Description | CLI Access |
+|-------|-------------|------------|
+| **pending** | Awaiting admin approval | ❌ Blocked |
+| **approved** | Admin approved, active | ✅ Works |
+| **revoked** | Admin revoked | ❌ Blocked |
+
+### Admin CLI Commands
+
+```bash
+# List all pending keys (requires approval)
+pulldb-admin keys pending
+
+# View all keys for all users
+pulldb-admin keys list
+
+# View keys for specific user
+pulldb-admin keys list --user jsmith
+
+# Approve a pending key
+pulldb-admin keys approve <key_id>
+
+# Revoke an active key
+pulldb-admin keys revoke <key_id>
+```
+
+### Key Information Displayed
+
+When listing keys, you'll see:
+- **Key ID**: First 8 characters for identification
+- **Host Name**: Host where key was registered
+- **Created From IP**: IP address of registration request
+- **Last Used IP**: IP address of most recent use
+- **Status**: pending, approved, or revoked
+- **Created/Approved**: Timestamps
+
+### Web UI Key Management
+
+Navigate to **Administration > API Keys** to:
+- View all pending keys with user/host info
+- Approve or reject keys with one click
+- See pending count badge in Quick Access
+
+### User Key Registration Flow
+
+When a user runs CLI commands from a new host:
+
+```bash
+# User's first CLI command from new host
+$ pulldb status
+API key required for this host. Run: pulldb request-host-key
+
+# User requests key for this host
+$ pulldb request-host-key
+✓ API key requested for host: devserver
+  Key ID: abc12345...
+  Status: Pending admin approval
+  
+Contact an administrator to approve your key.
+
+# After admin approves
+$ pulldb status
+[Active Jobs: 0] [Queued: 2]
+```
+
+### Security Considerations
+
+1. **One key per host**: Users need separate keys for each machine
+2. **IP tracking**: Created and last-used IPs are logged
+3. **Manual approval**: No auto-approval, admin must review
+4. **Revocation**: Instantly blocks access, no grace period
+5. **Host binding**: Keys cannot be moved between hosts
+
+### Two-Step User Activation
+
+For new users, there are TWO steps:
+1. **Enable user**: `pulldb-admin users enable <username>`
+2. **Approve key**: `pulldb-admin keys approve <key_id>`
+
+This is intentional—user activation and host authorization are separate security decisions.
 
 ---
 
