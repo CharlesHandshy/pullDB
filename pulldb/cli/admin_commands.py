@@ -786,7 +786,7 @@ def users_list(json_out: bool) -> None:
 @click.argument("username")
 def users_enable(username: str) -> None:
     """Enable a user (allow new jobs)."""
-    from pulldb.infra.factory import get_user_repository
+    from pulldb.infra.factory import get_auth_repository, get_user_repository
 
     repo = get_user_repository()
     try:
@@ -795,6 +795,25 @@ def users_enable(username: str) -> None:
         raise click.ClickException(str(e)) from e
 
     click.echo(f"✓ User {username} enabled")
+
+    # Check if user has pending API keys that also need approval
+    try:
+        auth_repo = get_auth_repository()
+        user = repo.get_user_by_username(username)
+        if user:
+            user_keys = auth_repo.get_api_keys_for_user(user.user_id)
+            pending_keys = [k for k in user_keys if k.get("approved_at") is None]
+            if pending_keys:
+                click.echo("")
+                click.echo(f"⚠ User has {len(pending_keys)} pending API key(s):")
+                for key in pending_keys:
+                    host = key.get("host_name") or "unknown"
+                    click.echo(f"   - {key['key_id']} (host: {host})")
+                click.echo("")
+                click.echo("Use 'pulldb-admin keys approve <key_id>' to approve CLI access.")
+    except Exception:
+        # Don't fail the enable command if key check fails
+        pass
 
 
 @users_group.command("disable")
