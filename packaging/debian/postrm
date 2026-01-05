@@ -24,20 +24,39 @@ cleanup_systemd() {
     if command -v systemctl >/dev/null 2>&1; then
         systemctl stop pulldb-worker.service >/dev/null 2>&1 || true
         systemctl disable pulldb-worker.service >/dev/null 2>&1 || true
-        # Stop any running template instances (worker@1, worker@2, etc.)
+        # Stop and disable any running template instances (worker@1, worker@2, etc.)
         systemctl stop 'pulldb-worker@*.service' >/dev/null 2>&1 || true
+        systemctl disable 'pulldb-worker@*.service' >/dev/null 2>&1 || true
         systemctl stop pulldb-api.service >/dev/null 2>&1 || true
         systemctl disable pulldb-api.service >/dev/null 2>&1 || true
         systemctl stop pulldb-web.service >/dev/null 2>&1 || true
         systemctl disable pulldb-web.service >/dev/null 2>&1 || true
         systemctl stop pulldb-retention.timer >/dev/null 2>&1 || true
         systemctl disable pulldb-retention.timer >/dev/null 2>&1 || true
+        
+        # Remove main unit files
         rm -f "${WORKER_UNIT_DEST}" "${WORKER_TEMPLATE_DEST}" "${API_UNIT_DEST}" "${WEB_UNIT_DEST}" || true
         rm -f "${RETENTION_SERVICE_DEST}" "${RETENTION_TIMER_DEST}" || true
+        
+        # Remove template instance symlinks (pulldb-worker@1.service, @2, @3, etc.)
+        rm -f /etc/systemd/system/pulldb-worker@[0-9]*.service 2>/dev/null || true
+        
+        # Remove any service override directories
+        rm -rf /etc/systemd/system/pulldb-worker.service.d 2>/dev/null || true
+        rm -rf /etc/systemd/system/pulldb-api.service.d 2>/dev/null || true
+        rm -rf /etc/systemd/system/pulldb-web.service.d 2>/dev/null || true
+        rm -rf /etc/systemd/system/pulldb-retention.service.d 2>/dev/null || true
+        
+        # Remove multi-user.target.wants symlinks
+        rm -f /etc/systemd/system/multi-user.target.wants/pulldb-*.service 2>/dev/null || true
+        rm -f /etc/systemd/system/multi-user.target.wants/pulldb-*.timer 2>/dev/null || true
+        
         systemctl daemon-reload || true
     else
         rm -f "${WORKER_UNIT_DEST}" "${WORKER_TEMPLATE_DEST}" "${API_UNIT_DEST}" "${WEB_UNIT_DEST}" || true
         rm -f "${RETENTION_SERVICE_DEST}" "${RETENTION_TIMER_DEST}" || true
+        rm -f /etc/systemd/system/pulldb-worker@[0-9]*.service 2>/dev/null || true
+        rm -rf /etc/systemd/system/pulldb-*.service.d 2>/dev/null || true
     fi
 }
 
