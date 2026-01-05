@@ -349,23 +349,31 @@ check_database_schema() {
         }
     fi
     
+    # Check if schema_migrations table exists (indicates tracked schema)
+    TRACKING_EXISTS=0
+    if mysql -N -e "SELECT 1 FROM information_schema.tables WHERE table_schema='pulldb_service' AND table_name='schema_migrations'" 2>/dev/null | grep -q 1; then
+        TRACKING_EXISTS=1
+    fi
+    
     # Check if jobs table exists (indicates schema is applied - not a fresh install)
     SCHEMA_EXISTS=0
     if mysql -N -e "SELECT 1 FROM information_schema.tables WHERE table_schema='pulldb_service' AND table_name='jobs'" 2>/dev/null | grep -q 1; then
         SCHEMA_EXISTS=1
-        echo "  Database schema already present - checking for migrations..."
     fi
     
     if [ "$SCHEMA_EXISTS" = "0" ]; then
-        # FRESH INSTALL: Apply all schema files in order
+        # FRESH INSTALL: Apply all schema files in order and track them
         if [ -d "${SCHEMA_DIR}" ]; then
             echo "  Fresh install: Applying schema files..."
             for sql_file in $(ls -1 "${SCHEMA_DIR}"/*.sql 2>/dev/null | sort); do
-                echo "    Applying $(basename "$sql_file")..."
+                filename=$(basename "$sql_file")
+                echo "    Applying ${filename}..."
                 mysql pulldb_service < "$sql_file" || {
-                    echo "  FATAL: Failed to apply $(basename "$sql_file")"
+                    echo "  FATAL: Failed to apply ${filename}"
                     exit 1
                 }
+                # Track this migration (schema_migrations table is created by 00001)
+                mysql pulldb_service -e "INSERT IGNORE INTO schema_migrations (filename) VALUES ('${filename}')" 2>/dev/null || true
             done
             echo "  Database schema applied successfully"
             
@@ -379,11 +387,39 @@ check_database_schema() {
             exit 1
         fi
     else
-        # UPGRADE: Run dbmate migrations if available
-        # Migrations folder is separate from schema - only contains incremental changes
-        DBMATE_MIGRATIONS_DIR="${INSTALL_PREFIX}/schema/migrations"
-        if [ -d "${DBMATE_MIGRATIONS_DIR}" ] && [ "$(ls -A ${DBMATE_MIGRATIONS_DIR}/*.sql 2>/dev/null)" ]; then
-            run_database_migrations "${DBMATE_MIGRATIONS_DIR}"
+        # UPGRADE: Apply any new schema files not yet tracked
+        echo "  Database schema already present - checking for new migrations..."
+        
+        # Ensure schema_migrations table exists for tracking
+        if [ "$TRACKING_EXISTS" = "0" ]; then
+            echo "  Creating migration tracking table..."
+            mysql pulldb_service -e "CREATE TABLE IF NOT EXISTS schema_migrations (filename VARCHAR(255) PRIMARY KEY, applied_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6))"
+            # Mark all existing files as applied (they were applied before tracking existed)
+            for sql_file in $(ls -1 "${SCHEMA_DIR}"/*.sql 2>/dev/null | sort); do
+                filename=$(basename "$sql_file")
+                mysql pulldb_service -e "INSERT IGNORE INTO schema_migrations (filename) VALUES ('${filename}')" 2>/dev/null || true
+            done
+            echo "  Initialized migration tracking with existing schema files"
+        fi
+        
+        # Apply any new migrations not in tracking table
+        PENDING_COUNT=0
+        for sql_file in $(ls -1 "${SCHEMA_DIR}"/*.sql 2>/dev/null | sort); do
+            filename=$(basename "$sql_file")
+            # Check if already applied
+            if ! mysql -N pulldb_service -e "SELECT 1 FROM schema_migrations WHERE filename='${filename}'" 2>/dev/null | grep -q 1; then
+                echo "    Applying ${filename}..."
+                mysql pulldb_service < "$sql_file" || {
+                    echo "  FATAL: Failed to apply ${filename}"
+                    exit 1
+                }
+                mysql pulldb_service -e "INSERT INTO schema_migrations (filename) VALUES ('${filename}')"
+                PENDING_COUNT=$((PENDING_COUNT + 1))
+            fi
+        done
+        
+        if [ "$PENDING_COUNT" -gt 0 ]; then
+            echo "  Applied ${PENDING_COUNT} new migration(s)"
         else
             echo "  No pending migrations found - schema up to date"
         fi
@@ -391,49 +427,10 @@ check_database_schema() {
 }
 
 run_database_migrations() {
-    echo "  Running database migrations..."
-    
-    MIGRATION_DIR="$1"
-    
-    # Check if dbmate is installed
-    if ! command -v dbmate >/dev/null 2>&1; then
-        echo "  FATAL: dbmate not found - required for database migrations"
-        echo "  Install with: curl -fsSL -o /usr/local/bin/dbmate https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-amd64 && chmod +x /usr/local/bin/dbmate"
-        exit 1
-    fi
-    
-    if [ ! -d "${MIGRATION_DIR}" ]; then
-        echo "  FATAL: Migration directory not found: ${MIGRATION_DIR}"
-        exit 1
-    fi
-    
-    # Build DATABASE_URL from .env or defaults
-    # dbmate expects mysql://user:pass@host:port/dbname format
-    DB_HOST="${PULLDB_MYSQL_HOST:-localhost}"
-    DB_PORT="${PULLDB_MYSQL_PORT:-3306}"
-    DB_NAME="${PULLDB_MYSQL_DATABASE:-pulldb_service}"
-    
-    # For migrations, we need root or a privileged user
-    # Try socket connection first (common on same host)
-    if mysql -N -e "SELECT 1" >/dev/null 2>&1; then
-        # Socket connection works - use unix socket
-        # dbmate format for unix socket: mysql://user@/dbname?socket=/path/to/socket
-        export DATABASE_URL="mysql://root@/${DB_NAME}?socket=/var/run/mysqld/mysqld.sock"
-    else
-        echo "  FATAL: Cannot connect to MySQL for migrations"
-        exit 1
-    fi
-    
-    # Run dbmate migrations - HARD FAIL on error
-    echo "  Executing: dbmate -d ${MIGRATION_DIR} up"
-    dbmate -d "${MIGRATION_DIR}" up || {
-        echo "  FATAL: Database migration failed!"
-        echo "  Package installation cannot continue with database in inconsistent state."
-        echo "  Please check migration logs and resolve manually."
-        exit 1
-    }
-    
-    echo "  Database migrations completed successfully"
+    # DEPRECATED: This function used dbmate for migrations.
+    # We now use schema_migrations tracking table with direct SQL application.
+    # Kept for reference but no longer called.
+    echo "  Note: run_database_migrations is deprecated - using schema_migrations table"
 }
 
 create_admin_user() {
