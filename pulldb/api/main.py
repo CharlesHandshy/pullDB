@@ -375,6 +375,7 @@ async def health() -> dict[str, str]:
 @app.get("/api/users/{username}", response_model=UserInfoResponse)
 async def get_user_info(
     username: str,
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
 ) -> UserInfoResponse:
     """Get user info by username.
@@ -797,6 +798,7 @@ class HostsListResponse(pydantic.BaseModel):
 
 @app.get("/api/hosts", response_model=HostsListResponse)
 async def list_hosts(
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
 ) -> HostsListResponse:
     """List available database hosts.
@@ -823,7 +825,10 @@ async def list_hosts(
 
 
 @app.get("/api/status")
-async def status_endpoint(state: APIState = Depends(get_api_state)) -> dict[str, t.Any]:
+async def status_endpoint(
+    user: AuthUser,
+    state: APIState = Depends(get_api_state),
+) -> dict[str, t.Any]:
     def _collect() -> dict[str, t.Any]:
         jobs = state.job_repo.get_active_jobs()
         active_count = len(jobs)
@@ -839,8 +844,8 @@ async def status_endpoint(state: APIState = Depends(get_api_state)) -> dict[str,
 @app.post("/api/jobs", status_code=status.HTTP_201_CREATED, response_model=JobResponse)
 async def submit_job(
     req: JobRequest,
+    authenticated_user: AuthUser,
     state: APIState = Depends(get_api_state),
-    authenticated_user: OptionalUser = None,
 ) -> JobResponse:
     """Submit a new restore job.
 
@@ -860,6 +865,7 @@ async def submit_job(
     response_model=list[JobSummary],
 )
 async def list_jobs(
+    user: AuthUser,
     limit: int = fastapi.Query(DEFAULT_STATUS_LIMIT, ge=1, le=MAX_STATUS_LIMIT),
     active: bool = False,
     history: bool = False,
@@ -874,6 +880,7 @@ async def list_jobs(
     response_model=list[JobSummary],
 )
 async def list_active_jobs(
+    user: AuthUser,
     limit: int = fastapi.Query(DEFAULT_STATUS_LIMIT, ge=1, le=MAX_STATUS_LIMIT),
     state: APIState = Depends(get_api_state),
 ) -> list[JobSummary]:
@@ -916,6 +923,7 @@ def _get_user_last_job(state: APIState, user_code: str) -> UserLastJobResponse:
 @app.get("/api/users/{user_code}/last-job")
 async def get_user_last_job(
     user_code: str,
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
 ) -> UserLastJobResponse:
     """Get the most recently submitted job for a user.
@@ -1035,6 +1043,7 @@ def _resolve_job_id(state: APIState, prefix: str) -> JobResolveResponse:
 )
 async def resolve_job_id(
     prefix: str,
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
 ) -> JobResolveResponse:
     """Resolve a job ID prefix to full job ID.
@@ -1298,7 +1307,7 @@ async def get_paginated_jobs(
     filter_submitted_at: str | None = fastapi.Query(None, alias="filter_submitted_at", description="Filter by date (MM/DD/YYYY, wildcards: *)"),
     days: int = fastapi.Query(30, ge=1, le=365, description="History retention days"),
     state: APIState = fastapi.Depends(get_api_state),
-    user: OptionalUser = None,
+    user: AuthUser = None,
 ) -> PaginatedJobsResponse:
     """Get paginated jobs for LazyTable widget.
 
@@ -1332,6 +1341,7 @@ async def get_paginated_jobs(
 
 @app.get("/api/jobs/paginated/distinct")
 async def get_distinct_values(
+    user: AuthUser,
     column: str = fastapi.Query(..., description="Column to get distinct values for"),
     view: str = fastapi.Query("active", description="View: 'active' or 'history'"),
     filter_status: str | None = fastapi.Query(None, description="Filter by status (comma-separated)"),
@@ -1419,6 +1429,7 @@ async def get_distinct_values(
 
 @app.get("/api/jobs/search")
 async def search_jobs(
+    user: AuthUser,
     q: str = fastapi.Query(..., min_length=4, description="Search query (min 4 chars)"),
     limit: int = fastapi.Query(50, ge=1, le=200, description="Max results"),
     exact: bool = fastapi.Query(
@@ -1495,6 +1506,7 @@ def _get_last_job_by_user(state: APIState, user_code: str) -> LastJobResponse:
 
 @app.get("/api/jobs/my-last")
 async def get_my_last_job(
+    user: AuthUser,
     user_code: str = fastapi.Query(..., description="User code to look up"),
     state: APIState = fastapi.Depends(get_api_state),
 ) -> LastJobResponse:
@@ -1590,6 +1602,7 @@ def _get_job_history(
     response_model=list[JobHistoryItem],
 )
 async def list_job_history(
+    user: AuthUser,
     limit: int = fastapi.Query(DEFAULT_STATUS_LIMIT, ge=1, le=MAX_STATUS_LIMIT),
     days: int = fastapi.Query(
         DEFAULT_HISTORY_RETENTION_DAYS,
@@ -1676,6 +1689,7 @@ def _get_single_job(state: APIState, job_id: str) -> JobSummary:
 )
 async def get_job(
     job_id: str,
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
 ) -> JobSummary:
     """Get a single job by ID.
@@ -1692,6 +1706,7 @@ async def get_job(
 )
 async def list_job_events(
     job_id: str,
+    user: AuthUser,
     since_id: int | None = None,
     state: APIState = Depends(get_api_state),
 ) -> list[JobEventResponse]:
@@ -1805,6 +1820,7 @@ def _get_job_profile(state: APIState, job_id: str) -> JobProfileResponse:
 )
 async def get_job_profile(
     job_id: str,
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
 ) -> JobProfileResponse:
     """Get performance profile for a job.
@@ -3611,6 +3627,7 @@ def _search_customers_dropdown(
 
 @app.get("/api/dropdown/customers", response_model=DropdownSearchResponse)
 async def search_customers_dropdown(
+    user: AuthUser,
     q: str = fastapi.Query(
         ..., min_length=5, description="Search query (min 5 chars)"
     ),
@@ -3654,6 +3671,7 @@ def _search_users_dropdown(
 
 @app.get("/api/dropdown/users", response_model=DropdownSearchResponse)
 async def search_users_dropdown(
+    user: AuthUser,
     q: str = fastapi.Query(
         ..., min_length=3, description="Search query (min 3 chars)"
     ),
@@ -3695,6 +3713,7 @@ def _search_hosts_dropdown(
 
 @app.get("/api/dropdown/hosts", response_model=DropdownSearchResponse)
 async def search_hosts_dropdown(
+    user: AuthUser,
     q: str = fastapi.Query(
         ..., min_length=3, description="Search query (min 3 chars)"
     ),
@@ -3805,6 +3824,7 @@ def _search_backups(
 
 @app.get("/api/customers/search", response_model=CustomerSearchResponse)
 async def search_customers_api(
+    user: AuthUser,
     q: str = fastapi.Query(..., min_length=1, description="Search query or wildcard pattern"),
     limit: int = fastapi.Query(100, ge=1, le=500, description="Max results"),
 ) -> CustomerSearchResponse:
@@ -3841,6 +3861,7 @@ async def search_customers_api(
 
 @app.get("/api/backups/search", response_model=BackupSearchResponse)
 async def search_backups(
+    user: AuthUser,
     customer: str = fastapi.Query(..., min_length=1, description="Customer name or pattern (supports * and ? wildcards)"),
     environment: str = fastapi.Query("both", description="S3 environment: staging, prod, or both"),
     date_from: str | None = fastapi.Query(None, description="Filter backups from date (YYYYMMDD). Default: 7 days ago"),

@@ -81,10 +81,18 @@ def _get_user_info(username: str) -> tuple[str, str | None]:
     Returns:
         Tuple of (username, user_code) where user_code may be None if not found.
     """
+    from pulldb.cli.auth import has_api_credentials
+    
+    # Skip API call if no credentials - user is likely registering
+    if not has_api_credentials():
+        return username, None
+    
     try:
         base_url, timeout = _load_api_config()
-        url = f"{base_url}/api/users/{username}"
-        response = requests_module.get(url, timeout=timeout)
+        path = f"/api/users/{username}"
+        url = f"{base_url}{path}"
+        headers = get_auth_headers(method="GET", path=path, body=None)
+        response = requests_module.get(url, headers=headers, timeout=timeout)
         if response.status_code == 200:
             data = response.json()
             return username, data.get("user_code")
@@ -113,11 +121,22 @@ def _get_user_state(username: str) -> tuple[str, str | None, bool]:
         - user_code is the user's code if registered, else None
         - has_password indicates if password is set (for setpass flow)
     """
+    from pulldb.cli.auth import has_api_credentials
+    
+    # Skip API call if no credentials - user is likely registering
+    if not has_api_credentials():
+        return UserState.NOT_REGISTERED, None, False
+    
     try:
         base_url, timeout = _load_api_config()
-        url = f"{base_url}/api/users/{username}"
-        response = requests_module.get(url, timeout=timeout)
+        path = f"/api/users/{username}"
+        url = f"{base_url}{path}"
+        headers = get_auth_headers(method="GET", path=path, body=None)
+        response = requests_module.get(url, headers=headers, timeout=timeout)
         if response.status_code == 404:
+            return UserState.NOT_REGISTERED, None, False
+        if response.status_code == 401:
+            # No valid credentials or pending approval - treat as not registered
             return UserState.NOT_REGISTERED, None, False
         if response.status_code == 200:
             data = response.json()
@@ -175,9 +194,11 @@ def _resolve_job_id(job_id_or_prefix: str) -> str:
 
     # Call resolution API
     base_url, timeout = _load_api_config()
-    url = f"{base_url}/api/jobs/resolve/{job_id_or_prefix}"
+    path = f"/api/jobs/resolve/{job_id_or_prefix}"
+    url = f"{base_url}{path}"
+    headers = get_auth_headers(method="GET", path=path, body=None)
     try:
-        response = requests_module.get(url, timeout=timeout)
+        response = requests_module.get(url, headers=headers, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
@@ -316,6 +337,23 @@ def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
         ) from exc
+    # Handle authentication failures
+    if response.status_code == 401:
+        detail = ""
+        try:
+            err_payload = response.json()
+            if isinstance(err_payload, dict):
+                detail = err_payload.get("detail", "")
+        except ValueError:
+            pass
+        if "pending approval" in detail.lower():
+            raise click.ClickException(
+                "API key is pending approval. Contact an administrator to approve your key."
+            )
+        raise click.ClickException(
+            "Authentication required. Run 'pulldb register' to create an account, "
+            "or check your API credentials in ~/.pulldb/credentials"
+        )
     # Handle rate limiting (HTTP 429) with user-friendly message
     if response.status_code == 429:
         detail = ""
@@ -358,6 +396,23 @@ def _api_get(path: str, params: dict[str, t.Any]) -> list[dict[str, t.Any]]:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
         ) from exc
+    # Handle authentication failures
+    if response.status_code == 401:
+        detail = ""
+        try:
+            err_payload = response.json()
+            if isinstance(err_payload, dict):
+                detail = err_payload.get("detail", "")
+        except ValueError:
+            pass
+        if "pending approval" in detail.lower():
+            raise click.ClickException(
+                "API key is pending approval. Contact an administrator to approve your key."
+            )
+        raise click.ClickException(
+            "Authentication required. Run 'pulldb register' to create an account, "
+            "or check your API credentials in ~/.pulldb/credentials"
+        )
     if response.status_code >= 400:
         raise click.ClickException(_format_api_error(response))
     payload = _parse_json_response(response)
@@ -377,6 +432,23 @@ def _api_get_object(path: str, params: dict[str, t.Any]) -> dict[str, t.Any]:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
         ) from exc
+    # Handle authentication failures
+    if response.status_code == 401:
+        detail = ""
+        try:
+            err_payload = response.json()
+            if isinstance(err_payload, dict):
+                detail = err_payload.get("detail", "")
+        except ValueError:
+            pass
+        if "pending approval" in detail.lower():
+            raise click.ClickException(
+                "API key is pending approval. Contact an administrator to approve your key."
+            )
+        raise click.ClickException(
+            "Authentication required. Run 'pulldb register' to create an account, "
+            "or check your API credentials in ~/.pulldb/credentials"
+        )
     if response.status_code >= 400:
         raise click.ClickException(_format_api_error(response))
     payload = _parse_json_response(response)
@@ -1817,13 +1889,33 @@ def profile_cmd(job_id: str, json_out: bool) -> None:
     resolved_job_id = _resolve_job_id(job_id)
 
     base_url, timeout = _load_api_config()
-    url = f"{base_url}/api/jobs/{resolved_job_id}/profile"
+    path = f"/api/jobs/{resolved_job_id}/profile"
+    url = f"{base_url}{path}"
+    headers = get_auth_headers(method="GET", path=path, body=None)
     try:
-        response = requests_module.get(url, timeout=timeout)
+        response = requests_module.get(url, headers=headers, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
         ) from exc
+
+    # Handle authentication failures
+    if response.status_code == 401:
+        detail = ""
+        try:
+            err_payload = response.json()
+            if isinstance(err_payload, dict):
+                detail = err_payload.get("detail", "")
+        except ValueError:
+            pass
+        if "pending approval" in detail.lower():
+            raise click.ClickException(
+                "API key is pending approval. Contact an administrator to approve your key."
+            )
+        raise click.ClickException(
+            "Authentication required. Run 'pulldb register' to create an account, "
+            "or check your API credentials in ~/.pulldb/credentials"
+        )
 
     if response.status_code == 404:
         error_detail = response.json().get("detail", "Not found")
@@ -1963,13 +2055,33 @@ def hosts_cmd(json_out: bool) -> None:
         pulldb restore customer dbhost=dev  # Use alias in restore
     """
     base_url, timeout = _load_api_config()
-    url = f"{base_url}/api/hosts"
+    path = "/api/hosts"
+    url = f"{base_url}{path}"
+    headers = get_auth_headers(method="GET", path=path, body=None)
     try:
-        response = requests_module.get(url, timeout=timeout)
+        response = requests_module.get(url, headers=headers, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
         ) from exc
+
+    # Handle authentication failures
+    if response.status_code == 401:
+        detail = ""
+        try:
+            err_payload = response.json()
+            if isinstance(err_payload, dict):
+                detail = err_payload.get("detail", "")
+        except ValueError:
+            pass
+        if "pending approval" in detail.lower():
+            raise click.ClickException(
+                "API key is pending approval. Contact an administrator to approve your key."
+            )
+        raise click.ClickException(
+            "Authentication required. Run 'pulldb register' to create an account, "
+            "or check your API credentials in ~/.pulldb/credentials"
+        )
 
     if response.status_code >= 400:
         raise click.ClickException(_format_api_error(response))
