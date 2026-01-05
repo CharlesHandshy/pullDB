@@ -631,6 +631,14 @@ class AuthRepository:
             )
             return list(cursor.fetchall())
 
+    # Alias for backward compatibility and clarity
+    def get_api_keys_for_user(self, user_id: str) -> list[dict]:
+        """Alias for list_api_keys_for_user.
+        
+        This method name is used by web routes and CLI commands.
+        """
+        return self.list_api_keys_for_user(user_id)
+
     def get_pending_api_keys(self) -> list[dict]:
         """Get all API keys pending admin approval.
 
@@ -754,13 +762,13 @@ class AuthRepository:
             return cursor.rowcount
 
     def get_all_api_keys(
-        self, include_inactive: bool = False, username: str | None = None
+        self, include_inactive: bool = False, user_id: str | None = None
     ) -> list[dict]:
         """Get all API keys with filtering options.
 
         Args:
             include_inactive: If True, include revoked keys.
-            username: If provided, filter to keys for this username only.
+            user_id: If provided, filter to keys for this user only.
 
         Returns:
             List of key info dicts with user details.
@@ -774,9 +782,9 @@ class AuthRepository:
             if not include_inactive:
                 conditions.append("k.is_active = TRUE")
             
-            if username:
-                conditions.append("u.username = %s")
-                params.append(username)
+            if user_id:
+                conditions.append("k.user_id = %s")
+                params.append(user_id)
             
             where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
             

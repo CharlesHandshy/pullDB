@@ -6,6 +6,46 @@
 
 ---
 
+## 2026-01-05 | Multi-Host API Key - Post-Audit Fix
+
+### Context
+Full audit of feature branch revealed 3 bugs that were missed in initial implementation.
+
+### Bugs Found & Fixed
+1. **`get_all_api_keys` signature mismatch**
+   - CLI passed `user_id` parameter, but method expected `username`
+   - Fixed: Changed parameter from `username` to `user_id`
+
+2. **`get_api_keys_for_user` method missing**
+   - Web routes and CLI called `get_api_keys_for_user()`
+   - Repository only had `list_api_keys_for_user()`
+   - Fixed: Added `get_api_keys_for_user()` as alias
+
+3. **Same method name issue in admin CLI**
+   - `users_enable()` called non-existent `get_api_keys_for_user()`
+   - Fixed by alias above
+
+### Audit Coverage
+- ✅ Migration file reviewed (clean)
+- ✅ Repository methods verified
+- ✅ API endpoints verified
+- ✅ CLI commands verified (all registered)
+- ✅ Web routes verified (imports OK)
+- ✅ Templates verified (no XSS, JS complete)
+- ✅ Breadcrumbs verified
+- ✅ 29 auth tests pass
+- ✅ 36 validation/error tests pass
+- ✅ 525 other tests pass (67 DB-required tests skipped)
+
+### Rationale
+Following FAIL HARD principle: identified bugs before merge rather than silently failing
+at runtime. Method name inconsistency (get vs list) is common source of bugs.
+
+### Git Commit
+- `830caae` - fix(auth): fix get_all_api_keys signature and add method alias
+
+---
+
 ## 2026-01-05 | Multi-Host API Key - Documentation Complete
 
 ### Context
