@@ -33,7 +33,7 @@ from pulldb.infra.metrics import (
 
 
 if t.TYPE_CHECKING:
-    from pulldb.infra.mysql import AdminTaskRepository, JobRepository
+    from pulldb.infra.mysql import AdminTaskRepository, HostRepository, JobRepository
 
 logger = get_logger("pulldb.worker.loop")
 
@@ -74,6 +74,7 @@ def run_poll_loop(
     worker_id: str | None = None,
     admin_task_repo: AdminTaskRepository | None = None,
     admin_task_executor: AdminTaskExecutorFunc | None = None,
+    host_repo: HostRepository | None = None,
 ) -> None:
     """Poll job queue and process jobs.
 
@@ -83,6 +84,9 @@ def run_poll_loop(
 
     If admin_task_repo and admin_task_executor are provided, also polls for
     admin tasks when no restore jobs are available (lower priority).
+
+    If host_repo is provided, also polls for stale deleting jobs (jobs stuck
+    in 'deleting' status) and retries the database deletion.
 
     Args:
         job_repo: Repository for job operations.
@@ -96,6 +100,8 @@ def run_poll_loop(
             auto-generated as "hostname:pid".
         admin_task_repo: Optional repository for admin task operations.
         admin_task_executor: Optional callable for admin task execution.
+        host_repo: Optional repository for host credentials (enables stale
+            deleting job recovery).
 
     Example:
         >>> pool = MySQLPool(...)
@@ -184,9 +190,70 @@ def run_poll_loop(
                     current_task_name.reset(token)
 
             else:
-                # No restore job found - check for admin tasks (lower priority)
+                # No restore job found - check for stale deleting jobs (medium priority)
+                stale_delete_claimed = False
+                if host_repo:
+                    stale_job = job_repo.claim_stale_deleting_job(
+                        worker_id=effective_worker_id
+                    )
+                    if stale_job:
+                        stale_delete_claimed = True
+                        token = current_task_name.set(stale_job.id)
+                        try:
+                            current_interval = poll_interval  # Reset backoff
+                            emit_gauge("queue_backoff_interval_seconds", current_interval)
+
+                            logger.info(
+                                "Stale deleting job claimed for retry",
+                                extra={
+                                    "job_id": stale_job.id,
+                                    "target": stale_job.target,
+                                    "retry_count": stale_job.retry_count,
+                                    "worker_id": effective_worker_id,
+                                    "phase": "delete_retry",
+                                },
+                            )
+
+                            try:
+                                from pulldb.worker.cleanup import execute_delete_job
+
+                                result = execute_delete_job(
+                                    stale_job, job_repo, host_repo
+                                )
+                                if result.success:
+                                    emit_event(
+                                        "delete_job_success",
+                                        f"job_id={stale_job.id}",
+                                        MetricLabels(phase="delete_retry", status="success"),
+                                    )
+                                else:
+                                    emit_event(
+                                        "delete_job_retry_failed",
+                                        f"job_id={stale_job.id} error={result.error}",
+                                        MetricLabels(phase="delete_retry", status="error"),
+                                    )
+                            except Exception as exc:
+                                logger.error(
+                                    "Delete job executor raised error",
+                                    extra={
+                                        "job_id": stale_job.id,
+                                        "target": stale_job.target,
+                                        "phase": "delete_retry",
+                                        "error": str(exc),
+                                    },
+                                    exc_info=True,
+                                )
+                                emit_event(
+                                    "delete_job_error",
+                                    str(exc),
+                                    MetricLabels(phase="delete_retry", status="error"),
+                                )
+                        finally:
+                            current_task_name.reset(token)
+
+                # No stale delete job - check for admin tasks (lower priority)
                 admin_task_claimed = False
-                if admin_task_repo and admin_task_executor:
+                if not stale_delete_claimed and admin_task_repo and admin_task_executor:
                     admin_task = admin_task_repo.claim_next_task(
                         worker_id=effective_worker_id
                     )
@@ -229,8 +296,8 @@ def run_poll_loop(
                                 MetricLabels(phase="admin_task", status="error"),
                             )
 
-                if not admin_task_claimed:
-                    # No job and no admin task - apply exponential backoff
+                if not stale_delete_claimed and not admin_task_claimed:
+                    # No job, no stale delete, and no admin task - apply exponential backoff
                     logger.debug(
                         "Queue empty, backing off",
                         extra={

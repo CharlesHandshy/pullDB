@@ -536,6 +536,7 @@ def main(argv: t.Sequence[str] | None = None) -> int:
             should_stop=stop_event.is_set,
             admin_task_repo=admin_task_repo,
             admin_task_executor=admin_task_executor.execute if admin_task_executor else None,
+            host_repo=host_repo,
         )
     except Exception as exc:
         _emit_fatal(exc)

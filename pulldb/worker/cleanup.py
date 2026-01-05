@@ -219,6 +219,69 @@ def is_valid_staging_name(db_name: str) -> tuple[bool, str]:
     return True, ""
 
 
+@dataclass
+class TargetProtectionResult:
+    """Result of checking if a target database is protected from deletion."""
+    
+    can_drop: bool
+    reason: str | None = None
+    blocking_job_id: str | None = None
+    blocking_job_owner: str | None = None
+
+
+def is_target_database_protected(
+    target: str,
+    dbhost: str,
+    job_repo: "JobRepository",
+) -> TargetProtectionResult:
+    """Check if a target database is protected from deletion.
+    
+    A target database is protected if:
+    1. It's in the protected database list (mysql, sys, etc.)
+    2. ANY user has a deployed job for this target on this host
+    3. ANY user has a locked job for this target on this host
+    
+    This is the SINGLE SOURCE OF TRUTH for deletion safety.
+    
+    Args:
+        target: Target database name to check.
+        dbhost: Database host where target exists.
+        job_repo: JobRepository for job lookups.
+        
+    Returns:
+        TargetProtectionResult with can_drop=False if protected.
+    """
+    # Check 1: Protected database list
+    if target.lower() in PROTECTED_DATABASES:
+        return TargetProtectionResult(
+            can_drop=False,
+            reason=f"'{target}' is a protected system database",
+        )
+    
+    # Check 2: Any deployed job exists for this target
+    deployed_job = job_repo.has_any_deployed_job_for_target(target, dbhost)
+    if deployed_job:
+        return TargetProtectionResult(
+            can_drop=False,
+            reason=f"Active deployment exists (job {deployed_job.id[:8]}... by {deployed_job.owner_username})",
+            blocking_job_id=deployed_job.id,
+            blocking_job_owner=deployed_job.owner_username,
+        )
+    
+    # Check 3: Any locked job exists for this target
+    locked_job = job_repo.has_any_locked_job_for_target(target, dbhost)
+    if locked_job:
+        return TargetProtectionResult(
+            can_drop=False,
+            reason=f"Database is locked (job {locked_job.id[:8]}... locked by {locked_job.locked_by})",
+            blocking_job_id=locked_job.id,
+            blocking_job_owner=locked_job.owner_username,
+        )
+    
+    # All checks passed - safe to drop
+    return TargetProtectionResult(can_drop=True)
+
+
 def _list_databases(credentials: MySQLCredentials) -> list[str]:
     """List all databases on a host.
 
@@ -517,6 +580,8 @@ def delete_job_databases(
     owner_user_code: str,
     dbhost: str,
     host_repo: HostRepository,
+    job_repo: JobRepository | None = None,
+    skip_protection_check: bool = False,
 ) -> JobDeleteResult:
     """Delete both staging and target databases for a job.
     
@@ -524,11 +589,10 @@ def delete_job_databases(
     - staging_name: The staging database ({target}_{job_id[:12]})
     - target_name: The target database ({user_code}{customer/template})
     
-    Both are dropped if they exist, regardless of job status.
-    
-    SAFETY:
+    SAFETY CHECKS:
     - Validates target_name contains the owner's user_code
     - Protected databases are never dropped
+    - If job_repo provided: checks no deployed/locked job exists for target
     - Logs all operations
     
     Args:
@@ -538,6 +602,8 @@ def delete_job_databases(
         owner_user_code: User code of the job owner (for validation).
         dbhost: Database host where databases exist.
         host_repo: HostRepository for credential resolution.
+        job_repo: Optional JobRepository for deployment protection check.
+        skip_protection_check: If True, skip deployed/locked check (use with caution).
         
     Returns:
         JobDeleteResult with details of what was found and dropped.
@@ -557,6 +623,33 @@ def delete_job_databases(
         )
         logger.error(result.error)
         return result
+    
+    # SAFETY: Check if target is protected by deployed/locked job
+    # FAIL-SAFE: If protection check throws an exception, BLOCK deletion
+    # This prevents accidental data loss if the protection system is broken
+    if job_repo and not skip_protection_check:
+        try:
+            protection = is_target_database_protected(target_name, dbhost, job_repo)
+            if not protection.can_drop:
+                result.error = f"Cannot drop target database: {protection.reason}"
+                logger.warning(
+                    "Target deletion blocked for job %s: %s (blocking_job=%s)",
+                    job_id,
+                    protection.reason,
+                    protection.blocking_job_id,
+                )
+                # Still try to drop staging, just skip target
+        except Exception as e:
+            # FAIL-SAFE: Protection check failed - BLOCK target deletion
+            result.error = f"Protection check failed, blocking deletion for safety: {e}"
+            logger.error(
+                "FAIL-SAFE: Protection check threw exception for job %s target %s: %s. "
+                "Blocking target deletion to prevent potential data loss.",
+                job_id,
+                target_name,
+                e,
+            )
+            # Still try to drop staging, just skip target
     
     try:
         credentials = host_repo.get_host_credentials(dbhost)
@@ -581,15 +674,21 @@ def delete_job_databases(
         logger.error(f"Error dropping staging database {staging_name}: {e}")
         # Continue to try target
     
-    # Check and drop target database
-    try:
-        result.target_existed = _database_exists(credentials, target_name)
-        if result.target_existed:
-            result.target_dropped = _drop_target_database_unsafe(credentials, target_name)
-    except Exception as e:
-        logger.error(f"Error dropping target database {target_name}: {e}")
-        if not result.error:
-            result.error = f"Failed to drop target database: {e}"
+    # Check and drop target database (only if not blocked by protection check)
+    if result.error and "Cannot drop target database" in result.error:
+        # Target is protected, skip drop
+        logger.info(
+            f"Skipping target database drop for job {job_id}: protection check failed"
+        )
+    else:
+        try:
+            result.target_existed = _database_exists(credentials, target_name)
+            if result.target_existed:
+                result.target_dropped = _drop_target_database_unsafe(credentials, target_name)
+        except Exception as e:
+            logger.error(f"Error dropping target database {target_name}: {e}")
+            if not result.error:
+                result.error = f"Failed to drop target database: {e}"
     
     logger.info(
         f"Job {job_id} database deletion complete: "
@@ -597,6 +696,134 @@ def delete_job_databases(
         f"target={target_name} (existed={result.target_existed}, dropped={result.target_dropped})"
     )
     
+    return result
+
+
+# Default stale delete constants
+DEFAULT_STALE_DELETE_TIMEOUT_MINUTES = 5
+MAX_DELETE_RETRY_COUNT = 5
+
+
+@dataclass
+class DeleteJobResult:
+    """Result of executing a delete job (worker retry of stale deleting job)."""
+
+    job_id: str
+    success: bool
+    databases_already_gone: bool = False
+    retry_count: int = 0
+    error: str | None = None
+
+
+def execute_delete_job(
+    job: Job,
+    job_repo: JobRepository,
+    host_repo: HostRepository,
+) -> DeleteJobResult:
+    """Execute database deletion for a job in 'deleting' status.
+
+    Called by the worker when processing a stale deleting job. Handles:
+    1. Checking if databases already gone (skip drop, mark deleted)
+    2. Attempting to drop staging and target databases
+    3. Marking job as deleted on success
+    4. Marking job as failed if max retries exceeded
+
+    Args:
+        job: Job in 'deleting' status (claimed by worker).
+        job_repo: JobRepository for status updates.
+        host_repo: HostRepository for credential resolution.
+
+    Returns:
+        DeleteJobResult with outcome details.
+    """
+    import json
+
+    result = DeleteJobResult(
+        job_id=job.id,
+        success=False,
+        retry_count=job.retry_count,
+    )
+
+    try:
+        credentials = host_repo.get_host_credentials(job.dbhost)
+    except Exception as e:
+        error_msg = f"Failed to get credentials for {job.dbhost}: {e}"
+        logger.error(error_msg, extra={"job_id": job.id})
+        result.error = error_msg
+
+        # Check if we've exceeded retries
+        if job.retry_count >= MAX_DELETE_RETRY_COUNT:
+            job_repo.mark_job_delete_failed(job.id, error_msg)
+        return result
+
+    # Check if databases already gone (deleted by another means)
+    staging_exists = _database_exists(credentials, job.staging_name)
+    target_exists = _database_exists(credentials, job.target)
+
+    if not staging_exists and not target_exists:
+        # Both databases already gone - mark as deleted
+        logger.info(
+            "Databases already deleted, marking job as deleted",
+            extra={
+                "job_id": job.id,
+                "staging_name": job.staging_name,
+                "target": job.target,
+            },
+        )
+
+        # Log delete_skipped event
+        detail = json.dumps({
+            "reason": "databases_already_gone",
+            "staging_name": job.staging_name,
+            "target": job.target,
+        })
+        job_repo.append_job_event(job.id, "delete_skipped", detail)
+        job_repo.mark_job_deleted(job.id, "Databases already deleted")
+
+        result.success = True
+        result.databases_already_gone = True
+        return result
+
+    # Attempt to drop databases
+    delete_result = delete_job_databases(
+        job_id=job.id,
+        staging_name=job.staging_name,
+        target_name=job.target,
+        owner_user_code=job.owner_user_code,
+        dbhost=job.dbhost,
+        host_repo=host_repo,
+        job_repo=job_repo,
+        skip_protection_check=False,
+    )
+
+    if delete_result.error:
+        result.error = delete_result.error
+        logger.error(
+            "Delete job database drop failed",
+            extra={
+                "job_id": job.id,
+                "error": delete_result.error,
+                "retry_count": job.retry_count,
+            },
+        )
+
+        # Check if we've exceeded retries
+        if job.retry_count >= MAX_DELETE_RETRY_COUNT:
+            job_repo.mark_job_delete_failed(job.id, delete_result.error)
+        return result
+
+    # Success - mark as deleted
+    logger.info(
+        "Delete job completed successfully",
+        extra={
+            "job_id": job.id,
+            "staging_dropped": delete_result.staging_dropped,
+            "target_dropped": delete_result.target_dropped,
+        },
+    )
+    job_repo.mark_job_deleted(job.id, "Databases deleted by worker retry")
+
+    result.success = True
     return result
 
 
@@ -1059,6 +1286,10 @@ def detect_orphaned_databases(
 ) -> OrphanReport | str:
     """Detect databases matching staging pattern but with no job record.
 
+    Identifies staging databases (pattern: {target}_{job_id_prefix}) that have
+    no corresponding job record. These may be from failed restores that were
+    orphaned before completion, or jobs that were manually deleted.
+
     These databases are NEVER auto-deleted. This function generates a report
     for admin review. Admins can then manually verify and delete selected
     databases using the admin deletion API.
@@ -1103,8 +1334,8 @@ def detect_orphaned_databases(
         )
 
         if job is None:
-            # No matching job - this is an orphan
-            # Get database size
+            # No matching job - this is an orphan (staging db with no job record)
+            # Could be from early restore failure before pullDB table was created
             size_mb = _get_database_size_mb(credentials, db_name)
             
             orphan = OrphanCandidate(
@@ -1911,7 +2142,7 @@ def run_retention_cleanup(
     )
 
     # Get all cleanup candidates
-    candidates = job_repo.get_cleanup_candidates(grace_days)
+    candidates = job_repo.get_expired_cleanup_candidates(grace_days)
     result.candidates_found = len(candidates)
 
     if not candidates:
@@ -2063,6 +2294,41 @@ def _drop_job_database(
             "Skipping protected database %s for job %s", db_name, job.id
         )
         result.databases_skipped += 1
+        return
+
+    # DEFENSE-IN-DEPTH: Double-check no deployed job exists for this target
+    # This should never trigger since get_expired_cleanup_candidates filters,
+    # but provides an extra safety layer.
+    # FAIL-SAFE: If protection check throws, SKIP this database (don't drop it)
+    try:
+        protection = is_target_database_protected(db_name, job.dbhost, job_repo)
+        if not protection.can_drop:
+            logger.warning(
+                "SAFETY: Skipping retention cleanup for %s on %s - %s (job %s). "
+                "This indicates a potential bug in get_expired_cleanup_candidates.",
+                db_name,
+                job.dbhost,
+                protection.reason,
+                job.id,
+            )
+            result.databases_skipped += 1
+            result.errors.append(
+                f"Safety check blocked drop of {db_name}: {protection.reason}"
+            )
+            return
+    except Exception as e:
+        logger.error(
+            "FAIL-SAFE: Protection check threw exception for %s on %s (job %s): %s. "
+            "Skipping this database to prevent potential data loss.",
+            db_name,
+            job.dbhost,
+            job.id,
+            e,
+        )
+        result.databases_skipped += 1
+        result.errors.append(
+            f"Protection check failed for {db_name}: {e}"
+        )
         return
 
     if dry_run:

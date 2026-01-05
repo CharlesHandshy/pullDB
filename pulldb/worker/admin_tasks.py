@@ -798,18 +798,43 @@ class AdminTaskExecutor:
                 )
 
                 try:
-                    # Mark job as deleting BEFORE dropping databases
-                    self.job_repo.mark_job_deleting(job_id)
-                    
-                    # Drop databases
-                    delete_result = delete_job_databases(
-                        job_id=job_id,
-                        staging_name=staging_name,
-                        target_name=target_name,
-                        owner_user_code=owner_user_code,
-                        dbhost=dbhost,
-                        host_repo=self.host_repo,
+                    # SUPERSEDED jobs: Skip database deletion entirely
+                    # When a job is superseded, its staging DB was already cleaned up
+                    # and it no longer owns the target DB. No database work to do.
+                    skip_database_deletion = (
+                        job.status == JobStatus.SUPERSEDED or job.is_superseded
                     )
+                    
+                    if skip_database_deletion:
+                        # Log skip event
+                        self.job_repo.append_job_event(
+                            job_id, "delete_skipped",
+                            '{"reason": "superseded_job_no_databases_owned"}'
+                        )
+                        # Create dummy result for tracking
+                        from pulldb.worker.cleanup import JobDeleteResult
+                        delete_result = JobDeleteResult(
+                            job_id=job_id,
+                            staging_name=staging_name,
+                            target_name=target_name,
+                            dbhost=dbhost,
+                        )
+                        delete_result.staging_existed = False
+                        delete_result.target_existed = False
+                    else:
+                        # Mark job as deleting BEFORE dropping databases
+                        self.job_repo.mark_job_deleting(job_id)
+                        
+                        # Drop databases
+                        delete_result = delete_job_databases(
+                            job_id=job_id,
+                            staging_name=staging_name,
+                            target_name=target_name,
+                            owner_user_code=owner_user_code,
+                            dbhost=dbhost,
+                            host_repo=self.host_repo,
+                            job_repo=self.job_repo,
+                        )
 
                     if delete_result.error:
                         failed_list.append({

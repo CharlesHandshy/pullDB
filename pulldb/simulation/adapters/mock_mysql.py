@@ -988,6 +988,44 @@ class SimulatedJobRepository:
                     return job
             return None
 
+    def has_any_deployed_job_for_target(
+        self, target: str, dbhost: str
+    ) -> Job | None:
+        """Check if ANY user has a deployed job for this target+host.
+        
+        Cross-user check - no owner_user_id filter. Used for deletion protection.
+        """
+        with self.state.lock:
+            for job in self.state.jobs.values():
+                if (
+                    job.target == target
+                    and job.dbhost == dbhost
+                    and job.status == JobStatus.DEPLOYED
+                    and job.superseded_at is None
+                    and job.db_dropped_at is None
+                ):
+                    return job
+            return None
+
+    def has_any_locked_job_for_target(
+        self, target: str, dbhost: str
+    ) -> Job | None:
+        """Check if ANY user has a locked job for this target+host.
+        
+        Cross-user check - no owner_user_id filter. Used for deletion protection.
+        """
+        with self.state.lock:
+            for job in self.state.jobs.values():
+                if (
+                    job.target == target
+                    and job.dbhost == dbhost
+                    and job.locked_at is not None
+                    and job.superseded_at is None
+                    and job.db_dropped_at is None
+                ):
+                    return job
+            return None
+
     def get_job_history_v2(
         self,
         limit: int = 100,
@@ -1264,8 +1302,103 @@ class SimulatedJobRepository:
                 except ValueError:
                     deleting_status = JobStatus.CANCELED  # fallback
                 
-                updated = replace(job, status=deleting_status)
+                updated = replace(
+                    job,
+                    status=deleting_status,
+                    started_at=datetime.now(UTC),
+                    worker_id=None,
+                    retry_count=job.retry_count + 1,
+                )
                 self.state.jobs[job_id] = updated
+                
+                # Log event
+                self.append_job_event(
+                    job_id, "delete_started", f'{{"attempt": {updated.retry_count}}}'
+                )
+
+    def claim_stale_deleting_job(
+        self,
+        worker_id: str | None = None,
+        stale_timeout_minutes: int = 5,
+        max_retry_count: int = 5,
+    ) -> Job | None:
+        """Atomically claim a stale job stuck in 'deleting' status.
+        
+        Only claims jobs that are the NEWEST for their target+owner_user_code.
+        Older superseded jobs have already had their DBs cleaned up.
+        """
+        with self.state.lock:
+            cutoff = datetime.now(UTC) - timedelta(minutes=stale_timeout_minutes)
+            
+            # Find stale deleting jobs
+            candidates = [
+                j for j in self.state.jobs.values()
+                if j.status == JobStatus.DELETING
+                and j.started_at
+                and j.started_at < cutoff
+                and j.retry_count < max_retry_count
+            ]
+            
+            if not candidates:
+                return None
+            
+            # Filter to only include jobs that are newest for their target+owner
+            def is_newest_for_target(job: Job) -> bool:
+                """Check if this job is the newest for its target+owner_user_code."""
+                for other in self.state.jobs.values():
+                    if (other.target == job.target 
+                        and other.owner_user_code == job.owner_user_code
+                        and other.submitted_at > job.submitted_at):
+                        return False
+                return True
+            
+            candidates = [j for j in candidates if is_newest_for_target(j)]
+            
+            if not candidates:
+                return None
+            
+            # Take oldest
+            candidates.sort(key=lambda j: j.started_at or datetime.min.replace(tzinfo=UTC))
+            job = candidates[0]
+            
+            new_retry = job.retry_count + 1
+            updated = replace(
+                job,
+                started_at=datetime.now(UTC),
+                worker_id=worker_id,
+                retry_count=new_retry,
+            )
+            self.state.jobs[job.id] = updated
+            
+            # Log event
+            self.append_job_event(
+                job.id,
+                "delete_retry",
+                f'{{"attempt": {new_retry}, "reclaimed_by": "{worker_id}"}}'
+            )
+            
+            return updated
+
+    def mark_job_delete_failed(
+        self, job_id: str, error_detail: str | None = None
+    ) -> None:
+        """Mark job as failed after exhausting delete retry attempts."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if job:
+                detail = error_detail or "Delete failed after 5 attempts"
+                updated = replace(
+                    job,
+                    status=JobStatus.FAILED,
+                    completed_at=job.completed_at or datetime.now(UTC),
+                    error_detail=detail,
+                )
+                self.state.jobs[job_id] = updated
+                
+                # Log event
+                self.append_job_event(
+                    job_id, "delete_failed", f'{{"reason": "{detail}"}}'
+                )
 
     def mark_job_expired(self, job_id: str) -> bool:
         """Mark deployed job as expired when retention period has passed."""

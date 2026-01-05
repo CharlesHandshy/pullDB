@@ -733,9 +733,13 @@ async def delete_job_database(
     if not job:
         return redirect_error("Job not found")
 
-    # Must be in terminal state to delete
+    # Must be in terminal state to delete (not active, not already deleting)
     if job.status in (JobStatus.QUEUED, JobStatus.RUNNING):
         return redirect_error(f"Cannot delete active job (status: {job.status.value})")
+
+    # Block if already in deleting status (worker will retry)
+    if job.status == JobStatus.DELETING:
+        return redirect_error("Delete already in progress - worker will retry automatically")
 
     # If already soft-deleted, force hard delete on second attempt
     force_hard_delete = job.status == JobStatus.DELETED
@@ -763,15 +767,46 @@ async def delete_job_database(
     # Get job owner's user_code for validation
     job_owner_user_code = job_owner.user_code if job_owner else None
 
-    # Perform the delete
-    result = delete_job_databases(
-        job_id=job_id,
-        staging_name=job.staging_name,
-        target_name=job.target,
-        owner_user_code=job_owner_user_code or "",
-        dbhost=job.dbhost,
-        host_repo=state.host_repo,
+    # SUPERSEDED jobs: Skip database deletion entirely
+    # When a job is superseded, its staging DB was already cleaned up by the
+    # newer job's restore, and it no longer owns the target DB. No work to do.
+    # Check both status AND the superseded_at flag (status may not be updated
+    # if the job was in a transient state when superseded).
+    skip_database_deletion = (
+        job.status == JobStatus.SUPERSEDED or job.is_superseded
     )
+
+    if skip_database_deletion:
+        # Create a dummy result for audit logging
+        from pulldb.worker.cleanup import JobDeleteResult
+        result = JobDeleteResult(
+            job_id=job_id,
+            staging_name=job.staging_name,
+            target_name=job.target,
+            dbhost=job.dbhost,
+        )
+        result.staging_existed = False
+        result.target_existed = False
+        # Log that we skipped deletion
+        state.job_repo.append_job_event(
+            job_id, "delete_skipped", 
+            '{"reason": "superseded_job_no_databases_owned"}'
+        )
+    else:
+        # Mark job as deleting FIRST (enables worker recovery if request times out)
+        # This sets started_at for stale detection and increments retry_count
+        state.job_repo.mark_job_deleting(job_id)
+
+        # Perform the delete synchronously
+        result = delete_job_databases(
+            job_id=job_id,
+            staging_name=job.staging_name,
+            target_name=job.target,
+            owner_user_code=job_owner_user_code or "",
+            dbhost=job.dbhost,
+            host_repo=state.host_repo,
+            job_repo=state.job_repo,
+        )
 
     # Audit log the delete operation
     if hasattr(state, "audit_repo") and state.audit_repo:

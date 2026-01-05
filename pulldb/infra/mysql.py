@@ -814,21 +814,53 @@ class JobRepository:
         """Mark job as deleting (async delete in progress).
 
         Sets status to 'deleting' to indicate database deletion is in progress.
-        Used by bulk delete task before dropping databases.
+        Used by bulk delete task and single delete before dropping databases.
+
+        Also sets:
+        - started_at: Timestamp for stale detection (worker recovery)
+        - worker_id: Cleared to allow worker to claim stale deleting jobs
+        - retry_count: Incremented to track delete attempts (max 5)
 
         Args:
             job_id: UUID of job.
         """
+        import json
+
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = conn.cursor(dictionary=True)
+
+            # Get current retry_count before incrementing
+            cursor.execute(
+                "SELECT retry_count FROM jobs WHERE id = %s",
+                (job_id,),
+            )
+            row = cursor.fetchone()
+            current_retry = row["retry_count"] if row else 0
+            new_retry = current_retry + 1
+
             cursor.execute(
                 """
                 UPDATE jobs
-                SET status = 'deleting'
+                SET status = 'deleting',
+                    started_at = UTC_TIMESTAMP(6),
+                    worker_id = NULL,
+                    retry_count = %s
                 WHERE id = %s
                 """,
-                (job_id,),
+                (new_retry, job_id),
             )
+
+            # Log delete_started event with attempt number
+            detail = json.dumps({"attempt": new_retry})
+            cursor.execute(
+                """
+                INSERT INTO job_events
+                (job_id, event_type, detail, logged_at)
+                VALUES (%s, 'delete_started', %s, UTC_TIMESTAMP(6))
+                """,
+                (job_id, detail),
+            )
+
             conn.commit()
 
     def mark_job_deleted(self, job_id: str, detail: str | None = None) -> None:
@@ -854,6 +886,168 @@ class JobRepository:
                 """,
                 (error_detail, job_id),
             )
+            conn.commit()
+
+    def claim_stale_deleting_job(
+        self,
+        worker_id: str | None = None,
+        stale_timeout_minutes: int = 5,
+        max_retry_count: int = 5,
+    ) -> Job | None:
+        """Atomically claim a stale job stuck in 'deleting' status.
+
+        Jobs enter 'deleting' status when database deletion starts. If the
+        process crashes or times out, the job gets stuck. This method allows
+        workers to reclaim and retry stale deleting jobs.
+
+        Uses SELECT FOR UPDATE SKIP LOCKED for safe multi-worker operation.
+
+        Args:
+            worker_id: Optional identifier of claiming worker.
+            stale_timeout_minutes: Minutes before a deleting job is considered stale.
+            max_retry_count: Maximum retry attempts before permanent failure.
+
+        Returns:
+            Claimed job (still in 'deleting' status) or None if no stale jobs.
+        """
+        import json
+
+        with self.pool.transaction() as conn:
+            cursor = conn.cursor(dictionary=True)
+
+            # Find stale deleting jobs that haven't exceeded retry limit.
+            # IMPORTANT: Only recover jobs that are the NEWEST for their target.
+            # Older superseded jobs have already had their DBs cleaned up by the
+            # newer job's restore process, so retrying deletion is pointless.
+            # Also handle legacy jobs with NULL started_at (treat as stale).
+            cursor.execute(
+                """
+                SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
+                       j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
+                       j.started_at, j.completed_at, j.options_json, j.retry_count,
+                       j.error_detail, j.worker_id
+                FROM jobs j
+                WHERE j.status = 'deleting'
+                  AND (j.started_at IS NULL 
+                       OR j.started_at < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL %s MINUTE))
+                  AND j.retry_count < %s
+                  AND NOT EXISTS (
+                      SELECT 1 FROM jobs j2
+                      WHERE j2.target = j.target
+                        AND j2.owner_user_code = j.owner_user_code
+                        AND j2.submitted_at > j.submitted_at
+                  )
+                ORDER BY j.started_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+                """,
+                (stale_timeout_minutes, max_retry_count),
+            )
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            job_id = row["id"]
+            new_retry = row["retry_count"] + 1
+
+            logger.warning(
+                "Reclaiming stale deleting job",
+                extra={
+                    "job_id": job_id,
+                    "worker_id": worker_id,
+                    "retry_count": new_retry,
+                    "previous_started_at": row["started_at"],
+                },
+            )
+
+            # Update to refresh started_at and assign worker
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET started_at = UTC_TIMESTAMP(6),
+                    worker_id = %s,
+                    retry_count = %s
+                WHERE id = %s
+                """,
+                (worker_id, new_retry, job_id),
+            )
+
+            # Log delete_retry event
+            detail = json.dumps({
+                "attempt": new_retry,
+                "reclaimed_by": worker_id,
+                "stale_since": row["started_at"].isoformat() if row["started_at"] else None,
+            })
+            cursor.execute(
+                """
+                INSERT INTO job_events
+                (job_id, event_type, detail, logged_at)
+                VALUES (%s, 'delete_retry', %s, UTC_TIMESTAMP(6))
+                """,
+                (job_id, detail),
+            )
+
+            # Transaction commits on context manager exit
+            job = self._row_to_job(row)
+            return Job(
+                id=job.id,
+                owner_user_id=job.owner_user_id,
+                owner_username=job.owner_username,
+                owner_user_code=job.owner_user_code,
+                target=job.target,
+                staging_name=job.staging_name,
+                dbhost=job.dbhost,
+                status=JobStatus.DELETING,
+                submitted_at=job.submitted_at,
+                started_at=datetime.now(UTC).replace(tzinfo=None),
+                completed_at=job.completed_at,
+                options_json=job.options_json,
+                retry_count=new_retry,
+                error_detail=job.error_detail,
+                worker_id=worker_id,
+            )
+
+    def mark_job_delete_failed(
+        self, job_id: str, error_detail: str | None = None
+    ) -> None:
+        """Mark job as failed after exhausting delete retry attempts.
+
+        Called when a job has been stuck in 'deleting' and has exceeded
+        the maximum retry count (5 attempts). Sets status to 'failed'
+        with an appropriate error message.
+
+        Args:
+            job_id: UUID of job.
+            error_detail: Optional error detail (defaults to retry exhaustion message).
+        """
+        import json
+
+        detail = error_detail or "Delete failed after 5 attempts"
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET status = 'failed',
+                    completed_at = COALESCE(completed_at, UTC_TIMESTAMP(6)),
+                    error_detail = %s
+                WHERE id = %s
+                """,
+                (detail, job_id),
+            )
+
+            # Log delete_failed event
+            event_detail = json.dumps({"reason": detail})
+            cursor.execute(
+                """
+                INSERT INTO job_events
+                (job_id, event_type, detail, logged_at)
+                VALUES (%s, 'delete_failed', %s, UTC_TIMESTAMP(6))
+                """,
+                (job_id, event_detail),
+            )
+
             conn.commit()
 
     def hard_delete_job(self, job_id: str) -> bool:
@@ -2378,6 +2572,84 @@ class JobRepository:
             row = cursor.fetchone()
             return self._row_to_job(row) if row else None
 
+    def has_any_deployed_job_for_target(
+        self, target: str, dbhost: str
+    ) -> Job | None:
+        """Check if ANY user has a deployed job for target+host.
+
+        Unlike get_deployed_job_for_target() which is user-scoped, this checks
+        across ALL users. Used for deletion safety - we must never drop a
+        database that ANY user has deployed.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+
+        Returns:
+            Deployed Job if found (any user), None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail,
+                       worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id
+                FROM jobs
+                WHERE target = %s 
+                  AND dbhost = %s 
+                  AND status = 'deployed'
+                  AND superseded_at IS NULL
+                  AND db_dropped_at IS NULL
+                ORDER BY submitted_at DESC
+                LIMIT 1
+                """,
+                (target, dbhost),
+            )
+            row = cursor.fetchone()
+            return self._row_to_job(row) if row else None
+
+    def has_any_locked_job_for_target(
+        self, target: str, dbhost: str
+    ) -> Job | None:
+        """Check if ANY user has a locked job for target+host.
+
+        Used for deletion safety - we should not drop a database that
+        has been explicitly locked by any user.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+
+        Returns:
+            Locked Job if found (any user), None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail,
+                       worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id
+                FROM jobs
+                WHERE target = %s 
+                  AND dbhost = %s 
+                  AND locked_at IS NOT NULL
+                  AND db_dropped_at IS NULL
+                ORDER BY locked_at DESC
+                LIMIT 1
+                """,
+                (target, dbhost),
+            )
+            row = cursor.fetchone()
+            return self._row_to_job(row) if row else None
+
     def get_latest_completed_job_for_target(
         self, target: str, dbhost: str, owner_user_id: str
     ) -> Job | None:
@@ -2542,7 +2814,7 @@ class JobRepository:
 
         return MaintenanceItems(expired=expired, expiring=expiring, locked=locked)
 
-    def get_cleanup_candidates(self, grace_days: int) -> list[Job]:
+    def get_expired_cleanup_candidates(self, grace_days: int) -> list[Job]:
         """Get jobs eligible for automatic database cleanup.
 
         Returns deployed jobs that are:

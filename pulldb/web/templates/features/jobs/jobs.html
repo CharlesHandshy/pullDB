@@ -754,7 +754,29 @@
                 const row = table.getRowById(id);
                 return row && row.status === 'deleted';
             });
-            Modals.bulkDelete.open(selectedDeletableIds, allSoftDeleted);
+            
+            // Count jobs that have databases vs those that don't
+            // Jobs WITHOUT databases: superseded, deleted, expired
+            // Jobs WITH databases: deployed, complete, failed (may have partial)
+            const noDbStatuses = ['superseded', 'deleted', 'expired'];
+            let withDatabasesCount = 0;
+            let recordsOnlyCount = 0;
+            selectedDeletableIds.forEach(id => {
+                const row = table.getRowById(id);
+                if (row) {
+                    // Check if job is superseded (either by status or flag)
+                    const isSuperseded = row.status === 'superseded' || row.superseded_at;
+                    const hasNoDatabases = noDbStatuses.includes(row.status) || isSuperseded;
+                    
+                    if (hasNoDatabases) {
+                        recordsOnlyCount++;
+                    } else {
+                        withDatabasesCount++;
+                    }
+                }
+            });
+            
+            Modals.bulkDelete.open(selectedDeletableIds, allSoftDeleted, withDatabasesCount, recordsOnlyCount);
         }
     }
     
@@ -809,17 +831,36 @@
         bulkDelete: {
             selectedJobIds: [],
             requiresHardDelete: false,
+            deployedCount: 0,
             
-            open(jobIds, allSoftDeleted = false) {
+            open(jobIds, allSoftDeleted = false, deployedCount = 0, nonDeployedCount = 0) {
                 this.selectedJobIds = jobIds;
                 this.requiresHardDelete = allSoftDeleted;
+                this.deployedCount = deployedCount;
                 
-                document.getElementById('bulk-delete-count').innerHTML = 
-                    `This will delete databases for <strong>${jobIds.length}</strong> job(s).`;
+                // Build appropriate count message based on what's being deleted
+                let countMsg;
+                if (deployedCount > 0 && nonDeployedCount > 0) {
+                    countMsg = `This will delete <strong>${jobIds.length}</strong> job(s): ` +
+                               `<strong>${deployedCount}</strong> with databases, ` +
+                               `<strong>${nonDeployedCount}</strong> records only.`;
+                } else if (deployedCount > 0) {
+                    countMsg = `This will delete databases for <strong>${deployedCount}</strong> deployed job(s).`;
+                } else {
+                    countMsg = `This will remove <strong>${nonDeployedCount}</strong> job record(s).`;
+                }
+                document.getElementById('bulk-delete-count').innerHTML = countMsg;
                 
                 const warningEl = document.getElementById('bulk-delete-soft-warning');
                 const infoEl = document.getElementById('bulk-delete-info');
                 const hardCheckbox = document.getElementById('bulk-delete-hard');
+                
+                // Update info text based on what will actually happen
+                if (deployedCount > 0) {
+                    infoEl.textContent = 'Drops staging and target databases for deployed jobs.';
+                } else {
+                    infoEl.textContent = 'No databases to drop (jobs are superseded or already cleaned up).';
+                }
                 
                 if (allSoftDeleted) {
                     // All jobs already soft-deleted - show warning, hide normal info
@@ -858,6 +899,15 @@
                 if (this.selectedJobIds.length === 0) return;
                 
                 this.close();
+                
+                // Set progress modal title based on what's being deleted
+                const progressTitle = document.getElementById('bulk-delete-progress-title');
+                if (this.deployedCount > 0) {
+                    progressTitle.textContent = 'Deleting Databases...';
+                } else {
+                    progressTitle.textContent = 'Removing Job Records...';
+                }
+                
                 Modals.show('bulk-delete-progress-modal');
                 
                 const progressBar = document.getElementById('bulk-delete-progress-bar');
