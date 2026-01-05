@@ -6,6 +6,9 @@ BIN_DIR="/usr/local/bin"
 SYSTEM_USER="pulldb_service"
 SYSTEM_GROUP="pulldb_service"
 
+# Embedded Python location
+EMBEDDED_PYTHON="${INSTALL_PREFIX}/python/bin/python3"
+
 create_group_and_user() {
     if ! getent group "${SYSTEM_GROUP}" >/dev/null 2>&1; then
         addgroup --system "${SYSTEM_GROUP}"
@@ -24,17 +27,28 @@ create_group_and_user() {
 if [ "$1" = "configure" ]; then
     echo "Setting up pullDB client in ${INSTALL_PREFIX}..."
     
+    # Verify embedded Python exists
+    if [ ! -x "${EMBEDDED_PYTHON}" ]; then
+        echo "ERROR: Embedded Python not found at ${EMBEDDED_PYTHON}"
+        exit 1
+    fi
+    
+    PYTHON_VERSION=$("${EMBEDDED_PYTHON}" --version 2>&1)
+    echo "Using embedded ${PYTHON_VERSION}"
+    
     # Ensure user exists
     create_group_and_user
     
-    # Create venv if not exists (using explicit python3.12 to preserve system python3)
+    # Create venv using embedded Python
     if [ ! -d "${INSTALL_PREFIX}/venv" ]; then
-        python3.12 -m venv "${INSTALL_PREFIX}/venv"
+        echo "Creating virtual environment..."
+        "${EMBEDDED_PYTHON}" -m venv "${INSTALL_PREFIX}/venv"
     fi
 
     # Install wheel
     WHEEL_FILE=$(ls ${INSTALL_PREFIX}/dist/*.whl 2>/dev/null | head -n 1)
     if [ -n "$WHEEL_FILE" ]; then
+        echo "Installing pulldb package..."
         "${INSTALL_PREFIX}/venv/bin/pip" install --quiet --upgrade pip wheel
         "${INSTALL_PREFIX}/venv/bin/pip" install --quiet --upgrade "$WHEEL_FILE"
     else
@@ -46,6 +60,7 @@ if [ "$1" = "configure" ]; then
     
     # Make install directory and venv world-readable/executable
     chmod 755 "${INSTALL_PREFIX}"
+    chmod 755 "${INSTALL_PREFIX}/python"
     chmod 755 "${INSTALL_PREFIX}/venv"
     chmod 755 "${INSTALL_PREFIX}/venv/bin"
     chmod 755 "${INSTALL_PREFIX}/venv/lib"
@@ -58,7 +73,8 @@ if [ "$1" = "configure" ]; then
     
     echo ""
     echo "pullDB client installed successfully."
-    echo "  Binary: ${BIN_DIR}/pulldb"
+    echo "  Python:  ${PYTHON_VERSION} (embedded)"
+    echo "  Binary:  ${BIN_DIR}/pulldb"
     echo "  Run 'pulldb --help' to verify."
 fi
 

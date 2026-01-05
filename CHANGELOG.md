@@ -1,6 +1,60 @@
 CHANGELOG
 =========
 
+v0.2.2 - 2026-01-05
+-------------------
+### Stale Delete Recovery & Superseded Job Handling
+
+Automatic recovery for jobs stuck in `deleting` status with proper handling of superseded jobs.
+
+### Added
+- `claim_stale_deleting_job()` - Worker claims jobs stuck in deleting state for 5+ minutes
+- `mark_job_delete_failed()` - Mark jobs as permanently failed after 5 retries
+- `DeleteJobResult` dataclass for structured delete operation results
+- Schema migration `00900_stale_delete_recovery.sql` with index for efficient polling
+- 14 comprehensive tests for stale delete recovery scenarios
+
+### Changed
+- `mark_job_deleting()` now sets `started_at`, clears `worker_id`, increments `retry_count`
+- Worker poll loop checks for stale deleting jobs after restore jobs
+- Single delete (web UI) skips database deletion for superseded jobs
+- Bulk delete (admin tasks) skips database deletion for superseded jobs
+- Delete modal shows context-aware messaging ("Deleting Databases..." vs "Removing Job Records...")
+- Audit log entries: `delete_started`, `delete_completed`, `delete_failed`, `delete_skipped`
+
+### Fixed
+- Jobs stuck in `deleting` status now auto-recover after 5 minutes
+- Superseded jobs (replaced by newer job) no longer attempt database deletion
+- Bulk delete path now correctly handles superseded jobs
+- UI messaging correctly identifies jobs with/without databases to delete
+
+---
+
+v0.2.1 - 2026-01-04
+-------------------
+### Target Database Protection & Safety Improvements
+
+Security enhancement preventing accidental deletion of deployed databases.
+
+### Added
+- `is_target_database_protected()` - Single source of truth for deletion safety checks
+- `has_any_deployed_job_for_target()` - Check if ANY user has deployed job (cross-user)
+- `has_any_locked_job_for_target()` - Check if ANY user has locked database (cross-user)
+- `TargetProtectionResult` dataclass with blocking job info
+- Defense-in-depth protection in retention cleanup (`_drop_job_database`)
+
+### Changed
+- `delete_job_databases()` now accepts optional `job_repo` for protection check
+- Manual job deletion (web UI) passes `job_repo` for deployed/locked validation
+- Bulk delete admin task passes `job_repo` for protection check
+- Renamed `get_cleanup_candidates()` to `get_expired_cleanup_candidates()` for clarity
+
+### Fixed
+- GAP-1: Manual delete could drop target database that another job deployed
+- GAP-2: Bulk delete could bypass deployed database protection
+
+---
+
 v0.2.0 - 2026-01-02
 -------------------
 ### Real-Time Restore Progress & UI Polish

@@ -6,6 +6,99 @@
 
 ---
 
+## 2026-01-04 | Target Database Protection Bug Fix
+
+### Context
+After implementing protection system, user reported that deleting history records STILL dropped the `charletandpsolutions` database despite an active deployed job existing. Investigation revealed root cause.
+
+### Root Cause Analysis
+1. **MockJobRepository missing methods**: `has_any_deployed_job_for_target()` and `has_any_locked_job_for_target()` were only added to the real `JobRepository` in mysql.py, NOT to `MockJobRepository` in mock_mysql.py
+2. **No fail-safe**: If protection check threw an exception (e.g., method not found), deletion proceeded anyway instead of blocking
+
+### What Was Done
+
+**Fix 1: Mock Methods** ([pulldb/simulation/adapters/mock_mysql.py](pulldb/simulation/adapters/mock_mysql.py#L988-L1030))
+- Added `has_any_deployed_job_for_target(target, dbhost)` - cross-user check
+- Added `has_any_locked_job_for_target(target, dbhost)` - cross-user check  
+- Both methods iterate mock job state with same logic as real repo
+
+**Fix 2: Fail-Safe Exception Handling** ([pulldb/worker/cleanup.py](pulldb/worker/cleanup.py#L627-L651))
+- Wrapped protection check in try/except in `delete_job_databases()`
+- If exception: BLOCK deletion (fail-safe over fail-open)
+- Clear logging: "FAIL-SAFE: Protection check threw exception... Blocking target deletion"
+
+**Fix 3: Fail-Safe in Retention Cleanup** ([pulldb/worker/cleanup.py](pulldb/worker/cleanup.py#L2160-L2190))
+- Wrapped protection check in `_drop_job_database()` with try/except
+- If exception: skip database (don't drop), log error, continue to next
+
+### Rationale
+- **FAIL HARD principle**: If protection system is broken, BLOCK deletion
+- **Complete interface**: Mock must implement all methods of real repository
+- **Defense layers**: Even if mock is used, protection still works
+
+### Files Modified
+- [pulldb/simulation/adapters/mock_mysql.py](pulldb/simulation/adapters/mock_mysql.py#L988-L1030) - Added mock protection methods
+- [pulldb/worker/cleanup.py](pulldb/worker/cleanup.py#L627-L651) - Fail-safe exception handling
+
+### Testing
+- All 695 QA tests pass
+- All 32 unit tests pass
+- Services rebuilt and restarted
+
+---
+
+## 2026-01-04 | Target Database Protection Implementation
+
+### Context
+User requested comprehensive audit and implementation of protection mechanisms to prevent accidental deletion of deployed databases. Analysis revealed GAP where manual/bulk delete could drop target databases that had active deployments.
+
+### What Was Done
+
+**Research Phase**
+- Audited ALL database deletion code paths (6 distinct paths identified)
+- Found existing `get_deployed_job_for_target()` was user-scoped, not suitable for cross-user protection
+- Identified GAP-1: `delete_job_databases()` could drop target without checking for active deployment
+- Identified GAP-2: Bulk delete admin task had same vulnerability
+
+**Phase 1: Core Protection Functions** ([pulldb/infra/mysql.py](pulldb/infra/mysql.py#L2378-L2459))
+- Added `has_any_deployed_job_for_target(target, dbhost)` - checks ALL users
+- Added `has_any_locked_job_for_target(target, dbhost)` - checks ALL users
+- These are cross-user checks (unlike existing user-scoped method)
+
+**Phase 2: Protection Function** ([pulldb/worker/cleanup.py](pulldb/worker/cleanup.py#L222-L281))
+- Added `TargetProtectionResult` dataclass with `can_drop`, `reason`, `blocking_job_id`
+- Added `is_target_database_protected()` - SINGLE SOURCE OF TRUTH for deletion safety
+- Checks: (1) protected DB list, (2) any deployed job, (3) any locked job
+
+**Phase 3: Protected Callers** ([pulldb/worker/cleanup.py](pulldb/worker/cleanup.py#L576-L699))
+- Updated `delete_job_databases()` to accept optional `job_repo` parameter
+- If protection check fails: staging dropped, target SKIPPED with clear error message
+- Updated callers in routes.py and admin_tasks.py to pass `job_repo`
+
+**Phase 4: Defense-in-Depth** ([pulldb/worker/cleanup.py](pulldb/worker/cleanup.py#L2154-L2175))
+- Added protection check in `_drop_job_database()` (retention cleanup)
+- Logs WARNING if safety check triggers (indicates bug in candidate selection)
+
+### Rationale
+- **FAIL HARD compliance**: Protection failures are explicit with clear error messages
+- **Defense-in-depth**: Multiple layers - query filters AND runtime checks
+- **Single source of truth**: `is_target_database_protected()` is THE authority
+- **Backwards compatible**: `job_repo` parameter is optional with graceful degradation
+
+### Files Modified
+- [pulldb/infra/mysql.py](pulldb/infra/mysql.py#L2378-L2459) - New repo methods
+- [pulldb/worker/cleanup.py](pulldb/worker/cleanup.py#L222-L699) - Protection functions
+- [pulldb/web/features/jobs/routes.py](pulldb/web/features/jobs/routes.py#L767) - Pass job_repo
+- [pulldb/worker/admin_tasks.py](pulldb/worker/admin_tasks.py#L805) - Pass job_repo
+- [pulldb/cli/admin_commands.py](pulldb/cli/admin_commands.py#L1089) - Method rename
+
+### Testing
+- All 695 QA tests pass
+- All 32 unit tests pass (including job_delete tests)
+- Services restart successfully
+
+---
+
 ## 2026-01-04 | Restore Progress Log Deduplication
 
 ### Context

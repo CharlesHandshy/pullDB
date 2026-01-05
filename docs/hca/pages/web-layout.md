@@ -1,6 +1,6 @@
 # pullDB Web Layout Architecture
 
-> **Version**: 0.2.0 | **Updated**: January 2026
+> **Version**: 0.2.2 | **Updated**: January 2026
 
 ## Layout Wireframe
 

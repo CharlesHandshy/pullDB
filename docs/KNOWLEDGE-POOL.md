@@ -7,7 +7,7 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 **Related:** [Deployment](deployment.md) · [policies/](policies/) · [terraform/](terraform/)
 
 Last updated: 2026-01-04
-Current version: v0.2.0
+Current version: v0.2.2
 Phases complete: 0-5
 
 ---
@@ -204,13 +204,33 @@ Both database types are dropped regardless of job status:
 - **Staging database**: `{target}_{job_id_first_12_chars}` (temporary)
 - **Target database**: `{user_code}{target}` (user's named database)
 
+### Target Database Protection (v0.2.0+)
+
+Target databases are protected from accidental deletion:
+
+| Protection | Function | Description |
+|------------|----------|-------------|
+| Protected DBs | `PROTECTED_DATABASES` | mysql, sys, information_schema, etc. |
+| Active Deployment | `has_any_deployed_job_for_target()` | Any user has deployed job |
+| Locked Database | `has_any_locked_job_for_target()` | Any user has locked the target |
+
+**Single source of truth**: `is_target_database_protected()` in `pulldb/worker/cleanup.py`
+
+```python
+# Check before any target deletion
+protection = is_target_database_protected(target, dbhost, job_repo)
+if not protection.can_drop:
+    # protection.reason explains why (deployed, locked, protected)
+    # protection.blocking_job_id shows which job blocks deletion
+```
+
 ### Key Components
 
 | File | Layer | Purpose |
 |------|-------|---------|
 | `pulldb/domain/permissions.py` | entities | `can_delete_job_database()` |
-| `pulldb/worker/cleanup.py` | features | `delete_job_databases()`, `JobDeleteResult` |
-| `pulldb/infra/mysql.py` | shared | `mark_job_deleted()`, `hard_delete_job()`, `create_bulk_delete_task()` |
+| `pulldb/worker/cleanup.py` | features | `delete_job_databases()`, `is_target_database_protected()`, `JobDeleteResult`, `TargetProtectionResult` |
+| `pulldb/infra/mysql.py` | shared | `mark_job_deleted()`, `hard_delete_job()`, `has_any_deployed_job_for_target()`, `has_any_locked_job_for_target()` |
 | `pulldb/worker/admin_tasks.py` | features | `_execute_bulk_delete_jobs()` handler |
 | `pulldb/web/features/jobs/routes.py` | pages | Delete routes (single + bulk) |
 

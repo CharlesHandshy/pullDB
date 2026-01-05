@@ -4,7 +4,7 @@
 
 > **Purpose**: Comprehensive atomic-level index for AI model searching and navigation.  
 > **Last Updated**: 2026-01-04  
-> **Version**: 0.2.0  
+> **Version**: 0.2.2  
 > **File Count**: ~290 project files (excluding venv, .git, caches)
 
 ---
@@ -211,7 +211,7 @@
 |------|-------|--------------|
 | `__init__.py` | features |  |
 | `atomic_rename.py` | features | 📦 `AtomicRenameConnectionSpec`, 📦 `AtomicRenameSpec`, `atomic_rename_staging_to_target()` |
-| `cleanup.py` | features | 📦 `CleanupCandidate`, 📦 `OrphanCandidate`, 📦 `OrphanMetadata`, `is_valid_staging_name()`, `get_orphan_metadata()` (+12 more) |
+| `cleanup.py` | features | 📦 `CleanupCandidate`, 📦 `OrphanCandidate`, 📦 `OrphanMetadata`, 📦 `TargetProtectionResult`, `is_valid_staging_name()`, `is_target_database_protected()`, `get_orphan_metadata()` (+12 more) |
 | `downloader.py` | features | `ensure_disk_capacity()`, `download_backup()`, 📍 2 endpoints |
 | `executor.py` | features | 📦 `WorkerExecutorDependencies`, 📦 `WorkerExecutorTimeouts`, 📦 `WorkerExecutorHooks`, `derive_backup_lookup_target()`, `build_lookup_targets_for_location()` (+2 more) |
 | `log_normalizer.py` | features | 📦 `NormalizedLogEvent`, `normalize_myloader_line()` |

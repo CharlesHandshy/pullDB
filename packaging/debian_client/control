@@ -1,13 +1,13 @@
 Package: pulldb-client
-Version: 0.2.0
+Version: 0.2.2
 Section: admin
 Priority: optional
 Architecture: amd64
 Maintainer: PestRoutes Engineering <engineering@pestroutes.com>
-Pre-Depends: software-properties-common
-Depends: bash, adduser
+Depends: libc6 (>= 2.31), bash, adduser
+Provides: pulldb-cli
 Homepage: https://github.com/CharlesHandshy/pullDB
-Description: pullDB client CLI
+Description: pullDB client CLI with embedded Python 3.12
  The standalone client CLI for pullDB.
- Installs to /opt/pulldb.client as the pulldb_service user.
- Python 3.12 is automatically installed from deadsnakes PPA during setup.
+ Installs to /opt/pulldb.client with embedded Python 3.12 runtime.
+ Works on Ubuntu 20.04+ without requiring system Python 3.12.

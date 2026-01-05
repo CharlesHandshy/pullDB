@@ -8,12 +8,14 @@ SYSTEM_GROUP="pulldb_service"
 
 if [ "$1" = "remove" ]; then
     rm -f "${BIN_DIR}/pulldb"
-    rm -rf "${INSTALL_PREFIX}"
+    # Remove venv but keep python and dist for potential reinstall
+    rm -rf "${INSTALL_PREFIX}/venv"
     echo "pullDB client removed."
 fi
 
 if [ "$1" = "purge" ]; then
     rm -f "${BIN_DIR}/pulldb"
+    # Remove everything including embedded Python
     rm -rf "${INSTALL_PREFIX}"
     
     # Only remove user/group if server package is NOT installed

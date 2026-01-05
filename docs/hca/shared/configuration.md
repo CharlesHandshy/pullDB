@@ -1,7 +1,7 @@
 # pullDB Configuration Reference
 
 > Complete reference of all configurable variables organized by HCA layer.
-> **Version**: 0.2.0 | **Updated**: January 2026
+> **Version**: 0.2.2 | **Updated**: January 2026
 
 ---
 

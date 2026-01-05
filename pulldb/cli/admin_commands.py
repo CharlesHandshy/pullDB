@@ -1086,7 +1086,7 @@ def run_retention_cleanup_cmd(
 
     grace_days_str = settings_repo.get_setting("cleanup_grace_days")
     grace_days = int(grace_days_str) if grace_days_str else 7
-    candidates = job_repo.get_cleanup_candidates(grace_days=grace_days)
+    candidates = job_repo.get_expired_cleanup_candidates(grace_days=grace_days)
 
     if not candidates:
         if json_out:
