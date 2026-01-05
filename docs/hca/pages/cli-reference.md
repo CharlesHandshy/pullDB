@@ -37,6 +37,12 @@ pulldb cancel <job_id>
 
 # View performance profile
 pulldb profile <job_id>
+
+# Account management
+pulldb register              # Create new account (first-time setup)
+pulldb request-host-key      # Request API key for new host machine
+pulldb setpass               # Change password
+pulldb hosts                 # List available database hosts
 ```
 
 ### Admin Commands (pulldb-admin)
@@ -57,6 +63,12 @@ pulldb-admin hosts list|add|enable|disable
 
 # Manage users
 pulldb-admin users list|show|enable|disable
+
+# Manage API keys
+pulldb-admin keys pending     # List keys awaiting approval
+pulldb-admin keys approve     # Approve a pending key
+pulldb-admin keys revoke      # Revoke a key
+pulldb-admin keys list        # List user's keys
 
 # Manage secrets
 pulldb-admin secrets rotate-host <hostname>
@@ -277,6 +289,141 @@ pulldb profile <job_id> [--json]
 
 ---
 
+### register
+
+Create a new pullDB account. This is the first step for new users.
+
+**Syntax:**
+```bash
+pulldb register
+```
+
+The command prompts for:
+- Username (must contain at least 6 letters)
+- Password (minimum 8 characters)
+
+**Output:**
+```bash
+$ pulldb register
+Enter username: jsmith
+Enter password: ********
+Confirm password: ********
+
+✓ Account created successfully!
+
+  Username:  jsmith
+  User Code: JSMITH
+
+✓ API credentials saved to ~/.pulldb/credentials
+
+Your account is pending approval.
+Contact an administrator to enable your account.
+```
+
+**What Happens:**
+1. Account is created in **disabled** state
+2. API key is created in **pending** state
+3. Credentials are saved to `~/.pulldb/credentials`
+4. Admin must run `pulldb-admin users enable jsmith` to activate
+5. Admin must run `pulldb-admin keys approve <key_id>` for CLI access
+
+---
+
+### request-host-key
+
+Request an API key for a new host machine. Use this when you need CLI access from a second (or subsequent) computer.
+
+**Syntax:**
+```bash
+pulldb request-host-key [--host-name=<hostname>]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--host-name=` | Override auto-detected hostname |
+
+The command prompts for your password to verify identity.
+
+**Output:**
+```bash
+$ pulldb request-host-key
+Enter password: ********
+
+✓ API key requested successfully!
+
+  Username:  jsmith
+  User Code: JSMITH
+  Hostname:  my-laptop
+
+✓ API credentials saved to ~/.pulldb/credentials
+
+⚠ Your API key is PENDING APPROVAL
+Contact an administrator to approve your key.
+```
+
+**What Happens:**
+1. New API key is created for this host
+2. Key is in **pending** state until approved
+3. Credentials saved to `~/.pulldb/credentials`
+4. Admin must run `pulldb-admin keys approve <key_id>` for CLI access
+
+---
+
+### setpass
+
+Change your password.
+
+**Syntax:**
+```bash
+pulldb setpass
+```
+
+The command prompts for current and new passwords.
+
+**Output:**
+```bash
+$ pulldb setpass
+Current password: ********
+New password: ********
+Confirm new password: ********
+
+✓ Password changed successfully
+You can now log in with your new password.
+```
+
+---
+
+### hosts
+
+List available database hosts where you can restore databases.
+
+**Syntax:**
+```bash
+pulldb hosts [--json]
+```
+
+**Output:**
+```bash
+$ pulldb hosts
+
+Available Database Hosts
+==================================================
+ALIAS            HOSTNAME
+---------------- --------------------------------
+localhost        localhost
+dev              dev-db-01.internal
+staging          staging-db.internal
+---------------- --------------------------------
+
+Total: 3 host(s)
+
+Use alias or hostname with: pulldb restore <customer> dbhost=<alias>
+```
+
+---
+
 ## pulldb-admin Commands
 
 ### settings
@@ -416,6 +563,69 @@ pulldb-admin users show <username>      # Show user details
 pulldb-admin users enable <username>    # Enable a user
 pulldb-admin users disable <username>   # Disable a user
 ```
+
+---
+
+### keys
+
+Manage API keys for CLI authentication.
+
+API keys authenticate CLI requests using HMAC signatures. Each key is tied to a specific host machine. New keys require admin approval before they can be used.
+
+**Subcommands:**
+
+```bash
+pulldb-admin keys pending               # List keys awaiting approval
+pulldb-admin keys approve <key_id>      # Approve a pending key
+pulldb-admin keys revoke <key_id>       # Revoke a key
+pulldb-admin keys list <username>       # List all keys for a user
+```
+
+**pending** - Shows all keys awaiting admin approval:
+
+```bash
+$ pulldb-admin keys pending
+Pending API Keys:
+
+KEY_ID                                   USERNAME        HOSTNAME             CREATED
+key_abc123...                           jsmith          dev-workstation      2026-01-05 14:30
+key_def456...                           alice           laptop               2026-01-05 15:00
+
+Total: 2 pending key(s)
+Use 'pulldb-admin keys approve <key_id>' to approve a key.
+```
+
+**approve** - Approves a pending key so the user can use the CLI from that host:
+
+```bash
+$ pulldb-admin keys approve key_abc123def456...
+✓ API key 'key_abc123...' approved
+  User: jsmith
+  Host: dev-workstation
+
+The user can now use the CLI from 'dev-workstation'.
+```
+
+**revoke** - Immediately blocks CLI access from the associated host:
+
+```bash
+$ pulldb-admin keys revoke key_abc123def456...
+✓ API key revoked
+```
+
+**list** - Shows all keys for a specific user (active and revoked):
+
+```bash
+$ pulldb-admin keys list jsmith
+API Keys for 'jsmith':
+
+KEY_ID           HOST              STATUS      CREATED       LAST USED
+key_abc123...    dev-workstation   Active      2026-01-01    2026-01-05 10:30
+key_def456...    laptop            Pending     2026-01-05    Never
+key_ghi789...    old-machine       Revoked     2025-12-01    2025-12-15 09:00
+```
+
+> **Web UI Alternative:** Use Admin → API Keys for a visual interface with approve/reject buttons.
 
 ---
 

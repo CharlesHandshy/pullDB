@@ -6,6 +6,133 @@
 
 ---
 
+## 2026-01-05 | Multi-Host API Key Security Hardening (Complete)
+
+### Context
+User requested securing all CLI endpoints with API key authentication. This is the culmination of the multi-host API key system implementation.
+
+### What Was Done
+
+#### 1. API Endpoint Security
+- Added `AuthUser` dependency to ~20+ API endpoints:
+  - Job endpoints: `/api/jobs/*`, `/api/jobs/paginated/*`, `/api/jobs/search`, `/api/jobs/history`
+  - User endpoints: `/api/users/{username}`, `/api/status`
+  - Host endpoints: `/api/hosts`
+  - Dropdown endpoints: `/api/dropdown/customers|users|hosts`
+  - Search endpoints: `/api/customers/search`, `/api/backups/search`
+
+- **Intentionally unauthenticated** (by design):
+  - `/api/health` - Load balancer health checks
+  - `/api/auth/register` - Uses password, creates credentials
+  - `/api/auth/request-host-key` - Uses password to get credentials
+  - `/api/auth/change-password` - Uses current password
+
+#### 2. CLI Security Updates
+- Updated all CLI helper functions with 401 error handling:
+  - `_api_get()`, `_api_post()`, `_api_get_object()` - Added 401 handling with "pending approval" detection
+  - `_resolve_job_id()`, `hosts_cmd()`, `profile_cmd()` - Added auth headers
+  - `_get_user_info()`, `_get_user_state()` - Skip API if no credentials (pre-registration)
+
+#### 3. Admin Notification
+- `pulldb-admin users enable <username>` now shows pending API keys for that user
+- Helps admins complete full onboarding (enable user + approve key)
+
+#### 4. Web UI Key Management
+- New page: `/web/admin/api-keys` - Lists pending keys with approve/reject buttons
+- Admin page Quick Access: Added "API Keys" link with pending count badge
+- AJAX approve/revoke with real-time UI updates (no page reload)
+- Breadcrumb support: `admin_api_keys`
+
+### Architecture Summary
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Multi-Host API Key System                        │
+├─────────────────────────────────────────────────────────────────────┤
+│ Registration Flow:                                                   │
+│   1. pulldb register → User (disabled) + Key (unapproved)           │
+│   2. pulldb-admin users enable <user> → Shows pending keys          │
+│   3. pulldb-admin keys approve <key_id> → CLI access granted        │
+├─────────────────────────────────────────────────────────────────────┤
+│ New Host Flow:                                                       │
+│   1. pulldb request-host-key → Key (unapproved), saved to ~/.pulldb │
+│   2. pulldb-admin keys approve <key_id> → CLI access on new host    │
+├─────────────────────────────────────────────────────────────────────┤
+│ CLI Auth:                                                           │
+│   • HMAC-signed requests (X-API-Key, X-Timestamp, X-Signature)      │
+│   • 401 + "pending approval" → Clear user message                   │
+├─────────────────────────────────────────────────────────────────────┤
+│ Admin Tools:                                                        │
+│   CLI:  pulldb-admin keys pending|approve|revoke|list               │
+│   Web:  /web/admin/api-keys with approve/reject buttons             │
+│   API:  /api/admin/keys/pending|approve|revoke                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Files Modified
+- [pulldb/api/main.py](pulldb/api/main.py) - Added AuthUser to ~20 endpoints
+- [pulldb/cli/main.py](pulldb/cli/main.py) - 401 handling, auth headers
+- [pulldb/cli/admin_commands.py](pulldb/cli/admin_commands.py) - Pending key notification
+- [pulldb/web/features/admin/routes.py](pulldb/web/features/admin/routes.py) - API keys page + routes
+- [pulldb/web/templates/features/admin/api_keys.html](pulldb/web/templates/features/admin/api_keys.html) - New template
+- [pulldb/web/templates/features/admin/admin.html](pulldb/web/templates/features/admin/admin.html) - API Keys link
+- [pulldb/web/widgets/breadcrumbs/__init__.py](pulldb/web/widgets/breadcrumbs/__init__.py) - admin_api_keys entry
+
+### Documentation Needed
+1. **CLI Reference**: Document `pulldb request-host-key` command
+2. **Admin CLI Reference**: Document `pulldb-admin keys` commands
+3. **Web UI Guide**: Document API Keys page in admin section
+4. **Security Model**: Document HMAC auth flow, pending approval workflow
+5. **Onboarding Guide**: Document new user registration → enable → approve flow
+
+### Rationale
+- **Security by default**: New keys require admin approval
+- **Multi-host support**: Users can have keys on multiple machines
+- **Clear feedback**: CLI shows "pending approval" vs "invalid credentials"
+- **Admin visibility**: Pending key count on dashboard, notification on user enable
+- **FAIL HARD**: Clear error messages guide users to resolution
+
+---
+
+## 2026-01-05 | MySQL Root@% Password Configuration
+
+### Context
+User requested setting a password for `root@%` (network access) while maintaining `root@localhost` with socket authentication only.
+
+### What Was Done
+1. **Set root@% password** to `WddfAUBoHXOZrYkUT6JWv7lE`
+2. **Accidentally broke root@localhost** - initial ALTER USER affected both users
+3. **Recovery performed**:
+   - Started MySQL with `--skip-grant-tables`
+   - Found `root@localhost` entry was deleted
+   - Recreated via INSERT INTO mysql.user with `auth_socket` plugin
+   - Granted all privileges via UPDATE statement
+4. **Updated Knowledge Base**:
+   - Added `local_mysql_root` section to KNOWLEDGE-POOL.json
+   - Added "Local MySQL Root Credentials" section to KNOWLEDGE-POOL.md
+
+### Final Configuration
+
+| User | Host | Plugin | Purpose |
+|------|------|--------|---------|
+| `root` | `localhost` | `auth_socket` | Local admin via `sudo mysql` |
+| `root` | `%` | `caching_sha2_password` | Network admin (password: `WddfAUBoHXOZrYkUT6JWv7lE`) |
+
+### Rationale
+- **Separation of concerns**: Socket auth for local (secure, no password in memory), password for network
+- **Defense in depth**: Even if password is compromised, local socket auth remains separate
+
+### Lessons Learned
+- When modifying MySQL root users, be explicit about which host (`@localhost` vs `@%`)
+- Always verify changes with `SELECT user, host, plugin FROM mysql.user WHERE user='root'`
+- `root@localhost` with `auth_socket` should NEVER be modified for password operations
+
+### Files Modified
+- [docs/KNOWLEDGE-POOL.json](docs/KNOWLEDGE-POOL.json) - Added `local_mysql_root` section
+- [docs/KNOWLEDGE-POOL.md](docs/KNOWLEDGE-POOL.md) - Added credentials documentation
+
+---
+
 ## 2026-01-04 | Target Database Protection Bug Fix
 
 ### Context
