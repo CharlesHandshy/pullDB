@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../../css/help.css">
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
@@ -32,6 +34,7 @@
                 <a href="../cli/index.html" class="nav-link">CLI</a>
                 <a href="index.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">API</a>
                 <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
+                <a href="../web-ui/index.html" class="nav-link">Web UI</a>
             </div>
             
             <div class="nav-actions">
@@ -84,13 +87,28 @@
         <aside class="page-sidebar">
             <nav class="sidebar-nav">
                 <div class="sidebar-section">
-                    <div class="sidebar-heading">Endpoints</div>
-                    <a href="#authentication" class="sidebar-link">Authentication</a>
+                    <div class="sidebar-heading">Authentication</div>
+                    <a href="#authentication" class="sidebar-link">Overview</a>
+                    <a href="#register" class="sidebar-link">Register</a>
+                    <a href="#request-host-key" class="sidebar-link">Request Host Key</a>
+                    <a href="#list-hosts" class="sidebar-link">List Hosts</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Jobs</div>
                     <a href="#submit-job" class="sidebar-link">Submit Job</a>
                     <a href="#get-job" class="sidebar-link">Get Job Status</a>
                     <a href="#list-jobs" class="sidebar-link">List Jobs</a>
                     <a href="#cancel-job" class="sidebar-link">Cancel Job</a>
                     <a href="#events" class="sidebar-link">Get Events</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Retention</div>
+                    <a href="#extend-retention" class="sidebar-link">Extend Retention</a>
+                    <a href="#lock-job" class="sidebar-link">Lock Database</a>
+                    <a href="#unlock-job" class="sidebar-link">Unlock Database</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Backups</div>
                     <a href="#search-backups" class="sidebar-link">Search Backups</a>
                 </div>
                 <div class="sidebar-section">
@@ -209,6 +227,192 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                 </div>
             </section>
             
+            <!-- Register -->
+            <section class="content-section" id="register">
+                <h2>Register User</h2>
+                <p>Self-register a new user account. No authentication required.</p>
+                
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="method post">POST</span>
+                        <code class="endpoint-path">/api/auth/register</code>
+                    </div>
+                    
+                    <h3>Request Body</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "username": "jsmith",
+  "password": "securepassword123",
+  "host_name": "dev-workstation"
+}</code></pre>
+                    </div>
+                    
+                    <table class="param-table">
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>username</code></td>
+                                <td>string</td>
+                                <td>Yes</td>
+                                <td>Username (3-50 chars, alphanumeric + underscore)</td>
+                            </tr>
+                            <tr>
+                                <td><code>password</code></td>
+                                <td>string</td>
+                                <td>Yes</td>
+                                <td>Password (minimum 8 characters)</td>
+                            </tr>
+                            <tr>
+                                <td><code>host_name</code></td>
+                                <td>string</td>
+                                <td>No</td>
+                                <td>Hostname for API key (auto-detected by CLI)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <h3>Response (201 Created)</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "username": "jsmith",
+  "user_code": "JSMITH",
+  "api_key": "key_abc123def456...",
+  "api_secret": "sec_xyz789...",
+  "message": "Account created successfully. Contact an administrator to enable your account."
+}</code></pre>
+                    </div>
+                </div>
+                
+                <div class="info-callout warning" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Pending Approval:</strong> New accounts are created in a disabled state.
+                        An administrator must enable your account AND approve your API key before you can submit jobs.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Request Host Key -->
+            <section class="content-section" id="request-host-key">
+                <h2>Request Host Key</h2>
+                <p>Request an API key for a new host machine. Requires password authentication.</p>
+                
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="method post">POST</span>
+                        <code class="endpoint-path">/api/auth/request-host-key</code>
+                    </div>
+                    
+                    <h3>Request Body</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "username": "jsmith",
+  "password": "securepassword123",
+  "host_name": "my-laptop"
+}</code></pre>
+                    </div>
+                    
+                    <table class="param-table">
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>username</code></td>
+                                <td>string</td>
+                                <td>Yes</td>
+                                <td>Your existing username</td>
+                            </tr>
+                            <tr>
+                                <td><code>password</code></td>
+                                <td>string</td>
+                                <td>Yes</td>
+                                <td>Your current password</td>
+                            </tr>
+                            <tr>
+                                <td><code>host_name</code></td>
+                                <td>string</td>
+                                <td>Yes</td>
+                                <td>Hostname of the new machine (max 255 chars)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <h3>Response (200 OK)</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "username": "jsmith",
+  "user_code": "JSMITH",
+  "host_name": "my-laptop",
+  "api_key": "key_def456ghi789...",
+  "api_secret": "sec_abc123...",
+  "message": "API key created successfully. Contact an administrator to approve the key before it can be used."
+}</code></pre>
+                    </div>
+                </div>
+                
+                <div class="info-callout" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    <div>
+                        <strong>Use Case:</strong> Use this endpoint when you already have a pullDB account but need
+                        to access pullDB from a different machine. The CLI command <code>pulldb request-host-key</code>
+                        calls this endpoint automatically.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- List Hosts -->
+            <section class="content-section" id="list-hosts">
+                <h2>List Hosts</h2>
+                <p>Get available database hosts where you can restore databases. Requires authentication.</p>
+                
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="method get">GET</span>
+                        <code class="endpoint-path">/api/hosts</code>
+                    </div>
+                    
+                    <h3>Response</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "hosts": [
+    {
+      "hostname": "localhost",
+      "alias": "localhost",
+      "enabled": true
+    },
+    {
+      "hostname": "dev-db-01.internal",
+      "alias": "dev",
+      "enabled": true
+    }
+  ],
+  "total": 2
+}</code></pre>
+                    </div>
+                </div>
+            </section>
+            
             <!-- Submit Job -->
             <section class="content-section" id="submit-job">
                 <h2>Submit Job</h2>
@@ -289,6 +493,12 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                                 <td>No</td>
                                 <td>Full S3 path to specific backup (overrides customer/date lookup)</td>
                             </tr>
+                            <tr>
+                                <td><code>env</code></td>
+                                <td>string</td>
+                                <td>No</td>
+                                <td>S3 environment: "staging" or "prod" (default: searches both)</td>
+                            </tr>
                         </tbody>
                     </table>
                     <p class="text-muted">* Either <code>customer</code> or <code>qatemplate</code> required, not both</p>
@@ -297,11 +507,11 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     <div class="code-block">
                         <pre><code>{
   "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
-  "target": "jsmith_acme_pest",
+  "target": "jsmithacmepest",
   "staging_name": "pulldb_stg_7f3a2b1c",
   "status": "queued",
   "owner_username": "jsmith",
-  "owner_user_code": "JSMITH",
+  "owner_user_code": "jsmith",
   "submitted_at": "2026-01-02T10:42:15Z"
 }</code></pre>
                     </div>
@@ -346,10 +556,10 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                     <div class="code-block">
                         <pre><code>{
   "id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
-  "target": "jsmith_acme_pest",
+  "target": "jsmithacmepest",
   "status": "running",
-  "user_code": "JSMITH",
-  "owner_user_code": "JSMITH",
+  "user_code": "jsmith",
+  "owner_user_code": "jsmith",
   "submitted_at": "2026-01-02T10:42:15Z",
   "started_at": "2026-01-02T10:42:18Z",
   "completed_at": null,
@@ -409,10 +619,10 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                         <pre><code>[
   {
     "id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
-    "target": "jsmith_acme_pest",
+    "target": "jsmithacmepest",
     "status": "complete",
-    "user_code": "JSMITH",
-    "owner_user_code": "JSMITH",
+    "user_code": "jsmith",
+    "owner_user_code": "jsmith",
     "submitted_at": "2026-01-02T10:42:15Z",
     "started_at": "2026-01-02T10:42:18Z",
     "completed_at": "2026-01-02T10:45:30Z",
@@ -522,6 +732,156 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
 ]</code></pre>
                     </div>
                     <p class="text-muted">Response is an array of event objects (not wrapped). Use <code>since_id</code> for efficient polling in CLI streaming mode.</p>
+                </div>
+            </section>
+            
+            <!-- Extend Retention -->
+            <section class="content-section" id="extend-retention">
+                <h2>Extend Retention</h2>
+                <p>Extend the retention period for a job's database. Requires authentication.</p>
+                
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="method post">POST</span>
+                        <code class="endpoint-path">/api/jobs/{job_id}/extend</code>
+                    </div>
+                    
+                    <h3>Request Body</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "months": 3
+}</code></pre>
+                    </div>
+                    
+                    <table class="param-table">
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>months</code></td>
+                                <td>integer</td>
+                                <td>No</td>
+                                <td>Months to extend (default: 1, max: 12)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <h3>Response</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "success": true,
+  "message": "Retention extended by 3 month(s)",
+  "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+  "expires_at": "2026-04-02T10:42:15Z",
+  "locked_at": null,
+  "locked_by": null
+}</code></pre>
+                    </div>
+                </div>
+                
+                <div class="info-callout" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    <div>
+                        <strong>Authorization:</strong> Users can only extend their own jobs. Administrators can extend any job.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Lock Job -->
+            <section class="content-section" id="lock-job">
+                <h2>Lock Database</h2>
+                <p>Lock a job's database to prevent automatic cleanup. Requires authentication.</p>
+                
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="method post">POST</span>
+                        <code class="endpoint-path">/api/jobs/{job_id}/lock</code>
+                    </div>
+                    
+                    <h3>Request Body</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "reason": "Keeping for demo next week"
+}</code></pre>
+                    </div>
+                    
+                    <table class="param-table">
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>reason</code></td>
+                                <td>string</td>
+                                <td>No</td>
+                                <td>Reason for locking (default: "Locked via API")</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <h3>Response</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "success": true,
+  "message": "Database locked successfully",
+  "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+  "expires_at": "2026-04-02T10:42:15Z",
+  "locked_at": "2026-01-05T14:30:00Z",
+  "locked_by": "jsmith"
+}</code></pre>
+                    </div>
+                </div>
+                
+                <div class="info-callout warning" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Important:</strong> Locked databases are protected from automatic retention cleanup and cannot be overwritten.
+                        Remember to unlock when no longer needed.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Unlock Job -->
+            <section class="content-section" id="unlock-job">
+                <h2>Unlock Database</h2>
+                <p>Unlock a job's database to allow cleanup. Requires authentication.</p>
+                
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <span class="method post">POST</span>
+                        <code class="endpoint-path">/api/jobs/{job_id}/unlock</code>
+                    </div>
+                    
+                    <h3>Response</h3>
+                    <div class="code-block">
+                        <pre><code>{
+  "success": true,
+  "message": "Database unlocked successfully",
+  "job_id": "7f3a2b1c-85a1-4da2-9c8e-1234567890ab",
+  "expires_at": "2026-04-02T10:42:15Z",
+  "locked_at": null,
+  "locked_by": null
+}</code></pre>
+                    </div>
                 </div>
             </section>
             
@@ -701,6 +1061,22 @@ signature = HMAC-SHA256(secret, string_to_sign)</code></pre>
                         <tr>
                             <td><code>Cannot cancel during load phase</code></td>
                             <td>myloader has started, cannot safely interrupt</td>
+                        </tr>
+                        <tr>
+                            <td><code>API key pending approval</code></td>
+                            <td>API key created but not yet approved by admin</td>
+                        </tr>
+                        <tr>
+                            <td><code>User 'xxx' already exists</code></td>
+                            <td>Username taken during registration</td>
+                        </tr>
+                        <tr>
+                            <td><code>Username 'xxx' is not allowed</code></td>
+                            <td>Username is on blocked list</td>
+                        </tr>
+                        <tr>
+                            <td><code>Permission denied: You can only...</code></td>
+                            <td>Trying to modify another user's job</td>
                         </tr>
                     </tbody>
                 </table>

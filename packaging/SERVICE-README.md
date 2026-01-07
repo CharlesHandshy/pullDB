@@ -27,6 +27,7 @@ The API and Web UI run as separate services on different ports for flexibility a
 - [Service Management](#service-management)
 - [Multi-Worker Setup](#multi-worker-setup)
 - [Web UI Access](#web-ui-access)
+- [User Management](#user-management)
 - [Configuration](#configuration)
 - [Directory Structure](#directory-structure)
 - [Log Management](#log-management)
@@ -202,8 +203,8 @@ sudo cat /opt/pulldb.service/ADMIN_CREDENTIALS.txt
 
 | Username | User Code | UUID | Password | Can Login? |
 |----------|-----------|------|----------|------------|
-| `admin` | `ADMINN` | `00000000-...-000002` | Random (displayed at install) | ✅ Yes |
-| `pulldb_service` | `SBCACC` | `00000000-...-000001` | None | ❌ No |
+| `admin` | `adminn` | `00000000-...-000002` | Random (displayed at install) | ✅ Yes |
+| `pulldb_service` | `sbcacc` | `00000000-...-000001` | None | ❌ No |
 
 **About `admin` account:**
 - Human administrator account for web UI and CLI
@@ -216,7 +217,7 @@ sudo cat /opt/pulldb.service/ADMIN_CREDENTIALS.txt
 - When `pulldb-admin` runs as the Linux `pulldb_service` user, this account provides authorization
 - Has admin role for full CLI access
 - Cannot be used for web login (no password)
-- User code: `SBCACC` (Service Bootstrap CLI Admin Account)
+- User code: `sbcacc` (Service Bootstrap CLI Admin Account)
 
 ### Accessing the Web UI
 
@@ -230,6 +231,65 @@ sudo cat /opt/pulldb.service/ADMIN_CREDENTIALS.txt
 3. Log in with username `admin` and the generated password
 
 4. **Change the default password** after first login
+
+---
+
+## User Management
+
+### User Registration Workflow
+
+When users run `pulldb register`, their account is created in a **pending approval** state:
+
+1. User runs `pulldb register` on their machine
+2. Account created with disabled status and pending API key
+3. Admin reviews and approves via Web UI or CLI
+4. User can now submit restore jobs
+
+### Multi-Host API Keys
+
+Users can access pullDB from multiple machines. Each machine needs its own API key:
+
+1. User runs `pulldb request-host-key` on new machine
+2. API key created in **pending approval** state
+3. Admin approves the key
+4. User can now use pullDB from that machine
+
+### Admin Commands for Key Management
+
+Use `pulldb-admin keys` to manage API keys:
+
+```bash
+# List all API keys (shows pending, approved, revoked)
+sudo pulldb-admin keys list
+
+# Approve a pending API key
+sudo pulldb-admin keys approve <key-id>
+
+# Revoke an API key
+sudo pulldb-admin keys revoke <key-id>
+```
+
+### Admin Commands for User Management
+
+```bash
+# List all users
+sudo pulldb-admin users list
+
+# Enable a disabled user
+sudo pulldb-admin users enable <username>
+
+# Disable a user
+sudo pulldb-admin users disable <username>
+
+# Reset a user's password
+sudo pulldb-admin users resetpass <username>
+```
+
+### Web UI User Management
+
+Administrators can also manage users via the Web UI:
+- Navigate to **Admin → Users** for user management
+- Navigate to **Admin → API Keys** for key approval/revocation
 
 ---
 
@@ -568,5 +628,5 @@ sudo groupdel pulldb_service
 
 ---
 
-**Version**: 0.0.2
-**Last Updated**: November 26, 2025
+**Version**: 1.0.0
+**Last Updated**: January 2026

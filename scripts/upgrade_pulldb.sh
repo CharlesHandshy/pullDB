@@ -45,35 +45,13 @@ systemctl stop $WORKER_SERVICE 2>/dev/null || true
 systemctl stop $API_SERVICE 2>/dev/null || true
 systemctl stop $WEB_SERVICE 2>/dev/null || true
 
-# Run database migrations first (before updating code)
+# Note: Schema updates are now handled automatically by postinst during dpkg install
+# The schema_migrations table tracks which files have been applied
 if [[ $SKIP_MIGRATE -eq 0 ]]; then
-    MIGRATE_SCRIPT="$INSTALL_PREFIX/scripts/pulldb-migrate.sh"
-    if [[ -f "$MIGRATE_SCRIPT" ]] && [[ -f "$INSTALL_PREFIX/bin/dbmate" ]]; then
-        info "Running database migrations..."
-        
-        # Source environment for migration credentials
-        if [[ -f "$INSTALL_PREFIX/.env" ]]; then
-            set -a
-            source "$INSTALL_PREFIX/.env"
-            set +a
-        fi
-        
-        MIGRATE_FLAGS=""
-        if [[ $ASSUME_YES -eq 1 ]]; then
-            MIGRATE_FLAGS="--yes"
-        fi
-        
-        if bash "$MIGRATE_SCRIPT" up $MIGRATE_FLAGS; then
-            info "Migrations completed successfully"
-        else
-            warn "Migration failed - review and fix before restarting services"
-            exit 1
-        fi
-    else
-        warn "Migration tools not found, skipping migrations"
-    fi
+    info "Schema updates are applied automatically during package installation."
+    info "To verify: mysql -e 'SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at'"
 else
-    warn "--no-migrate specified, skipping migrations"
+    warn "--no-migrate specified (schema updates happen during dpkg install anyway)"
 fi
 
 # Update virtual environment
@@ -109,4 +87,4 @@ info "Verify status:"
 info "  systemctl status $WORKER_SERVICE"
 info "  systemctl status $API_SERVICE"
 info "  systemctl status $WEB_SERVICE"
-info "  pulldb-migrate verify"
+info "  mysql -e 'SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at'"

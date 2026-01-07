@@ -6,6 +6,262 @@
 
 ---
 
+## 2026-01-05 | Packaging Documentation Audit
+
+### Context
+Following web help pages audit, user requested audit of packaging documents, scripts, and installers to ensure fresh installs work correctly with multi-host API key feature.
+
+### Files Audited
+1. **debian/postinst** (717 lines) - Package installation script
+2. **debian/control** - Package metadata (version 0.2.2)
+3. **SERVICE-README.md** (573→632 lines) - Server operations guide
+4. **CLIENT-README.md** (371→413 lines) - Client installation guide
+5. **INSTALL-UPGRADE.md** (464 lines) - Installation procedures
+6. **env.example** (238 lines) - Environment template
+7. **Schema migrations** - Including 003_api_keys_host_tracking.sql
+
+### Findings - No Issues
+- ✅ **postinst**: Properly applies migrations via schema_migrations tracking
+- ✅ **Schema seeds**: Admin (02040) and service account (02050) properly seeded
+- ✅ **Migration 003**: Host tracking columns correctly defined
+- ✅ **Service account**: Uses system-level auth (DB lookup), no API key needed
+- ✅ **INSTALL-UPGRADE.md**: Already documents migration workflow
+
+### Changes Made - CLIENT-README.md
+
+**New Section: Authentication Commands**
+Added before Restore Command section:
+- `pulldb register` - Full documentation with workflow explanation
+- `pulldb request-host-key` - Options, example, approval workflow
+
+**Updated: Quick Reference Table**
+Added rows:
+- Register account: `pulldb register`
+- Request host key: `pulldb request-host-key`
+
+### Changes Made - SERVICE-README.md
+
+**New Section: User Management**
+Added between Web UI Access and Configuration:
+- User Registration Workflow - explains register → approve flow
+- Multi-Host API Keys - explains request-host-key → approve flow
+- Admin Commands for Key Management - `pulldb-admin keys` commands
+- Admin Commands for User Management - `pulldb-admin users` commands
+- Web UI User Management - reference to Admin panels
+
+**Updated: Table of Contents**
+Added: User Management link
+
+### Rationale
+- CLIENT-README is the client-side operations guide - needs auth command docs
+- SERVICE-README is the server-side operations guide - needs admin key management docs
+- Following FAIL HARD principle: fresh installs must work end-to-end with clear docs
+- Laws of UX (Aesthetic-Usability): documentation structure mirrors actual workflows
+
+---
+
+## 2026-01-05 | Web Help Pages Audit & Update
+
+### Context
+User requested full audit of web/help pages to validate documentation accuracy against source code, then update to bring into alignment.
+
+### Pages Audited
+1. **API Reference** (`pulldb/web/help/pages/api/index.html`) - 735 lines → 1100+ lines
+2. **CLI Reference** (`pulldb/web/help/pages/cli/index.html`) - 1133 lines → 1273 lines
+3. **Job Lifecycle** (`pulldb/web/help/pages/concepts/job-lifecycle.html`) - Accurate, no changes
+4. **Troubleshooting** (`pulldb/web/help/pages/troubleshooting/index.html`) - Accurate, no changes
+5. **Getting Started** (`pulldb/web/help/pages/getting-started.html`) - Accurate, no changes
+
+### Changes Made - API Help Page
+
+**New Sidebar Structure:**
+- Authentication section: Overview, Register, Request Host Key, List Hosts
+- Jobs section: Submit Job, Get Job Status, List Jobs, Cancel Job, Get Events
+- Retention section: Extend Retention, Lock Database, Unlock Database
+- Backups section: Search Backups
+- Reference section: Status Codes, Error Handling
+
+**New Endpoints Documented:**
+- `POST /api/auth/register` - User self-registration
+- `POST /api/auth/request-host-key` - Request API key for new host
+- `GET /api/hosts` - List available database hosts
+- `POST /api/jobs/{job_id}/extend` - Extend retention period
+- `POST /api/jobs/{job_id}/lock` - Lock database from cleanup
+- `POST /api/jobs/{job_id}/unlock` - Unlock database
+
+**Fixed - Submit Job:**
+- Added missing `env` parameter (S3 environment: staging/prod)
+
+**New Error Messages:**
+- "API key pending approval"
+- "User 'xxx' already exists"
+- "Username 'xxx' is not allowed"
+- "Permission denied: You can only..."
+
+### Changes Made - CLI Help Page
+
+**Sidebar Updated:**
+- Added `request-host-key` under User Commands
+- Added `keys` under Admin Commands
+
+**New Commands Documented:**
+- `pulldb request-host-key` - Full section with options, example output, info callout
+- `pulldb-admin keys pending` - List pending keys
+- `pulldb-admin keys approve` - Approve key with example
+- `pulldb-admin keys revoke` - Revoke key
+- `pulldb-admin keys list` - List user keys
+
+**Enhanced - register:**
+- Added warning callout explaining pending approval workflow
+
+### Source of Truth
+- Code: `pulldb/api/main.py` - Actual endpoint implementations
+- Code: `pulldb/cli/main.py` - CLI command definitions
+- Code: `pulldb/cli/admin_commands.py` - Admin CLI commands
+- Docs: `docs/hca/pages/cli-reference.md` - Already accurate, used as reference
+- Docs: `docs/hca/pages/auth-guide.md` - Already accurate, used as reference
+
+### Rationale
+Documentation must match implementation. The multi-host API key feature was implemented but help pages hadn't been updated. Following FAIL HARD principle - users should have accurate documentation rather than discovering features don't match docs.
+
+### Files Modified
+- `pulldb/web/help/pages/api/index.html` - Added 6 endpoints, env parameter, new errors
+- `pulldb/web/help/pages/cli/index.html` - Added request-host-key, admin keys commands
+
+---
+
+## 2026-01-05 | Web Help Pages Audit
+
+### Context
+User requested full audit of web/help pages to validate documentation accuracy against source code.
+
+### Pages Audited
+1. **API Reference** (`pulldb/web/help/pages/api/index.html`) - 735 lines
+2. **CLI Reference** (`pulldb/web/help/pages/cli/index.html`) - 1133 lines
+3. **Job Lifecycle** (`pulldb/web/help/pages/concepts/job-lifecycle.html`) - 538 lines
+4. **Troubleshooting** (`pulldb/web/help/pages/troubleshooting/index.html`) - 604 lines
+5. **Getting Started** (`pulldb/web/help/pages/getting-started.html`) - 361 lines
+6. **Web UI** (`pulldb/web/help/pages/web-ui/`) - Empty folder
+
+### Findings - API Reference
+
+#### ✅ ACCURATE - Core Endpoints Documented
+- `POST /api/jobs` - Submit job (correct parameters)
+- `GET /api/jobs` - List jobs (correct query params: limit, active, history, filter)
+- `GET /api/jobs/{job_id}` - Get job status
+- `POST /api/jobs/{job_id}/cancel` - Cancel job
+- `GET /api/jobs/{job_id}/events` - Get events
+- `GET /api/backups/search` - Search backups
+- Port 8080 - Correct (verified in README, AWS-SETUP.md, multiple docs)
+- HMAC authentication - Correct (X-API-Key, X-Timestamp, X-Signature)
+- Session cookie authentication - Correct
+
+#### ⚠️ MISSING - Submit Job `env` Parameter
+- **Schema** has `env: str | None` field (S3 environment: "staging" or "prod")
+- **API Help** does NOT document this parameter in Submit Job section
+- **CLI** uses `s3env` parameter which maps to `env` in API payload
+
+#### ⚠️ MISSING - New Authentication Endpoints (Multi-Host API Keys Feature)
+Not documented in API help:
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/request-host-key` - Request API key for new host
+- `GET /api/hosts` - List user's authorized hosts
+
+#### ⚠️ MISSING - Retention Endpoints
+Not documented in API help:
+- `POST /api/jobs/{job_id}/extend` - Extend retention
+- `POST /api/jobs/{job_id}/lock` - Lock job database
+- `POST /api/jobs/{job_id}/unlock` - Unlock job database
+
+#### ⚠️ MISSING - Other API Endpoints
+Not documented (47 total endpoints in main.py, help covers ~7):
+- `GET /api/health` - Health check
+- `GET /api/status` - System status
+- `GET /api/users/{username}` - User info
+- `POST /api/auth/change-password` - Password change
+- `GET /api/jobs/active` - Active jobs only
+- `GET /api/jobs/paginated` - Paginated job list
+- `GET /api/jobs/search` - Search jobs
+- `GET /api/jobs/my-last` - User's last job
+- `GET /api/jobs/resolve/{prefix}` - Resolve job ID prefix
+- `GET /api/users/{user_code}/last-job` - User's last job by code
+- Manager endpoints (`/api/manager/*`)
+- Admin endpoints (`/api/admin/*`)
+- Dropdown endpoints (`/api/dropdown/*`)
+
+### Findings - CLI Reference
+
+#### ✅ ACCURATE - User Commands Documented
+- `restore` - With parameters (customer, qatemplate, dbhost, suffix, date, overwrite)
+- `status` - Job status
+- `events` - Event log
+- `cancel` - Cancel job
+- `history` - Job history
+- `search` - Search backups
+- `list` - List jobs
+- `profile` - Performance profile
+- `hosts` - Show hosts
+- `register` - Register account
+- `setpass` - Set password
+
+#### ⚠️ MISSING - `request-host-key` Command
+- Command EXISTS in `pulldb/cli/main.py` line 2294
+- NOT documented in CLI help page
+- Purpose: Request API key for a new host machine (multi-host feature)
+
+#### ⚠️ MISSING - `pulldb-admin keys` Commands
+- Command group EXISTS in `pulldb/cli/admin_commands.py`
+- NOT documented in CLI help page
+- Subcommands:
+  - `pulldb-admin keys pending` - List pending key requests
+  - `pulldb-admin keys approve` - Approve key request
+  - `pulldb-admin keys revoke` - Revoke API key
+  - `pulldb-admin keys list` - List user's keys
+
+### Findings - Other Pages
+
+#### ✅ Job Lifecycle (`concepts/job-lifecycle.html`)
+- Accurate state diagram (QUEUED → RUNNING → COMPLETE/FAILED/CANCELED)
+- Correct phase documentation
+- Well-structured content
+
+#### ✅ Troubleshooting (`troubleshooting/index.html`)
+- Good coverage of common issues
+- Organized by phase (download, restore, permission, connection)
+- Useful diagnostic cards
+
+#### ✅ Getting Started (`getting-started.html`)
+- Clear step-by-step guide
+- Correct prerequisites
+- Good for new users
+
+#### ⚠️ Web UI (`web-ui/` folder)
+- **Empty folder** - no web UI help documentation exists
+- Should document the web interface features
+
+### Recommendations
+
+**High Priority (API Help):**
+1. Add `env` parameter to Submit Job documentation
+2. Add Authentication endpoints section (register, request-host-key, hosts)
+3. Add Retention endpoints section (extend, lock, unlock)
+
+**High Priority (CLI Help):**
+1. Add `request-host-key` command documentation
+2. Add `pulldb-admin keys` command group documentation
+
+**Medium Priority:**
+1. Consider documenting more API endpoints (health, status, paginated)
+2. Create web UI help documentation
+3. Add search index entries for new commands
+
+### Rationale
+Documentation audit follows FAIL HARD principle - exposing gaps before users encounter
+undocumented features. Multi-host API key feature was just implemented and documentation
+should be updated to match the new functionality.
+
+---
+
 ## 2026-01-05 | Multi-Host API Key - Post-Audit Fix
 
 ### Context

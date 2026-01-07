@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 0.2.2 | **Last Updated**: January 2026
+> **Version**: 1.0.0 | **Last Updated**: January 2026
 
 This guide covers system administration tasks: schema migrations, cleanup operations, monitoring, and maintenance.
 
@@ -187,52 +187,38 @@ This is intentional—user activation and host authorization are separate securi
 
 ---
 
-## Schema Migrations
+## Schema Management
 
-pullDB uses **dbmate** for database schema migrations. Migrations are plain SQL files stored in `/opt/pulldb.service/migrations/`.
+pullDB uses numbered SQL files for database schema. Schema files are stored in `/opt/pulldb.service/schema/pulldb_service/` and automatically applied during package installation.
 
-### Migration Commands
+### Checking Applied Schema
 
 ```bash
-# Check status
-pulldb-migrate status
+# View all applied schema files
+mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
 
-# Apply pending migrations
-pulldb-migrate up
-
-# Apply non-interactively (for automation)
-pulldb-migrate up --yes
-
-# Rollback last migration
-pulldb-migrate rollback
-
-# Verify schema integrity
-pulldb-migrate verify
-
-# Create new migration
-pulldb-migrate new add_new_feature
+# List available schema files
+ls -la /opt/pulldb.service/schema/pulldb_service/*.sql
 ```
 
-### Status Output
+### Manual Schema Application (if needed)
 
-```
-[X] 20250101000000_initial_schema.sql
-[X] 20250115000000_add_cancel_requested.sql
-[X] 20250128000000_phase2_concurrency.sql
-[ ] 20251201000000_pending_change.sql
-
-Applied: 3
-Pending: 1
+```bash
+# Apply a specific schema file manually
+mysql pulldb_service < /opt/pulldb.service/schema/pulldb_service/00716_api_keys_host_tracking.sql
 ```
 
-### Migration History
+### Schema File Naming
 
-| Migration | Description | Version |
-|-----------|-------------|---------|
-| `initial_schema` | Core tables (jobs, auth_users, db_hosts, settings) | v0.0.1 |
-| `add_cancel_requested` | Job cancellation support | v0.0.2 |
-| `add_staging_cleaned` | Staging cleanup tracking | v0.0.3 |
-| `phase2_concurrency` | Per-user and global job limits | v0.0.4 |
+Schema files use a numbered naming convention:
+```
+00000_auth_users.sql       # Core tables
+00100_jobs.sql             # Job tracking
+00715_api_keys.sql         # API key storage
+00716_api_keys_host_tracking.sql  # API key approval workflow
+```
+
+Files are applied in lexicographic order. The `schema_migrations` table tracks which files have been applied.
 
 ### Production Upgrade Workflow
 
@@ -240,32 +226,33 @@ Pending: 1
 # 1. Stop worker (recommended for major changes)
 sudo systemctl stop pulldb-worker
 
-# 2. Apply migrations
-sudo pulldb-migrate up --yes
+# 2. Install new package (schema applied automatically)
+sudo dpkg -i pulldb_X.X.X_amd64.deb
 
-# 3. Verify schema
-sudo pulldb-migrate verify
+# 3. Verify schema was applied
+mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
 
 # 4. Restart services
 sudo systemctl start pulldb-worker
 ```
 
-### Writing Migrations
+### Adding New Schema Files
 
-Migration file format:
+Schema file format (idempotent):
 ```sql
--- migrate:up
-ALTER TABLE jobs ADD COLUMN priority ENUM('low', 'normal', 'high') DEFAULT 'normal';
+-- 00XXX_description.sql
+-- Use stored procedures or IF NOT EXISTS for idempotent operations
 
--- migrate:down
-ALTER TABLE jobs DROP COLUMN priority;
+-- Add column if not exists (MySQL 8.0.16+)
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS priority ENUM('low', 'normal', 'high') DEFAULT 'normal';
+
+-- Or use procedure wrapper for older MySQL versions
 ```
 
 Best practices:
-- One change per migration
-- Always write the `down` section
-- Use `IF NOT EXISTS` / `IF EXISTS` where possible
-- Test rollback: `up` → `down` → `up`
+- Use sequential numbering (00100_, 00200_, etc.)
+- Make operations idempotent (safe to run twice)
+- Test on fresh install AND upgrade scenarios
 
 ---
 

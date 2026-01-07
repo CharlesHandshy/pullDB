@@ -75,6 +75,12 @@
     <path d="M12 16v-4"/>
     <path d="M12 8h.01"/>
 </svg>
+{%- elif name == 'help' or name == 'help-circle' or name == 'question' -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="help">
+    <circle cx="12" cy="12" r="10"/>
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+    <path d="M12 17h.01"/>
+</svg>
 {%- elif name == 'close' or name == 'x' -%}
 <svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="close">
     <path d="M18 6 6 18"/>

@@ -1400,6 +1400,99 @@ class SimulatedJobRepository:
                     job_id, "delete_failed", f'{{"reason": "{detail}"}}'
                 )
 
+    # Constants for stale running job recovery (mirroring real JobRepository)
+    STALE_RUNNING_TIMEOUT_MINUTES = 15
+    STALE_RUNNING_PROCESS_CHECK_COUNT = 3
+    STALE_RUNNING_PROCESS_CHECK_DELAY_SECONDS = 2.0
+
+    def get_candidate_stale_running_job(
+        self,
+        stale_timeout_minutes: int | None = None,
+    ) -> Job | None:
+        """Find a candidate stale running job without claiming it.
+
+        Jobs in 'running' status that have been running longer than the timeout
+        may be from crashed workers. Returns a candidate for verification.
+        """
+        if stale_timeout_minutes is None:
+            stale_timeout_minutes = self.STALE_RUNNING_TIMEOUT_MINUTES
+
+        with self.state.lock:
+            cutoff = datetime.now(UTC) - timedelta(minutes=stale_timeout_minutes)
+
+            # Find running jobs older than timeout
+            candidates = [
+                j for j in self.state.jobs.values()
+                if j.status == JobStatus.RUNNING
+                and j.started_at
+                and j.started_at < cutoff
+            ]
+
+            if not candidates:
+                return None
+
+            # Filter to only include jobs that are newest for their target+owner
+            def is_newest_for_target(job: Job) -> bool:
+                """Check if this job is the newest for its target+owner_user_code."""
+                for other in self.state.jobs.values():
+                    if (other.target == job.target
+                        and other.owner_user_code == job.owner_user_code
+                        and other.submitted_at > job.submitted_at):
+                        return False
+                return True
+
+            candidates = [j for j in candidates if is_newest_for_target(j)]
+
+            if not candidates:
+                return None
+
+            # Return oldest candidate (don't modify it)
+            candidates.sort(key=lambda j: j.started_at or datetime.min.replace(tzinfo=UTC))
+            return candidates[0]
+
+    def mark_stale_running_failed(
+        self,
+        job_id: str,
+        worker_id: str | None = None,
+        error_detail: str | None = None,
+    ) -> bool:
+        """Mark a stale running job as failed after verification.
+
+        Only updates if job is still in 'running' status.
+
+        Returns:
+            True if job was marked failed, False if not found or already transitioned.
+        """
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if not job:
+                return False
+
+            # Only mark if still running
+            if job.status != JobStatus.RUNNING:
+                return False
+
+            detail = error_detail or "Worker died during restore (stale job recovery)"
+            updated = replace(
+                job,
+                status=JobStatus.FAILED,
+                completed_at=datetime.now(UTC),
+                error_detail=detail,
+                worker_id=worker_id or job.worker_id,
+            )
+            self.state.jobs[job_id] = updated
+
+            # Log event
+            import json
+            event_detail = json.dumps({
+                "reason": "stale_job_recovery",
+                "recovered_by": worker_id,
+                "error_detail": detail,
+            })
+            self.append_job_event(job_id, "stale_running_recovery", event_detail)
+
+            return True
+
     def mark_job_expired(self, job_id: str) -> bool:
         """Mark deployed job as expired when retention period has passed."""
         with self.state.lock:
@@ -2568,6 +2661,249 @@ class SimulatedAuthRepository:
                 if host:
                     result.append(host.hostname)
             return result
+
+    # =========================================================================
+    # API Key Management Methods
+    # =========================================================================
+
+    def list_api_keys_for_user(self, user_id: str) -> list[t.Any]:
+        """List all API keys for a user.
+        
+        Does NOT return the secret - that's only available at creation time.
+        
+        Args:
+            user_id: UUID of the user.
+            
+        Returns:
+            List of ApiKey-like objects with key_id, name, is_active, created_at, last_used_at.
+        """
+        from dataclasses import dataclass as dc
+        
+        @dc
+        class ApiKeyInfo:
+            """Simple container for API key information."""
+            key_id: str
+            name: str | None
+            host_name: str | None
+            is_active: bool
+            approved_at: datetime | None
+            created_at: datetime | None
+            created_from_ip: str | None
+            last_used_at: datetime | None
+            last_used_ip: str | None
+            expires_at: datetime | None
+        
+        with self.state.lock:
+            result: list[ApiKeyInfo] = []
+            for key_id, key_data in self.state.api_keys.items():
+                if key_data.get('user_id') == user_id:
+                    result.append(ApiKeyInfo(
+                        key_id=key_id,
+                        name=key_data.get('name'),
+                        host_name=key_data.get('host_name'),
+                        is_active=key_data.get('is_active', False),
+                        approved_at=key_data.get('approved_at'),
+                        created_at=key_data.get('created_at'),
+                        created_from_ip=key_data.get('created_from_ip'),
+                        last_used_at=key_data.get('last_used_at'),
+                        last_used_ip=key_data.get('last_used_ip'),
+                        expires_at=key_data.get('expires_at'),
+                    ))
+            # Sort by created_at desc
+            result.sort(key=lambda k: k.created_at or datetime.min.replace(tzinfo=UTC), reverse=True)
+            return result
+
+    def get_api_keys_for_user(self, user_id: str) -> list[t.Any]:
+        """Alias for list_api_keys_for_user."""
+        return self.list_api_keys_for_user(user_id)
+
+    def create_api_key(
+        self, 
+        user_id: str, 
+        name: str | None = None,
+        host_name: str | None = None,
+    ) -> tuple[str, str]:
+        """Create a new API key for a user.
+        
+        Args:
+            user_id: UUID of the user.
+            name: Optional name/description for the key.
+            host_name: Optional hostname the key is for.
+            
+        Returns:
+            Tuple of (key_id, secret). The secret is only returned once.
+        """
+        import secrets
+        
+        key_id = "key_" + secrets.token_hex(16)
+        secret = "sec_" + secrets.token_hex(32)
+        
+        with self.state.lock:
+            self.state.api_keys[key_id] = {
+                "key_id": key_id,
+                "user_id": user_id,
+                "key_secret_hash": "$2b$12$SimulatedHash",
+                "key_secret": secret,  # In real DB, only hash is stored
+                "name": name,
+                "host_name": host_name,
+                "created_from_ip": "127.0.0.1",
+                "is_active": True,
+                "created_at": datetime.now(UTC),
+                "last_used_at": None,
+                "last_used_ip": None,
+                "approved_at": datetime.now(UTC),  # Auto-approve in simulation
+                "approved_by": user_id,
+                "expires_at": None,
+            }
+        
+        return key_id, secret
+
+    def revoke_api_key(self, key_id: str) -> bool:
+        """Revoke an API key."""
+        with self.state.lock:
+            if key_id in self.state.api_keys:
+                self.state.api_keys[key_id]['is_active'] = False
+                return True
+            return False
+
+    def get_api_key_user(self, key_id: str) -> str | None:
+        """Get the user_id for an API key."""
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if key_data:
+                return str(key_data.get('user_id'))
+            return None
+
+    def get_api_key_info(self, key_id: str) -> dict[str, t.Any] | None:
+        """Get detailed information about an API key.
+        
+        Args:
+            key_id: ID of the key to look up.
+            
+        Returns:
+            Dict with key info including user_id, approved_at, etc. or None if not found.
+        """
+        with self.state.lock:
+            key_data = self.state.api_keys.get(key_id)
+            if key_data:
+                return {
+                    'key_id': key_id,
+                    'user_id': key_data.get('user_id'),
+                    'name': key_data.get('name'),
+                    'host_name': key_data.get('host_name'),
+                    'is_active': key_data.get('is_active', False),
+                    'approved_at': key_data.get('approved_at'),
+                    'approved_by': key_data.get('approved_by'),
+                    'created_at': key_data.get('created_at'),
+                    'created_from_ip': key_data.get('created_from_ip'),
+                    'last_used_at': key_data.get('last_used_at'),
+                    'last_used_ip': key_data.get('last_used_ip'),
+                    'expires_at': key_data.get('expires_at'),
+                }
+            return None
+
+    def get_pending_api_keys(self) -> list[t.Any]:
+        """Get all API keys pending approval.
+        
+        Returns:
+            List of API key objects where approved_at is None.
+        """
+        from dataclasses import dataclass as dc
+        
+        @dc
+        class PendingApiKey:
+            """Container for pending API key information."""
+            key_id: str
+            user_id: str
+            username: str | None
+            name: str | None
+            host_name: str | None
+            created_at: datetime | None
+            created_from_ip: str | None
+        
+        with self.state.lock:
+            result: list[PendingApiKey] = []
+            for key_id, key_data in self.state.api_keys.items():
+                if key_data.get('approved_at') is None:
+                    user_id = key_data.get('user_id', '')
+                    user = self.state.users.get(user_id)
+                    result.append(PendingApiKey(
+                        key_id=key_id,
+                        user_id=user_id,
+                        username=user.username if user else None,
+                        name=key_data.get('name'),
+                        host_name=key_data.get('host_name'),
+                        created_at=key_data.get('created_at'),
+                        created_from_ip=key_data.get('created_from_ip'),
+                    ))
+            # Sort by created_at desc
+            result.sort(key=lambda k: k.created_at or datetime.min.replace(tzinfo=UTC), reverse=True)
+            return result
+
+    def get_all_api_keys(self) -> list[t.Any]:
+        """Get all API keys in the system.
+        
+        Returns:
+            List of all API key objects with user information.
+        """
+        from dataclasses import dataclass as dc
+        
+        @dc
+        class ApiKeyInfo:
+            """Container for API key information."""
+            key_id: str
+            user_id: str
+            username: str | None
+            name: str | None
+            host_name: str | None
+            is_active: bool
+            approved_at: datetime | None
+            created_at: datetime | None
+            created_from_ip: str | None
+            last_used_at: datetime | None
+            last_used_ip: str | None
+            expires_at: datetime | None
+        
+        with self.state.lock:
+            result: list[ApiKeyInfo] = []
+            for key_id, key_data in self.state.api_keys.items():
+                user_id = key_data.get('user_id', '')
+                user = self.state.users.get(user_id)
+                result.append(ApiKeyInfo(
+                    key_id=key_id,
+                    user_id=user_id,
+                    username=user.username if user else None,
+                    name=key_data.get('name'),
+                    host_name=key_data.get('host_name'),
+                    is_active=key_data.get('is_active', False),
+                    approved_at=key_data.get('approved_at'),
+                    created_at=key_data.get('created_at'),
+                    created_from_ip=key_data.get('created_from_ip'),
+                    last_used_at=key_data.get('last_used_at'),
+                    last_used_ip=key_data.get('last_used_ip'),
+                    expires_at=key_data.get('expires_at'),
+                ))
+            # Sort by created_at desc
+            result.sort(key=lambda k: k.created_at or datetime.min.replace(tzinfo=UTC), reverse=True)
+            return result
+
+    def approve_api_key(self, key_id: str, approver_user_id: str) -> bool:
+        """Approve an API key.
+        
+        Args:
+            key_id: ID of the key to approve.
+            approver_user_id: User ID of the admin approving.
+            
+        Returns:
+            True if approved, False if key not found.
+        """
+        with self.state.lock:
+            if key_id in self.state.api_keys:
+                self.state.api_keys[key_id]['approved_at'] = datetime.now(UTC)
+                self.state.api_keys[key_id]['approved_by'] = approver_user_id
+                self.state.api_keys[key_id]['is_active'] = True
+                return True
+            return False
 
 
 class SimulatedAuditRepository:

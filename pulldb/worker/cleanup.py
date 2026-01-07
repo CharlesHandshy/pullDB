@@ -827,6 +827,183 @@ def execute_delete_job(
     return result
 
 
+@dataclass
+class StaleRunningCleanupResult:
+    """Result of cleaning up a stale running job."""
+
+    job_id: str
+    was_actually_stale: bool
+    staging_dropped: bool = False
+    marked_failed: bool = False
+    error: str | None = None
+
+
+def execute_stale_running_cleanup(
+    job: Job,
+    job_repo: JobRepository,
+    host_repo: HostRepository,
+    worker_id: str | None = None,
+) -> StaleRunningCleanupResult:
+    """Clean up a stale running job after verification.
+
+    Called by the worker when processing a candidate stale running job.
+    First verifies the job is actually stale by checking the process list
+    on the target host (3 checks with 2-second delays). If no active
+    processes are found, drops the staging database and marks the job as failed.
+
+    This prevents false positives from treating long-running restores as stale.
+
+    Args:
+        job: Job in 'running' status that may be stale.
+        job_repo: JobRepository for status updates.
+        host_repo: HostRepository for credential resolution and process checks.
+        worker_id: ID of worker performing the cleanup.
+
+    Returns:
+        StaleRunningCleanupResult with outcome details.
+    """
+    result = StaleRunningCleanupResult(
+        job_id=job.id,
+        was_actually_stale=False,
+    )
+
+    # Step 1: Verify the job is actually stale via process list check
+    try:
+        is_active = host_repo.is_staging_db_active(
+            hostname=job.dbhost,
+            staging_name=job.staging_name,
+            check_count=job_repo.STALE_RUNNING_PROCESS_CHECK_COUNT,
+            check_delay_seconds=job_repo.STALE_RUNNING_PROCESS_CHECK_DELAY_SECONDS,
+        )
+    except Exception as e:
+        error_msg = f"Failed to check process list on {job.dbhost}: {e}"
+        logger.error(
+            error_msg,
+            extra={"job_id": job.id, "staging_name": job.staging_name},
+            exc_info=True,
+        )
+        result.error = error_msg
+        # Don't mark as failed - we couldn't verify, so leave for retry
+        return result
+
+    if is_active:
+        # Job is still running - not actually stale
+        logger.info(
+            "Stale candidate still has active processes, skipping cleanup",
+            extra={
+                "job_id": job.id,
+                "staging_name": job.staging_name,
+                "worker_id": worker_id,
+            },
+        )
+        result.was_actually_stale = False
+        return result
+
+    # Step 2: Job is genuinely stale - proceed with cleanup
+    result.was_actually_stale = True
+
+    logger.warning(
+        "Confirmed stale running job, proceeding with cleanup",
+        extra={
+            "job_id": job.id,
+            "target": job.target,
+            "staging_name": job.staging_name,
+            "started_at": job.started_at,
+            "worker_id": worker_id,
+        },
+    )
+
+    # Step 3: Drop staging database (if it exists)
+    try:
+        credentials = host_repo.get_host_credentials(job.dbhost)
+
+        # Check if staging database exists before attempting drop
+        if job.staging_name and _database_exists(credentials, job.staging_name):
+            # Validate staging name before dropping
+            is_valid, reason = is_valid_staging_name(job.staging_name)
+            if is_valid:
+                dropped = _drop_database(credentials, job.staging_name)
+                result.staging_dropped = dropped
+                if dropped:
+                    logger.info(
+                        "Dropped staging database for stale job",
+                        extra={
+                            "job_id": job.id,
+                            "staging_name": job.staging_name,
+                        },
+                    )
+                else:
+                    logger.warning(
+                        "Failed to drop staging database for stale job",
+                        extra={
+                            "job_id": job.id,
+                            "staging_name": job.staging_name,
+                        },
+                    )
+            else:
+                logger.error(
+                    "Invalid staging name, skipping drop",
+                    extra={
+                        "job_id": job.id,
+                        "staging_name": job.staging_name,
+                        "reason": reason,
+                    },
+                )
+        else:
+            logger.info(
+                "Staging database does not exist or not set",
+                extra={
+                    "job_id": job.id,
+                    "staging_name": job.staging_name,
+                },
+            )
+
+    except Exception as e:
+        error_msg = f"Failed to drop staging database: {e}"
+        logger.error(
+            error_msg,
+            extra={"job_id": job.id, "staging_name": job.staging_name},
+            exc_info=True,
+        )
+        # Continue to mark as failed even if staging drop fails
+        # The job is definitely stale at this point
+
+    # Step 4: Mark job as failed
+    try:
+        marked = job_repo.mark_stale_running_failed(
+            job_id=job.id,
+            worker_id=worker_id,
+            error_detail="Worker died during restore (stale job recovery)",
+        )
+        result.marked_failed = marked
+
+        if marked:
+            logger.warning(
+                "Stale running job cleanup complete",
+                extra={
+                    "job_id": job.id,
+                    "staging_dropped": result.staging_dropped,
+                    "worker_id": worker_id,
+                },
+            )
+            emit_counter(
+                "stale_running_jobs_recovered",
+                MetricLabels(phase="stale_recovery", status="success"),
+            )
+        else:
+            logger.warning(
+                "Stale running job already transitioned by another process",
+                extra={"job_id": job.id, "worker_id": worker_id},
+            )
+
+    except Exception as e:
+        error_msg = f"Failed to mark job as failed: {e}"
+        logger.error(error_msg, extra={"job_id": job.id}, exc_info=True)
+        result.error = error_msg
+
+    return result
+
+
 # =============================================================================
 # Job-Based Cleanup (Safe - only cleans databases with job records)
 # =============================================================================

@@ -6,19 +6,19 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 
 **Related:** [Deployment](deployment.md) · [policies/](policies/) · [terraform/](terraform/)
 
-Last updated: 2026-01-04
-Current version: v0.2.2
-Phases complete: 0-5
+Last updated: 2026-01-06
+Current version: v0.3.0
+Phases complete: 0-6
 
 ---
 
-## Package Contents Summary (v0.2.0)
+## Package Contents Summary (v0.3.0)
 
 | Component | Path in Package | Size |
 |-----------|-----------------|------|
-| Python wheel | `/opt/pulldb.service/dist/pulldb-0.2.0-py3-none-any.whl` | ~5MB |
+| Python wheel | `/opt/pulldb.service/dist/pulldb-0.3.0-py3-none-any.whl` | ~6MB |
 | myloader binary | `/opt/pulldb.service/bin/myloader-0.19.3-3` | 8.4MB |
-| Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 33 SQL files |
+| Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 41 SQL files |
 | Systemd units | `/opt/pulldb.service/systemd/` | 6 files |
 | Config templates | `/opt/pulldb.service/env.example`, `aws.config.example` | - |
 | After-SQL templates | `/opt/pulldb.service/template_after_sql/` | 12 customer scripts |
@@ -44,8 +44,15 @@ Phases complete: 0-5
 ---
 
 ## Index (categories)
-- **Package Contents Summary** (NEW - v0.2.0)
-- **Default Accounts & Provisioning** (NEW - v0.2.0)
+- **Package Contents Summary** (Updated - v0.3.0)
+- **Default Accounts & Provisioning** (v0.2.0)
+- **CLI HMAC Authentication** (Phase 6)
+- **Multi-Host API Keys** (Phase 6)
+- **Host Provisioning Service** (Phase 6)
+- **Secret Rotation** (Phase 6)
+- **Database Retention** (Phase 6)
+- **Stale Running Job Recovery** (Phase 6)
+- **Web UI Help System** (Phase 6)
 - **Authentication & Sessions** (Phase 4)
 - **RBAC Permission Matrix** (Phase 4)
 - **Simulation Framework** (Phase 4)
@@ -267,6 +274,172 @@ ALTER TABLE jobs MODIFY status ENUM('queued','running','canceling','failed','com
 ALTER TABLE admin_tasks MODIFY task_type ENUM(..., 'bulk_delete_jobs');
 CREATE INDEX idx_jobs_deletable ON jobs(status, owner_user_id);
 ```
+
+---
+
+## CLI HMAC Authentication (Phase 6)
+
+Secure API key authentication for CLI operations using HMAC-SHA256 signatures.
+
+### Key Files
+
+| File | Layer | Purpose |
+|------|-------|---------|
+| `pulldb/cli/auth.py` | pages | HMAC signature generation, credential storage |
+| `pulldb/api/main.py` | pages | API key validation endpoints |
+| `schema/pulldb_service/00715_api_keys.sql` | schema | API key storage |
+
+### Credential Flow
+
+```
+~/.pulldb/credentials  →  load_credentials()  →  get_api_headers()  →  HMAC signed request
+                                                    ↓
+                                        X-Api-Key-Id, X-Timestamp, X-Signature
+```
+
+### Configuration
+
+- **Credential file**: `~/.pulldb/credentials`
+- **Format**: INI with `api_key` and `api_secret`
+- **Env override**: `PULLDB_API_KEY`, `PULLDB_API_SECRET`
+
+---
+
+## Host Provisioning Service (Phase 6)
+
+Unified service for CLI and Web-based host setup orchestration.
+
+### Key Files
+
+| File | Layer | Purpose |
+|------|-------|---------|
+| `pulldb/domain/services/provisioning.py` | features | HostProvisioningService orchestration |
+| `pulldb/infra/mysql_provisioning.py` | shared | Low-level MySQL provisioning |
+
+### Provisioning Steps
+
+1. Test admin connection to target MySQL
+2. Create `pulldb_loader` user with privileges
+3. Create `pulldb_service` database
+4. Deploy `pulldb_atomic_rename` stored procedure
+5. Store credentials in AWS Secrets Manager
+6. Register host in coordination database
+
+### Result Handling
+
+All operations return `ProvisioningResult` with:
+- `success`: Boolean status
+- `message`: Human-readable result
+- `error`: Detailed error if failed
+- `suggestions`: Actionable fix recommendations
+
+---
+
+## Secret Rotation (Phase 6)
+
+Atomic credential rotation with verification and rollback.
+
+### Key File
+
+`pulldb/domain/services/secret_rotation.py` - `SecretRotationService`
+
+### Rotation Workflow
+
+```
+VALIDATION → GENERATION → MYSQL UPDATE → VERIFICATION → AWS UPDATE → FINAL VERIFY
+```
+
+### Failure Handling
+
+- **Pre-AWS failure**: Automatic rollback to old password
+- **Post-AWS failure**: Manual fix instructions provided
+- **All phases**: Timed and logged for diagnostics
+
+---
+
+## Database Retention (Phase 6)
+
+Lifecycle management for restored databases.
+
+### Key File
+
+`pulldb/worker/retention.py` - `RetentionService`
+
+### Features
+
+- **Expiration**: Auto-expire based on grace days
+- **Locking**: User-requested lock to prevent deletion
+- **Extension**: Extend retention by 1, 3, 6 months
+- **Maintenance modal**: Acknowledges about-to-expire databases
+
+### Schema Tables
+
+- `database_retention`: Lock status and expiry dates
+- `retention_cleanup_task`: Scheduled cleanup tracking
+
+---
+
+## Stale Running Job Recovery (Phase 6)
+
+Recovery mechanism for jobs stuck in 'running' status when workers die mid-restore.
+
+### Key Files
+
+- `pulldb/worker/cleanup.py` - `execute_stale_running_cleanup()`, `StaleRunningCleanupResult`
+- `tests/qa/worker/test_stale_running_recovery.py` - Comprehensive test suite
+
+### Algorithm
+
+1. **Detection**: Find jobs in 'running' status older than timeout (15 min default)
+2. **Verification**: Check MySQL `SHOW PROCESSLIST` for activity on staging database
+3. **Multiple checks**: 3 checks with 2s delay to avoid false positives
+4. **Cleanup**: Drop staging database if no activity detected
+5. **Marking**: Atomically mark job as 'failed' with recovery message
+
+### Safety Guards
+
+- Skip jobs with newer submission to same target (superseded)
+- Verify no active MySQL processes before cleanup
+- Return error on check failure (don't mark failed if uncertain)
+
+---
+
+## Web UI Help System (Phase 6)
+
+Self-contained HTML documentation system served at `/web/help/`.
+
+### Structure
+
+```
+pulldb/web/help/
+├── index.html                    # Help Center landing
+├── css/help.css                  # Glassmorphism styling
+├── js/help.js, search.js         # Client-side interactivity
+└── pages/
+    ├── getting-started.html
+    ├── api/index.html            # API Reference
+    ├── cli/index.html            # CLI Reference
+    ├── concepts/job-lifecycle.html
+    ├── troubleshooting/index.html
+    └── web-ui/                   # NEW: Web UI documentation
+        ├── index.html            # Overview
+        ├── dashboard.html        # Dashboard guide
+        ├── restore.html          # Restore wizard
+        ├── jobs.html             # Jobs management
+        ├── profile.html          # Profile & API keys
+        └── admin.html            # Admin panel
+```
+
+### Features
+
+- **12 help pages** with consistent navigation
+- **Dark/light theme** toggle (respects OS preference)
+- **Search** (/) with keyboard shortcuts
+- **Role-based content** (Admin, Manager, User sections)
+
+### Index Document
+
+`docs/HELP-PAGE-INDEX.md` - Page inventory, endpoint catalog, visual audit log
 
 ---
 
@@ -645,6 +818,28 @@ if env and env.lower() not in location.name.lower():
   - `kms:Decrypt`, `kms:DescribeKey` (conditioned to Secrets Manager usage)
   - **Note**: ResourceTag conditions do NOT work for `ListSecrets` - AWS ignores them. Use `--filters` client-side instead.
 
+## Local MySQL Root Credentials (Development Host)
+
+The development MySQL instance uses dual root authentication:
+
+| User | Host | Plugin | Auth Method |
+|------|------|--------|-------------|
+| `root` | `localhost` | `auth_socket` | `sudo mysql` (no password) |
+| `root` | `%` | `caching_sha2_password` | Network with password |
+
+**root@localhost (Socket Auth)**:
+- Purpose: Local admin via unix socket
+- Access: `sudo mysql` (must be root/sudo)
+- No password required - authenticates via OS user
+
+**root@% (Network Auth)**:
+- Purpose: Remote/network admin access
+- Password: `WddfAUBoHXOZrYkUT6JWv7lE`
+- Access: `mysql -h <ip> -u root -p` or from remote hosts
+- Test: `MYSQL_PWD='WddfAUBoHXOZrYkUT6JWv7lE' mysql -h 10.40.10.117 -u root`
+
+**Important**: Never modify `root@localhost` authentication - it should always use `auth_socket`.
+
 ## Machine-readable index (JSON)
 The following JSON block is a compact, program-friendly index of the core artifacts referenced in this file. Use it as a single-source map for automation or verification scripts.
 
@@ -796,13 +991,7 @@ This file should be created and applied in the production account only. Keep sec
 - **Logical Hostnames**: The `hostname` column in `db_hosts` is a logical alias (e.g., `dev-db-01`), NOT the FQDN. The actual connection FQDN is stored in the AWS Secret referenced by `credential_ref`. This allows CLI users to use short names while the system connects securely.
 - **Testing Restriction**: Use `dev-db-01` or `localhost` for testing purposes.
 - **MySQL Root Socket Auth**: On localhost, root MySQL user uses `auth_socket` plugin (no password needed when connecting via Unix socket). Scripts running as root MUST use socket auth, not TCP with password.
-- **Migration Script Auth** (Nov 2025 fix):
-  - **Problem**: `pulldb-migrate` failed when run as root because AWS credentials are in user-specific `~/.aws/credentials` (not accessible to root).
-  - **Solution**: For localhost, use Unix socket auth instead of TCP with AWS credentials.
-  - **URL Format**: dbmate socket URL is `mysql://user:@/database?socket=/path/to/socket` (empty password, `@/` separator).
-  - **Socket Locations**: `/var/run/mysqld/mysqld.sock` (Debian/Ubuntu), `/tmp/mysql.sock` (macOS), `/var/lib/mysql/mysql.sock` (RHEL).
-  - **Priority**: DATABASE_URL (override) → socket auth (localhost) → AWS Secrets Manager (remote/fallback).
-- **Migration Baseline**: When installing on an existing database, use `pulldb-migrate baseline` to mark all migrations as applied without running them. This prevents migration errors from schema drift.
+- **Schema Updates (Jan 2026)**: The package installer (postinst) now automatically applies new schema files from `schema/pulldb_service/` and tracks them in the `schema_migrations` table. No separate migration command is needed.
 
 ### Packaging & Installation Lessons (Jan 2026)
 
@@ -864,11 +1053,10 @@ This file should be created and applied in the production account only. Keep sec
   - **Commands**: `pull` (db→env), `push` (env→db), `diff` (compare both).
   - **File Detection**: Auto-finds `/opt/pulldb.service/.env` (installed) or repo root `.env` (dev).
 
-- **dpkg Upgrade Does NOT Run Migrations**:
-  - **Problem**: Users expected `dpkg -i pulldb_*.deb` to auto-update schema.
-  - **Reality**: dpkg only upgrades files; migrations require separate step.
-  - **Fix**: Created `packaging/INSTALL-UPGRADE.md` with explicit post-install steps.
-  - **Required Steps**: After dpkg install, run `sudo /opt/pulldb.service/scripts/pulldb-migrate.sh migrate`.
+- **dpkg Upgrade Auto-Applies Schema** (Jan 2026 update):
+  - **Current Behavior**: `dpkg -i pulldb_*.deb` automatically applies new schema files via postinst.
+  - **Tracking**: Applied files tracked in `schema_migrations` table.
+  - **Verification**: `mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"`
 
 - **CLI dotenv Auto-Loading**:
   - **Problem**: CLI tools required manual `source .env` before use.

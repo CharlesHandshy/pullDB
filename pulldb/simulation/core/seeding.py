@@ -107,17 +107,22 @@ def seed_dev_users(state: SimulationState) -> dict[str, User]:
     ]
     default_host = "staging-01"
 
-    # (user_id, username, user_code, role, manager_id, allowed_hosts)
-    users_data = [
-        ("usr-001", "devuser", "devusr", UserRole.USER, None, dev_hosts),
-        ("usr-002", "devadmin", "devadm", UserRole.ADMIN, None, None),  # Admin gets all implicitly
-        ("usr-003", "devmanager", "devmgr", UserRole.MANAGER, "usr-002", dev_hosts),
+    # (user_id, username, user_code, role, manager_id, allowed_hosts, disabled_at, locked_at)
+    # Extended user data structure to support additional fixture states
+    users_data: list[tuple[str, str, str, UserRole, str | None, list[str] | None, datetime | None, datetime | None]] = [
+        ("usr-001", "devuser", "devusr", UserRole.USER, "usr-003", dev_hosts, None, None),  # Managed by devmanager
+        ("usr-002", "devadmin", "devadm", UserRole.ADMIN, None, None, None, None),  # Admin gets all implicitly
+        ("usr-003", "devmanager", "devmgr", UserRole.MANAGER, "usr-002", dev_hosts, None, None),
+        # Phase 0.5: Additional users for screenshot capture
+        ("usr-004", "disableduser", "disusr", UserRole.USER, "usr-003", dev_hosts, datetime(2025, 1, 15, tzinfo=UTC), None),  # Disabled user, managed by devmanager
+        ("usr-005", "resetuser", "rstusr", UserRole.USER, "usr-003", dev_hosts, None, None),  # Password reset pending, managed by devmanager
+        ("usr-006", "systemaccount", "sysacc", UserRole.SERVICE, None, None, None, datetime(2024, 1, 1, tzinfo=UTC)),  # Locked system user
     ]
 
     created_users: dict[str, User] = {}
 
     with state.lock:
-        for user_id, username, user_code, role, manager_id, allowed_hosts in users_data:
+        for user_id, username, user_code, role, manager_id, allowed_hosts, disabled_at, locked_at in users_data:
             user = User(
                 user_id=user_id,
                 username=username,
@@ -126,9 +131,10 @@ def seed_dev_users(state: SimulationState) -> dict[str, User]:
                 role=role,
                 created_at=datetime(2024, 1, 1, tzinfo=UTC),
                 manager_id=manager_id,
-                disabled_at=None,
+                disabled_at=disabled_at,
                 allowed_hosts=allowed_hosts,
                 default_host=default_host if allowed_hosts else None,
+                locked_at=locked_at,
             )
             state.users[user_id] = user
             state.users_by_code[user_code] = user
@@ -136,12 +142,18 @@ def seed_dev_users(state: SimulationState) -> dict[str, User]:
 
             # Seed auth credentials for login
             # Password: PullDB_Dev2025!
-            # This is a bcrypt hash - in real code we'd use bcrypt.hashpw
+            # This is a valid bcrypt hash generated from hash_password('PullDB_Dev2025!')
+            # Note: devadmin gets totp_secret for MFA badge screenshot
+            totp_secret = "JBSWY3DPEHPK3PXP" if user_id == "usr-002" else None
+            # Password reset timestamp for usr-005
+            password_reset_at = datetime(2025, 1, 20, 14, 30, tzinfo=UTC) if user_id == "usr-005" else None
+            
             state.auth_credentials[user_id] = {
-                "password_hash": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYPKq3q3q3q3",
-                "totp_secret": None,
+                "password_hash": "$2b$12$uJQJWPXefk/JICbVNIt23OYvf/ul545Uk5Mb50wTuxKsvDtj6Xmr2",
+                "totp_secret": totp_secret,
                 "failed_attempts": 0,
                 "locked_until": None,
+                "password_reset_at": password_reset_at,
             }
 
     return created_users
@@ -168,6 +180,8 @@ def seed_dev_hosts(state: SimulationState) -> list[DBHost]:
         ("00000000-0000-0000-0000-000000000003", "mysql-staging-03.example.com", "staging-03", 2, 10, True),
         ("00000000-0000-0000-0000-000000000004", "mysql-prod-01.example.com", "prod-01", 1, 5, True),
         ("00000000-0000-0000-0000-000000000005", "mysql-dev.example.com", "dev", 1, 10, False),  # Disabled
+        # Phase 0.5: Host with credential error state for screenshot capture
+        ("00000000-0000-0000-0000-000000000006", "mysql-broken.example.com", "broken", 2, 10, True),
     ]
 
     created_hosts: list[DBHost] = []
@@ -207,6 +221,7 @@ def seed_user_host_assignments(state: SimulationState) -> None:
         "staging-03": "00000000-0000-0000-0000-000000000003",
         "prod-01": "00000000-0000-0000-0000-000000000004",
         "dev": "00000000-0000-0000-0000-000000000005",
+        "broken": "00000000-0000-0000-0000-000000000006",
     }
 
     # User-host assignments: (user_id, host_aliases, default_host_alias)
@@ -334,6 +349,138 @@ def seed_orphan_databases(state: SimulationState) -> None:
             # Add metadata if available (simulates pulldb meta table)
             if key in ORPHAN_DB_METADATA:
                 state.orphan_metadata[(hostname, db_name)] = ORPHAN_DB_METADATA[key]
+
+
+# =============================================================================
+# API Keys Seeding (Phase 0.5)
+# =============================================================================
+
+
+def seed_api_keys(state: SimulationState) -> None:
+    """Seed API keys into SimulationState for screenshot capture.
+    
+    Creates:
+    - Approved key for devuser (normal operation)
+    - Pending key (approved_at=None) for screenshot of approval queue
+    - Revoked key (is_active=False) for history display
+    """
+    # API key data: (key_id, user_id, name, host_name, is_active, approved_at, approved_by)
+    api_keys_data = [
+        # Active approved key for devuser
+        (
+            "key_dev001abc123",
+            "usr-001",
+            "Development Laptop",
+            "dev-laptop.local",
+            True,
+            datetime(2025, 1, 10, 9, 0, tzinfo=UTC),
+            "usr-002",  # approved by devadmin
+        ),
+        # Pending key (not yet approved) - for approval queue screenshot
+        (
+            "key_pending999xyz",
+            "usr-003",
+            "New Server Key",
+            "new-server.internal",
+            False,  # Pending keys are inactive
+            None,   # Not approved yet
+            None,
+        ),
+        # Another pending key for approval queue screenshot
+        (
+            "key_pending888abc",
+            "usr-001",
+            "CI Pipeline Key",
+            "jenkins.internal",
+            False,
+            None,
+            None,
+        ),
+        # Revoked key (was approved, then deactivated)
+        (
+            "key_revoked777def",
+            "usr-001",
+            "Old Laptop",
+            "old-laptop.local",
+            False,  # Revoked
+            datetime(2024, 6, 15, 14, 30, tzinfo=UTC),
+            "usr-002",
+        ),
+    ]
+
+    with state.lock:
+        for key_id, user_id, name, host_name, is_active, approved_at, approved_by in api_keys_data:
+            state.api_keys[key_id] = {
+                "key_id": key_id,
+                "user_id": user_id,
+                "key_secret_hash": "$2b$12$MockKeyHashForSimulationOnlyDontUseInProduction",
+                "key_secret": "sim_secret_" + key_id[-8:],  # Mock secret for simulation
+                "name": name,
+                "host_name": host_name,
+                "created_from_ip": "192.168.1." + str(random.randint(10, 250)),
+                "is_active": is_active,
+                "created_at": datetime(2025, 1, 5, 10, 0, tzinfo=UTC),
+                "last_used_at": datetime(2025, 1, 20, 15, 30, tzinfo=UTC) if is_active else None,
+                "last_used_ip": "10.0.0." + str(random.randint(10, 250)) if is_active else None,
+                "approved_at": approved_at,
+                "approved_by": approved_by,
+                "expires_at": None,
+            }
+
+
+# =============================================================================
+# Disallowed Usernames Seeding (Phase 0.5)
+# =============================================================================
+
+
+def seed_disallowed_usernames(state: SimulationState) -> None:
+    """Seed disallowed usernames into SimulationState for screenshot capture.
+    
+    Creates a mix of:
+    - Hardcoded system accounts (is_hardcoded=True, cannot be removed)
+    - Admin-added blocked usernames (is_hardcoded=False, can be removed)
+    """
+    # (username, reason, is_hardcoded, created_by)
+    disallowed_data = [
+        # Hardcoded system accounts
+        ("root", "System administrator account", True, None),
+        ("daemon", "System daemon account", True, None),
+        ("mysql", "MySQL service account", True, None),
+        ("nobody", "Unprivileged user", True, None),
+        ("admin", "Reserved administrative username", True, None),
+        ("pulldb", "PullDB service account", True, None),
+        # Admin-added entries (for UI testing of remove capability)
+        ("testbot", "Automated test account - blocked by policy", False, "usr-002"),
+        ("tempuser", "Temporary account no longer needed", False, "usr-002"),
+        ("former_employee", "Departed staff member", False, "usr-003"),
+    ]
+
+    with state.lock:
+        for username, reason, is_hardcoded, created_by in disallowed_data:
+            state.disallowed_usernames[username.lower()] = {
+                "username": username.lower(),
+                "reason": reason,
+                "is_hardcoded": is_hardcoded,
+                "created_at": datetime(2024, 1, 1, tzinfo=UTC) if is_hardcoded else datetime(2025, 1, 18, 11, 30, tzinfo=UTC),
+                "created_by": created_by,
+            }
+
+
+# =============================================================================
+# Host Credential Error Seeding (Phase 0.5)
+# =============================================================================
+
+
+def seed_host_credential_errors(state: SimulationState) -> None:
+    """Seed host credential error states for screenshot capture.
+    
+    Marks the 'broken' host as having credential verification failures.
+    """
+    with state.lock:
+        # The 'broken' host has credential issues
+        state.host_credential_errors["mysql-broken.example.com"] = (
+            "Access denied for user 'pulldb_stg'@'10.40.10.50' (using password: YES)"
+        )
 
 
 # =============================================================================
@@ -1008,6 +1155,327 @@ def seed_audit_logs(
 
 
 # =============================================================================
+# Screenshot-Specific Job Seeding (Phase 0.5)
+# =============================================================================
+
+
+def seed_screenshot_jobs(state: SimulationState, users: dict[str, User]) -> list[Job]:
+    """Seed specific job states for UI screenshot capture.
+    
+    Creates deterministic jobs in various states needed for documentation:
+    - Job at 67% progress with rich log content
+    - Job in CANCELING state
+    - Job in FAILED state with error message
+    - Job in DELETING state
+    - Job in QUEUED state with queue position
+    - Job in DOWNLOADING phase with progress data
+    - Job in RESTORING phase with table progress
+    
+    Args:
+        state: SimulationState to populate.
+        users: Dictionary of users for ownership.
+        
+    Returns:
+        List of created Job objects.
+    """
+    from dataclasses import replace
+    
+    jobs: list[Job] = []
+    now = datetime.now(UTC)
+    
+    # Helper to get a user tuple from user dict
+    devuser = users.get("usr-001")
+    devadmin = users.get("usr-002")
+    
+    if not devuser or not devadmin:
+        # Fallback if users not found
+        return jobs
+    
+    with state.lock:
+        # =====================================================================
+        # Job 1: 67% progress with rich log content (RUNNING, restoring phase)
+        # =====================================================================
+        job_67_id = "screenshot-67pct-0001"
+        job_67_submitted = now - timedelta(hours=2)
+        job_67_started = now - timedelta(hours=1, minutes=45)
+        job_67 = Job(
+            id=job_67_id,
+            owner_user_id=devuser.user_id,
+            owner_username=devuser.username,
+            owner_user_code=devuser.user_code,
+            target=f"{devuser.user_code}acmehvac",
+            staging_name=f"{devuser.user_code}acmehvac_screenshot67p",
+            dbhost="mysql-staging-01.example.com",
+            status=JobStatus.RUNNING,
+            submitted_at=job_67_submitted,
+            started_at=job_67_started,
+            worker_id="worker-alpha",
+            current_operation="Restoring database (67% complete)",
+            options_json={
+                "customer": "acmehvac",
+                "backup_env": "prd",
+                "s3_key": "s3://pulldb-backups/prd/acmehvac/latest.xbstream.zst",
+            },
+        )
+        state.jobs[job_67_id] = job_67
+        jobs.append(job_67)
+        
+        # Add rich event history for this job
+        event_base_id = len(state.job_events) + 1
+        state.job_events.extend([
+            JobEvent(id=event_base_id, job_id=job_67_id, event_type="created", 
+                    detail="Job queued", logged_at=job_67_submitted),
+            JobEvent(id=event_base_id + 1, job_id=job_67_id, event_type="claimed",
+                    detail="Claimed by worker-alpha", logged_at=job_67_started),
+            JobEvent(id=event_base_id + 2, job_id=job_67_id, event_type="downloading",
+                    detail="Downloading backup from S3...", logged_at=job_67_started + timedelta(seconds=5)),
+            JobEvent(id=event_base_id + 3, job_id=job_67_id, event_type="download_progress",
+                    detail=json.dumps({
+                        "downloaded_bytes": 2147483648,  # 2GB
+                        "total_bytes": 3221225472,  # 3GB
+                        "percent_complete": 66.7,
+                        "elapsed_seconds": 420,
+                    }), logged_at=job_67_started + timedelta(minutes=7)),
+            JobEvent(id=event_base_id + 4, job_id=job_67_id, event_type="downloaded",
+                    detail="Download complete (3.0 GB in 8m 32s)", 
+                    logged_at=job_67_started + timedelta(minutes=8, seconds=32)),
+            JobEvent(id=event_base_id + 5, job_id=job_67_id, event_type="restoring",
+                    detail="Running myloader restore...", 
+                    logged_at=job_67_started + timedelta(minutes=9)),
+            JobEvent(id=event_base_id + 6, job_id=job_67_id, event_type="restore_progress",
+                    detail=json.dumps({
+                        "percent": 67.0,
+                        "active_threads": 4,
+                        "tables_completed": 45,
+                        "tables_total": 67,
+                        "tables": {
+                            "customers": {"percent_complete": 100},
+                            "orders": {"percent_complete": 85},
+                            "products": {"percent_complete": 72},
+                            "inventory": {"percent_complete": 45},
+                        },
+                        "detail": {"file": "orders.sql", "status": "loading"},
+                    }), logged_at=now - timedelta(minutes=5)),
+        ])
+        
+        # =====================================================================
+        # Job 2: CANCELING state
+        # =====================================================================
+        job_cancel_id = "screenshot-canceling-0002"
+        job_cancel = Job(
+            id=job_cancel_id,
+            owner_user_id=devuser.user_id,
+            owner_username=devuser.username,
+            owner_user_code=devuser.user_code,
+            target=f"{devuser.user_code}techcorp",
+            staging_name=f"{devuser.user_code}techcorp_screenshotcancel",
+            dbhost="mysql-staging-02.example.com",
+            status=JobStatus.CANCELING,
+            submitted_at=now - timedelta(hours=1),
+            started_at=now - timedelta(minutes=45),
+            worker_id="worker-beta",
+            current_operation="Cancellation requested - stopping at checkpoint",
+            cancel_requested_at=now - timedelta(minutes=2),
+            can_cancel=False,
+            options_json={
+                "customer": "techcorp",
+                "backup_env": "prd",
+                "s3_key": "s3://pulldb-backups/prd/techcorp/latest.xbstream.zst",
+            },
+        )
+        state.jobs[job_cancel_id] = job_cancel
+        jobs.append(job_cancel)
+        state.cancellation_requested.add(job_cancel_id)
+        
+        # =====================================================================
+        # Job 3: FAILED state with detailed error
+        # =====================================================================
+        job_failed_id = "screenshot-failed-0003"
+        job_failed = Job(
+            id=job_failed_id,
+            owner_user_id=devuser.user_id,
+            owner_username=devuser.username,
+            owner_user_code=devuser.user_code,
+            target=f"{devuser.user_code}globalretail",
+            staging_name=f"{devuser.user_code}globalretail_screenshotfail",
+            dbhost="mysql-staging-01.example.com",
+            status=JobStatus.FAILED,
+            submitted_at=now - timedelta(hours=3),
+            started_at=now - timedelta(hours=2, minutes=50),
+            completed_at=now - timedelta(hours=2),
+            worker_id="worker-gamma",
+            error_detail="ERROR 1045 (28000): Access denied for user 'pulldb_stg'@'10.40.10.50' to database 'devusrglobalretail_screenshotfail'. Verify that the staging user has CREATE/DROP privileges on the target host.",
+            options_json={
+                "customer": "globalretail",
+                "backup_env": "prd",
+                "s3_key": "s3://pulldb-backups/prd/globalretail/latest.xbstream.zst",
+            },
+        )
+        state.jobs[job_failed_id] = job_failed
+        jobs.append(job_failed)
+        
+        # =====================================================================
+        # Job 4: DELETING state (async bulk delete in progress)
+        # =====================================================================
+        job_deleting_id = "screenshot-deleting-0004"
+        job_deleting = Job(
+            id=job_deleting_id,
+            owner_user_id=devadmin.user_id,
+            owner_username=devadmin.username,
+            owner_user_code=devadmin.user_code,
+            target=f"{devadmin.user_code}fastlogistics",
+            staging_name=f"{devadmin.user_code}fastlogistics_screenshotdel",
+            dbhost="mysql-staging-01.example.com",
+            status=JobStatus.DELETING,
+            submitted_at=now - timedelta(days=5),
+            started_at=now - timedelta(days=5) + timedelta(minutes=5),
+            completed_at=now - timedelta(days=5) + timedelta(hours=1),
+            worker_id="worker-delta",
+            current_operation="Dropping database...",
+            options_json={
+                "customer": "fastlogistics",
+                "backup_env": "prd",
+                "s3_key": "s3://pulldb-backups/prd/fastlogistics/latest.xbstream.zst",
+            },
+        )
+        state.jobs[job_deleting_id] = job_deleting
+        jobs.append(job_deleting)
+        
+        # =====================================================================
+        # Job 5: QUEUED state with queue position indicator
+        # =====================================================================
+        job_queued_id = "screenshot-queued-0005"
+        job_queued = Job(
+            id=job_queued_id,
+            owner_user_id=devuser.user_id,
+            owner_username=devuser.username,
+            owner_user_code=devuser.user_code,
+            target=f"{devuser.user_code}medisys",
+            staging_name=f"{devuser.user_code}medisys_screenshotqueue",
+            dbhost="mysql-staging-01.example.com",
+            status=JobStatus.QUEUED,
+            submitted_at=now - timedelta(minutes=15),
+            current_operation="Position #3 in queue",
+            options_json={
+                "customer": "medisys",
+                "backup_env": "prd",
+                "s3_key": "s3://pulldb-backups/prd/medisys/latest.xbstream.zst",
+            },
+        )
+        state.jobs[job_queued_id] = job_queued
+        jobs.append(job_queued)
+        
+        # =====================================================================
+        # Job 6: DOWNLOADING phase with progress data
+        # =====================================================================
+        job_download_id = "screenshot-downloading-0006"
+        job_download_submitted = now - timedelta(minutes=30)
+        job_download_started = now - timedelta(minutes=25)
+        job_download = Job(
+            id=job_download_id,
+            owner_user_id=devuser.user_id,
+            owner_username=devuser.username,
+            owner_user_code=devuser.user_code,
+            target=f"{devuser.user_code}edulearn",
+            staging_name=f"{devuser.user_code}edulearn_screenshotdl",
+            dbhost="mysql-staging-02.example.com",
+            status=JobStatus.RUNNING,
+            submitted_at=job_download_submitted,
+            started_at=job_download_started,
+            worker_id="worker-alpha",
+            current_operation="Downloading backup (42% complete)",
+            options_json={
+                "customer": "edulearn",
+                "backup_env": "stg",
+                "s3_key": "s3://pulldb-backups/stg/edulearn/latest.xbstream.zst",
+            },
+        )
+        state.jobs[job_download_id] = job_download
+        jobs.append(job_download)
+        
+        # Add download progress event
+        dl_event_id = len(state.job_events) + 100
+        state.job_events.extend([
+            JobEvent(id=dl_event_id, job_id=job_download_id, event_type="created",
+                    detail="Job queued", logged_at=job_download_submitted),
+            JobEvent(id=dl_event_id + 1, job_id=job_download_id, event_type="claimed",
+                    detail="Claimed by worker-alpha", logged_at=job_download_started),
+            JobEvent(id=dl_event_id + 2, job_id=job_download_id, event_type="downloading",
+                    detail="Downloading backup from S3...", logged_at=job_download_started + timedelta(seconds=5)),
+            JobEvent(id=dl_event_id + 3, job_id=job_download_id, event_type="download_progress",
+                    detail=json.dumps({
+                        "downloaded_bytes": 1073741824,  # 1GB
+                        "total_bytes": 2576980378,  # ~2.4GB
+                        "percent_complete": 41.7,
+                        "elapsed_seconds": 180,
+                        "speed_bytes_per_sec": 5965232,  # ~6MB/s
+                    }), logged_at=now - timedelta(seconds=30)),
+        ])
+        
+        # =====================================================================
+        # Job 7: RESTORING phase with table progress
+        # =====================================================================
+        job_restore_id = "screenshot-restoring-0007"
+        job_restore_submitted = now - timedelta(hours=1, minutes=30)
+        job_restore_started = now - timedelta(hours=1, minutes=20)
+        job_restore = Job(
+            id=job_restore_id,
+            owner_user_id=devadmin.user_id,
+            owner_username=devadmin.username,
+            owner_user_code=devadmin.user_code,
+            target=f"{devadmin.user_code}finserve",
+            staging_name=f"{devadmin.user_code}finserve_screenshotrst",
+            dbhost="mysql-staging-01.example.com",
+            status=JobStatus.RUNNING,
+            submitted_at=job_restore_submitted,
+            started_at=job_restore_started,
+            worker_id="worker-beta",
+            current_operation="Restoring database (23% complete)",
+            options_json={
+                "customer": "finserve",
+                "backup_env": "prd",
+                "s3_key": "s3://pulldb-backups/prd/finserve/latest.xbstream.zst",
+            },
+        )
+        state.jobs[job_restore_id] = job_restore
+        jobs.append(job_restore)
+        
+        # Add restore progress events
+        rst_event_id = len(state.job_events) + 200
+        state.job_events.extend([
+            JobEvent(id=rst_event_id, job_id=job_restore_id, event_type="created",
+                    detail="Job queued", logged_at=job_restore_submitted),
+            JobEvent(id=rst_event_id + 1, job_id=job_restore_id, event_type="claimed",
+                    detail="Claimed by worker-beta", logged_at=job_restore_started),
+            JobEvent(id=rst_event_id + 2, job_id=job_restore_id, event_type="downloading",
+                    detail="Downloading backup from S3...", logged_at=job_restore_started + timedelta(seconds=5)),
+            JobEvent(id=rst_event_id + 3, job_id=job_restore_id, event_type="downloaded",
+                    detail="Download complete (4.2 GB in 12m 45s)",
+                    logged_at=job_restore_started + timedelta(minutes=12, seconds=45)),
+            JobEvent(id=rst_event_id + 4, job_id=job_restore_id, event_type="restoring",
+                    detail="Running myloader restore...",
+                    logged_at=job_restore_started + timedelta(minutes=13)),
+            JobEvent(id=rst_event_id + 5, job_id=job_restore_id, event_type="restore_progress",
+                    detail=json.dumps({
+                        "percent": 23.0,
+                        "active_threads": 8,
+                        "tables_completed": 12,
+                        "tables_total": 52,
+                        "tables": {
+                            "accounts": {"percent_complete": 100},
+                            "transactions": {"percent_complete": 67},
+                            "balances": {"percent_complete": 45},
+                            "audit_log": {"percent_complete": 12},
+                            "statements": {"percent_complete": 5},
+                        },
+                        "detail": {"file": "transactions.sql", "status": "loading"},
+                    }), logged_at=now - timedelta(minutes=2)),
+        ])
+    
+    return jobs
+
+
+# =============================================================================
 # Scenario Seeding (Orchestration)
 # =============================================================================
 
@@ -1025,6 +1493,7 @@ def seed_dev_scenario(
     - "busy": Many concurrent running jobs (15 active, 100 history)
     - "all_failed": Multiple failed jobs for error testing
     - "queue_backlog": Many jobs waiting in queue
+    - "screenshots": Specific job states for documentation screenshots (Phase 0.5)
 
     Args:
         state: SimulationState to populate (should be cleared first).
@@ -1043,11 +1512,22 @@ def seed_dev_scenario(
     
     # Always seed audit logs for audit page testing
     seed_audit_logs(state, users)
+    
+    # Phase 0.5: Always seed API keys, disallowed usernames, and host errors
+    seed_api_keys(state)
+    seed_disallowed_usernames(state)
+    seed_host_credential_errors(state)
 
     if scenario in ("minimal", "empty"):
         # Infrastructure only - no jobs, history, logs, or staged databases
         # Users, hosts, and settings are seeded above
         pass
+    
+    elif scenario == "screenshots":
+        # Phase 0.5: Specific job states for documentation screenshots
+        seed_screenshot_jobs(state, users)
+        # Also seed some history for context
+        seed_history_jobs(state, 20, users)
 
     elif scenario == "busy":
         # Many concurrent running jobs

@@ -5160,6 +5160,54 @@ async def revoke_api_key_web(
         return {"success": False, "message": str(e)}
 
 
+@router.delete("/api-keys/{key_id}")
+async def delete_api_key_web(
+    key_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Permanently delete an API key. Returns JSON for AJAX calls.
+    
+    Unlike revoke, this removes the key from the database entirely.
+    The key cannot be reactivated after deletion.
+    """
+    if not hasattr(state, "auth_repo") or not state.auth_repo:
+        return {"success": False, "message": "Authentication service not available"}
+    
+    try:
+        # Get key info for audit before deletion
+        key_info = state.auth_repo.get_api_key_info(key_id)
+        if not key_info:
+            return {"success": False, "message": f"API key '{key_id}' not found"}
+        
+        # Store info for audit logging before we delete
+        target_user_id = key_info["user_id"]
+        target_user = state.user_repo.get_user_by_id(target_user_id)
+        target_name = target_user.username if target_user else "unknown"
+        host_name = key_info.get("host_name") or "unknown"
+        
+        # Delete the key permanently
+        success = state.auth_repo.delete_api_key(key_id)
+        if not success:
+            return {"success": False, "message": "Failed to delete key"}
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="api_key_deleted",
+                target_user_id=target_user_id,
+                detail=f"Admin {admin.username} deleted API key for {target_name} (host: {host_name})",
+            )
+        
+        return {
+            "success": True,
+            "message": f"API key deleted for {target_name} ({host_name})",
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
 @router.get("/api-keys/user/{user_id}")
 async def get_user_keys(
     user_id: str,

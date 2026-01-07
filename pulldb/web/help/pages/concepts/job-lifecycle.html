@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../../css/help.css">
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
@@ -58,6 +60,7 @@
                 <a href="../cli/index.html" class="nav-link">CLI</a>
                 <a href="../api/index.html" class="nav-link">API</a>
                 <a href="job-lifecycle.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">Concepts</a>
+                <a href="../web-ui/index.html" class="nav-link">Web UI</a>
             </div>
             
             <div class="nav-actions">
@@ -401,7 +404,7 @@ flowchart LR
                     <div class="accordion-item">
                         <button class="accordion-trigger" @click="open = open === 1 ? null : 1" :class="{ 'active': open === 1 }">
                             <span>S3 Download Failed</span>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                            <svg class="accordion-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
                         </button>
                         <div class="accordion-content" x-show="open === 1" x-collapse>
                             <p><strong>Phase:</strong> downloading</p>
@@ -419,7 +422,7 @@ flowchart LR
                     <div class="accordion-item">
                         <button class="accordion-trigger" @click="open = open === 2 ? null : 2" :class="{ 'active': open === 2 }">
                             <span>myloader Failed</span>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                            <svg class="accordion-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
                         </button>
                         <div class="accordion-content" x-show="open === 2" x-collapse>
                             <p><strong>Phase:</strong> restoring</p>
@@ -437,7 +440,7 @@ flowchart LR
                     <div class="accordion-item">
                         <button class="accordion-trigger" @click="open = open === 3 ? null : 3" :class="{ 'active': open === 3 }">
                             <span>Database Already Exists</span>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                            <svg class="accordion-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
                         </button>
                         <div class="accordion-content" x-show="open === 3" x-collapse>
                             <p><strong>Phase:</strong> finalizing</p>
@@ -452,7 +455,7 @@ flowchart LR
                     <div class="accordion-item">
                         <button class="accordion-trigger" @click="open = open === 4 ? null : 4" :class="{ 'active': open === 4 }">
                             <span>Post-SQL Script Failed</span>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                            <svg class="accordion-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
                         </button>
                         <div class="accordion-content" x-show="open === 4" x-collapse>
                             <p><strong>Phase:</strong> post_sql</p>

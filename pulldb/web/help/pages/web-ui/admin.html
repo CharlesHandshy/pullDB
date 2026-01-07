@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - pullDB Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../css/help.css">
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
+    
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    
+    <!-- Navigation -->
+    <nav class="nav-glass">
+        <div class="nav-container">
+            <a href="../../index.html" class="nav-logo">
+                <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                </svg>
+                <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
+            </a>
+            
+            <div class="nav-links">
+                <a href="../getting-started.html" class="nav-link">Getting Started</a>
+                <a href="../cli/index.html" class="nav-link">CLI</a>
+                <a href="../api/index.html" class="nav-link">API</a>
+                <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
+                <a href="index.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">Web UI</a>
+            </div>
+            
+            <div class="nav-actions">
+                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span class="search-hint">/</span>
+                </button>
+                <button class="theme-toggle" @click="toggleTheme()">
+                    <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg x-show="theme === 'dark'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Search Modal -->
+    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+        <div class="search-container" @click.stop>
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <kbd class="search-kbd">ESC</kbd>
+            </div>
+            <div class="search-results" x-show="searchQuery.length > 0">
+                <template x-for="(result, index) in searchResults" :key="result.id">
+                    <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
+                        <div class="result-content">
+                            <div class="result-title" x-html="result.title"></div>
+                            <div class="result-preview" x-html="result.preview"></div>
+                        </div>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Page Layout with Sidebar -->
+    <div class="page-layout">
+        <aside class="page-sidebar">
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Web UI Guide</div>
+                    <a href="index.html" class="sidebar-link">Overview</a>
+                    <a href="dashboard.html" class="sidebar-link">Dashboard</a>
+                    <a href="restore.html" class="sidebar-link">Restore Workflow</a>
+                    <a href="jobs.html" class="sidebar-link">Jobs Management</a>
+                    <a href="profile.html" class="sidebar-link">Profile & API Keys</a>
+                    <a href="admin.html" class="sidebar-link active">Admin Panel</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">On This Page</div>
+                    <a href="#overview" class="sidebar-link">Overview</a>
+                    <a href="#users" class="sidebar-link">User Management</a>
+                    <a href="#hosts" class="sidebar-link">Host Management</a>
+                    <a href="#api-keys" class="sidebar-link">API Key Management</a>
+                    <a href="#settings" class="sidebar-link">System Settings</a>
+                    <a href="#maintenance" class="sidebar-link">Maintenance</a>
+                </div>
+            </nav>
+        </aside>
+        
+        <main class="page-content">
+            <div class="breadcrumbs">
+                <a href="../../index.html">Help</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <a href="index.html">Web UI</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span>Admin Panel</span>
+            </div>
+            
+            <h1 class="page-title">Admin Panel</h1>
+            <p class="page-description">
+                The Admin Panel provides system-wide configuration and management capabilities.
+                Only users with the Admin role can access these features.
+            </p>
+            
+            <div class="warning-callout">
+                <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+                <div>
+                    <strong>Admin Access Required</strong><br>
+                    This page documents features only available to Admin users. If you don't see the Admin menu item, 
+                    contact your system administrator to request access.
+                </div>
+            </div>
+            
+            <!-- Overview Section -->
+            <section class="content-section" id="overview">
+                <h2>Overview</h2>
+                <p>
+                    The Admin Panel is your central hub for managing the pullDB system. It's organized into 
+                    tabs for different administrative functions.
+                </p>
+                
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                        </div>
+                        <h3>Users</h3>
+                        <p>Create, edit, and manage user accounts.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+                                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+                                <line x1="6" y1="6" x2="6.01" y2="6"/>
+                                <line x1="6" y1="18" x2="6.01" y2="18"/>
+                            </svg>
+                        </div>
+                        <h3>Hosts</h3>
+                        <p>Configure MySQL hosts for restores.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                            </svg>
+                        </div>
+                        <h3>API Keys</h3>
+                        <p>View and manage all system API keys.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                            </svg>
+                        </div>
+                        <h3>Settings</h3>
+                        <p>System-wide configuration options.</p>
+                    </div>
+                </div>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/overview.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/overview.png" alt="Admin Dashboard Overview showing the main admin panel interface" loading="lazy">
+                    </picture>
+                    <figcaption>1. Admin tabs — 2. Users section — 3. Hosts section — 4. Settings</figcaption>
+                </figure>
+            </section>
+            
+            <!-- Users Section -->
+            <section class="content-section" id="users">
+                <h2>User Management</h2>
+                <p>
+                    The Users tab lets you manage all user accounts in the system.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/users-list.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/users-list.png" alt="User Management list showing all system users" loading="lazy">
+                    </picture>
+                    <figcaption>1. User list table — 2. Role column — 3. Status badges — 4. Action buttons</figcaption>
+                </figure>
+                
+                <h3>User List</h3>
+                <p>
+                    The user table displays all accounts with their key properties:
+                </p>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Column</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Username</code></td>
+                            <td>Unique login identifier</td>
+                        </tr>
+                        <tr>
+                            <td><code>Role</code></td>
+                            <td>User, Manager, or Admin</td>
+                        </tr>
+                        <tr>
+                            <td><code>Status</code></td>
+                            <td>Active or Disabled</td>
+                        </tr>
+                        <tr>
+                            <td><code>Hosts</code></td>
+                            <td>Number of authorized hosts</td>
+                        </tr>
+                        <tr>
+                            <td><code>Last Login</code></td>
+                            <td>Most recent authentication</td>
+                        </tr>
+                        <tr>
+                            <td><code>Actions</code></td>
+                            <td>Edit, Reset Password, Disable</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>Creating Users</h3>
+                <p>
+                    Click "Create User" to add a new account. Required fields:
+                </p>
+                <ul class="feature-list">
+                    <li><strong>Username</strong> — Unique identifier (alphanumeric, no spaces)</li>
+                    <li><strong>Password</strong> — Initial password (user should change on first login)</li>
+                    <li><strong>Role</strong> — Permission level</li>
+                    <li><strong>Hosts</strong> — Which hosts the user can restore to</li>
+                </ul>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/user-add.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/user-add.png" alt="Adding a new user form" loading="lazy">
+                    </picture>
+                    <figcaption>1. Username field — 2. Password field — 3. Role selector — 4. Host checkboxes</figcaption>
+                </figure>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/user-created-password.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/user-created-password.png" alt="User Created Password display modal" loading="lazy">
+                    </picture>
+                    <figcaption>1. Generated password — 2. Copy button — 3. Security notice</figcaption>
+                </figure>
+                
+                <h3>Editing Users</h3>
+                <p>
+                    Click the Edit button to modify a user's settings. You can change:
+                </p>
+                <ul class="feature-list">
+                    <li>Role (promote/demote)</li>
+                    <li>Host authorizations (add/remove)</li>
+                    <li>Account status (enable/disable)</li>
+                </ul>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/user-edit.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/user-edit.png" alt="Editing a user's settings and permissions" loading="lazy">
+                    </picture>
+                    <figcaption>1. User details form — 2. Role selector — 3. Status toggle — 4. Save button</figcaption>
+                </figure>
+                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Reset Password</strong><br>
+                        Use the "Reset Password" action to generate a new temporary password for a user.
+                        The password will be displayed once—make sure to communicate it securely.
+                    </div>
+                </div>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/user-hosts-modal.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/user-hosts-modal.png" alt="User Host Assignment modal for managing authorized hosts" loading="lazy">
+                    </picture>
+                    <figcaption>1. Host checkboxes — 2. Current assignments — 3. Save button</figcaption>
+                </figure>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/user-api-keys-modal.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/user-api-keys-modal.png" alt="User API Keys modal showing keys for this user" loading="lazy">
+                    </picture>
+                    <figcaption>1. API key list — 2. Key details — 3. Revoke option</figcaption>
+                </figure>
+                
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Cannot Delete Users</strong><br>
+                        Users cannot be deleted to maintain audit trail integrity. Disable accounts instead.
+                        Disabled users cannot log in but their job history is preserved.
+                    </div>
+                </div>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/user-force-delete.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/user-force-delete.png" alt="Force Delete User confirmation dialog" loading="lazy">
+                    </picture>
+                    <figcaption>1. Warning message — 2. Confirmation input — 3. Delete button</figcaption>
+                </figure>
+            </section>
+            
+            <!-- Hosts Section -->
+            <section class="content-section" id="hosts">
+                <h2>Host Management</h2>
+                <p>
+                    The Hosts tab configures which MySQL servers are available as restore targets.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/hosts-list.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/hosts-list.png" alt="Host Management list showing all configured MySQL hosts" loading="lazy">
+                    </picture>
+                    <figcaption>1. Host list — 2. Status indicator — 3. Connection info — 4. Actions</figcaption>
+                </figure>
+                
+                <h3>Host List</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Column</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Name</code></td>
+                            <td>Friendly name for the host</td>
+                        </tr>
+                        <tr>
+                            <td><code>Hostname</code></td>
+                            <td>DNS name or IP address</td>
+                        </tr>
+                        <tr>
+                            <td><code>Port</code></td>
+                            <td>MySQL port (default 3306)</td>
+                        </tr>
+                        <tr>
+                            <td><code>Status</code></td>
+                            <td>Connection status indicator</td>
+                        </tr>
+                        <tr>
+                            <td><code>Users</code></td>
+                            <td>Number of users with access</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/host-detail.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/host-detail.png" alt="Host Details view showing connection settings" loading="lazy">
+                    </picture>
+                    <figcaption>1. Host name — 2. Connection details — 3. Status — 4. Assigned users</figcaption>
+                </figure>
+                
+                <h3>Adding Hosts</h3>
+                <p>
+                    Click "Add Host" to configure a new MySQL server:
+                </p>
+                <ul class="feature-list">
+                    <li><strong>Name</strong> — Display name (e.g., "Staging MySQL")</li>
+                    <li><strong>Hostname</strong> — Server address</li>
+                    <li><strong>Port</strong> — MySQL port</li>
+                    <li><strong>Admin User</strong> — MySQL user with CREATE DATABASE privileges</li>
+                    <li><strong>Admin Password</strong> — Password for the admin user</li>
+                </ul>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/host-add.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/host-add.png" alt="Adding a Host configuration form" loading="lazy">
+                    </picture>
+                    <figcaption>1. Host name field — 2. Hostname/IP — 3. Port — 4. Credentials — 5. Test button</figcaption>
+                </figure>
+                
+                <h3>Testing Connection</h3>
+                <p>
+                    Use the "Test Connection" button to verify connectivity before saving.
+                    The test checks:
+                </p>
+                <ul class="feature-list">
+                    <li>Network connectivity to the host</li>
+                    <li>MySQL authentication</li>
+                    <li>Required privileges (CREATE, DROP, etc.)</li>
+                </ul>
+                
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Credential Security</strong><br>
+                        Host credentials are encrypted at rest. However, the MySQL admin user should have
+                        minimal required privileges and preferably only allow connections from the pullDB server.
+                    </div>
+                </div>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/host-delete-modal.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/host-delete-modal.png" alt="Host Deletion confirmation modal" loading="lazy">
+                    </picture>
+                    <figcaption>1. Warning message — 2. Affected users list — 3. Confirm button</figcaption>
+                </figure>
+            </section>
+            
+            <!-- API Keys Section -->
+            <section class="content-section" id="api-keys">
+                <h2>API Key Management</h2>
+                <p>
+                    The API Keys tab shows all API keys in the system across all users.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/api-keys.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/api-keys.png" alt="API Key Management showing all system API keys" loading="lazy">
+                    </picture>
+                    <figcaption>1. Key list — 2. Owner column — 3. Usage stats — 4. Actions</figcaption>
+                </figure>
+                
+                <h3>Global Key View</h3>
+                <p>
+                    Unlike the user profile page (which shows only personal keys), this view shows:
+                </p>
+                <ul class="feature-list">
+                    <li>All keys from all users</li>
+                    <li>Which user owns each key</li>
+                    <li>Usage statistics across the system</li>
+                    <li>Keys that haven't been used recently</li>
+                </ul>
+                
+                <h3>Key Actions</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Action</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>View Details</code></td>
+                            <td>See full key properties and usage history</td>
+                        </tr>
+                        <tr>
+                            <td><code>Revoke</code></td>
+                            <td>Immediately invalidate a key</td>
+                        </tr>
+                        <tr>
+                            <td><code>Filter by User</code></td>
+                            <td>Show keys for a specific user</td>
+                        </tr>
+                        <tr>
+                            <td><code>Filter by Host</code></td>
+                            <td>Show keys for a specific host</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/api-key-approval.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/api-key-approval.png" alt="API Key Approval workflow for pending keys" loading="lazy">
+                    </picture>
+                    <figcaption>1. Pending keys — 2. Approval buttons — 3. Key details</figcaption>
+                </figure>
+                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Audit Trail</strong><br>
+                        When you revoke a key, the action is logged with your username and timestamp.
+                        The user who owns the key will be notified by email (if configured).
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Settings Section -->
+            <section class="content-section" id="settings">
+                <h2>System Settings</h2>
+                <p>
+                    The Settings tab contains global configuration options.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/settings.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/settings.png" alt="System Settings panel with configuration options" loading="lazy">
+                    </picture>
+                    <figcaption>1. Settings categories — 2. Configuration fields — 3. Save button</figcaption>
+                </figure>
+                
+                <h3>Available Settings</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Setting</th>
+                            <th>Description</th>
+                            <th>Default</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Max Concurrent Jobs</code></td>
+                            <td>Maximum jobs running simultaneously</td>
+                            <td>3</td>
+                        </tr>
+                        <tr>
+                            <td><code>Job Timeout</code></td>
+                            <td>Maximum time for a single job</td>
+                            <td>2 hours</td>
+                        </tr>
+                        <tr>
+                            <td><code>Retention Days</code></td>
+                            <td>How long to keep job history</td>
+                            <td>90 days</td>
+                        </tr>
+                        <tr>
+                            <td><code>Default Database Prefix</code></td>
+                            <td>Prefix for restored database names</td>
+                            <td><code>_staging</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>S3 Bucket</code></td>
+                            <td>Backup source bucket</td>
+                            <td>(configured at install)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Restart Required</strong><br>
+                        Some settings (like Max Concurrent Jobs) require a worker restart to take effect.
+                        The UI will indicate when a restart is needed.
+                    </div>
+                </div>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/settings-danger-confirm.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/settings-danger-confirm.png" alt="Settings Danger Confirm dialog for critical changes" loading="lazy">
+                    </picture>
+                    <figcaption>1. Warning message — 2. Impact description — 3. Confirm button</figcaption>
+                </figure>
+            </section>
+            
+            <!-- Maintenance Section -->
+            <section class="content-section" id="maintenance">
+                <h2>Maintenance</h2>
+                <p>
+                    The Maintenance section provides tools for system upkeep.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/maintenance.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/maintenance.png" alt="Maintenance Tools panel with system upkeep options" loading="lazy">
+                    </picture>
+                    <figcaption>1. Maintenance actions — 2. System health — 3. Log access</figcaption>
+                </figure>
+                
+                <h3>Maintenance Actions</h3>
+                <div class="state-cards">
+                    <div class="state-card" style="border-left-color: var(--color-info);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-info-bg); color: var(--color-info);">Cleanup</span>
+                        </div>
+                        <p>Remove old job records and temporary files. Respects retention settings.</p>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: var(--color-warning);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">Queue Clear</span>
+                        </div>
+                        <p>Cancel all queued jobs. Running jobs are not affected.</p>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: var(--color-error);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-error-bg); color: var(--color-error);">Force Reset</span>
+                        </div>
+                        <p>Reset stuck jobs to failed state. Use if jobs are hung indefinitely.</p>
+                    </div>
+                </div>
+                
+                <h3>System Health</h3>
+                <p>
+                    The health panel shows real-time system status:
+                </p>
+                <ul class="feature-list">
+                    <li><strong>Worker Status</strong> — Is the worker service running and healthy?</li>
+                    <li><strong>Queue Depth</strong> — Number of jobs waiting to be processed</li>
+                    <li><strong>Disk Space</strong> — Available space on the restore server</li>
+                    <li><strong>S3 Connectivity</strong> — Can we reach the backup bucket?</li>
+                    <li><strong>Database Connections</strong> — Status of MySQL host connections</li>
+                </ul>
+                
+                <h3>Logs</h3>
+                <p>
+                    Access system logs directly from the UI:
+                </p>
+                <ul class="feature-list">
+                    <li><strong>API Logs</strong> — HTTP request/response logging</li>
+                    <li><strong>Worker Logs</strong> — Job processing details</li>
+                    <li><strong>Auth Logs</strong> — Login attempts and API key usage</li>
+                </ul>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/prune-logs.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/prune-logs.png" alt="Prune Logs Preview showing logs to be removed" loading="lazy">
+                    </picture>
+                    <figcaption>1. Log preview — 2. Date filter — 3. Prune button</figcaption>
+                </figure>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/cleanup-staging.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/cleanup-staging.png" alt="Cleanup Staging databases interface" loading="lazy">
+                    </picture>
+                    <figcaption>1. Staging databases list — 2. Age filter — 3. Cleanup button</figcaption>
+                </figure>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/orphans.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/orphans.png" alt="Orphan Databases showing untracked databases" loading="lazy">
+                    </picture>
+                    <figcaption>1. Orphan list — 2. Database details — 3. Cleanup actions</figcaption>
+                </figure>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/audit-log.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/audit-log.png" alt="Audit Log showing system activity history" loading="lazy">
+                    </picture>
+                    <figcaption>1. Audit entries — 2. User filter — 3. Action type filter — 4. Date range</figcaption>
+                </figure>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/locked-dbs.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/locked-dbs.png" alt="Locked Databases showing databases with active locks" loading="lazy">
+                    </picture>
+                    <figcaption>1. Locked databases list — 2. Lock holder — 3. Unlock action</figcaption>
+                </figure>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/disallowed-users.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/disallowed-users.png" alt="Disallowed Users showing blocked accounts" loading="lazy">
+                    </picture>
+                    <figcaption>1. Disallowed users list — 2. Block reason — 3. Actions</figcaption>
+                </figure>
+            </section>
+            
+            <!-- Next Steps -->
+            <section class="content-section">
+                <h2>Related Documentation</h2>
+                <div class="category-cards">
+                    <a href="../cli/index.html" class="category-card">
+                        <div class="category-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="4 17 10 11 4 5"/>
+                                <line x1="12" y1="19" x2="20" y2="19"/>
+                            </svg>
+                        </div>
+                        <div class="category-content">
+                            <h3>CLI Reference</h3>
+                            <p>Admin commands available via command line.</p>
+                        </div>
+                        <svg class="category-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    </a>
+                    <a href="../api/index.html" class="category-card">
+                        <div class="category-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                        </div>
+                        <div class="category-content">
+                            <h3>API Reference</h3>
+                            <p>Admin API endpoints for automation.</p>
+                        </div>
+                        <svg class="category-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    </a>
+                </div>
+            </section>
+            
+        </main>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="help-footer">
+        <div class="footer-content">
+            <p>pullDB Documentation</p>
+            <div class="footer-links">
+                <a href="../../index.html">Help Home</a>
+                <a href="../troubleshooting/index.html">Troubleshooting</a>
+            </div>
+        </div>
+    </footer>
+    
+    <script src="../../js/help.js"></script>
+    <script src="../../js/search.js"></script>
+</body>
+</html>

@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - pullDB Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../css/help.css">
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
+    
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    
+    <!-- Navigation -->
+    <nav class="nav-glass">
+        <div class="nav-container">
+            <a href="../../index.html" class="nav-logo">
+                <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                </svg>
+                <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
+            </a>
+            
+            <div class="nav-links">
+                <a href="../getting-started.html" class="nav-link">Getting Started</a>
+                <a href="../cli/index.html" class="nav-link">CLI</a>
+                <a href="../api/index.html" class="nav-link">API</a>
+                <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
+                <a href="index.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">Web UI</a>
+            </div>
+            
+            <div class="nav-actions">
+                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span class="search-hint">/</span>
+                </button>
+                <button class="theme-toggle" @click="toggleTheme()">
+                    <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg x-show="theme === 'dark'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Search Modal -->
+    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+        <div class="search-container" @click.stop>
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <kbd class="search-kbd">ESC</kbd>
+            </div>
+            <div class="search-results" x-show="searchQuery.length > 0">
+                <template x-for="(result, index) in searchResults" :key="result.id">
+                    <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
+                        <div class="result-content">
+                            <div class="result-title" x-html="result.title"></div>
+                            <div class="result-preview" x-html="result.preview"></div>
+                        </div>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Page Layout with Sidebar -->
+    <div class="page-layout">
+        <aside class="page-sidebar">
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Web UI Guide</div>
+                    <a href="index.html" class="sidebar-link">Overview</a>
+                    <a href="dashboard.html" class="sidebar-link active">Dashboard</a>
+                    <a href="restore.html" class="sidebar-link">Restore Workflow</a>
+                    <a href="jobs.html" class="sidebar-link">Jobs Management</a>
+                    <a href="profile.html" class="sidebar-link">Profile & API Keys</a>
+                    <a href="admin.html" class="sidebar-link">Admin Panel</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">On This Page</div>
+                    <a href="#overview" class="sidebar-link">Overview</a>
+                    <a href="#user-dashboard" class="sidebar-link">User Dashboard</a>
+                    <a href="#manager-view" class="sidebar-link">Manager View</a>
+                    <a href="#admin-dashboard" class="sidebar-link">Admin Dashboard</a>
+                    <a href="#stats-cards" class="sidebar-link">Stats Cards</a>
+                    <a href="#quick-actions" class="sidebar-link">Quick Actions</a>
+                </div>
+            </nav>
+        </aside>
+        
+        <main class="page-content">
+            <div class="breadcrumbs">
+                <a href="../../index.html">Help</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <a href="index.html">Web UI</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span>Dashboard</span>
+            </div>
+            
+            <h1 class="page-title">Dashboard</h1>
+            <p class="page-description">
+                The Dashboard is your home base in pullDB. It provides an at-a-glance view of your jobs,
+                system status, and quick actions tailored to your role.
+            </p>
+            
+            <!-- Overview Section -->
+            <section class="content-section" id="overview">
+                <h2>Overview</h2>
+                <p>
+                    What you see on the Dashboard depends on your role. Users see their own job activity,
+                    Managers see system-wide metrics, and Admins get full access to administration panels.
+                </p>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Role</th>
+                            <th>Dashboard Features</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>User</code></td>
+                            <td>Recent jobs, quick restore, job stats for your account</td>
+                        </tr>
+                        <tr>
+                            <td><code>Manager</code></td>
+                            <td>All user features + system-wide job overview, Manager View link</td>
+                        </tr>
+                        <tr>
+                            <td><code>Admin</code></td>
+                            <td>All Manager features + admin panel, system health, user management</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+            
+            <!-- User Dashboard Section -->
+            <section class="content-section" id="user-dashboard">
+                <h2>User Dashboard</h2>
+                <p>
+                    The standard user dashboard focuses on your personal job activity and provides quick access
+                    to common actions.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/dashboard/user-view.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/dashboard/user-view.png" alt="User dashboard with recent jobs and quick actions" loading="lazy">
+                    </picture>
+                    <figcaption>1. Stats cards — 2. Recent jobs panel — 3. Quick actions</figcaption>
+                </figure>
+                
+                <h3>Recent Jobs Panel</h3>
+                <p>
+                    Shows your 5 most recent restore jobs with current status. Each job row displays:
+                </p>
+                <ul class="feature-list">
+                    <li><strong>Customer ID</strong> — The target customer database</li>
+                    <li><strong>Status Badge</strong> — Current job state (Queued, Running, Complete, Failed)</li>
+                    <li><strong>Submitted Time</strong> — When you submitted the job</li>
+                    <li><strong>Duration</strong> — How long the job took (or is taking)</li>
+                    <li><strong>Actions</strong> — View details, cancel (if applicable)</li>
+                </ul>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/dashboard/recent-jobs.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/dashboard/recent-jobs.png" alt="Recent jobs table with status and actions" loading="lazy">
+                    </picture>
+                    <figcaption>1. Customer ID — 2. Status badge — 3. Submitted time — 4. Actions</figcaption>
+                </figure>
+                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Real-time updates</strong><br>
+                        Job statuses update automatically via polling. No need to refresh the page.
+                    </div>
+                </div>
+                
+                <h3>Quick Restore Card</h3>
+                <p>
+                    Start a new restore directly from the dashboard. Enter a customer ID and optionally
+                    select a specific backup date to quickly submit a job.
+                </p>
+            </section>
+            
+            <!-- Manager View Section -->
+            <section class="content-section" id="manager-view">
+                <h2>Manager View</h2>
+                <p>
+                    Managers have access to the <strong>Manager View</strong>, accessible from the sidebar.
+                    This provides a comprehensive overview of all jobs across the system.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/dashboard/manager-view.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/dashboard/manager-view.png" alt="Manager dashboard showing team activity" loading="lazy">
+                    </picture>
+                    <figcaption>1. All jobs table — 2. User filter — 3. Status filter — 4. Export button</figcaption>
+                </figure>
+                
+                <h3>Features</h3>
+                <ul class="feature-list">
+                    <li><strong>All Jobs Table</strong> — View jobs from all users with filtering and search</li>
+                    <li><strong>User Filter</strong> — Filter jobs by submitting user</li>
+                    <li><strong>Status Filter</strong> — Filter by job state</li>
+                    <li><strong>Date Range</strong> — Filter jobs by submission date</li>
+                    <li><strong>Export</strong> — Export job data to CSV</li>
+                </ul>
+                
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Read-only access</strong><br>
+                        Managers can view all jobs but cannot cancel or modify jobs belonging to other users.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Admin Dashboard Section -->
+            <section class="content-section" id="admin-dashboard">
+                <h2>Admin Dashboard</h2>
+                <p>
+                    Admins see additional panels and have quick access to administrative functions.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/dashboard/admin-view.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/dashboard/admin-view.png" alt="Admin dashboard with system health overview" loading="lazy">
+                    </picture>
+                    <figcaption>1. System health panel — 2. Admin quick links — 3. User management</figcaption>
+                </figure>
+                
+                <h3>System Health Panel</h3>
+                <p>
+                    Real-time system status including:
+                </p>
+                <ul class="feature-list">
+                    <li><strong>Worker Status</strong> — Is the worker service running?</li>
+                    <li><strong>Queue Depth</strong> — Number of jobs waiting to be processed</li>
+                    <li><strong>Active Jobs</strong> — Currently running restore operations</li>
+                    <li><strong>Disk Usage</strong> — Available space on the restore target</li>
+                </ul>
+                
+                <h3>Admin Quick Links</h3>
+                <p>
+                    One-click access to frequently used admin functions:
+                </p>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                        </div>
+                        <h3>Manage Users</h3>
+                        <p>Add, edit, or disable user accounts.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+                                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+                                <line x1="6" y1="6" x2="6.01" y2="6"/>
+                                <line x1="6" y1="18" x2="6.01" y2="18"/>
+                            </svg>
+                        </div>
+                        <h3>Manage Hosts</h3>
+                        <p>Configure allowed restore targets.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                            </svg>
+                        </div>
+                        <h3>API Keys</h3>
+                        <p>View and manage all API keys.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                            </svg>
+                        </div>
+                        <h3>Settings</h3>
+                        <p>System configuration and preferences.</p>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Stats Cards Section -->
+            <section class="content-section" id="stats-cards">
+                <h2>Stats Cards</h2>
+                <p>
+                    The top of the dashboard displays summary statistics in card format.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/dashboard/stats-cards.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/dashboard/stats-cards.png" alt="Dashboard stats showing active, queued, and completed jobs" loading="lazy">
+                    </picture>
+                    <figcaption>1. Total jobs — 2. In progress — 3. Completed — 4. Failed</figcaption>
+                </figure>
+                
+                <div class="state-cards">
+                    <div class="state-card" style="border-left-color: var(--color-primary);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-primary-bg); color: var(--color-primary);">Total Jobs</span>
+                        </div>
+                        <p>Total number of jobs you've submitted (or system-wide for Managers/Admins).</p>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: var(--color-warning);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">In Progress</span>
+                        </div>
+                        <p>Jobs currently queued or running.</p>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: var(--color-success);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-success-bg); color: var(--color-success);">Completed</span>
+                        </div>
+                        <p>Successfully completed restore jobs.</p>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: var(--color-error);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-error-bg); color: var(--color-error);">Failed</span>
+                        </div>
+                        <p>Jobs that encountered errors.</p>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Quick Actions Section -->
+            <section class="content-section" id="quick-actions">
+                <h2>Quick Actions</h2>
+                <p>
+                    The dashboard provides quick action buttons for common tasks:
+                </p>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Action</th>
+                            <th>Description</th>
+                            <th>Roles</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>New Restore</code></td>
+                            <td>Opens the restore workflow page</td>
+                            <td>All</td>
+                        </tr>
+                        <tr>
+                            <td><code>View All Jobs</code></td>
+                            <td>Navigate to full job list</td>
+                            <td>All</td>
+                        </tr>
+                        <tr>
+                            <td><code>Refresh</code></td>
+                            <td>Manually refresh dashboard data</td>
+                            <td>All</td>
+                        </tr>
+                        <tr>
+                            <td><code>Export Report</code></td>
+                            <td>Download job history as CSV</td>
+                            <td>Manager, Admin</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+            
+            <!-- Next Steps -->
+            <section class="content-section">
+                <h2>Next Steps</h2>
+                <div class="category-cards">
+                    <a href="restore.html" class="category-card">
+                        <div class="category-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                        </div>
+                        <div class="category-content">
+                            <h3>Restore Workflow</h3>
+                            <p>Learn how to submit restore jobs using the wizard.</p>
+                        </div>
+                        <svg class="category-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    </a>
+                    <a href="jobs.html" class="category-card">
+                        <div class="category-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                            </svg>
+                        </div>
+                        <div class="category-content">
+                            <h3>Jobs Management</h3>
+                            <p>Monitor, filter, and manage your restore jobs.</p>
+                        </div>
+                        <svg class="category-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    </a>
+                </div>
+            </section>
+            
+        </main>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="help-footer">
+        <div class="footer-content">
+            <p>pullDB Documentation</p>
+            <div class="footer-links">
+                <a href="../../index.html">Help Home</a>
+                <a href="../troubleshooting/index.html">Troubleshooting</a>
+            </div>
+        </div>
+    </footer>
+    
+    <script src="../../js/help.js"></script>
+    <script src="../../js/search.js"></script>
+</body>
+</html>

@@ -55,6 +55,18 @@ class SimulationState:
     # (hostname, db_name) -> OrphanMetadata for mock metadata (lazy import to avoid circular)
     orphan_metadata: dict[tuple[str, str], t.Any] = field(default_factory=dict)
     
+    # Phase 0.5: API keys for approval workflow screenshots
+    # key_id -> {user_id, name, host_name, created_at, approved_at, approved_by, is_active, ...}
+    api_keys: dict[str, dict[str, t.Any]] = field(default_factory=dict)
+    
+    # Phase 0.5: Disallowed usernames for admin page screenshots
+    # username -> {reason, is_hardcoded, created_at, created_by}
+    disallowed_usernames: dict[str, dict[str, t.Any]] = field(default_factory=dict)
+    
+    # Phase 0.5: Host credential error state tracking
+    # hostname -> error message (if credentials failed)
+    host_credential_errors: dict[str, str] = field(default_factory=dict)
+    
     # Concurrency control
     lock: threading.RLock = field(default_factory=threading.RLock)
 
@@ -78,6 +90,9 @@ class SimulationState:
             self.deleted_orphans.clear()
             self.orphan_sizes.clear()
             self.orphan_metadata.clear()
+            self.api_keys.clear()
+            self.disallowed_usernames.clear()
+            self.host_credential_errors.clear()
 
 
 # Global singleton instance

@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 0.2.2 | **Last Updated**: January 2026
+> **Version**: 1.0.0 | **Last Updated**: January 2026
 
 This guide covers setting up a development environment, coding standards, testing, and contributing to pullDB.
 
@@ -318,7 +318,7 @@ make check  # if Makefile configured
 Version is set in `pulldb/__init__.py`:
 
 ```python
-__version__ = "0.2.2"
+__version__ = "1.0.0"
 ```
 
 Update when releasing. Also update:
@@ -464,21 +464,17 @@ curl -s http://localhost:8000/web/auth/login | grep -E 'manifest\.css' && echo "
 
 3. Document in admin guide
 
-### Adding a Database Migration
+### Adding a Database Schema File
 
 ```bash
-# Create migration
-pulldb-migrate new add_new_feature
+# Create new schema file with next sequence number
+# Check existing: ls schema/pulldb_service/*.sql | tail -5
 
-# Edit the file
-vim /opt/pulldb.service/migrations/YYYYMMDDHHMMSS_add_new_feature.sql
+# Create new file
+vim schema/pulldb_service/00XXX_add_new_feature.sql
 
-# Apply locally
-pulldb-migrate up
-
-# Test rollback
-pulldb-migrate rollback
-pulldb-migrate up
+# Make operations idempotent (safe to run twice)
+# Test on both fresh install and upgrade scenarios
 ```
 
 ---

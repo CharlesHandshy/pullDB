@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 0.2.2 | **Last Updated**: January 2026
+> **Version**: 1.0.0 | **Last Updated**: January 2026
 
 This guide covers deploying and operating pullDB services in production environments.
 
@@ -36,11 +36,11 @@ This guide covers deploying and operating pullDB services in production environm
 
 ```bash
 /opt/pulldb.service/
-├── bin/                    # dbmate, myloader binaries
+├── bin/                    # myloader binary
 ├── config/
 │   └── pulldb.yaml         # Main configuration
 ├── logs/                   # Service logs
-├── migrations/             # Database migrations
+├── schema/pulldb_service/  # Database schema files
 ├── scripts/                # Utility scripts
 ├── venv/                   # Python virtual environment
 └── work/                   # Temporary work directory
@@ -279,7 +279,7 @@ sudo journalctl -u pulldb-worker | grep -i "myloader.*error"
 ### Using Debian Package
 
 ```bash
-# Install new package (handles stop/start)
+# Install new package (handles stop/start and schema updates)
 sudo dpkg -i pulldb_0.2.0_amd64.deb
 ```
 
@@ -289,11 +289,11 @@ sudo dpkg -i pulldb_0.2.0_amd64.deb
 # 1. Stop services
 sudo systemctl stop pulldb-worker pulldb-api
 
-# 2. Apply migrations
-sudo pulldb-migrate up --yes
+# 2. Install package (schema applied automatically)
+sudo dpkg -i pulldb_0.2.0_amd64.deb
 
-# 3. Update packages
-sudo /opt/pulldb.service/venv/bin/pip install pulldb==0.2.0
+# 3. Verify schema
+mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
 
 # 4. Restart services
 sudo systemctl start pulldb-worker pulldb-api
@@ -382,9 +382,8 @@ cp /opt/pulldb.service/config/pulldb.yaml /opt/pulldb.service/config/pulldb.yaml
 ### Service Recovery
 
 ```bash
-# If coordination database is restored
-sudo pulldb-migrate verify
-sudo pulldb-migrate up --yes
+# If coordination database is restored, verify schema
+mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
 sudo systemctl restart pulldb-worker pulldb-api
 ```
 

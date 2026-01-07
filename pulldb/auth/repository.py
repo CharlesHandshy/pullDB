@@ -13,7 +13,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from pulldb.domain.errors import KeyPendingApprovalError, LockedUserError
+from pulldb.domain.errors import KeyPendingApprovalError, KeyRevokedError, LockedUserError
 from pulldb.infra.mysql import MySQLPool
 
 logger = logging.getLogger(__name__)
@@ -330,9 +330,9 @@ class AuthRepository:
         and returns both the key_id and plaintext secret. The secret is only
         returned once - it cannot be retrieved later.
 
-        New keys are created inactive (is_active=FALSE) and unapproved
+        New keys are created active (is_active=TRUE) but unapproved
         (approved_at=NULL) by default. They must be approved by an admin
-        before they can be used.
+        before they can be used. The is_active flag is used for revocation.
 
         Args:
             user_id: UUID of the user.
@@ -378,7 +378,7 @@ class AuthRepository:
                     INSERT INTO api_keys
                         (key_id, user_id, key_secret_hash, key_secret, name, 
                          host_name, created_from_ip, is_active, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE, UTC_TIMESTAMP(6))
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, UTC_TIMESTAMP(6))
                     """,
                     (key_id, user_id, secret_hash, secret, name, host_name, created_from_ip),
                 )
@@ -448,10 +448,11 @@ class AuthRepository:
             key_id: The public key identifier.
 
         Returns:
-            user_id if key exists, is active, and is approved. None otherwise.
+            user_id if key exists, is active, and is approved. None if not found.
 
         Raises:
             KeyPendingApprovalError: If key exists but is not yet approved.
+            KeyRevokedError: If key exists but has been revoked (is_active=False).
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
@@ -472,9 +473,9 @@ class AuthRepository:
             if row.get("approved_at") is None:
                 raise KeyPendingApprovalError(key_id)
 
-            # Check if active
+            # Check if revoked
             if not row.get("is_active"):
-                return None
+                raise KeyRevokedError(key_id)
 
             # Check expiration
             expires_at = row.get("expires_at")
@@ -534,10 +535,11 @@ class AuthRepository:
             key_id: The public key identifier.
 
         Returns:
-            Plaintext secret if key is active and approved, None otherwise.
+            Plaintext secret if key is active and approved, None if key not found.
 
         Raises:
             KeyPendingApprovalError: If key exists but is not yet approved.
+            KeyRevokedError: If key exists but has been revoked (is_active=False).
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
@@ -558,8 +560,9 @@ class AuthRepository:
             if row.get("approved_at") is None:
                 raise KeyPendingApprovalError(key_id)
 
+            # Check if revoked
             if not row.get("is_active"):
-                return None
+                raise KeyRevokedError(key_id)
 
             # Check expiration
             expires_at = row.get("expires_at")
@@ -581,6 +584,53 @@ class AuthRepository:
             cursor = conn.cursor()
             cursor.execute(
                 "UPDATE api_keys SET is_active = FALSE WHERE key_id = %s",
+                (key_id,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def reactivate_api_key(self, key_id: str) -> bool:
+        """Reactivate a revoked API key.
+
+        Only reactivates keys that have been previously approved.
+        Keys that were never approved cannot be reactivated - they must
+        go through the approval process.
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            True if key was reactivated, False if not found or never approved.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE api_keys 
+                SET is_active = TRUE 
+                WHERE key_id = %s AND approved_at IS NOT NULL
+                """,
+                (key_id,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_api_key(self, key_id: str) -> bool:
+        """Delete a single API key permanently.
+
+        This is a hard delete - the key is removed from the database entirely.
+        Use revoke_api_key for soft-delete that can be reactivated.
+
+        Args:
+            key_id: The public key identifier to delete.
+
+        Returns:
+            True if key was deleted, False if not found.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM api_keys WHERE key_id = %s",
                 (key_id,),
             )
             conn.commit()

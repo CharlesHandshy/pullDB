@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manager - pullDB Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../css/help.css">
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
+    
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    
+    <!-- Navigation -->
+    <nav class="nav-glass">
+        <div class="nav-container">
+            <a href="../../index.html" class="nav-logo">
+                <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                </svg>
+                <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
+            </a>
+            
+            <div class="nav-links">
+                <a href="../getting-started.html" class="nav-link">Getting Started</a>
+                <a href="../cli/index.html" class="nav-link">CLI</a>
+                <a href="../api/index.html" class="nav-link">API</a>
+                <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
+                <a href="index.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">Web UI</a>
+            </div>
+            
+            <div class="nav-actions">
+                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span class="search-hint">/</span>
+                </button>
+                <button class="theme-toggle" @click="toggleTheme()">
+                    <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg x-show="theme === 'dark'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Search Modal -->
+    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+        <div class="search-container" @click.stop>
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <kbd class="search-kbd">ESC</kbd>
+            </div>
+            <div class="search-results" x-show="searchQuery.length > 0">
+                <template x-for="(result, index) in searchResults" :key="result.id">
+                    <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
+                        <div class="result-content">
+                            <div class="result-title" x-html="result.title"></div>
+                            <div class="result-preview" x-html="result.preview"></div>
+                        </div>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Page Layout with Sidebar -->
+    <div class="page-layout">
+        <aside class="page-sidebar">
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Web UI Guide</div>
+                    <a href="index.html" class="sidebar-link">Overview</a>
+                    <a href="dashboard.html" class="sidebar-link">Dashboard</a>
+                    <a href="restore.html" class="sidebar-link">Restore Workflow</a>
+                    <a href="jobs.html" class="sidebar-link">Jobs Management</a>
+                    <a href="profile.html" class="sidebar-link">Profile & API Keys</a>
+                    <a href="manager.html" class="sidebar-link active">Manager Interface</a>
+                    <a href="admin.html" class="sidebar-link">Admin Panel</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">On This Page</div>
+                    <a href="#overview" class="sidebar-link">Manager Dashboard Overview</a>
+                    <a href="#team-members" class="sidebar-link">Team Members</a>
+                    <a href="#reset-password" class="sidebar-link">Resetting Passwords</a>
+                    <a href="#temp-password" class="sidebar-link">Temporary Passwords</a>
+                </div>
+            </nav>
+        </aside>
+        
+        <main class="page-content">
+            <div class="breadcrumbs">
+                <a href="../../index.html">Help</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <a href="index.html">Web UI</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span>Manager Interface</span>
+            </div>
+            
+            <h1 class="page-title">Manager Interface</h1>
+            <p class="page-description">
+                The Manager interface provides tools for managing your team members and monitoring their activity.
+                Managers can view team statistics, reset passwords, and assign temporary credentials.
+            </p>
+            
+            <div class="info-callout">
+                <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 16v-4M12 8h.01"/>
+                </svg>
+                <div>
+                    <strong>Manager Access Required</strong><br>
+                    This page documents features only available to Manager users. If you don't see the Manager menu item,
+                    contact your system administrator to request the Manager role.
+                </div>
+            </div>
+            
+            <!-- Manager Dashboard Overview Section -->
+            <section class="content-section" id="overview">
+                <h2>Manager Dashboard Overview</h2>
+                <p>
+                    The manager dashboard provides a comprehensive view of your team's activity and key statistics.
+                    From here, you can quickly assess team performance and access management functions.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/manager/overview.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/manager/overview.png" alt="Manager dashboard with team statistics" loading="lazy">
+                    </picture>
+                    <figcaption>1. Team statistics cards — 2. Activity summary — 3. Quick actions panel</figcaption>
+                </figure>
+                
+                <h3>Dashboard Components</h3>
+                <ul class="feature-list">
+                    <li><strong>Team Statistics</strong> — Overview of active team members and their job counts</li>
+                    <li><strong>Activity Summary</strong> — Recent activity from all team members</li>
+                    <li><strong>Quick Actions</strong> — Fast access to common manager tasks</li>
+                    <li><strong>Status Indicators</strong> — Real-time status of team member accounts</li>
+                </ul>
+            </section>
+            
+            <!-- Team Members Section -->
+            <section class="content-section" id="team-members">
+                <h2>Team Members</h2>
+                <p>
+                    The team members section displays all users under your management. You can view their
+                    current status, recent activity, and perform account management tasks.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/manager/team-list.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/manager/team-list.png" alt="Team member list with status indicators" loading="lazy">
+                    </picture>
+                    <figcaption>1. Team member name — 2. Status indicator — 3. Last activity — 4. Actions menu</figcaption>
+                </figure>
+                
+                <h3>Team Member Information</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Column</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Name</code></td>
+                            <td>The team member's display name and username</td>
+                        </tr>
+                        <tr>
+                            <td><code>Status</code></td>
+                            <td>Account status (Active, Inactive, Locked)</td>
+                        </tr>
+                        <tr>
+                            <td><code>Last Activity</code></td>
+                            <td>When the user last performed an action</td>
+                        </tr>
+                        <tr>
+                            <td><code>Jobs</code></td>
+                            <td>Total number of jobs submitted by this user</td>
+                        </tr>
+                        <tr>
+                            <td><code>Actions</code></td>
+                            <td>Management actions available for this user</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>Status Indicators</h3>
+                <ul class="feature-list">
+                    <li><strong class="text-success">● Active</strong> — User can log in and submit jobs normally</li>
+                    <li><strong class="text-warning">● Inactive</strong> — User account is disabled but not deleted</li>
+                    <li><strong class="text-danger">● Locked</strong> — User is locked out due to failed login attempts</li>
+                </ul>
+            </section>
+            
+            <!-- Reset Password Section -->
+            <section class="content-section" id="reset-password">
+                <h2>Resetting Passwords</h2>
+                <p>
+                    Managers can reset passwords for team members who have forgotten their credentials or
+                    need their account recovered. This triggers a password reset flow for the selected user.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/manager/reset-password.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/manager/reset-password.png" alt="Password reset confirmation dialog" loading="lazy">
+                    </picture>
+                    <figcaption>1. User identification — 2. Confirmation message — 3. Action buttons</figcaption>
+                </figure>
+                
+                <h3>Reset Password Steps</h3>
+                <ol class="feature-list">
+                    <li>Navigate to the Team Members section</li>
+                    <li>Find the user who needs a password reset</li>
+                    <li>Click the <strong>Actions</strong> menu (⋮) for that user</li>
+                    <li>Select <strong>Reset Password</strong></li>
+                    <li>Confirm the action in the dialog</li>
+                    <li>The user will receive instructions to set a new password</li>
+                </ol>
+                
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Security Note</strong><br>
+                        Password resets are logged for audit purposes. Ensure you verify the team member's identity
+                        through an out-of-band channel before resetting their password.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Temporary Password Section -->
+            <section class="content-section" id="temp-password">
+                <h2>Temporary Passwords</h2>
+                <p>
+                    For immediate access needs, managers can assign a temporary password that the user must
+                    change on their next login. This is useful for onboarding new team members or providing
+                    urgent access recovery.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/manager/temp-password-modal.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/manager/temp-password-modal.png" alt="Temporary password assignment modal" loading="lazy">
+                    </picture>
+                    <figcaption>1. User selection — 2. Generated password — 3. Copy button — 4. Expiration notice</figcaption>
+                </figure>
+                
+                <h3>Assigning a Temporary Password</h3>
+                <ol class="feature-list">
+                    <li>Navigate to the Team Members section</li>
+                    <li>Click the <strong>Actions</strong> menu (⋮) for the target user</li>
+                    <li>Select <strong>Assign Temporary Password</strong></li>
+                    <li>A secure temporary password will be generated automatically</li>
+                    <li>Click <strong>Copy</strong> to copy the password to your clipboard</li>
+                    <li>Securely communicate the password to the team member</li>
+                </ol>
+                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Automatic Expiration</strong><br>
+                        Temporary passwords expire after 24 hours if not used. The user will be required to
+                        set a new permanent password upon first login with the temporary credentials.
+                    </div>
+                </div>
+                
+                <h3>Best Practices</h3>
+                <ul class="feature-list">
+                    <li><strong>Verify Identity</strong> — Always confirm the user's identity before issuing credentials</li>
+                    <li><strong>Secure Delivery</strong> — Use secure channels (phone call, in-person) to share temporary passwords</li>
+                    <li><strong>Prompt Usage</strong> — Encourage users to log in and change their password immediately</li>
+                    <li><strong>Documentation</strong> — Note the reason for temporary password assignment if required by policy</li>
+                </ul>
+            </section>
+            
+            <!-- Related Topics -->
+            <section class="content-section">
+                <h2>Related Topics</h2>
+                <div class="feature-grid">
+                    <a href="dashboard.html" class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="7" height="7"/>
+                                <rect x="14" y="3" width="7" height="7"/>
+                                <rect x="14" y="14" width="7" height="7"/>
+                                <rect x="3" y="14" width="7" height="7"/>
+                            </svg>
+                        </div>
+                        <h3>Dashboard</h3>
+                        <p>Your personal dashboard and job overview.</p>
+                    </a>
+                    <a href="admin.html" class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                            </svg>
+                        </div>
+                        <h3>Admin Panel</h3>
+                        <p>System-wide administration features.</p>
+                    </a>
+                    <a href="profile.html" class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                        </div>
+                        <h3>Profile & API Keys</h3>
+                        <p>Managing your own account and credentials.</p>
+                    </a>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="page-footer">
+        <div class="footer-container">
+            <div class="footer-content">
+                <p>&copy; 2025 pullDB. All rights reserved.</p>
+                <div class="footer-links">
+                    <a href="../../index.html">Help Home</a>
+                    <a href="../troubleshooting/index.html">Troubleshooting</a>
+                    <a href="../api/index.html">API Reference</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+    
+    <script src="../../js/help.js"></script>
+</body>
+</html>

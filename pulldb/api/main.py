@@ -57,7 +57,7 @@ MAX_STATUS_LIMIT = 1000
 # Web UI enabled by default, can be disabled with PULLDB_WEB_ENABLED=false
 WEB_ENABLED = os.getenv("PULLDB_WEB_ENABLED", "true").lower() in ("true", "1", "yes")
 
-app = fastapi.FastAPI(title="pullDB API Service", version="0.1.0")
+app = fastapi.FastAPI(title="pullDB API Service", version="1.0.0")
 
 # Mount unified web UI router (if enabled)
 if WEB_ENABLED:
@@ -497,6 +497,47 @@ async def change_password(
         )
 
     return {"message": "Password changed successfully"}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# User Exists Check (Unauthenticated)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class UserExistsResponse(pydantic.BaseModel):
+    """Response for user existence check."""
+
+    exists: bool
+    user_code: str | None = None
+
+
+@app.get("/api/auth/user-exists/{username}", response_model=UserExistsResponse)
+async def check_user_exists(
+    username: str,
+    state: APIState = Depends(get_api_state),
+) -> UserExistsResponse:
+    """Check if a user exists (unauthenticated).
+
+    This endpoint allows the CLI to check if a username is registered
+    without requiring credentials. Used to differentiate between:
+    - User not registered at all (needs 'pulldb register')
+    - User exists but no credentials on this host (needs 'pulldb request-host-key')
+
+    Note: Only returns existence and user_code - no sensitive information.
+    """
+    if not state.user_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="User service not available",
+        )
+
+    user = await run_in_threadpool(
+        state.user_repo.get_user_by_username, username
+    )
+
+    if user:
+        return UserExistsResponse(exists=True, user_code=user.user_code)
+    return UserExistsResponse(exists=False, user_code=None)
 
 
 class RegisterRequest(pydantic.BaseModel):
@@ -3365,6 +3406,19 @@ class RevokeKeyResponse(pydantic.BaseModel):
     message: str
 
 
+class ReactivateKeyRequest(pydantic.BaseModel):
+    """Request to reactivate a revoked API key."""
+
+    key_id: str
+
+
+class ReactivateKeyResponse(pydantic.BaseModel):
+    """Response for key reactivation."""
+
+    key_id: str
+    message: str
+
+
 class UserKeysResponse(pydantic.BaseModel):
     """Response for a user's API keys."""
 
@@ -3540,6 +3594,84 @@ async def revoke_api_key(
     return RevokeKeyResponse(
         key_id=request.key_id,
         message="API key revoked successfully",
+    )
+
+
+@app.post("/api/admin/keys/reactivate", response_model=ReactivateKeyResponse)
+async def reactivate_api_key(
+    request: ReactivateKeyRequest,
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> ReactivateKeyResponse:
+    """Reactivate a revoked API key (admin only).
+
+    Marks a previously revoked key as active again.
+    Only works for keys that were previously approved - pending keys
+    must go through the approval process instead.
+    """
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Get key info before reactivating for validation and audit
+    key_info = await run_in_threadpool(
+        state.auth_repo.get_api_key_info,
+        request.key_id,
+    )
+
+    if not key_info:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"API key '{request.key_id}' not found",
+        )
+
+    # Check if key is already active
+    if key_info.get("is_active"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"API key '{request.key_id}' is already active",
+        )
+
+    # Check if key was never approved (must use approve endpoint instead)
+    if key_info.get("approved_at") is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"API key '{request.key_id}' was never approved. Use the approve endpoint instead.",
+        )
+
+    # Reactivate the key
+    success = await run_in_threadpool(
+        state.auth_repo.reactivate_api_key,
+        request.key_id,
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to reactivate API key",
+        )
+
+    # Log audit event
+    if state.audit_repo:
+        target_user = await run_in_threadpool(
+            state.user_repo.get_user_by_id,
+            key_info["user_id"],
+        )
+        await run_in_threadpool(
+            state.audit_repo.log_action,
+            actor_user_id=user.user_id,
+            action="api_key_reactivated",
+            target_user_id=key_info["user_id"],
+            detail=f"Admin {user.username} reactivated API key '{request.key_id}' "
+            f"for user {target_user.username if target_user else 'unknown'} "
+            f"(host: {key_info.get('host_name', 'unknown')})",
+        )
+
+    return ReactivateKeyResponse(
+        key_id=request.key_id,
+        message="API key reactivated successfully",
     )
 
 
@@ -3911,7 +4043,7 @@ def main_web(argv: list[str] | None = None) -> int:
     allowing the Web UI to run on a different port than the API.
     """
     # Create a separate app for web-only mode
-    web_app = fastapi.FastAPI(title="pullDB Web UI", version="0.1.0")
+    web_app = fastapi.FastAPI(title="pullDB Web UI", version="1.0.0")
     
     try:
         from starlette.exceptions import HTTPException as StarletteHTTPException

@@ -16,7 +16,7 @@
 -- Only insert if not exists (idempotent)
 -- Use fixed UUID for consistency: 00000000-0000-0000-0000-000000000002
 INSERT IGNORE INTO auth_users (user_id, username, user_code, is_admin, role)
-VALUES ('00000000-0000-0000-0000-000000000002', 'admin', 'ADMINN', TRUE, 'admin');
+VALUES ('00000000-0000-0000-0000-000000000002', 'admin', 'adminn', TRUE, 'admin');
 
 -- Create credentials entry with NULL password (postinst will set the real hash)
 -- NULL password means the account exists but cannot login until password is set

@@ -280,56 +280,18 @@ create_virtualenv() {
 }
 
 install_dbmate() {
-  local dbmate_bin="${INSTALL_PREFIX}/bin/dbmate"
-  local install_script="${INSTALL_PREFIX}/scripts/install-dbmate.sh"
-  
-  if [[ -f "$dbmate_bin" ]]; then
-    info "dbmate already installed at $dbmate_bin"
-    return 0
-  fi
-  
-  if [[ -f "$install_script" ]]; then
-    info "Installing dbmate migration tool..."
-    PULLDB_INSTALL_PREFIX="$INSTALL_PREFIX" bash "$install_script"
-  else
-    warn "dbmate installer not found at $install_script (skipping)"
-    return 1
-  fi
+  # DEPRECATED: dbmate is no longer used
+  # Schema updates are now handled by postinst via schema_migrations table
+  info "Note: dbmate is deprecated. Schema updates happen automatically during package install."
+  return 0
 }
 
 run_migrations() {
-  local migrate_script="${INSTALL_PREFIX}/scripts/pulldb-migrate.sh"
-  
-  if [[ ! -f "$migrate_script" ]]; then
-    warn "Migration script not found at $migrate_script (skipping migrations)"
-    return 1
-  fi
-  
-  if [[ ! -f "${INSTALL_PREFIX}/bin/dbmate" ]]; then
-    warn "dbmate not installed (skipping migrations)"
-    return 1
-  fi
-  
-  info "Running database migrations..."
-  
-  # Export environment for the migration script
-  export PULLDB_INSTALL_PREFIX="$INSTALL_PREFIX"
-  export PULLDB_AWS_PROFILE="$AWS_PROFILE"
-  export PULLDB_COORDINATION_SECRET="$COORD_SECRET"
-  
-  local migrate_flags=""
-  if [[ $ASSUME_YES -eq 1 ]]; then
-    migrate_flags="--yes"
-  fi
-  
-  if bash "$migrate_script" up $migrate_flags; then
-    info "Migrations completed successfully"
-    return 0
-  else
-    warn "Migration failed - you may need to run migrations manually"
-    warn "Try: ${migrate_script} status"
-    return 1
-  fi
+  # DEPRECATED: Migrations are now handled by postinst
+  # Schema files from schema/pulldb_service/ are applied automatically
+  info "Note: Schema updates are applied automatically during package installation."
+  info "To verify: mysql -e 'SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at'"
+  return 0
 }
 
 create_cli_symlinks() {

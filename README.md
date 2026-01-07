@@ -1,6 +1,6 @@
 # pullDB
 
-[![Release](https://img.shields.io/badge/version-0.2.2-blue)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/version-1.0.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-520%2B-success.svg)](pulldb/tests/)
@@ -44,10 +44,10 @@ pulldb status
 
 ```bash
 # Download the latest release
-wget https://github.com/CharlesHandshy/pullDB/releases/download/v0.2.0/pulldb_0.2.0_amd64.deb
+wget https://github.com/CharlesHandshy/pullDB/releases/download/v1.0.0/pulldb_1.0.0_amd64.deb
 
 # Install (creates user, venv, systemd services)
-sudo dpkg -i pulldb_0.2.0_amd64.deb
+sudo dpkg -i pulldb_1.0.0_amd64.deb
 
 # Configure
 sudo /opt/pulldb.service/scripts/configure-pulldb.sh
@@ -167,7 +167,7 @@ pulldb/
 ├── worker/       # Restore execution engine
 └── simulation/   # In-memory simulation for development
 
-schema/           # MySQL migrations (dbmate)
+schema/           # MySQL schema files (auto-applied by postinst)
 scripts/          # Build, deploy, validation scripts
 docs/             # Documentation (HCA organized)
 ```
@@ -192,4 +192,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-*pullDB v0.2.0 - January 2026*
+*pullDB v1.0.0 - January 2026*

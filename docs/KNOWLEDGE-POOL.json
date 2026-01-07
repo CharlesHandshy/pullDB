@@ -1,10 +1,10 @@
 {
-  "version": "0.2.2",
-  "last_updated": "2026-01-04",
+  "version": "0.3.0",
+  "last_updated": "2026-01-06",
   "package": {
-    "wheel": "pulldb-0.2.0-py3-none-any.whl",
+    "wheel": "pulldb-0.3.0-py3-none-any.whl",
     "myloader": "myloader-0.19.3-3",
-    "schema_files": 33,
+    "schema_files": 41,
     "systemd_units": 6,
     "after_sql_templates": 12
   },
@@ -65,11 +65,24 @@
     "worker": "/pulldb/mysql/worker",
     "loader": "/pulldb/mysql/loader"
   },
+  "local_mysql_root": {
+    "root@localhost": {
+      "plugin": "auth_socket",
+      "auth_method": "sudo mysql (no password)",
+      "purpose": "Local admin via unix socket"
+    },
+    "root@%": {
+      "plugin": "caching_sha2_password",
+      "password": "WddfAUBoHXOZrYkUT6JWv7lE",
+      "auth_method": "Network connection with password",
+      "purpose": "Remote/network admin access"
+    }
+  },
   "schema": {
     "canonical_doc": "docs/mysql-schema.md",
     "database": "pulldb_service",
     "schema_dir": "schema/pulldb_service/",
-    "schema_file_count": 33,
+    "schema_file_count": 41,
     "hosts_table": "db_hosts"
   },
   "mysql_users": {
@@ -128,9 +141,9 @@
       "phase": "2"
     },
     {
-      "topic": "dpkg Upgrade Migrations",
-      "issue": "dpkg -i does NOT auto-run schema migrations",
-      "fix": "After dpkg install, run: sudo /opt/pulldb.service/scripts/pulldb-migrate.sh migrate",
+      "topic": "dpkg Upgrade Schema",
+      "issue": "Schema files auto-applied during dpkg install",
+      "fix": "Postinst applies new files from schema/pulldb_service/ and tracks in schema_migrations table",
       "phase": "2"
     },
     {
@@ -140,10 +153,11 @@
       "phase": "2"
     }
   ],
-  "migrations": {
-    "script": "/opt/pulldb.service/scripts/pulldb-migrate.sh",
-    "commands": ["status", "migrate", "verify", "baseline", "rollback"],
-    "post_install_required": true
+  "schema_management": {
+    "location": "/opt/pulldb.service/schema/pulldb_service/",
+    "tracking_table": "schema_migrations",
+    "auto_applied": true,
+    "verify_command": "mysql -e \"SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at\""
   },
   "settings_sync": {
     "pull": "db → .env (download settings from database)",
@@ -275,5 +289,38 @@
       {"file": "00740_audit_logs.sql", "table": "audit_logs"}
     ],
     "tables": ["auth_credentials", "sessions", "password_reset_tokens", "manager_user_relationship", "audit_logs"]
+  },
+  "phase6_features": {
+    "cli_hmac_auth": {
+      "files": {
+        "auth": "pulldb/cli/auth.py",
+        "api": "pulldb/api/main.py"
+      },
+      "credential_file": "~/.pulldb/credentials",
+      "env_vars": ["PULLDB_API_KEY", "PULLDB_API_SECRET"],
+      "schema_table": "api_keys"
+    },
+    "host_provisioning": {
+      "service": "pulldb/domain/services/provisioning.py",
+      "infra": "pulldb/infra/mysql_provisioning.py",
+      "steps": ["test_connection", "create_user", "create_database", "deploy_procedure", "store_credentials", "register_host"]
+    },
+    "secret_rotation": {
+      "service": "pulldb/domain/services/secret_rotation.py",
+      "phases": ["validation", "generation", "mysql_update", "verification", "aws_update", "final_verify"]
+    },
+    "database_retention": {
+      "service": "pulldb/worker/retention.py",
+      "features": ["expiration", "locking", "extension", "maintenance_modal"],
+      "schema_tables": ["database_retention", "retention_cleanup_task"]
+    },
+    "admin_tasks": {
+      "executor": "pulldb/worker/admin_tasks.py",
+      "task_types": ["force_delete_user", "bulk_delete_jobs"]
+    },
+    "backup_analysis": {
+      "cli": "pulldb/cli/backup_commands.py",
+      "commands": ["backups list", "backups search"]
+    }
   }
 }

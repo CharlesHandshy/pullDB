@@ -532,3 +532,24 @@ class KeyPendingApprovalError(Exception):
         super().__init__(
             f"API key pending approval: {key_id}. Contact an administrator to approve your key."
         )
+
+class KeyRevokedError(Exception):
+    """Raised when attempting to use an API key that has been revoked.
+
+    API keys can be revoked by administrators or when a user is disabled.
+    This error indicates the key was previously valid but is no longer active.
+
+    Attributes:
+        key_id: The public key identifier that was revoked.
+    """
+
+    def __init__(self, key_id: str) -> None:
+        """Initialize key revoked error.
+
+        Args:
+            key_id: The public key identifier (key_xxxxx...).
+        """
+        self.key_id = key_id
+        super().__init__(
+            f"API key has been revoked: {key_id}. Contact an administrator if you believe this is an error."
+        )

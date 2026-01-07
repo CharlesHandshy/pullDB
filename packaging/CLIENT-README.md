@@ -75,6 +75,49 @@ The user/group is shared with the `pulldb` server package. If both packages are 
 
 ## CLI Command Reference
 
+### Authentication Commands
+
+Before using pullDB, you need to register an account or request an API key.
+
+#### Register Command
+
+Create a new pullDB account:
+
+```bash
+pulldb register
+```
+
+This command:
+1. Creates an account using your system username
+2. Prompts for a password (minimum 8 characters)
+3. Saves API credentials to `~/.pulldb/credentials`
+4. Account is created in **pending approval** state
+
+After registering, contact an administrator to approve your account.
+
+#### Request Host Key Command
+
+Request an API key for a new machine (existing users only):
+
+```bash
+pulldb request-host-key [--host-name=<name>]
+```
+
+Use this when you already have a pullDB account but need access from a different machine:
+1. Prompts for your password
+2. Creates a new API key for this host
+3. Saves credentials to `~/.pulldb/credentials`
+4. Key is created in **pending approval** state
+
+**Options:**
+| Option | Description |
+|--------|-------------|
+| `--host-name` | Custom hostname (auto-detected if omitted) |
+
+Contact an administrator to approve the new API key.
+
+---
+
 ### Restore Command
 
 Submit a database restore job:
@@ -359,6 +402,8 @@ This removes:
 |------|---------|
 | Check version | `pulldb --version` |
 | Get help | `pulldb --help` |
+| **Register account** | `pulldb register` |
+| **Request host key** | `pulldb request-host-key` |
 | Restore customer | `pulldb restore user=NAME customer=ID` |
 | Restore QA template | `pulldb restore user=NAME qatemplate` |
 | View active jobs | `pulldb status` |

@@ -125,7 +125,7 @@ class User:
     Attributes:
         user_id: UUID primary key.
         username: Unique username from authentication system.
-        user_code: 6-character code derived from username.
+        user_code: 6-character lowercase code (a-z only) derived from username.
         is_admin: Whether user has admin privileges (legacy, kept for compatibility).
         role: RBAC role (user/manager/admin) - Phase 4.
         manager_id: User ID of the manager who manages this user (NULL if unmanaged).

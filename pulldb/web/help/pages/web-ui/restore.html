@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restore Workflow - pullDB Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../css/help.css">
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
+    
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    
+    <!-- Navigation -->
+    <nav class="nav-glass">
+        <div class="nav-container">
+            <a href="../../index.html" class="nav-logo">
+                <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                </svg>
+                <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
+            </a>
+            
+            <div class="nav-links">
+                <a href="../getting-started.html" class="nav-link">Getting Started</a>
+                <a href="../cli/index.html" class="nav-link">CLI</a>
+                <a href="../api/index.html" class="nav-link">API</a>
+                <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
+                <a href="index.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">Web UI</a>
+            </div>
+            
+            <div class="nav-actions">
+                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span class="search-hint">/</span>
+                </button>
+                <button class="theme-toggle" @click="toggleTheme()">
+                    <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg x-show="theme === 'dark'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Search Modal -->
+    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+        <div class="search-container" @click.stop>
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <kbd class="search-kbd">ESC</kbd>
+            </div>
+            <div class="search-results" x-show="searchQuery.length > 0">
+                <template x-for="(result, index) in searchResults" :key="result.id">
+                    <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
+                        <div class="result-content">
+                            <div class="result-title" x-html="result.title"></div>
+                            <div class="result-preview" x-html="result.preview"></div>
+                        </div>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Page Layout with Sidebar -->
+    <div class="page-layout">
+        <aside class="page-sidebar">
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Web UI Guide</div>
+                    <a href="index.html" class="sidebar-link">Overview</a>
+                    <a href="dashboard.html" class="sidebar-link">Dashboard</a>
+                    <a href="restore.html" class="sidebar-link active">Restore Workflow</a>
+                    <a href="jobs.html" class="sidebar-link">Jobs Management</a>
+                    <a href="profile.html" class="sidebar-link">Profile & API Keys</a>
+                    <a href="admin.html" class="sidebar-link">Admin Panel</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">On This Page</div>
+                    <a href="#overview" class="sidebar-link">Overview</a>
+                    <a href="#step1" class="sidebar-link">Step 1: Customer</a>
+                    <a href="#step2" class="sidebar-link">Step 2: Backup</a>
+                    <a href="#step3" class="sidebar-link">Step 3: Options</a>
+                    <a href="#step4" class="sidebar-link">Step 4: Confirm</a>
+                    <a href="#after-submit" class="sidebar-link">After Submission</a>
+                </div>
+            </nav>
+        </aside>
+        
+        <main class="page-content">
+            <div class="breadcrumbs">
+                <a href="../../index.html">Help</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <a href="index.html">Web UI</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span>Restore Workflow</span>
+            </div>
+            
+            <h1 class="page-title">Restore Workflow</h1>
+            <p class="page-description">
+                The restore page provides a guided wizard for submitting database restore jobs.
+                Follow the steps to select a customer, choose a backup, configure options, and submit.
+            </p>
+            
+            <!-- Time Badge -->
+            <div class="time-badge">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                </svg>
+                <span>~2 minutes to submit</span>
+            </div>
+            
+            <!-- Overview Section -->
+            <section class="content-section" id="overview">
+                <h2>Overview</h2>
+                <p>
+                    The restore workflow is a 4-step wizard that guides you through submitting a restore job.
+                    Each step validates your input before allowing you to proceed.
+                </p>
+                
+                <div class="steps-visual">
+                    <div class="step-item">
+                        <div class="step-number">1</div>
+                        <div class="step-label">Customer</div>
+                    </div>
+                    <div class="step-connector"></div>
+                    <div class="step-item">
+                        <div class="step-number">2</div>
+                        <div class="step-label">Backup</div>
+                    </div>
+                    <div class="step-connector"></div>
+                    <div class="step-item">
+                        <div class="step-number">3</div>
+                        <div class="step-label">Options</div>
+                    </div>
+                    <div class="step-connector"></div>
+                    <div class="step-item">
+                        <div class="step-number">4</div>
+                        <div class="step-label">Confirm</div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Step 1 Section -->
+            <section class="content-section" id="step1">
+                <h2>Step 1: Select Customer</h2>
+                <p>
+                    Enter the customer ID whose database you want to restore. The system will verify
+                    that backups exist for this customer.
+                </p>
+                
+                <h3>Customer ID Field</h3>
+                <ul class="feature-list">
+                    <li><strong>Auto-complete</strong> — Start typing to see matching customer IDs</li>
+                    <li><strong>Validation</strong> — The system checks if backups exist before proceeding</li>
+                    <li><strong>Recent Customers</strong> — Quick links to customers you've restored recently</li>
+                </ul>
+                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Case Sensitivity</strong><br>
+                        Customer IDs are case-sensitive. Make sure to enter them exactly as they appear in your backup system.
+                    </div>
+                </div>
+                
+                <h3>What Happens</h3>
+                <p>
+                    When you enter a customer ID and click "Next", the system queries S3 for available backups.
+                    If no backups are found, you'll see an error message and won't be able to proceed.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/restore/step1-customer.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/restore/step1-customer.png" alt="Customer search with autocomplete results" loading="lazy">
+                    </picture>
+                    <figcaption>1. Customer ID input — 2. Autocomplete dropdown — 3. Recent customers</figcaption>
+                </figure>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/restore/step1-no-results.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/restore/step1-no-results.png" alt="Customer search showing no results state" loading="lazy">
+                    </picture>
+                    <figcaption>No results state when customer has no backups</figcaption>
+                </figure>
+            </section>
+            
+            <!-- Step 2 Section -->
+            <section class="content-section" id="step2">
+                <h2>Step 2: Choose Backup</h2>
+                <p>
+                    Select which backup to restore from the list of available backups.
+                </p>
+                
+                <h3>Backup List</h3>
+                <p>
+                    The backup list shows all available backups for the selected customer, with the most recent first.
+                    Each backup entry displays:
+                </p>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Column</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Date</code></td>
+                            <td>Backup date (YYYY-MM-DD)</td>
+                        </tr>
+                        <tr>
+                            <td><code>Time</code></td>
+                            <td>Backup time in UTC</td>
+                        </tr>
+                        <tr>
+                            <td><code>Size</code></td>
+                            <td>Compressed backup size</td>
+                        </tr>
+                        <tr>
+                            <td><code>Environment</code></td>
+                            <td>Source environment (prod, staging, etc.)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Default Selection</strong><br>
+                        The most recent backup is pre-selected. Click on any row to select a different backup.
+                    </div>
+                </div>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/restore/step2-backups.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/restore/step2-backups.png" alt="Backup list showing available restore points" loading="lazy">
+                    </picture>
+                    <figcaption>1. Backup date/time — 2. Size — 3. Environment — 4. Selection indicator</figcaption>
+                </figure>
+            </section>
+            
+            <!-- Step 3 Section -->
+            <section class="content-section" id="step3">
+                <h2>Step 3: Configure Options</h2>
+                <p>
+                    Configure advanced options for the restore job. All options have sensible defaults,
+                    so you can skip this step for standard restores.
+                </p>
+                
+                <h3>Available Options</h3>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Option</th>
+                            <th>Description</th>
+                            <th>Default</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Target Host</code></td>
+                            <td>MySQL server to restore to</td>
+                            <td>Default configured host</td>
+                        </tr>
+                        <tr>
+                            <td><code>Database Name</code></td>
+                            <td>Name for the restored database</td>
+                            <td><code>{customer}_staging</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>Drop Existing</code></td>
+                            <td>Drop database if it already exists</td>
+                            <td>Enabled</td>
+                        </tr>
+                        <tr>
+                            <td><code>Run Post-SQL</code></td>
+                            <td>Execute post-restore SQL scripts</td>
+                            <td>Enabled</td>
+                        </tr>
+                        <tr>
+                            <td><code>Priority</code></td>
+                            <td>Job queue priority (Admin only)</td>
+                            <td>Normal</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Drop Existing Warning</strong><br>
+                        When "Drop Existing" is enabled, any existing database with the target name will be 
+                        permanently deleted. Make sure you don't have important data in the target database.
+                    </div>
+                </div>
+                
+                <h3>Target Host Selection</h3>
+                <p>
+                    The target host dropdown shows all hosts you're authorized to restore to.
+                    If you only have access to one host, it will be pre-selected and the dropdown disabled.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/restore/step3-options.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/restore/step3-options.png" alt="Restore options including target host and retention" loading="lazy">
+                    </picture>
+                    <figcaption>1. Target host selector — 2. Database name — 3. Options toggles — 4. Priority (admin only)</figcaption>
+                </figure>
+            </section>
+            
+            <!-- Step 4 Section -->
+            <section class="content-section" id="step4">
+                <h2>Step 4: Review & Confirm</h2>
+                <p>
+                    Review all your selections before submitting the job. This step shows a summary
+                    of what will happen when you click "Submit".
+                </p>
+                
+                <h3>Summary Panel</h3>
+                <p>
+                    The confirmation page displays:
+                </p>
+                <ul class="feature-list">
+                    <li><strong>Customer ID</strong> — The customer being restored</li>
+                    <li><strong>Backup Date</strong> — Which backup will be used</li>
+                    <li><strong>Target Database</strong> — Where the data will be restored</li>
+                    <li><strong>Options Summary</strong> — All configured options</li>
+                    <li><strong>Estimated Time</strong> — Approximate duration based on backup size</li>
+                </ul>
+                
+                <h3>Submit Button</h3>
+                <p>
+                    Click <strong>Submit Restore Job</strong> to queue the job. You'll be redirected
+                    to the job details page where you can monitor progress.
+                </p>
+                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Go Back</strong><br>
+                        Use the "Back" button or click on any completed step number to go back and change your selections.
+                    </div>
+                </div>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/restore/step4-confirm.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/restore/step4-confirm.png" alt="Restore confirmation summary" loading="lazy">
+                    </picture>
+                    <figcaption>1. Selection summary — 2. Options review — 3. Estimated time — 4. Submit button</figcaption>
+                </figure>
+            </section>
+            
+            <!-- After Submit Section -->
+            <section class="content-section" id="after-submit">
+                <h2>After Submission</h2>
+                <p>
+                    Once you submit the job, you'll be taken to the job details page. Here's what to expect:
+                </p>
+                
+                <div class="state-cards">
+                    <div class="state-card queued">
+                        <div class="state-header">
+                            <span class="state-badge queued">1. QUEUED</span>
+                        </div>
+                        <p>Job is waiting for a worker. Usually takes only a few seconds.</p>
+                    </div>
+                    
+                    <div class="state-card running">
+                        <div class="state-header">
+                            <span class="state-badge running">2. RUNNING</span>
+                        </div>
+                        <p>Worker is processing. Progress bar shows current phase (Download → Restore → Post-SQL).</p>
+                    </div>
+                    
+                    <div class="state-card complete">
+                        <div class="state-header">
+                            <span class="state-badge complete">3. COMPLETE</span>
+                        </div>
+                        <p>Database is ready! Connection details shown on completion.</p>
+                    </div>
+                </div>
+                
+                <h3>Real-Time Updates</h3>
+                <p>
+                    The job details page polls for updates automatically. You'll see:
+                </p>
+                <ul class="feature-list">
+                    <li><strong>Progress Bar</strong> — Visual progress through phases</li>
+                    <li><strong>Phase Indicator</strong> — Current processing phase name</li>
+                    <li><strong>Time Elapsed</strong> — How long the job has been running</li>
+                    <li><strong>Log Stream</strong> — Live log output (expandable)</li>
+                </ul>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/restore/success-toast.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/restore/success-toast.png" alt="Success notification with link to new job" loading="lazy">
+                    </picture>
+                    <figcaption>Success toast notification with direct link to job details</figcaption>
+                </figure>
+            </section>
+            
+            <!-- Next Steps -->
+            <section class="content-section">
+                <h2>Next Steps</h2>
+                <div class="category-cards">
+                    <a href="jobs.html" class="category-card">
+                        <div class="category-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                            </svg>
+                        </div>
+                        <div class="category-content">
+                            <h3>Jobs Management</h3>
+                            <p>Learn how to monitor and manage your restore jobs.</p>
+                        </div>
+                        <svg class="category-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    </a>
+                    <a href="../concepts/job-lifecycle.html" class="category-card">
+                        <div class="category-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                        </div>
+                        <div class="category-content">
+                            <h3>Job Lifecycle</h3>
+                            <p>Deep dive into job states and processing phases.</p>
+                        </div>
+                        <svg class="category-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    </a>
+                </div>
+            </section>
+            
+        </main>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="help-footer">
+        <div class="footer-content">
+            <p>pullDB Documentation</p>
+            <div class="footer-links">
+                <a href="../../index.html">Help Home</a>
+                <a href="../troubleshooting/index.html">Troubleshooting</a>
+            </div>
+        </div>
+    </footer>
+    
+    <style>
+        /* Steps Visual */
+        .steps-visual {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            padding: 2rem;
+            background: var(--color-bg-secondary);
+            border-radius: 12px;
+            margin: 1.5rem 0;
+        }
+        
+        .step-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .step-item .step-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        
+        .step-item .step-label {
+            font-size: 0.85rem;
+            color: var(--color-text-secondary);
+            font-weight: 500;
+        }
+        
+        .step-connector {
+            width: 60px;
+            height: 2px;
+            background: var(--color-border);
+            margin: 0 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        @media (max-width: 600px) {
+            .steps-visual {
+                flex-wrap: wrap;
+                gap: 1rem;
+            }
+            .step-connector {
+                display: none;
+            }
+        }
+    </style>
+    
+    <script src="../../js/help.js"></script>
+    <script src="../../js/search.js"></script>
+</body>
+</html>
