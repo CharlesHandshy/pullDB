@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 0.2.2 | **Last Updated**: January 2026
+> **Version**: 1.0.0 | **Last Updated**: January 2026
 
 This guide covers system administration tasks: schema migrations, cleanup operations, monitoring, and maintenance.
 
@@ -12,60 +12,213 @@ This guide covers system administration tasks: schema migrations, cleanup operat
 
 ## Table of Contents
 
-1. [Schema Migrations](#schema-migrations)
-2. [Staging Cleanup](#staging-cleanup)
-3. [Settings Management](#settings-management)
-4. [Health Monitoring](#health-monitoring)
-5. [Troubleshooting](#troubleshooting)
+1. [User Management](#user-management)
+2. [API Key Management](#api-key-management)
+3. [Schema Migrations](#schema-migrations)
+4. [Staging Cleanup](#staging-cleanup)
+5. [Settings Management](#settings-management)
+6. [Health Monitoring](#health-monitoring)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
-## Schema Migrations
+## User Management
 
-pullDB uses **dbmate** for database schema migrations. Migrations are plain SQL files stored in `/opt/pulldb.service/migrations/`.
+Administrators can manage users via CLI or Web UI.
 
-### Migration Commands
+### User Lifecycle
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  1. User registers (CLI or Web)                                   │
+│        pulldb register OR /web/register                          │
+│                                                                   │
+│  2. User is created in DISABLED state                            │
+│        (Cannot use CLI without API key approval)                 │
+│                                                                   │
+│  3. Admin enables user                                           │
+│        pulldb-admin users enable <username>                      │
+│                                                                   │
+│  4. Admin approves pending API keys                              │
+│        pulldb-admin keys approve <key_id>                        │
+│                                                                   │
+│  5. User can now use CLI and API                                 │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### User Commands
 
 ```bash
-# Check status
-pulldb-migrate status
+# List all users
+pulldb-admin users list
 
-# Apply pending migrations
-pulldb-migrate up
+# Enable a disabled user
+pulldb-admin users enable jsmith
+# Shows if user has pending API keys that need approval
 
-# Apply non-interactively (for automation)
-pulldb-migrate up --yes
+# Disable a user (revokes access)
+pulldb-admin users disable jsmith
 
-# Rollback last migration
-pulldb-migrate rollback
+# Force password reset on next login
+pulldb-admin users force-reset jsmith
 
-# Verify schema integrity
-pulldb-migrate verify
+# Promote to admin
+pulldb-admin users promote jsmith
 
-# Create new migration
-pulldb-migrate new add_new_feature
+# Demote from admin
+pulldb-admin users demote jsmith
 ```
 
-### Status Output
+### Web UI User Management
+
+Navigate to **Administration > Users** to:
+- View all users with status
+- Enable/disable users
+- Promote/demote admins
+
+---
+
+## API Key Management
+
+pullDB uses HMAC-signed API keys for secure CLI authentication across multiple hosts. Each key is tied to a specific host and requires admin approval before use.
+
+### How API Keys Work
 
 ```
-[X] 20250101000000_initial_schema.sql
-[X] 20250115000000_add_cancel_requested.sql
-[X] 20250128000000_phase2_concurrency.sql
-[ ] 20251201000000_pending_change.sql
-
-Applied: 3
-Pending: 1
+┌──────────────────────────────────────────────────────────────────┐
+│  CLI Request with API Key                                         │
+│                                                                   │
+│  1. CLI sends signed request:                                    │
+│     X-API-Key: abc123...                                         │
+│     X-Timestamp: 1737123456                                      │
+│     X-Signature: HMAC-SHA256(method|path|timestamp)              │
+│                                                                   │
+│  2. Server validates:                                            │
+│     - Key exists and not revoked                                 │
+│     - Key is approved (not pending)                              │
+│     - Timestamp within 5 minute window                           │
+│     - Signature matches                                          │
+│                                                                   │
+│  3. Request proceeds as authenticated user                       │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-### Migration History
+### Key States
 
-| Migration | Description | Version |
-|-----------|-------------|---------|
-| `initial_schema` | Core tables (jobs, auth_users, db_hosts, settings) | v0.0.1 |
-| `add_cancel_requested` | Job cancellation support | v0.0.2 |
-| `add_staging_cleaned` | Staging cleanup tracking | v0.0.3 |
-| `phase2_concurrency` | Per-user and global job limits | v0.0.4 |
+| State | Description | CLI Access |
+|-------|-------------|------------|
+| **pending** | Awaiting admin approval | ❌ Blocked |
+| **approved** | Admin approved, active | ✅ Works |
+| **revoked** | Admin revoked | ❌ Blocked |
+
+### Admin CLI Commands
+
+```bash
+# List all pending keys (requires approval)
+pulldb-admin keys pending
+
+# View all keys for all users
+pulldb-admin keys list
+
+# View keys for specific user
+pulldb-admin keys list --user jsmith
+
+# Approve a pending key
+pulldb-admin keys approve <key_id>
+
+# Revoke an active key
+pulldb-admin keys revoke <key_id>
+```
+
+### Key Information Displayed
+
+When listing keys, you'll see:
+- **Key ID**: First 8 characters for identification
+- **Host Name**: Host where key was registered
+- **Created From IP**: IP address of registration request
+- **Last Used IP**: IP address of most recent use
+- **Status**: pending, approved, or revoked
+- **Created/Approved**: Timestamps
+
+### Web UI Key Management
+
+Navigate to **Administration > API Keys** to:
+- View all pending keys with user/host info
+- Approve or reject keys with one click
+- See pending count badge in Quick Access
+
+### User Key Registration Flow
+
+When a user runs CLI commands from a new host:
+
+```bash
+# User's first CLI command from new host
+$ pulldb status
+API key required for this host. Run: pulldb request-host-key
+
+# User requests key for this host
+$ pulldb request-host-key
+✓ API key requested for host: devserver
+  Key ID: abc12345...
+  Status: Pending admin approval
+  
+Contact an administrator to approve your key.
+
+# After admin approves
+$ pulldb status
+[Active Jobs: 0] [Queued: 2]
+```
+
+### Security Considerations
+
+1. **One key per host**: Users need separate keys for each machine
+2. **IP tracking**: Created and last-used IPs are logged
+3. **Manual approval**: No auto-approval, admin must review
+4. **Revocation**: Instantly blocks access, no grace period
+5. **Host binding**: Keys cannot be moved between hosts
+
+### Two-Step User Activation
+
+For new users, there are TWO steps:
+1. **Enable user**: `pulldb-admin users enable <username>`
+2. **Approve key**: `pulldb-admin keys approve <key_id>`
+
+This is intentional—user activation and host authorization are separate security decisions.
+
+---
+
+## Schema Management
+
+pullDB uses numbered SQL files for database schema. Schema files are stored in `/opt/pulldb.service/schema/pulldb_service/` and automatically applied during package installation.
+
+### Checking Applied Schema
+
+```bash
+# View all applied schema files
+mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
+
+# List available schema files
+ls -la /opt/pulldb.service/schema/pulldb_service/*.sql
+```
+
+### Manual Schema Application (if needed)
+
+```bash
+# Apply a specific schema file manually
+mysql pulldb_service < /opt/pulldb.service/schema/pulldb_service/00716_api_keys_host_tracking.sql
+```
+
+### Schema File Naming
+
+Schema files use a numbered naming convention:
+```
+00000_auth_users.sql       # Core tables
+00100_jobs.sql             # Job tracking
+00715_api_keys.sql         # API key storage
+00716_api_keys_host_tracking.sql  # API key approval workflow
+```
+
+Files are applied in lexicographic order. The `schema_migrations` table tracks which files have been applied.
 
 ### Production Upgrade Workflow
 
@@ -73,32 +226,33 @@ Pending: 1
 # 1. Stop worker (recommended for major changes)
 sudo systemctl stop pulldb-worker
 
-# 2. Apply migrations
-sudo pulldb-migrate up --yes
+# 2. Install new package (schema applied automatically)
+sudo dpkg -i pulldb_X.X.X_amd64.deb
 
-# 3. Verify schema
-sudo pulldb-migrate verify
+# 3. Verify schema was applied
+mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
 
 # 4. Restart services
 sudo systemctl start pulldb-worker
 ```
 
-### Writing Migrations
+### Adding New Schema Files
 
-Migration file format:
+Schema file format (idempotent):
 ```sql
--- migrate:up
-ALTER TABLE jobs ADD COLUMN priority ENUM('low', 'normal', 'high') DEFAULT 'normal';
+-- 00XXX_description.sql
+-- Use stored procedures or IF NOT EXISTS for idempotent operations
 
--- migrate:down
-ALTER TABLE jobs DROP COLUMN priority;
+-- Add column if not exists (MySQL 8.0.16+)
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS priority ENUM('low', 'normal', 'high') DEFAULT 'normal';
+
+-- Or use procedure wrapper for older MySQL versions
 ```
 
 Best practices:
-- One change per migration
-- Always write the `down` section
-- Use `IF NOT EXISTS` / `IF EXISTS` where possible
-- Test rollback: `up` → `down` → `up`
+- Use sequential numbering (00100_, 00200_, etc.)
+- Make operations idempotent (safe to run twice)
+- Test on fresh install AND upgrade scenarios
 
 ---
 

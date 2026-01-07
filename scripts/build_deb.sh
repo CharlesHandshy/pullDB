@@ -99,22 +99,8 @@ if [ -d "schema/pulldb_service" ]; then
     echo "Included $(ls schema/pulldb_service/*.sql | wc -l) schema files"
 fi
 
-# Copy migration files if any exist (optional for v0.0.6+)
-if [ -d "migrations" ] && ls migrations/*.sql 1>/dev/null 2>&1; then
-    mkdir -p "$APP_ROOT/migrations"
-    cp migrations/*.sql "$APP_ROOT/migrations/"
-    echo "Included $(ls migrations/*.sql | wc -l) migration files"
-fi
-if [ -f "scripts/pulldb-migrate.sh" ]; then
-    cp scripts/pulldb-migrate.sh "$APP_ROOT/scripts/"
-    chmod +x "$APP_ROOT/scripts/pulldb-migrate.sh"
-    echo "Included migration wrapper script"
-fi
-if [ -f "scripts/install-dbmate.sh" ]; then
-    cp scripts/install-dbmate.sh "$APP_ROOT/scripts/"
-    chmod +x "$APP_ROOT/scripts/install-dbmate.sh"
-    echo "Included dbmate installer script"
-fi
+# Note: Database migrations are now handled via numbered files in schema/pulldb_service/
+# The postinst script tracks applied files in the schema_migrations table
 
 # Copy documentation and example config files to package root
 # AWS-SETUP.md is optional (may be archived)

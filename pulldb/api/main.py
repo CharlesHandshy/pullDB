@@ -57,7 +57,7 @@ MAX_STATUS_LIMIT = 1000
 # Web UI enabled by default, can be disabled with PULLDB_WEB_ENABLED=false
 WEB_ENABLED = os.getenv("PULLDB_WEB_ENABLED", "true").lower() in ("true", "1", "yes")
 
-app = fastapi.FastAPI(title="pullDB API Service", version="0.1.0")
+app = fastapi.FastAPI(title="pullDB API Service", version="1.0.0")
 
 # Mount unified web UI router (if enabled)
 if WEB_ENABLED:
@@ -375,6 +375,7 @@ async def health() -> dict[str, str]:
 @app.get("/api/users/{username}", response_model=UserInfoResponse)
 async def get_user_info(
     username: str,
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
 ) -> UserInfoResponse:
     """Get user info by username.
@@ -498,11 +499,53 @@ async def change_password(
     return {"message": "Password changed successfully"}
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# User Exists Check (Unauthenticated)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class UserExistsResponse(pydantic.BaseModel):
+    """Response for user existence check."""
+
+    exists: bool
+    user_code: str | None = None
+
+
+@app.get("/api/auth/user-exists/{username}", response_model=UserExistsResponse)
+async def check_user_exists(
+    username: str,
+    state: APIState = Depends(get_api_state),
+) -> UserExistsResponse:
+    """Check if a user exists (unauthenticated).
+
+    This endpoint allows the CLI to check if a username is registered
+    without requiring credentials. Used to differentiate between:
+    - User not registered at all (needs 'pulldb register')
+    - User exists but no credentials on this host (needs 'pulldb request-host-key')
+
+    Note: Only returns existence and user_code - no sensitive information.
+    """
+    if not state.user_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="User service not available",
+        )
+
+    user = await run_in_threadpool(
+        state.user_repo.get_user_by_username, username
+    )
+
+    if user:
+        return UserExistsResponse(exists=True, user_code=user.user_code)
+    return UserExistsResponse(exists=False, user_code=None)
+
+
 class RegisterRequest(pydantic.BaseModel):
     """Request body for user self-registration."""
 
     username: str = pydantic.Field(min_length=1)
     password: str = pydantic.Field(min_length=8)
+    host_name: str | None = pydantic.Field(default=None, max_length=255)
 
 
 class RegisterResponse(pydantic.BaseModel):
@@ -519,6 +562,7 @@ class RegisterResponse(pydantic.BaseModel):
 @app.post("/api/auth/register", status_code=status.HTTP_201_CREATED, response_model=RegisterResponse)
 async def register_user(
     request: RegisterRequest,
+    fastapi_request: fastapi.Request,
     state: APIState = Depends(get_api_state),
 ) -> RegisterResponse:
     """Self-register a new user account.
@@ -604,13 +648,22 @@ async def register_user(
 
     # Generate API credentials for CLI access
     # The secret is only returned once - stored hashed in DB
+    # Get client IP for tracking
+    client_ip = fastapi_request.client.host if fastapi_request.client else None
+
     api_key: str | None = None
     api_secret: str | None = None
     try:
+        # Use provided host_name or default to username for first registration
+        key_name = f"CLI key for {request.host_name or user.username}"
         api_key, api_secret = await run_in_threadpool(
             state.auth_repo.create_api_key,
             user.user_id,
-            f"CLI key for {user.username}",
+            key_name,
+            host_name=request.host_name,
+            created_from_ip=client_ip,
+            # First key at registration is NOT auto-approved - admin must approve user AND key
+            auto_approve=False,
         )
     except Exception:
         # API key creation failed - continue without it (table may not exist)
@@ -643,6 +696,128 @@ async def register_user(
 
 
 # ---------------------------------------------------------------------------
+# Multi-Host API Key Management
+# ---------------------------------------------------------------------------
+
+
+class RequestHostKeyRequest(pydantic.BaseModel):
+    """Request body for requesting an API key from a new host."""
+
+    username: str = pydantic.Field(min_length=1)
+    password: str = pydantic.Field(min_length=1)
+    host_name: str = pydantic.Field(min_length=1, max_length=255)
+
+
+class RequestHostKeyResponse(pydantic.BaseModel):
+    """Response for host key request."""
+
+    username: str
+    user_code: str
+    host_name: str
+    api_key: str
+    api_secret: str
+    message: str
+
+
+@app.post("/api/auth/request-host-key", response_model=RequestHostKeyResponse)
+async def request_host_key(
+    request: RequestHostKeyRequest,
+    fastapi_request: fastapi.Request,
+    state: APIState = Depends(get_api_state),
+) -> RequestHostKeyResponse:
+    """Request an API key for a new host.
+
+    Authenticates using username/password and creates a new API key
+    for use from a different host machine. The key is created in a
+    PENDING state and must be approved by an administrator before
+    it can be used.
+
+    Used by CLI's `pulldb request-host-key` command when setting up
+    access from a second (or subsequent) machine.
+
+    Args:
+        username: User's username
+        password: User's current password
+        host_name: Hostname of the machine requesting the key (auto-detected by CLI)
+
+    Returns:
+        API credentials to save in ~/.pulldb/credentials
+        (but unusable until admin approval)
+    """
+    from pulldb.auth.password import verify_password
+
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Verify user exists
+    user = await run_in_threadpool(
+        state.user_repo.get_user_by_username, request.username
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+        )
+
+    if user.disabled_at:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is disabled. Contact an administrator.",
+        )
+
+    # Verify password
+    existing_hash = await run_in_threadpool(
+        state.auth_repo.get_password_hash, user.user_id
+    )
+    if not existing_hash or not verify_password(request.password, existing_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+        )
+
+    # Get client IP
+    client_ip = fastapi_request.client.host if fastapi_request.client else None
+
+    # Create API key (inactive, pending approval)
+    try:
+        api_key, api_secret = await run_in_threadpool(
+            state.auth_repo.create_api_key,
+            user.user_id,
+            f"CLI key for {request.host_name}",
+            host_name=request.host_name,
+            created_from_ip=client_ip,
+            auto_approve=False,  # Always require admin approval for new host keys
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create API key: {exc}",
+        ) from exc
+
+    # Log audit event
+    if state.audit_repo:
+        await run_in_threadpool(
+            state.audit_repo.log_action,
+            actor_user_id=user.user_id,
+            action="api_key_requested",
+            target_user_id=user.user_id,
+            detail=f"User {user.username} requested API key for host '{request.host_name}' from {client_ip}",
+        )
+
+    return RequestHostKeyResponse(
+        username=user.username,
+        user_code=user.user_code,
+        host_name=request.host_name,
+        api_key=api_key,
+        api_secret=api_secret,
+        message="API key created successfully. Contact an administrator to approve the key before it can be used.",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Hosts API - Public endpoint for listing available database hosts
 # ---------------------------------------------------------------------------
 
@@ -664,6 +839,7 @@ class HostsListResponse(pydantic.BaseModel):
 
 @app.get("/api/hosts", response_model=HostsListResponse)
 async def list_hosts(
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
 ) -> HostsListResponse:
     """List available database hosts.
@@ -690,7 +866,10 @@ async def list_hosts(
 
 
 @app.get("/api/status")
-async def status_endpoint(state: APIState = Depends(get_api_state)) -> dict[str, t.Any]:
+async def status_endpoint(
+    user: AuthUser,
+    state: APIState = Depends(get_api_state),
+) -> dict[str, t.Any]:
     def _collect() -> dict[str, t.Any]:
         jobs = state.job_repo.get_active_jobs()
         active_count = len(jobs)
@@ -706,8 +885,8 @@ async def status_endpoint(state: APIState = Depends(get_api_state)) -> dict[str,
 @app.post("/api/jobs", status_code=status.HTTP_201_CREATED, response_model=JobResponse)
 async def submit_job(
     req: JobRequest,
+    authenticated_user: AuthUser,
     state: APIState = Depends(get_api_state),
-    authenticated_user: OptionalUser = None,
 ) -> JobResponse:
     """Submit a new restore job.
 
@@ -727,6 +906,7 @@ async def submit_job(
     response_model=list[JobSummary],
 )
 async def list_jobs(
+    user: AuthUser,
     limit: int = fastapi.Query(DEFAULT_STATUS_LIMIT, ge=1, le=MAX_STATUS_LIMIT),
     active: bool = False,
     history: bool = False,
@@ -741,6 +921,7 @@ async def list_jobs(
     response_model=list[JobSummary],
 )
 async def list_active_jobs(
+    user: AuthUser,
     limit: int = fastapi.Query(DEFAULT_STATUS_LIMIT, ge=1, le=MAX_STATUS_LIMIT),
     state: APIState = Depends(get_api_state),
 ) -> list[JobSummary]:
@@ -783,6 +964,7 @@ def _get_user_last_job(state: APIState, user_code: str) -> UserLastJobResponse:
 @app.get("/api/users/{user_code}/last-job")
 async def get_user_last_job(
     user_code: str,
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
 ) -> UserLastJobResponse:
     """Get the most recently submitted job for a user.
@@ -902,6 +1084,7 @@ def _resolve_job_id(state: APIState, prefix: str) -> JobResolveResponse:
 )
 async def resolve_job_id(
     prefix: str,
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
 ) -> JobResolveResponse:
     """Resolve a job ID prefix to full job ID.
@@ -1165,7 +1348,7 @@ async def get_paginated_jobs(
     filter_submitted_at: str | None = fastapi.Query(None, alias="filter_submitted_at", description="Filter by date (MM/DD/YYYY, wildcards: *)"),
     days: int = fastapi.Query(30, ge=1, le=365, description="History retention days"),
     state: APIState = fastapi.Depends(get_api_state),
-    user: OptionalUser = None,
+    user: AuthUser = None,
 ) -> PaginatedJobsResponse:
     """Get paginated jobs for LazyTable widget.
 
@@ -1199,6 +1382,7 @@ async def get_paginated_jobs(
 
 @app.get("/api/jobs/paginated/distinct")
 async def get_distinct_values(
+    user: AuthUser,
     column: str = fastapi.Query(..., description="Column to get distinct values for"),
     view: str = fastapi.Query("active", description="View: 'active' or 'history'"),
     filter_status: str | None = fastapi.Query(None, description="Filter by status (comma-separated)"),
@@ -1286,6 +1470,7 @@ async def get_distinct_values(
 
 @app.get("/api/jobs/search")
 async def search_jobs(
+    user: AuthUser,
     q: str = fastapi.Query(..., min_length=4, description="Search query (min 4 chars)"),
     limit: int = fastapi.Query(50, ge=1, le=200, description="Max results"),
     exact: bool = fastapi.Query(
@@ -1362,6 +1547,7 @@ def _get_last_job_by_user(state: APIState, user_code: str) -> LastJobResponse:
 
 @app.get("/api/jobs/my-last")
 async def get_my_last_job(
+    user: AuthUser,
     user_code: str = fastapi.Query(..., description="User code to look up"),
     state: APIState = fastapi.Depends(get_api_state),
 ) -> LastJobResponse:
@@ -1457,6 +1643,7 @@ def _get_job_history(
     response_model=list[JobHistoryItem],
 )
 async def list_job_history(
+    user: AuthUser,
     limit: int = fastapi.Query(DEFAULT_STATUS_LIMIT, ge=1, le=MAX_STATUS_LIMIT),
     days: int = fastapi.Query(
         DEFAULT_HISTORY_RETENTION_DAYS,
@@ -1543,6 +1730,7 @@ def _get_single_job(state: APIState, job_id: str) -> JobSummary:
 )
 async def get_job(
     job_id: str,
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
 ) -> JobSummary:
     """Get a single job by ID.
@@ -1559,6 +1747,7 @@ async def get_job(
 )
 async def list_job_events(
     job_id: str,
+    user: AuthUser,
     since_id: int | None = None,
     state: APIState = Depends(get_api_state),
 ) -> list[JobEventResponse]:
@@ -1672,6 +1861,7 @@ def _get_job_profile(state: APIState, job_id: str) -> JobProfileResponse:
 )
 async def get_job_profile(
     job_id: str,
+    user: AuthUser,
     state: APIState = Depends(get_api_state),
 ) -> JobProfileResponse:
     """Get performance profile for a job.
@@ -3158,6 +3348,375 @@ async def rotate_host_secret_endpoint(
     return await run_in_threadpool(_rotate_host_secret, state, host_id, request, user)
 
 
+# ---------------------------------------------------------------------------
+# Admin API Key Management
+# ---------------------------------------------------------------------------
+
+
+class APIKeyInfo(pydantic.BaseModel):
+    """Information about an API key."""
+
+    key_id: str
+    user_id: str
+    username: str
+    name: str | None
+    host_name: str | None
+    created_from_ip: str | None
+    is_active: bool
+    is_approved: bool
+    approved_at: datetime | None
+    approved_by: str | None
+    created_at: datetime
+    last_used_at: datetime | None
+    last_used_ip: str | None
+    expires_at: datetime | None
+
+
+class PendingKeysResponse(pydantic.BaseModel):
+    """Response for pending API keys list."""
+
+    keys: list[APIKeyInfo]
+    total: int
+
+
+class ApproveKeyRequest(pydantic.BaseModel):
+    """Request to approve an API key."""
+
+    key_id: str
+
+
+class ApproveKeyResponse(pydantic.BaseModel):
+    """Response for key approval."""
+
+    key_id: str
+    message: str
+
+
+class RevokeKeyRequest(pydantic.BaseModel):
+    """Request to revoke an API key."""
+
+    key_id: str
+    reason: str | None = None
+
+
+class RevokeKeyResponse(pydantic.BaseModel):
+    """Response for key revocation."""
+
+    key_id: str
+    message: str
+
+
+class ReactivateKeyRequest(pydantic.BaseModel):
+    """Request to reactivate a revoked API key."""
+
+    key_id: str
+
+
+class ReactivateKeyResponse(pydantic.BaseModel):
+    """Response for key reactivation."""
+
+    key_id: str
+    message: str
+
+
+class UserKeysResponse(pydantic.BaseModel):
+    """Response for a user's API keys."""
+
+    username: str
+    keys: list[APIKeyInfo]
+    total: int
+
+
+def _get_api_key_info(state: APIState, key_data: dict, user_lookup: dict[str, str]) -> APIKeyInfo:
+    """Convert raw key data to APIKeyInfo model."""
+    user_id = key_data["user_id"]
+    username = user_lookup.get(user_id, "unknown")
+    return APIKeyInfo(
+        key_id=key_data["key_id"],
+        user_id=user_id,
+        username=username,
+        name=key_data.get("name"),
+        host_name=key_data.get("host_name"),
+        created_from_ip=key_data.get("created_from_ip"),
+        is_active=bool(key_data.get("is_active", False)),
+        is_approved=key_data.get("approved_at") is not None,
+        approved_at=key_data.get("approved_at"),
+        approved_by=key_data.get("approved_by"),
+        created_at=key_data.get("created_at", datetime.now(UTC)),
+        last_used_at=key_data.get("last_used_at"),
+        last_used_ip=key_data.get("last_used_ip"),
+        expires_at=key_data.get("expires_at"),
+    )
+
+
+@app.get("/api/admin/keys/pending", response_model=PendingKeysResponse)
+async def get_pending_api_keys(
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> PendingKeysResponse:
+    """List all API keys pending approval (admin only).
+
+    Returns keys that have been requested but not yet approved.
+    Used by admin to see which users need key approval.
+    """
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Get pending keys from repository
+    pending_keys = await run_in_threadpool(state.auth_repo.get_pending_api_keys)
+
+    # Build username lookup for all user_ids
+    user_ids = list({k["user_id"] for k in pending_keys})
+    user_lookup: dict[str, str] = {}
+    for uid in user_ids:
+        u = await run_in_threadpool(state.user_repo.get_user_by_id, uid)
+        if u:
+            user_lookup[uid] = u.username
+
+    keys = [_get_api_key_info(state, k, user_lookup) for k in pending_keys]
+
+    return PendingKeysResponse(keys=keys, total=len(keys))
+
+
+@app.post("/api/admin/keys/approve", response_model=ApproveKeyResponse)
+async def approve_api_key(
+    request: ApproveKeyRequest,
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> ApproveKeyResponse:
+    """Approve a pending API key (admin only).
+
+    Marks the key as active and records the approving admin.
+    The key can then be used for CLI authentication.
+    """
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Approve the key
+    success = await run_in_threadpool(
+        state.auth_repo.approve_api_key,
+        request.key_id,
+        user.user_id,
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"API key '{request.key_id}' not found or already approved",
+        )
+
+    # Get key info for audit
+    key_info = await run_in_threadpool(
+        state.auth_repo.get_api_key_info,
+        request.key_id,
+    )
+
+    # Log audit event
+    if state.audit_repo and key_info:
+        target_user = await run_in_threadpool(
+            state.user_repo.get_user_by_id,
+            key_info["user_id"],
+        )
+        await run_in_threadpool(
+            state.audit_repo.log_action,
+            actor_user_id=user.user_id,
+            action="api_key_approved",
+            target_user_id=key_info["user_id"],
+            detail=f"Admin {user.username} approved API key '{request.key_id}' "
+            f"for user {target_user.username if target_user else 'unknown'} "
+            f"(host: {key_info.get('host_name', 'unknown')})",
+        )
+
+    return ApproveKeyResponse(
+        key_id=request.key_id,
+        message="API key approved successfully",
+    )
+
+
+@app.post("/api/admin/keys/revoke", response_model=RevokeKeyResponse)
+async def revoke_api_key(
+    request: RevokeKeyRequest,
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> RevokeKeyResponse:
+    """Revoke an API key (admin only).
+
+    Marks the key as inactive and records revocation.
+    The key can no longer be used for authentication.
+    """
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Get key info before revoking for audit
+    key_info = await run_in_threadpool(
+        state.auth_repo.get_api_key_info,
+        request.key_id,
+    )
+
+    if not key_info:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"API key '{request.key_id}' not found",
+        )
+
+    # Revoke the key by setting is_active=FALSE
+    await run_in_threadpool(
+        state.auth_repo.revoke_api_key,
+        request.key_id,
+    )
+
+    # Log audit event
+    if state.audit_repo:
+        target_user = await run_in_threadpool(
+            state.user_repo.get_user_by_id,
+            key_info["user_id"],
+        )
+        detail = f"Admin {user.username} revoked API key '{request.key_id}' for user {target_user.username if target_user else 'unknown'}"
+        if request.reason:
+            detail += f" (reason: {request.reason})"
+        await run_in_threadpool(
+            state.audit_repo.log_action,
+            actor_user_id=user.user_id,
+            action="api_key_revoked",
+            target_user_id=key_info["user_id"],
+            detail=detail,
+        )
+
+    return RevokeKeyResponse(
+        key_id=request.key_id,
+        message="API key revoked successfully",
+    )
+
+
+@app.post("/api/admin/keys/reactivate", response_model=ReactivateKeyResponse)
+async def reactivate_api_key(
+    request: ReactivateKeyRequest,
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> ReactivateKeyResponse:
+    """Reactivate a revoked API key (admin only).
+
+    Marks a previously revoked key as active again.
+    Only works for keys that were previously approved - pending keys
+    must go through the approval process instead.
+    """
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Get key info before reactivating for validation and audit
+    key_info = await run_in_threadpool(
+        state.auth_repo.get_api_key_info,
+        request.key_id,
+    )
+
+    if not key_info:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"API key '{request.key_id}' not found",
+        )
+
+    # Check if key is already active
+    if key_info.get("is_active"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"API key '{request.key_id}' is already active",
+        )
+
+    # Check if key was never approved (must use approve endpoint instead)
+    if key_info.get("approved_at") is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"API key '{request.key_id}' was never approved. Use the approve endpoint instead.",
+        )
+
+    # Reactivate the key
+    success = await run_in_threadpool(
+        state.auth_repo.reactivate_api_key,
+        request.key_id,
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to reactivate API key",
+        )
+
+    # Log audit event
+    if state.audit_repo:
+        target_user = await run_in_threadpool(
+            state.user_repo.get_user_by_id,
+            key_info["user_id"],
+        )
+        await run_in_threadpool(
+            state.audit_repo.log_action,
+            actor_user_id=user.user_id,
+            action="api_key_reactivated",
+            target_user_id=key_info["user_id"],
+            detail=f"Admin {user.username} reactivated API key '{request.key_id}' "
+            f"for user {target_user.username if target_user else 'unknown'} "
+            f"(host: {key_info.get('host_name', 'unknown')})",
+        )
+
+    return ReactivateKeyResponse(
+        key_id=request.key_id,
+        message="API key reactivated successfully",
+    )
+
+
+@app.get("/api/admin/users/{user_id}/keys", response_model=UserKeysResponse)
+async def get_user_api_keys(
+    user_id: str,
+    user: AdminUser,
+    state: APIState = Depends(get_api_state),
+) -> UserKeysResponse:
+    """List all API keys for a specific user (admin only).
+
+    Returns all keys (active, inactive, pending) for the specified user.
+    """
+    if not state.auth_repo:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service not available",
+        )
+
+    # Verify user exists
+    target_user = await run_in_threadpool(
+        state.user_repo.get_user_by_id, user_id
+    )
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User '{user_id}' not found",
+        )
+
+    # Get all keys for user
+    keys_data = await run_in_threadpool(
+        state.auth_repo.get_all_api_keys,
+        user_id=user_id,
+    )
+
+    user_lookup = {user_id: target_user.username}
+    keys = [_get_api_key_info(state, k, user_lookup) for k in keys_data]
+
+    return UserKeysResponse(
+        username=target_user.username,
+        keys=keys,
+        total=len(keys),
+    )
+
+
 def create_app() -> fastapi.FastAPI:
     return app
 
@@ -3200,6 +3759,7 @@ def _search_customers_dropdown(
 
 @app.get("/api/dropdown/customers", response_model=DropdownSearchResponse)
 async def search_customers_dropdown(
+    user: AuthUser,
     q: str = fastapi.Query(
         ..., min_length=5, description="Search query (min 5 chars)"
     ),
@@ -3243,6 +3803,7 @@ def _search_users_dropdown(
 
 @app.get("/api/dropdown/users", response_model=DropdownSearchResponse)
 async def search_users_dropdown(
+    user: AuthUser,
     q: str = fastapi.Query(
         ..., min_length=3, description="Search query (min 3 chars)"
     ),
@@ -3284,6 +3845,7 @@ def _search_hosts_dropdown(
 
 @app.get("/api/dropdown/hosts", response_model=DropdownSearchResponse)
 async def search_hosts_dropdown(
+    user: AuthUser,
     q: str = fastapi.Query(
         ..., min_length=3, description="Search query (min 3 chars)"
     ),
@@ -3394,6 +3956,7 @@ def _search_backups(
 
 @app.get("/api/customers/search", response_model=CustomerSearchResponse)
 async def search_customers_api(
+    user: AuthUser,
     q: str = fastapi.Query(..., min_length=1, description="Search query or wildcard pattern"),
     limit: int = fastapi.Query(100, ge=1, le=500, description="Max results"),
 ) -> CustomerSearchResponse:
@@ -3430,6 +3993,7 @@ async def search_customers_api(
 
 @app.get("/api/backups/search", response_model=BackupSearchResponse)
 async def search_backups(
+    user: AuthUser,
     customer: str = fastapi.Query(..., min_length=1, description="Customer name or pattern (supports * and ? wildcards)"),
     environment: str = fastapi.Query("both", description="S3 environment: staging, prod, or both"),
     date_from: str | None = fastapi.Query(None, description="Filter backups from date (YYYYMMDD). Default: 7 days ago"),
@@ -3479,7 +4043,7 @@ def main_web(argv: list[str] | None = None) -> int:
     allowing the Web UI to run on a different port than the API.
     """
     # Create a separate app for web-only mode
-    web_app = fastapi.FastAPI(title="pullDB Web UI", version="0.1.0")
+    web_app = fastapi.FastAPI(title="pullDB Web UI", version="1.0.0")
     
     try:
         from starlette.exceptions import HTTPException as StarletteHTTPException

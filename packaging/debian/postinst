@@ -492,7 +492,7 @@ WHERE user_id = '${ADMIN_UUID}';
 create_service_account() {
     echo "  Creating service account (pulldb_service)..."
     
-    # Service Bootstrap/CLI Admin Account (SBCACC)
+    # Service Bootstrap/CLI Admin Account (sbcacc)
     # This account allows systemd services and scheduled tasks to run admin CLI commands.
     # When pulldb-admin runs as the pulldb_service Linux user, it looks up this account.
     
@@ -504,7 +504,7 @@ create_service_account() {
     
     # Use a well-known fixed UUID for the service account (consistent across installs)
     SERVICE_UUID="00000000-0000-0000-0000-000000000001"
-    SERVICE_CODE="SBCACC"
+    SERVICE_CODE="sbcacc"
     
     # Insert service account (no password - system account, not for web login)
     # Uses SERVICE role and is locked to prevent modification via UI/API

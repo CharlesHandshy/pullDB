@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
+from pulldb.domain.errors import KeyPendingApprovalError, KeyRevokedError
 from fastapi.concurrency import run_in_threadpool
 
 
@@ -53,9 +54,13 @@ def get_api_secret(key_id: str, auth_repo: object | None = None) -> str | None:
 
     Returns:
         The secret associated with the key, or None if not found
+
+    Raises:
+        KeyPendingApprovalError: If the key exists but is pending admin approval.
     """
     # Priority 1: Database lookup (if auth_repo available)
     if auth_repo and hasattr(auth_repo, "get_api_key_secret"):
+        # This may raise KeyPendingApprovalError - let it propagate
         secret = auth_repo.get_api_key_secret(key_id)
         if secret:
             return secret
@@ -81,9 +86,13 @@ def get_user_for_api_key(key_id: str, auth_repo: object | None = None) -> str | 
 
     Returns:
         Username associated with the key, or None if not found
+
+    Raises:
+        KeyPendingApprovalError: If the key exists but is pending admin approval.
     """
     # Priority 1: Database lookup (if auth_repo available)
     if auth_repo and hasattr(auth_repo, "get_api_key_user"):
+        # This may raise KeyPendingApprovalError - let it propagate
         user_id = auth_repo.get_api_key_user(key_id)
         if user_id:
             # Return user_id - the caller will look up username
@@ -224,7 +233,20 @@ async def get_authenticated_user(
 
         # Get secret for this API key (try database first, then env vars)
         auth_repo = state.auth_repo if hasattr(state, "auth_repo") else None
-        secret = get_api_secret(x_api_key, auth_repo)
+        
+        try:
+            secret = get_api_secret(x_api_key, auth_repo)
+        except KeyPendingApprovalError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"API key pending approval: {e.key_id}. Contact an administrator to approve your key.",
+            )
+        except KeyRevokedError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"API key has been revoked: {e.key_id}. Contact an administrator if you believe this is an error.",
+            )
+        
         if not secret:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -248,7 +270,18 @@ async def get_authenticated_user(
             )
 
         # Signature valid - get user for this API key
-        user_or_username = get_user_for_api_key(x_api_key, auth_repo)
+        try:
+            user_or_username = get_user_for_api_key(x_api_key, auth_repo)
+        except KeyPendingApprovalError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"API key pending approval: {e.key_id}. Contact an administrator to approve your key.",
+            )
+        except KeyRevokedError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"API key has been revoked: {e.key_id}. Contact an administrator if you believe this is an error.",
+            )
         if not user_or_username:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -279,6 +312,12 @@ async def get_authenticated_user(
                 detail="Account is locked",
             )
         if user:
+            # Update last_used_at and last_used_ip for this API key
+            if auth_repo and hasattr(auth_repo, "update_api_key_last_used"):
+                client_ip = request.client.host if request.client else None
+                await run_in_threadpool(
+                    auth_repo.update_api_key_last_used, x_api_key, client_ip
+                )
             return user
 
         raise HTTPException(
@@ -388,7 +427,18 @@ async def get_optional_user(
             )
 
         # Get secret for this API key (check database first, then env vars)
-        secret = get_api_secret(x_api_key, auth_repo)
+        try:
+            secret = get_api_secret(x_api_key, auth_repo)
+        except KeyPendingApprovalError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"API key pending approval: {e.key_id}. Contact an administrator to approve your key.",
+            )
+        except KeyRevokedError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"API key has been revoked: {e.key_id}. Contact an administrator if you believe this is an error.",
+            )
         if not secret:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -412,7 +462,18 @@ async def get_optional_user(
             )
 
         # Signature valid - get user for this API key
-        user_or_username = get_user_for_api_key(x_api_key, auth_repo)
+        try:
+            user_or_username = get_user_for_api_key(x_api_key, auth_repo)
+        except KeyPendingApprovalError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"API key pending approval: {e.key_id}. Contact an administrator to approve your key.",
+            )
+        except KeyRevokedError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"API key has been revoked: {e.key_id}. Contact an administrator if you believe this is an error.",
+            )
         if not user_or_username:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

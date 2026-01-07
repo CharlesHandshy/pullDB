@@ -115,8 +115,8 @@ CREATE TABLE auth_users (
 
 | Username | User Code | UUID | Role | Purpose |
 |----------|-----------|------|------|---------|
-| `admin` | `ADMINN` | `00000000-0000-0000-0000-000000000002` | admin | Human administrator (password set at install) |
-| `pulldb_service` | `SBCACC` | `00000000-0000-0000-0000-000000000001` | admin | Service Bootstrap/CLI Admin Account for systemd tasks |
+| `admin` | `adminn` | `00000000-0000-0000-0000-000000000002` | admin | Human administrator (password set at install) |
+| `pulldb_service` | `sbcacc` | `00000000-0000-0000-0000-000000000001` | admin | Service Bootstrap/CLI Admin Account for systemd tasks |
 
 The `pulldb_service` account:
 - Has a fixed UUID: `00000000-0000-0000-0000-000000000001`

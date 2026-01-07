@@ -30,6 +30,85 @@
     background: var(--bg-muted, rgba(100, 116, 139, 0.1));
     color: var(--text-muted, #64748b);
 }
+/* API Keys modal styles */
+.api-keys-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+.api-key-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-default);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+.api-key-item:last-child {
+    border-bottom: none;
+}
+.api-key-info {
+    flex: 1;
+    min-width: 0;
+}
+.api-key-host {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+.api-key-host-icon {
+    width: 14px;
+    height: 14px;
+    color: var(--text-muted);
+}
+.api-key-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.api-key-meta span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.api-key-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.api-key-badge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.api-key-badge.active {
+    background: var(--bg-success-subtle, rgba(34, 197, 94, 0.1));
+    color: var(--text-success, #22c55e);
+}
+.api-key-badge.pending {
+    background: var(--bg-warning-subtle, rgba(245, 158, 11, 0.1));
+    color: var(--text-warning, #f59e0b);
+}
+.api-key-badge.revoked {
+    background: var(--bg-danger-subtle, rgba(239, 68, 68, 0.1));
+    color: var(--text-danger, #ef4444);
+}
+.api-keys-empty {
+    padding: 32px;
+    text-align: center;
+    color: var(--text-muted);
+}
+.api-keys-empty svg {
+    width: 32px;
+    height: 32px;
+    margin-bottom: 8px;
+    opacity: 0.5;
+}
 </style>
 {% endblock %}
 
@@ -348,6 +427,38 @@
         </div>
     </div>
 </div>
+
+<!-- API Keys Modal -->
+<div id="api-keys-modal" class="modal modal-hidden">
+    <div class="modal-backdrop" onclick="hideApiKeysModal()"></div>
+    <div class="modal-content modal-content-wide">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px; margin-right: 8px;">
+                    <path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                </svg>
+                API Keys
+            </h3>
+            <button type="button" class="modal-close" onclick="hideApiKeysModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" x2="6" y1="6" y2="18"/>
+                    <line x1="6" x2="18" y1="6" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="hosts-modal-info">
+                <strong id="api-keys-modal-username"></strong> - Manage CLI API keys for this user.
+            </p>
+            <div id="api-keys-list" class="api-keys-list">
+                <div class="api-keys-empty">Loading...</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="hideApiKeysModal()">Close</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -454,6 +565,17 @@
                     <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
                 </svg>
             </button>`;
+            // API Keys button - disabled
+            html += `<button class="action-btn action-btn-disabled" title="${disabledTitle}" aria-label="${disabledTitle}" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="5" r="3"/>
+                    <path d="M7 8L5 14l2 1"/>
+                    <path d="M12 8v6l-1 1"/>
+                    <path d="M17 8l2 6-2 1"/>
+                    <rect x="7" y="16" width="10" height="7" rx="1"/>
+                    <path d="M10 16v-2a2 2 0 1 1 4 0v2"/>
+                </svg>
+            </button>`;
             // Password reset - disabled
             html += `<button class="action-btn action-btn-disabled" title="${disabledTitle}" aria-label="${disabledTitle}" disabled>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -486,6 +608,18 @@
                 <ellipse cx="12" cy="5" rx="9" ry="3"/>
                 <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
                 <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+            </svg>
+        </button>`;
+        
+        // API Keys button - keyring with keys over lock
+        html += `<button class="action-btn action-btn-primary-muted" title="Manage API Keys" aria-label="Manage API keys for ${row.username}" onclick="showApiKeysModal('${row.user_id}', '${row.username}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="5" r="3"/>
+                <path d="M7 8L5 14l2 1"/>
+                <path d="M12 8v6l-1 1"/>
+                <path d="M17 8l2 6-2 1"/>
+                <rect x="7" y="16" width="10" height="7" rx="1"/>
+                <path d="M10 16v-2a2 2 0 1 1 4 0v2"/>
             </svg>
         </button>`;
         
@@ -614,7 +748,7 @@
             label: 'Actions', 
             sortable: false, 
             filterable: false,
-            width: '110px',
+            width: '135px',
             render: renderActions
         }
     ];
@@ -1293,12 +1427,186 @@
         }
     };
     
+    // ========== API Keys Modal ==========
+    let currentApiKeysUserId = null;
+    let currentApiKeysUsername = null;
+    
+    window.showApiKeysModal = async function(userId, username) {
+        currentApiKeysUserId = userId;
+        currentApiKeysUsername = username;
+        
+        document.getElementById('api-keys-modal-username').textContent = username;
+        document.getElementById('api-keys-list').innerHTML = '<div class="api-keys-empty">Loading...</div>';
+        document.getElementById('api-keys-modal').classList.remove('modal-hidden');
+        
+        try {
+            const resp = await fetch(`/web/admin/api-keys/user/${userId}`);
+            const data = await resp.json();
+            
+            if (data.success) {
+                renderApiKeysList(data.keys);
+            } else {
+                document.getElementById('api-keys-list').innerHTML = `<div class="api-keys-empty">Error: ${data.message}</div>`;
+            }
+        } catch (e) {
+            document.getElementById('api-keys-list').innerHTML = `<div class="api-keys-empty">Error: ${e.message}</div>`;
+        }
+    };
+    
+    window.hideApiKeysModal = function() {
+        document.getElementById('api-keys-modal').classList.add('modal-hidden');
+        currentApiKeysUserId = null;
+        currentApiKeysUsername = null;
+    };
+    
+    function renderApiKeysList(keys) {
+        const container = document.getElementById('api-keys-list');
+        
+        if (!keys || keys.length === 0) {
+            container.innerHTML = `
+                <div class="api-keys-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                    </svg>
+                    <div>No API keys found for this user</div>
+                </div>`;
+            return;
+        }
+        
+        let html = '';
+        for (const key of keys) {
+            const statusClass = !key.is_active ? 'revoked' : (key.is_approved ? 'active' : 'pending');
+            const statusLabel = !key.is_active ? 'Revoked' : (key.is_approved ? 'Active' : 'Pending');
+            
+            const createdDate = key.created_at ? new Date(key.created_at).toLocaleDateString() : '—';
+            const lastUsed = key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : 'Never';
+            
+            html += `
+                <div class="api-key-item" id="api-key-item-${key.key_id}">
+                    <div class="api-key-info">
+                        <div class="api-key-host">
+                            <svg class="api-key-host-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="2" width="20" height="8" rx="2"/>
+                                <rect x="2" y="14" width="20" height="8" rx="2"/>
+                                <line x1="6" x2="6.01" y1="6" y2="6"/>
+                                <line x1="6" x2="6.01" y1="18" y2="18"/>
+                            </svg>
+                            ${key.host_name || key.name || 'Unknown host'}
+                        </div>
+                        <div class="api-key-meta">
+                            <span title="Key ID"><code>${key.key_id.substring(0, 12)}…</code></span>
+                            <span title="Created">Created ${createdDate}</span>
+                            <span title="Last used">Last used: ${lastUsed}</span>
+                            ${key.created_from_ip ? `<span title="Created from IP">IP: ${key.created_from_ip}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="api-key-status">
+                        <span class="api-key-badge ${statusClass}">${statusLabel}</span>
+                        ${key.is_active && !key.is_approved ? `
+                            <button class="btn btn-sm btn-primary" onclick="approveApiKey('${key.key_id}')" title="Approve this key">Approve</button>
+                        ` : ''}
+                        ${key.is_active ? `
+                            <button class="btn btn-sm btn-ghost btn-danger" onclick="revokeApiKey('${key.key_id}')" title="Revoke this key">Revoke</button>
+                        ` : ''}
+                        <button class="btn btn-sm btn-ghost btn-danger" onclick="removeApiKey('${key.key_id}')" title="Permanently delete this key">Remove</button>
+                    </div>
+                </div>`;
+        }
+        
+        container.innerHTML = html;
+    }
+    
+    window.approveApiKey = async function(keyId) {
+        const confirmed = await showConfirm(
+            'Approve API Key?',
+            { message: 'This will allow the user to access pullDB from this host.' }
+        );
+        if (!confirmed) return;
+        
+        try {
+            const resp = await fetch(`/web/admin/api-keys/${keyId}/approve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            
+            if (data.success) {
+                showToast(data.message || 'Key approved', 'success');
+                // Refresh the modal
+                if (currentApiKeysUserId) {
+                    showApiKeysModal(currentApiKeysUserId, currentApiKeysUsername);
+                }
+            } else {
+                showToast(data.message || 'Failed to approve key', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    };
+    
+    window.revokeApiKey = async function(keyId) {
+        const confirmed = await showConfirm(
+            'Revoke API Key?',
+            { message: 'This will permanently disable the key. The user will not be able to use it.', variant: 'danger' }
+        );
+        if (!confirmed) return;
+        
+        try {
+            const resp = await fetch(`/web/admin/api-keys/${keyId}/revoke`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            
+            if (data.success) {
+                showToast(data.message || 'Key revoked', 'success');
+                // Refresh the modal
+                if (currentApiKeysUserId) {
+                    showApiKeysModal(currentApiKeysUserId, currentApiKeysUsername);
+                }
+            } else {
+                showToast(data.message || 'Failed to revoke key', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    };
+    
+    window.removeApiKey = async function(keyId) {
+        const confirmed = await showConfirm(
+            'Delete API Key?',
+            { message: 'This will permanently delete the key from the database. This action cannot be undone.', variant: 'danger' }
+        );
+        if (!confirmed) return;
+        
+        try {
+            const resp = await fetch(`/web/admin/api-keys/${keyId}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            
+            if (data.success) {
+                showToast(data.message || 'Key deleted', 'success');
+                // Refresh the modal
+                if (currentApiKeysUserId) {
+                    showApiKeysModal(currentApiKeysUserId, currentApiKeysUsername);
+                }
+            } else {
+                showToast(data.message || 'Failed to delete key', 'error');
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    };
+    
     // Close modals on Escape key
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             hideAddUserModal();
             hidePasswordModal();
             hideHostsModal();
+            hideApiKeysModal();
             hideForceDeleteModal();
         }
     });

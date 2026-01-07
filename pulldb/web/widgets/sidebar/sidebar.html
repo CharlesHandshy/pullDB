@@ -70,6 +70,15 @@
                 </a>
             </div>
             {% endif %}
+            
+            {# Resources Navigation #}
+            <div class="nav-section">
+                <div class="nav-section-title">Resources</div>
+                <a href="/web/help/" class="nav-link {% if '/web/help' in request.url.path %}active{% endif %}" title="Help">
+                    {{ icon('help', size='20') }}
+                    <span class="nav-label">Help</span>
+                </a>
+            </div>
         </nav>
         
         {# Sidebar Footer - Always visible user info #}

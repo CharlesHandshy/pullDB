@@ -2,7 +2,7 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 0.2.2 | **Last Updated**: January 2026
+> **Version**: 1.0.0 | **Last Updated**: January 2026
 
 This guide covers installing and configuring pullDB.
 
@@ -95,8 +95,8 @@ sudo dpkg -i pulldb-client_0.2.0_amd64.deb
 | Path | Contents |
 |------|----------|
 | `/opt/pulldb.service/` | Service files, virtualenv, binaries |
-| `/opt/pulldb.service/bin/` | myloader, dbmate |
-| `/opt/pulldb.service/migrations/` | Database migrations |
+| `/opt/pulldb.service/bin/` | myloader |
+| `/opt/pulldb.service/schema/pulldb_service/` | Database schema files |
 | `/usr/local/bin/pulldb*` | CLI command symlinks |
 | `/etc/systemd/system/pulldb-*.service` | systemd units |
 
@@ -138,11 +138,13 @@ EOF
 
 **Apply schema:**
 
-```bash
-# Apply schema migrations
-sudo pulldb-migrate up --yes
+The package installer (postinst) automatically applies schema files. To verify or manually apply:
 
-# Or manually apply schema files
+```bash
+# Check applied schema files
+mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
+
+# Or manually apply all schema files (fresh install only)
 cat /opt/pulldb.service/schema/pulldb_service/*.sql | mysql -u pulldb_migrate -p pulldb_service
 ```
 

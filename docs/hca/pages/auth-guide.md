@@ -12,6 +12,7 @@
 - [User Registration](#user-registration)
 - [Password Management](#password-management)
 - [Session-Based Authentication](#session-based-authentication)
+- [API Key Authentication](#api-key-authentication)
 - [CLI Authentication](#cli-authentication)
 - [Troubleshooting](#troubleshooting)
 
@@ -19,25 +20,29 @@
 
 ## Overview
 
-pullDB supports two authentication methods that can be used independently or together:
+pullDB supports three authentication methods that can be used independently or together:
 
 | Method | Use Case | Identity Source |
 |--------|----------|-----------------|
-| **Trusted Header** | CLI via SSH | `X-Pulldb-User` header |
+| **API Key** | CLI from multiple hosts | HMAC-signed `X-API-Key` header |
+| **Trusted Header** | Legacy CLI via SSH | `X-Pulldb-User` header |
 | **Session Cookie** | Web UI | Username/password → cookie |
 
 The authentication mode is configured via `PULLDB_AUTH_MODE`:
 
 ```bash
-# Accept both methods (recommended)
+# Accept all methods (recommended)
 PULLDB_AUTH_MODE=both
 
 # Session-only (web-only deployments)
 PULLDB_AUTH_MODE=session
 
-# Trusted-only (internal CLI only)
+# Trusted-only (internal CLI only, deprecated)
 PULLDB_AUTH_MODE=trusted
 ```
+
+> **Note**: API Key authentication is the preferred method for CLI access.
+> It provides per-host authorization with admin approval workflow.
 
 ---
 
@@ -302,11 +307,133 @@ This invalidates the session token and clears the cookie.
 
 ---
 
+## API Key Authentication
+
+pullDB uses HMAC-signed API keys for secure CLI authentication across multiple hosts. Each key is tied to a specific host and requires admin approval before use.
+
+### How API Key Auth Works
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  CLI Request with API Key                                         │
+│                                                                   │
+│  1. User runs: pulldb status                                     │
+│                                                                   │
+│  2. CLI reads stored key from: ~/.pulldb/<api_url_hash>/key      │
+│                                                                   │
+│  3. CLI signs request:                                           │
+│     X-API-Key: abc123...                                         │
+│     X-Timestamp: 1737123456                                      │
+│     X-Signature: HMAC-SHA256(method|path|timestamp)              │
+│                                                                   │
+│  4. Server validates signature, timestamp, and key status        │
+│                                                                   │
+│  5. Request proceeds as authenticated user                       │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Getting Your API Key
+
+#### New User Registration
+
+When you register a new account, an API key is automatically requested:
+
+```bash
+$ pulldb register
+Enter username: jsmith
+Enter password: 
+Confirm password: 
+✓ Account created successfully
+  Username: jsmith
+  Status: Pending admin approval
+
+⚠ Your API key is pending approval.
+Contact an administrator to approve your key, then CLI will work.
+```
+
+#### Requesting Key for New Host
+
+If you already have an account but need CLI access from a new machine:
+
+```bash
+$ pulldb request-host-key
+✓ API key requested for host: devserver
+  Key ID: abc12345...
+  Status: Pending admin approval
+
+Contact an administrator to approve your key.
+```
+
+### Key Status and Errors
+
+| Status | CLI Behavior |
+|--------|--------------|
+| **pending** | Returns 401 with "pending approval" message |
+| **approved** | Request proceeds normally |
+| **revoked** | Returns 401 with "key revoked" message |
+
+Example pending key error:
+```
+$ pulldb status
+Error: API key pending approval (key: abc12345)
+Contact an administrator to approve your key.
+```
+
+### Viewing Your Keys
+
+```bash
+# List all your registered hosts
+pulldb hosts
+
+Registered Hosts:
+  devserver     Created: 2025-01-18  Status: approved
+  laptop        Created: 2025-01-20  Status: pending
+```
+
+### Security Features
+
+- **HMAC-SHA256 signatures**: Requests are cryptographically signed
+- **Timestamp validation**: ±5 minute window prevents replay attacks
+- **Per-host keys**: Separate key for each machine
+- **IP tracking**: Registration and usage IPs logged
+- **Admin approval**: No auto-approval, requires human review
+
+### Key Storage
+
+API keys are stored locally in `~/.pulldb/<api_url_hash>/`:
+- `key` - The API key ID
+- `secret` - The HMAC signing secret
+
+```bash
+# Key storage location (example)
+~/.pulldb/a1b2c3d4/key     # API key ID
+~/.pulldb/a1b2c3d4/secret  # Signing secret
+```
+
+---
+
 ## CLI Authentication
 
-### How CLI Authentication Works
+The CLI supports two authentication methods: **API Key** (recommended) and **Trusted Header** (legacy).
 
-The CLI uses **trusted header** authentication when running on the same network:
+### API Key Method (Recommended)
+
+This is the default and preferred method. See [API Key Authentication](#api-key-authentication) above for details.
+
+```bash
+# Register and get API key
+pulldb register
+
+# Or request key for existing account on new host
+pulldb request-host-key
+
+# After admin approval, CLI commands work automatically
+pulldb status
+```
+
+### Trusted Header Method (Legacy)
+
+For internal deployments without API key infrastructure, the CLI can use trusted header authentication:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -379,6 +506,31 @@ pulldb status
 ---
 
 ## Troubleshooting
+
+### "API key pending approval"
+
+- Your API key was created but hasn't been approved yet
+- Contact an administrator to approve your key
+- Check status: `pulldb hosts`
+- Admin command: `pulldb-admin keys approve <key_id>`
+
+### "API key revoked"
+
+- Your API key has been revoked by an administrator
+- Request a new key: `pulldb request-host-key`
+- Contact your admin to understand why it was revoked
+
+### "API key required for this host"
+
+- You don't have an API key for this machine
+- Run: `pulldb request-host-key`
+- Wait for admin approval
+
+### "Invalid API key"
+
+- Key doesn't exist in database
+- May have been deleted or corrupted
+- Request new key: `pulldb request-host-key`
 
 ### "Invalid username or password"
 

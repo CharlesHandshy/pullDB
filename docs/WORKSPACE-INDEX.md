@@ -3,9 +3,9 @@
 [← Back to Documentation Index](START-HERE.md)
 
 > **Purpose**: Comprehensive atomic-level index for AI model searching and navigation.  
-> **Last Updated**: 2026-01-04  
-> **Version**: 0.2.2  
-> **File Count**: ~290 project files (excluding venv, .git, caches)
+> **Last Updated**: 2026-01-06  
+> **Version**: 0.3.1  
+> **File Count**: ~780 project files (excluding venv, .git, caches)
 
 ---
 
@@ -13,11 +13,12 @@
 
 | Category | Count | Primary Path |
 |----------|-------|--------------|
-| Python Source | 91 | `pulldb/` |
-| Tests | 137 | `pulldb/tests/`, `tests/` |
+| Python Source | 116 | `pulldb/` |
+| Tests | 597 | `pulldb/tests/`, `tests/` |
 | Shell Scripts | 42 | `scripts/` |
-| SQL Schema | 33 | `schema/pulldb_service/` |
-| Documentation | 35+ | `docs/` |
+| SQL Schema | 41 | `schema/pulldb_service/` |
+| Documentation | 36+ | `docs/` |
+| Help Pages (HTML) | 12 | `pulldb/web/help/` |
 | Copilot Instructions | 6 | `.github/` |
 
 ---
@@ -46,11 +47,11 @@
 
 | Layer | Directories | File Count |
 |-------|-------------|------------|
-| **shared** | `pulldb/auth/`, `pulldb/infra/`, `pulldb/simulation/adapters/` (+5 more) | 22 |
-| **entities** | `pulldb/domain/`, `pulldb/web/entities/` | 8 |
-| **features** | `pulldb/domain/services/`, `pulldb/simulation/core/`, `pulldb/web/features/` (+7 more) | 28 |
-| **widgets** | `pulldb/web/widgets/`, `pulldb/web/widgets/breadcrumbs/`, `pulldb/web/widgets/bulk_actions/` (+7 more) | 10 |
-| **pages** | `pulldb/api/`, `pulldb/cli/`, `pulldb/simulation/api/` (+1 more) | 20 |
+| **shared** | `pulldb/auth/`, `pulldb/infra/`, `pulldb/simulation/adapters/` (+5 more) | 27 |
+| **entities** | `pulldb/domain/`, `pulldb/web/entities/` | 13 |
+| **features** | `pulldb/domain/services/`, `pulldb/simulation/core/`, `pulldb/web/features/` (+7 more) | 40 |
+| **widgets** | `pulldb/web/widgets/`, `pulldb/web/widgets/breadcrumbs/`, `pulldb/web/widgets/bulk_actions/` (+7 more) | 11 |
+| **pages** | `pulldb/api/`, `pulldb/cli/`, `pulldb/simulation/api/` (+1 more) | 23 |
 | **plugins** | `pulldb/binaries/` | 1 |
 
 ---
@@ -82,6 +83,8 @@
 | `__main__.py` | pages |  |
 | `admin.py` | pages | `cli()`, `main()` |
 | `admin_commands.py` | pages | `jobs_group()`, `jobs_list()`, `jobs_cancel()`, 📍 2 endpoints (+9 more) |
+| `auth.py` | pages | `get_calling_username()`, `get_api_headers()`, `save_credentials()`, `load_credentials()`, 📍 HMAC authentication |
+| `backup_commands.py` | pages | `backups_group()`, `backups_list()`, `backups_search()`, 📦 `BackupStats`, 📍 S3 backup analysis |
 | `main.py` | pages | `_APIError`, 🔌 `_JobSummary`, `_JobRow`, `cli()`, `restore_cmd()` (+8 more) |
 | `parse.py` | pages | `CLIParseError`, 📦 `RestoreCLIOptions`, `parse_restore_args()` |
 | `secrets_commands.py` | pages | 📦 `SecretParams`, `secrets_group()`, `list_secrets()`, `get_secret()`, 📍 25 endpoints (+3 more) |
@@ -92,12 +95,15 @@
 | File | Layer | Key Elements |
 |------|-------|--------------|
 | `__init__.py` | entities |  |
+| `color_schemas.py` | entities | 📦 `SurfaceColors`, 📦 `BackgroundColors`, 📦 `TextColors`, 📦 `StatusColors`, 📦 `ColorSchema`, `get_preset_schemas()` |
 | `config.py` | entities | 📦 `S3BackupLocationConfig`, 📦 `Config`, 📍 17 endpoints |
 | `errors.py` | entities | `JobExecutionError`, `DownloadError`, `ExtractionError` (+7 more) |
 | `interfaces.py` | entities | 🔌 `JobRepository`, 🔌 `AuthRepository`, 🔌 `S3Client` (+2 more) |
 | `models.py` | entities | 📊 `JobStatus`, 📊 `UserRole`, 📦 `User` (+6 more) |
 | `permissions.py` | entities | `can_view_job()`, `can_cancel_job()`, `can_submit_for_user()` (+7 more) |
 | `restore_models.py` | entities | 📦 `MyLoaderSpec`, 📦 `MyLoaderResult`, `build_configured_myloader_spec()` |
+| `settings.py` | entities | 📊 `SettingType`, 📊 `SettingCategory`, 📦 `SettingMeta`, `SETTING_REGISTRY` |
+| `validation.py` | entities | `DISALLOWED_USERS_HARDCODED`, `validate_username()`, `validate_job_id()`, `is_valid_uuid()` (+3 more) |
 
 ### domain/services/
 
@@ -105,17 +111,23 @@
 |------|-------|--------------|
 | `__init__.py` | features |  |
 | `discovery.py` | features | 📦 `BackupInfo`, 📦 `SearchContext`, `DiscoveryService`, 📍 6 endpoints |
+| `provisioning.py` | features | 📦 `ProvisioningStep`, 📦 `ProvisioningResult`, `HostProvisioningService`, 📍 Host setup orchestration |
+| `secret_rotation.py` | features | 📦 `RotationResult`, `SecretRotationService`, 📍 Atomic credential rotation |
 
 ## 5. Package: `pulldb/infra/`
 
 | File | Layer | Key Elements |
 |------|-------|--------------|
 | `__init__.py` | shared |  |
+| `bootstrap.py` | shared | `bootstrap_service_config()`, 📍 Unified service startup |
+| `css_writer.py` | shared | `generate_semantic_tokens_css()`, `write_design_tokens()`, 📍 Atomic CSS file updates |
 | `exec.py` | shared | `CommandExecutionError`, `CommandTimeoutError`, `SubprocessExecutor`, `run_command()`, `run_command_streaming()` |
 | `factory.py` | shared | `get_mode()`, `is_simulation_mode()`, `get_job_repository()` (+3 more) |
+| `filter_utils.py` | shared | `parse_multi_value_filter()`, `apply_cascading_filters()`, 📍 LazyTable filter logic |
 | `logging.py` | shared | `JSONFormatter`, `get_logger()` |
 | `metrics.py` | shared | 📦 `MetricLabels`, `emit_counter()`, `emit_gauge()`, `emit_timer()` (+1 more) |
 | `mysql.py` | shared | `MySQLPool`, `JobRepository`, `UserRepository`, `build_default_pool()`, 📍 20 endpoints (+2 more) |
+| `mysql_provisioning.py` | shared | 📦 `ProvisioningResult`, `test_admin_connection()`, `create_loader_user()`, `deploy_atomic_rename_procedure()` (+5 more) |
 | `s3.py` | shared | 📦 `BackupSpec`, `S3Client`, `parse_s3_bucket_path()`, `discover_latest_backup()`, 📍 5 endpoints |
 | `secrets.py` | shared | `CredentialResolver`, `CredentialResolutionError`, 📍 10 endpoints |
 
@@ -141,16 +153,13 @@
 
 | File | Layer | Key Elements |
 |------|-------|--------------|
+| `__init__.py` | features |  |
 | `bus.py` | features | 📊 `EventType`, 📦 `SimulationEvent`, `SimulationEventBus`, `get_event_bus()`, `reset_event_bus()` (+1 more) |
 | `engine.py` | features | 📦 `SimulationConfig`, `SimulationEngine` |
 | `queue_runner.py` | features | 📊 `JobPhase`, 📦 `MockRunnerConfig`, `MockQueueRunner`, `get_mock_queue_runner()` |
 | `scenarios.py` | features | 📊 `ScenarioType`, 📦 `ChaosConfig`, 📦 `Scenario`, `get_scenario_manager()`, `reset_scenario_manager()` (+1 more) |
 | `seeding.py` | features | `seed_dev_users()`, `seed_dev_hosts()`, `seed_orphan_databases()` (+3 more) |
 | `state.py` | features | 📦 `SimulationState`, `get_simulation_state()`, `reset_simulation()` |
-
-| File | Layer | Key Elements |
-|------|-------|--------------|
-| `__init__.py` | unknown |  |
 
 ## 7. Package: `pulldb/web/`
 
@@ -166,6 +175,8 @@
 |------|-------|--------------|
 | `__init__.py` | features |  |
 | `routes.py` | features | `admin_page()`, `list_users()`, `enable_user()`, 📍 40 endpoints (+25 more) |
+| `theme_generator.py` | features | `generate_theme_css()`, `ensure_generated_dir()`, `write_theme_file()` |
+| `routes.py` | features | `audit_page()`, `get_audit_logs_api()`, 📍 Audit log browsing |
 | `routes.py` | features | `login_page()`, `login_submit()`, `logout()`, 📍 8 endpoints (+1 more) |
 | `routes.py` | features | `dashboard()`, 📍 1 endpoints |
 | `routes.py` | features | `jobs_page()`, `job_details()`, `cancel_job()`, 📍 3 endpoints |
@@ -210,17 +221,21 @@
 | File | Layer | Key Elements |
 |------|-------|--------------|
 | `__init__.py` | features |  |
+| `admin_tasks.py` | features | `AdminTaskExecutor`, `PROTECTED_DATABASES`, 📍 Admin background task processing |
 | `atomic_rename.py` | features | 📦 `AtomicRenameConnectionSpec`, 📦 `AtomicRenameSpec`, `atomic_rename_staging_to_target()` |
 | `cleanup.py` | features | 📦 `CleanupCandidate`, 📦 `OrphanCandidate`, 📦 `OrphanMetadata`, 📦 `TargetProtectionResult`, `is_valid_staging_name()`, `is_target_database_protected()`, `get_orphan_metadata()` (+12 more) |
 | `downloader.py` | features | `ensure_disk_capacity()`, `download_backup()`, 📍 2 endpoints |
+| `dump_metadata.py` | features | 📦 `TableRowCount`, 📦 `DumpMetadata`, `parse_dump_metadata()`, 📍 Backup metadata parsing |
 | `executor.py` | features | 📦 `WorkerExecutorDependencies`, 📦 `WorkerExecutorTimeouts`, 📦 `WorkerExecutorHooks`, `derive_backup_lookup_target()`, `build_lookup_targets_for_location()` (+2 more) |
 | `log_normalizer.py` | features | 📦 `NormalizedLogEvent`, `normalize_myloader_line()` |
 | `loop.py` | features | `get_worker_id()`, `run_poll_loop()` |
 | `metadata.py` | features | 📦 `MetadataConnectionSpec`, 📦 `MetadataSpec`, `inject_metadata_table()` |
 | `metadata_synthesis.py` | features | `parse_filename()`, `count_rows_in_file()`, `synthesize_metadata()` |
 | `post_sql.py` | features | 📦 `PostSQLScriptResult`, 📦 `PostSQLExecutionResult`, 📦 `PostSQLConnectionSpec`, `execute_post_sql()` |
+| `processlist_monitor.py` | features | 📦 `TableProgress`, 📦 `ProcesslistSnapshot`, `ProcesslistMonitor`, 📍 myloader progress tracking |
 | `profiling.py` | features | 📊 `RestorePhase`, 📦 `PhaseProfile`, 📦 `RestoreProfile`, `parse_profile_from_event()`, 📍 11 endpoints |
 | `restore.py` | features | 📦 `RestoreWorkflowSpec`, `build_restore_workflow_spec()`, `build_myloader_command()`, `run_myloader()` |
+| `retention.py` | features | 📦 `RetentionCleanupResult`, 📦 `MaintenanceAction`, `RetentionService`, 📍 Database lifecycle management |
 | `service.py` | widgets | `main()` |
 | `staging.py` | features | 📦 `StagingConnectionSpec`, 📦 `StagingResult`, `generate_staging_name()`, `find_orphaned_staging_databases()`, `cleanup_orphaned_staging()` |
 
@@ -229,6 +244,52 @@
 | File | Layer | Key Elements |
 |------|-------|--------------|
 | `__init__.py` | plugins |  |
+
+---
+
+## 10. Help Documentation & Screenshots
+
+### Scripts (`scripts/`)
+
+| File | Purpose | Key Functions |
+|------|---------|---------------|
+| `capture_help_screenshots.py` | Automated Playwright screenshot capture | `capture_page_screenshots()`, `setup_scenario()`, 65 unique screenshots × 2 themes |
+| `annotate_screenshots.py` | Add numbered callouts to screenshots | `annotate_image()`, `load_annotations()`, YAML-driven annotation |
+
+### Configuration (`docs/`)
+
+| File | Purpose |
+|------|---------|
+| `help-screenshot-annotations.yaml` | Annotation definitions for all 65 screenshots |
+| `HELP-PAGE-INDEX.md` | Help page inventory and visual audit status |
+
+### Help HTML Pages (`pulldb/web/help/pages/web-ui/`)
+
+| File | Content | Screenshot Count |
+|------|---------|------------------|
+| `index.html` | Web UI overview, navigation guide | 4 screenshots |
+| `dashboard.html` | Dashboard views by role | 5 screenshots |
+| `restore.html` | 4-step restore wizard | 6 screenshots |
+| `jobs.html` | Job list, filtering, details | 12 screenshots |
+| `profile.html` | Account settings, API keys | 6 screenshots |
+| `admin.html` | User/host/key management | 23 screenshots |
+| `manager.html` | Team management for managers | 4 screenshots |
+
+### Help Styles (`pulldb/web/help/css/`)
+
+| File | Purpose |
+|------|---------|
+| `help.css` | Main help page stylesheet, responsive layout, screenshot figure styling |
+
+### Screenshot Assets (`pulldb/web/static/help/screenshots/`)
+
+| Directory | Count | Description |
+|-----------|-------|-------------|
+| `light/` | 65 | Raw light theme screenshots |
+| `dark/` | 65 | Raw dark theme screenshots |
+| `annotated/light/` | 62 | Annotated light screenshots (excludes error pages) |
+| `annotated/dark/` | 62 | Annotated dark screenshots (excludes error pages) |
+| **Total** | **254** | All screenshot files |
 
 ---
 
@@ -263,7 +324,7 @@
 | `routes.py` | `test_web_routes.py`, `test_routes.py` | web |
 | `routes.py` | `test_web_routes.py`, `test_routes.py` | web |
 | `atomic_rename.py` | `test_atomic_rename.py`, `test_atomic_rename_benchmark.py` (+1) | worker |
-| `cleanup.py` | `test_cleanup.py`, `test_cleanup.py` (+1) | worker |
+| `cleanup.py` | `test_cleanup.py`, `test_stale_running_recovery.py` (+1) | worker |
 | `downloader.py` | `test_downloader.py`, `test_downloader.py` | worker |
 | `executor.py` | `test_worker_executor.py`, `test_executor.py` | worker |
 | ... | (9 more mappings) | ... |
@@ -371,7 +432,7 @@ Established: 2025-12-12
 
 ---
 
-*Generated by `scripts/generate_workspace_index.py` on 2025-12-12*
+*Generated by `scripts/generate_workspace_index.py` on 2026-01-06*
 
 **Remember to update the README.md badge when regenerating!**
-Badge date: `2025-12-12`
+Badge date: `2026-01-06`

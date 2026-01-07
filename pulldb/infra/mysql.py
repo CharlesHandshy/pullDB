@@ -145,6 +145,14 @@ class JobRepository:
         ...     process(claimed)  # Job is already 'running'
     """
 
+    # Constants for stale running job recovery
+    # Higher than delete timeout (5 min) because restores take longer
+    STALE_RUNNING_TIMEOUT_MINUTES = 15
+    # Number of process list checks before declaring a job stale
+    STALE_RUNNING_PROCESS_CHECK_COUNT = 3
+    # Delay between process list checks (seconds)
+    STALE_RUNNING_PROCESS_CHECK_DELAY_SECONDS = 2.0
+
     def __init__(self, pool: MySQLPool) -> None:
         """Initialize repository with connection pool.
 
@@ -1049,6 +1057,158 @@ class JobRepository:
             )
 
             conn.commit()
+
+    def get_candidate_stale_running_job(
+        self,
+        stale_timeout_minutes: int | None = None,
+    ) -> Job | None:
+        """Find a candidate stale running job without claiming it.
+
+        Jobs in 'running' status that have been running longer than the timeout
+        may be from crashed workers. This method finds such jobs for verification
+        before marking them as failed.
+
+        Uses SELECT FOR UPDATE SKIP LOCKED to prevent multiple workers from
+        checking the same job simultaneously. The lock is held only briefly
+        during this check.
+
+        Does NOT update the job - use confirm_stale_running_job() after
+        verifying the job is actually stale (via process list check).
+
+        Args:
+            stale_timeout_minutes: Minutes before a running job is considered
+                potentially stale. Defaults to STALE_RUNNING_TIMEOUT_MINUTES.
+
+        Returns:
+            Job candidate that may be stale, or None if no candidates.
+        """
+        if stale_timeout_minutes is None:
+            stale_timeout_minutes = self.STALE_RUNNING_TIMEOUT_MINUTES
+
+        with self.pool.transaction() as conn:
+            cursor = conn.cursor(dictionary=True)
+
+            # Find running jobs that have been running longer than timeout.
+            # IMPORTANT: Only recover jobs that are the NEWEST for their target.
+            # Older superseded jobs should not be recovered.
+            cursor.execute(
+                """
+                SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
+                       j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
+                       j.started_at, j.completed_at, j.options_json, j.retry_count,
+                       j.error_detail, j.worker_id
+                FROM jobs j
+                WHERE j.status = 'running'
+                  AND j.started_at IS NOT NULL
+                  AND j.started_at < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL %s MINUTE)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM jobs j2
+                      WHERE j2.target = j.target
+                        AND j2.owner_user_code = j.owner_user_code
+                        AND j2.submitted_at > j.submitted_at
+                  )
+                ORDER BY j.started_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+                """,
+                (stale_timeout_minutes,),
+            )
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            logger.info(
+                "Found candidate stale running job",
+                extra={
+                    "job_id": row["id"],
+                    "target": row["target"],
+                    "started_at": row["started_at"],
+                    "worker_id": row["worker_id"],
+                    "stale_timeout_minutes": stale_timeout_minutes,
+                },
+            )
+
+            # Return job without modifying it
+            # Transaction commits on context manager exit, releasing lock
+            return self._row_to_job(row)
+
+    def mark_stale_running_failed(
+        self,
+        job_id: str,
+        worker_id: str | None = None,
+        error_detail: str | None = None,
+    ) -> bool:
+        """Mark a stale running job as failed after verification.
+
+        Called after confirming (via process list check) that a running job
+        is actually stale and not just a long-running restore. Transitions
+        the job from 'running' to 'failed' and logs the recovery event.
+
+        Args:
+            job_id: UUID of job to mark as failed.
+            worker_id: ID of worker performing the recovery.
+            error_detail: Optional custom error detail. Defaults to standard
+                stale recovery message.
+
+        Returns:
+            True if job was marked failed, False if job not found or already
+            transitioned to another state.
+        """
+        import json
+
+        detail = error_detail or "Worker died during restore (stale job recovery)"
+
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+
+            # Only update if still in 'running' status (prevent race conditions)
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET status = 'failed',
+                    completed_at = UTC_TIMESTAMP(6),
+                    error_detail = %s,
+                    worker_id = COALESCE(%s, worker_id)
+                WHERE id = %s AND status = 'running'
+                """,
+                (detail, worker_id, job_id),
+            )
+
+            if cursor.rowcount == 0:
+                logger.warning(
+                    "Stale running job already transitioned",
+                    extra={"job_id": job_id, "worker_id": worker_id},
+                )
+                conn.commit()
+                return False
+
+            # Log stale_running_recovery event
+            event_detail = json.dumps({
+                "reason": "stale_job_recovery",
+                "recovered_by": worker_id,
+                "error_detail": detail,
+            })
+            cursor.execute(
+                """
+                INSERT INTO job_events
+                (job_id, event_type, detail, logged_at)
+                VALUES (%s, 'stale_running_recovery', %s, UTC_TIMESTAMP(6))
+                """,
+                (job_id, event_detail),
+            )
+
+            conn.commit()
+
+            logger.warning(
+                "Marked stale running job as failed",
+                extra={
+                    "job_id": job_id,
+                    "worker_id": worker_id,
+                    "error_detail": detail,
+                },
+            )
+            return True
 
     def hard_delete_job(self, job_id: str) -> bool:
         """Hard delete a job record and its events.
@@ -4614,6 +4774,88 @@ class HostRepository:
                 cursor.execute("SELECT 1 FROM db_hosts WHERE id = %s", (host_id,))
                 if cursor.fetchone() is None:
                     raise ValueError(f"Host not found: {host_id}")
+
+    def is_staging_db_active(
+        self,
+        hostname: str,
+        staging_name: str,
+        check_count: int = 3,
+        check_delay_seconds: float = 2.0,
+    ) -> bool:
+        """Check if a staging database has active MySQL processes.
+
+        Performs multiple SHOW PROCESSLIST checks to verify if a restore is
+        still actively running on the staging database. This prevents false
+        positives from treating long-running restores as stale jobs.
+
+        The check runs `check_count` times with `check_delay_seconds` between
+        each check. Returns True if ANY check finds activity, False only if
+        ALL checks find no activity.
+
+        Args:
+            hostname: Database host to check.
+            staging_name: Staging database name to look for in processlist.
+            check_count: Number of times to check (default 3).
+            check_delay_seconds: Delay between checks in seconds (default 2.0).
+
+        Returns:
+            True if any process is using the staging database, False otherwise.
+
+        Raises:
+            ValueError: If host not found or disabled.
+            mysql.connector.Error: If connection fails.
+        """
+        import time
+
+        credentials = self.get_host_credentials(hostname)
+
+        conn = mysql.connector.connect(
+            host=credentials.host,
+            port=credentials.port,
+            user=credentials.username,
+            password=credentials.password,
+            connect_timeout=30,
+        )
+        try:
+            cursor = conn.cursor(dictionary=True)
+
+            for i in range(check_count):
+                cursor.execute("SHOW PROCESSLIST")
+                rows = cursor.fetchall()
+
+                # Check if any process is using the staging database
+                for row in rows:
+                    if row.get("db") == staging_name:
+                        logger.info(
+                            "Active process found on staging database",
+                            extra={
+                                "staging_name": staging_name,
+                                "hostname": hostname,
+                                "process_id": row.get("Id"),
+                                "process_user": row.get("User"),
+                                "process_command": row.get("Command"),
+                                "check_attempt": i + 1,
+                            },
+                        )
+                        return True
+
+                # Delay before next check (except on last iteration)
+                if i < check_count - 1:
+                    time.sleep(check_delay_seconds)
+
+            # No activity found in any check
+            logger.info(
+                "No active processes found on staging database",
+                extra={
+                    "staging_name": staging_name,
+                    "hostname": hostname,
+                    "checks_performed": check_count,
+                },
+            )
+            return False
+
+        finally:
+            conn.close()
 
     def _row_to_dbhost(self, row: dict[str, t.Any]) -> DBHost:
         """Convert database row to DBHost dataclass.

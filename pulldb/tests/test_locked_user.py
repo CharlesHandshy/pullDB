@@ -123,7 +123,7 @@ class TestServiceRole:
         user = User(
             user_id="test-id",
             username="pulldb_service",
-            user_code="SBCACC",
+            user_code="sbcacc",
             is_admin=True,
             role=UserRole.SERVICE,
             created_at=datetime.now(UTC),
@@ -135,7 +135,7 @@ class TestServiceRole:
         user = User(
             user_id="test-id",
             username="pulldb_service",
-            user_code="SBCACC",
+            user_code="sbcacc",
             is_admin=True,
             role=UserRole.SERVICE,
             created_at=datetime.now(UTC),
@@ -147,7 +147,7 @@ class TestServiceRole:
         user = User(
             user_id="test-id",
             username="pulldb_service",
-            user_code="SBCACC",
+            user_code="sbcacc",
             is_admin=True,
             role=UserRole.SERVICE,
             created_at=datetime.now(UTC),

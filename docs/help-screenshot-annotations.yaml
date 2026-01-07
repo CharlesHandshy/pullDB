@@ -1,0 +1,589 @@
+# Help Screenshot Annotations Configuration
+# 
+# This file defines annotations (numbered circles with legends) to be
+# overlaid on help screenshots. Used by scripts/annotate_screenshots.py
+#
+# Structure:
+#   viewport: [width, height] - Reference viewport size
+#   circle_radius: Size of annotation circles in pixels
+#   circle_color: Color for annotation circles (hex)
+#   text_color: Color for numbers inside circles (hex)
+#   screenshots: Dictionary of screenshot paths to annotations
+#
+# Each screenshot can have multiple annotations with:
+#   - x, y: Position of the annotation circle (relative to viewport)
+#   - label: Legend text explaining what this annotation points to
+
+viewport: [1280, 720]
+circle_radius: 16
+circle_color: "#E53935"
+text_color: "#FFFFFF"
+
+screenshots:
+  # ============================================
+  # COMMON SCREENSHOTS
+  # ============================================
+  common/login.png:
+    - x: 640
+      y: 280
+      label: "Username field - enter your pullDB username"
+    - x: 640
+      y: 340
+      label: "Password field - enter your password"
+    - x: 640
+      y: 420
+      label: "Sign In button - click to authenticate"
+
+  common/login-error.png:
+    - x: 640
+      y: 220
+      label: "Error message - authentication failed"
+    - x: 640
+      y: 280
+      label: "Username field - re-enter credentials"
+
+  common/sidebar-expanded.png:
+    - x: 120
+      y: 150
+      label: "Navigation menu - access all features"
+    - x: 120
+      y: 400
+      label: "User menu - profile and logout options"
+
+  common/sidebar-collapsed.png:
+    - x: 35
+      y: 150
+      label: "Icon navigation - hover for tooltips"
+
+  common/table-filter-dropdown.png:
+    - x: 200
+      y: 100
+      label: "Filter dropdown - narrow down table results"
+
+  common/table-sorted.png:
+    - x: 300
+      y: 80
+      label: "Sort indicator - click headers to sort"
+
+  # ============================================
+  # DASHBOARD SCREENSHOTS
+  # ============================================
+  dashboard/user-view.png:
+    - x: 200
+      y: 100
+      label: "Navigation sidebar - access pullDB features"
+    - x: 640
+      y: 200
+      label: "Stats cards - view job statistics at a glance"
+    - x: 640
+      y: 450
+      label: "Recent jobs - quick access to your latest restores"
+
+  dashboard/admin-view.png:
+    - x: 200
+      y: 100
+      label: "Admin sidebar - full system access"
+    - x: 640
+      y: 200
+      label: "System stats - monitor all users and jobs"
+    - x: 900
+      y: 100
+      label: "Admin controls - system management"
+
+  dashboard/manager-view.png:
+    - x: 200
+      y: 100
+      label: "Manager sidebar - team management access"
+    - x: 640
+      y: 200
+      label: "Team stats - view team activity"
+
+  dashboard/stats-cards.png:
+    - x: 250
+      y: 150
+      label: "Active jobs - currently running restores"
+    - x: 500
+      y: 150
+      label: "Completed - successful restores today"
+    - x: 750
+      y: 150
+      label: "Failed - jobs requiring attention"
+
+  dashboard/recent-jobs.png:
+    - x: 200
+      y: 150
+      label: "Job status - current state indicator"
+    - x: 500
+      y: 150
+      label: "Customer - target database info"
+    - x: 800
+      y: 150
+      label: "Actions - view details or cancel"
+
+  # ============================================
+  # RESTORE WORKFLOW SCREENSHOTS
+  # ============================================
+  restore/step1-customer.png:
+    - x: 640
+      y: 200
+      label: "Search field - find customer by name"
+    - x: 640
+      y: 350
+      label: "Customer list - select target customer"
+    - x: 900
+      y: 500
+      label: "Next button - proceed to backup selection"
+
+  restore/step1-no-results.png:
+    - x: 640
+      y: 200
+      label: "Search field - try different search terms"
+    - x: 640
+      y: 350
+      label: "No results - check spelling or filters"
+
+  restore/step2-backups.png:
+    - x: 400
+      y: 200
+      label: "Backup list - available backups for customer"
+    - x: 640
+      y: 300
+      label: "Backup date - select point-in-time"
+    - x: 800
+      y: 200
+      label: "Size indicator - backup file size"
+
+  restore/step3-options.png:
+    - x: 400
+      y: 200
+      label: "Restore options - customize restore behavior"
+    - x: 400
+      y: 350
+      label: "Post-SQL scripts - optional post-restore actions"
+    - x: 640
+      y: 500
+      label: "Continue button - review before submit"
+
+  restore/step4-confirm.png:
+    - x: 640
+      y: 200
+      label: "Confirmation summary - review all selections"
+    - x: 640
+      y: 400
+      label: "Submit button - start the restore job"
+    - x: 400
+      y: 400
+      label: "Back button - modify selections"
+
+  restore/success-toast.png:
+    - x: 1100
+      y: 100
+      label: "Success notification - job queued"
+
+  # ============================================
+  # JOBS LIST SCREENSHOTS
+  # ============================================
+  jobs/list-active.png:
+    - x: 200
+      y: 100
+      label: "Active tab - view running jobs"
+    - x: 640
+      y: 200
+      label: "Job progress - download and restore status"
+    - x: 900
+      y: 200
+      label: "Cancel button - stop running job"
+
+  jobs/list-history.png:
+    - x: 200
+      y: 100
+      label: "History tab - view completed jobs"
+    - x: 640
+      y: 200
+      label: "Job results - success or failure status"
+    - x: 800
+      y: 200
+      label: "Duration - total job time"
+
+  jobs/list-empty.png:
+    - x: 640
+      y: 300
+      label: "Empty state - no jobs match filters"
+    - x: 640
+      y: 400
+      label: "Start restore - begin a new restore job"
+
+  jobs/filters-open.png:
+    - x: 300
+      y: 150
+      label: "Status filter - filter by job state"
+    - x: 500
+      y: 150
+      label: "Date filter - filter by time range"
+    - x: 700
+      y: 150
+      label: "Customer filter - filter by customer"
+
+  jobs/bulk-actions.png:
+    - x: 200
+      y: 100
+      label: "Select all - toggle all visible jobs"
+    - x: 400
+      y: 100
+      label: "Bulk cancel - cancel selected jobs"
+
+  jobs/detail-queued.png:
+    - x: 640
+      y: 150
+      label: "Queued status - waiting to start"
+    - x: 640
+      y: 300
+      label: "Job details - customer and backup info"
+
+  jobs/detail-running.png:
+    - x: 640
+      y: 150
+      label: "Running status - job in progress"
+    - x: 640
+      y: 280
+      label: "Progress bar - current stage progress"
+    - x: 900
+      y: 150
+      label: "Cancel button - stop job if needed"
+
+  jobs/detail-download-progress.png:
+    - x: 640
+      y: 200
+      label: "Download stage - fetching backup from S3"
+    - x: 640
+      y: 280
+      label: "Download progress - bytes transferred"
+
+  jobs/detail-restore-progress.png:
+    - x: 640
+      y: 200
+      label: "Restore stage - importing data to MySQL"
+    - x: 640
+      y: 280
+      label: "Restore progress - tables completed"
+
+  jobs/detail-complete.png:
+    - x: 640
+      y: 150
+      label: "Complete status - restore finished successfully"
+    - x: 640
+      y: 300
+      label: "Summary - total duration and data restored"
+
+  jobs/detail-failed.png:
+    - x: 640
+      y: 150
+      label: "Failed status - restore encountered error"
+    - x: 640
+      y: 300
+      label: "Error message - what went wrong"
+    - x: 640
+      y: 450
+      label: "Retry button - attempt restore again"
+
+  jobs/detail-canceling.png:
+    - x: 640
+      y: 150
+      label: "Canceling status - stop in progress"
+
+  # ============================================
+  # ADMIN SCREENSHOTS
+  # ============================================
+  admin/overview.png:
+    - x: 200
+      y: 100
+      label: "Admin dashboard - system-wide statistics"
+    - x: 640
+      y: 200
+      label: "System health - key metrics"
+
+  admin/users-list.png:
+    - x: 200
+      y: 150
+      label: "Add user - create new account"
+    - x: 640
+      y: 200
+      label: "User table - all registered users"
+    - x: 900
+      y: 200
+      label: "Actions - edit or delete user"
+
+  admin/user-add.png:
+    - x: 640
+      y: 200
+      label: "Username field - unique identifier"
+    - x: 640
+      y: 280
+      label: "Role selector - user, manager, or admin"
+    - x: 640
+      y: 400
+      label: "Create button - add the user"
+
+  admin/user-edit.png:
+    - x: 640
+      y: 200
+      label: "User details - modify account settings"
+    - x: 640
+      y: 350
+      label: "Role assignment - change permissions"
+    - x: 640
+      y: 450
+      label: "Save button - apply changes"
+
+  admin/user-created-password.png:
+    - x: 640
+      y: 300
+      label: "Temporary password - share with user"
+    - x: 640
+      y: 400
+      label: "Copy button - copy to clipboard"
+
+  admin/user-force-delete.png:
+    - x: 640
+      y: 300
+      label: "Delete confirmation - this action is permanent"
+    - x: 640
+      y: 400
+      label: "Confirm button - delete user"
+
+  admin/user-hosts-modal.png:
+    - x: 640
+      y: 200
+      label: "Host assignments - databases user can access"
+
+  admin/user-api-keys-modal.png:
+    - x: 640
+      y: 200
+      label: "API keys - user's programmatic access tokens"
+
+  admin/hosts-list.png:
+    - x: 200
+      y: 150
+      label: "Add host - register new database"
+    - x: 640
+      y: 200
+      label: "Host table - all configured databases"
+    - x: 900
+      y: 200
+      label: "Actions - edit or remove host"
+
+  admin/host-add.png:
+    - x: 640
+      y: 200
+      label: "Host name - human-readable identifier"
+    - x: 640
+      y: 280
+      label: "Connection details - hostname and port"
+    - x: 640
+      y: 400
+      label: "Add button - register the host"
+
+  admin/host-detail.png:
+    - x: 640
+      y: 200
+      label: "Host configuration - connection settings"
+    - x: 640
+      y: 400
+      label: "Assigned users - who can access this host"
+
+  admin/host-delete-modal.png:
+    - x: 640
+      y: 300
+      label: "Delete confirmation - remove host permanently"
+
+  admin/api-keys.png:
+    - x: 200
+      y: 150
+      label: "Key management - all API keys in system"
+    - x: 640
+      y: 200
+      label: "Key status - active or revoked"
+
+  admin/api-key-approval.png:
+    - x: 640
+      y: 200
+      label: "Pending approval - review key request"
+    - x: 640
+      y: 350
+      label: "Approve/Deny - grant or reject access"
+
+  admin/audit-log.png:
+    - x: 200
+      y: 150
+      label: "Filter controls - search audit entries"
+    - x: 640
+      y: 250
+      label: "Audit table - user actions and changes"
+    - x: 900
+      y: 250
+      label: "Timestamp - when action occurred"
+
+  admin/settings.png:
+    - x: 400
+      y: 200
+      label: "System settings - global configuration"
+    - x: 640
+      y: 400
+      label: "Save button - apply settings"
+
+  admin/settings-danger-confirm.png:
+    - x: 640
+      y: 300
+      label: "Danger zone - destructive operations"
+    - x: 640
+      y: 400
+      label: "Confirm button - proceed with caution"
+
+  admin/maintenance.png:
+    - x: 640
+      y: 200
+      label: "Maintenance mode - enable/disable system access"
+    - x: 640
+      y: 350
+      label: "Message - shown to users during maintenance"
+
+  admin/locked-dbs.png:
+    - x: 200
+      y: 150
+      label: "Locked databases - currently in use"
+    - x: 640
+      y: 250
+      label: "Lock details - who locked and when"
+    - x: 900
+      y: 250
+      label: "Unlock - force release lock"
+
+  admin/orphans.png:
+    - x: 640
+      y: 200
+      label: "Orphan databases - staging DBs without jobs"
+    - x: 640
+      y: 400
+      label: "Cleanup - remove orphaned databases"
+
+  admin/cleanup-staging.png:
+    - x: 640
+      y: 200
+      label: "Staging cleanup - manage temporary databases"
+    - x: 640
+      y: 350
+      label: "Select databases - choose what to remove"
+
+  admin/prune-logs.png:
+    - x: 640
+      y: 200
+      label: "Log retention - configure log cleanup"
+    - x: 640
+      y: 350
+      label: "Prune button - delete old logs"
+
+  admin/disallowed-users.png:
+    - x: 640
+      y: 200
+      label: "Blocked users - accounts prevented from login"
+    - x: 640
+      y: 350
+      label: "Unblock button - restore access"
+
+  # ============================================
+  # MANAGER SCREENSHOTS
+  # ============================================
+  manager/overview.png:
+    - x: 200
+      y: 100
+      label: "Manager dashboard - team overview"
+    - x: 640
+      y: 200
+      label: "Team stats - activity summary"
+
+  manager/team-list.png:
+    - x: 200
+      y: 150
+      label: "Team members - users you manage"
+    - x: 640
+      y: 250
+      label: "Member activity - recent job history"
+    - x: 900
+      y: 250
+      label: "Actions - manage team member"
+
+  manager/reset-password.png:
+    - x: 640
+      y: 300
+      label: "Reset password - generate new credentials"
+    - x: 640
+      y: 400
+      label: "Reset button - create temporary password"
+
+  manager/temp-password-modal.png:
+    - x: 640
+      y: 300
+      label: "Temporary password - share with team member"
+    - x: 640
+      y: 400
+      label: "Copy button - copy to clipboard"
+
+  # ============================================
+  # PROFILE SCREENSHOTS
+  # ============================================
+  profile/overview.png:
+    - x: 400
+      y: 200
+      label: "Profile info - your account details"
+    - x: 400
+      y: 350
+      label: "Role badge - your permission level"
+
+  profile/password-form.png:
+    - x: 640
+      y: 200
+      label: "Current password - verify identity"
+    - x: 640
+      y: 280
+      label: "New password - choose strong password"
+    - x: 640
+      y: 360
+      label: "Confirm password - re-enter new password"
+    - x: 640
+      y: 450
+      label: "Update button - change password"
+
+  profile/force-password-change.png:
+    - x: 640
+      y: 200
+      label: "Required change - must update password"
+    - x: 640
+      y: 350
+      label: "New password fields - enter new credentials"
+
+  profile/api-keys.png:
+    - x: 200
+      y: 150
+      label: "Create key - request new API key"
+    - x: 640
+      y: 250
+      label: "Your keys - manage existing API keys"
+    - x: 900
+      y: 250
+      label: "Revoke - disable API key"
+
+  profile/create-key-modal.png:
+    - x: 640
+      y: 200
+      label: "Key name - descriptive identifier"
+    - x: 640
+      y: 300
+      label: "Expiration - when key becomes invalid"
+    - x: 640
+      y: 400
+      label: "Create button - generate API key"
+
+  profile/maintenance-modal.png:
+    - x: 640
+      y: 300
+      label: "Maintenance notice - system unavailable"

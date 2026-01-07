@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../../css/help.css">
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
@@ -32,6 +34,7 @@
                 <a href="index.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">CLI</a>
                 <a href="../api/index.html" class="nav-link">API</a>
                 <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
+                <a href="../web-ui/index.html" class="nav-link">Web UI</a>
             </div>
             
             <div class="nav-actions">
@@ -96,6 +99,7 @@
                     <a href="#profile" class="sidebar-link">profile</a>
                     <a href="#hosts" class="sidebar-link">hosts</a>
                     <a href="#register" class="sidebar-link">register</a>
+                    <a href="#request-host-key" class="sidebar-link">request-host-key</a>
                     <a href="#setpass" class="sidebar-link">setpass</a>
                 </div>
                 <div class="sidebar-section">
@@ -103,6 +107,7 @@
                     <a href="#admin-settings" class="sidebar-link">settings</a>
                     <a href="#admin-jobs" class="sidebar-link">jobs</a>
                     <a href="#admin-users" class="sidebar-link">users</a>
+                    <a href="#admin-keys" class="sidebar-link">keys</a>
                     <a href="#admin-hosts" class="sidebar-link">hosts</a>
                     <a href="#admin-backups" class="sidebar-link">backups</a>
                     <a href="#admin-cleanup" class="sidebar-link">cleanup</a>
@@ -810,6 +815,85 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                         <div class="terminal-line output">Account created successfully!</div>
                     </div>
                 </div>
+                
+                <div class="info-callout warning" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Pending Approval:</strong> New accounts are created disabled. Contact an admin to:
+                        (1) enable your account with <code>pulldb-admin users enable &lt;username&gt;</code>, and
+                        (2) approve your API key with <code>pulldb-admin keys approve &lt;key_id&gt;</code>.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Request Host Key Command -->
+            <section class="content-section" id="request-host-key">
+                <h2>pulldb request-host-key</h2>
+                <p>Request an API key for a new host machine. Use this when you already have an account but need CLI access from a different computer.</p>
+                
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb request-host-key [--host-name TEXT]</code>
+                        <span class="command-badge">User Command</span>
+                    </div>
+                    
+                    <h3>Options</h3>
+                    <table class="param-table">
+                        <tbody>
+                            <tr>
+                                <td>--password</td>
+                                <td>No</td>
+                                <td>-</td>
+                                <td>Your current password. Prompted if not provided.</td>
+                            </tr>
+                            <tr>
+                                <td>--host-name</td>
+                                <td>No</td>
+                                <td>auto</td>
+                                <td>Hostname for this machine. Auto-detected if not provided.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h3>Example</h3>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">Request Host Key</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb request-host-key</span></div>
+                        <div class="terminal-line output">Password: ********</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">✓ API key requested successfully!</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">  Username:  charles</div>
+                        <div class="terminal-line output">  User Code: chrles</div>
+                        <div class="terminal-line output">  Hostname:  my-laptop</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">✓ API credentials saved to ~/.pulldb/credentials</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">⚠ Your API key is PENDING APPROVAL</div>
+                        <div class="terminal-line output">Contact an administrator to approve your key.</div>
+                    </div>
+                </div>
+                
+                <div class="info-callout" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    <div>
+                        <strong>When to use:</strong> Each machine needs its own API key. Use <code>pulldb register</code> for your first machine,
+                        then <code>pulldb request-host-key</code> for additional machines.
+                    </div>
+                </div>
             </section>
             
             <!-- Setpass Command -->
@@ -961,6 +1045,65 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                             <tr><td>disable &lt;username&gt;</td><td colspan="3">Disable a user</td></tr>
                         </tbody>
                     </table>
+                </div>
+            </section>
+            
+            <!-- Admin Keys -->
+            <section class="content-section" id="admin-keys">
+                <h3>pulldb-admin keys</h3>
+                <p>Manage API keys for CLI authentication. Each key is tied to a specific host machine.</p>
+                <div class="command-card">
+                    <div class="command-header">
+                        <code class="command-name">pulldb-admin keys &lt;action&gt;</code>
+                        <span class="command-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">Admin</span>
+                    </div>
+                    
+                    <h4 style="margin-top: 16px;">Actions</h4>
+                    <table class="param-table">
+                        <tbody>
+                            <tr><td>pending</td><td colspan="3">List API keys awaiting approval</td></tr>
+                            <tr><td>approve &lt;key_id&gt;</td><td colspan="3">Approve a pending key</td></tr>
+                            <tr><td>revoke &lt;key_id&gt;</td><td colspan="3">Revoke an active key (immediate block)</td></tr>
+                            <tr><td>list [username]</td><td colspan="3">List keys for a user (or all users)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h4>Example: Approve a New Key</h4>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">Approve Key</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line"><span class="comment"># List pending keys</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb-admin keys pending</span></div>
+                        <div class="terminal-line output">Pending API Keys:</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">KEY_ID                                   USERNAME        HOSTNAME             CREATED</div>
+                        <div class="terminal-line output">key_abc123def456...                      jsmith          my-laptop            2026-01-05 14:30</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">Total: 1 pending key(s)</div>
+                        <div class="terminal-line"></div>
+                        <div class="terminal-line"><span class="comment"># Approve the key</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb-admin keys approve key_abc123def456...</span></div>
+                        <div class="terminal-line output">✓ API key 'key_abc123...' approved</div>
+                        <div class="terminal-line output">  User: jsmith</div>
+                        <div class="terminal-line output">  Host: my-laptop</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">The user can now use the CLI from 'my-laptop'.</div>
+                    </div>
+                </div>
+                
+                <div class="info-callout" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    <div>
+                        <strong>Web Alternative:</strong> You can also manage API keys from the web UI at Admin → API Keys.
+                    </div>
                 </div>
             </section>
             

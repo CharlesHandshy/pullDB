@@ -190,9 +190,71 @@ def run_poll_loop(
                     current_task_name.reset(token)
 
             else:
-                # No restore job found - check for stale deleting jobs (medium priority)
-                stale_delete_claimed = False
+                # No restore job found - check for stale running jobs (high priority)
+                stale_running_handled = False
                 if host_repo:
+                    stale_running_candidate = job_repo.get_candidate_stale_running_job()
+                    if stale_running_candidate:
+                        stale_running_handled = True
+                        token = current_task_name.set(stale_running_candidate.id)
+                        try:
+                            current_interval = poll_interval  # Reset backoff
+                            emit_gauge("queue_backoff_interval_seconds", current_interval)
+
+                            logger.info(
+                                "Checking candidate stale running job",
+                                extra={
+                                    "job_id": stale_running_candidate.id,
+                                    "target": stale_running_candidate.target,
+                                    "started_at": stale_running_candidate.started_at,
+                                    "worker_id": effective_worker_id,
+                                    "phase": "stale_running_check",
+                                },
+                            )
+
+                            try:
+                                from pulldb.worker.cleanup import execute_stale_running_cleanup
+
+                                result = execute_stale_running_cleanup(
+                                    stale_running_candidate,
+                                    job_repo,
+                                    host_repo,
+                                    worker_id=effective_worker_id,
+                                )
+                                if result.was_actually_stale:
+                                    emit_event(
+                                        "stale_running_recovered",
+                                        f"job_id={stale_running_candidate.id}",
+                                        MetricLabels(phase="stale_running", status="success"),
+                                    )
+                                else:
+                                    emit_event(
+                                        "stale_running_still_active",
+                                        f"job_id={stale_running_candidate.id}",
+                                        MetricLabels(phase="stale_running", status="skipped"),
+                                    )
+                            except Exception as exc:
+                                logger.error(
+                                    "Stale running cleanup raised error",
+                                    extra={
+                                        "job_id": stale_running_candidate.id,
+                                        "target": stale_running_candidate.target,
+                                        "phase": "stale_running",
+                                        "error": str(exc),
+                                    },
+                                    exc_info=True,
+                                )
+                                emit_event(
+                                    "stale_running_error",
+                                    str(exc),
+                                    MetricLabels(phase="stale_running", status="error"),
+                                )
+                        finally:
+                            current_task_name.reset(token)
+
+                # No stale running job - check for stale deleting jobs (medium priority)
+                stale_delete_claimed = False
+                if not stale_running_handled and host_repo:
                     stale_job = job_repo.claim_stale_deleting_job(
                         worker_id=effective_worker_id
                     )
@@ -253,7 +315,7 @@ def run_poll_loop(
 
                 # No stale delete job - check for admin tasks (lower priority)
                 admin_task_claimed = False
-                if not stale_delete_claimed and admin_task_repo and admin_task_executor:
+                if not stale_running_handled and not stale_delete_claimed and admin_task_repo and admin_task_executor:
                     admin_task = admin_task_repo.claim_next_task(
                         worker_id=effective_worker_id
                     )
@@ -296,7 +358,7 @@ def run_poll_loop(
                                 MetricLabels(phase="admin_task", status="error"),
                             )
 
-                if not stale_delete_claimed and not admin_task_claimed:
+                if not stale_running_handled and not stale_delete_claimed and not admin_task_claimed:
                     # No job, no stale delete, and no admin task - apply exponential backoff
                     logger.debug(
                         "Queue empty, backing off",

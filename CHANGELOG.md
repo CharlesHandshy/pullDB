@@ -1,6 +1,28 @@
 CHANGELOG
 =========
 
+v1.0.0 - 2026-01-06
+-------------------
+### First Stable Release
+
+Multi-host API keys support, consolidated migration system, admin user API key management.
+
+### Added
+- Multi-host API key support with host tracking columns
+- API Keys management modal in Admin → Users page
+- Keyring icon for API keys action button
+- Schema migration `00716_api_keys_host_tracking.sql`
+
+### Changed
+- Consolidated all migrations to `schema/pulldb_service/`
+- Removed deprecated dbmate tooling
+- Bumped version to 1.0.0
+
+### Removed
+- `scripts/pulldb-migrate.sh` (unused)
+- `scripts/install-dbmate.sh` (unused)
+- `schema/migrations/` directory (consolidated)
+
 v0.2.2 - 2026-01-05
 -------------------
 ### Stale Delete Recovery & Superseded Job Handling

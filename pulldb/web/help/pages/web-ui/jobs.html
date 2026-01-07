@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jobs Management - pullDB Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../css/help.css">
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
+    
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    
+    <!-- Navigation -->
+    <nav class="nav-glass">
+        <div class="nav-container">
+            <a href="../../index.html" class="nav-logo">
+                <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                </svg>
+                <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
+            </a>
+            
+            <div class="nav-links">
+                <a href="../getting-started.html" class="nav-link">Getting Started</a>
+                <a href="../cli/index.html" class="nav-link">CLI</a>
+                <a href="../api/index.html" class="nav-link">API</a>
+                <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
+                <a href="index.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">Web UI</a>
+            </div>
+            
+            <div class="nav-actions">
+                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span class="search-hint">/</span>
+                </button>
+                <button class="theme-toggle" @click="toggleTheme()">
+                    <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg x-show="theme === 'dark'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Search Modal -->
+    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+        <div class="search-container" @click.stop>
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <kbd class="search-kbd">ESC</kbd>
+            </div>
+            <div class="search-results" x-show="searchQuery.length > 0">
+                <template x-for="(result, index) in searchResults" :key="result.id">
+                    <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
+                        <div class="result-content">
+                            <div class="result-title" x-html="result.title"></div>
+                            <div class="result-preview" x-html="result.preview"></div>
+                        </div>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Page Layout with Sidebar -->
+    <div class="page-layout">
+        <aside class="page-sidebar">
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Web UI Guide</div>
+                    <a href="index.html" class="sidebar-link">Overview</a>
+                    <a href="dashboard.html" class="sidebar-link">Dashboard</a>
+                    <a href="restore.html" class="sidebar-link">Restore Workflow</a>
+                    <a href="jobs.html" class="sidebar-link active">Jobs Management</a>
+                    <a href="profile.html" class="sidebar-link">Profile & API Keys</a>
+                    <a href="admin.html" class="sidebar-link">Admin Panel</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">On This Page</div>
+                    <a href="#overview" class="sidebar-link">Overview</a>
+                    <a href="#jobs-list" class="sidebar-link">Jobs List</a>
+                    <a href="#filtering" class="sidebar-link">Filtering & Search</a>
+                    <a href="#job-details" class="sidebar-link">Job Details</a>
+                    <a href="#job-actions" class="sidebar-link">Job Actions</a>
+                    <a href="#status-badges" class="sidebar-link">Status Badges</a>
+                </div>
+            </nav>
+        </aside>
+        
+        <main class="page-content">
+            <div class="breadcrumbs">
+                <a href="../../index.html">Help</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <a href="index.html">Web UI</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span>Jobs Management</span>
+            </div>
+            
+            <h1 class="page-title">Jobs Management</h1>
+            <p class="page-description">
+                The Jobs page lets you view, monitor, and manage your restore jobs. Track progress 
+                in real-time, view detailed logs, and take actions like canceling or retrying jobs.
+            </p>
+            
+            <!-- Overview Section -->
+            <section class="content-section" id="overview">
+                <h2>Overview</h2>
+                <p>
+                    The Jobs page provides a comprehensive view of all your restore jobs. You can see
+                    active jobs updating in real-time, browse job history, and drill down into details.
+                </p>
+                
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="16" y1="13" x2="8" y2="13"/>
+                                <line x1="16" y1="17" x2="8" y2="17"/>
+                            </svg>
+                        </div>
+                        <h3>Job List</h3>
+                        <p>Sortable, filterable table of all jobs.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <path d="M21 21l-4.35-4.35"/>
+                            </svg>
+                        </div>
+                        <h3>Search & Filter</h3>
+                        <p>Find jobs by customer, status, or date.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                            </svg>
+                        </div>
+                        <h3>Real-Time Updates</h3>
+                        <p>Live progress for running jobs.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                        </div>
+                        <h3>Detailed Logs</h3>
+                        <p>Full execution logs for each job.</p>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Jobs List Section -->
+            <section class="content-section" id="jobs-list">
+                <h2>Jobs List</h2>
+                <p>
+                    The main jobs table displays all your jobs with key information at a glance.
+                </p>
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/jobs/list-active.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/jobs/list-active.png" alt="Active jobs table with status indicators" loading="lazy">
+                    </picture>
+                    <figcaption>1. Status column — 2. Progress indicator — 3. Action buttons</figcaption>
+                </figure>
+
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/jobs/list-empty.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/jobs/list-empty.png" alt="Empty active jobs state" loading="lazy">
+                    </picture>
+                    <figcaption>Empty state when no active jobs</figcaption>
+                </figure>
+
+
+
+
+<h3>Table Columns</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Column</th>
+                            <th>Description</th>
+                            <th>Sortable</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Job ID</code></td>
+                            <td>Unique identifier for the job</td>
+                            <td>Yes</td>
+                        </tr>
+                        <tr>
+                            <td><code>Customer</code></td>
+                            <td>Customer ID being restored</td>
+                            <td>Yes</td>
+                        </tr>
+                        <tr>
+                            <td><code>Status</code></td>
+                            <td>Current job state with badge</td>
+                            <td>Yes</td>
+                        </tr>
+                        <tr>
+                            <td><code>Phase</code></td>
+                            <td>Current processing phase (if running)</td>
+                            <td>No</td>
+                        </tr>
+                        <tr>
+                            <td><code>Submitted</code></td>
+                            <td>When the job was submitted</td>
+                            <td>Yes</td>
+                        </tr>
+                        <tr>
+                            <td><code>Duration</code></td>
+                            <td>Total time (or elapsed time if running)</td>
+                            <td>Yes</td>
+                        </tr>
+                        <tr>
+                            <td><code>Actions</code></td>
+                            <td>View details, cancel, retry buttons</td>
+                            <td>No</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>Pagination</h3>
+                <p>
+                    By default, 25 jobs are shown per page. Use the pagination controls at the bottom
+                    to navigate through your job history. You can also change the page size.
+                </p>
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/jobs/list-history.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/jobs/list-history.png" alt="Completed jobs history with pagination" loading="lazy">
+                    </picture>
+                    <figcaption>Job history with pagination controls</figcaption>
+                </figure>
+
+
+</section>
+            
+            <!-- Filtering Section -->
+            <section class="content-section" id="filtering">
+                <h2>Filtering & Search</h2>
+                <p>
+                    Use the filter bar above the jobs table to narrow down results.
+                </p>
+                
+                <h3>Available Filters</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Filter</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Search</code></td>
+                            <td>Free text search across customer ID, job ID, and database name</td>
+                        </tr>
+                        <tr>
+                            <td><code>Status</code></td>
+                            <td>Filter by job state: All, Queued, Running, Complete, Failed, Canceled</td>
+                        </tr>
+                        <tr>
+                            <td><code>Date Range</code></td>
+                            <td>Filter jobs submitted within a date range</td>
+                        </tr>
+                        <tr>
+                            <td><code>Customer</code></td>
+                            <td>Filter by specific customer ID</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/jobs/filters-open.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/jobs/filters-open.png" alt="Filter panel with status, host, and date options" loading="lazy">
+                    </picture>
+                    <figcaption>1. Search field — 2. Status filter — 3. Date range selector</figcaption>
+                </figure>
+
+
+<div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Quick Filters</strong><br>
+                        Click on any status badge in the table to quickly filter by that status.
+                    </div>
+                </div>
+                
+                <h3>Keyboard Shortcuts</h3>
+                <div class="keyboard-shortcuts">
+                    <div class="shortcut">
+                        <kbd>/</kbd>
+                        <span>Focus search field</span>
+                    </div>
+                    <div class="shortcut">
+                        <kbd>R</kbd>
+                        <span>Refresh job list</span>
+                    </div>
+                    <div class="shortcut">
+                        <kbd>Esc</kbd>
+                        <span>Clear filters</span>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Job Details Section -->
+            <section class="content-section" id="job-details">
+                <h2>Job Details</h2>
+                <p>
+                    Click on any job row (or the "View" button) to open the job details page.
+                    This provides comprehensive information about the job.
+                </p>
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/jobs/detail-queued.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/jobs/detail-queued.png" alt="Queued job showing queue position" loading="lazy">
+                    </picture>
+                    <figcaption>Queued job with position indicator</figcaption>
+                </figure>
+
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/jobs/detail-running.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/jobs/detail-running.png" alt="Running job detail with progress and logs" loading="lazy">
+                    </picture>
+                    <figcaption>Running job with live progress</figcaption>
+                </figure>
+
+
+
+
+<h3>Details Page Sections</h3>
+                
+                <div class="state-cards">
+                    <div class="state-card" style="border-left-color: var(--color-primary);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-primary-bg); color: var(--color-primary);">Header</span>
+                        </div>
+                        <p>Job ID, customer, status badge, and quick action buttons.</p>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: var(--color-info);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-info-bg); color: var(--color-info);">Progress</span>
+                        </div>
+                        <p>Visual progress bar showing phases: Download → Restore → Post-SQL.</p>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: var(--color-warning);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">Details</span>
+                        </div>
+                        <p>Full job configuration: backup date, target database, host, options.</p>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: var(--color-success);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-success-bg); color: var(--color-success);">Logs</span>
+                        </div>
+                        <p>Expandable log viewer with real-time streaming for active jobs.</p>
+                    </div>
+                </div>
+                
+                <h3>Progress Phases</h3>
+                <p>
+                    For running jobs, the progress bar shows which phase is currently executing:
+                </p>
+                <ul class="feature-list">
+                    <li><strong>DOWNLOAD</strong> — Downloading backup from S3</li>
+                    <li><strong>RESTORE</strong> — Restoring database with myloader</li>
+                    <li><strong>POST_SQL</strong> — Running post-restore SQL scripts</li>
+                    <li><strong>CLEANUP</strong> — Removing temporary files</li>
+                </ul>
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/jobs/detail-download-progress.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/jobs/detail-download-progress.png" alt="Job downloading backup with progress bar" loading="lazy">
+                    </picture>
+                    <figcaption>Download phase with progress bar</figcaption>
+                </figure>
+
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/jobs/detail-restore-progress.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/jobs/detail-restore-progress.png" alt="Job restoring tables with progress indicator" loading="lazy">
+                    </picture>
+                    <figcaption>Restore phase with table progress</figcaption>
+                </figure>
+
+
+
+
+<h3>Connection Info</h3>
+                <p>
+                    For completed jobs, the details page shows connection information for the restored database:
+                </p>
+                <div class="terminal-window" style="transform: none;">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
+                        <span class="terminal-title">Connection Details</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line output">Host:     staging-mysql.example.com</div>
+                        <div class="terminal-line output">Port:     3306</div>
+                        <div class="terminal-line output">Database: acme_staging</div>
+                        <div class="terminal-line output">User:     (your credentials)</div>
+                    </div>
+                </div>
+
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/jobs/detail-complete.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/jobs/detail-complete.png" alt="Completed job with connection info" loading="lazy">
+                    </picture>
+                    <figcaption>Completed job showing connection details</figcaption>
+                </figure>
+</section>
+            
+            <!-- Job Actions Section -->
+            <section class="content-section" id="job-actions">
+                <h2>Job Actions</h2>
+                <p>
+                    Depending on job status, different actions are available.
+                </p>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Action</th>
+                            <th>Available When</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>View</code></td>
+                            <td>Always</td>
+                            <td>Open job details page</td>
+                        </tr>
+                        <tr>
+                            <td><code>Cancel</code></td>
+                            <td>Queued, Running</td>
+                            <td>Cancel the job (with confirmation)</td>
+                        </tr>
+                        <tr>
+                            <td><code>Retry</code></td>
+                            <td>Failed, Canceled</td>
+                            <td>Create a new job with same parameters</td>
+                        </tr>
+                        <tr>
+                            <td><code>Copy ID</code></td>
+                            <td>Always</td>
+                            <td>Copy job ID to clipboard</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Cancel During Restore</strong><br>
+                        If you cancel a job during the RESTORE phase, the partially restored database will 
+                        be automatically dropped to avoid leaving inconsistent data.
+                    </div>
+                </div>
+
+
+
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/jobs/detail-failed.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/jobs/detail-failed.png" alt="Failed job showing error details" loading="lazy">
+                    </picture>
+                    <figcaption>Failed job with error message and retry option</figcaption>
+                </figure>
+
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/jobs/detail-canceling.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/jobs/detail-canceling.png" alt="Job in canceling state" loading="lazy">
+                    </picture>
+                    <figcaption>Job being canceled</figcaption>
+                </figure>
+
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/jobs/bulk-actions.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/jobs/bulk-actions.png" alt="Multiple jobs selected with bulk action buttons" loading="lazy">
+                    </picture>
+                    <figcaption>1. Selection checkboxes — 2. Bulk action toolbar</figcaption>
+                </figure>
+</section>
+            
+            <!-- Status Badges Section -->
+            <section class="content-section" id="status-badges">
+                <h2>Status Badges</h2>
+                <p>
+                    Jobs display color-coded status badges for quick identification.
+                </p>
+                
+                <div class="state-cards">
+                    <div class="state-card queued">
+                        <div class="state-header">
+                            <span class="state-badge queued">QUEUED</span>
+                            <span class="state-emoji">⏳</span>
+                        </div>
+                        <p>Job is waiting in the queue for a worker to pick it up.</p>
+                    </div>
+                    
+                    <div class="state-card running">
+                        <div class="state-header">
+                            <span class="state-badge running">RUNNING</span>
+                            <span class="state-emoji">⚙️</span>
+                        </div>
+                        <p>Job is actively being processed. Check the phase for current step.</p>
+                    </div>
+                    
+                    <div class="state-card complete">
+                        <div class="state-header">
+                            <span class="state-badge complete">COMPLETE</span>
+                            <span class="state-emoji">✅</span>
+                        </div>
+                        <p>Job finished successfully. Database is ready to use.</p>
+                    </div>
+                    
+                    <div class="state-card failed">
+                        <div class="state-header">
+                            <span class="state-badge failed">FAILED</span>
+                            <span class="state-emoji">❌</span>
+                        </div>
+                        <p>Job encountered an error. Check logs for details.</p>
+                    </div>
+                    
+                    <div class="state-card canceled">
+                        <div class="state-header">
+                            <span class="state-badge canceled">CANCELED</span>
+                            <span class="state-emoji">🚫</span>
+                        </div>
+                        <p>Job was canceled by user before completion.</p>
+                    </div>
+                </div>
+</section>
+            
+            <!-- Next Steps -->
+            <section class="content-section">
+                <h2>Next Steps</h2>
+                <div class="category-cards">
+                    <a href="profile.html" class="category-card">
+                        <div class="category-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                        </div>
+                        <div class="category-content">
+                            <h3>Profile & API Keys</h3>
+                            <p>Manage your account settings and create API keys.</p>
+                        </div>
+                        <svg class="category-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    </a>
+                    <a href="../troubleshooting/index.html" class="category-card">
+                        <div class="category-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                        </div>
+                        <div class="category-content">
+                            <h3>Troubleshooting</h3>
+                            <p>Common issues and how to resolve them.</p>
+                        </div>
+                        <svg class="category-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    </a>
+                </div>
+            </section>
+            
+        </main>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="help-footer">
+        <div class="footer-content">
+            <p>pullDB Documentation</p>
+            <div class="footer-links">
+                <a href="../../index.html">Help Home</a>
+                <a href="../troubleshooting/index.html">Troubleshooting</a>
+            </div>
+        </div>
+    </footer>
+    
+    <style>
+        .keyboard-shortcuts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .shortcut {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--color-bg-secondary);
+            border-radius: 8px;
+        }
+        
+        .shortcut kbd {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            padding: 0 8px;
+            background: var(--color-bg-tertiary);
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .shortcut span {
+            color: var(--color-text-secondary);
+            font-size: 0.9rem;
+        }
+    </style>
+    
+    <script src="../../js/help.js"></script>
+    <script src="../../js/search.js"></script>
+</body>
+</html>

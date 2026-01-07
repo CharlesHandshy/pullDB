@@ -67,6 +67,15 @@ async def admin_page(
     if hasattr(state.job_repo, "get_active_jobs"):
         active_jobs = state.job_repo.get_active_jobs()
 
+    # Get pending API keys count
+    pending_keys_count = 0
+    if hasattr(state, "auth_repo") and state.auth_repo:
+        try:
+            pending_keys = state.auth_repo.get_pending_api_keys()
+            pending_keys_count = len(pending_keys)
+        except Exception:
+            pass
+
     stats = {
         "total_users": len(users),
         "admin_users": len([u for u in users if u.is_admin]),
@@ -75,6 +84,7 @@ async def admin_page(
         "active_jobs": len(active_jobs),
         "running_jobs": len([j for j in active_jobs if j.status == JobStatus.RUNNING]),
         "pending_jobs": len([j for j in active_jobs if j.status == JobStatus.QUEUED]),
+        "pending_keys": pending_keys_count,
     }
 
     return templates.TemplateResponse(
@@ -5013,3 +5023,220 @@ async def admin_unlock_database(
             url=f"{base_url}?{urlencode({'error': str(e)})}",
             status_code=303,
         )
+
+
+# =============================================================================
+# API Keys Management
+# =============================================================================
+
+
+@router.get("/api-keys", response_class=HTMLResponse)
+async def api_keys_page(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> HTMLResponse:
+    """Render the API Keys management page.
+    
+    Lists all pending API keys for admin approval, and provides
+    ability to approve or revoke keys.
+    """
+    pending_keys = []
+    all_keys_count = 0
+    
+    if hasattr(state, "auth_repo") and state.auth_repo:
+        # Get pending keys (awaiting approval)
+        pending_keys = state.auth_repo.get_pending_api_keys()
+        
+        # Enrich with username lookups
+        for key in pending_keys:
+            if "username" not in key and "user_id" in key:
+                key_user = state.user_repo.get_user_by_id(key["user_id"])
+                key["username"] = key_user.username if key_user else "unknown"
+    
+    stats = {
+        "pending": len(pending_keys),
+    }
+    
+    return templates.TemplateResponse(
+        "features/admin/api_keys.html",
+        {
+            "request": request,
+            "active_nav": "admin",
+            "user": user,
+            "pending_keys": pending_keys,
+            "stats": stats,
+            "breadcrumbs": get_breadcrumbs("admin_api_keys"),
+        },
+    )
+
+
+@router.post("/api-keys/{key_id}/approve")
+async def approve_api_key(
+    key_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Approve a pending API key. Returns JSON for AJAX calls."""
+    if not hasattr(state, "auth_repo") or not state.auth_repo:
+        return {"success": False, "message": "Authentication service not available"}
+    
+    try:
+        # Get key info for audit
+        key_info = state.auth_repo.get_api_key_info(key_id)
+        if not key_info:
+            return {"success": False, "message": f"API key '{key_id}' not found"}
+        
+        if key_info.get("approved_at"):
+            return {"success": False, "message": "Key is already approved"}
+        
+        # Approve the key
+        success = state.auth_repo.approve_api_key(key_id, admin.user_id)
+        if not success:
+            return {"success": False, "message": "Failed to approve key"}
+        
+        # Get target user info for message
+        target_user = state.user_repo.get_user_by_id(key_info["user_id"])
+        target_name = target_user.username if target_user else "unknown"
+        host_name = key_info.get("host_name") or "unknown"
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="api_key_approved",
+                target_user_id=key_info["user_id"],
+                detail=f"Admin {admin.username} approved API key for {target_name} (host: {host_name})",
+            )
+        
+        return {
+            "success": True,
+            "message": f"API key approved for {target_name} ({host_name})",
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@router.post("/api-keys/{key_id}/revoke")
+async def revoke_api_key_web(
+    key_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Revoke an API key. Returns JSON for AJAX calls."""
+    if not hasattr(state, "auth_repo") or not state.auth_repo:
+        return {"success": False, "message": "Authentication service not available"}
+    
+    try:
+        # Get key info for audit
+        key_info = state.auth_repo.get_api_key_info(key_id)
+        if not key_info:
+            return {"success": False, "message": f"API key '{key_id}' not found"}
+        
+        # Revoke the key
+        success = state.auth_repo.revoke_api_key(key_id)
+        if not success:
+            return {"success": False, "message": "Failed to revoke key"}
+        
+        # Get target user info for message
+        target_user = state.user_repo.get_user_by_id(key_info["user_id"])
+        target_name = target_user.username if target_user else "unknown"
+        host_name = key_info.get("host_name") or "unknown"
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="api_key_revoked",
+                target_user_id=key_info["user_id"],
+                detail=f"Admin {admin.username} revoked API key for {target_name} (host: {host_name})",
+            )
+        
+        return {
+            "success": True,
+            "message": f"API key revoked for {target_name} ({host_name})",
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@router.delete("/api-keys/{key_id}")
+async def delete_api_key_web(
+    key_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Permanently delete an API key. Returns JSON for AJAX calls.
+    
+    Unlike revoke, this removes the key from the database entirely.
+    The key cannot be reactivated after deletion.
+    """
+    if not hasattr(state, "auth_repo") or not state.auth_repo:
+        return {"success": False, "message": "Authentication service not available"}
+    
+    try:
+        # Get key info for audit before deletion
+        key_info = state.auth_repo.get_api_key_info(key_id)
+        if not key_info:
+            return {"success": False, "message": f"API key '{key_id}' not found"}
+        
+        # Store info for audit logging before we delete
+        target_user_id = key_info["user_id"]
+        target_user = state.user_repo.get_user_by_id(target_user_id)
+        target_name = target_user.username if target_user else "unknown"
+        host_name = key_info.get("host_name") or "unknown"
+        
+        # Delete the key permanently
+        success = state.auth_repo.delete_api_key(key_id)
+        if not success:
+            return {"success": False, "message": "Failed to delete key"}
+        
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="api_key_deleted",
+                target_user_id=target_user_id,
+                detail=f"Admin {admin.username} deleted API key for {target_name} (host: {host_name})",
+            )
+        
+        return {
+            "success": True,
+            "message": f"API key deleted for {target_name} ({host_name})",
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@router.get("/api-keys/user/{user_id}")
+async def get_user_keys(
+    user_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Get all API keys for a specific user. Returns JSON."""
+    if not hasattr(state, "auth_repo") or not state.auth_repo:
+        return {"success": False, "message": "Authentication service not available", "keys": []}
+    
+    try:
+        keys = state.auth_repo.get_api_keys_for_user(user_id)
+        
+        # Enrich with status info
+        enriched_keys = []
+        for key in keys:
+            enriched_keys.append({
+                "key_id": key["key_id"],
+                "name": key.get("name"),
+                "host_name": key.get("host_name"),
+                "created_at": key["created_at"].isoformat() if key.get("created_at") else None,
+                "created_from_ip": key.get("created_from_ip"),
+                "last_used_at": key["last_used_at"].isoformat() if key.get("last_used_at") else None,
+                "last_used_ip": key.get("last_used_ip"),
+                "is_active": bool(key.get("is_active", False)),
+                "is_approved": key.get("approved_at") is not None,
+                "approved_at": key["approved_at"].isoformat() if key.get("approved_at") else None,
+            })
+        
+        return {"success": True, "keys": enriched_keys}
+    except Exception as e:
+        return {"success": False, "message": str(e), "keys": []}

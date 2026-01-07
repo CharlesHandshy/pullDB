@@ -1,6 +1,6 @@
 # pullDB Installation & Upgrade Guide
 
-> **Version**: 0.2.2 | **Last Updated**: January 5, 2026
+> **Version**: 1.0.0 | **Last Updated**: January 6, 2026
 
 This guide covers installing and upgrading pullDB packages on a database server.
 
@@ -83,9 +83,7 @@ sudo apt-get install python3.12 python3.12-venv
 |------|---------|
 | Install server package | `sudo dpkg -i pulldb_X.X.X_amd64.deb` |
 | Install CLI client | `sudo dpkg -i pulldb-client_X.X.X_amd64.deb` |
-| Check migration status | `sudo /opt/pulldb.service/scripts/pulldb-migrate.sh status` |
-| Apply migrations | `sudo /opt/pulldb.service/scripts/pulldb-migrate.sh up` |
-| Verify schema | `sudo /opt/pulldb.service/scripts/pulldb-migrate.sh verify` |
+| Check schema status | `sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations"` |
 | Check all services | `sudo systemctl status pulldb-worker pulldb-api pulldb-web` |
 | View settings | `sudo /opt/pulldb.service/venv/bin/pulldb-admin settings list` |
 
@@ -98,7 +96,7 @@ sudo apt-get install python3.12 python3.12-venv
 #### Step 1: Install the Package
 
 ```bash
-sudo dpkg -i pulldb_0.2.0_amd64.deb
+sudo dpkg -i pulldb_1.0.0_amd64.deb
 ```
 
 The package will:
@@ -112,7 +110,7 @@ The package will:
 > **IMPORTANT**: Save the admin credentials displayed at the end of installation!
 > They are also saved to `/opt/pulldb.service/ADMIN_CREDENTIALS.txt` (root-only readable).
 
-**Note on Service Account**: The `pulldb_service` account in the database is a Service Bootstrap/CLI Admin Account (SBCACC). It allows systemd services like `pulldb-retention.timer` to execute admin CLI commands. This account has no password and cannot be used for web login.
+**Note on Service Account**: The `pulldb_service` account in the database is a Service Bootstrap/CLI Admin Account (sbcacc). It allows systemd services like `pulldb-retention.timer` to execute admin CLI commands. This account has no password and cannot be used for web login.
 
 #### Step 2: Configure Environment
 
@@ -136,26 +134,17 @@ PULLDB_API_MYSQL_USER=pulldb_api
 PULLDB_WORKER_MYSQL_USER=pulldb_worker
 ```
 
-### Step 3: Install dbmate (if not present)
+### Step 3: Verify Database Schema
+
+The package installer automatically applies all schema files from `schema/pulldb_service/`.
+To verify the schema was applied correctly:
 
 ```bash
-sudo /opt/pulldb.service/scripts/install-dbmate.sh
+# Check applied schema files
+sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
 ```
 
-### Step 4: Apply Database Migrations
-
-```bash
-# Check what migrations are pending
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh status
-
-# Apply all pending migrations
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh up
-
-# Verify schema is correct
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh verify
-```
-
-### Step 5: Start Services
+### Step 4: Start Services
 
 ```bash
 sudo systemctl start pulldb-worker
@@ -209,7 +198,7 @@ Log in with the admin credentials displayed during installation (or check `/opt/
 For systems that only need CLI access (no background services):
 
 ```bash
-sudo dpkg -i pulldb-client_0.2.0_amd64.deb
+sudo dpkg -i pulldb-client_1.0.0_amd64.deb
 
 # Verify installation
 pulldb --help
@@ -219,34 +208,28 @@ pulldb --help
 
 ## Upgrading
 
-> **IMPORTANT**: `dpkg -i` installs files but does NOT automatically run database migrations.
+> **Note**: The package installer automatically applies new schema files during installation.
 
 ### Standard Upgrade Process
 
 ```bash
-# Step 1: Install the new package
+# Step 1: Install the new package (schema applied automatically)
 sudo dpkg -i pulldb_0.0.4_amd64.deb
 
-# Step 2: Check for pending migrations
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh status
+# Step 2: Verify schema was updated
+sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
 
-# Step 3: Apply migrations
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh up
-
-# Step 4: Verify schema
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh verify
-
-# Step 5: Restart services (to pick up code changes)
+# Step 3: Restart services (to pick up code changes)
 sudo systemctl restart pulldb-worker pulldb-api
 
-# Step 6: Verify
+# Step 4: Verify
 sudo /opt/pulldb.service/venv/bin/pulldb --version
 sudo /opt/pulldb.service/venv/bin/pulldb-admin settings list
 ```
 
 ### Using the Upgrade Script
 
-For convenience, there's an upgrade script that handles steps 2-5:
+For convenience, there's an upgrade script that handles service restarts:
 
 ```bash
 # Install package first
@@ -258,20 +241,16 @@ sudo /opt/pulldb.service/scripts/upgrade_pulldb.sh
 
 The upgrade script will:
 1. Stop the worker service
-2. Run `pulldb-migrate up --yes`
-3. Update Python packages
-4. Restart the worker service
+2. Update Python packages
+3. Restart the worker service
 
 ### Rollback (if needed)
 
-If a migration fails:
+If an upgrade fails:
 
 ```bash
-# Check what went wrong
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh status
-
-# Rollback last migration
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh rollback
+# Check what schema files are applied
+sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
 
 # Install previous version
 sudo dpkg -i pulldb_0.0.3_amd64.deb
@@ -281,29 +260,14 @@ sudo dpkg -i pulldb_0.0.3_amd64.deb
 
 ## Command Reference (Full Paths)
 
-### Migration Commands
+### Schema Commands
 
 ```bash
-# Check migration status
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh status
+# Check applied schema files
+sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
 
-# Apply pending migrations
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh up
-
-# Apply without confirmation prompt
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh up --yes
-
-# Rollback last migration
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh rollback
-
-# Verify schema integrity
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh verify
-
-# Wait for database to be available
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh wait
-
-# Create new migration
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh new <migration_name>
+# List schema files in package
+ls -la /opt/pulldb.service/schema/pulldb_service/*.sql
 ```
 
 ### Admin Commands
@@ -385,8 +349,8 @@ sudo /opt/pulldb.service/scripts/uninstall_pulldb.sh
 | `/opt/pulldb.service/.env` | Environment configuration |
 | `/opt/pulldb.service/venv/` | Python virtual environment |
 | `/opt/pulldb.service/scripts/` | Utility scripts |
-| `/opt/pulldb.service/migrations/` | Database migration files |
-| `/opt/pulldb.service/bin/` | Binary tools (myloader, dbmate) |
+| `/opt/pulldb.service/schema/pulldb_service/` | Database schema files |
+| `/opt/pulldb.service/bin/` | Binary tools (myloader) |
 | `/opt/pulldb.service/logs/` | Application logs |
 | `/opt/pulldb.service/work/` | Working directory for restores |
 | `/mnt/data/work/pulldb.service/` | Default work directory (configurable) |
@@ -409,17 +373,17 @@ dpkg -I pulldb_0.0.4_amd64.deb
 dpkg -c pulldb_0.0.4_amd64.deb
 ```
 
-### Migration Fails
+### Schema Update Fails
 
 ```bash
-# Check status
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh status
+# Check applied schema files
+sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at"
 
-# Enable verbose mode
-sudo /opt/pulldb.service/scripts/pulldb-migrate.sh --verbose up
+# List available schema files
+ls -la /opt/pulldb.service/schema/pulldb_service/*.sql
 
-# Check database directly
-sudo mysql -e "SELECT * FROM pulldb_service.schema_migrations"
+# Manually apply a specific schema file (if needed)
+sudo mysql pulldb_service < /opt/pulldb.service/schema/pulldb_service/00716_api_keys_host_tracking.sql
 ```
 
 ### Services Won't Start

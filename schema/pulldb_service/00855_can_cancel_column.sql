@@ -1,4 +1,3 @@
--- migrate:up
 -- Add can_cancel column to jobs table
 -- This flag is TRUE by default and flips to FALSE atomically when restore begins.
 -- Once FALSE, the cancel button is hidden and cancel requests are rejected.
@@ -9,7 +8,3 @@ ALTER TABLE jobs ADD COLUMN can_cancel BOOLEAN NOT NULL DEFAULT TRUE
 
 -- Add index for efficient filtering of cancelable jobs
 CREATE INDEX idx_jobs_can_cancel ON jobs(can_cancel);
-
--- migrate:down
-DROP INDEX idx_jobs_can_cancel ON jobs;
-ALTER TABLE jobs DROP COLUMN can_cancel;

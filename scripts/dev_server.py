@@ -67,6 +67,10 @@ class DevAPIState:
             "name": "Queue Backlog",
             "description": "Many jobs waiting in queue",
         },
+        "screenshots": {
+            "name": "Screenshots",
+            "description": "Specific job states for documentation screenshots",
+        },
     }
     
     def __init__(self, scenario: str = "minimal") -> None:
@@ -176,8 +180,10 @@ def create_dev_app():
     from pulldb.api.main import app, get_api_state
     
     # Initialize dev state using unified simulation infrastructure
-    # Use "busy" scenario by default for testing (has active jobs and history)
-    dev_state = DevAPIState(scenario="busy")
+    # Use scenario from CLI if available, otherwise default to "busy"
+    global _cli_scenario
+    scenario = _cli_scenario if _cli_scenario else "busy"
+    dev_state = DevAPIState(scenario=scenario)
     
     # Store dev state for access by dev-specific endpoints
     app.state.dev_api_state = dev_state
@@ -562,12 +568,20 @@ def create_dev_app():
     # Background Queue Runner
     # =============================================================================
     # Process one queued job every 15 seconds to simulate worker behavior
+    # Skip queue runner in screenshots scenario to preserve job states
 
     async def queue_runner_loop() -> None:
         """Background task that processes queued jobs periodically."""
         from pulldb.simulation import SimulatedJobRepository
         from pulldb.simulation.core.queue_runner import MockQueueRunner, MockRunnerConfig
         from pulldb.domain.models import JobStatus
+        
+        global _cli_scenario
+        
+        # Skip queue runner in screenshots scenario to preserve specific job states
+        if _cli_scenario == "screenshots":
+            print("  [Queue Runner] Disabled - screenshots scenario preserves job states")
+            return
 
         job_repo = SimulatedJobRepository()
         # 10% failure rate for realistic simulation
@@ -658,9 +672,35 @@ def _load_dev_extensions() -> str:
 # =============================================================================
 
 
+# Global variable to store scenario from command line
+_cli_scenario: str | None = None
+
+
 def main() -> None:
     """Run the development server."""
+    import argparse
+    
+    global _cli_scenario
+    
     from pulldb.web.dependencies import templates
+
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="pullDB Development Server")
+    parser.add_argument(
+        "--scenario",
+        choices=list(DevAPIState.SCENARIOS.keys()),
+        default="busy",
+        help="Initial simulation scenario (default: busy)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8111,
+        help="Port to run on (default: 8111)"
+    )
+    args = parser.parse_args()
+    
+    _cli_scenario = args.scenario
 
     # Security: Refuse to enable dev mode in production environment
     if os.environ.get("PULLDB_ENV", "").lower() == "production":
@@ -678,23 +718,25 @@ def main() -> None:
     # Keep these for any template logic that checks dev mode
     templates.env.globals["dev_mode"] = True
     templates.env.globals["simulation_mode"] = lambda: True
-    templates.env.globals["simulation_scenario_name"] = lambda: "Dev Server Mocks"
+    scenario_name = DevAPIState.SCENARIOS.get(args.scenario, {}).get("name", "Unknown")
+    templates.env.globals["simulation_scenario_name"] = lambda: scenario_name
 
     print("\n" + "=" * 60)
     print("  pullDB Development Server")
     print("=" * 60)
+    print(f"\n  Scenario: {scenario_name} ({args.scenario})")
     print("\n  Login credentials (password: PullDB_Dev2025!):")
     print("    devuser    - USER role")
     print("    devmanager - MANAGER role")
     print("    devadmin   - ADMIN role")
-    print("\n  Open: http://127.0.0.1:8111/web/login")
+    print(f"\n  Open: http://127.0.0.1:{args.port}/web/login")
     print("  Dev toolbar: Press Ctrl+` to toggle")
     print("=" * 60 + "\n")
 
     # Create app using the real API app with dependency overrides
     app = create_dev_app()
 
-    uvicorn.run(app, host="0.0.0.0", port=8111, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="info")
 
 
 if __name__ == "__main__":

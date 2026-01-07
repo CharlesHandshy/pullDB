@@ -81,10 +81,18 @@ def _get_user_info(username: str) -> tuple[str, str | None]:
     Returns:
         Tuple of (username, user_code) where user_code may be None if not found.
     """
+    from pulldb.cli.auth import has_api_credentials
+    
+    # Skip API call if no credentials - user is likely registering
+    if not has_api_credentials():
+        return username, None
+    
     try:
         base_url, timeout = _load_api_config()
-        url = f"{base_url}/api/users/{username}"
-        response = requests_module.get(url, timeout=timeout)
+        path = f"/api/users/{username}"
+        url = f"{base_url}{path}"
+        headers = get_auth_headers(method="GET", path=path, body=None)
+        response = requests_module.get(url, headers=headers, timeout=timeout)
         if response.status_code == 200:
             data = response.json()
             return username, data.get("user_code")
@@ -97,6 +105,9 @@ class UserState:
     """User registration state for CLI gating."""
 
     NOT_REGISTERED = "not_registered"
+    NO_HOST_CREDENTIALS = "no_host_credentials"  # User exists but no local API key
+    PENDING_APPROVAL = "pending_approval"  # Has credentials but API key not approved
+    KEY_REVOKED = "key_revoked"  # Has credentials but API key has been revoked
     DISABLED = "disabled"
     ENABLED = "enabled"
 
@@ -109,15 +120,79 @@ def _get_user_state(username: str) -> tuple[str, str | None, bool]:
 
     Returns:
         Tuple of (state, user_code, has_password) where:
-        - state is one of UserState.NOT_REGISTERED, DISABLED, or ENABLED
+        - state is one of UserState.NOT_REGISTERED, NO_HOST_CREDENTIALS, DISABLED, or ENABLED
         - user_code is the user's code if registered, else None
         - has_password indicates if password is set (for setpass flow)
     """
+    from pulldb.cli.auth import has_api_credentials
+    
+    # If no credentials, check if user exists in database via unauthenticated endpoint
+    if not has_api_credentials():
+        try:
+            base_url, timeout = _load_api_config()
+            # Use the exists endpoint which doesn't require auth
+            url = f"{base_url}/api/auth/user-exists/{username}"
+            response = requests_module.get(url, timeout=timeout)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("exists", False):
+                    # User exists but no credentials on this host
+                    return UserState.NO_HOST_CREDENTIALS, data.get("user_code"), False
+        except Exception:
+            pass  # Fall through to NOT_REGISTERED on error
+        return UserState.NOT_REGISTERED, None, False
+    
     try:
         base_url, timeout = _load_api_config()
-        url = f"{base_url}/api/users/{username}"
-        response = requests_module.get(url, timeout=timeout)
+        path = f"/api/users/{username}"
+        url = f"{base_url}{path}"
+        headers = get_auth_headers(method="GET", path=path, body=None)
+        response = requests_module.get(url, headers=headers, timeout=timeout)
         if response.status_code == 404:
+            return UserState.NOT_REGISTERED, None, False
+        if response.status_code == 401:
+            # Credentials exist but 401 - check error detail to determine reason
+            try:
+                error_detail = response.json().get("detail", "")
+                # Check if the key was revoked
+                if "revoked" in error_detail.lower():
+                    # Get user_code from user-exists endpoint
+                    exists_url = f"{base_url}/api/auth/user-exists/{username}"
+                    exists_resp = requests_module.get(exists_url, timeout=timeout)
+                    if exists_resp.status_code == 200:
+                        data = exists_resp.json()
+                        return UserState.KEY_REVOKED, data.get("user_code"), False
+                    return UserState.KEY_REVOKED, None, False
+                # Check if pending approval
+                if "pending" in error_detail.lower():
+                    exists_url = f"{base_url}/api/auth/user-exists/{username}"
+                    exists_resp = requests_module.get(exists_url, timeout=timeout)
+                    if exists_resp.status_code == 200:
+                        data = exists_resp.json()
+                        return UserState.PENDING_APPROVAL, data.get("user_code"), False
+                    return UserState.PENDING_APPROVAL, None, False
+                # Check if key was deleted (no longer exists in database)
+                # "Invalid API key" means the key_id doesn't exist at all
+                if "invalid api key" in error_detail.lower():
+                    exists_url = f"{base_url}/api/auth/user-exists/{username}"
+                    exists_resp = requests_module.get(exists_url, timeout=timeout)
+                    if exists_resp.status_code == 200:
+                        data = exists_resp.json()
+                        if data.get("exists", False):
+                            # User exists but key was deleted - treat as no credentials
+                            return UserState.NO_HOST_CREDENTIALS, data.get("user_code"), False
+                    return UserState.NOT_REGISTERED, None, False
+                # Fallback: check if user exists (for unknown 401 reasons)
+                exists_url = f"{base_url}/api/auth/user-exists/{username}"
+                exists_resp = requests_module.get(exists_url, timeout=timeout)
+                if exists_resp.status_code == 200:
+                    data = exists_resp.json()
+                    if data.get("exists", False):
+                        # User exists, has credentials, unknown 401 - could be signature error
+                        # Treat as no valid credentials (key may have been deleted/corrupted)
+                        return UserState.NO_HOST_CREDENTIALS, data.get("user_code"), False
+            except Exception:
+                pass
             return UserState.NOT_REGISTERED, None, False
         if response.status_code == 200:
             data = response.json()
@@ -175,9 +250,11 @@ def _resolve_job_id(job_id_or_prefix: str) -> str:
 
     # Call resolution API
     base_url, timeout = _load_api_config()
-    url = f"{base_url}/api/jobs/resolve/{job_id_or_prefix}"
+    path = f"/api/jobs/resolve/{job_id_or_prefix}"
+    url = f"{base_url}{path}"
+    headers = get_auth_headers(method="GET", path=path, body=None)
     try:
-        response = requests_module.get(url, timeout=timeout)
+        response = requests_module.get(url, headers=headers, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
@@ -316,6 +393,23 @@ def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
         ) from exc
+    # Handle authentication failures
+    if response.status_code == 401:
+        detail = ""
+        try:
+            err_payload = response.json()
+            if isinstance(err_payload, dict):
+                detail = err_payload.get("detail", "")
+        except ValueError:
+            pass
+        if "pending approval" in detail.lower():
+            raise click.ClickException(
+                "API key is pending approval. Contact an administrator to approve your key."
+            )
+        raise click.ClickException(
+            "Authentication required. Run 'pulldb register' to create an account, "
+            "or check your API credentials in ~/.pulldb/credentials"
+        )
     # Handle rate limiting (HTTP 429) with user-friendly message
     if response.status_code == 429:
         detail = ""
@@ -358,6 +452,23 @@ def _api_get(path: str, params: dict[str, t.Any]) -> list[dict[str, t.Any]]:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
         ) from exc
+    # Handle authentication failures
+    if response.status_code == 401:
+        detail = ""
+        try:
+            err_payload = response.json()
+            if isinstance(err_payload, dict):
+                detail = err_payload.get("detail", "")
+        except ValueError:
+            pass
+        if "pending approval" in detail.lower():
+            raise click.ClickException(
+                "API key is pending approval. Contact an administrator to approve your key."
+            )
+        raise click.ClickException(
+            "Authentication required. Run 'pulldb register' to create an account, "
+            "or check your API credentials in ~/.pulldb/credentials"
+        )
     if response.status_code >= 400:
         raise click.ClickException(_format_api_error(response))
     payload = _parse_json_response(response)
@@ -377,6 +488,23 @@ def _api_get_object(path: str, params: dict[str, t.Any]) -> dict[str, t.Any]:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
         ) from exc
+    # Handle authentication failures
+    if response.status_code == 401:
+        detail = ""
+        try:
+            err_payload = response.json()
+            if isinstance(err_payload, dict):
+                detail = err_payload.get("detail", "")
+        except ValueError:
+            pass
+        if "pending approval" in detail.lower():
+            raise click.ClickException(
+                "API key is pending approval. Contact an administrator to approve your key."
+            )
+        raise click.ClickException(
+            "Authentication required. Run 'pulldb register' to create an account, "
+            "or check your API credentials in ~/.pulldb/credentials"
+        )
     if response.status_code >= 400:
         raise click.ClickException(_format_api_error(response))
     payload = _parse_json_response(response)
@@ -552,6 +680,8 @@ def cli(ctx: click.Context) -> None:
 
     Access control:
     - Not registered: Only 'register', 'setpass', '--help', '--version' allowed
+    - No host credentials: Only 'register', 'setpass', '--help', '--version' allowed
+    - Key revoked: Only 'register', '--help', '--version' allowed
     - Registered but disabled: Show contact admin message
     - Registered and enabled: Full access
 
@@ -559,6 +689,10 @@ def cli(ctx: click.Context) -> None:
     """
     # Commands that unregistered users can access
     UNREGISTERED_ALLOWED_COMMANDS = {"register", "setpass", None}  # None = help display
+    # Commands for users who exist but don't have credentials on this host
+    NO_CREDENTIALS_ALLOWED_COMMANDS = {"register", "setpass", None}
+    # Commands for users whose key has been revoked
+    KEY_REVOKED_ALLOWED_COMMANDS = {"register", None}
 
     username = _get_calling_username()
     user_state, user_code, _ = _get_user_state(username)
@@ -581,6 +715,45 @@ def cli(ctx: click.Context) -> None:
             click.echo("  pulldb register")
             click.echo("")
             click.echo("After registering, contact an administrator to enable your account.")
+            ctx.exit(1)
+
+    elif user_state == UserState.NO_HOST_CREDENTIALS:
+        if ctx.invoked_subcommand not in NO_CREDENTIALS_ALLOWED_COMMANDS:
+            click.echo("pullDB - Database restore tool")
+            click.echo(f"User: {username} (code: {user_code})")
+            click.echo("")
+            click.echo("This machine is not registered with your pullDB account.")
+            click.echo("")
+            click.echo("To register this machine:")
+            click.echo("  pulldb register")
+            click.echo("")
+            click.echo("After requesting, contact an administrator to approve the key.")
+            ctx.exit(1)
+
+    elif user_state == UserState.PENDING_APPROVAL:
+        # User has credentials on this host but key is not yet approved
+        click.echo("pullDB - Database restore tool")
+        click.echo(f"User: {username} (code: {user_code})")
+        click.echo("")
+        click.echo("Your API key for this machine is pending approval.")
+        click.echo("Contact an administrator to approve your key.")
+        click.echo("")
+        click.echo("Once approved, you can use 'pulldb restore' from this machine.")
+        ctx.exit(1)
+
+    elif user_state == UserState.KEY_REVOKED:
+        # User has credentials but the key has been revoked
+        # Allow register to get a new key
+        if ctx.invoked_subcommand not in KEY_REVOKED_ALLOWED_COMMANDS:
+            click.echo("pullDB - Database restore tool")
+            click.echo(f"User: {username} (code: {user_code})")
+            click.echo("")
+            click.echo("Your API key for this machine has been revoked.")
+            click.echo("")
+            click.echo("To request a new key:")
+            click.echo("  pulldb register")
+            click.echo("")
+            click.echo("Contact an administrator if you believe this is an error.")
             ctx.exit(1)
 
     elif user_state == UserState.DISABLED:
@@ -606,6 +779,37 @@ def cli(ctx: click.Context) -> None:
             click.echo("  pulldb register")
             click.echo("")
             click.echo("After registering, contact an administrator to enable your account.")
+        elif user_state == UserState.NO_HOST_CREDENTIALS:
+            # User exists but no credentials on this host
+            click.echo("pullDB - Database restore tool")
+            click.echo(f"User: {username} (code: {user_code})")
+            click.echo("")
+            click.echo("This machine is not registered with your pullDB account.")
+            click.echo("")
+            click.echo("To register this machine:")
+            click.echo("  pulldb register")
+            click.echo("")
+            click.echo("After requesting, contact an administrator to approve the key.")
+        elif user_state == UserState.PENDING_APPROVAL:
+            # User has credentials but key not approved yet
+            click.echo("pullDB - Database restore tool")
+            click.echo(f"User: {username} (code: {user_code})")
+            click.echo("")
+            click.echo("Your API key for this machine is pending approval.")
+            click.echo("Contact an administrator to approve your key.")
+            click.echo("")
+            click.echo("Once approved, you can use 'pulldb restore' from this machine.")
+        elif user_state == UserState.KEY_REVOKED:
+            # User has credentials but key has been revoked
+            click.echo("pullDB - Database restore tool")
+            click.echo(f"User: {username} (code: {user_code})")
+            click.echo("")
+            click.echo("Your API key for this machine has been revoked.")
+            click.echo("")
+            click.echo("To request a new key:")
+            click.echo("  pulldb register")
+            click.echo("")
+            click.echo("Contact an administrator if you believe this is an error.")
         elif user_code:
             click.echo("pullDB - Database restore tool")
             click.echo(f"User: {username} (code: {user_code})")
@@ -1817,13 +2021,33 @@ def profile_cmd(job_id: str, json_out: bool) -> None:
     resolved_job_id = _resolve_job_id(job_id)
 
     base_url, timeout = _load_api_config()
-    url = f"{base_url}/api/jobs/{resolved_job_id}/profile"
+    path = f"/api/jobs/{resolved_job_id}/profile"
+    url = f"{base_url}{path}"
+    headers = get_auth_headers(method="GET", path=path, body=None)
     try:
-        response = requests_module.get(url, timeout=timeout)
+        response = requests_module.get(url, headers=headers, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
         ) from exc
+
+    # Handle authentication failures
+    if response.status_code == 401:
+        detail = ""
+        try:
+            err_payload = response.json()
+            if isinstance(err_payload, dict):
+                detail = err_payload.get("detail", "")
+        except ValueError:
+            pass
+        if "pending approval" in detail.lower():
+            raise click.ClickException(
+                "API key is pending approval. Contact an administrator to approve your key."
+            )
+        raise click.ClickException(
+            "Authentication required. Run 'pulldb register' to create an account, "
+            "or check your API credentials in ~/.pulldb/credentials"
+        )
 
     if response.status_code == 404:
         error_detail = response.json().get("detail", "Not found")
@@ -1963,13 +2187,33 @@ def hosts_cmd(json_out: bool) -> None:
         pulldb restore customer dbhost=dev  # Use alias in restore
     """
     base_url, timeout = _load_api_config()
-    url = f"{base_url}/api/hosts"
+    path = "/api/hosts"
+    url = f"{base_url}{path}"
+    headers = get_auth_headers(method="GET", path=path, body=None)
     try:
-        response = requests_module.get(url, timeout=timeout)
+        response = requests_module.get(url, headers=headers, timeout=timeout)
     except RequestException as exc:
         raise click.ClickException(
             "Cannot connect to pullDB service. Is the API running?"
         ) from exc
+
+    # Handle authentication failures
+    if response.status_code == 401:
+        detail = ""
+        try:
+            err_payload = response.json()
+            if isinstance(err_payload, dict):
+                detail = err_payload.get("detail", "")
+        except ValueError:
+            pass
+        if "pending approval" in detail.lower():
+            raise click.ClickException(
+                "API key is pending approval. Contact an administrator to approve your key."
+            )
+        raise click.ClickException(
+            "Authentication required. Run 'pulldb register' to create an account, "
+            "or check your API credentials in ~/.pulldb/credentials"
+        )
 
     if response.status_code >= 400:
         raise click.ClickException(_format_api_error(response))
@@ -2004,41 +2248,77 @@ def hosts_cmd(json_out: bool) -> None:
     click.echo("\nUse alias or hostname with: pulldb restore <customer> dbhost=<alias>")
 
 
-@cli.command("register", help="Register a new pullDB account")
+@cli.command("register", help="Register a new pullDB account or request access from a new machine")
 @click.option(
     "--password",
     prompt=True,
     hide_input=True,
-    confirmation_prompt=True,
-    help="Password for the new account (minimum 8 characters)",
+    confirmation_prompt=False,  # Only confirm for new accounts (handled below)
+    help="Password for authentication",
 )
 @click.pass_context
 def register_cmd(ctx: click.Context, password: str) -> None:
-    """Register a new pullDB account.
+    """Register a new pullDB account or request access from a new machine.
 
-    Creates a new user account with your system username. The account
-    will be created in a disabled state and must be enabled by an
-    administrator before you can submit restore jobs.
+    This command handles two scenarios:
+    
+    1. NEW USER: Creates a new user account with your system username.
+       The account will be created in a disabled state and must be
+       enabled by an administrator before you can submit restore jobs.
 
-    After registering:
-    1. Contact an administrator to enable your account
-    2. Once enabled, you can use 'pulldb restore' to submit jobs
+    2. EXISTING USER: If you already have an account but are running
+       from a new machine (or your key was revoked), this command will
+       request a new API key for this host.
+
+    After registering (new or existing):
+    1. Contact an administrator to approve your access
+    2. Once approved, you can use 'pulldb restore' to submit jobs
 
     Example:
         pulldb register
     """
+    import socket
+
     username = ctx.obj.get("username") or _get_calling_username()
+    user_state = ctx.obj.get("user_state", UserState.NOT_REGISTERED)
     base_url, timeout = _load_api_config()
+
+    # Auto-detect hostname for tracking
+    host_name = socket.gethostname()
+
+    # Check if this is an existing user scenario
+    if user_state in (UserState.NO_HOST_CREDENTIALS, UserState.KEY_REVOKED):
+        # Existing user - request a new host key
+        _request_host_key_for_existing_user(
+            username=username,
+            password=password,
+            host_name=host_name,
+            base_url=base_url,
+            timeout=timeout,
+            user_state=user_state,
+        )
+        return
+
+    # New user - require password confirmation
+    confirm_password = click.prompt(
+        "Confirm password",
+        hide_input=True,
+        default="",
+        show_default=False,
+    )
+    if password != confirm_password:
+        raise click.ClickException("Passwords do not match")
 
     # Validate password minimum requirements
     if len(password) < 8:
         raise click.ClickException("Password must be at least 8 characters")
 
-    # Call API to register
+    # Call API to register new user
     url = f"{base_url}/api/auth/register"
     payload = {
         "username": username,
         "password": password,
+        "host_name": host_name,
     }
 
     try:
@@ -2075,9 +2355,16 @@ def register_cmd(ctx: click.Context, password: str) -> None:
             click.echo("Your account is pending approval.")
             click.echo("Contact an administrator to enable your account.")
         elif response.status_code == 409:
-            raise click.ClickException(
-                f"User '{username}' already exists. "
-                "Use 'pulldb setpass' to change your password."
+            # User exists - try to request a new host key instead
+            click.echo(f"User '{username}' already exists. Requesting API key for this machine...")
+            click.echo("")
+            _request_host_key_for_existing_user(
+                username=username,
+                password=password,
+                host_name=host_name,
+                base_url=base_url,
+                timeout=timeout,
+                user_state=UserState.NO_HOST_CREDENTIALS,
             )
         elif response.status_code == 400:
             error_detail = response.json().get("detail", "Invalid request")
@@ -2089,6 +2376,91 @@ def register_cmd(ctx: click.Context, password: str) -> None:
         else:
             error_msg = _format_api_error(response)
             raise click.ClickException(f"Registration failed: {error_msg}")
+
+    except RequestException as exc:
+        raise click.ClickException(f"Cannot connect to API: {exc}") from exc
+
+
+def _request_host_key_for_existing_user(
+    username: str,
+    password: str,
+    host_name: str,
+    base_url: str,
+    timeout: float,
+    user_state: str,
+) -> None:
+    """Request a new API key for an existing user from a new host.
+    
+    This is called when:
+    - User exists but no credentials on this host
+    - User's API key was revoked
+    
+    Args:
+        username: The username
+        password: User's password for authentication
+        host_name: Hostname of this machine
+        base_url: API base URL
+        timeout: Request timeout
+        user_state: Current user state for messaging
+    """
+    from pulldb.cli.auth import save_credentials_to_file
+
+    context_msg = "revoked" if user_state == UserState.KEY_REVOKED else "new machine"
+    
+    url = f"{base_url}/api/auth/request-host-key"
+    payload = {
+        "username": username,
+        "password": password,
+        "host_name": host_name,
+    }
+
+    try:
+        response = requests_module.post(url, json=payload, timeout=timeout)
+
+        if response.status_code == 200:
+            data = response.json()
+            api_key = data.get("api_key")
+            api_secret = data.get("api_secret")
+            user_code = data.get("user_code", "unknown")
+
+            click.echo(f"✓ API key requested for {context_msg}!")
+            click.echo("")
+            click.echo(f"  Username:  {username}")
+            click.echo(f"  User Code: {user_code}")
+            click.echo(f"  Hostname:  {host_name}")
+
+            # Save API credentials to config file
+            if api_key and api_secret:
+                try:
+                    save_credentials_to_file(api_key, api_secret)
+                    click.echo("")
+                    click.echo("✓ API credentials saved to ~/.pulldb/credentials")
+                except Exception as exc:
+                    click.echo("")
+                    click.echo(f"⚠ Could not save credentials: {exc}")
+                    click.echo("")
+                    click.echo("Save these credentials manually:")
+                    click.echo(f"  PULLDB_API_KEY={api_key}")
+                    click.echo(f"  PULLDB_API_SECRET={api_secret}")
+
+            click.echo("")
+            click.echo("⚠ Your API key is PENDING APPROVAL")
+            click.echo("Contact an administrator to approve your key.")
+            click.echo("Commands will fail with 'API key pending approval' until approved.")
+
+        elif response.status_code == 401:
+            raise click.ClickException("Invalid username or password.")
+        elif response.status_code == 403:
+            raise click.ClickException(
+                "Your account is disabled. Contact an administrator."
+            )
+        elif response.status_code == 503:
+            raise click.ClickException(
+                "Authentication service not available. Contact an administrator."
+            )
+        else:
+            error_msg = _format_api_error(response)
+            raise click.ClickException(f"Request failed: {error_msg}")
 
     except RequestException as exc:
         raise click.ClickException(f"Cannot connect to API: {exc}") from exc
