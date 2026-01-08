@@ -129,6 +129,12 @@ class LazyTable {
         this.hasError = false;
         this.pendingFetch = null;
         
+        // Render optimization state
+        this._lastRenderStart = -1;
+        this._lastRenderEnd = -1;
+        this._forceRender = false;
+        this._scrollRenderTimer = null;
+        
         // Column filter distinct values cache
         this.distinctValues = {};  // { columnKey: [] }
 
@@ -503,9 +509,17 @@ class LazyTable {
     handleScroll() {
         if (this.isLoading) return;
         
-        this.scrollTop = this.elements.bodyContainer.scrollTop;
-        this.render();
-        this.checkFetchNeeded();
+        // Cancel any pending scroll render
+        if (this._scrollRenderTimer) {
+            cancelAnimationFrame(this._scrollRenderTimer);
+        }
+        
+        // Use requestAnimationFrame to batch scroll renders at 60fps
+        this._scrollRenderTimer = requestAnimationFrame(() => {
+            this.scrollTop = this.elements.bodyContainer.scrollTop;
+            this.render();
+            this.checkFetchNeeded();
+        });
     }
 
     // =========================================================================
@@ -614,6 +628,7 @@ class LazyTable {
     clearCache() {
         this.cache.clear();
         this.distinctValues = {};
+        this._forceRender = true;  // Force render after cache clear
     }
 
     /**
@@ -673,6 +688,14 @@ class LazyTable {
         const renderStart = Math.max(0, startRow - bufferRows);
         const renderEnd = Math.min(this.filteredCount, startRow + this.visibleRowCount + bufferRows);
         
+        // Skip render if range hasn't changed (reduces DOM thrashing during scroll)
+        if (this._lastRenderStart === renderStart && this._lastRenderEnd === renderEnd && !this._forceRender) {
+            return;
+        }
+        this._lastRenderStart = renderStart;
+        this._lastRenderEnd = renderEnd;
+        this._forceRender = false;
+        
         // Handle empty state
         if (this.filteredCount === 0 && !this.hasError && !this.isLoading) {
             this.showEmpty();
@@ -683,7 +706,7 @@ class LazyTable {
         // Update spacer height
         this.elements.spacer.style.height = `${this.filteredCount * this.rowHeight}px`;
         
-        // Position content
+        // Position content with will-change hint for smoother transforms
         this.elements.content.style.transform = `translateY(${renderStart * this.rowHeight}px)`;
         
         // Render rows
@@ -709,7 +732,6 @@ class LazyTable {
             this.updateSelectionBar();
         }
     }
-
     getRowAt(index) {
         const pageIndex = Math.floor(index / this.pageSize);
         const pageOffset = index % this.pageSize;
