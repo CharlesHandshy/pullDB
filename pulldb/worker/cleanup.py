@@ -304,8 +304,51 @@ def _list_databases(credentials: MySQLCredentials) -> list[str]:
         conn.close()
 
 
+def _get_all_database_sizes_mb(credentials: MySQLCredentials) -> dict[str, float]:
+    """Get sizes of all databases in a single query.
+
+    PERFORMANCE OPTIMIZATION: Instead of opening a connection per database,
+    query information_schema.TABLES once to get all database sizes.
+
+    Args:
+        credentials: MySQL credentials for the host.
+
+    Returns:
+        Dict mapping database name to size in MB.
+    """
+    conn = mysql.connector.connect(
+        host=credentials.host,
+        port=credentials.port,
+        user=credentials.username,
+        password=credentials.password,
+        connect_timeout=30,
+    )
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                table_schema,
+                ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) as size_mb
+            FROM information_schema.TABLES
+            WHERE table_schema NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
+            GROUP BY table_schema
+        """)
+        rows = cursor.fetchall()
+        # Type assertion: rows are tuples of (str, float)
+        return {str(row[0]): float(row[1] or 0.0) for row in rows if row[0]}
+    except Exception as e:
+        logger.warning("Failed to get database sizes: %s", e)
+        return {}
+    finally:
+        conn.close()
+
+
 def _get_database_size_mb(credentials: MySQLCredentials, db_name: str) -> float | None:
     """Get the size of a database in MB.
+
+    DEPRECATED: Use _get_all_database_sizes_mb() for batch size queries.
+    This function is kept for backward compatibility but opens a new connection
+    per call, which is inefficient when checking many databases.
 
     Args:
         credentials: MySQL credentials for the host.
@@ -339,12 +382,50 @@ def _get_database_size_mb(credentials: MySQLCredentials, db_name: str) -> float 
         conn.close()
 
 
+def _get_databases_with_pulldb_table(credentials: MySQLCredentials) -> frozenset[str]:
+    """Get all databases that contain the pullDB marker table in a single query.
+
+    PERFORMANCE OPTIMIZATION: Instead of opening a connection per database,
+    query information_schema.TABLES once to get all databases with pullDB table.
+    This reduces 1000+ connections to just 1 connection when scanning hosts
+    with many databases.
+
+    Args:
+        credentials: MySQL credentials for the host.
+
+    Returns:
+        Frozenset of database names that contain the pullDB table.
+    """
+    conn = mysql.connector.connect(
+        host=credentials.host,
+        port=credentials.port,
+        user=credentials.username,
+        password=credentials.password,
+        connect_timeout=30,
+    )
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT table_schema 
+            FROM information_schema.TABLES 
+            WHERE table_name = 'pullDB'
+        """)
+        rows = cursor.fetchall()
+        # Type assertion: rows are tuples of (str,)
+        return frozenset(str(row[0]) for row in rows if row[0])
+    except Exception as e:
+        logger.warning("Failed to query databases with pullDB table: %s", e)
+        return frozenset()
+    finally:
+        conn.close()
+
+
 def _has_pulldb_table(credentials: MySQLCredentials, db_name: str) -> bool:
     """Check if a database contains the pullDB marker table.
 
-    The pullDB table is created during restore operations, so its presence
-    confirms the database was created/managed by pullDB. Databases without
-    this table should not be considered pullDB orphans.
+    DEPRECATED: Use _get_databases_with_pulldb_table() for batch checking.
+    This function is kept for backward compatibility but opens a new connection
+    per call, which is inefficient when checking many databases.
 
     Args:
         credentials: MySQL credentials for the host.
@@ -1566,6 +1647,9 @@ def detect_orphaned_databases(
     try:
         credentials = host_repo.get_host_credentials(dbhost)
         all_databases = _list_databases(credentials)
+        
+        # PERFORMANCE: Get all database sizes in ONE query
+        all_database_sizes = _get_all_database_sizes_mb(credentials)
     except Exception as e:
         logger.error("Failed to list databases on %s: %s", dbhost, e)
         return f"Failed to connect: {e}"
@@ -1587,7 +1671,7 @@ def detect_orphaned_databases(
         if job is None:
             # No matching job - this is an orphan (staging db with no job record)
             # Could be from early restore failure before pullDB table was created
-            size_mb = _get_database_size_mb(credentials, db_name)
+            size_mb = all_database_sizes.get(db_name)
             
             orphan = OrphanCandidate(
                 database_name=db_name,
@@ -2071,6 +2155,13 @@ def detect_user_orphaned_databases(
     try:
         credentials = host_repo.get_host_credentials(dbhost)
         all_databases = _list_databases(credentials)
+        
+        # PERFORMANCE: Get all databases with pullDB table in ONE query
+        # instead of checking each database individually (1 conn vs N conns)
+        databases_with_pulldb = _get_databases_with_pulldb_table(credentials)
+        
+        # PERFORMANCE: Get all database sizes in ONE query
+        all_database_sizes = _get_all_database_sizes_mb(credentials)
     except Exception as e:
         logger.error("Failed to list databases on %s: %s", dbhost, e)
         return f"Failed to connect: {e}"
@@ -2088,8 +2179,8 @@ def detect_user_orphaned_databases(
         # Check if user_code exists
         if extracted_code.lower() not in valid_user_codes:
             # User doesn't exist - verify this is a pullDB-managed database
-            # by checking for the pullDB marker table
-            if not _has_pulldb_table(credentials, db_name):
+            # by checking if it's in our batch query results
+            if db_name not in databases_with_pulldb:
                 logger.debug(
                     "Skipping %s on %s: no pullDB marker table (not pullDB-managed)",
                     db_name,
@@ -2098,7 +2189,7 @@ def detect_user_orphaned_databases(
                 continue
 
             # Confirmed pullDB-managed orphan - get metadata
-            size_mb = _get_database_size_mb(credentials, db_name)
+            size_mb = all_database_sizes.get(db_name)
             metadata = get_orphan_metadata(credentials, db_name)
             restored_at = metadata.restored_at if metadata else None
             restored_by = metadata.restored_by if metadata else None
