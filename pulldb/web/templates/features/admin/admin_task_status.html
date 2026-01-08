@@ -266,13 +266,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="content-body task-status-page"
-     {% if task.status.value in ['pending', 'running'] %}
-     hx-get="{{ request.url.path }}"
-     hx-trigger="every 5s"
-     hx-select=".content-body"
-     hx-swap="outerHTML"
-     {% endif %}>
+<div class="content-body task-status-page">
     
     <div class="card">
         <div class="card-header">
@@ -347,16 +341,6 @@
                 <span class="task-detail-value">{{ task.completed_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
             </div>
             {% endif %}
-            
-            {% if task.status.value in ['pending', 'running'] %}
-            <div class="task-detail-row">
-                <span class="task-detail-label"></span>
-                <span class="task-detail-value">
-                    <span class="refresh-indicator">
-                        <span class="spinner"></span>
-                        Auto-refreshing every 5 seconds
-                    </span>
-                </span>
             </div>
             {% endif %}
         </div>
