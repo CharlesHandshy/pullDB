@@ -50,6 +50,8 @@ class LazyTable {
      * @param {Function} [config.onRowClick] - Callback when row is clicked (if not selectable)
      * @param {string} [config.emptyMessage='No data available'] - Message when no data
      * @param {string} [config.tableId] - ID for the table (auto-generated if not provided)
+     * @param {boolean} [config.deferInitialLoad=false] - If true, don't load data until refresh() is called
+     * @param {Function} [config.onLoadingChange] - Callback(isLoading) when loading state changes
      * @param {Object} [config.i18n] - Internationalization strings
      */
     constructor(config) {
@@ -63,6 +65,7 @@ class LazyTable {
             selectionActions: [],
             emptyMessage: 'No data available',
             tableId: `lazy-table-${Date.now()}`,
+            deferInitialLoad: false,
             i18n: {
                 showing: 'Showing',
                 of: 'of',
@@ -148,7 +151,10 @@ class LazyTable {
             this.updateFilterIndicators();
         }
         
-        this.fetchInitialData();
+        // Fetch initial data unless deferInitialLoad is true
+        if (!this.config.deferInitialLoad) {
+            this.fetchInitialData();
+        }
     }
 
     // =========================================================================
@@ -650,6 +656,12 @@ class LazyTable {
             this.hideFooterError();
             this.showFooterLoading();
             this.isLoading = true;
+            
+            // Notify loading state change
+            if (this.config.onLoadingChange) {
+                this.config.onLoadingChange(true);
+            }
+            
             try {
                 // Fetch page 0 without clearing cache - will update cache entry
                 await this.fetchPage(0);
@@ -660,6 +672,11 @@ class LazyTable {
                 this.showFooterError('Refresh failed');
             } finally {
                 this.isLoading = false;
+                
+                // Notify loading state change
+                if (this.config.onLoadingChange) {
+                    this.config.onLoadingChange(false);
+                }
             }
         } else {
             // Full refresh: overlay, clear cache (isLoading set by showLoading)
@@ -982,11 +999,21 @@ class LazyTable {
         this.isLoading = true;
         this.hideEmpty();
         this.elements.loadingOverlay.classList.add('visible');
+        
+        // Notify loading state change
+        if (this.config.onLoadingChange) {
+            this.config.onLoadingChange(true);
+        }
     }
 
     hideLoading() {
         this.isLoading = false;
         this.elements.loadingOverlay.classList.remove('visible');
+        
+        // Notify loading state change
+        if (this.config.onLoadingChange) {
+            this.config.onLoadingChange(false);
+        }
     }
 
     showError(message = null) {

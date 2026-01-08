@@ -68,7 +68,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=7"></script>
+<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=8"></script>
 <script>
 (function() {
     // Track exclusions by composite key: "dbhost|database_name"
@@ -163,11 +163,20 @@
             fetchUrl: '/web/admin/api/orphan-candidates',
             rowHeight: 48,
             pageSize: 50,
-            emptyMessage: 'No orphan databases detected',
+            deferInitialLoad: true,  // Don't auto-load on page entry
+            emptyMessage: 'Click "Refresh" to scan for orphan databases',
             footerSlot: `
                 <a href="/web/admin/" class="btn btn-secondary">Cancel</a>
                 <button type="button" id="execute-btn" class="btn btn-danger" disabled>No Items Selected</button>
             `,
+            onLoadingChange: (isLoading) => {
+                // Disable refresh button while loading
+                const refreshBtn = document.getElementById('refresh-preview');
+                if (refreshBtn) {
+                    refreshBtn.disabled = isLoading;
+                    refreshBtn.textContent = isLoading ? 'Scanning...' : 'Refresh';
+                }
+            },
             onDataLoaded: (data) => {
                 // Reset loadedRowKeys on fresh filter load (pageIndex 0)
                 if (data.pageIndex === 0) {
@@ -218,8 +227,10 @@
     });
 
     document.getElementById('refresh-preview').addEventListener('click', () => {
-        loadedRowKeys.clear();
-        initTable();
+        if (lazyTable) {
+            loadedRowKeys.clear();
+            lazyTable.refresh();
+        }
     });
 
     // Handle execute button click (in LazyTable footer)
