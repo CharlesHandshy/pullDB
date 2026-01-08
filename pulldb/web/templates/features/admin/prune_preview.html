@@ -240,7 +240,7 @@
             showToast('No items selected for deletion.', 'warning');
             return;
         }
-        const confirmed = await showConfirm('Are you sure you want to delete events from ' + selectedCount + ' job(s)?\\n\\nThis action cannot be undone.', {
+        const confirmed = await showConfirm('Are you sure you want to delete events from ' + selectedCount + ' job(s)?\n\nThis deletes event logs only. Jobs and staging databases are NOT affected.\n\nThis action cannot be undone.', {
             title: 'Delete Job Events',
             okText: 'Delete Events',
             type: 'danger'
