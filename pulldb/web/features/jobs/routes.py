@@ -492,6 +492,74 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
     }
 
 
+def _calculate_atomic_rename_stats(logs: list[Any]) -> dict[str, Any] | None:
+    """Extract latest atomic rename progress stats from job events.
+
+    Scans events for atomic_rename_progress and atomic_rename_complete to build
+    stats dict with: percent_complete, current_table, tables_renamed, total_tables, is_complete.
+
+    Returns None if no atomic rename progress events found.
+    """
+    latest_progress: dict[str, Any] | None = None
+    final_progress: dict[str, Any] | None = None
+    is_complete = False
+    has_executing_event = False
+
+    for event in logs:
+        event_type = getattr(event, "event_type", "")
+        detail = getattr(event, "detail", None)
+
+        if event_type == "atomic_rename_complete":
+            is_complete = True
+            # Capture the last progress before completion
+            if latest_progress:
+                final_progress = latest_progress.copy()
+
+        if event_type == "atomic_rename_executing":
+            has_executing_event = True
+
+        if event_type == "atomic_rename_progress" and detail:
+            parsed_detail = detail
+            if isinstance(detail, str):
+                try:
+                    parsed_detail = json.loads(detail)
+                except (json.JSONDecodeError, TypeError):
+                    parsed_detail = None
+            if isinstance(parsed_detail, dict):
+                latest_progress = parsed_detail
+
+    # If we have executing event but no progress, don't show anything yet
+    # Progress bar will appear once first progress event arrives
+    if not latest_progress:
+        return None
+
+    # Use final progress if complete, otherwise latest
+    progress_data = final_progress if is_complete and final_progress else latest_progress
+
+    # Extract progress data - handle both old and new field names
+    percent = progress_data.get("percent", 0.0)
+    
+    # Worker emits 'tables_renamed' and 'total_tables' (new format)
+    # But some old events may have 'progress' and 'total'
+    tables_renamed = progress_data.get("tables_renamed", progress_data.get("progress", 0))
+    total_tables = progress_data.get("total_tables", progress_data.get("total", 0))
+    
+    # Try to extract current table from message or table field
+    current_table = progress_data.get("message", progress_data.get("table", ""))
+    if not current_table:
+        detail_info = progress_data.get("detail", {})
+        if isinstance(detail_info, dict):
+            current_table = detail_info.get("table", "")
+
+    return {
+        "percent_complete": 100.0 if is_complete else percent,
+        "current_table": current_table if not is_complete else "",
+        "tables_renamed": tables_renamed,
+        "total_tables": total_tables,
+        "is_complete": is_complete,
+    }
+
+
 @router.get("/{job_id}", response_class=HTMLResponse)
 async def job_details(
     request: Request,
@@ -514,6 +582,7 @@ async def job_details(
     phase_list: list[dict[str, Any]] = []
     download_stats: dict[str, Any] | None = None
     restore_stats: dict[str, Any] | None = None
+    atomic_rename_stats: dict[str, Any] | None = None
 
     if hasattr(state, "job_repo") and state.job_repo:
         job = state.job_repo.get_job_by_id(job_id)
@@ -528,6 +597,9 @@ async def job_details(
 
             # Calculate restore progress stats for progress bar (uses raw logs)
             restore_stats = _calculate_restore_stats(raw_logs)
+
+            # Calculate atomic rename progress stats for progress bar (uses raw logs)
+            atomic_rename_stats = _calculate_atomic_rename_stats(raw_logs)
 
             # Deduplicate logs for display (collapse repetitive processlist updates)
             logs = _deduplicate_logs(raw_logs)
@@ -599,6 +671,7 @@ async def job_details(
             "phase_list": phase_list,
             "download_stats": download_stats,
             "restore_stats": restore_stats,
+            "atomic_rename_stats": atomic_rename_stats,
             # Retention management
             "can_manage_retention": (
                 job.owner_user_id == user.user_id or user.is_admin

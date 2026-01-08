@@ -33,71 +33,118 @@
    =========================================== */
 
 .details-card {
-    padding: var(--space-6);
+    padding: 0;
 }
 
-.details-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-8);
+/* Header row with Status, Owner, Submitted, Expires */
+.details-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    padding: var(--space-3) var(--space-4);
+    background: var(--gray-800);
+    border-bottom: 1px solid var(--gray-700);
 }
 
-@media (max-width: 640px) {
-    .details-grid {
-        grid-template-columns: 1fr;
-        gap: var(--space-6);
-    }
+[data-theme="light"] .details-header {
+    background: var(--gray-50);
+    border-bottom-color: var(--gray-200);
 }
 
-.details-section {
+.details-header-item {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--space-0-5);
 }
 
-.details-section-title {
+.details-header-label {
     font-size: var(--text-xs);
-    font-weight: var(--font-semibold);
+    font-weight: var(--font-medium);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-    margin: 0 0 var(--space-3) 0;
-    padding-bottom: var(--space-2);
-    border-bottom: 1px solid var(--color-border);
+    color: var(--gray-500);
 }
 
-.detail-row {
+[data-theme="light"] .details-header-label {
+    color: var(--gray-600);
+}
+
+.details-header-value {
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--gray-200);
+}
+
+[data-theme="light"] .details-header-value {
+    color: var(--gray-900);
+}
+
+/* Full-width rows section */
+.details-rows {
+    padding: var(--space-3) var(--space-4);
     display: flex;
-    align-items: baseline;
-    padding: var(--space-2) 0;
-    gap: var(--space-3);
+    flex-direction: column;
+    gap: 0;
+    border-top: 1px solid var(--gray-700);
 }
 
-.detail-label {
-    width: 90px;
+[data-theme="light"] .details-rows {
+    border-top-color: var(--gray-200);
+}
+
+.detail-row-full {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--gray-800);
+}
+
+.detail-row-full:last-child {
+    border-bottom: none;
+}
+
+[data-theme="light"] .detail-row-full {
+    border-bottom-color: var(--gray-100);
+}
+
+.detail-row-full .detail-label {
+    width: 85px;
     flex-shrink: 0;
     font-size: var(--text-sm);
     font-weight: var(--font-medium);
-    color: var(--color-text-muted);
+    color: var(--gray-500);
 }
 
-.detail-value {
+[data-theme="light"] .detail-row-full .detail-label {
+    color: var(--gray-600);
+}
+
+.detail-code-full {
     flex: 1;
-    font-size: var(--text-sm);
-    color: var(--color-text-primary);
-}
-
-.detail-code {
     font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    background: var(--gray-100);
-    padding: 0.15em 0.4em;
-    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    color: var(--gray-200);
     word-break: break-all;
 }
 
-[data-theme="dark"] .detail-code {
-    background: var(--gray-800);
+[data-theme="light"] .detail-code-full {
+    color: var(--gray-700);
+}
+
+.detail-value-full {
+    flex: 1;
+    font-size: var(--text-sm);
+    color: var(--gray-200);
+}
+
+[data-theme="light"] .detail-value-full {
+    color: var(--gray-700);
+}
+
+/* Remove old grid styles */
+.details-grid {
+    display: none;
 }
 
 /* ===========================================
@@ -216,7 +263,7 @@
     border: 2px solid var(--primary-200);
     border-top-color: var(--primary-600);
     border-radius: 50%;
-    animation: spin 1s linear infinite;
+    animation: spin 1s linear infinite !important;
 }
 
 @keyframes spin {
@@ -622,7 +669,7 @@
 
 /* Progress bar base container */
 .log-progress {
-    margin: var(--space-2) 0;
+    margin: var(--space-1-5) 0;
 }
 
 .log-progress:first-child {
@@ -633,7 +680,7 @@
     margin-bottom: 0;
 }
 
-/* Progress bar row (bar + percentage inline) */
+/* Progress bar row (bar + percentage + stats inline) */
 .log-progress-bar-row {
     display: flex;
     align-items: center;
@@ -666,6 +713,11 @@
     background: var(--success-500);
 }
 
+/* Atomic Rename progress (purple/primary) */
+.log-progress--atomic-rename .log-progress-bar {
+    background: var(--primary-500);
+}
+
 /* Complete state */
 .log-progress--complete .log-progress-bar {
     background: var(--success-500);
@@ -675,15 +727,10 @@
     color: var(--success-400);
 }
 
-/* Progress header row */
-.log-progress-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-1);
-}
-
+/* Progress label (now inline) */
 .log-progress-label {
+    flex-shrink: 0;
+    width: 110px;
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
     color: var(--gray-200);
@@ -708,6 +755,7 @@
 
 .log-progress-percent {
     min-width: 45px;
+    flex-shrink: 0;
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
     color: var(--gray-200);
@@ -716,6 +764,21 @@
 
 [data-theme="light"] .log-progress-percent {
     color: var(--gray-700);
+}
+
+/* Progress stats (now inline on right) */
+.log-progress-stats {
+    flex: 1;
+    font-size: var(--text-xs);
+    color: var(--gray-400);
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+[data-theme="light"] .log-progress-stats {
+    color: var(--gray-500);
 }
 
 .log-progress-stats-value {

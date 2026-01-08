@@ -214,6 +214,9 @@
         }
     });
     
+    // Clean up auto-refresh timer on page unload
+    window.addEventListener('beforeunload', stopAutoRefresh);
+    
     // =========================================================================
     // Expired Job Detection
     // =========================================================================
