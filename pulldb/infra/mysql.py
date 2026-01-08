@@ -4446,6 +4446,32 @@ class HostRepository:
         # Delegate to CredentialResolver (from Milestone 1.4)
         return self.credential_resolver.resolve(host.credential_ref)
 
+    def get_host_credentials_for_maintenance(self, hostname: str) -> MySQLCredentials:
+        """Get resolved MySQL credentials for maintenance operations.
+
+        Similar to get_host_credentials but allows disabled hosts.
+        Use for cleanup, deletion, and staging operations that need
+        to work on disabled hosts.
+
+        Args:
+            hostname: Hostname to get credentials for.
+
+        Returns:
+            Resolved MySQLCredentials instance.
+
+        Raises:
+            ValueError: If host not found (deleted from db_hosts).
+            CredentialResolutionError: If credentials cannot be resolved
+                from AWS Secrets Manager or SSM Parameter Store.
+        """
+        host = self.get_host_by_hostname(hostname)
+        if host is None:
+            raise ValueError(f"Host '{hostname}' not found")
+        # NO enabled check - maintenance operations need access to disabled hosts
+
+        # Delegate to CredentialResolver
+        return self.credential_resolver.resolve(host.credential_ref)
+
     def check_host_running_capacity(self, hostname: str) -> bool:
         """Check if host has capacity for running jobs (worker enforcement).
 
@@ -5275,6 +5301,7 @@ class AdminTaskRepository:
         requested_by: str,
         job_infos: list[dict],
         hard_delete: bool = False,
+        skip_database_drops: bool = False,
     ) -> str:
         """Create a bulk delete jobs task.
 
@@ -5292,6 +5319,7 @@ class AdminTaskRepository:
                 - owner_manager_id: Owner's manager ID (for permission verification)
                 - dbhost: Database host
             hard_delete: If True, permanently delete job records after dropping DBs.
+            skip_database_drops: If True, skip database drop operations (for inaccessible hosts).
 
         Returns:
             Task ID.
@@ -5299,6 +5327,7 @@ class AdminTaskRepository:
         parameters = {
             "job_infos": job_infos,
             "hard_delete": hard_delete,
+            "skip_database_drops": skip_database_drops,
             "total_jobs": len(job_infos),
         }
         return self.create_task(

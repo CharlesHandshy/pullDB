@@ -432,13 +432,10 @@
                     </div>
                     
                     {% elif log.event_type == 'atomic_rename_progress' and data is mapping %}
-                    <div class="log-detail">
-                        <div class="restore-progress-bar">
-                            <div class="restore-progress-fill" style="width: {{ data.percent | default(0) }}%"></div>
-                            <span class="restore-progress-text">{{ data.tables_renamed | default(0) }} / {{ data.total_tables | default(0) }} tables ({{ data.percent | default(0) | format_percent }})</span>
-                        </div>
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">progress</span>{{ data.tables_renamed | default(0) }} / {{ data.total_tables | default(0) }} tables ({{ data.percent | default(0) }}%)</span>
                         {% if data.message %}
-                        <div class="log-message">{{ data.message }}</div>
+                        <span class="log-field"><span class="log-field-label">table</span>{{ data.message }}</span>
                         {% endif %}
                     </div>
                     

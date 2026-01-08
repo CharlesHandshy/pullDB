@@ -6,6 +6,61 @@
 
 ---
 
+## 2026-01-08 | Deletion Workflow State Machine Fix
+
+### Context
+Post-deployment testing revealed job 09bb6685-4311-4789-bdf3-a5f6351e31b8 had retry_count=6 (exceeds MAX=5) but remained in 'deleting' status. Investigation revealed the issue: delete endpoints allowed re-deletion of jobs already in 'failed' status, causing retry_count to increment beyond the maximum.
+
+### What Was Done
+1. **Web Endpoint Fix**: Block re-deletion of FAILED jobs in `delete_job_database()` endpoint
+   - Returns error: "Delete failed after max retries - contact admin for manual cleanup"
+   - Prevents invalid state transition: failed → deleting
+2. **Admin Bulk Delete Fix**: Block re-deletion of FAILED and DELETING jobs in `execute_bulk_delete_task()`
+   - Skips DELETING jobs (worker will retry automatically)
+   - Fails FAILED jobs with message to use force-complete-delete admin endpoint
+3. **Graceful Degradation Clarification**: Confirmed that immediate "mark as deleted" when host not found is CORRECT
+   - When host record deleted from system, databases are inaccessible
+   - Retrying is pointless - host being gone is a terminal condition
+   - Job should reach terminal state (deleted) immediately
+4. **Manual Database Fix**: Updated stuck job status to 'failed' with appropriate error message
+5. **Full Deployment**: Rebuilt packages and restarted all services
+
+### Rationale
+**State machine integrity**: The core issue was invalid state transitions, not the graceful degradation logic. Delete endpoints must validate current job status before allowing deletion. Valid transitions:
+- completed/superseded/canceled → deleting ✅
+- failed → deleting ❌ (already exhausted retries)
+- deleting → deleting ❌ (worker managing)
+- deleted → deleting (only for hard delete) ⚠️
+
+**Terminal conditions don't need retries**: When a host is deleted from `db_hosts`:
+- No credentials available to access databases
+- Databases are either already gone or permanently inaccessible
+- Retrying won't help - the condition won't change
+- Immediately marking as deleted is the correct terminal state
+
+**Root cause**: Job reached retry_count=6 because:
+1. Job correctly marked 'failed' after 5 attempts (retry_count=5)
+2. Delete endpoint allowed re-deletion of failed job
+3. `mark_job_deleting()` incremented retry_count to 6
+4. Worker picked up job with fresh `started_at` timestamp
+5. Graceful degradation marked it deleted (correct for missing host)
+6. But invalid state transition created the stuck condition
+
+**Defense in depth**: Fixed at entry point layer:
+- Web endpoint (jobs/routes.py) - prevent invalid state transitions
+- Admin bulk task (admin_tasks.py) - maintain state machine integrity
+- Worker logic (cleanup.py) - graceful degradation unchanged (already correct)
+
+**HCA compliance**: Fixes at page/features layer where state validation belongs.
+
+### Files Modified
+- `pulldb/web/features/jobs/routes.py` (delete_job_database) - Block FAILED jobs
+- `pulldb/worker/admin_tasks.py` (execute_bulk_delete_task) - Block FAILED and DELETING jobs
+- `pulldb/worker/cleanup.py` (execute_delete_job) - Enhanced logging for host not found case
+- `.pulldb/BUGFIX-DELETE-RETRY-LIMIT.md` - Comprehensive documentation of fix
+
+---
+
 ## 2026-01-27 | Atomic Rename Progress Logging & UI
 
 ### Context

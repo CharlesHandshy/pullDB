@@ -73,6 +73,13 @@ if [ -d "pulldb/template_after_sql" ]; then
     echo "Included after-SQL templates"
 fi
 
+# Copy docs directory (atomic rename procedure SQL)
+if [ -d "docs/hca/features" ]; then
+    mkdir -p "$APP_ROOT/docs/hca/features"
+    cp docs/hca/features/atomic_rename_procedure.sql "$APP_ROOT/docs/hca/features/"
+    echo "Included atomic_rename_procedure.sql"
+fi
+
 # Copy systemd unit files to dedicated directory
 cp packaging/systemd/pulldb-worker.service "$APP_ROOT/systemd/"
 cp packaging/systemd/pulldb-worker@.service "$APP_ROOT/systemd/"

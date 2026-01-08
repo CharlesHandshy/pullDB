@@ -740,6 +740,10 @@ async def delete_job_database(
     # Block if already in deleting status (worker will retry)
     if job.status == JobStatus.DELETING:
         return redirect_error("Delete already in progress - worker will retry automatically")
+    
+    # Block if delete already failed (exhausted retries)
+    if job.status == JobStatus.FAILED:
+        return redirect_error("Delete failed after max retries - contact admin for manual cleanup")
 
     # If already soft-deleted, force hard delete on second attempt
     force_hard_delete = job.status == JobStatus.DELETED
@@ -759,6 +763,13 @@ async def delete_job_database(
         hard_delete = hard_delete_val.lower() in ("true", "1", "on")
     else:
         hard_delete = False
+    
+    # Parse skip_database_drops option (for inaccessible hosts)
+    skip_drops_val = form_data.get("skip_database_drops", "")
+    if isinstance(skip_drops_val, str):
+        skip_database_drops = skip_drops_val.lower() in ("true", "1", "on")
+    else:
+        skip_database_drops = False
 
     # Force hard delete if job was already soft-deleted
     if force_hard_delete:
@@ -806,6 +817,7 @@ async def delete_job_database(
             dbhost=job.dbhost,
             host_repo=state.host_repo,
             job_repo=state.job_repo,
+            skip_database_drops=skip_database_drops,
         )
 
     # Audit log the delete operation
@@ -1131,6 +1143,7 @@ async def bulk_delete_jobs(
         body = await request.json()
         job_ids = body.get("job_ids", [])
         hard_delete = body.get("hard_delete", False)
+        skip_database_drops = body.get("skip_database_drops", False)
     except Exception:
         return {"error": "Invalid JSON body", "success": False}
 
@@ -1224,6 +1237,7 @@ async def bulk_delete_jobs(
         requested_by=user.user_id,
         job_infos=job_infos,
         hard_delete=hard_delete,
+        skip_database_drops=skip_database_drops,
     )
 
     return {

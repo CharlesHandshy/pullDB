@@ -79,6 +79,13 @@
                     <span>Also remove job history records</span>
                 </label>
             </div>
+            <div class="form-group mt-2">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="bulk-delete-skip-drops" name="skip_database_drops">
+                    <span class="text-warning">⚠️ Skip database drops (use if hosts inaccessible)</span>
+                </label>
+                <p class="text-muted text-sm mt-1 ml-6">Marks jobs as deleted without verifying databases. Use when hosts have been removed.</p>
+            </div>
             <p class="mt-4">Type <strong>I am sure</strong> to confirm:</p>
             <input type="text" id="bulk-delete-confirm" class="form-input" placeholder="Type: I am sure" autocomplete="off">
         </div>
@@ -926,7 +933,8 @@
                         credentials: 'same-origin',
                         body: JSON.stringify({
                             job_ids: this.selectedJobIds,
-                            hard_delete: document.getElementById('bulk-delete-hard').checked
+                            hard_delete: document.getElementById('bulk-delete-hard').checked,
+                            skip_database_drops: document.getElementById('bulk-delete-skip-drops').checked
                         })
                     });
                     

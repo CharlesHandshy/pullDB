@@ -4353,6 +4353,68 @@ async def delete_user_orphan(
     )
 
 
+@router.post("/jobs/{job_id}/force-complete-delete")
+async def force_complete_deletion(
+    job_id: str,
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Force-complete a stuck job deletion when host unavailable.
+    
+    Used when a job is stuck in 'deleting' status because the host
+    was deleted from the system. Marks the job as deleted without
+    attempting database verification.
+    
+    Args:
+        job_id: Job UUID to force-complete.
+        state: API state with repositories.
+        admin: Admin user performing the action.
+    
+    Returns:
+        JSON response with success status and message.
+    """
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        return {"success": False, "message": "Job not found"}
+    
+    if job.status not in ("deleting", "failed"):
+        return {
+            "success": False,
+            "message": f"Job not stuck in deletion (status: {job.status})"
+        }
+    
+    # Mark as deleted with admin override
+    state.job_repo.mark_job_deleted(
+        job_id,
+        f"Force-completed by admin {admin.username} - host unavailable"
+    )
+    state.job_repo.append_job_event(
+        job_id,
+        "force_deleted",
+        f'{{"admin": "{admin.username}", "reason": "host_unavailable"}}'
+    )
+    
+    # Audit log
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        state.audit_repo.log_action(
+            actor_user_id=admin.user_id,
+            action="job_force_delete",
+            target_user_id=job.owner_user_id,
+            detail=f"Force-completed deletion for job {job_id[:12]} (host: {job.dbhost})",
+            context={
+                "job_id": job_id,
+                "target": job.target,
+                "dbhost": job.dbhost,
+                "previous_status": job.status,
+            }
+        )
+    
+    return {
+        "success": True,
+        "message": f"Job {job_id[:12]} marked as deleted"
+    }
+
+
 @router.post("/user-orphans/execute")
 async def execute_user_orphan_deletion(
     request: Request,

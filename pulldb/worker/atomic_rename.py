@@ -349,13 +349,30 @@ def ensure_atomic_rename_procedure(
             logger.info(f"Deploying procedure version {EXPECTED_PROCEDURE_VERSION} to {mysql_host}")
             
             # Read procedure SQL from file
-            procedure_file = Path(__file__).parent.parent.parent / "docs" / "hca" / "features" / "atomic_rename_procedure.sql"
-            if not procedure_file.exists():
+            # Try multiple locations for robustness (dev vs installed)
+            procedure_file = None
+            search_paths = [
+                # Debian package install location
+                Path("/opt/pulldb.service/docs/hca/features/atomic_rename_procedure.sql"),
+                # Installed package location (site-packages/docs/...)
+                Path(__file__).parent.parent.parent / "docs" / "hca" / "features" / "atomic_rename_procedure.sql",
+                # Dev/source location
+                Path.cwd() / "docs" / "hca" / "features" / "atomic_rename_procedure.sql",
+                # Legacy fallback
+                Path("/opt/pulldb/docs/hca/features/atomic_rename_procedure.sql"),
+            ]
+            
+            for path in search_paths:
+                if path.exists():
+                    procedure_file = path
+                    break
+            
+            if not procedure_file:
                 raise AtomicRenameError(
                     job_id=job_id or "",
                     staging_name="",
                     target_name="",
-                    error_message=f"Procedure file not found: {procedure_file}"
+                    error_message=f"Procedure file not found in any of: {[str(p) for p in search_paths]}"
                 )
             
             procedure_sql = procedure_file.read_text()

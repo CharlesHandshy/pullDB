@@ -582,6 +582,7 @@ def delete_job_databases(
     host_repo: HostRepository,
     job_repo: JobRepository | None = None,
     skip_protection_check: bool = False,
+    skip_database_drops: bool = False,
 ) -> JobDeleteResult:
     """Delete both staging and target databases for a job.
     
@@ -604,6 +605,7 @@ def delete_job_databases(
         host_repo: HostRepository for credential resolution.
         job_repo: Optional JobRepository for deployment protection check.
         skip_protection_check: If True, skip deployed/locked check (use with caution).
+        skip_database_drops: If True, skip all database operations (for inaccessible hosts).
         
     Returns:
         JobDeleteResult with details of what was found and dropped.
@@ -614,6 +616,23 @@ def delete_job_databases(
         target_name=target_name,
         dbhost=dbhost,
     )
+    
+    # BYPASS: Skip all database operations if requested
+    if skip_database_drops:
+        logger.info(
+            f"Skipping database drops for job {job_id} on host {dbhost} "
+            f"(skip_database_drops=True) - marking as not existed",
+            extra={
+                "job_id": job_id,
+                "dbhost": dbhost,
+                "staging_name": staging_name,
+                "target_name": target_name,
+                "reason": "skip_database_drops flag set"
+            }
+        )
+        result.staging_existed = False
+        result.target_existed = False
+        return result
     
     # SAFETY: Validate target_name contains owner's user_code
     if owner_user_code not in target_name:
@@ -652,7 +671,24 @@ def delete_job_databases(
             # Still try to drop staging, just skip target
     
     try:
-        credentials = host_repo.get_host_credentials(dbhost)
+        credentials = host_repo.get_host_credentials_for_maintenance(dbhost)
+    except ValueError as e:
+        # Host not found (deleted from db_hosts) - cannot verify databases
+        if "not found" in str(e):
+            logger.warning(
+                f"Host {dbhost} not found in db_hosts table - cannot verify databases. "
+                f"Assuming databases cleaned up externally.",
+                extra={"job_id": job_id, "dbhost": dbhost}
+            )
+            # Mark as successful without verifying - host is truly gone
+            result.error = None
+            result.staging_existed = False
+            result.target_existed = False
+            return result
+        # Unexpected error - re-raise
+        result.error = f"Failed to get credentials for {dbhost}: {e}"
+        logger.error(result.error)
+        return result
     except Exception as e:
         result.error = f"Failed to get credentials for {dbhost}: {e}"
         logger.error(result.error)
@@ -745,7 +781,45 @@ def execute_delete_job(
     )
 
     try:
-        credentials = host_repo.get_host_credentials(job.dbhost)
+        credentials = host_repo.get_host_credentials_for_maintenance(job.dbhost)
+    except ValueError as e:
+        # Host not found (deleted from db_hosts) - cannot verify databases
+        # No point retrying - host being gone is a terminal condition
+        if "not found" in str(e):
+            logger.warning(
+                f"Host {job.dbhost} not found - marking job as deleted immediately (no retry needed)",
+                extra={
+                    "job_id": job.id,
+                    "dbhost": job.dbhost,
+                    "retry_count": job.retry_count,
+                    "reason": "Host record deleted from system - databases inaccessible"
+                }
+            )
+            # Log event for audit trail
+            detail = json.dumps({
+                "reason": "host_not_found",
+                "message": f"Host {job.dbhost} deleted from system - databases no longer managed",
+                "retry_count": job.retry_count,
+            })
+            job_repo.append_job_event(job.id, "deleted", detail)
+            job_repo.mark_job_deleted(
+                job.id,
+                f"Host no longer exists - databases inaccessible (marked deleted without verification)"
+            )
+            
+            result.success = True
+            result.databases_already_gone = True
+            return result
+        
+        # Unexpected error - continue with retry logic
+        error_msg = f"Failed to get credentials for {job.dbhost}: {e}"
+        logger.error(error_msg, extra={"job_id": job.id})
+        result.error = error_msg
+
+        # Check if we've exceeded retries
+        if job.retry_count >= MAX_DELETE_RETRY_COUNT:
+            job_repo.mark_job_delete_failed(job.id, error_msg)
+        return result
     except Exception as e:
         error_msg = f"Failed to get credentials for {job.dbhost}: {e}"
         logger.error(error_msg, extra={"job_id": job.id})

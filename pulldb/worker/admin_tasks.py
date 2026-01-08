@@ -665,6 +665,7 @@ class AdminTaskExecutor:
         params = task.parameters_json or {}
         job_infos = params.get("job_infos", [])
         hard_delete = params.get("hard_delete", False)
+        skip_database_drops = params.get("skip_database_drops", False)
         total_jobs = params.get("total_jobs", len(job_infos))
 
         # Initialize or restore result tracking (for resume)
@@ -751,6 +752,26 @@ class AdminTaskExecutor:
                     progress["processed"] += 1  # Count as processed (no-op)
                     self.task_repo.update_task_result(task.task_id, result)
                     continue
+                
+                # Skip jobs already deleting (worker will retry)
+                if job.status == JobStatus.DELETING:
+                    skipped_list.append({
+                        "job_id": job_id,
+                        "reason": "Delete already in progress - worker will retry automatically",
+                    })
+                    progress["processed"] += 1  # Count as processed (in-flight)
+                    self.task_repo.update_task_result(task.task_id, result)
+                    continue
+                
+                # Skip jobs that failed deletion (exhausted retries)
+                if job.status == JobStatus.FAILED:
+                    failed_list.append({
+                        "job_id": job_id,
+                        "error": "Delete failed after max retries - use force-complete-delete admin endpoint",
+                    })
+                    progress["errors"].append(f"{job_id[:12]}: delete failed (max retries)")
+                    self.task_repo.update_task_result(task.task_id, result)
+                    continue
 
                 # Fast path: already soft-deleted + hard_delete requested
                 # Skip database checks (DBs already dropped), just remove record
@@ -834,6 +855,7 @@ class AdminTaskExecutor:
                             dbhost=dbhost,
                             host_repo=self.host_repo,
                             job_repo=self.job_repo,
+                            skip_database_drops=skip_database_drops,
                         )
 
                     if delete_result.error:

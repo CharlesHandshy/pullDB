@@ -850,6 +850,10 @@ async def list_hosts(
     Used by CLI's `pulldb hosts` command to show users where they
     can restore databases.
 
+    The hostname field returns the actual database endpoint resolved from
+    AWS Secrets Manager credentials, not the db_hosts.hostname value.
+    This shows users the real connection target.
+
     No authentication required - this is public information.
     """
     hosts = await run_in_threadpool(state.host_repo.get_enabled_hosts)
@@ -866,15 +870,31 @@ async def list_hosts(
                     default_alias = h.host_alias
                     break
 
-    return HostsListResponse(
-        hosts=[
+    # Resolve actual hostnames from credentials for display
+    host_responses = []
+    for h in hosts:
+        # Try to resolve the actual database endpoint from credentials
+        display_hostname = h.hostname
+        try:
+            creds = await run_in_threadpool(
+                state.host_repo.get_host_credentials, h.hostname
+            )
+            if creds and creds.host:
+                display_hostname = creds.host
+        except Exception:
+            # Fall back to db_hosts.hostname if resolution fails
+            pass
+        
+        host_responses.append(
             HostInfoResponse(
-                hostname=h.hostname,
+                hostname=display_hostname,
                 alias=h.host_alias,
                 enabled=h.enabled,
             )
-            for h in hosts
-        ],
+        )
+
+    return HostsListResponse(
+        hosts=host_responses,
         total=len(hosts),
         default_host=default_host,
         default_alias=default_alias,
