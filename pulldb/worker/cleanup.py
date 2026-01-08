@@ -305,16 +305,16 @@ def _list_databases(credentials: MySQLCredentials) -> list[str]:
 
 
 def _get_all_database_sizes_mb(credentials: MySQLCredentials) -> dict[str, float]:
-    """Get sizes of all databases in a single query.
+    """Get sizes of databases that contain the pullDB table.
 
-    PERFORMANCE OPTIMIZATION: Instead of opening a connection per database,
-    query information_schema.TABLES once to get all database sizes.
+    PERFORMANCE OPTIMIZATION: Combines pullDB table check and size calculation
+    in a single query. Only returns sizes for databases that are pullDB-managed.
 
     Args:
         credentials: MySQL credentials for the host.
 
     Returns:
-        Dict mapping database name to size in MB.
+        Dict mapping database name to size in MB (only for pullDB databases).
     """
     conn = mysql.connector.connect(
         host=credentials.host,
@@ -327,11 +327,16 @@ def _get_all_database_sizes_mb(credentials: MySQLCredentials) -> dict[str, float
         cursor = conn.cursor()
         cursor.execute("""
             SELECT 
-                table_schema,
-                ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) as size_mb
-            FROM information_schema.TABLES
-            WHERE table_schema NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
-            GROUP BY table_schema
+                t1.table_schema,
+                ROUND(SUM(t1.data_length + t1.index_length) / 1024 / 1024, 2) as size_mb
+            FROM information_schema.TABLES t1
+            WHERE EXISTS (
+                SELECT 1 FROM information_schema.TABLES t2
+                WHERE t2.table_schema = t1.table_schema
+                AND t2.table_name = 'pullDB'
+            )
+            AND t1.table_schema NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
+            GROUP BY t1.table_schema
         """)
         rows = cursor.fetchall()
         # Type assertion: rows are tuples of (str, float)
@@ -2156,12 +2161,13 @@ def detect_user_orphaned_databases(
         credentials = host_repo.get_host_credentials(dbhost)
         all_databases = _list_databases(credentials)
         
-        # PERFORMANCE: Get all databases with pullDB table in ONE query
-        # instead of checking each database individually (1 conn vs N conns)
-        databases_with_pulldb = _get_databases_with_pulldb_table(credentials)
-        
-        # PERFORMANCE: Get all database sizes in ONE query
+        # PERFORMANCE: Get sizes for all pullDB-managed databases in ONE query
+        # This query combines the pullDB table check and size calculation,
+        # so we only need 2 connections total (list DBs + get pullDB sizes)
         all_database_sizes = _get_all_database_sizes_mb(credentials)
+        
+        # Extract database names that have pullDB table (keys from size dict)
+        databases_with_pulldb = frozenset(all_database_sizes.keys())
     except Exception as e:
         logger.error("Failed to list databases on %s: %s", dbhost, e)
         return f"Failed to connect: {e}"
