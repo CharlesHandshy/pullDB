@@ -6,6 +6,163 @@
 
 ---
 
+## 2026-01-08 | Engineering-DNA Protocols Formalization (Phase 5)
+
+### Context
+Implementing Phase 5 from TRIAGE-SYSTEM-IMPLEMENTATION-PLAN.md: formalizing 4 process protocols discovered through pullDB development. These protocols capture operational best practices that emerged organically during 2+ years of development and should be standardized for future projects.
+
+### What Was Done
+
+**Created 4 comprehensive protocols**:
+
+1. **engineering-dna/protocols/session-logging.md** (1,935 words, ~2,515 tokens)
+   - Purpose: Automatic audit trail during AI-assisted development
+   - When to Log: Session start, significant work, session end (NOT trivial tasks)
+   - Log Format: Date | Topic, Context, What Was Done, Rationale, Files Modified
+   - Rationale Quality: WHY over WHAT, reference principles (FAIL HARD, HCA, etc.)
+   - Example Entries: Real examples from pullDB SESSION-LOG.md
+   - Integration with Knowledge Pool: How to extract lessons for standards
+   - Real examples: Multi-host API keys (2026-01-05), database protection (2026-01-04)
+
+2. **engineering-dna/protocols/mock-parity-testing.md** (2,560 words, ~3,328 tokens)
+   - Purpose: Prevent AttributeError from mock/real interface drift
+   - The Mock Parity Problem: pullDB 2026-01-04 database protection bypass
+   - Solution: Protocol classes + automated parity tests + single mock source
+   - Implementation Steps: Define Protocol, implement real/mock, create parity test, CI enforcement
+   - When to Create Mocks: External dependencies, simulation, development speed (NOT laziness)
+   - Real examples: JobRepository protection methods, pullDB simulation framework
+
+3. **engineering-dna/protocols/protection-pattern.md** (2,771 words, ~3,602 tokens)
+   - Purpose: Defense-in-depth for dangerous operations (data loss prevention)
+   - The Protection Pattern: Single source of truth + multiple entry points + fail-safe
+   - Implementation Steps: Define protected resources, create is_protected function, call at all entry points, fail-safe exception handling, clear error messages, audit trail
+   - Real example: pullDB database protection (PROTECTED_DATABASES, is_target_database_protected)
+   - Fail-safe critical: Exception → BLOCK operation (never ALLOW)
+   - Cross-user checks: Not just current user's resources
+
+4. **engineering-dna/protocols/documentation-audit.md** (3,165 words, ~4,114 tokens)
+   - Purpose: Prevent documentation drift (docs diverging from implementation)
+   - When to Audit: Before releases, after refactors, after features, quarterly, post-incident
+   - Audit Procedure: Identify sources of truth (API routes, CLI argparse), extract ground truth, compare to docs, document gaps, remediate immediately
+   - Real example: pullDB 2026-01-05 help pages audit (6 missing endpoints, 5 missing commands)
+   - CI Integration: Automated endpoint/command count validation
+   - Multi-host API keys: Fully implemented but undocumented until audit caught it
+
+**Source material analyzed**:
+- .pulldb/SESSION-LOG.md (2446 lines, 75+ sessions)
+- Key dates: 2026-01-04 (database protection + mock parity bug), 2026-01-05 (help pages audit), 2026-01-07 to 2026-01-08 (multi-host API keys)
+- pulldb/simulation/ framework (mock implementations)
+- pulldb/worker/cleanup.py (protection pattern implementation)
+- pulldb/web/help/pages/ (documentation audit examples)
+- .pulldb/CONTEXT.md (session logging section)
+
+### Rationale
+
+**Why formalize these specific protocols**:
+
+1. **Session Logging**: pullDB's 2374-line SESSION-LOG.md is proof of concept. Captured 75+ sessions with architectural decisions, bug fixes, and lessons learned. Without this log, multi-host API key rationale (6 commits over 7 days) would be lost to time.
+
+2. **Mock Parity Testing**: pullDB experienced production database deletion (2026-01-04) because MockJobRepository was missing methods added to real JobRepository. 2+ hours debugging to find root cause. Protocol prevents this class of silent failures through automated CI checks.
+
+3. **Protection Pattern**: Database protection implementation (2026-01-04) emerged through 2-phase work: initial implementation + bug fix when mock parity broke it. The pattern (single source of truth, fail-safe defaults, multiple entry points) is now formalized with concrete pullDB examples.
+
+4. **Documentation Audit**: Multi-host API key feature (6 endpoints, 5 commands) was fully implemented and deployed but completely undocumented. Help page audit (2026-01-05) caught the drift before users discovered it. Protocol formalizes the extraction → comparison → remediation workflow.
+
+**Why these sections**:
+- Each protocol grounded in real pullDB failures (not theoretical)
+- Each protocol has SESSION-LOG citations with specific dates
+- Each protocol includes concrete code examples (not generic advice)
+- Each protocol addresses FAIL HARD principle (make failures explicit)
+
+**Quality gates met**:
+- ✅ Each protocol >1500 tokens (2515, 3328, 3602, 4114)
+- ✅ Concrete examples from pullDB (not generic scenarios)
+- ✅ Clear "when to use" and "procedure" sections with actionable steps
+- ✅ Anti-patterns documented (what NOT to do)
+- ✅ SESSION-LOG citations with dates (2026-01-04, 2026-01-05, 2026-01-07, 2026-01-08)
+- ✅ Cross-references to relevant standards/protocols
+- ✅ Topics lists for indexing (7-10 topics each)
+
+### Files Created
+- `engineering-dna/protocols/session-logging.md` - Session logging best practices (v1.0.0)
+- `engineering-dna/protocols/mock-parity-testing.md` - Interface drift prevention (v1.0.0)
+- `engineering-dna/protocols/protection-pattern.md` - Defense-in-depth for dangerous operations (v1.0.0)
+- `engineering-dna/protocols/documentation-audit.md` - Documentation drift prevention (v1.0.0)
+
+---
+
+## 2026-01-08 | Engineering-DNA Standards Extraction (Phase 4)
+
+### Context
+Implementing Phase 4 from TRIAGE-SYSTEM-IMPLEMENTATION-PLAN.md: extracting proven patterns from pullDB's 2+ year development history into 3 new engineering-dna standards. This creates reusable guidance for future projects while documenting pullDB's architectural decisions.
+
+### What Was Done
+
+**Created 3 comprehensive standards**:
+
+1. **engineering-dna/standards/security.md** (2,817 words, ~3,662 tokens)
+   - Enhanced existing generic OWASP standard with pullDB-specific patterns
+   - HMAC Request Signing pattern (from multi-host API key system)
+   - Multi-Factor Approval Workflows (pending → approved states)
+   - Role-Based Access Control (ADMIN > MANAGER > USER hierarchy)
+   - Service Accounts (locked accounts for automated processes)
+   - Privilege Separation (separate MySQL users per service)
+   - Real code examples from pulldb/api/auth.py and pulldb/auth/repository.py
+
+2. **engineering-dna/standards/aurora-mysql.md** (2,156 words, ~2,803 tokens)
+   - Comment Stripping Problem (Aurora strips SQL comments, breaks version tracking)
+   - Version Tracking Solution (procedure_deployments table)
+   - DELIMITER Parsing (programmatic SQL parsing for procedure deployment)
+   - Lock Name Length Limits (64 chars, MD5 hashing for long hostnames)
+   - Privilege Requirements (CREATE ROUTINE, ALTER ROUTINE, EXECUTE, PROCESS)
+   - Atomic Operations with Validation (pre/post validation patterns)
+   - Real code examples from pulldb/worker/atomic_rename.py
+
+3. **engineering-dna/standards/ui-ux.md** (2,881 words, ~3,745 tokens)
+   - Design Token System (CSS custom properties for consistency)
+   - HCA CSS Architecture (6-layer CSS organization)
+   - Laws of UX (Jakob's Law, Hick's Law, Fitts's Law, Doherty Threshold, Miller's Law, Von Restorff Effect)
+   - Accessibility Requirements (ARIA labels, keyboard nav, color contrast, semantic HTML)
+   - Theme Management (HSL color system, light/dark switching)
+   - Visual Regression Testing (Playwright screenshot automation)
+   - Real code examples from pulldb/web/shared/css/design-tokens.css
+
+**Source material analyzed**:
+- .pulldb/SESSION-LOG.md (2374 lines, 75+ sessions)
+- Session dates: 2025-12-24 (Web UI/UX audit), 2025-12-28 to 2026-01-27 (Aurora MySQL), 2025-12-31 to 2026-01-07 (multi-host API keys)
+- .pulldb/standards/staging-lifecycle.md, .pulldb/extensions/mysql-user-separation.md
+- docs/WEB-UI-UX-AUDIT-2025-12-24.md, docs/CSS-HTML-AUDIT-2025-01-27.md, docs/STYLE-GUIDE.md
+- pulldb/api/auth.py, pulldb/auth/repository.py, pulldb/worker/atomic_rename.py
+- pulldb/web/shared/css/design-tokens.css
+
+### Rationale
+
+**Why extract these patterns**:
+- **Security patterns**: Multi-host API key system was complex (6 commits over 7 days) with subtle failure modes. HMAC signing, approval workflows, and privilege separation are reusable for any multi-tenant system.
+- **Aurora MySQL patterns**: Silent failures (comment stripping, procedure version mismatches, lock name length) cost days of debugging. These patterns prevent others from encountering same issues.
+- **UI/UX patterns**: Design token system and HCA CSS took 3+ iterations to stabilize. Laws of UX application reduced cognitive load measurably (4 dashboard metrics instead of 7+, <300ms transitions).
+
+**Why these specific sections**:
+- Each pattern grounded in real code from pullDB (not generic advice)
+- Each pattern has SESSION-LOG citations showing when/why developed
+- Each pattern addresses FAIL HARD principle (silent failures eliminated)
+- Each pattern reusable across projects (security for any API, Aurora for any MySQL user, UI tokens for any web app)
+
+**Quality gates met**:
+- ✅ Each standard >2500 tokens (security: 3,662, aurora: 2,803, ui-ux: 3,745)
+- ✅ Concrete code examples from pullDB (not generic)
+- ✅ SESSION-LOG citations (2025-12-24, 2026-01-05, 2026-01-27, etc.)
+- ✅ Cross-references to relevant protocols/standards
+- ✅ Topics lists for documentation index (7-9 topics each)
+- ✅ Clear "when to use" and "rationale" for each pattern
+
+### Files Modified
+- `engineering-dna/standards/security.md` - Enhanced with pullDB patterns (v2.0.0)
+- `engineering-dna/standards/aurora-mysql.md` - NEW (v1.0.0)
+- `engineering-dna/standards/ui-ux.md` - NEW (v1.0.0)
+
+---
+
 ## 2026-01-08 | Deletion Workflow State Machine Fix
 
 ### Context

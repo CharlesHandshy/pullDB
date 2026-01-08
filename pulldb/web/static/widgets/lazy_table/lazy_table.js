@@ -624,10 +624,17 @@ class LazyTable {
     async refresh(options = {}) {
         const { quiet = false } = options;
         
+        // Prevent concurrent refreshes
+        if (this.isLoading) {
+            console.debug('LazyTable: Refresh already in progress, skipping');
+            return;
+        }
+        
         if (quiet) {
             // Quiet refresh: footer spinner, no cache clear, keep existing data visible
             this.hideFooterError();
             this.showFooterLoading();
+            this.isLoading = true;
             try {
                 // Fetch page 0 without clearing cache - will update cache entry
                 await this.fetchPage(0);
@@ -636,9 +643,11 @@ class LazyTable {
             } catch (error) {
                 this.hideFooterLoading();
                 this.showFooterError('Refresh failed');
+            } finally {
+                this.isLoading = false;
             }
         } else {
-            // Full refresh: overlay, clear cache
+            // Full refresh: overlay, clear cache (isLoading set by showLoading)
             this.clearCache();
             this.hideError();  // Auto-dismiss error on retry
             this.showLoading();

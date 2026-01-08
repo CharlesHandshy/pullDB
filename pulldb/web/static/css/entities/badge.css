@@ -475,3 +475,20 @@
     background: var(--color-bg-tertiary);
     color: var(--color-text-secondary);
 }
+
+/* ===========================================
+   PULSE ANIMATION (for transient states)
+   =========================================== */
+
+.badge-pulse {
+    animation: badge-pulse-animation 1.5s ease-in-out infinite;
+}
+
+@keyframes badge-pulse-animation {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}

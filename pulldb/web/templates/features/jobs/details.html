@@ -7,7 +7,8 @@
 {% endblock %}
 
 {% block content %}
-<div class="job-details-page" id="job-details-container" hx-get="{{ request.url.path }}" {% if job.status.value in ['running', 'queued'] %}hx-trigger="every 5s"{% endif %} hx-select=".job-details-page" hx-swap="outerHTML">
+<div class="job-details-page" id="job-details-container" hx-get="{{ request.url.path }}" {% if job.status.value in ['running', 'queued'] %}hx-trigger="every 5s"{% endif %} hx-select="#job-details-content" hx-swap="innerHTML" hx-target="#job-details-content">
+    <div id="job-details-content">
     
     {% if flash_message %}
     <div class="alert alert-{{ flash_type or 'info' }} mb-4">
@@ -504,7 +505,9 @@
             {% endif %}
         </div>
     </div>
-</div>
+    
+    </div><!-- #job-details-content -->
+</div><!-- .job-details-page -->
 
 {% if job.status.value in ['running', 'queued'] %}
 <script>
@@ -512,6 +515,7 @@
     const STORAGE_KEY = 'pulldb_job_autorefresh';
     const container = document.getElementById('job-details-container');
     let logsWasAtBottom = true;
+    let savedScrollPositions = { page: 0, logs: 0 };
     
     function isLogsAtBottom() {
         const logsContainer = document.getElementById('logs-container');
@@ -526,16 +530,35 @@
         }
     }
     
+    function saveScrollPositions() {
+        savedScrollPositions.page = window.scrollY || document.documentElement.scrollTop;
+        const logsContainer = document.getElementById('logs-container');
+        savedScrollPositions.logs = logsContainer ? logsContainer.scrollTop : 0;
+    }
+    
+    function restoreScrollPositions() {
+        // Restore page scroll position
+        window.scrollTo(0, savedScrollPositions.page);
+        // Restore logs scroll if user wasn't at bottom
+        const logsContainer = document.getElementById('logs-container');
+        if (logsContainer && !logsWasAtBottom) {
+            logsContainer.scrollTop = savedScrollPositions.logs;
+        }
+    }
+    
     document.body.addEventListener('htmx:beforeSwap', function(evt) {
-        if (evt.detail.target && evt.detail.target.id === 'job-details-container') {
+        if (evt.detail.target && (evt.detail.target.id === 'job-details-container' || evt.detail.target.id === 'job-details-content')) {
             logsWasAtBottom = isLogsAtBottom();
+            saveScrollPositions();
         }
     });
     
     document.body.addEventListener('htmx:afterSwap', function(evt) {
-        if (evt.detail.target && evt.detail.target.id === 'job-details-container') {
+        if (evt.detail.target && (evt.detail.target.id === 'job-details-container' || evt.detail.target.id === 'job-details-content')) {
             if (logsWasAtBottom) {
                 scrollLogsToBottom();
+            } else {
+                restoreScrollPositions();
             }
         }
     });
