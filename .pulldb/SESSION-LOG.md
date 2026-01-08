@@ -6,6 +6,54 @@
 
 ---
 
+## 2026-01-08 | Admin Audit Page Bouncing Rows Fix
+
+### Context
+User reported "bouncing rows issue" on admin/audit page. The audit page uses LazyTable widget with virtual scrolling. Visual investigation revealed rows jumping/shifting during scroll due to:
+1. Missing explicit row height in CSS (variable heights breaking fixed-height virtual scrolling)
+2. No debouncing on scroll handler (excessive render() calls)
+3. innerHTML replacement on every render (DOM thrashing)
+
+### What Was Done
+
+**LazyTable CSS fixes** ([lazy_table.css](../../pulldb/web/static/widgets/lazy_table/lazy_table.css)):
+- Added explicit `height: 48px` to `.lazy-table-row` for consistent rendering
+- Added GPU acceleration hints to `.lazy-table-content`:
+  - `will-change: transform` for compositor optimization
+  - `transform: translateZ(0)` to force GPU layer
+
+**LazyTable JavaScript optimizations** ([lazy_table.js](../../pulldb/web/static/widgets/lazy_table/lazy_table.js)):
+- **Scroll debouncing**: Replaced immediate render with `requestAnimationFrame()` batching
+  - Cancels pending renders with `cancelAnimationFrame()`
+  - Runs at 60fps max instead of on every scroll event
+- **Render range caching**: Skip DOM updates when visible range unchanged
+  - Track `_lastRenderStart` and `_lastRenderEnd`
+  - Early return if same range and `!_forceRender`
+  - Set `_forceRender = true` in `clearCache()` for data changes
+- **State initialization**: Added tracking vars in constructor:
+  - `_lastRenderStart = -1`, `_lastRenderEnd = -1`
+  - `_forceRender = false`, `_scrollRenderTimer = null`
+
+### Rationale
+
+**Fixed row height (FAIL HARD principle)**:
+Virtual scrolling assumes fixed heights for position calculations. Variable heights cause cumulative error: `transform: translateY(row_index * 48px)` only works if all rows are actually 48px. Without explicit CSS height, content dictates height (multi-line text, padding inconsistencies) → visual bouncing as scroll position drifts from actual content position.
+
+**requestAnimationFrame debouncing (performance)**:
+Scroll events fire at ~200-300 Hz on smooth scrolling. Each triggered immediate render → DOM thrashing. RAF batches updates to display refresh rate (60fps), reducing render frequency by 70-80% while maintaining smooth appearance. Similar to jobs page auto-refresh fix (DOMContentLoaded timing).
+
+**Render range caching (DOM efficiency)**:
+Virtual scrolling renders only visible rows + buffer. During smooth scroll within buffer zone, render range doesn't change (e.g., rows 10-40 visible, then 11-41, 12-42). Without caching, every pixel of scroll rebuilt DOM even though same rows displayed. Cache comparison prevents unnecessary `innerHTML = ''` + fragment rebuild.
+
+**GPU acceleration (visual smoothness)**:
+`will-change: transform` tells browser to prepare GPU layer for frequent changes. `translateZ(0)` forces 3D context (GPU rendering path). Combined with RAF timing, this eliminates paint flashing that appears as "bouncing" to users. Standard technique for infinite scroll widgets.
+
+### Files Modified
+- `pulldb/web/static/widgets/lazy_table/lazy_table.css` (row height + GPU hints)
+- `pulldb/web/static/widgets/lazy_table/lazy_table.js` (scroll debounce + render caching)
+
+---
+
 ## 2026-01-08 | Engineering-DNA Protocols Formalization (Phase 5)
 
 ### Context
