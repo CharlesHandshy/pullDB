@@ -271,7 +271,7 @@
                     <div class="log-progress-percent">{{ "%.1f" | format(atomic_rename_stats.percent_complete) }}%</div>
                     <span class="log-progress-stats">
                         {% if atomic_rename_stats.is_complete %}
-                        ✓ {{ atomic_rename_stats.total_tables }} table{{ 's' if atomic_rename_stats.total_tables != 1 else '' }} renamed
+                        ✓ {{ atomic_rename_stats.total_tables }} table{{ 's' if atomic_rename_stats.total_tables != 1 else '' }} restored
                         {% elif atomic_rename_stats.total_tables > 0 %}
                         {{ atomic_rename_stats.tables_renamed }} / {{ atomic_rename_stats.total_tables }} tables
                         {% if atomic_rename_stats.current_table %}
