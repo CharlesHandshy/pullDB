@@ -61,93 +61,72 @@
 
     <!-- Job Details Card -->
     <div class="card details-card">
-        <div class="details-grid">
-            <!-- Left Column -->
-            <div class="details-section">
-                <h3 class="details-section-title">Job Information</h3>
-                
-                <div class="detail-row">
-                    <span class="detail-label">Status</span>
-                    <span class="detail-value">
-                        <span class="badge 
-                            {% if job.status.value == 'deployed' %}badge-success
-                            {% elif job.status.value == 'complete' %}badge-success
-                            {% elif job.status.value == 'superseded' %}badge-neutral
-                            {% elif job.status.value == 'failed' %}badge-danger
-                            {% elif job.status.value == 'running' %}badge-primary
-                            {% elif job.status.value == 'queued' %}badge-warning
-                            {% elif job.status.value == 'deleted' %}badge-neutral
-                            {% elif job.status.value == 'deleting' %}badge-warning badge-pulse
-                            {% elif job.status.value == 'canceling' %}badge-warning badge-pulse
-                            {% elif job.status.value == 'canceled' %}badge-neutral
-                            {% else %}badge-neutral{% endif %}"
-                            {% if job.status.value == 'running' and cancel_requested_at %}
-                            style="text-decoration: line-through;"
-                            {% endif %}>
-                            {{ job.status.value | capitalize }}
-                        </span>
+        <!-- Top Header Row -->
+        <div class="details-header">
+            <div class="details-header-item">
+                <span class="details-header-label">Status</span>
+                <span class="details-header-value">
+                    <span class="badge 
+                        {% if job.status.value == 'deployed' %}badge-success
+                        {% elif job.status.value == 'complete' %}badge-success
+                        {% elif job.status.value == 'superseded' %}badge-neutral
+                        {% elif job.status.value == 'failed' %}badge-danger
+                        {% elif job.status.value == 'running' %}badge-primary
+                        {% elif job.status.value == 'queued' %}badge-warning
+                        {% elif job.status.value == 'deleted' %}badge-neutral
+                        {% elif job.status.value == 'deleting' %}badge-warning badge-pulse
+                        {% elif job.status.value == 'canceling' %}badge-warning badge-pulse
+                        {% elif job.status.value == 'canceled' %}badge-neutral
+                        {% else %}badge-neutral{% endif %}"
                         {% if job.status.value == 'running' and cancel_requested_at %}
-                        <span class="badge badge-warning ml-2">Canceling...</span>
-                        {% endif %}
+                        style="text-decoration: line-through;"
+                        {% endif %}>
+                        {{ job.status.value | capitalize }}
                     </span>
-                </div>
-                
-                <div class="detail-row">
-                    <span class="detail-label">Job ID</span>
-                    <span class="detail-value"><code class="detail-code">{{ job.id }}</code></span>
-                </div>
-                
-                <div class="detail-row">
-                    <span class="detail-label">Owner</span>
-                    <span class="detail-value">{{ job.owner_username }}</span>
-                </div>
-                
-                <div class="detail-row">
-                    <span class="detail-label">Submitted</span>
-                    <span class="detail-value">{{ job.submitted_at.strftime('%Y-%m-%d %H:%M:%S') if job.submitted_at else '—' }}</span>
-                </div>
+                    {% if job.status.value == 'running' and cancel_requested_at %}
+                    <span class="badge badge-warning ml-2">Canceling...</span>
+                    {% endif %}
+                </span>
             </div>
+            <div class="details-header-item">
+                <span class="details-header-label">Owner</span>
+                <span class="details-header-value">{{ job.owner_username }}</span>
+            </div>
+            <div class="details-header-item">
+                <span class="details-header-label">Submitted</span>
+                <span class="details-header-value">{{ job.submitted_at.strftime('%Y-%m-%d %H:%M:%S') if job.submitted_at else '—' }}</span>
+            </div>
+            {% if job.status.value in ['deployed', 'complete', 'superseded'] and job.expires_at %}
+            <div class="details-header-item">
+                <span class="details-header-label">Expires</span>
+                <span class="details-header-value">
+                    {% if job.is_locked %}
+                    <span class="badge badge-info">Locked</span>
+                    {% elif job.is_expired %}
+                    {{ job.expires_at.strftime('%Y-%m-%d') }} <span class="badge badge-danger ml-1">Expired</span>
+                    {% elif job.is_expiring(7) %}
+                    {{ job.expires_at.strftime('%Y-%m-%d') }} <span class="badge badge-warning ml-1">Soon</span>
+                    {% else %}
+                    {{ job.expires_at.strftime('%Y-%m-%d') }}
+                    {% endif %}
+                </span>
+            </div>
+            {% endif %}
+        </div>
 
-            <!-- Right Column -->
-            <div class="details-section">
-                <h3 class="details-section-title">Target</h3>
-                
-                <div class="detail-row">
-                    <span class="detail-label">Database</span>
-                    <span class="detail-value"><code class="detail-code">{{ job.target }}</code></span>
-                </div>
-                
-                <div class="detail-row">
-                    <span class="detail-label">Host</span>
-                    <span class="detail-value">{{ job.dbhost or '—' }}</span>
-                </div>
-                
-                {% if job.status.value in ['deployed', 'complete', 'superseded'] and job.expires_at %}
-                <div class="detail-row">
-                    <span class="detail-label">Expires</span>
-                    <span class="detail-value">
-                        {% if job.is_locked %}
-                        <span class="badge badge-info">Locked</span>
-                        <span class="text-muted">since {{ job.locked_at.strftime('%Y-%m-%d') if job.locked_at else 'unknown' }}</span>
-                        {% elif job.is_expired %}
-                        <span class="text-danger">{{ job.expires_at.strftime('%Y-%m-%d') }}</span>
-                        <span class="badge badge-danger ml-1">Expired</span>
-                        {% elif job.is_expiring(7) %}
-                        <span class="text-warning">{{ job.expires_at.strftime('%Y-%m-%d') }}</span>
-                        <span class="badge badge-warning ml-1">Soon</span>
-                        {% else %}
-                        {{ job.expires_at.strftime('%Y-%m-%d') }}
-                        {% endif %}
-                    </span>
-                </div>
-                {% endif %}
-                
-                {% if job.db_dropped_at %}
-                <div class="detail-row">
-                    <span class="detail-label">DB Dropped</span>
-                    <span class="detail-value text-danger">{{ job.db_dropped_at.strftime('%Y-%m-%d %H:%M') }}</span>
-                </div>
-                {% endif %}
+        <!-- Full-Width Rows -->
+        <div class="details-rows">
+            <div class="detail-row-full">
+                <span class="detail-label">Job ID</span>
+                <code class="detail-code-full">{{ job.id }}</code>
+            </div>
+            <div class="detail-row-full">
+                <span class="detail-label">Database</span>
+                <code class="detail-code-full">{{ job.target }}</code>
+            </div>
+            <div class="detail-row-full">
+                <span class="detail-label">Host</span>
+                <span class="detail-value-full">{{ job.dbhost or '—' }}</span>
             </div>
         </div>
     </div>
@@ -211,28 +190,30 @@
         </div>
         
         {# Progress bars in sticky area - above scrollable logs #}
-        {% if download_stats or restore_stats %}
+        {% if download_stats or restore_stats or atomic_rename_stats %}
         <div class="logs-progress-sticky">
             {# Download progress bar #}
             {% if download_stats %}
             <div class="log-progress log-progress--download{% if download_stats.is_complete %} log-progress--complete{% endif %}" id="download-progress">
-                <div class="log-progress-header">
-                    <span class="log-progress-label">Download</span>
-                    <span class="log-progress-stats">
-                        {{ download_stats.downloaded_bytes | format_filesize }} / {{ download_stats.total_bytes | format_filesize }}
-                        <span class="log-progress-separator">•</span>
-                        {{ download_stats.speed_bps | format_speed }}
-                        {% if not download_stats.is_complete and download_stats.eta_seconds > 0 %}
-                        <span class="log-progress-separator">•</span>
-                        ETA {{ download_stats.eta_seconds | format_eta }}
-                        {% endif %}
-                    </span>
-                </div>
                 <div class="log-progress-bar-row">
+                    <span class="log-progress-label">Download</span>
                     <div class="log-progress-bar-container">
                         <div class="log-progress-bar" style="width: {{ download_stats.percent_complete }}%"></div>
                     </div>
                     <div class="log-progress-percent">{{ "%.1f" | format(download_stats.percent_complete) }}%</div>
+                    <span class="log-progress-stats">
+                        {% if download_stats.is_complete %}
+                        ✓ {{ download_stats.total_bytes | format_filesize }} @ {{ download_stats.speed_bps | format_speed }} avg
+                        {% else %}
+                        {{ download_stats.downloaded_bytes | format_filesize }} / {{ download_stats.total_bytes | format_filesize }}
+                        <span class="log-progress-separator">•</span>
+                        {{ download_stats.speed_bps | format_speed }}
+                        {% if download_stats.eta_seconds > 0 %}
+                        <span class="log-progress-separator">•</span>
+                        ETA {{ download_stats.eta_seconds | format_eta }}
+                        {% endif %}
+                        {% endif %}
+                    </span>
                 </div>
             </div>
             {% endif %}
@@ -240,10 +221,16 @@
             {# Restore progress bar - overall progress + per-table #}
             {% if restore_stats %}
             <div class="log-progress log-progress--restore{% if restore_stats.is_complete %} log-progress--complete{% endif %}" id="restore-progress">
-                <div class="log-progress-header">
+                <div class="log-progress-bar-row">
                     <span class="log-progress-label">Restore</span>
+                    <div class="log-progress-bar-container">
+                        <div class="log-progress-bar" style="width: {{ restore_stats.percent_complete }}%"></div>
+                    </div>
+                    <div class="log-progress-percent">{{ "%.1f" | format(restore_stats.percent_complete) }}%</div>
                     <span class="log-progress-stats">
-                        {% if restore_stats.rows_per_second and restore_stats.rows_per_second > 0 %}
+                        {% if restore_stats.is_complete %}
+                        ✓ {{ "{:,}".format(restore_stats.total_rows) if restore_stats.total_rows else '—' }} rows restored
+                        {% elif restore_stats.rows_per_second and restore_stats.rows_per_second > 0 %}
                         {{ "{:,}".format(restore_stats.rows_per_second) }} rows/s
                         {% if restore_stats.eta_seconds %}· {{ restore_stats.eta_seconds | format_duration }}{% endif %}
                         {% elif restore_stats.active_threads and restore_stats.active_threads > 0 %}
@@ -254,12 +241,6 @@
                         {{ restore_stats.status }}
                         {% endif %}
                     </span>
-                </div>
-                <div class="log-progress-bar-row">
-                    <div class="log-progress-bar-container">
-                        <div class="log-progress-bar" style="width: {{ restore_stats.percent_complete }}%"></div>
-                    </div>
-                    <div class="log-progress-percent">{{ "%.1f" | format(restore_stats.percent_complete) }}%</div>
                 </div>
                 
                 {# Per-table progress bars from processlist #}
@@ -276,6 +257,32 @@
                     {% endfor %}
                 </div>
                 {% endif %}
+            </div>
+            {% endif %}
+
+            {# Atomic Rename progress bar #}
+            {% if atomic_rename_stats %}
+            <div class="log-progress log-progress--atomic-rename{% if atomic_rename_stats.is_complete %} log-progress--complete{% endif %}" id="atomic-rename-progress">
+                <div class="log-progress-bar-row">
+                    <span class="log-progress-label">Atomic Rename</span>
+                    <div class="log-progress-bar-container">
+                        <div class="log-progress-bar" style="width: {{ atomic_rename_stats.percent_complete }}%"></div>
+                    </div>
+                    <div class="log-progress-percent">{{ "%.1f" | format(atomic_rename_stats.percent_complete) }}%</div>
+                    <span class="log-progress-stats">
+                        {% if atomic_rename_stats.is_complete %}
+                        ✓ {{ atomic_rename_stats.total_tables }} table{{ 's' if atomic_rename_stats.total_tables != 1 else '' }} renamed
+                        {% elif atomic_rename_stats.total_tables > 0 %}
+                        {{ atomic_rename_stats.tables_renamed }} / {{ atomic_rename_stats.total_tables }} tables
+                        {% if atomic_rename_stats.current_table %}
+                        <span class="log-progress-separator">•</span>
+                        {{ atomic_rename_stats.current_table }}
+                        {% endif %}
+                        {% else %}
+                        Preparing...
+                        {% endif %}
+                    </span>
+                </div>
             </div>
             {% endif %}
         </div>
@@ -513,7 +520,7 @@
 <script>
 (function() {
     const STORAGE_KEY = 'pulldb_job_autorefresh';
-    const container = document.getElementById('job-details-container');
+    let container = null;
     let logsWasAtBottom = true;
     let savedScrollPositions = { page: 0, logs: 0 };
     
@@ -566,10 +573,15 @@
     function initAutoRefresh() {
         const saved = localStorage.getItem(STORAGE_KEY);
         const isPaused = saved === 'paused';
+        
         if (isPaused) {
+            // Only call pauseRefresh if we need to stop polling
             pauseRefresh();
         } else {
-            resumeRefresh();
+            // Don't re-process HTMX on init - it's already active from server render
+            // Just update the button state
+            updateButton(false);
+            localStorage.setItem(STORAGE_KEY, 'active');
         }
     }
     
@@ -609,8 +621,16 @@
         }
     };
     
-    initAutoRefresh();
-    scrollLogsToBottom();
+    // Wait for HTMX to be ready and process the DOM before we initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        container = document.getElementById('job-details-container');
+        
+        // Give HTMX a moment to scan and initialize polling
+        setTimeout(function() {
+            initAutoRefresh();
+            scrollLogsToBottom();
+        }, 100);
+    });
 })();
 </script>
 {% endif %}
