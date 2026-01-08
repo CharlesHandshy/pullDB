@@ -32,7 +32,9 @@ Before creating or modifying files:
 
 ## Context Loading Architecture
 
-pullDB uses a **tiered context system** separating universal guidance from project-specific extensions:
+**Engineering-DNA Version**: v0.1.2-alpha (January 2026)
+
+pullDB uses a **tiered context system** with **automated triage** for intelligent document loading:
 
 ```
 TIER 0: Self (Claude Opus 4.5)
@@ -40,8 +42,10 @@ TIER 0: Self (Claude Opus 4.5)
 
 TIER 1: Guidance (Universal - READ-ONLY)
     └── engineering-dna/AGENT-CONTEXT.md          ← Entry point
-    └── engineering-dna/standards/                ← Python, AWS, Database
-    └── engineering-dna/protocols/                ← FAIL HARD, Pre-commit
+    └── engineering-dna/docs/triage-system.md     ← Intelligent loading
+    └── engineering-dna/metadata/documentation-index.json  ← Document catalog
+    └── engineering-dna/standards/                ← Python, AWS, Database (auto-selected)
+    └── engineering-dna/protocols/                ← FAIL HARD, Pre-commit (auto-selected)
 
 TIER 2: Augmentation (pullDB-specific)
     └── .pulldb/CONTEXT.md                        ← Project entry point
@@ -59,13 +63,18 @@ TIER 4: Session (Task-specific)
 ### Loading Priority
 
 1. **Read `engineering-dna/AGENT-CONTEXT.md`** - Universal AI patterns
+   - **NEW**: Triage system automatically loads relevant standards/protocols
+   - Reduces token consumption by 40-60% while maintaining quality
+   - See `engineering-dna/docs/triage-system.md` for details
 2. **Read `.pulldb/CONTEXT.md`** - pullDB-specific extensions  
 3. **Query `docs/KNOWLEDGE-POOL.json`** - Operational facts for your task
 4. **Load task-specific overlay** - See table below
 
 ## Critical Directives
 
-1. **TIERED LOADING**: Follow the hierarchy above, don't load everything
+1. **INTELLIGENT LOADING**: Triage system (engineering-dna v0.1.2-alpha) automatically selects relevant docs
+   - Don't manually load all standards—let the triage system optimize
+   - See `engineering-dna/docs/triage-system.md` for how it works
 2. **KNOWLEDGE-POOL FIRST**: Query before solving—don't rediscover
 3. **CONTINUOUS LEARNING**: Add discoveries to KNOWLEDGE-POOL.md immediately
 4. **FAIL HARD**: Never silently degrade. Fail with: (1) what attempted, (2) why failed, (3) solutions

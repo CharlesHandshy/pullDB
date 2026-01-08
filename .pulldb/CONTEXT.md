@@ -12,6 +12,8 @@
 ```
 engineering-dna/           ← Shared template (READ-ONLY from pullDB)
   ├── AGENT-CONTEXT.md    ← Universal AI agent entry point
+  ├── docs/triage-system.md  ← Intelligent context loading
+  ├── metadata/documentation-index.json  ← Document catalog
   ├── standards/          ← Universal coding standards
   └── protocols/          ← Universal operational protocols
 
@@ -23,7 +25,11 @@ engineering-dna/           ← Shared template (READ-ONLY from pullDB)
 
 ### Loading Priority
 
+**Version**: engineering-dna v0.1.2-alpha (January 2026)
+
 1. **engineering-dna** → Base patterns (FAIL HARD, type hints, pre-commit)
+   - Uses automated triage system for intelligent document loading
+   - See `engineering-dna/docs/triage-system.md` for details
 2. **.pulldb/** → Project-specific extensions (myloader, staging, restore flow)
 3. **docs/** → Operational facts (account IDs, secrets, lessons learned)
 
@@ -119,10 +125,14 @@ shared/   → pulldb/infra/             Infrastructure
 
 ```
 1. Read engineering-dna/AGENT-CONTEXT.md (base patterns)
+   - Uses triage system to load relevant standards/protocols automatically
+   - See engineering-dna/docs/triage-system.md for intelligent loading
 2. Read .pulldb/CONTEXT.md (this file - project extensions)
 3. Query docs/KNOWLEDGE-POOL.json for relevant facts
 4. Check .github/copilot-instructions.md for task-specific guidance
 ```
+
+**Note**: The triage system (engineering-dna v0.1.2-alpha) automatically selects relevant documentation based on task analysis, reducing token consumption by 40-60% while maintaining quality.
 
 ### Ongoing Behaviors (AUTOMATIC)
 
