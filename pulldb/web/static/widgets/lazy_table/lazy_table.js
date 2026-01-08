@@ -685,8 +685,17 @@ class LazyTable {
     render() {
         const startRow = Math.floor(this.scrollTop / this.rowHeight);
         const bufferRows = Math.floor(this.visibleRowCount / 2);
-        const renderStart = Math.max(0, startRow - bufferRows);
-        const renderEnd = Math.min(this.filteredCount, startRow + this.visibleRowCount + bufferRows);
+        let renderStart = Math.max(0, startRow - bufferRows);
+        let renderEnd = Math.min(this.filteredCount, startRow + this.visibleRowCount + bufferRows);
+        
+        // When near the end, ensure we always render the last complete viewport
+        // This prevents bouncing when scrolling past the end of the data
+        const totalRenderableRows = renderEnd - renderStart;
+        const maxRenderCount = this.visibleRowCount + (bufferRows * 2);
+        if (renderEnd === this.filteredCount && totalRenderableRows < maxRenderCount) {
+            // Pin to the last page - show the final viewport of rows
+            renderStart = Math.max(0, this.filteredCount - maxRenderCount);
+        }
         
         // Skip render if range hasn't changed (reduces DOM thrashing during scroll)
         if (this._lastRenderStart === renderStart && this._lastRenderEnd === renderEnd && !this._forceRender) {
