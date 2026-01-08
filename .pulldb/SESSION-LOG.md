@@ -6,6 +6,82 @@
 
 ---
 
+## 2026-01-27 | Atomic Rename Progress Logging & UI
+
+### Context
+User requested updating job logs to support new atomic rename validation output and add progress bars for rename status on jobs page. This enhances visibility into the atomic rename process with real-time progress tracking.
+
+### What Was Done
+1. **Event Callback Support**: Added `event_callback` parameter to `atomic_rename_staging_to_target()`
+2. **Progress Events**: Emit events for each validation and rename phase:
+   - `atomic_rename_validating` - Pre/post validation starting
+   - `atomic_rename_validation_pass` - Validation passed
+   - `atomic_rename_checking_procedure` - Checking procedure version
+   - `atomic_rename_procedure_ready` - Procedure verified
+   - `atomic_rename_executing` - Starting table rename
+   - `atomic_rename_progress` - Per-table progress (with percentage)
+3. **UI Templates**: Updated job details page to render all new event types
+4. **Progress Bar**: Added visual progress bar for `atomic_rename_progress` events
+5. **Event Metadata**: Include phase names, table counts, percentages in log display
+6. **Styling**: Added success styling for validation pass events
+
+### Rationale
+**Visibility principle**: Users should see every step of critical operations. Atomic rename can take minutes for large databases (hundreds of tables). Without progress feedback, users can't distinguish between "working normally" and "hung/failed". Progress events provide:
+- Confidence that rename is progressing
+- ETA based on table completion rate
+- Immediate detection of stuck operations
+- Audit trail for each validation phase
+
+**HCA compliance**: Event emission added at feature layer (atomic_rename.py), consumed by widget layer (restore.py), displayed at page layer (details.html).
+
+### Files Modified
+- `pulldb/worker/atomic_rename.py` - Added event_callback parameter, emit 7 event types
+- `pulldb/worker/restore.py` - Pass _emit_event callback to atomic_rename
+- `pulldb/web/templates/features/jobs/details.html` - Render all rename progress events
+
+---
+
+## 2026-01-27 | Aurora MySQL Compatibility & Atomic Rename Hardening
+
+### Context
+Implemented ATOMIC-RENAME-FIX-PLAN.md to eliminate silent atomic rename failures discovered in job 380a026a. During implementation and testing on Aurora MySQL, discovered AWS Aurora behavioral differences requiring workarounds.
+
+### What Was Done
+1. **Schema Migration**: Created `procedure_deployments` table (00800) for version tracking
+2. **Privilege Updates**: Added `ALTER ROUTINE` to `pulldb_loader` grants (already had CREATE ROUTINE, EXECUTE)
+3. **Pre-validation**: Implemented staging existence check, empty staging check, target conflict check
+4. **Post-validation**: Implemented table count verification, staging removal verification
+5. **Aurora SQL Parsing**: Fixed procedure deployment to handle Aurora's DELIMITER stripping (adopted proven approach from mysql_provisioning.py)
+6. **Version Tracking**: Changed from procedure body comparison to `procedure_deployments` table (Aurora strips comments)
+7. **Lock Name Length**: Implemented hostname hashing for >40 char hostnames (MD5[:8])
+8. **Testing**: Comprehensive validation (missing staging, empty staging, full 3-table integration)
+9. **Documentation**: Created aurora-mysql-compatibility.md, updated 10+ doc files with privilege requirements
+10. **CHANGELOG**: Added v1.0.1 entry documenting all changes
+
+### Rationale
+**FAIL HARD principle**: Silent failures are unacceptable. Every atomic rename must be validated before and after execution. Aurora MySQL's behavioral differences (comment stripping, DELIMITER handling) required Aurora-specific workarounds documented for future maintainers.
+
+**HCA compliance**: All code changes respect layer boundaries. Documentation follows HCA structure (features/, entities/, widgets/, pages/).
+
+### Files Modified
+- `pulldb/worker/atomic_rename.py` - Core validation and Aurora SQL parsing
+- `pulldb/infra/mysql_provisioning.py` - Added ALTER ROUTINE to grants
+- `schema/pulldb_service/00800_procedure_deployments.sql` - New tracking table
+- `schema/pulldb_service/03000_mysql_users.sql` - Updated comments
+- `docs/hca/features/atomic_rename_procedure.sql` - Added Aurora note
+- `docs/hca/features/aurora-mysql-compatibility.md` - NEW comprehensive Aurora doc
+- `docs/hca/features/README.md` - Added aurora doc to index
+- `docs/hca/entities/mysql-schema.md` - Updated loader grants
+- `docs/hca/widgets/security.md` - Updated security model
+- `docs/archived/superseded/mysql-schema.md` - Updated grants
+- `docs/archived/mysql-user-separation.md` - Added EXECUTE, PROCESS privileges
+- `docs/archived/mysql-setup.md` - Updated privilege comments
+- `.pulldb/extensions/mysql-user-separation.md` - Added privilege notes
+- `docs/KNOWLEDGE-POOL.md` - Updated provisioning steps with Aurora note
+- `CHANGELOG.md` - Added v1.0.1 entry
+
+---
+
 ## 2026-01-05 | Packaging Documentation Audit
 
 ### Context

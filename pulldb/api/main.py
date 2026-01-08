@@ -835,6 +835,8 @@ class HostsListResponse(pydantic.BaseModel):
 
     hosts: list[HostInfoResponse]
     total: int
+    default_host: str | None = None
+    default_alias: str | None = None
 
 
 @app.get("/api/hosts", response_model=HostsListResponse)
@@ -851,6 +853,18 @@ async def list_hosts(
     No authentication required - this is public information.
     """
     hosts = await run_in_threadpool(state.host_repo.get_enabled_hosts)
+    
+    # Get user's default host if authenticated
+    default_host = None
+    default_alias = None
+    if user:
+        default_host = getattr(user, "default_host", None)
+        if default_host:
+            # Find the alias for the default host
+            for h in hosts:
+                if h.hostname == default_host:
+                    default_alias = h.host_alias
+                    break
 
     return HostsListResponse(
         hosts=[
@@ -862,6 +876,8 @@ async def list_hosts(
             for h in hosts
         ],
         total=len(hosts),
+        default_host=default_host,
+        default_alias=default_alias,
     )
 
 

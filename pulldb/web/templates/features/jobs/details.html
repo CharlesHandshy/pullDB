@@ -289,7 +289,7 @@
             {% set data = log.detail | parse_json %}
             
             {% if is_new_block %}
-            <div class="log-block {% if log.event_type in ['failed', 'error'] %}log-block--error{% elif log.event_type in ['complete', 'deployed', 'restore_complete', 'atomic_rename_complete'] %}log-block--success{% endif %}">
+            <div class="log-block {% if log.event_type in ['failed', 'error'] %}log-block--error{% elif log.event_type in ['complete', 'deployed', 'restore_complete', 'atomic_rename_complete', 'atomic_rename_validation_pass'] %}log-block--success{% endif %}">
                 <div class="log-header">
                     <span class="log-timestamp">{{ log.logged_at.strftime('%H:%M:%S') }}</span>
                     <span class="log-task">{{ log.event_type }}</span>
@@ -298,6 +298,8 @@
                     <span class="log-header-meta">{{ data.total_scripts }} scripts from {{ data.source | default('templates') }}</span>
                     {% elif log.event_type == 'restore_progress' and data is mapping %}
                     <span class="log-header-meta">myloader progress</span>
+                    {% elif log.event_type == 'atomic_rename_progress' and data is mapping %}
+                    <span class="log-header-meta">renaming tables ({{ data.percent | default(0) }}%)</span>
                     {% elif log.event_type == 'backup_selected' and data is mapping %}
                     <span class="log-header-meta">{{ data.location | default('') }} / {{ data.location_format | default('') }}</span>
                     {% elif log.event_type == 'restore_profile' and data is mapping %}
@@ -384,6 +386,60 @@
                     <div class="log-detail log-detail--table">
                         <span class="log-field"><span class="log-field-label">staging</span>{{ data.staging_db | default('?') }}</span>
                         <span class="log-field"><span class="log-field-label">target</span>{{ data.target_db | default('?') }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'atomic_rename_validating' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">phase</span>{{ data.phase | replace('_', ' ') | title }}</span>
+                        {% if data.table_count %}
+                        <span class="log-field"><span class="log-field-label">tables</span>{{ data.table_count }}</span>
+                        {% elif data.expected_tables %}
+                        <span class="log-field"><span class="log-field-label">expected</span>{{ data.expected_tables }}</span>
+                        {% endif %}
+                    </div>
+                    
+                    {% elif log.event_type == 'atomic_rename_validation_pass' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">phase</span>{{ data.phase | replace('_', ' ') | title }}</span>
+                        {% if data.table_count %}
+                        <span class="log-field"><span class="log-field-label">tables</span>{{ data.table_count }}</span>
+                        {% endif %}
+                    </div>
+                    
+                    {% elif log.event_type == 'atomic_rename_checking_procedure' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">version</span>{{ data.expected_version }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'atomic_rename_procedure_ready' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">version</span>{{ data.version }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'atomic_rename_executing' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">staging</span>{{ data.staging_db | default('?') }}</span>
+                        <span class="log-field"><span class="log-field-label">target</span>{{ data.target_db | default('?') }}</span>
+                        <span class="log-field"><span class="log-field-label">tables</span>{{ data.expected_tables }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'atomic_rename_target_dropped' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">target</span>{{ data.target_db | default('?') }}</span>
+                        {% if data.message %}
+                        <span class="log-field">{{ data.message }}</span>
+                        {% endif %}
+                    </div>
+                    
+                    {% elif log.event_type == 'atomic_rename_progress' and data is mapping %}
+                    <div class="log-detail">
+                        <div class="restore-progress-bar">
+                            <div class="restore-progress-fill" style="width: {{ data.percent | default(0) }}%"></div>
+                            <span class="restore-progress-text">{{ data.tables_renamed | default(0) }} / {{ data.total_tables | default(0) }} tables ({{ data.percent | default(0) | format_percent }})</span>
+                        </div>
+                        {% if data.message %}
+                        <div class="log-message">{{ data.message }}</div>
+                        {% endif %}
                     </div>
                     
                     {% elif log.event_type == 'atomic_rename_complete' and data is mapping %}

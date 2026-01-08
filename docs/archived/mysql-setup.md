@@ -154,6 +154,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.locks TO 'pulldb_worker'@
 CREATE USER 'pulldb_loader'@'localhost' IDENTIFIED BY 'REPLACE_WITH_LOADER_PASSWORD';
 GRANT ALL PRIVILEGES ON `%`.* TO 'pulldb_loader'@'localhost';
 
+-- Minimum required privileges for atomic rename operations:
+-- CREATE ROUTINE, ALTER ROUTINE: Deploy stored procedures
+-- EXECUTE: Run stored procedures for atomic rename
+-- PROCESS: View other sessions for advisory lock management
+-- Plus standard DDL/DML for restore operations
+
 # Apply privilege changes
 FLUSH PRIVILEGES;
 

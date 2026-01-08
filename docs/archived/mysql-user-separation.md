@@ -107,6 +107,8 @@ Used by myloader to restore backups.
 | `CREATE VIEW` | `*.*` | Restore views |
 | `CREATE ROUTINE` | `*.*` | Restore procedures/functions |
 | `ALTER ROUTINE` | `*.*` | Modify procedures |
+| `EXECUTE` | `*.*` | Run stored procedures |
+| `PROCESS` | `*.*` | View sessions for advisory locks |
 | `REFERENCES` | `*.*` | Foreign key management |
 | `EVENT` | `*.*` | Restore events (if any) |
 
@@ -115,8 +117,13 @@ Used by myloader to restore backups.
 -- This is a privileged user for restore operations
 GRANT CREATE, DROP, ALTER, INDEX, INSERT, UPDATE, DELETE, SELECT,
       LOCK TABLES, TRIGGER, CREATE VIEW, CREATE ROUTINE, ALTER ROUTINE,
-      REFERENCES, EVENT
+      REFERENCES, EVENT, EXECUTE, PROCESS
 ON *.* TO 'pulldb_loader'@'%';
+
+-- Key privileges for atomic rename operations:
+-- CREATE ROUTINE, ALTER ROUTINE: Deploy stored procedures
+-- EXECUTE: Run stored procedures for atomic rename
+-- PROCESS: View other sessions for advisory lock management
 
 -- Alternative: Restrict to specific database patterns
 -- GRANT ... ON `______%`.* TO 'pulldb_loader'@'%';  -- user_code prefixed DBs

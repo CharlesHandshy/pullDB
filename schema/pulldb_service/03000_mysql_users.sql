@@ -124,8 +124,12 @@ FLUSH PRIVILEGES;
 --
 -- GRANT CREATE, DROP, ALTER, INDEX, INSERT, UPDATE, DELETE, SELECT,
 --       LOCK TABLES, TRIGGER, CREATE VIEW, CREATE ROUTINE, ALTER ROUTINE,
---       REFERENCES, EVENT
--- ON *.* TO 'pulldb_loader'@'%';
+--       REFERENCES, EVENT, EXECUTE, PROCESS
+ON *.* TO 'pulldb_loader'@'%';
+--
+-- Note: CREATE ROUTINE and ALTER ROUTINE are required for deploying the
+--       pulldb_atomic_rename stored procedure. EXECUTE is needed to run it.
+--       PROCESS allows the worker to monitor its own MySQL connections.
 --
 -- -- Optional: Restrict to specific database patterns
 -- -- GRANT ... ON `______%`.* TO 'pulldb_loader'@'%';  -- user_code prefixed DBs

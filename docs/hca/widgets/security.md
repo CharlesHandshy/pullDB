@@ -94,9 +94,14 @@ GRANT SELECT ON pulldb_service.settings TO 'pulldb_worker'@'localhost';
 -- NO: User table access (not needed)
 
 -- pulldb_loader: Database restore operations (on TARGET hosts)
-GRANT ALL PRIVILEGES ON `pulldb_stg_%`.* TO 'pulldb_loader'@'%';
-GRANT SELECT, DROP, CREATE, ALTER, INDEX ON *.* TO 'pulldb_loader'@'%';
--- Limited to staging databases and DDL operations for atomic rename
+GRANT CREATE, DROP, ALTER, INDEX, INSERT, UPDATE, DELETE, SELECT,
+      LOCK TABLES, TRIGGER, CREATE VIEW, CREATE ROUTINE, ALTER ROUTINE,
+      REFERENCES, EVENT, EXECUTE, PROCESS
+ON *.* TO 'pulldb_loader'@'%';
+-- Broad privileges required for:
+-- - myloader restore operations (data + schema)
+-- - Stored procedure deployment (CREATE/ALTER ROUTINE, EXECUTE)
+-- - Atomic database rename after restore
 ```
 
 ### Why Three Users?

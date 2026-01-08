@@ -681,7 +681,7 @@ def orchestrate_restore_workflow(
             "atomic_rename_duration_seconds",
             MetricLabels(job_id=job.id, target=job.target, phase="atomic_rename"),
         ):
-            atomic_rename_staging_to_target(rename_conn, rename_spec)
+            atomic_rename_staging_to_target(rename_conn, rename_spec, event_callback=_emit_event)
         rename_duration = (datetime.now(UTC) - rename_started_at).total_seconds()
         result["atomic_rename"] = "complete"
         result["atomic_rename_duration_seconds"] = rename_duration

@@ -275,11 +275,11 @@ def create_pulldb_user(
             "CREATE, DROP, ALTER",
             # Data operations
             "SELECT, INSERT, UPDATE, DELETE",
-            # Stored procedure execution
-            "EXECUTE",
+            # Stored procedure operations (for atomic rename)
+            "EXECUTE, CREATE ROUTINE, ALTER ROUTINE",
             # For LOAD DATA and myloader
             "LOCK TABLES, REFERENCES",
-            # Process visibility for monitoring
+            # Process visibility for monitoring and advisory locks
             "PROCESS",
         ]
 

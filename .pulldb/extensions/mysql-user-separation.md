@@ -103,6 +103,12 @@ GRANT LOCK TABLES ON pulldb_service.* TO 'pulldb_worker'@'localhost';
 -- Granted per-database as needed, OR:
 GRANT ALL PRIVILEGES ON *.* TO 'pulldb_loader'@'%';
 
+-- Minimum required privileges for atomic rename operations:
+-- CREATE ROUTINE, ALTER ROUTINE (create/update stored procedures)
+-- EXECUTE (run stored procedures)
+-- PROCESS (view other sessions for advisory locks)
+-- Plus standard DDL/DML for restore operations
+
 -- Note: pulldb_loader connects to TARGET hosts, not coordination DB
 -- Each target host has its own pulldb_loader credentials
 ```

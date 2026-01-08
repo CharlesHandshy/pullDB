@@ -83,8 +83,13 @@ This user exists on **target database hosts** (dev-db-01, etc.), not the coordin
 -- Run on each TARGET database host
 GRANT CREATE, DROP, ALTER, INDEX, INSERT, UPDATE, DELETE, SELECT,
       LOCK TABLES, TRIGGER, CREATE VIEW, CREATE ROUTINE, ALTER ROUTINE,
-      REFERENCES, EVENT
+      REFERENCES, EVENT, EXECUTE, PROCESS
 ON *.* TO 'pulldb_loader'@'%';
+
+-- Key privileges for atomic rename operations:
+-- CREATE ROUTINE, ALTER ROUTINE: Deploy stored procedures
+-- EXECUTE: Run stored procedures for atomic rename
+-- PROCESS: View other sessions for advisory lock management
 ```
 
 Loader credentials are stored per-host in the `db_hosts` table via `credential_ref`.

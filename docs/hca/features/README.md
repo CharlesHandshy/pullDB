@@ -9,6 +9,7 @@
 |----------|---------|--------|
 | [staging.md](staging.md) | Staging database lifecycle | ✅ Active |
 | [atomic_rename_procedure.sql](atomic_rename_procedure.sql) | Atomic rename stored procedure | ✅ Active |
+| [aurora-mysql-compatibility.md](aurora-mysql-compatibility.md) | Aurora MySQL workarounds | ✅ Active |
 | [restore.md](restore.md) | Restore workflow | 📝 Planned |
 | [download.md](download.md) | S3 download patterns | 📝 Planned |
 | [post-sql.md](post-sql.md) | Post-restore SQL execution | 📝 Planned |

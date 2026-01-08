@@ -319,11 +319,13 @@ Unified service for CLI and Web-based host setup orchestration.
 ### Provisioning Steps
 
 1. Test admin connection to target MySQL
-2. Create `pulldb_loader` user with privileges
+2. Create `pulldb_loader` user with privileges (includes CREATE ROUTINE, ALTER ROUTINE, EXECUTE, PROCESS)
 3. Create `pulldb_service` database
-4. Deploy `pulldb_atomic_rename` stored procedure
+4. Deploy `pulldb_atomic_rename` stored procedure (v1.0.0, auto-versioned via `procedure_deployments` table)
 5. Store credentials in AWS Secrets Manager
 6. Register host in coordination database
+
+**Aurora MySQL Note**: Procedure version tracking uses `procedure_deployments` table because Aurora strips comments from procedure bodies. See [aurora-mysql-compatibility.md](hca/features/aurora-mysql-compatibility.md).
 
 ### Result Handling
 

@@ -813,6 +813,26 @@ def cli(ctx: click.Context) -> None:
         elif user_code:
             click.echo("pullDB - Database restore tool")
             click.echo(f"User: {username} (code: {user_code})")
+            
+            # Show default host info
+            try:
+                base_url, timeout = _load_api_config()
+                path = "/api/hosts"
+                url = f"{base_url}{path}"
+                headers = get_auth_headers(method="GET", path=path, body=None)
+                response = requests_module.get(url, headers=headers, timeout=timeout)
+                if response.status_code == 200:
+                    data = _parse_json_response(response)
+                    default_host = data.get("default_host")
+                    default_alias = data.get("default_alias")
+                    if default_host:
+                        if default_alias:
+                            click.echo(f"Default host: {default_alias} ({default_host})")
+                        else:
+                            click.echo(f"Default host: {default_host}")
+            except Exception:
+                pass  # Silently skip if we can't get host info
+            
             click.echo("")
             click.echo(ctx.get_help())
         else:
@@ -2232,6 +2252,9 @@ def hosts_cmd(json_out: bool) -> None:
         click.echo("No database hosts available.")
         return
 
+    # Get user's default host
+    default_host = data.get("default_host")
+    
     # Formatted table display
     click.echo("\nAvailable Database Hosts")
     click.echo("=" * 50)
@@ -2241,10 +2264,21 @@ def hosts_cmd(json_out: bool) -> None:
     for host in hosts:
         alias = host.get("alias") or "—"
         hostname = host.get("hostname", "unknown")
+        
+        # Mark default host with *
+        if default_host and hostname == default_host:
+            alias = f"{alias} *"
+        
         click.echo(f"{alias:<16} {hostname:<32}")
 
     click.echo(f"{'-' * 16} {'-' * 32}")
     click.echo(f"\nTotal: {len(hosts)} host(s)")
+    if default_host:
+        default_alias = data.get("default_alias")
+        if default_alias:
+            click.echo(f"* = default host")
+        else:
+            click.echo(f"* = default host")
     click.echo("\nUse alias or hostname with: pulldb restore <customer> dbhost=<alias>")
 
 

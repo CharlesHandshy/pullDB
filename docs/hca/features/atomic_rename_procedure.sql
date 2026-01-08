@@ -1,5 +1,5 @@
 -- Atomic rename stored procedure for pullDB
--- Version: 1.1.0
+-- Version: 1.0.1
 --
 -- IMPORTANT: Procedure version MUST match expected version in deployment
 -- tooling and worker compatibility checks. Bump this version ONLY when
@@ -8,6 +8,11 @@
 --   * Worker-side compatibility validation
 --   * Controlled rollout (verify version before restore)
 --   * Benchmark correlations (performance evolution across versions)
+--
+-- Aurora MySQL Note: MySQL strips comments when storing procedures.
+-- The version comment inside the procedure body (after BEGIN) is for
+-- documentation only. Version tracking relies on procedure_deployments
+-- table populated by the worker during auto-deployment.
 --
 -- Preview companion procedure (pulldb_atomic_rename_preview) is provided
 -- to safely inspect the RENAME TABLE statement without executing it.
@@ -64,6 +69,7 @@ DELIMITER $$
 DROP PROCEDURE IF EXISTS pulldb_atomic_rename $$
 CREATE PROCEDURE pulldb_atomic_rename(IN p_staging_db VARCHAR(64), IN p_target_db VARCHAR(64))
 BEGIN
+    -- Version: 1.0.1
     DECLARE v_table_count INT DEFAULT 0;
     DECLARE v_rename_sql LONGTEXT;
     DECLARE v_first_table VARCHAR(255);
@@ -86,11 +92,21 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = p_target_db
     ) THEN
+        -- Output progress before dropping
+        SELECT p_target_db AS database_name, 'target_dropped' AS status;
+        
         SET @drop_sql = CONCAT('DROP DATABASE `', p_target_db, '`');
         PREPARE stmt_drop FROM @drop_sql;
         EXECUTE stmt_drop;
         DEALLOCATE PREPARE stmt_drop;
     END IF;
+
+    -- Output streaming progress for monitoring (each table as separate result set)
+    -- Worker will consume these and log to job_events
+    SELECT TABLE_NAME, 'preparing_rename' AS status
+    FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = p_staging_db
+    ORDER BY TABLE_NAME;
 
     -- Build atomic RENAME statement for all tables
     SET v_rename_sql = NULL;

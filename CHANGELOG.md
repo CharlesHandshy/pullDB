@@ -1,6 +1,41 @@
 CHANGELOG
 =========
 
+v1.0.1 - 2026-01-08
+-------------------
+### Aurora MySQL Compatibility & Atomic Rename Hardening
+
+Comprehensive fixes for AWS Aurora MySQL compatibility and atomic rename validation.
+
+### Added
+- `procedure_deployments` table tracks stored procedure versions across hosts
+- Pre-validation: Detects missing staging database before atomic rename
+- Pre-validation: Detects empty staging database (0 tables)
+- Post-validation: Verifies table count matches and staging removed after rename
+- Aurora MySQL compatibility documentation: `docs/hca/features/aurora-mysql-compatibility.md`
+- Hostname hashing for advisory locks (Aurora hostnames >40 chars exceed 64-char lock name limit)
+- Progress event: `atomic_rename_target_dropped` logged when overwrite drops existing database
+
+### Changed
+- `pulldb_loader` grants now include `ALTER ROUTINE` (in addition to existing `CREATE ROUTINE`, `EXECUTE`)
+- Atomic rename procedure deployment uses proven SQL parsing from `mysql_provisioning.py`
+- Procedure version verification uses `procedure_deployments` table (Aurora strips comments from procedure bodies)
+- Lock names hash long hostnames: `MD5(hostname)[:8]` when hostname >40 chars
+- Atomic rename procedure bumped to v1.0.1 (bug fix release)
+
+### Fixed
+- **Overwrite regression**: Restored `DROP DATABASE IF EXISTS` logic in atomic rename procedure
+- **Silent atomic rename failures** now impossible - pre/post validation catches all error conditions
+- Aurora SQL parsing: Removed line-by-line DELIMITER parser, use programmatic split on `$$`
+- Job 380a026a: Successfully completed 446-table atomic rename after fixing validation
+- Lock name length: `pulldb_atomic_rename_<hash>` stays under 64-char MySQL limit
+- Pre-validation no longer blocks when target database exists (procedure handles DROP)
+
+### Documentation
+- Updated all privilege documentation with `ALTER ROUTINE`, `EXECUTE`, `PROCESS` requirements
+- Added Aurora-specific notes about comment stripping and DELIMITER handling
+- Updated schema files, security docs, archived docs with complete privilege sets
+
 v1.0.0 - 2026-01-06
 -------------------
 ### First Stable Release
