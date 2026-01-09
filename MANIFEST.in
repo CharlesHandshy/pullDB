@@ -2,6 +2,9 @@
 # Legacy backups are supported via metadata synthesis
 include pulldb/binaries/myloader-0.19.3-3
 
+# Post-restore SQL scripts (sanitize customer data for dev environments)
+recursive-include pulldb/template_after_sql *.sql *.md
+
 # Exclude test fixtures from distribution
 global-exclude pulldb/binaries/*.tar
 prune pulldb/binaries/dumps

@@ -67,6 +67,7 @@ pulldb = [
     "web/help/**/*",
     "binaries/myloader-*",
     "images/*",
+    "template_after_sql/**/*",
 ]
 
 [tool.setuptools.exclude-package-data]

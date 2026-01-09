@@ -69,6 +69,7 @@ temp/
 !schema/pulldb/*.sql
 !schema/pulldb_service/*.sql
 !schema/archived/pulldb.sql
+!pulldb/template_after_sql/**/*.sql
 *.sql.gz
 *.sql.zst
 *.tar
