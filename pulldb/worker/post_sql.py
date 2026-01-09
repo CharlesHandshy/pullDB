@@ -36,7 +36,6 @@ from pulldb.infra.logging import get_logger
 
 SCRIPT_EXTENSION = ".sql"
 MAX_SCRIPT_SIZE_BYTES = 2_000_000  # 2 MB safety cap to prevent runaway memory
-SCRIPT_SOURCE_NOTE = "template_after_sql/"  # Note for log messages about script location
 
 logger = get_logger("pulldb.worker.post_sql")
 
@@ -210,7 +209,7 @@ def execute_post_sql(
                     "total_scripts": len(scripts),
                     "duration_seconds": round(duration, 3),
                     "rows_affected": affected,
-                    "source": SCRIPT_SOURCE_NOTE,
+                    "source": str(directory),
                 })
     finally:
         with suppress(Exception):  # pragma: no cover - best effort

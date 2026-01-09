@@ -69,7 +69,51 @@ cp "${PROJECT_ROOT}/packaging/debian_client/postrm" "$DEBIAN_DIR/postrm"
 chmod 0755 "$DEBIAN_DIR/preinst" "$DEBIAN_DIR/postinst" "$DEBIAN_DIR/postrm"
 
 # =============================================================================
-# Step 3: Lay down application files
+# Step 3: Build client-specific wheel (minimal, no server components)
+# =============================================================================
+echo "=== Building client-specific wheel ==="
+
+# Build a minimal wheel using pyproject-client.toml
+# Strategy: Create a clean temp directory with only client files and client config
+# This works because we put pyproject-client.toml as pyproject.toml in the temp dir
+mkdir -p "${PROJECT_ROOT}/dist-client"
+
+# Create temporary build directory
+TEMP_BUILD="${PROJECT_ROOT}/build/temp-client-wheel"
+rm -rf "${TEMP_BUILD}"
+mkdir -p "${TEMP_BUILD}/pulldb/cli"
+
+# Copy only client-needed modules (minimal CLI only)
+cp "${PROJECT_ROOT}/pulldb/__init__.py" "${TEMP_BUILD}/pulldb/"
+cp "${PROJECT_ROOT}/pulldb/cli/__init__.py" "${TEMP_BUILD}/pulldb/cli/"
+cp "${PROJECT_ROOT}/pulldb/cli/__main__.py" "${TEMP_BUILD}/pulldb/cli/"
+cp "${PROJECT_ROOT}/pulldb/cli/main.py" "${TEMP_BUILD}/pulldb/cli/"
+cp "${PROJECT_ROOT}/pulldb/cli/auth.py" "${TEMP_BUILD}/pulldb/cli/"
+cp "${PROJECT_ROOT}/pulldb/cli/parse.py" "${TEMP_BUILD}/pulldb/cli/"
+
+# Copy client-specific config as pyproject.toml (with version substitution)
+sed "s/^version = .*/version = \"${VERSION}\"/" \
+    "${PROJECT_ROOT}/pyproject-client.toml" > "${TEMP_BUILD}/pyproject.toml"
+
+# Build the wheel in the temp directory
+cd "${TEMP_BUILD}"
+python3 -m build --wheel --outdir="${PROJECT_ROOT}/dist-client"
+cd "${PROJECT_ROOT}"
+
+# Use client wheel if available, otherwise use server wheel
+CLIENT_WHEEL=$(ls "${PROJECT_ROOT}"/dist-client/pulldb*client*.whl 2>/dev/null | head -1)
+if [[ -n "$CLIENT_WHEEL" ]]; then
+    echo "Using client-specific wheel: $(basename "$CLIENT_WHEEL")"
+    WHEEL_SOURCE="${PROJECT_ROOT}/dist-client"
+    WHEEL_PATTERN="pulldb*client*.whl"
+else
+    echo "[WARNING] Client wheel not found, using server wheel"
+    WHEEL_SOURCE="${PROJECT_ROOT}/dist"
+    WHEEL_PATTERN="pulldb-*.whl"
+fi
+
+# =============================================================================
+# Step 4: Lay down application files
 # =============================================================================
 APP_ROOT="$WORKDIR/opt/pulldb.client"
 mkdir -p "$APP_ROOT/dist"
@@ -78,17 +122,16 @@ mkdir -p "$APP_ROOT/dist"
 echo "Copying embedded Python (~75MB)..."
 cp -r "${EMBEDDED_PYTHON_DIR}" "$APP_ROOT/python"
 
-# Use the wheel from dist/ (built by main build process)
-if compgen -G "${PROJECT_ROOT}/dist/pulldb-*.whl" > /dev/null; then
-    cp "${PROJECT_ROOT}"/dist/pulldb-*.whl "$APP_ROOT/dist/"
+# Copy wheel
+if compgen -G "${WHEEL_SOURCE}/${WHEEL_PATTERN}" > /dev/null; then
+    cp "${WHEEL_SOURCE}"/${WHEEL_PATTERN} "$APP_ROOT/dist/"
 else
-    echo "[ERROR] No wheel file found in dist/." >&2
-    echo "Run 'python3 -m build' or 'make server' first to build the wheel." >&2
+    echo "[ERROR] No wheel file found." >&2
     exit 1
 fi
 
 # =============================================================================
-# Step 4: Documentation
+# Step 5: Documentation
 # =============================================================================
 DOC_DIR="$WORKDIR/usr/share/doc/pulldb-client"
 mkdir -p "$DOC_DIR"
@@ -103,7 +146,7 @@ fi
 cp "${PROJECT_ROOT}/packaging/install-pulldb-client.sh" "$DOC_DIR/"
 
 # =============================================================================
-# Step 5: Build package
+# Step 6: Build package
 # =============================================================================
 echo "=== Building package ==="
 dpkg-deb --build "$WORKDIR" "${PROJECT_ROOT}/$PKGNAME"

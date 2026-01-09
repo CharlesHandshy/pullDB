@@ -144,14 +144,16 @@
                         <td>{{ key.created_at.strftime('%Y-%m-%d') if key.created_at else '—' }}</td>
                         <td>{{ key.last_used_at.strftime('%Y-%m-%d %H:%M') if key.last_used_at else 'Never' }}</td>
                         <td>
-                            {% if key.is_active %}
+                            {% if not key.approved_at %}
+                            <span class="badge badge-warning">Pending</span>
+                            {% elif key.is_active %}
                             <span class="badge badge-success">Active</span>
                             {% else %}
                             <span class="badge badge-danger">Revoked</span>
                             {% endif %}
                         </td>
                         <td>
-                            {% if key.is_active %}
+                            {% if not key.approved_at or key.is_active %}
                             <form method="POST" action="/web/auth/api-key/{{ key.key_id }}/revoke" style="display:inline">
                                 <button type="submit" class="btn btn-sm btn-outline-danger" 
                                         onclick="return confirm('Are you sure you want to revoke this key? This cannot be undone.')">

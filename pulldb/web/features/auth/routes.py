@@ -371,11 +371,16 @@ async def revoke_api_key(
     from fastapi.concurrency import run_in_threadpool
 
     # Verify the key belongs to this user before revoking
-    key_user_id = await run_in_threadpool(
-        state.auth_repo.get_api_key_user, key_id
+    # Use get_api_key_info() instead of get_api_key_user() to avoid exceptions
+    # on pending/revoked keys (users should be able to revoke their own pending keys)
+    key_info = await run_in_threadpool(
+        state.auth_repo.get_api_key_info, key_id
     )
 
-    if key_user_id != user.user_id:
+    if not key_info:
+        return RedirectResponse(url="/web/auth/profile?error=key_not_found", status_code=303)
+
+    if key_info["user_id"] != user.user_id:
         return RedirectResponse(url="/web/auth/profile?error=not_authorized", status_code=303)
 
     # Revoke the key

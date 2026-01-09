@@ -148,6 +148,7 @@ async def jobs_page(
             "has_next": len(jobs) == page_size,
             "has_prev": page > 1,
             "q": q,
+            "cache_bust": int(__import__('time').time()),
             "status": status,
             "host": host,
             "hosts": hosts,

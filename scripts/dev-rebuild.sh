@@ -9,7 +9,10 @@ cd /home/charleshandshy/Projects/pullDB
 echo "=== Running make clean ==="
 make clean
 
-echo "=== Building all packages (wheel + server + client) ==="
+echo "=== Building all packages ==="
+echo "  - Python wheel (server)"
+echo "  - Server .deb (with full dependencies)"
+echo "  - Client .deb (minimal wheel, CLI only)"
 make all
 
 # Get the version from the built package
@@ -55,3 +58,9 @@ sudo systemctl is-active pulldb-worker@3 || true
 
 echo ""
 echo "=== Done! ==="
+echo ""
+echo "Packages built:"
+ls -lh pulldb_*.deb pulldb-client_*.deb 2>/dev/null || true
+echo ""
+echo "Wheels built:"
+ls -lh dist/*.whl dist-client/*.whl 2>/dev/null || true

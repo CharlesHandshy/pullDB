@@ -65,7 +65,6 @@ pulldb = [
     "web/shared/**/*",
     "web/widgets/**/*",
     "web/help/**/*",
-    "template_after_sql/**/*",
     "binaries/myloader-*",
     "images/*",
 ]

@@ -19,6 +19,11 @@ from pulldb import __version__
 from pulldb.cli.auth import get_auth_headers, get_calling_username, get_current_username
 from pulldb.cli.parse import CLIParseError, parse_restore_args
 
+# UUID validation pattern (copied from domain.validation to keep CLI self-contained)
+_UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 
 # Load .env file from standard locations
 # Priority: /opt/pulldb.service/.env (installed), then .env (dev)
@@ -244,8 +249,7 @@ def _resolve_job_id(job_id_or_prefix: str) -> str:
         )
 
     # If it's a valid full UUID, use directly (normalized to lowercase)
-    from pulldb.domain.validation import is_valid_uuid
-    if is_valid_uuid(job_id_or_prefix):
+    if job_id_or_prefix and _UUID_PATTERN.match(job_id_or_prefix):
         return job_id_or_prefix.lower()
 
     # Call resolution API

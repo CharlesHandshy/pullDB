@@ -1016,6 +1016,11 @@ async def api_users_paginated(
         if hasattr(state, "auth_repo") and hasattr(state.auth_repo, "is_password_reset_required"):
             password_reset_pending = state.auth_repo.is_password_reset_required(u.user_id)
         
+        # Count pending API keys for this user
+        pending_keys_count = 0
+        if hasattr(state, "auth_repo") and hasattr(state.auth_repo, "count_pending_api_keys_by_user"):
+            pending_keys_count = state.auth_repo.count_pending_api_keys_by_user(u.user_id)
+        
         all_users.append({
             "user_id": u.user_id,
             "username": u.username,
@@ -1029,6 +1034,7 @@ async def api_users_paginated(
             "status": "locked" if getattr(u, "locked_at", None) else ("disabled" if u.disabled_at else "enabled"),
             "password_reset_pending": password_reset_pending,
             "active_jobs": job_counts.get(u.user_code, 0),
+            "pending_keys_count": pending_keys_count,
         })
     
     total_count = len(all_users)

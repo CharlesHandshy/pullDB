@@ -109,6 +109,19 @@
     margin-bottom: 8px;
     opacity: 0.5;
 }
+/* Pending keys notification */
+@keyframes pulse-warning {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 4px rgba(245, 158, 11, 0);
+    }
+}
+.action-btn.has-pending-keys {
+    animation: pulse-warning 2s ease-in-out infinite;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
 </style>
 {% endblock %}
 
@@ -612,7 +625,11 @@
         </button>`;
         
         // API Keys button - keyring with keys over lock
-        html += `<button class="action-btn action-btn-primary-muted" title="Manage API Keys" aria-label="Manage API keys for ${row.username}" onclick="showApiKeysModal('${row.user_id}', '${row.username}')">
+        const pendingKeysClass = (row.pending_keys_count > 0) ? ' has-pending-keys' : '';
+        const pendingKeysTitle = (row.pending_keys_count > 0) 
+            ? `Manage API Keys (${row.pending_keys_count} pending)` 
+            : 'Manage API Keys';
+        html += `<button class="action-btn action-btn-primary-muted${pendingKeysClass}" title="${pendingKeysTitle}" aria-label="Manage API keys for ${row.username}" onclick="showApiKeysModal('${row.user_id}', '${row.username}')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <circle cx="12" cy="5" r="3"/>
                 <path d="M7 8L5 14l2 1"/>

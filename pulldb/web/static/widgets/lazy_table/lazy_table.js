@@ -1,5 +1,6 @@
 /**
  * LazyTable - Server-Side Lazy Loading Table Widget
+ * Version: 1.0.1 (2026-01-09 - Fixed select-all checkbox updates)
  * ==================================================
  * HCA Layer: widgets (Layer 3)
  * 
@@ -462,13 +463,15 @@ class LazyTable {
         if (this.config.selectable) {
             // Select all checkbox
             const selectAllCheckbox = this.elements.headerTable.querySelector('.select-all-checkbox');
-            selectAllCheckbox?.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    this.selectAllFiltered();
-                } else {
-                    this.clearSelection();
-                }
-            });
+            if (selectAllCheckbox) {
+                selectAllCheckbox.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        this.selectAllFiltered();
+                    } else {
+                        this.clearSelection();
+                    }
+                });
+            }
             
             // Selection action buttons
             const actionBtns = this.elements.headerTable.querySelectorAll('.selection-action-btn');
@@ -975,13 +978,21 @@ class LazyTable {
         // Update header checkbox state
         const selectAllCheckbox = this.elements.headerTable.querySelector('.select-all-checkbox');
         if (selectAllCheckbox) {
+            // When in "select all" mode with no exclusions, check the checkbox
+            // regardless of whether all rows are selectable (canSelect callback)
             if (this.selection.mode === 'all' && this.selection.excludeIds.size === 0) {
                 selectAllCheckbox.checked = true;
                 selectAllCheckbox.indeterminate = false;
+            } else if (this.selection.mode === 'all' && this.selection.excludeIds.size > 0) {
+                // Some exclusions in "all" mode - show indeterminate
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = true;
             } else if (count > 0) {
+                // Partial selection mode with some selections
                 selectAllCheckbox.checked = false;
                 selectAllCheckbox.indeterminate = true;
             } else {
+                // No selections
                 selectAllCheckbox.checked = false;
                 selectAllCheckbox.indeterminate = false;
             }
@@ -1865,7 +1876,7 @@ class LazyTable {
         }
         
         this.onSelectionChange();
-        this.render();
+        this.updateSelectionBar();
     }
 
     selectSingle(rowId) {
@@ -1879,6 +1890,26 @@ class LazyTable {
         this.render();
     }
 
+    updateVisibleCheckboxes() {
+        // Update checkbox states for all currently visible rows
+        const rows = this.elements.tbody.querySelectorAll('.lazy-table-row');
+        rows.forEach(row => {
+            const rowId = row.dataset.rowId;
+            if (rowId) {
+                const checkbox = row.querySelector('.row-checkbox');
+                if (checkbox) {
+                    const isSelected = this.isRowSelected(rowId);
+                    checkbox.checked = isSelected;
+                    if (isSelected) {
+                        row.classList.add('selected');
+                    } else {
+                        row.classList.remove('selected');
+                    }
+                }
+            }
+        });
+    }
+
     selectAllFiltered() {
         this.selection = {
             mode: 'all',
@@ -1886,6 +1917,10 @@ class LazyTable {
             excludeIds: new Set()
         };
         this.onSelectionChange();
+        // Force full re-render by resetting render cache and force flag
+        this._lastRenderStart = -1;
+        this._lastRenderEnd = -1;
+        this._forceRender = true;
         this.render();
     }
 
@@ -1896,6 +1931,10 @@ class LazyTable {
             excludeIds: new Set()
         };
         this.onSelectionChange();
+        // Force full re-render by resetting render cache and force flag
+        this._lastRenderStart = -1;
+        this._lastRenderEnd = -1;
+        this._forceRender = true;
         this.render();
     }
 

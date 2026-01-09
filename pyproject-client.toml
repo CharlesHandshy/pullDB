@@ -1,0 +1,73 @@
+# ============================================================================
+# pullDB Client-Only Package Configuration
+# ============================================================================
+# Minimal client package containing ONLY CLI code and dependencies.
+# Excludes: API server, Web UI, Worker service, binaries, simulation code.
+#
+# Used by: scripts/build_client_deb.sh to create lightweight client package
+# ============================================================================
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pulldb-client"
+version = "1.0.1"
+description = "pullDB CLI Client - Connect to remote pullDB services"
+readme = "packaging/CLIENT-README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [ { name = "PestRoutes Engineering" } ]
+keywords = ["mysql", "restore", "s3", "backup", "dev", "cli"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+
+# Minimal dependencies for CLI client only
+dependencies = [
+  "click>=8.1.0",
+  "requests>=2.32.0",
+  "python-dotenv>=1.0.0",
+  "pydantic>=2.0.0",
+  "bcrypt>=4.2.0"
+]
+
+[project.scripts]
+pulldb = "pulldb.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pulldb", "pulldb.cli"]
+namespaces = false
+
+# Explicitly exclude server-side CLI commands
+[tool.setuptools.exclude-package-data]
+pulldb = [
+    "cli/admin.py",
+    "cli/admin_commands.py",
+    "cli/backup_commands.py",
+    "cli/secrets_commands.py",
+    "cli/settings.py",
+]
+
+[tool.setuptools.package-data]
+# No static files, templates, binaries, or web content needed for client
+pulldb = []
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_ignores = true
+warn_return_any = true
+warn_unused_configs = true
+strict_optional = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_unreachable = true
+disallow_any_unimported = false

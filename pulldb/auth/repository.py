@@ -711,6 +711,27 @@ class AuthRepository:
             )
             return list(cursor.fetchall())
 
+    def count_pending_api_keys_by_user(self, user_id: str) -> int:
+        """Count pending API keys for a specific user.
+
+        Args:
+            user_id: The user ID to check.
+
+        Returns:
+            Number of pending keys for this user.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM api_keys
+                WHERE user_id = %s AND approved_at IS NULL
+                """,
+                (user_id,),
+            )
+            result = cursor.fetchone()
+            return result[0] if result else 0
+
     def approve_api_key(self, key_id: str, approved_by: str) -> bool:
         """Approve an API key (make it active and usable).
 

@@ -38,9 +38,9 @@ server: wheel
 	@echo "=== Building Server Package (Debian) ==="
 	./scripts/build_deb.sh
 
-# Client package depends on wheel (uses same wheel as server)
-client: wheel
-	@echo "=== Building Client Package (Debian) ==="
+# Client package builds its own minimal wheel (CLI only, no server components)
+client:
+	@echo "=== Building Client Package (Debian with minimal wheel) ==="
 	./scripts/build_client_deb.sh
 
 # Build everything
@@ -65,7 +65,7 @@ all-signed: wheel server-signed client-signed
 
 clean:
 	@echo "Cleaning up..."
-	rm -rf build/ dist/ *.egg-info pulldb.egg-info
+	rm -rf build/ dist/ dist-client/ *.egg-info pulldb.egg-info pulldb_client.egg-info
 	rm -f *.deb
 	@echo "Clean complete."
 

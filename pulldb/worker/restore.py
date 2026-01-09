@@ -609,7 +609,7 @@ def orchestrate_restore_workflow(
                 }
                 for s in post_sql_result.scripts_executed
             ],
-            "source": "template_after_sql/",
+            "source": str(spec.post_sql_conn.script_dir),
         })
 
         restore_completed_at = datetime.now(UTC)
