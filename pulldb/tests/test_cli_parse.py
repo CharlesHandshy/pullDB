@@ -201,12 +201,17 @@ def test_parse_rejects_customer_with_symbols() -> None:
     assert "lowercase letters (a-z)" in str(exc.value)
 
 
-def test_parse_rejects_customer_too_long() -> None:
-    """Customer must not exceed MAX_CUSTOMER_LEN."""
-    long_customer = "a" * (MAX_CUSTOMER_LEN + 1)
-    with pytest.raises(CLIParseError) as exc:
-        parse_restore_args([f"customer={long_customer}"])
-    assert f"exceeds maximum length of {MAX_CUSTOMER_LEN}" in str(exc.value)
+def test_parse_normalizes_long_customer() -> None:
+    """Long customer names should be normalized, not rejected."""
+    long_customer = "a" * (MAX_CUSTOMER_LEN + 10)  # 52 chars
+    result = parse_restore_args([f"customer={long_customer}"])
+    
+    # Should normalize, not reject
+    assert result.customer_id is not None
+    assert len(result.customer_id) == MAX_CUSTOMER_LEN  # 42 chars
+    assert result.customer_normalized is True
+    assert result.original_customer == long_customer
+    assert "exceeds" in result.normalization_message
 
 
 def test_parse_rejects_uppercase_suffix() -> None:

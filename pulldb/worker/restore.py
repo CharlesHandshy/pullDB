@@ -30,6 +30,7 @@ from pulldb.domain.restore_models import (
     build_configured_myloader_spec,
 )
 from pulldb.infra.exec import (
+    CommandAbortedError,
     CommandExecutionError,
     CommandTimeoutError,
     run_command_streaming,
@@ -96,6 +97,7 @@ class RestoreWorkflowSpec:
     timeout: float | None = None
     progress_callback: Callable[[float, dict[str, Any]], None] | None = None
     event_callback: Callable[[str, dict[str, Any]], None] | None = None
+    abort_check: Callable[[], bool] | None = None
 
 
 def build_restore_workflow_spec(
@@ -112,6 +114,7 @@ def build_restore_workflow_spec(
     format_tag: str | None = None,
     progress_callback: Callable[[float, dict[str, Any]], None] | None = None,
     event_callback: Callable[[str, dict[str, Any]], None] | None = None,
+    abort_check: Callable[[], bool] | None = None,
 ) -> RestoreWorkflowSpec:
     """Construct :class:`RestoreWorkflowSpec` using global configuration.
 
@@ -155,6 +158,7 @@ def build_restore_workflow_spec(
         timeout=timeout,
         progress_callback=progress_callback,
         event_callback=event_callback,
+        abort_check=abort_check,
     )
 
 
@@ -240,6 +244,7 @@ def run_myloader(
     timeout: float | None = None,
     progress_callback: Callable[[float, dict[str, Any]], None] | None = None,
     processlist_monitor: ProcesslistMonitor | None = None,
+    abort_check: Callable[[], bool] | None = None,
 ) -> MyLoaderResult:
     """Execute myloader and return structured result.
 
@@ -248,9 +253,11 @@ def run_myloader(
         timeout: Optional timeout in seconds.
         progress_callback: Called with (percent, detail_dict) for progress updates.
         processlist_monitor: Optional monitor for per-table progress from MySQL processlist.
+        abort_check: Optional callback that returns True if job should abort.
 
     Raises:
         MyLoaderError: On non-zero exit, startup failure, or timeout.
+        CommandAbortedError: If abort_check returns True during execution.
     """
     logger = logging.getLogger("pulldb.restore.myloader")
     command = _build_command(spec)
@@ -398,6 +405,7 @@ def run_myloader(
             line_callback=_progress_callback,
             env=spec.env,
             timeout=timeout,
+            abort_check=abort_check,
         )
     except CommandTimeoutError as e:  # pragma: no cover - covered via higher-level test
         raise MyLoaderError(
@@ -566,6 +574,7 @@ def orchestrate_restore_workflow(
                     timeout=spec.timeout,
                     progress_callback=wrapped_progress_callback,
                     processlist_monitor=processlist_monitor,
+                    abort_check=spec.abort_check,
                 )
         finally:
             # Always stop the monitor

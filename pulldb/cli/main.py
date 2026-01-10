@@ -893,6 +893,10 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     except CLIParseError as e:  # FAIL HARD surface to user
         raise click.UsageError(str(e)) from e
 
+    # Display warning if customer name was normalized (truncated + hashed)
+    if parsed.customer_normalized and parsed.normalization_message:
+        click.secho(f"⚠ {parsed.normalization_message}", fg="yellow", err=True)
+
     # Step 2: Get username - use parsed value or auto-detect
     if parsed.username:
         username = parsed.username

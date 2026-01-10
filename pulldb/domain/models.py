@@ -166,6 +166,15 @@ class User:
         return self.role in (UserRole.MANAGER, UserRole.ADMIN, UserRole.SERVICE)
 
     @property
+    def can_manage_users(self) -> bool:
+        """Check if user can manage ALL users (admin only).
+        
+        Note: Managers can manage users they created, but not all users.
+        For that check, use the can_manage_user() permission function.
+        """
+        return self.role == UserRole.ADMIN
+
+    @property
     def is_managed(self) -> bool:
         """Check if this user is managed by someone."""
         return self.manager_id is not None

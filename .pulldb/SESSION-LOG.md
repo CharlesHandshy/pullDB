@@ -2576,3 +2576,24 @@ Addressed "Code Duplication" gap from Web2 Audit Report. Logic for searching cus
 - `pulldb/domain/services/discovery.py` (new)
 - `pulldb/api/main.py`
 - `pulldb/web2/features/restore/routes.py`
+
+## 2026-01-09 | Web Restore Page - Authentication Fix
+
+### Context
+User reported "No Backups found" on web/restore page. Investigation revealed all API requests were returning 401 Unauthorized.
+
+### What Was Done
+- Identified that web UI routes making internal API calls via httpx were not forwarding session cookies
+- Updated pulldb/web/features/restore/routes.py:
+  - Modified search_customers() endpoint to extract and forward session_token cookie
+  - Modified search_backups() endpoint to extract and forward session_token cookie
+  - Both now properly authenticate when calling internal API endpoints
+- Restarted pulldb-web service
+
+### Rationale
+The web UI and API run as separate services. When web UI makes internal HTTP calls to API endpoints (for backup/customer search), it must forward the user's session cookie for authentication. Without this, API correctly rejects requests as unauthorized per FAIL HARD protocol.
+
+The fix follows standard proxy authentication pattern: extract session token from incoming request, forward in outgoing internal request.
+
+### Files Modified
+- pulldb/web/features/restore/routes.py (search_customers and search_backups routes)

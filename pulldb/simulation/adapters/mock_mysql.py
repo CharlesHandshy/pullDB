@@ -328,6 +328,25 @@ class SimulatedJobRepository:
         with self.state.lock:
             return job_id in self.state.cancellation_requested
 
+    def should_abort_job(self, job_id: str) -> bool:
+        """Check if a job should be aborted.
+
+        Returns True if:
+        - Cancellation was requested
+        - Job is no longer in 'running' status (e.g., marked failed by stale recovery)
+
+        This prevents the scenario where stale recovery marks a job as failed
+        but the download continues running, wasting resources.
+        """
+        with self.state.lock:
+            if job_id in self.state.cancellation_requested:
+                return True
+            job = self.state.jobs.get(job_id)
+            if not job:
+                return True  # Job doesn't exist - abort
+            # Abort if not in running/canceling state
+            return job.status not in (JobStatus.RUNNING, JobStatus.CANCELING)
+
     @property
     def active_jobs(self) -> list[Job]:
         """Property alias for get_active_jobs() for dev server compatibility."""
@@ -1103,6 +1122,41 @@ class SimulatedJobRepository:
                     return job
             return None
 
+    def get_expired_cleanup_candidates(self, grace_days: int) -> list[Job]:
+        """Get jobs eligible for automatic database cleanup.
+
+        Returns deployed jobs that are:
+        - Past expiration + grace period
+        - Not locked
+        - Database not already dropped
+        - Not superseded
+
+        Args:
+            grace_days: Additional days after expiry before cleanup.
+
+        Returns:
+            List of jobs whose databases can be dropped.
+        """
+        from datetime import timedelta
+
+        cutoff = datetime.now(UTC) - timedelta(days=grace_days)
+        candidates: list[Job] = []
+
+        with self.state.lock:
+            for job in self.state.jobs.values():
+                if (
+                    job.status == JobStatus.DEPLOYED
+                    and job.locked_at is None
+                    and job.db_dropped_at is None
+                    and job.superseded_at is None
+                    and job.expires_at is not None
+                    and job.expires_at < cutoff
+                ):
+                    candidates.append(job)
+
+        # Sort by expires_at ascending (oldest first)
+        return sorted(candidates, key=lambda j: j.expires_at or datetime.min.replace(tzinfo=UTC))
+
     def get_maintenance_items(
         self, user_id: str, notice_days: int, grace_days: int
     ) -> "MaintenanceItems":
@@ -1411,8 +1465,13 @@ class SimulatedJobRepository:
     ) -> Job | None:
         """Find a candidate stale running job without claiming it.
 
-        Jobs in 'running' status that have been running longer than the timeout
-        may be from crashed workers. Returns a candidate for verification.
+        Jobs in 'running' status that have had no recent activity (job_events)
+        for longer than the timeout may be from crashed workers. Returns a
+        candidate for verification.
+
+        IMPORTANT: Staleness is determined by the most recent job_event, NOT
+        by started_at. This prevents false positives during long downloads
+        where progress events are being logged regularly.
         """
         if stale_timeout_minutes is None:
             stale_timeout_minutes = self.STALE_RUNNING_TIMEOUT_MINUTES
@@ -1420,12 +1479,27 @@ class SimulatedJobRepository:
         with self.state.lock:
             cutoff = datetime.now(UTC) - timedelta(minutes=stale_timeout_minutes)
 
-            # Find running jobs older than timeout
+            def get_last_activity(job: Job) -> datetime:
+                """Get the most recent activity time for a job.
+
+                Returns the latest of:
+                - Most recent job_event logged_at
+                - started_at (fallback if no events)
+                """
+                job_events = [e for e in self.state.job_events if e.job_id == job.id]
+                if job_events:
+                    # Sort by logged_at descending and get the most recent
+                    most_recent = max(job_events, key=lambda e: e.logged_at)
+                    return most_recent.logged_at
+                # Fallback to started_at
+                return job.started_at or datetime.min.replace(tzinfo=UTC)
+
+            # Find running jobs with no recent activity
             candidates = [
                 j for j in self.state.jobs.values()
                 if j.status == JobStatus.RUNNING
                 and j.started_at
-                and j.started_at < cutoff
+                and get_last_activity(j) < cutoff
             ]
 
             if not candidates:
@@ -1446,8 +1520,8 @@ class SimulatedJobRepository:
             if not candidates:
                 return None
 
-            # Return oldest candidate (don't modify it)
-            candidates.sort(key=lambda j: j.started_at or datetime.min.replace(tzinfo=UTC))
+            # Return oldest candidate by last activity (don't modify it)
+            candidates.sort(key=get_last_activity)
             return candidates[0]
 
     def mark_stale_running_failed(

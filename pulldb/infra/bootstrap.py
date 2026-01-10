@@ -72,6 +72,9 @@ def bootstrap_service_config(
     config.mysql_user = mysql_user.strip()
 
     # Phase 3: Resolve coordination credentials from Secrets Manager
+    # NOTE: "coordination-db" in the secret path is just a name component.
+    # The actual database name comes from PULLDB_MYSQL_DATABASE (default: pulldb_service).
+    # The secret returns host and password only; username comes from service_mysql_user_env.
     coordination_secret = os.getenv("PULLDB_COORDINATION_SECRET")
     if coordination_secret and not config.mysql_password:
         try:
@@ -93,6 +96,7 @@ def bootstrap_service_config(
             user=config.mysql_user,
             password=config.mysql_password,
             database=config.mysql_database,
+            unix_socket=config.mysql_socket,
         )
     except Exception as exc:
         raise RuntimeError(

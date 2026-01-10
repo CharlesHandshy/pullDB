@@ -36,6 +36,9 @@ def mock_job_repo():
     repo.append_job_event = MagicMock()
     repo.mark_job_deleted = MagicMock()
     repo.mark_job_delete_failed = MagicMock()
+    # Protection checks - return None (no blocking job) by default
+    repo.has_any_deployed_job_for_target = MagicMock(return_value=None)
+    repo.has_any_locked_job_for_target = MagicMock(return_value=None)
     return repo
 
 
@@ -108,11 +111,12 @@ class TestDeleteJobResult:
 class TestExecuteDeleteJob:
     """Tests for execute_delete_job function."""
 
+    @patch("pulldb.worker.cleanup._database_exists")
     def test_credentials_failure_under_max_retries(
-        self, mock_job_repo, mock_host_repo, sample_deleting_job
+        self, mock_db_exists, mock_job_repo, mock_host_repo, sample_deleting_job
     ):
         """Test handling of credential failure when under max retries."""
-        mock_host_repo.get_host_credentials.side_effect = Exception("Auth failed")
+        mock_host_repo.get_host_credentials_for_maintenance.side_effect = Exception("Auth failed")
         
         result = execute_delete_job(sample_deleting_job, mock_job_repo, mock_host_repo)
         
@@ -121,12 +125,13 @@ class TestExecuteDeleteJob:
         # Should NOT call mark_job_delete_failed (retry_count=1 < 5)
         mock_job_repo.mark_job_delete_failed.assert_not_called()
 
+    @patch("pulldb.worker.cleanup._database_exists")
     def test_credentials_failure_at_max_retries(
-        self, mock_job_repo, mock_host_repo, sample_deleting_job
+        self, mock_db_exists, mock_job_repo, mock_host_repo, sample_deleting_job
     ):
         """Test handling of credential failure when at max retries."""
         job_at_max = replace(sample_deleting_job, retry_count=MAX_DELETE_RETRY_COUNT)
-        mock_host_repo.get_host_credentials.side_effect = Exception("Auth failed")
+        mock_host_repo.get_host_credentials_for_maintenance.side_effect = Exception("Auth failed")
         
         result = execute_delete_job(job_at_max, mock_job_repo, mock_host_repo)
         

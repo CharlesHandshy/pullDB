@@ -211,6 +211,8 @@ class ProcessExecutor(Protocol):
         env: Mapping[str, str] | None = None,
         timeout: float | None = None,
         cwd: str | None = None,
+        abort_check: Callable[[], bool] | None = None,
+        abort_check_interval: int = 100,
     ) -> CommandResult:
         """Execute command, streaming merged stdout/stderr to callback."""
         ...

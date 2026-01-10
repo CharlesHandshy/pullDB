@@ -43,12 +43,13 @@ def test_build_job_repository_fails_on_db_error() -> None:
     config = Config.minimal_from_env()
     config.mysql_host = "invalid-host"
 
-    # Mock MySQLPool to raise
-    with mock.patch("pulldb.worker.service.MySQLPool") as mock_pool:
-        mock_pool.side_effect = mysql.connector.Error(msg="Connection failed")
+    # Mock is_simulation_mode to return False and MySQLPool to raise
+    with mock.patch("pulldb.worker.service.is_simulation_mode", return_value=False):
+        with mock.patch("pulldb.worker.service.MySQLPool") as mock_pool:
+            mock_pool.side_effect = mysql.connector.Error(msg="Connection failed")
 
-        with pytest.raises(mysql.connector.Error, match="Connection failed"):
-            _build_job_repository(config)
+            with pytest.raises(mysql.connector.Error, match="Connection failed"):
+                _build_job_repository(config)
 
 
 def test_build_job_executor_fails_on_s3_error() -> None:
@@ -57,12 +58,13 @@ def test_build_job_executor_fails_on_s3_error() -> None:
     job_repo = mock.Mock(spec=JobRepository)
     job_repo.pool = mock.Mock()  # Add pool attribute
 
-    # Mock S3Client to raise
-    with mock.patch("pulldb.worker.service.S3Client") as mock_s3:
-        mock_s3.side_effect = Exception("S3 init failed")
+    # Mock is_simulation_mode to return False and S3Client to raise
+    with mock.patch("pulldb.worker.service.is_simulation_mode", return_value=False):
+        with mock.patch("pulldb.worker.service.S3Client") as mock_s3:
+            mock_s3.side_effect = Exception("S3 init failed")
 
-        with pytest.raises(Exception, match="S3 init failed"):
-            _build_job_executor(config, job_repo)
+            with pytest.raises(Exception, match="S3 init failed"):
+                _build_job_executor(config, job_repo)
 
 
 # --- Executor Failure Tests ---

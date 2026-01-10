@@ -67,6 +67,18 @@ def get_process_executor() -> ProcessExecutor:
     return SubprocessExecutor()
 
 
+def get_auth_repository():
+    """Get AuthRepository implementation.
+    
+    Returns:
+        AuthRepository for password and session management.
+    """
+    from pulldb.auth.repository import AuthRepository
+
+    pool = _get_real_mysql_pool()
+    return AuthRepository(pool)
+
+
 def get_user_repository() -> UserRepository:
     """Get UserRepository implementation."""
     if is_simulation_mode():

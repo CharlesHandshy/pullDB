@@ -55,6 +55,7 @@ def fake_myloader(monkeypatch: pytest.MonkeyPatch) -> None:
         timeout: float | None = None,
         progress_callback: object = None,
         processlist_monitor: object = None,
+        abort_check: object = None,
     ) -> MyLoaderResult:
         now = datetime.now(UTC)
         return MyLoaderResult(
@@ -138,7 +139,7 @@ def test_restore_workflow_happy_path(
 
     monkeypatch.setattr(restore_mod, "inject_metadata_table", _fake_metadata)
 
-    def _fake_rename(conn_spec: object, rename_spec: object) -> None:
+    def _fake_rename(conn_spec: object, rename_spec: object, event_callback: object = None) -> None:
         # Simulate successful atomic rename
         return None
 

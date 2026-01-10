@@ -78,6 +78,20 @@
       "purpose": "Remote/network admin access"
     }
   },
+  "database_terminology": {
+    "CRITICAL": "coordination database concept vs actual database name",
+    "actual_database_name": "pulldb_service",
+    "secret_path_component": "coordination-db",
+    "env_var_for_database": "PULLDB_MYSQL_DATABASE",
+    "env_var_for_secret": "PULLDB_COORDINATION_SECRET",
+    "common_mistake": "Using pulldb_coordination as database name (WRONG - does not exist)",
+    "credential_attributes": {
+      "username": "MySQLCredentials.username (NOT .user)",
+      "password": "MySQLCredentials.password",
+      "host": "MySQLCredentials.host",
+      "port": "MySQLCredentials.port"
+    }
+  },
   "schema": {
     "canonical_doc": "docs/mysql-schema.md",
     "database": "pulldb_service",

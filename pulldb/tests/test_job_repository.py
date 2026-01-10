@@ -20,7 +20,8 @@ from pulldb.infra.mysql import JobRepository
 from pulldb.tests.test_constants import TEST_USER_CODE, TEST_USER_ID, TEST_USERNAME
 
 
-EXPECTED_EVENT_COUNT = 3
+# After enqueue_job: 1 event (queued), then 3 appends = 4 total
+EXPECTED_EVENT_COUNT = 4
 
 
 class TestJobRepository:
@@ -244,6 +245,7 @@ class TestJobRepository:
         events = repo.get_job_events(job_id)
         assert len(events) == EXPECTED_EVENT_COUNT
         assert [e.event_type for e in events] == [
+            "queued",
             "download_started",
             "restore_started",
             "restore_complete",
@@ -269,7 +271,7 @@ class TestJobRepository:
             submitted_at=datetime.now(UTC),
         )
         repo.enqueue_job(job)
-        repo.append_job_event(job_id, "queued", "Job submitted")
+        # Note: enqueue_job already adds "queued" event, so we just add the rest
         repo.append_job_event(job_id, "running", "Started")
         repo.append_job_event(job_id, "complete", "Done")
 
@@ -282,6 +284,7 @@ class TestJobRepository:
         deleted = repo.prune_job_events(retention_days=365)
         events_after = repo.get_job_events(job_id)
         # Events should still exist (they're not 365 days old)
+        # enqueue_job adds "queued", then we add "running" and "complete" = 3 events
         assert len(events_after) == 3
         assert deleted == 0
 

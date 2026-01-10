@@ -109,6 +109,8 @@ class MockProcessExecutor:
         env: Mapping[str, str] | None = None,
         timeout: float | None = None,
         cwd: str | None = None,
+        abort_check: Callable[[], bool] | None = None,
+        abort_check_interval: int = 100,
     ) -> CommandResult:
         """Execute command, streaming merged stdout/stderr to callback."""
         started_at = datetime.now(UTC)
@@ -132,11 +134,20 @@ class MockProcessExecutor:
             exit_code, stdout, stderr = config.handler(command, env)
 
         # Stream output line by line
+        line_count = 0
         if stdout:
             for line in stdout.splitlines():
+                # Check abort before processing each line (in mock, check every line)
+                if abort_check and abort_check():
+                    from pulldb.infra.exec import CommandAbortedError
+                    raise CommandAbortedError(command, stdout)
                 line_callback(line)
+                line_count += 1
         if stderr:
             for line in stderr.splitlines():
+                if abort_check and abort_check():
+                    from pulldb.infra.exec import CommandAbortedError
+                    raise CommandAbortedError(command, stderr)
                 line_callback(line)
 
         completed_at = datetime.now(UTC)

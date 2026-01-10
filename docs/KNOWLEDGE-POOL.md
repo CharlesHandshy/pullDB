@@ -760,6 +760,56 @@ if env and env.lower() not in location.name.lower():
 
 ---
 
+## Database Terminology (CRITICAL)
+
+**⚠️ Common Confusion Point**: The terms "coordination database" and "coordination-db" have different meanings:
+
+| Term | Type | Meaning |
+|------|------|---------|
+| **"coordination database"** | Concept | The database that coordinates pullDB operations |
+| **`pulldb_service`** | Database Name | The **actual MySQL database name** |
+| **`coordination-db`** | Secret Name | AWS Secrets Manager secret path component |
+| **`PULLDB_COORDINATION_SECRET`** | Environment Variable | Points to the AWS secret (e.g., `aws-secretsmanager:/pulldb/mysql/coordination-db`) |
+| **`PULLDB_MYSQL_DATABASE`** | Environment Variable | The actual database name (default: `pulldb_service`) |
+
+**Examples**:
+```bash
+# CORRECT ✓
+PULLDB_MYSQL_DATABASE=pulldb_service
+PULLDB_COORDINATION_SECRET=aws-secretsmanager:/pulldb/mysql/coordination-db
+
+# WRONG ✗ - pulldb_coordination does NOT exist!
+PULLDB_MYSQL_DATABASE=pulldb_coordination
+```
+
+**Python Code Pattern**:
+```python
+# Resolve credentials from Secrets Manager
+from pulldb.infra.secrets import CredentialResolver
+resolver = CredentialResolver()
+creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/coordination-db')
+
+# Username comes from environment, NOT from secret
+mysql_user = os.getenv('PULLDB_API_MYSQL_USER', 'pulldb_api')
+mysql_database = os.getenv('PULLDB_MYSQL_DATABASE', 'pulldb_service')
+
+# Connect to the database
+conn = mysql.connector.connect(
+    host=creds.host,
+    user=mysql_user,           # From environment
+    password=creds.password,   # From secret
+    database=mysql_database    # From environment
+)
+```
+
+**Key Attributes**:
+- `MySQLCredentials.username` (NOT `.user`)
+- `MySQLCredentials.password`
+- `MySQLCredentials.host`
+- `MySQLCredentials.port`
+
+---
+
 ## Accounts & ARNs
 - Development account ID: 345321506926
 - Staging account ID: 333204494849
@@ -1064,6 +1114,40 @@ This file should be created and applied in the production account only. Keep sec
   - **Problem**: CLI tools required manual `source .env` before use.
   - **Fix**: Added `load_dotenv()` at module import in `admin.py` and `main.py`.
   - **Behavior**: Auto-loads `.env` from working directory or install paths.
+
+### Database Terminology Confusion (Jan 2026)
+
+**Common Mistake**: Using `pulldb_coordination` as the database name.
+
+- **Problem**: The term "coordination database" in code comments and "coordination-db" in AWS secret paths led to confusion about the actual database name.
+- **Root Cause**: Multiple meanings:
+  - "coordination database" = **concept** (the database that coordinates operations)
+  - `coordination-db` = **secret path component** in AWS Secrets Manager
+  - `pulldb_service` = **actual database name**
+- **Symptoms**:
+  - `ERROR 1044: Access denied to database 'pulldb_coordination'`
+  - Attempting to connect to non-existent `pulldb_coordination` database
+  - Looking for non-existent functions like `resolve_database_credentials()` or `get_coordination_credentials()`
+- **Resolution**: Always use `pulldb_service` as the database name (from `PULLDB_MYSQL_DATABASE` env var).
+- **Credential Resolution Pattern**:
+  ```python
+  from pulldb.infra.secrets import CredentialResolver
+  resolver = CredentialResolver()
+  creds = resolver.resolve('aws-secretsmanager:/pulldb/mysql/coordination-db')
+  
+  # Username from environment, NOT from secret
+  mysql_user = os.getenv('PULLDB_API_MYSQL_USER', 'pulldb_api')
+  mysql_database = os.getenv('PULLDB_MYSQL_DATABASE', 'pulldb_service')
+  
+  conn = mysql.connector.connect(
+      host=creds.host,
+      user=mysql_user,        # From environment
+      password=creds.password,  # From secret
+      database=mysql_database   # From environment - pulldb_service!
+  )
+  ```
+- **Key Attributes**: `MySQLCredentials.username` (NOT `.user`), `.password`, `.host`, `.port`
+- **Documentation Updates**: Added clarification sections to KNOWLEDGE-POOL.md, KNOWLEDGE-POOL.json, and code comments in `pulldb/infra/bootstrap.py` and `pulldb/infra/mysql.py`.
 
 ## myloader 0.19 Metadata Compatibility
 - **Source**: `src/myloader/myloader_process.c` (GitHub)

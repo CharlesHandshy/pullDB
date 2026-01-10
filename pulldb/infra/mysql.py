@@ -114,7 +114,13 @@ class MySQLPool:
             conn.close()
 
 
-def build_default_pool(host: str, user: str, password: str, database: str) -> MySQLPool:
+def build_default_pool(
+    host: str,
+    user: str,
+    password: str,
+    database: str,
+    unix_socket: str | None = None,
+) -> MySQLPool:
     """Build a MySQL connection pool with default configuration.
 
     Args:
@@ -122,22 +128,35 @@ def build_default_pool(host: str, user: str, password: str, database: str) -> My
         user: MySQL username.
         password: MySQL password.
         database: Database name.
+        unix_socket: Optional Unix socket path (overrides host/port if provided).
 
     Returns:
         Configured MySQLPool instance.
     """
-    return MySQLPool(host=host, user=user, password=password, database=database)
+    kwargs: dict[str, t.Any] = {
+        "host": host,
+        "user": user,
+        "password": password,
+        "database": database,
+    }
+    if unix_socket:
+        kwargs["unix_socket"] = unix_socket
+    return MySQLPool(**kwargs)
 
 
 class JobRepository:
     """Repository for job queue operations.
 
-    Manages job lifecycle in MySQL coordination database. Handles job creation,
-    status transitions, event logging, and queue queries. Enforces business rules
-    like per-target exclusivity via database constraints.
+    Manages job lifecycle in MySQL coordination database (pulldb_service). 
+    Handles job creation, status transitions, event logging, and queue queries. 
+    Enforces business rules like per-target exclusivity via database constraints.
+    
+    Note: "Coordination database" refers to the concept of the database that 
+    coordinates pullDB operations. The actual database name is 'pulldb_service',
+    set via PULLDB_MYSQL_DATABASE environment variable.
 
     Example:
-        >>> pool = MySQLPool(host="localhost", user="root", database="pulldb")
+        >>> pool = MySQLPool(host="localhost", user="root", database="pulldb_service")
         >>> repo = JobRepository(pool)
         >>> job_id = repo.enqueue_job(job)
         >>> claimed = repo.claim_next_job(worker_id="worker-1:1234")
@@ -546,12 +565,16 @@ class JobRepository:
                 raise ValueError(f"Job {job_id} not found or not in queued status")
             conn.commit()
 
-    def mark_job_deployed(self, job_id: str) -> None:
+    def mark_job_deployed(self, job_id: str) -> bool:
         """Mark job as deployed and set completed_at timestamp.
 
         Called by worker when job successfully finishes. Updates status to
         'deployed', records completion time, sets expires_at based on
         the max_retention_months setting, and clears the worker processing lock.
+
+        IMPORTANT: Only updates if job is still in 'running' status. This
+        prevents race conditions where stale recovery marks a job as failed
+        but the restore completes and tries to mark it deployed.
 
         Note:
             The worker_id column is intentionally retained after deployment
@@ -563,6 +586,10 @@ class JobRepository:
 
         Args:
             job_id: UUID of job.
+
+        Returns:
+            True if job was successfully marked deployed, False if job was
+            no longer in 'running' status (e.g., marked failed by stale recovery).
         """
         with self.pool.connection() as conn:
             cursor = conn.cursor()
@@ -577,6 +604,8 @@ class JobRepository:
             row = cursor.fetchone()
             retention_months = row[0] if row else 6
             
+            # Only update if still in running status - prevents overwriting
+            # 'failed' status set by stale recovery
             cursor.execute(
                 """
                 UPDATE jobs
@@ -585,11 +614,20 @@ class JobRepository:
                     expires_at = DATE_ADD(UTC_TIMESTAMP(6), INTERVAL %s MONTH),
                     locked_at = NULL,
                     locked_by = NULL
-                WHERE id = %s
+                WHERE id = %s AND status = 'running'
                 """,
                 (retention_months, job_id),
             )
+            updated = cursor.rowcount > 0
             conn.commit()
+            
+            if not updated:
+                logger.warning(
+                    "Failed to mark job deployed - job no longer in running status",
+                    extra={"job_id": job_id},
+                )
+            
+            return updated
 
     def mark_job_user_completed(self, job_id: str) -> None:
         """Mark deployed job as user-completed, moving to History.
@@ -1064,9 +1102,13 @@ class JobRepository:
     ) -> Job | None:
         """Find a candidate stale running job without claiming it.
 
-        Jobs in 'running' status that have been running longer than the timeout
-        may be from crashed workers. This method finds such jobs for verification
-        before marking them as failed.
+        Jobs in 'running' status that have had no recent activity (job_events)
+        for longer than the timeout may be from crashed workers. This method
+        finds such jobs for verification before marking them as failed.
+
+        IMPORTANT: Staleness is determined by the most recent job_event, NOT
+        by started_at. This prevents false positives during long downloads
+        where progress events are being logged regularly.
 
         Uses SELECT FOR UPDATE SKIP LOCKED to prevent multiple workers from
         checking the same job simultaneously. The lock is held only briefly
@@ -1076,8 +1118,9 @@ class JobRepository:
         verifying the job is actually stale (via process list check).
 
         Args:
-            stale_timeout_minutes: Minutes before a running job is considered
-                potentially stale. Defaults to STALE_RUNNING_TIMEOUT_MINUTES.
+            stale_timeout_minutes: Minutes since last activity before a running
+                job is considered potentially stale. Defaults to
+                STALE_RUNNING_TIMEOUT_MINUTES.
 
         Returns:
             Job candidate that may be stale, or None if no candidates.
@@ -1088,9 +1131,12 @@ class JobRepository:
         with self.pool.transaction() as conn:
             cursor = conn.cursor(dictionary=True)
 
-            # Find running jobs that have been running longer than timeout.
+            # Find running jobs with no recent activity (based on job_events).
             # IMPORTANT: Only recover jobs that are the NEWEST for their target.
             # Older superseded jobs should not be recovered.
+            #
+            # We check COALESCE(last_event.logged_at, j.started_at) to handle
+            # edge cases where a job has no events yet (use started_at as fallback).
             cursor.execute(
                 """
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
@@ -1098,18 +1144,24 @@ class JobRepository:
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
                        j.error_detail, j.worker_id
                 FROM jobs j
+                LEFT JOIN (
+                    SELECT job_id, MAX(logged_at) AS last_logged_at
+                    FROM job_events
+                    GROUP BY job_id
+                ) last_event ON last_event.job_id = j.id
                 WHERE j.status = 'running'
                   AND j.started_at IS NOT NULL
-                  AND j.started_at < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL %s MINUTE)
+                  AND COALESCE(last_event.last_logged_at, j.started_at)
+                      < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL %s MINUTE)
                   AND NOT EXISTS (
                       SELECT 1 FROM jobs j2
                       WHERE j2.target = j.target
                         AND j2.owner_user_code = j.owner_user_code
                         AND j2.submitted_at > j.submitted_at
                   )
-                ORDER BY j.started_at ASC
+                ORDER BY COALESCE(last_event.last_logged_at, j.started_at) ASC
                 LIMIT 1
-                FOR UPDATE SKIP LOCKED
+                FOR UPDATE OF j SKIP LOCKED
                 """,
                 (stale_timeout_minutes,),
             )
@@ -1263,6 +1315,42 @@ class JobRepository:
             )
             row = cursor.fetchone()
             return bool(row and row[0])
+
+    def should_abort_job(self, job_id: str) -> bool:
+        """Check if a job should be aborted.
+
+        Called by worker during long operations (download, restore) to check
+        if the job should stop. Returns True if:
+        - Cancellation was requested (cancel_requested_at IS NOT NULL)
+        - Job is in 'canceling' status
+        - Job is no longer in 'running' status (e.g., marked failed by stale recovery)
+
+        This prevents the scenario where stale recovery marks a job as failed
+        but the download continues running, wasting resources.
+
+        Args:
+            job_id: UUID of job.
+
+        Returns:
+            True if job should abort immediately.
+        """
+        with self.pool.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT status, cancel_requested_at IS NOT NULL AS cancel_requested
+                FROM jobs
+                WHERE id = %s
+                """,
+                (job_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                # Job doesn't exist - abort
+                return True
+            status, cancel_requested = row
+            # Abort if cancelled OR not in running state
+            return bool(cancel_requested) or status not in ("running", "canceling")
 
     def get_cancel_requested_at(self, job_id: str) -> datetime | None:
         """Get the timestamp when cancellation was requested for a job.

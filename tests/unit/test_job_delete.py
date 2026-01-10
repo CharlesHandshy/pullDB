@@ -197,7 +197,7 @@ class TestDeleteJobDatabases:
     def test_credential_lookup_fails(self) -> None:
         """Test handling of credential lookup failure."""
         mock_host_repo = MagicMock()
-        mock_host_repo.get_host_credentials.side_effect = Exception(
+        mock_host_repo.get_host_credentials_for_maintenance.side_effect = Exception(
             "Host not found"
         )
         

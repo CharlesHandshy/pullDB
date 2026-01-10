@@ -38,6 +38,10 @@ class JobResponse(pydantic.BaseModel):
     owner_username: str
     owner_user_code: str
     submitted_at: datetime | None = None
+    # Customer name normalization info (for long names)
+    original_customer: str | None = None
+    customer_normalized: bool = False
+    normalization_message: str | None = None
 
 
 class JobSummary(pydantic.BaseModel):

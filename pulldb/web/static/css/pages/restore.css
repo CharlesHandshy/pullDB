@@ -1424,6 +1424,24 @@
     border-color: var(--success-700);
 }
 
+/* Customer Name Normalization Warning */
+.normalization-warning {
+    margin-top: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background: var(--warning-50);
+    border: 1px solid var(--warning-200);
+    border-radius: var(--radius-md);
+    color: var(--warning-800);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+}
+
+[data-theme="dark"] .normalization-warning {
+    background: var(--warning-900);
+    border-color: var(--warning-700);
+    color: var(--warning-200);
+}
+
 .selected-value {
     font-weight: var(--font-semibold);
     color: var(--success-700);

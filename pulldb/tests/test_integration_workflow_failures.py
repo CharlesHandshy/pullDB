@@ -92,6 +92,7 @@ def test_workflow_myloader_failure(
         timeout: float | None = None,
         progress_callback: object = None,
         processlist_monitor: object = None,
+        abort_check: object = None,
     ) -> MyLoaderResult:
         raise MyLoaderError(
             job_id=spec.job_id,
@@ -153,6 +154,7 @@ def test_workflow_post_sql_failure(
         timeout: float | None = None,
         progress_callback: object = None,
         processlist_monitor: object = None,
+        abort_check: object = None,
     ) -> MyLoaderResult:
         now = datetime.now(UTC)
         return MyLoaderResult(

@@ -764,14 +764,20 @@ class AdminTaskExecutor:
                     continue
                 
                 # Skip jobs that failed deletion (exhausted retries)
+                # Only block if error_detail indicates delete failure, not other failures
+                # (e.g., zombie detection, restore failure, etc. can still be deleted)
                 if job.status == JobStatus.FAILED:
-                    failed_list.append({
-                        "job_id": job_id,
-                        "error": "Delete failed after max retries - use force-complete-delete admin endpoint",
-                    })
-                    progress["errors"].append(f"{job_id[:12]}: delete failed (max retries)")
-                    self.task_repo.update_task_result(task.task_id, result)
-                    continue
+                    error_detail = job.error_detail or ""
+                    if error_detail.startswith("Delete failed"):
+                        failed_list.append({
+                            "job_id": job_id,
+                            "error": "Delete failed after max retries - use force-complete-delete admin endpoint",
+                        })
+                        progress["errors"].append(f"{job_id[:12]}: delete failed (max retries)")
+                        self.task_repo.update_task_result(task.task_id, result)
+                        continue
+                    # Otherwise, job failed for other reasons (zombie, restore error, etc.)
+                    # Allow deletion to proceed - databases may or may not exist
 
                 # Fast path: already soft-deleted + hard_delete requested
                 # Skip database checks (DBs already dropped), just remove record

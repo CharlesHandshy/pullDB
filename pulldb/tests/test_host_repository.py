@@ -174,8 +174,9 @@ class TestHostRepository:
                 self.profile_name = profile_name
                 self.region_name = region_name
 
-            def client(self, service_name: str) -> FakeSecretsClient:
+            def client(self, service_name: str, **kwargs) -> FakeSecretsClient:
                 assert service_name == "secretsmanager"
+                # Accept config kwarg from CredentialResolver
                 return FakeSecretsClient()
 
         monkeypatch.setattr(boto3, "Session", FakeSession)

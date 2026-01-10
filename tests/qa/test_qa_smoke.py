@@ -4,8 +4,11 @@ QA Smoke Tests for pullDB
 Quick health check tests that validate basic functionality.
 Run with: pytest tests/qa/test_smoke.py -v -m smoke
 
-NOTE: API tests require a running server at http://localhost:8000.
+NOTE: API tests require a running server at http://localhost:8080.
 These tests are marked with 'integration' and will skip if server is unavailable.
+
+Protected endpoints require authentication. Tests will skip gracefully if
+API credentials are not configured on the server.
 """
 
 import os
@@ -38,15 +41,18 @@ class TestAPIHealth:
     """API health check tests (requires running API server)."""
     
     def test_health_endpoint(self, api_client):
-        """API returns healthy status."""
+        """API returns healthy status (public endpoint)."""
         response = api_client.get("/api/health")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
     
-    def test_status_endpoint(self, api_client):
-        """API status returns queue metrics."""
-        response = api_client.get("/api/status")
+    def test_status_endpoint(self, authenticated_api_client):
+        """API status returns queue metrics (requires auth)."""
+        response = authenticated_api_client.get("/api/status")
+        # Accept 401 if API key not configured on server
+        if response.status_code == 401:
+            pytest.skip("API authentication not configured - set PULLDB_QA_API_KEY/SECRET")
         assert response.status_code == 200
         data = response.json()
         assert "queue_depth" in data
@@ -55,7 +61,7 @@ class TestAPIHealth:
         assert data["service"] == "api"
     
     def test_openapi_schema(self, api_client):
-        """OpenAPI schema is accessible."""
+        """OpenAPI schema is accessible (public endpoint)."""
         response = api_client.get("/openapi.json")
         assert response.status_code == 200
         data = response.json()
@@ -108,32 +114,44 @@ class TestCLIBasics:
 class TestAPIEndpoints:
     """API endpoint availability tests (requires running API server)."""
     
-    def test_jobs_active(self, api_client):
-        """Active jobs endpoint is accessible."""
-        response = api_client.get("/api/jobs/active")
+    def test_jobs_active(self, authenticated_api_client):
+        """Active jobs endpoint is accessible (requires auth)."""
+        response = authenticated_api_client.get("/api/jobs/active")
+        # Accept 401 if API key not configured on server
+        if response.status_code == 401:
+            pytest.skip("API authentication not configured - set PULLDB_QA_API_KEY/SECRET")
         assert response.status_code == 200
         assert isinstance(response.json(), list)
     
-    def test_jobs_history(self, api_client):
-        """Job history endpoint is accessible."""
-        response = api_client.get("/api/jobs/history")
+    def test_jobs_history(self, authenticated_api_client):
+        """Job history endpoint is accessible (requires auth)."""
+        response = authenticated_api_client.get("/api/jobs/history")
+        # Accept 401 if API key not configured on server
+        if response.status_code == 401:
+            pytest.skip("API authentication not configured - set PULLDB_QA_API_KEY/SECRET")
         assert response.status_code == 200
         assert isinstance(response.json(), list)
     
-    def test_jobs_search_validation(self, api_client):
-        """Job search validates query length."""
-        response = api_client.get("/api/jobs/search", params={"q": "ab"})
+    def test_jobs_search_validation(self, authenticated_api_client):
+        """Job search validates query length (requires auth)."""
+        response = authenticated_api_client.get("/api/jobs/search", params={"q": "ab"})
+        # Accept 401 if API key not configured on server
+        if response.status_code == 401:
+            pytest.skip("API authentication not configured - set PULLDB_QA_API_KEY/SECRET")
         assert response.status_code == 422  # Validation error
         data = response.json()
         assert "string_too_short" in str(data)
     
-    def test_admin_orphans(self, api_client):
-        """Admin orphan databases endpoint requires auth."""
-        response = api_client.get("/api/admin/orphan-databases")
-        # Admin endpoints require authentication - 401 is expected without auth
-        # 200 with valid admin auth would return hosts_scanned and total_orphans
-        assert response.status_code in (200, 401), f"Expected 200 (authed) or 401 (unauthed), got {response.status_code}"
-        if response.status_code == 200:
-            data = response.json()
-            assert "hosts_scanned" in data
-            assert "total_orphans" in data
+    def test_admin_orphans(self, authenticated_api_client):
+        """Admin orphan databases endpoint requires admin auth."""
+        response = authenticated_api_client.get("/api/admin/orphan-databases")
+        # Admin endpoints require authentication - 401/403 is expected without proper admin auth
+        if response.status_code == 401:
+            pytest.skip("Admin endpoint requires admin authentication")
+        if response.status_code == 403:
+            pytest.skip("Admin endpoint requires admin role")
+        # If auth passed, verify response structure
+        assert response.status_code == 200
+        data = response.json()
+        assert "hosts_scanned" in data
+        assert "total_orphans" in data

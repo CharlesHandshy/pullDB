@@ -96,7 +96,12 @@ def test_workflow_disk_insufficient_architecture_separation(
     monkeypatch.setattr(restore_mod, "cleanup_orphaned_staging", _fake_cleanup)
 
     def _fake_loader(
-        spec: MyLoaderSpec, timeout: float | None = None
+        spec: MyLoaderSpec,
+        *,
+        timeout: float | None = None,
+        progress_callback: object = None,
+        processlist_monitor: object = None,
+        abort_check: object = None,
     ) -> MyLoaderResult:
         now = datetime.now()
         return MyLoaderResult(

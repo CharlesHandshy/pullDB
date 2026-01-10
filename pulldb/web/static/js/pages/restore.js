@@ -18,6 +18,9 @@
     const config = window.restoreConfig || {};
     const MIN_SEARCH_CHARS = 3;
     const DEBOUNCE_MS = 400;
+    const MAX_CUSTOMER_LEN = 42;
+    const TRUNCATE_LEN = 38;
+    const HASH_SUFFIX_LEN = 4;
 
     // =============================================================================
     // State
@@ -28,6 +31,53 @@
     let debounceTimer = null;
     let abortController = null;
     let isQaMode = false;
+
+    // =============================================================================
+    // Customer Name Normalization
+    // =============================================================================
+    
+    /**
+     * Compute a simple hash suffix from customer name (client-side preview only).
+     * Uses lowercase letters only (a-z) to match server-side behavior.
+     * Note: Must match server-side algorithm for actual submission preview.
+     */
+    function computeHashSuffix(name) {
+        // Simple hash for preview purposes - actual hash comes from server
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+            const char = name.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+        // Convert to 4 lowercase letters (a-z only)
+        hash = Math.abs(hash);
+        let result = '';
+        for (let i = 0; i < HASH_SUFFIX_LEN; i++) {
+            result += String.fromCharCode(97 + (hash % 26)); // 97 = 'a'
+            hash = Math.floor(hash / 26);
+        }
+        return result;
+    }
+    
+    /**
+     * Normalize a customer name if it exceeds MAX_CUSTOMER_LEN.
+     * Returns { normalized, wasNormalized, message }
+     */
+    function normalizeCustomerName(name) {
+        if (name.length <= MAX_CUSTOMER_LEN) {
+            return { normalized: name, wasNormalized: false, message: '' };
+        }
+        
+        const truncated = name.substring(0, TRUNCATE_LEN);
+        const suffix = computeHashSuffix(name);
+        const normalized = truncated + suffix;
+        
+        return {
+            normalized: normalized,
+            wasNormalized: true,
+            message: `Customer name '${name}' (${name.length} chars) exceeds ${MAX_CUSTOMER_LEN} character limit. Will be normalized to '${normalized}' for target database naming.`
+        };
+    }
 
     // =============================================================================
     // DOM Helpers
@@ -225,7 +275,7 @@
     function selectCustomer(name) {
         selectedCustomer = name;
         
-        // Update hidden input
+        // Update hidden input (original name - server handles normalization)
         const hidden = $('customer');
         if (hidden) hidden.value = name;
         
@@ -237,10 +287,26 @@
         show($('customer-selected-mode'));
         hideResults();
         
+        // Check for normalization and show warning
+        updateNormalizationWarning(name);
+        
         // Load backups
         loadBackups();
         updateTargetPreview();
         updateSummary();
+    }
+    
+    function updateNormalizationWarning(name) {
+        const warningEl = $('customer-normalization-warning');
+        if (!warningEl) return;
+        
+        const result = normalizeCustomerName(name);
+        if (result.wasNormalized) {
+            warningEl.textContent = result.message;
+            show(warningEl);
+        } else {
+            hide(warningEl);
+        }
     }
     
     function clearCustomerSelection() {
@@ -255,6 +321,9 @@
         show($('customer-search-mode'));
         hide($('customer-selected-mode'));
         updateSearchStatus('');
+        
+        // Hide normalization warning
+        hide($('customer-normalization-warning'));
         
         clearBackupSelection();
         showBackupWaiting();
@@ -441,12 +510,16 @@
         const userCode = getUserCode();
         const suffix = $('suffix') ? $('suffix').value : '';
         
+        // Normalize customer name for preview
+        const normResult = normalizeCustomerName(selectedCustomer);
+        const displayCustomer = normResult.normalized;
+        
         const userCodeEl = $('preview-user-code');
         const customerEl = $('preview-customer');
         const suffixEl = $('preview-suffix');
         
         if (userCodeEl) userCodeEl.textContent = userCode;
-        if (customerEl) customerEl.textContent = selectedCustomer;
+        if (customerEl) customerEl.textContent = displayCustomer;
         if (suffixEl) suffixEl.textContent = suffix;
         
         show(preview);

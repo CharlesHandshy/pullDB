@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
@@ -11,8 +12,22 @@ from pulldb.api.schemas import JobRequest, JobResponse
 from pulldb.api.types import APIState
 from pulldb.domain.errors import StagingError
 from pulldb.domain.models import Job, JobStatus, User
+from pulldb.domain.naming import normalize_customer_name
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
 from pulldb.worker.staging import generate_staging_name
+
+
+@dataclass(frozen=True)
+class TargetResult:
+    """Result of target database name construction.
+    
+    Tracks whether customer name normalization was applied.
+    """
+    target: str
+    original_customer: str | None
+    normalized_customer: str | None
+    was_normalized: bool
+    normalization_message: str
 
 
 def _letters_only(value: str) -> str:
@@ -47,7 +62,7 @@ def _select_dbhost(state: APIState, req: JobRequest, user: User) -> str:
     return state.config.mysql_host
 
 
-def _construct_target(user: User, req: JobRequest) -> str:
+def _construct_target(user: User, req: JobRequest) -> TargetResult:
     """Construct target database name from user code and customer/qatemplate.
     
     Target names MUST be lowercase letters only (a-z). No numbers, no special
@@ -55,12 +70,24 @@ def _construct_target(user: User, req: JobRequest) -> str:
     - API level (this function)
     - CLI level (parse.py validation)
     - Web UI level (JavaScript validation + input filtering)
+    
+    Long customer names (> 42 chars) are automatically normalized via
+    truncation + hash suffix to ensure unique, reproducible targets.
+    
+    Returns:
+        TargetResult with target name and normalization metadata.
     """
     if req.qatemplate:
         target = f"{user.user_code}qatemplate"
         if req.suffix:
             target = f"{target}{req.suffix}"
-        return target
+        return TargetResult(
+            target=target,
+            original_customer=None,
+            normalized_customer=None,
+            was_normalized=False,
+            normalization_message="",
+        )
 
     customer_value = req.customer or ""
     sanitized = _letters_only(customer_value)
@@ -72,7 +99,12 @@ def _construct_target(user: User, req: JobRequest) -> str:
                 f"Received '{customer_value}'."
             ),
         )
-    target = f"{user.user_code}{sanitized}"
+    
+    # Normalize long customer names
+    norm_result = normalize_customer_name(sanitized)
+    customer_for_target = norm_result.normalized
+    
+    target = f"{user.user_code}{customer_for_target}"
     
     # Append optional suffix if provided
     if req.suffix:
@@ -87,7 +119,14 @@ def _construct_target(user: User, req: JobRequest) -> str:
                 f"Generated target '{target}' contains invalid characters."
             ),
         )
-    return target
+    
+    return TargetResult(
+        target=target,
+        original_customer=norm_result.original if norm_result.was_normalized else None,
+        normalized_customer=norm_result.normalized if norm_result.was_normalized else None,
+        was_normalized=norm_result.was_normalized,
+        normalization_message=norm_result.display_message,
+    )
 
 
 def _options_snapshot(
@@ -386,7 +425,8 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
             detail="Your account is pending approval. Contact an administrator to enable your account.",
         )
 
-    target = _construct_target(user, req)
+    target_result = _construct_target(user, req)
+    target = target_result.target
     dbhost = _select_dbhost(state, req, user)  # Pass user for default_host
 
     # Validate user can use the selected host
@@ -568,4 +608,7 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
         owner_username=stored.owner_username,
         owner_user_code=stored.owner_user_code,
         submitted_at=stored.submitted_at,
+        original_customer=target_result.original_customer,
+        customer_normalized=target_result.was_normalized,
+        normalization_message=target_result.normalization_message if target_result.was_normalized else None,
     )

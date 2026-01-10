@@ -343,7 +343,9 @@ class WorkerJobExecutor:
                 )
 
             def _cancel_check() -> bool:
-                return self.job_repo.is_cancellation_requested(job.id)
+                # Check if job should abort: cancelled OR no longer running
+                # This catches both user cancellation AND stale recovery marking job failed
+                return bool(self.job_repo.should_abort_job(job.id))
 
             # Phase: Download
             with profiler.phase(RestorePhase.DOWNLOAD) as download_profile:
@@ -491,6 +493,7 @@ class WorkerJobExecutor:
                 format_tag=format_tag,  # Detected from backup contents
                 progress_callback=_restore_progress_callback,
                 event_callback=_workflow_event_callback,
+                abort_check=_cancel_check,  # Pass cancel check for myloader abort
             )
 
             # CRITICAL: Lock for restore - this is the point of no return.

@@ -4,6 +4,7 @@ import os
 import typing as t
 from datetime import datetime, timedelta
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, Form, Request, Query, HTTPException
@@ -13,6 +14,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResp
 from pulldb.api.logic import enqueue_job
 from pulldb.api.schemas import JobRequest
 from pulldb.domain.models import User, UserRole
+from pulldb.domain.naming import normalize_customer_name
 from pulldb.web.dependencies import get_api_state, require_login, templates
 from pulldb.infra.s3 import S3Client, BACKUP_FILENAME_REGEX
 from pulldb.infra.factory import is_simulation_mode
@@ -122,11 +124,17 @@ async def search_customers(
     Returns a list of customers matching the query prefix or pattern.
     Supports wildcard patterns (* and ?) when detected in query.
     """
+    # Forward session cookie for API authentication
+    cookies = {}
+    if session_token := request.cookies.get("session_token"):
+        cookies["session_token"] = session_token
+    
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
                 f"{_API_BASE_URL}/api/customers/search",
                 params={"q": q, "limit": limit},
+                cookies=cookies,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -174,6 +182,11 @@ async def search_backups(
         limit: Max results per page.
         offset: Pagination offset.
     """
+    # Forward session cookie for API authentication
+    cookies = {}
+    if session_token := request.cookies.get("session_token"):
+        cookies["session_token"] = session_token
+    
     try:
         params: dict[str, t.Any] = {
             "customer": customer,
@@ -188,6 +201,7 @@ async def search_backups(
             resp = await client.get(
                 f"{_API_BASE_URL}/api/backups/search",
                 params=params,
+                cookies=cookies,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -443,10 +457,19 @@ async def restore_submit(
     env_val = s3env if s3env in ("staging", "prod") else None
     overwrite_val = overwrite == "true"
     is_qatemplate = qatemplate == 'true'
+    
+    # Normalize long customer names (> 42 chars get truncated + hash suffix)
+    normalization_warning: str | None = None
+    customer_for_api = customer
+    if not is_qatemplate and customer:
+        norm_result = normalize_customer_name(customer)
+        customer_for_api = norm_result.normalized
+        if norm_result.was_normalized:
+            normalization_warning = norm_result.display_message
 
     req = JobRequest(
         user=effective_username,
-        customer=customer if not is_qatemplate else None,
+        customer=customer_for_api if not is_qatemplate else None,
         qatemplate=is_qatemplate,
         env=env_val,
         dbhost=dbhost if dbhost else None,
@@ -457,7 +480,11 @@ async def restore_submit(
 
     try:
         await run_in_threadpool(enqueue_job, state, req)
-        return RedirectResponse(url="/web/jobs", status_code=303)
+        # Build redirect URL with optional normalization warning
+        redirect_url = "/web/jobs"
+        if normalization_warning:
+            redirect_url = f"/web/jobs?{urlencode({'restore_warning': normalization_warning})}"
+        return RedirectResponse(url=redirect_url, status_code=303)
     except HTTPException as exc:
         # Handle specific HTTP errors (e.g., 409 Conflict for duplicate jobs)
         error_status = exc.status_code if hasattr(exc, 'status_code') else 400

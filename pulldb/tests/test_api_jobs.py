@@ -10,6 +10,7 @@ from typing import Any, NamedTuple, Protocol, cast
 import pytest
 from fastapi.testclient import TestClient
 
+from pulldb.api.auth import get_authenticated_user
 from pulldb.api.main import APIState, app, get_api_state
 from pulldb.domain.config import Config
 from pulldb.domain.models import Job, JobStatus, User, UserRole
@@ -240,7 +241,22 @@ def fake_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRepos]:
     def _override() -> APIState:
         return state
 
+    # Create a mock authenticated user for auth bypass
+    # Use admin=True to bypass the "can only submit jobs for yourself" check
+    # since tests may use different usernames in requests
+    async def _mock_auth_user() -> User:
+        return User(
+            user_id="user-1",
+            username="jane.doe",
+            user_code="janedo",
+            is_admin=True,  # Admin bypasses self-submission check
+            role=UserRole.ADMIN,
+            created_at=datetime(2025, 11, 3, 0, 0, tzinfo=UTC),
+            allowed_hosts=["dev-db-01"],
+        )
+
     app.dependency_overrides[get_api_state] = _override
+    app.dependency_overrides[get_authenticated_user] = _mock_auth_user
     if hasattr(app.state, "api_state"):
         delattr(app.state, "api_state")
     try:
@@ -252,6 +268,7 @@ def fake_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRepos]:
         )
     finally:
         app.dependency_overrides.pop(get_api_state, None)
+        app.dependency_overrides.pop(get_authenticated_user, None)
         if hasattr(app.state, "api_state"):
             delattr(app.state, "api_state")
 

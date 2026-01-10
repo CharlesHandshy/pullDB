@@ -148,6 +148,21 @@ def run_command(
     )
 
 
+class CommandAbortedError(Exception):
+    """Raised when a command is aborted via abort_check callback.
+
+    This indicates controlled termination due to job cancellation or
+    external failure (e.g., stale recovery marked job as failed).
+    """
+
+    def __init__(
+        self, command: Sequence[str], stdout: str
+    ) -> None:
+        self.command = list(command)
+        self.partial_stdout = stdout
+        super().__init__(f"Command aborted: {' '.join(command)}")
+
+
 def run_command_streaming(
     command: Sequence[str],
     line_callback: t.Callable[[str], None],
@@ -155,6 +170,8 @@ def run_command_streaming(
     env: Mapping[str, str] | None = None,
     timeout: float | None = None,
     cwd: str | None = None,
+    abort_check: t.Callable[[], bool] | None = None,
+    abort_check_interval: int = 100,
 ) -> CommandResult:
     """Execute command, streaming merged stdout/stderr to callback.
 
@@ -164,10 +181,17 @@ def run_command_streaming(
         env: Optional environment variable overrides.
         timeout: Optional timeout in seconds.
         cwd: Optional working directory.
+        abort_check: Optional callback that returns True if command should abort.
+            Checked every abort_check_interval lines. Use to stop long-running
+            commands when the job is cancelled or marked failed externally.
+        abort_check_interval: How often to call abort_check (default every 100 lines).
 
     Returns:
         CommandResult with captured stdout (stderr will be empty as it is merged).
         Output is truncated to STDOUT_LIMIT (keeping tail).
+
+    Raises:
+        CommandAbortedError: If abort_check returns True during execution.
     """
     start = datetime.now(UTC)
     # We keep a buffer of the last N chars to return in CommandResult
@@ -193,11 +217,13 @@ def run_command_streaming(
         ) from e
 
     deadline = start.timestamp() + timeout if timeout else None
+    line_count = 0
 
     try:
         if proc.stdout:
             for line in proc.stdout:
                 line_callback(line)
+                line_count += 1
 
                 # Buffer management for result
                 captured_buffer.append(line)
@@ -214,6 +240,15 @@ def run_command_streaming(
                 if deadline and time.time() > deadline:
                     proc.kill()
                     raise subprocess.TimeoutExpired(command, timeout or -1)
+
+                # Check for abort (job cancelled or marked failed externally)
+                if abort_check and line_count % abort_check_interval == 0:
+                    if abort_check():
+                        proc.kill()
+                        stdout_str = "".join(captured_buffer)
+                        raise CommandAbortedError(
+                            command, _truncate_str(stdout_str, STDOUT_LIMIT)
+                        )
 
         proc.wait(timeout=(deadline - time.time()) if deadline else None)
 
@@ -259,8 +294,11 @@ class SubprocessExecutor:
         env: Mapping[str, str] | None = None,
         timeout: float | None = None,
         cwd: str | None = None,
+        abort_check: t.Callable[[], bool] | None = None,
+        abort_check_interval: int = 100,
     ) -> CommandResult:
         """Execute command, streaming merged stdout/stderr to callback."""
         return run_command_streaming(
-            command, line_callback, env=env, timeout=timeout, cwd=cwd
+            command, line_callback, env=env, timeout=timeout, cwd=cwd,
+            abort_check=abort_check, abort_check_interval=abort_check_interval
         )

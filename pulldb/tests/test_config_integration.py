@@ -72,8 +72,8 @@ class TestConfigIntegration:
         assert config.mysql_database == "pulldb"  # Test database
 
         # Verify operational settings came from MySQL settings table
-        # (these are populated by applying schema/pulldb_service/*.sql)
-        assert config.s3_bucket_path == "pestroutesrdsdbs"  # s3_bucket_stg
+        # (these are populated by conftest.py test data seeding)
+        assert config.s3_bucket_path == "pestroutes-rds-backup-prod-vpc-us-east-1-s3/daily/prod/"
         assert config.default_dbhost == "localhost"
 
     def test_environment_override_with_real_database(

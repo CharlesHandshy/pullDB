@@ -270,15 +270,21 @@ class TestMockJobRepositoryStaleRunningMethods:
         return repo.enqueue_job(job)
 
     def test_get_candidate_stale_running_job_finds_stale_jobs(self):
-        """Test that get_candidate_stale_running_job finds jobs older than timeout."""
+        """Test that get_candidate_stale_running_job finds jobs older than timeout.
+
+        With the new event-based staleness check, we need to ensure:
+        1. started_at is old (20 min ago)
+        2. Any job_events are also old (20 min ago)
+        """
         from pulldb.simulation.adapters.mock_mysql import SimulatedJobRepository
         from pulldb.simulation.core.state import get_simulation_state, reset_simulation
+        from dataclasses import replace as replace_dataclass
 
         reset_simulation()
         state = get_simulation_state()
         repo = SimulatedJobRepository()
 
-        # Create and claim a job (marks it running)
+        # Create and claim a job (marks it running - adds a "running" event)
         job_id = self._create_test_job(repo)
         repo.claim_next_job(worker_id="worker-1")
 
@@ -286,6 +292,11 @@ class TestMockJobRepositoryStaleRunningMethods:
         job = state.jobs[job_id]
         stale_time = datetime.now(UTC) - timedelta(minutes=20)
         state.jobs[job_id] = replace(job, started_at=stale_time)
+
+        # Also backdate any job_events (claim_next_job adds a "running" event)
+        for i, event in enumerate(state.job_events):
+            if event.job_id == job_id:
+                state.job_events[i] = replace_dataclass(event, logged_at=stale_time)
 
         # Should find the stale job
         candidate = repo.get_candidate_stale_running_job(stale_timeout_minutes=15)
@@ -423,6 +434,220 @@ class TestMockJobRepositoryStaleRunningMethods:
         assert result is False
         job = repo.get_job_by_id(job_id)
         assert job.status == JobStatus.QUEUED  # Unchanged
+
+    def test_get_candidate_stale_ignores_jobs_with_recent_events(self):
+        """Test that jobs with recent progress events are NOT considered stale.
+
+        This is the key fix: a job that started 30 minutes ago but has had
+        download_progress events in the last 5 minutes should NOT be marked stale.
+        """
+        from pulldb.simulation.adapters.mock_mysql import SimulatedJobRepository
+        from pulldb.simulation.core.state import get_simulation_state, reset_simulation
+        from pulldb.domain.models import JobEvent
+
+        reset_simulation()
+        state = get_simulation_state()
+        repo = SimulatedJobRepository()
+
+        # Create and claim a job
+        job_id = self._create_test_job(repo)
+        repo.claim_next_job(worker_id="worker-1")
+
+        # Backdate started_at to 30 minutes ago (would be stale by old logic)
+        job = state.jobs[job_id]
+        stale_start = datetime.now(UTC) - timedelta(minutes=30)
+        state.jobs[job_id] = replace(job, started_at=stale_start)
+
+        # BUT add a recent progress event (5 minutes ago)
+        recent_event = JobEvent(
+            id=999,
+            job_id=job_id,
+            event_type="download_progress",
+            detail='{"percent_complete": 50}',
+            logged_at=datetime.now(UTC) - timedelta(minutes=5),
+        )
+        state.job_events.append(recent_event)
+
+        # Should NOT find the job (has recent activity)
+        candidate = repo.get_candidate_stale_running_job(stale_timeout_minutes=15)
+
+        assert candidate is None, "Job with recent events should NOT be considered stale"
+
+    def test_get_candidate_stale_finds_job_with_old_events(self):
+        """Test that jobs with only OLD events ARE considered stale."""
+        from pulldb.simulation.adapters.mock_mysql import SimulatedJobRepository
+        from pulldb.simulation.core.state import get_simulation_state, reset_simulation
+        from pulldb.domain.models import JobEvent
+        from dataclasses import replace as replace_dataclass
+
+        reset_simulation()
+        state = get_simulation_state()
+        repo = SimulatedJobRepository()
+
+        # Create and claim a job
+        job_id = self._create_test_job(repo)
+        repo.claim_next_job(worker_id="worker-1")
+
+        # Backdate started_at to 30 minutes ago
+        job = state.jobs[job_id]
+        stale_start = datetime.now(UTC) - timedelta(minutes=30)
+        state.jobs[job_id] = replace(job, started_at=stale_start)
+
+        # Backdate any existing job_events (claim_next_job adds "running" event)
+        for i, event in enumerate(state.job_events):
+            if event.job_id == job_id:
+                state.job_events[i] = replace_dataclass(
+                    event, logged_at=datetime.now(UTC) - timedelta(minutes=25)
+                )
+
+        # Add an OLD event (20 minutes ago - older than 15 min timeout)
+        old_event = JobEvent(
+            id=999,
+            job_id=job_id,
+            event_type="download_progress",
+            detail='{"percent_complete": 10}',
+            logged_at=datetime.now(UTC) - timedelta(minutes=20),
+        )
+        state.job_events.append(old_event)
+
+        # Should find the job (no recent activity)
+        candidate = repo.get_candidate_stale_running_job(stale_timeout_minutes=15)
+
+        assert candidate is not None
+        assert candidate.id == job_id
+
+
+# =============================================================================
+# should_abort_job Tests
+# =============================================================================
+
+
+class TestShouldAbortJob:
+    """Tests for JobRepository.should_abort_job method."""
+
+    def _create_test_job(self, repo, job_id=None):
+        """Helper to create a test job."""
+        job = Job(
+            id=job_id or "test-job-12345678901234567890",
+            owner_user_id="user-1",
+            owner_username="testuser",
+            owner_user_code="TS0001",
+            target="TS0001test",
+            staging_name="TS0001test_abc123456789",
+            dbhost="host1",
+            status=JobStatus.QUEUED,
+            submitted_at=datetime.now(UTC),
+            started_at=None,
+            completed_at=None,
+            options_json=None,
+            retry_count=0,
+            error_detail=None,
+            worker_id=None,
+        )
+        return repo.enqueue_job(job)
+
+    def test_should_abort_returns_false_for_running_job(self):
+        """Test should_abort_job returns False for a healthy running job."""
+        from pulldb.simulation.adapters.mock_mysql import SimulatedJobRepository
+        from pulldb.simulation.core.state import reset_simulation
+
+        reset_simulation()
+        repo = SimulatedJobRepository()
+
+        job_id = self._create_test_job(repo)
+        repo.claim_next_job(worker_id="worker-1")
+
+        # Running job with no cancellation - should NOT abort
+        result = repo.should_abort_job(job_id)
+
+        assert result is False
+
+    def test_should_abort_returns_true_for_failed_job(self):
+        """Test should_abort_job returns True when job marked failed.
+
+        This is the key fix: if stale recovery marks a job failed,
+        the download should stop instead of continuing.
+        """
+        from pulldb.simulation.adapters.mock_mysql import SimulatedJobRepository
+        from pulldb.simulation.core.state import get_simulation_state, reset_simulation
+
+        reset_simulation()
+        state = get_simulation_state()
+        repo = SimulatedJobRepository()
+
+        job_id = self._create_test_job(repo)
+        repo.claim_next_job(worker_id="worker-1")
+
+        # Simulate stale recovery marking job as failed
+        job = state.jobs[job_id]
+        state.jobs[job_id] = replace(
+            job,
+            status=JobStatus.FAILED,
+            error_detail="Worker died during restore (stale job recovery)",
+        )
+
+        # Should return True - download should abort
+        result = repo.should_abort_job(job_id)
+
+        assert result is True
+
+    def test_should_abort_returns_true_for_cancelled_job(self):
+        """Test should_abort_job returns True when cancellation requested."""
+        from pulldb.simulation.adapters.mock_mysql import SimulatedJobRepository
+        from pulldb.simulation.core.state import reset_simulation
+
+        reset_simulation()
+        repo = SimulatedJobRepository()
+
+        job_id = self._create_test_job(repo)
+        repo.claim_next_job(worker_id="worker-1")
+
+        # Request cancellation
+        repo.request_cancellation(job_id)
+
+        # Should return True
+        result = repo.should_abort_job(job_id)
+
+        assert result is True
+
+    def test_should_abort_returns_true_for_nonexistent_job(self):
+        """Test should_abort_job returns True for job that doesn't exist."""
+        from pulldb.simulation.adapters.mock_mysql import SimulatedJobRepository
+        from pulldb.simulation.core.state import reset_simulation
+
+        reset_simulation()
+        repo = SimulatedJobRepository()
+
+        # Job doesn't exist
+        result = repo.should_abort_job("nonexistent-job-id")
+
+        assert result is True
+
+    def test_should_abort_returns_false_for_canceling_job(self):
+        """Test should_abort_job returns False for job in canceling state.
+
+        The canceling state means the job is actively being cancelled,
+        but the CancellationError should be raised by cancel_check, not abort.
+        """
+        from pulldb.simulation.adapters.mock_mysql import SimulatedJobRepository
+        from pulldb.simulation.core.state import get_simulation_state, reset_simulation
+
+        reset_simulation()
+        state = get_simulation_state()
+        repo = SimulatedJobRepository()
+
+        job_id = self._create_test_job(repo)
+        repo.claim_next_job(worker_id="worker-1")
+
+        # Put job in canceling state
+        job = state.jobs[job_id]
+        state.jobs[job_id] = replace(job, status=JobStatus.CANCELING)
+
+        # Should return False - canceling is an expected state
+        # (the is_cancellation_requested check handles the abort)
+        result = repo.should_abort_job(job_id)
+
+        assert result is False
 
 
 # =============================================================================

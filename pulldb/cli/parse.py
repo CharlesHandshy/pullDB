@@ -32,11 +32,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from pulldb.domain.naming import MAX_CUSTOMER_LEN, normalize_customer_name
+
 
 USER_CODE_LEN = 6
 MAX_TARGET_LEN = 51  # Without staging suffix; see architecture docs
 MAX_SUFFIX_LEN = 3  # Suffix: 1-3 lowercase letters
-MAX_CUSTOMER_LEN = 42  # MAX_TARGET_LEN - USER_CODE_LEN - MAX_SUFFIX_LEN
+# MAX_CUSTOMER_LEN imported from pulldb.domain.naming (= 42)
 
 
 class CLIParseError(ValueError):
@@ -55,13 +57,16 @@ class RestoreCLIOptions:
     Attributes:
         raw_tokens: Original token sequence for audit/logging.
         username: Raw username if provided via user= token (None if auto-detect).
-        customer_id: Raw customer identifier if provided (None for qatemplate).
+        customer_id: Normalized customer identifier if provided (None for qatemplate).
         is_qatemplate: True when qatemplate restore requested.
         suffix: Optional suffix for target database (1-3 lowercase letters, e.g., 'dev').
         dbhost: Optional explicit database host override.
         date: Optional specific backup date in YYYY-MM-DD format.
         s3env: Optional S3 environment (staging or prod).
         overwrite: Whether overwrite flag was supplied.
+        original_customer: Original customer name before normalization (None if not normalized).
+        customer_normalized: True if customer name was normalized (truncated + hashed).
+        normalization_message: User-friendly message explaining normalization (empty if none).
     """
 
     raw_tokens: tuple[str, ...]
@@ -73,6 +78,9 @@ class RestoreCLIOptions:
     date: str | None
     s3env: str | None
     overwrite: bool
+    original_customer: str | None = None
+    customer_normalized: bool = False
+    normalization_message: str = ""
 
 
 _TOKEN_USER = re.compile(r"^(?:--)?user=([A-Za-z0-9_.-]+)$")
@@ -148,11 +156,7 @@ def _tokenize(
                         f"customer must contain only lowercase letters (a-z). Got: '{opt_value}'. "
                         "Use lowercase letters only, e.g., 'acme' instead of 'Acme123'."
                     )
-                if len(opt_value) > MAX_CUSTOMER_LEN:
-                    raise CLIParseError(
-                        f"customer exceeds maximum length of {MAX_CUSTOMER_LEN} characters "
-                        f"(got {len(opt_value)}). Shorten the customer name."
-                    )
+                # Long names normalized later in parse_restore_args
                 customer_id = opt_value
                 i += 2
                 continue
@@ -230,11 +234,7 @@ def _tokenize(
                     f"customer must contain only lowercase letters (a-z). Got: '{cust_value}'. "
                     "Use lowercase letters only, e.g., 'acme' instead of 'Acme123'."
                 )
-            if len(cust_value) > MAX_CUSTOMER_LEN:
-                raise CLIParseError(
-                    f"customer exceeds maximum length of {MAX_CUSTOMER_LEN} characters "
-                    f"(got {len(cust_value)}). Shorten the customer name."
-                )
+            # Long names normalized later in parse_restore_args
             customer_id = cust_value
             i += 1
             continue
@@ -306,11 +306,7 @@ def _tokenize(
             # If we don't have a customer yet and token is lowercase letters only,
             # treat it as customer
             if customer_id is None and not is_qatemplate and re.match(r"^[a-z]+$", tok):
-                if len(tok) > MAX_CUSTOMER_LEN:
-                    raise CLIParseError(
-                        f"customer exceeds maximum length of {MAX_CUSTOMER_LEN} characters "
-                        f"(got {len(tok)}). Shorten the customer name."
-                    )
+                # Long names normalized later in parse_restore_args
                 customer_id = tok
                 i += 1
                 continue
@@ -345,6 +341,7 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
 
     Returns:
         ``RestoreCLIOptions`` instance with validated fields.
+        Long customer names (> 42 chars) are automatically normalized.
 
     Raises:
         CLIParseError: On any validation failure.
@@ -372,16 +369,33 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
             "Cannot specify both customer=<id> and qatemplate. Choose one."
         )
 
+    # Normalize long customer names
+    original_customer: str | None = None
+    normalized_customer = customer_id
+    customer_normalized = False
+    normalization_message = ""
+    
+    if customer_id is not None:
+        norm_result = normalize_customer_name(customer_id)
+        normalized_customer = norm_result.normalized
+        if norm_result.was_normalized:
+            original_customer = norm_result.original
+            customer_normalized = True
+            normalization_message = norm_result.display_message
+
     return RestoreCLIOptions(
         raw_tokens=tuple(tokens),
         username=username,
-        customer_id=customer_id,
+        customer_id=normalized_customer,
         is_qatemplate=is_qatemplate,
         suffix=suffix,
         dbhost=dbhost,
         date=date,
         s3env=s3env,
         overwrite=overwrite,
+        original_customer=original_customer,
+        customer_normalized=customer_normalized,
+        normalization_message=normalization_message,
     )
 
 

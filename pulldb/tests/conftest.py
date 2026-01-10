@@ -143,13 +143,13 @@ def _deploy_schema(socket_path: Path) -> None:
     conn.close()
 
     # Deploy schema files (schema dir is pulldb_service/)
-    # Skip 300_mysql_users.sql - it contains GRANT statements for pulldb_service.*
-    # which don't apply to isolated test instances using 'pulldb' database
+    # Skip files that require CREATE USER privileges or are production-only
     project_root = Path(__file__).parent.parent.parent
     schema_dir = project_root / "schema" / "pulldb_service"
 
     # Files to skip in isolated testing (production-only setup)
-    skip_files = {"300_mysql_users.sql"}
+    # - 03000_mysql_users.sql contains CREATE USER and GRANT statements
+    skip_files = {"03000_mysql_users.sql"}
 
     mysql_client = shutil.which("mysql")
     if mysql_client and schema_dir.exists():
@@ -157,7 +157,7 @@ def _deploy_schema(socket_path: Path) -> None:
             if sql_file.name in skip_files:
                 continue
             with open(sql_file) as f:
-                subprocess.run(
+                result = subprocess.run(
                     [
                         mysql_client,
                         "-u",
@@ -167,8 +167,13 @@ def _deploy_schema(socket_path: Path) -> None:
                         "pulldb",
                     ],
                     stdin=f,
-                    check=True,
+                    capture_output=True,
+                    text=True,
                 )
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        f"Failed to deploy {sql_file.name}: {result.stderr}"
+                    )
 
 
 def _seed_isolated_settings(socket_path: Path) -> None:
@@ -677,6 +682,22 @@ def mysql_pool(
             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
             """
         )
+        # Seed test host for job repository tests
+        cursor.execute(
+            """
+            INSERT INTO db_hosts (id, hostname, credential_ref, max_running_jobs, max_active_jobs, enabled, created_at)
+            VALUES (
+                'aaaaaaaa-bbbb-cccc-dddd-000000000001',
+                'dev-db-01',
+                'aws-secretsmanager:/pulldb/mysql/coordination-db',
+                5,
+                10,
+                TRUE,
+                UTC_TIMESTAMP(6)
+            )
+            ON DUPLICATE KEY UPDATE enabled = TRUE
+            """
+        )
         conn.commit()
         cursor.close()
 
@@ -835,6 +856,7 @@ def isolated_mysql_pool(
 @pytest.fixture
 def isolated_worker(
     isolated_mysql: str,
+    tmp_path: Path,
 ) -> t.Generator[subprocess.Popen[bytes], None, None]:
     """Start a worker process connected to the isolated database.
 
@@ -843,6 +865,10 @@ def isolated_worker(
     set by isolated_mysql.
     """
     cmd = [sys.executable, "-m", "pulldb.worker.service"]
+
+    # Create a temporary work directory for this test
+    work_dir = tmp_path / "pulldb_work"
+    work_dir.mkdir(parents=True, exist_ok=True)
 
     # Ensure PYTHONPATH includes project root
     env = os.environ.copy()
@@ -856,6 +882,9 @@ def isolated_worker(
     # In isolated mode, we use root with no password
     env["PULLDB_WORKER_MYSQL_USER"] = "root"
     env["PULLDB_WORKER_MYSQL_PASSWORD"] = ""
+
+    # Set a temp work directory so we don't need /var/lib/pulldb permissions
+    env["PULLDB_WORK_DIR"] = str(work_dir)
 
     project_root = str(Path(__file__).parent.parent.parent)
     if "PYTHONPATH" in env:

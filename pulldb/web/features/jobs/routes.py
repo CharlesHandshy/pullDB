@@ -26,6 +26,7 @@ async def jobs_page(
     days: int = 30,
     user_code: str | None = None,
     target: str | None = None,
+    restore_warning: str | None = Query(None),
     state: Any = Depends(get_api_state),
     user: User = Depends(require_login),
 ) -> HTMLResponse:
@@ -164,6 +165,8 @@ async def jobs_page(
             "max_retention_increment": max_retention_increment,
             "jobs_refresh_interval": jobs_refresh_interval,
             "retention_options": retention_options,
+            # Flash messages
+            "warning": restore_warning,
         },
     )
 
@@ -816,8 +819,14 @@ async def delete_job_database(
         return redirect_error("Delete already in progress - worker will retry automatically")
     
     # Block if delete already failed (exhausted retries)
+    # Only block if error_detail indicates delete failure, not other failures
+    # (e.g., zombie detection, restore failure, etc. can still be deleted)
     if job.status == JobStatus.FAILED:
-        return redirect_error("Delete failed after max retries - contact admin for manual cleanup")
+        error_detail = job.error_detail or ""
+        if error_detail.startswith("Delete failed"):
+            return redirect_error("Delete failed after max retries - contact admin for manual cleanup")
+        # Otherwise, job failed for other reasons (zombie, restore error, etc.)
+        # Allow deletion to proceed - databases may or may not exist
 
     # If already soft-deleted, force hard delete on second attempt
     force_hard_delete = job.status == JobStatus.DELETED

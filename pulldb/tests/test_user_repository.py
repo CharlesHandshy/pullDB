@@ -151,11 +151,21 @@ class TestUserRepository:
             mysql_pool, "DELETE FROM auth_users WHERE user_code LIKE 'aaaa%'", ()
         )
 
-    def test_generate_user_code_insufficient_letters(self, mysql_pool: Any) -> None:
+    def test_generate_user_code_short_usernames_padded(self, mysql_pool: Any) -> None:
+        """Short usernames (< 6 letters) are padded with hash-based suffix."""
         repo = UserRepository(mysql_pool)
-        for bad in ["abc", "a1b2c", "123456", "ab!!cd"]:
-            with pytest.raises(ValueError):
-                repo.generate_user_code(bad)
+        # These should now work - function pads with deterministic hash
+        for username in ["abc", "a1b2c", "ab"]:
+            code = repo.generate_user_code(username)
+            assert len(code) == 6
+            assert code.isalpha()
+            assert code.islower()
+        
+        # All-digit or insufficient alpha chars should still pad deterministically
+        for username in ["123456", "ab!!cd"]:
+            code = repo.generate_user_code(username)
+            assert len(code) == 6
+            assert code.isalpha()
 
     def test_get_or_create_user_existing(self, mysql_pool: Any) -> None:
         repo = UserRepository(mysql_pool)
