@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import shutil
 import tarfile
+import time
 import typing as t
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -56,6 +57,15 @@ JobExecutor = t.Callable[[Job], None]
 
 DEFAULT_MYSQL_TIMEOUT_SECONDS = 7200
 DEFAULT_POST_SQL_TIMEOUT_SECONDS = 600
+
+# Extraction progress emission thresholds (hybrid: bytes OR files OR time)
+EXTRACTION_PROGRESS_BYTES = 64 * 1024 * 1024  # Every 64MB
+EXTRACTION_PROGRESS_FILES = 1000  # Every 1000 files
+EXTRACTION_PROGRESS_TIME = 30.0  # Every 30 seconds (fallback for large single files)
+
+# Type alias for extraction progress callback
+# (extracted_bytes, total_bytes, percent, elapsed_seconds, files_extracted, total_files)
+ExtractionProgressCallback = t.Callable[[int, int, float, float, int, int], None]
 
 
 def derive_backup_lookup_target(job: Job) -> str:
@@ -127,35 +137,126 @@ def build_lookup_targets_for_location(
     return candidates
 
 
-def extract_tar_archive(archive_path: str, dest_dir: Path, job_id: str) -> str:
-    """Extract tar archive into *dest_dir* returning directory path.
+def extract_tar_archive(
+    archive_path: str,
+    dest_dir: Path,
+    job_id: str,
+    progress_callback: ExtractionProgressCallback | None = None,
+    abort_check: t.Callable[[], bool] | None = None,
+) -> str:
+    """Extract tar archive into *dest_dir* with progress reporting.
 
-    Raises ``ExtractionError`` when tar extraction fails or attempts to escape
-    the destination directory.
+    Extracts member-by-member to support progress callbacks and abort checks.
+    Emits progress every 64MB extracted OR every 1000 files OR every 30 seconds
+    (hybrid approach ensures UI never appears frozen).
+
+    Args:
+        archive_path: Path to tar archive.
+        dest_dir: Destination directory for extraction.
+        job_id: Job identifier for error context.
+        progress_callback: Optional callback for progress updates.
+            Signature: (extracted_bytes, total_bytes, percent, elapsed_seconds,
+                       files_extracted, total_files)
+        abort_check: Optional callback that returns True to abort extraction.
+
+    Returns:
+        Path to destination directory.
+
+    Raises:
+        ExtractionError: When tar extraction fails or path escape attempted.
+        CancellationError: If abort_check returns True during extraction.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
     try:
         with tarfile.open(archive_path, "r:*") as tar:
-            _safe_extract(tar, dest_dir)
+            _safe_extract_with_progress(
+                tar, dest_dir, progress_callback, abort_check, job_id
+            )
+    except CancellationError:
+        raise  # Re-raise cancellation without wrapping
     except (tarfile.TarError, OSError, ValueError) as exc:
         raise ExtractionError(job_id, archive_path, str(exc)) from exc
     return str(dest_dir)
 
 
-def _safe_extract(tar: tarfile.TarFile, dest: Path) -> None:
+def _safe_extract_with_progress(
+    tar: tarfile.TarFile,
+    dest: Path,
+    progress_callback: ExtractionProgressCallback | None,
+    abort_check: t.Callable[[], bool] | None,
+    job_id: str,
+) -> None:
+    """Extract tar members with progress tracking and abort support.
+
+    Validates each member path before extraction to prevent directory escape.
+    Emits progress using hybrid threshold: 64MB or 1000 files or 30 seconds.
+    """
     base = dest.resolve()
-    for member in tar.getmembers():
+    members = tar.getmembers()
+    total_files = len(members)
+    total_bytes = sum(m.size for m in members if m.isfile())
+
+    extracted_bytes = 0
+    files_extracted = 0
+    last_progress_bytes = 0
+    last_progress_files = 0
+    last_progress_time = time.monotonic()
+    start_time = last_progress_time
+
+    for member in members:
+        # Abort check before each file
+        if abort_check and abort_check():
+            raise CancellationError(job_id, "extraction")
+
+        # Validate path safety
         member_path = (base / member.name).resolve()
         if not str(member_path).startswith(str(base)):
             raise ValueError(
                 f"Archive entry '{member.name}' escapes extraction directory"
             )
-    tar.extractall(path=base)
+
+        # Extract single member
+        tar.extract(member, path=base)
+        files_extracted += 1
+        if member.isfile():
+            extracted_bytes += member.size
+
+        # Emit progress using hybrid threshold (bytes OR files OR time)
+        current_time = time.monotonic()
+        bytes_since_last = extracted_bytes - last_progress_bytes
+        files_since_last = files_extracted - last_progress_files
+        time_since_last = current_time - last_progress_time
+
+        should_emit = (
+            bytes_since_last >= EXTRACTION_PROGRESS_BYTES
+            or files_since_last >= EXTRACTION_PROGRESS_FILES
+            or time_since_last >= EXTRACTION_PROGRESS_TIME
+            or files_extracted == total_files  # Always emit on completion
+        )
+
+        if progress_callback and should_emit:
+            elapsed = current_time - start_time
+            percent = (extracted_bytes / total_bytes * 100) if total_bytes > 0 else 100.0
+            progress_callback(
+                extracted_bytes, total_bytes, percent, elapsed,
+                files_extracted, total_files
+            )
+            last_progress_bytes = extracted_bytes
+            last_progress_files = files_extracted
+            last_progress_time = current_time
 
 
-def _default_extract_archive(archive_path: str, dest_dir: Path, job_id: str) -> str:
+def _default_extract_archive(
+    archive_path: str,
+    dest_dir: Path,
+    job_id: str,
+    progress_callback: ExtractionProgressCallback | None = None,
+    abort_check: t.Callable[[], bool] | None = None,
+) -> str:
     """Forward to extract_tar_archive as overridable hook."""
-    return extract_tar_archive(archive_path, dest_dir, job_id)
+    return extract_tar_archive(
+        archive_path, dest_dir, job_id, progress_callback, abort_check
+    )
 
 
 def _get_dir_size(path: Path) -> int:
@@ -215,7 +316,10 @@ class WorkerExecutorHooks:
         ],
         str,
     ] = download_backup
-    extract_archive: t.Callable[[str, Path, str], str] = _default_extract_archive
+    extract_archive: t.Callable[
+        [str, Path, str, ExtractionProgressCallback | None, t.Callable[[], bool] | None],
+        str,
+    ] = _default_extract_archive
 
 
 class WorkerJobExecutor:
@@ -371,9 +475,43 @@ class WorkerJobExecutor:
             # Checkpoint: check for cancellation after download
             self._check_cancellation(job.id, "post_download")
 
+            # Progress callback for extraction phase
+            def _extraction_progress_callback(
+                extracted: int,
+                total: int,
+                percent: float,
+                elapsed: float,
+                files_extracted: int,
+                total_files: int,
+            ) -> None:
+                self._append_event(
+                    job.id,
+                    "extraction_progress",
+                    {
+                        "extracted_bytes": extracted,
+                        "total_bytes": total,
+                        "percent_complete": round(percent, 1),
+                        "elapsed_seconds": round(elapsed, 1),
+                        "files_extracted": files_extracted,
+                        "total_files": total_files,
+                    },
+                )
+
+            self._append_event(
+                job.id,
+                "extraction_started",
+                {"archive_path": archive_path, "archive_size": backup_spec.size_bytes},
+            )
+
             # Phase: Extraction
             with profiler.phase(RestorePhase.EXTRACTION) as extraction_profile:
-                extracted_dir = self._extract_archive(archive_path, extract_dir, job.id)
+                extracted_dir = self._extract_archive(
+                    archive_path,
+                    extract_dir,
+                    job.id,
+                    _extraction_progress_callback,
+                    _cancel_check,
+                )
                 extraction_profile.metadata["extracted_dir"] = extracted_dir
                 # Estimate extracted size from archive size (typically 1:1 for tar)
                 extraction_profile.metadata["bytes_processed"] = backup_spec.size_bytes
@@ -780,7 +918,8 @@ class WorkerJobExecutor:
             mysql_port=creds.port,
             mysql_user=creds.username,
             mysql_password=creds.password,
-            connect_timeout=self.post_sql_timeout_seconds,
+            # Use default connect_timeout (5s) from PostSQLConnectionSpec
+            # post_sql_timeout_seconds is for script execution, not connection
         )
         return staging_conn, post_sql_conn
 

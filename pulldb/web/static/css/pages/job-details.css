@@ -708,6 +708,20 @@
     background: var(--info-500);
 }
 
+/* Extraction progress (orange/warning) */
+.log-progress--extraction .log-progress-bar {
+    background: var(--warning-500);
+}
+
+/* Extraction failed state */
+.log-progress--extraction.log-progress--failed .log-progress-bar {
+    background: var(--error-500);
+}
+
+.log-progress--extraction.log-progress--failed .log-progress-stats {
+    color: var(--error-400);
+}
+
 /* Restore progress (green/success) */
 .log-progress--restore .log-progress-bar {
     background: var(--success-500);

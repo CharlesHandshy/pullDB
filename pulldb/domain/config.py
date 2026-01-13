@@ -435,7 +435,10 @@ def _parse_extra_args(value: str | None, *, source: str) -> tuple[str, ...]:
 
 
 # Default myloader arguments (used when PULLDB_MYLOADER_DEFAULT_ARGS not set)
+# NOTE: --connection-timeout=30 prevents myloader from hanging forever if MySQL
+# is unreachable or slow to respond (the default is 0 = wait forever)
 _MYLOADER_DEFAULT_ARGS_BUILTIN: tuple[str, ...] = (
+    "--connection-timeout=30",
     "--max-threads-for-post-actions=1",
     "--rows=100000",
     "--queries-per-transaction=5000",

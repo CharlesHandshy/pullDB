@@ -40,6 +40,10 @@ logger = get_logger("pulldb.worker.atomic_rename")
 EXPECTED_PROCEDURE_VERSION = "1.0.1"
 
 
+# Default connection timeout - short because if you can't connect in 30s, something is wrong
+DEFAULT_CONNECT_TIMEOUT_SECONDS = 30
+
+
 @dataclass(slots=True, frozen=True)
 class AtomicRenameConnectionSpec:
     """MySQL connection parameters for atomic rename operation.
@@ -52,7 +56,8 @@ class AtomicRenameConnectionSpec:
         mysql_port: Target MySQL server port.
         mysql_user: MySQL user with ALTER/DROP/RENAME privileges.
         mysql_password: MySQL user password.
-        timeout_seconds: Connection and query timeout in seconds.
+        timeout_seconds: Operation timeout in seconds (for long-running queries).
+        connect_timeout_seconds: Connection establishment timeout (default 30s).
     """
 
     mysql_host: str
@@ -60,6 +65,7 @@ class AtomicRenameConnectionSpec:
     mysql_user: str
     mysql_password: str
     timeout_seconds: int
+    connect_timeout_seconds: int = DEFAULT_CONNECT_TIMEOUT_SECONDS
 
 
 @dataclass(slots=True, frozen=True)
@@ -525,7 +531,7 @@ def atomic_rename_staging_to_target(
             port=conn_spec.mysql_port,
             user=conn_spec.mysql_user,
             password=conn_spec.mysql_password,
-            connect_timeout=conn_spec.timeout_seconds,
+            connect_timeout=conn_spec.connect_timeout_seconds,
             autocommit=True,
         )
     except mysql.connector.Error as e:
@@ -535,7 +541,8 @@ def atomic_rename_staging_to_target(
             target_name=rename_spec.target_db,
             error_message=(
                 f"Failed to connect to MySQL server {conn_spec.mysql_host}:"
-                f"{conn_spec.mysql_port} for atomic rename: {e}. "
+                f"{conn_spec.mysql_port} for atomic rename "
+                f"(timeout={conn_spec.connect_timeout_seconds}s): {e}. "
                 f"Verify credentials and network connectivity."
             ),
         ) from e

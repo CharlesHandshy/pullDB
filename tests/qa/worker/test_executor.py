@@ -209,6 +209,93 @@ class TestExtractTarArchive:
         with pytest.raises(ExtractionError):
             extract_tar_archive(str(archive_path), extract_dir, SAMPLE_JOB_ID)
 
+    def test_emits_progress_callback(self, tmp_path: Path) -> None:
+        """Progress callback is invoked during extraction with correct values."""
+        import tarfile
+
+        # Create archive with multiple files
+        archive_path = tmp_path / "test.tar"
+        content_dir = tmp_path / "content"
+        content_dir.mkdir()
+        for i in range(10):
+            (content_dir / f"file_{i}.txt").write_text("x" * 10000)
+
+        with tarfile.open(archive_path, "w") as tar:
+            for f in content_dir.iterdir():
+                tar.add(f, arcname=f.name)
+
+        progress_calls: list[tuple[int, int, float, float, int, int]] = []
+
+        def callback(
+            extracted: int,
+            total: int,
+            percent: float,
+            elapsed: float,
+            files_done: int,
+            total_files: int,
+        ) -> None:
+            progress_calls.append((extracted, total, percent, elapsed, files_done, total_files))
+
+        dest = tmp_path / "extracted"
+        extract_tar_archive(str(archive_path), dest, SAMPLE_JOB_ID, callback)
+
+        # Should have at least one progress callback (final completion)
+        assert len(progress_calls) >= 1
+        # Final call should show 100% complete
+        final = progress_calls[-1]
+        assert final[2] == 100.0  # percent
+        assert final[4] == 10  # files_extracted
+        assert final[5] == 10  # total_files
+
+    def test_abort_raises_cancellation_error(self, tmp_path: Path) -> None:
+        """Abort check triggers CancellationError during extraction."""
+        import tarfile
+
+        from pulldb.domain.errors import CancellationError
+
+        # Create archive with multiple files
+        archive_path = tmp_path / "test.tar"
+        content_dir = tmp_path / "content"
+        content_dir.mkdir()
+        for i in range(5):
+            (content_dir / f"file_{i}.txt").write_text("test")
+
+        with tarfile.open(archive_path, "w") as tar:
+            for f in content_dir.iterdir():
+                tar.add(f, arcname=f.name)
+
+        call_count = [0]
+
+        def abort_check() -> bool:
+            # Abort is called before each file extraction
+            # Abort after the 2nd call (i.e., after 1 file extracted)
+            call_count[0] += 1
+            return call_count[0] >= 3
+
+        dest = tmp_path / "extracted"
+        with pytest.raises(CancellationError):
+            extract_tar_archive(
+                str(archive_path), dest, SAMPLE_JOB_ID, None, abort_check
+            )
+
+    def test_progress_without_callback_succeeds(self, tmp_path: Path) -> None:
+        """Extraction works without progress callback (backward compatible)."""
+        import tarfile
+
+        archive_path = tmp_path / "test.tar"
+        src_file = tmp_path / "testfile.txt"
+        src_file.write_text("test content")
+
+        with tarfile.open(archive_path, "w") as tar:
+            tar.add(src_file, arcname="testfile.txt")
+
+        dest = tmp_path / "extracted"
+        # Call without progress_callback or abort_check
+        result = extract_tar_archive(str(archive_path), dest, SAMPLE_JOB_ID)
+
+        assert result == str(dest)
+        assert (dest / "testfile.txt").exists()
+
 
 # ---------------------------------------------------------------------------
 # WorkerExecutorDependencies Tests

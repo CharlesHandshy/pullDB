@@ -190,7 +190,7 @@
         </div>
         
         {# Progress bars in sticky area - above scrollable logs #}
-        {% if download_stats or restore_stats or atomic_rename_stats %}
+        {% if download_stats or extraction_stats or restore_stats or atomic_rename_stats %}
         <div class="logs-progress-sticky">
             {# Download progress bar #}
             {% if download_stats %}
@@ -211,6 +211,34 @@
                         {% if download_stats.eta_seconds > 0 %}
                         <span class="log-progress-separator">•</span>
                         ETA {{ download_stats.eta_seconds | format_eta }}
+                        {% endif %}
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            {% endif %}
+
+            {# Extraction progress bar #}
+            {% if extraction_stats %}
+            <div class="log-progress log-progress--extraction{% if extraction_stats.is_complete %} log-progress--complete{% endif %}{% if extraction_stats.has_failed %} log-progress--failed{% endif %}" id="extraction-progress">
+                <div class="log-progress-bar-row">
+                    <span class="log-progress-label">Extraction</span>
+                    <div class="log-progress-bar-container">
+                        <div class="log-progress-bar" style="width: {{ extraction_stats.percent_complete }}%"></div>
+                    </div>
+                    <div class="log-progress-percent">{{ "%.1f" | format(extraction_stats.percent_complete) }}%</div>
+                    <span class="log-progress-stats">
+                        {% if extraction_stats.has_failed %}
+                        ⚠ {{ extraction_stats.error_message or 'Extraction failed' }}
+                        {% elif extraction_stats.is_complete %}
+                        ✓ {{ extraction_stats.total_bytes | format_filesize }} ({{ "{:,}".format(extraction_stats.total_files) }} files)
+                        {% else %}
+                        {{ extraction_stats.extracted_bytes | format_filesize }} / {{ extraction_stats.total_bytes | format_filesize }}
+                        <span class="log-progress-separator">•</span>
+                        {{ "{:,}".format(extraction_stats.files_extracted) }}/{{ "{:,}".format(extraction_stats.total_files) }} files
+                        {% if extraction_stats.eta_seconds > 0 %}
+                        <span class="log-progress-separator">•</span>
+                        ETA {{ extraction_stats.eta_seconds | format_eta }}
                         {% endif %}
                         {% endif %}
                     </span>

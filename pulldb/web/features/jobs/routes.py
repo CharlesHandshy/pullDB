@@ -261,9 +261,18 @@ EVENT_TO_PHASE: dict[str, str] = {
     "download_started": "download",
     "download_progress": "download",
     "download_complete": "download",
+    "extraction_started": "extraction",
+    "extraction_progress": "extraction",
     "extraction_complete": "extraction",
+    "extraction_failed": "extraction",
     "format_detected": "extraction",
     "restore_started": "myloader",
+    "staging_cleanup_started": "myloader",
+    "staging_drop_started": "myloader",
+    "staging_drop_complete": "myloader",
+    "staging_drop_skipped": "myloader",
+    "staging_cleanup_complete": "myloader",
+    "myloader_started": "myloader",
     "restore_progress": "myloader",
     "restore_complete": "post_sql",
     "post_sql_started": "post_sql",
@@ -397,6 +406,98 @@ def _calculate_download_stats(logs: list[Any]) -> dict[str, Any] | None:
         "speed_bps": speed_bps,
         "eta_seconds": eta_seconds,
         "is_complete": is_complete,
+    }
+
+
+def _calculate_extraction_stats(logs: list[Any]) -> dict[str, Any] | None:
+    """Extract latest extraction progress stats from job events.
+
+    Scans events for extraction_started, extraction_progress, and
+    extraction_complete to build stats dict with: extracted_bytes, total_bytes,
+    percent_complete, elapsed_seconds, files_extracted, total_files,
+    speed_bps, eta_seconds, is_complete.
+
+    Returns None if no extraction progress events found.
+    """
+    extracted_bytes = 0
+    total_bytes = 0
+    percent_complete = 0.0
+    elapsed_seconds = 0.0
+    files_extracted = 0
+    total_files = 0
+    is_complete = False
+    has_failed = False
+    started = False
+    error_message: str | None = None
+
+    for event in logs:
+        event_type = getattr(event, "event_type", "")
+        detail = getattr(event, "detail", None)
+
+        if event_type == "extraction_started":
+            started = True
+            if detail:
+                parsed = detail if isinstance(detail, dict) else None
+                if isinstance(detail, str):
+                    try:
+                        parsed = json.loads(detail)
+                    except (json.JSONDecodeError, TypeError):
+                        parsed = None
+                if isinstance(parsed, dict):
+                    total_bytes = parsed.get("archive_size", 0)
+
+        elif event_type == "extraction_progress" and detail:
+            started = True
+            parsed = detail if isinstance(detail, dict) else None
+            if isinstance(detail, str):
+                try:
+                    parsed = json.loads(detail)
+                except (json.JSONDecodeError, TypeError):
+                    parsed = None
+            if isinstance(parsed, dict):
+                extracted_bytes = parsed.get("extracted_bytes", 0)
+                total_bytes = parsed.get("total_bytes", total_bytes)
+                percent_complete = parsed.get("percent_complete", 0.0)
+                elapsed_seconds = parsed.get("elapsed_seconds", 0.0)
+                files_extracted = parsed.get("files_extracted", 0)
+                total_files = parsed.get("total_files", 0)
+
+        elif event_type == "extraction_complete":
+            is_complete = True
+            percent_complete = 100.0
+
+        elif event_type == "extraction_failed":
+            has_failed = True
+            if detail:
+                parsed = detail if isinstance(detail, dict) else None
+                if isinstance(detail, str):
+                    try:
+                        parsed = json.loads(detail)
+                    except (json.JSONDecodeError, TypeError):
+                        parsed = None
+                if isinstance(parsed, dict):
+                    error_message = parsed.get("error")
+
+    if not started:
+        return None
+
+    # Calculate speed and ETA
+    speed_bps = int(extracted_bytes / elapsed_seconds) if elapsed_seconds > 0 else 0
+    remaining_bytes = total_bytes - extracted_bytes
+    eta_seconds = int(remaining_bytes / speed_bps) if speed_bps > 0 and not is_complete else 0
+
+    return {
+        "extracted_bytes": extracted_bytes,
+        "total_bytes": total_bytes,
+        "percent_complete": percent_complete,
+        "elapsed_seconds": elapsed_seconds,
+        "files_extracted": files_extracted,
+        "total_files": total_files,
+        "speed_bps": speed_bps,
+        "eta_seconds": eta_seconds,
+        "is_complete": is_complete,
+        "has_failed": has_failed,
+        "error_message": error_message,
     }
 
 
@@ -585,6 +686,7 @@ async def job_details(
     current_phase = "queued"
     phase_list: list[dict[str, Any]] = []
     download_stats: dict[str, Any] | None = None
+    extraction_stats: dict[str, Any] | None = None
     restore_stats: dict[str, Any] | None = None
     atomic_rename_stats: dict[str, Any] | None = None
 
@@ -598,6 +700,9 @@ async def job_details(
 
             # Calculate download progress stats for progress bar (uses raw logs)
             download_stats = _calculate_download_stats(raw_logs)
+
+            # Calculate extraction progress stats for progress bar (uses raw logs)
+            extraction_stats = _calculate_extraction_stats(raw_logs)
 
             # Calculate restore progress stats for progress bar (uses raw logs)
             restore_stats = _calculate_restore_stats(raw_logs)
@@ -674,6 +779,7 @@ async def job_details(
             "current_phase": current_phase,
             "phase_list": phase_list,
             "download_stats": download_stats,
+            "extraction_stats": extraction_stats,
             "restore_stats": restore_stats,
             "atomic_rename_stats": atomic_rename_stats,
             # Retention management

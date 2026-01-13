@@ -470,6 +470,11 @@ def orchestrate_restore_workflow(
     restore_started_at = datetime.now(UTC)
     job = spec.job
 
+    # Helper to emit events if callback provided
+    def _emit_event(event_type: str, detail: dict[str, Any]) -> None:
+        if spec.event_callback:
+            spec.event_callback(event_type, detail)
+
     try:
         # 1. Staging lifecycle: cleanup orphaned staging databases
         logger.info(
@@ -479,6 +484,11 @@ def orchestrate_restore_workflow(
                 "target": job.target,
             }
         )
+        _emit_event("staging_cleanup_started", {
+            "target": job.target,
+            "job_id": job.id,
+        })
+        staging_cleanup_start = datetime.now(UTC)
         with time_operation(
             "staging_cleanup_duration_seconds",
             MetricLabels(job_id=job.id, target=job.target, phase="staging"),
@@ -487,12 +497,21 @@ def orchestrate_restore_workflow(
                 spec.staging_conn,
                 job.target,
                 job.id,
+                event_callback=_emit_event,
             )
+        staging_cleanup_duration = (datetime.now(UTC) - staging_cleanup_start).total_seconds()
         emit_counter(
             "staging_cleanup_total",
             labels=MetricLabels(job_id=job.id, target=job.target, phase="staging"),
         )
         result["staging"] = staging_result
+        result["staging_cleanup_duration_seconds"] = staging_cleanup_duration
+        _emit_event("staging_cleanup_complete", {
+            "staging_db": staging_result.staging_db,
+            "orphans_dropped": staging_result.orphans_dropped,
+            "orphans_count": len(staging_result.orphans_dropped),
+            "duration_seconds": round(staging_cleanup_duration, 2),
+        })
 
         # 2. Myloader restore to staging database
         logger.info(
@@ -564,6 +583,11 @@ def orchestrate_restore_workflow(
             if spec.progress_callback:
                 spec.progress_callback(percent, detail)
 
+        _emit_event("myloader_started", {
+            "staging_db": staging_result.staging_db,
+            "backup_dir": str(spec.myloader_spec.backup_dir),
+        })
+
         try:
             with time_operation(
                 "myloader_duration_seconds",
@@ -583,11 +607,6 @@ def orchestrate_restore_workflow(
                 logger.info("Stopped processlist monitor")
 
         result["myloader"] = myloader_result
-
-        # Helper to emit events if callback provided
-        def _emit_event(event_type: str, detail: dict[str, Any]) -> None:
-            if spec.event_callback:
-                spec.event_callback(event_type, detail)
 
         # 3. Post-SQL execution (if scripts exist in script_dir)
         logger.info(

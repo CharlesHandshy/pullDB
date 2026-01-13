@@ -11,7 +11,8 @@ cutover and rollback capability.
 """
 
 import re
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, cast
@@ -38,6 +39,10 @@ JOB_ID_PREFIX_LENGTH = 12
 STAGING_PATTERN_TEMPLATE = r"^{target}_[0-9a-f]{{12}}$"
 
 
+# Default connection timeout - short because if you can't connect in 30s, something is wrong
+DEFAULT_CONNECT_TIMEOUT_SECONDS = 30
+
+
 @dataclass(slots=True, frozen=True)
 class StagingConnectionSpec:
     """MySQL connection parameters for staging database operations.
@@ -50,7 +55,8 @@ class StagingConnectionSpec:
         mysql_port: Target MySQL server port.
         mysql_user: MySQL user with CREATE/DROP/RENAME database privileges.
         mysql_password: MySQL user password.
-        timeout_seconds: Connection and query timeout in seconds.
+        timeout_seconds: Operation timeout in seconds (for long-running queries).
+        connect_timeout_seconds: Connection establishment timeout (default 30s).
     """
 
     mysql_host: str
@@ -58,6 +64,7 @@ class StagingConnectionSpec:
     mysql_user: str
     mysql_password: str
     timeout_seconds: int
+    connect_timeout_seconds: int = DEFAULT_CONNECT_TIMEOUT_SECONDS
 
 
 @dataclass(slots=True, frozen=True)
@@ -165,6 +172,7 @@ def cleanup_orphaned_staging(
     conn_spec: StagingConnectionSpec,
     target_db: str,
     job_id: str,
+    event_callback: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> StagingResult:
     """Drop all orphaned staging databases for the target before a new restore.
 
@@ -185,6 +193,7 @@ def cleanup_orphaned_staging(
         conn_spec: MySQL connection parameters.
         target_db: Final target database name.
         job_id: Job UUID for generating staging name.
+        event_callback: Optional callback for drop progress events.
 
     Returns:
         StagingResult containing the generated staging database name, target
@@ -210,14 +219,14 @@ def cleanup_orphaned_staging(
             port=conn_spec.mysql_port,
             user=conn_spec.mysql_user,
             password=conn_spec.mysql_password,
-            connect_timeout=conn_spec.timeout_seconds,
+            connect_timeout=conn_spec.connect_timeout_seconds,
             autocommit=True,
         )
     except mysql.connector.Error as e:
         raise StagingError(
             "Failed to connect to MySQL server "
             f"{conn_spec.mysql_host}:{conn_spec.mysql_port} "
-            f"for staging cleanup: {e}. "
+            f"for staging cleanup (timeout={conn_spec.connect_timeout_seconds}s): {e}. "
             "Verify credentials and network connectivity."
         ) from e
 
@@ -255,7 +264,7 @@ def cleanup_orphaned_staging(
             # If we can't check, assume none are active (fail-safe: DROP may block)
             active_databases = set()
 
-        for orphan_db in staging_candidates:
+        for idx, orphan_db in enumerate(staging_candidates):
             # Skip databases with active connections (myloader may still be running
             # from a canceled job - we let it finish rather than blocking on MDL)
             if orphan_db in active_databases:
@@ -263,12 +272,30 @@ def cleanup_orphaned_staging(
                     f"Skipping orphan database with active connections: {orphan_db}",
                     extra={"orphan_db": orphan_db, "reason": "active_connections"},
                 )
+                if event_callback:
+                    event_callback("staging_drop_skipped", {
+                        "database": orphan_db,
+                        "reason": "active_connections",
+                    })
                 continue
 
             try:
                 logger.info(f"Dropping orphaned database: {orphan_db}")
+                if event_callback:
+                    event_callback("staging_drop_started", {
+                        "database": orphan_db,
+                        "index": idx + 1,
+                        "total": len(staging_candidates),
+                    })
+                drop_start = time.monotonic()
                 cursor.execute(f"DROP DATABASE IF EXISTS `{orphan_db}`")
+                drop_duration = time.monotonic() - drop_start
                 orphans_dropped.append(orphan_db)
+                if event_callback:
+                    event_callback("staging_drop_complete", {
+                        "database": orphan_db,
+                        "duration_seconds": round(drop_duration, 2),
+                    })
             except mysql.connector.Error as e:
                 raise StagingError(
                     f"Failed to drop staging database '{orphan_db}': {e}. "
