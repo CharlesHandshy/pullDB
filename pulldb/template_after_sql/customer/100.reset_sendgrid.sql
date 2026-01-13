@@ -1,6 +1,8 @@
 -- Reset SendGrid configuration
 -- Purpose: Replace production SendGrid keys with safe development key
 
+UPDATE sendGridKey SET sendGridKey = '';
+
 TRUNCATE TABLE sendGridKey;
 
 INSERT INTO sendGridKey 
