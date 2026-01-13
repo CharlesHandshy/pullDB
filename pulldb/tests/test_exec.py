@@ -67,3 +67,82 @@ def test_truncation_limits() -> None:
     )
     assert result.stdout.startswith("<truncated>")
     assert len(result.stdout) < TRUNCATION_SAFETY_MAX  # safety margin
+
+
+# --- Tests for redact_sensitive_data ---
+
+from pulldb.infra.exec import redact_sensitive_data
+
+
+class TestRedactSensitiveData:
+    """Tests for password and secret redaction."""
+
+    def test_redacts_password_flag(self) -> None:
+        """Redacts --password=xxx from myloader commands."""
+        cmd = "/opt/myloader --password=A2o5#nrrgWxv21Y1VqeZ%eVv --host=db.example.com"
+        result = redact_sensitive_data(cmd)
+        assert "A2o5#" not in result
+        assert "[REDACTED]" in result
+        assert "--host=db.example.com" in result
+
+    def test_redacts_password_flag_with_space(self) -> None:
+        """Redacts --password xxx with space separator."""
+        cmd = "mysql --password secret123 --host db.example.com"
+        result = redact_sensitive_data(cmd)
+        assert "secret123" not in result
+        assert "[REDACTED]" in result
+
+    def test_redacts_short_p_flag(self) -> None:
+        """Redacts -p password short form."""
+        cmd = "mysql -p MyS3cretP@ss -h localhost"
+        result = redact_sensitive_data(cmd)
+        assert "MyS3cretP@ss" not in result
+        assert "-h localhost" in result
+
+    def test_redacts_connection_string_password(self) -> None:
+        """Redacts password from connection string."""
+        conn = "mysql://admin:SuperSecret123@db.example.com:3306/mydb"
+        result = redact_sensitive_data(conn)
+        assert "SuperSecret123" not in result
+        assert "mysql://admin:[REDACTED]@db.example.com" in result
+
+    def test_redacts_aws_secret_key(self) -> None:
+        """Redacts AWS secret access key."""
+        text = "aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY1"
+        result = redact_sensitive_data(text)
+        assert "wJalrXUtnFEMI" not in result
+        assert "[REDACTED]" in result
+
+    def test_redacts_generic_password_assignment(self) -> None:
+        """Redacts password=xxx format."""
+        text = "Connecting with password=hunter2 to database"
+        result = redact_sensitive_data(text)
+        assert "hunter2" not in result
+        assert "[REDACTED]" in result
+
+    def test_preserves_non_sensitive_content(self) -> None:
+        """Does not modify text without credentials."""
+        text = "Restored 1000 rows from backup_daily_2026-01-13.tar"
+        result = redact_sensitive_data(text)
+        assert result == text
+
+    def test_handles_multiline_logs(self) -> None:
+        """Redacts passwords in multiline myloader verbose output."""
+        log = """** (myloader:12345): Message
+** (myloader:12345): Opening connection with password=secret123
+** (myloader:12345): Tables restored: 50"""
+        result = redact_sensitive_data(log)
+        assert "secret123" not in result
+        assert "Tables restored: 50" in result
+
+    def test_empty_string(self) -> None:
+        """Handles empty string input."""
+        assert redact_sensitive_data("") == ""
+
+    def test_redacts_multiple_passwords_same_line(self) -> None:
+        """Redacts multiple password occurrences."""
+        text = "--password=pass1 --pass=pass2"
+        result = redact_sensitive_data(text)
+        assert "pass1" not in result
+        assert "pass2" not in result
+        assert result.count("[REDACTED]") == 2

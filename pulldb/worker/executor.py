@@ -824,18 +824,82 @@ class WorkerJobExecutor:
         elif isinstance(exc, ExtractionError):
             event_type = "extraction_failed"
 
-        self._append_event(
-            job.id,
-            event_type,
-            {"error": str(exc.__class__.__name__), "detail": str(exc)},
-        )
+        # Extract command output from exceptions that capture it
+        event_detail = self._extract_failure_detail(exc)
+
+        self._append_event(job.id, event_type, event_detail)
         try:
-            self.job_repo.mark_job_failed(job.id, str(exc))
+            # Redact sensitive data from the error message stored in job status
+            from pulldb.infra.exec import redact_sensitive_data
+
+            self.job_repo.mark_job_failed(job.id, redact_sensitive_data(str(exc)))
         except Exception:  # pragma: no cover - logging only
             logger.exception(
                 "Failed to mark job as failed",
                 extra={"job_id": job.id, "target": job.target},
             )
+
+    def _extract_failure_detail(self, exc: Exception) -> dict[str, t.Any]:
+        """Extract structured failure detail from exception, redacting secrets.
+
+        Extracts stdout/stderr from exceptions that capture command output,
+        and applies password redaction to prevent credential leakage in logs.
+
+        Handles:
+          - MyLoaderError: stdout/stderr in detail dict
+          - CommandAbortedError: partial_stdout attribute
+          - CommandTimeoutError: partial_stdout/partial_stderr attributes
+          - JobExecutionError subclasses: detail dict
+          - Generic Exception: just error name and message
+
+        Returns:
+            Dict with error type, detail message, and optionally stdout/stderr.
+        """
+        from pulldb.infra.exec import (
+            CommandAbortedError,
+            CommandTimeoutError,
+            redact_sensitive_data,
+        )
+        from pulldb.domain.errors import JobExecutionError
+
+        result: dict[str, t.Any] = {
+            "error": exc.__class__.__name__,
+            "detail": redact_sensitive_data(str(exc)),
+        }
+
+        # CommandAbortedError: worker death or job cancellation during execution
+        if isinstance(exc, CommandAbortedError):
+            if hasattr(exc, "partial_stdout") and exc.partial_stdout:
+                result["stdout"] = redact_sensitive_data(exc.partial_stdout[-5000:])
+            if hasattr(exc, "command") and exc.command:
+                result["command"] = redact_sensitive_data(" ".join(exc.command))
+            return result
+
+        # CommandTimeoutError: command exceeded timeout
+        if isinstance(exc, CommandTimeoutError):
+            if hasattr(exc, "partial_stdout") and exc.partial_stdout:
+                result["stdout"] = redact_sensitive_data(exc.partial_stdout[-5000:])
+            if hasattr(exc, "partial_stderr") and exc.partial_stderr:
+                result["stderr"] = redact_sensitive_data(exc.partial_stderr[-5000:])
+            if hasattr(exc, "command") and exc.command:
+                result["command"] = redact_sensitive_data(" ".join(exc.command))
+            return result
+
+        # JobExecutionError subclasses: have detail dict with structured info
+        if isinstance(exc, JobExecutionError) and hasattr(exc, "detail"):
+            detail = exc.detail
+            if isinstance(detail, dict):
+                # Extract and redact command output
+                if "stdout" in detail:
+                    result["stdout"] = redact_sensitive_data(str(detail["stdout"])[-5000:])
+                if "stderr" in detail:
+                    result["stderr"] = redact_sensitive_data(str(detail["stderr"])[-5000:])
+                if "command" in detail:
+                    result["command"] = redact_sensitive_data(str(detail["command"]))
+                if "exit_code" in detail:
+                    result["exit_code"] = detail["exit_code"]
+
+        return result
 
 
 __all__ = [

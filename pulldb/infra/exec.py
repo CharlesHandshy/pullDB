@@ -15,6 +15,7 @@ structured logging so job context (job_id, phase) remains consistent.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 import typing as t
@@ -26,6 +27,43 @@ from pulldb.domain.models import CommandResult
 
 STDOUT_LIMIT = 200_000  # 200 KB safety cap
 STDERR_LIMIT = 200_000
+
+# Patterns for sensitive data redaction (case-insensitive)
+_SENSITIVE_PATTERNS = [
+    # CLI flags: --password=xxx, -p xxx, --pass=xxx
+    re.compile(r"(--password[=\s])([^\s'\"]+)", re.IGNORECASE),
+    re.compile(r"(--pass[=\s])([^\s'\"]+)", re.IGNORECASE),
+    re.compile(r"(-p\s+)([^\s]+)", re.IGNORECASE),
+    # Connection strings: mysql://user:password@host
+    re.compile(r"(://[^:]+:)([^@]+)(@)", re.IGNORECASE),
+    # AWS secret keys (40 chars, alphanumeric with + and /)
+    re.compile(r"(aws_secret_access_key[=:\s]+)([A-Za-z0-9+/]{40})", re.IGNORECASE),
+    # Generic password assignments: password=xxx, passwd=xxx
+    re.compile(r"(password[=:\s]+)([^\s,;'\"]+)", re.IGNORECASE),
+    re.compile(r"(passwd[=:\s]+)([^\s,;'\"]+)", re.IGNORECASE),
+]
+
+
+def redact_sensitive_data(text: str) -> str:
+    """Redact passwords and secrets from text for safe logging.
+
+    Applies multiple regex patterns to catch common credential formats:
+      - CLI flags: --password=xxx, -p xxx
+      - Connection strings: mysql://user:password@host
+      - AWS secrets: aws_secret_access_key=xxx
+      - Generic: password=xxx, passwd=xxx
+
+    Args:
+        text: Raw text potentially containing credentials.
+
+    Returns:
+        Text with sensitive values replaced by [REDACTED].
+    """
+    result = text
+    for pattern in _SENSITIVE_PATTERNS:
+        # Replace group 2 (the actual secret) with [REDACTED]
+        result = pattern.sub(r"\1[REDACTED]\3" if pattern.groups == 3 else r"\1[REDACTED]", result)
+    return result
 
 
 class CommandExecutionError(Exception):
