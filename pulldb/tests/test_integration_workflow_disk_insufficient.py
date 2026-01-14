@@ -86,7 +86,9 @@ def test_workflow_disk_insufficient_architecture_separation(
     from pulldb.worker import restore as restore_mod
     from pulldb.worker.staging import StagingResult
 
-    def _fake_cleanup(conn: object, target: str, job_id: str) -> StagingResult:
+    def _fake_cleanup(
+        conn: object, target: str, job_id: str, *, event_callback: object = None
+    ) -> StagingResult:
         return StagingResult(
             staging_db=job.staging_name,
             target_db=job.target,
