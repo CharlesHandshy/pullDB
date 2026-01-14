@@ -236,7 +236,7 @@ def _safe_extract_with_progress(
 
         if progress_callback and should_emit:
             elapsed = current_time - start_time
-            percent = (extracted_bytes / total_bytes * 100) if total_bytes > 0 else 100.0
+            percent = min(100.0, (extracted_bytes / total_bytes * 100)) if total_bytes > 0 else 100.0
             progress_callback(
                 extracted_bytes, total_bytes, percent, elapsed,
                 files_extracted, total_files

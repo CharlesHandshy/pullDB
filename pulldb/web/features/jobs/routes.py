@@ -391,7 +391,7 @@ def _calculate_download_stats(logs: list[Any]) -> dict[str, Any] | None:
     downloaded = latest_progress.get("downloaded_bytes", 0)
     total = latest_progress.get("total_bytes", 0)
     elapsed = latest_progress.get("elapsed_seconds", 0)
-    percent = latest_progress.get("percent_complete", 0.0)
+    percent = min(100.0, max(0.0, latest_progress.get("percent_complete", 0.0)))
 
     # Calculate speed and ETA
     speed_bps = downloaded / elapsed if elapsed > 0 else 0
@@ -457,7 +457,7 @@ def _calculate_extraction_stats(logs: list[Any]) -> dict[str, Any] | None:
             if isinstance(parsed, dict):
                 extracted_bytes = parsed.get("extracted_bytes", 0)
                 total_bytes = parsed.get("total_bytes", total_bytes)
-                percent_complete = parsed.get("percent_complete", 0.0)
+                percent_complete = min(100.0, max(0.0, parsed.get("percent_complete", 0.0)))
                 elapsed_seconds = parsed.get("elapsed_seconds", 0.0)
                 files_extracted = parsed.get("files_extracted", 0)
                 total_files = parsed.get("total_files", 0)
@@ -551,8 +551,8 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
             }
         return None
 
-    # Extract overall percent
-    percent = latest_progress.get("percent", 0.0)
+    # Extract overall percent (clamped to 0-100)
+    percent = min(100.0, max(0.0, latest_progress.get("percent", 0.0)))
     
     # Extract detail info - contains file info AND processlist data
     detail_info = latest_progress.get("detail", {})
@@ -572,16 +572,16 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
     rows_restored = detail_info.get("rows_restored", 0)
     total_rows = detail_info.get("total_rows", 0)
     
-    # Normalize tables data for template
+    # Normalize tables data for template (clamp to 0-100)
     tables = {}
     if isinstance(tables_data, dict):
         for table_name, table_info in tables_data.items():
             if isinstance(table_info, dict):
                 tables[table_name] = {
-                    "percent": table_info.get("percent_complete", 0.0),
+                    "percent": min(100.0, max(0.0, table_info.get("percent_complete", 0.0))),
                 }
             elif isinstance(table_info, (int, float)):
-                tables[table_name] = {"percent": float(table_info)}
+                tables[table_name] = {"percent": min(100.0, max(0.0, float(table_info)))}
 
     return {
         "percent_complete": percent if not is_complete else 100.0,
@@ -641,8 +641,8 @@ def _calculate_atomic_rename_stats(logs: list[Any]) -> dict[str, Any] | None:
     # Use final progress if complete, otherwise latest
     progress_data = final_progress if is_complete and final_progress else latest_progress
 
-    # Extract progress data - handle both old and new field names
-    percent = progress_data.get("percent", 0.0)
+    # Extract progress data - handle both old and new field names (clamped to 0-100)
+    percent = min(100.0, max(0.0, progress_data.get("percent", 0.0)))
     
     # Worker emits 'tables_renamed' and 'total_tables' (new format)
     # But some old events may have 'progress' and 'total'

@@ -288,7 +288,9 @@ class ProcesslistMonitor:
         if not pct_match:
             return 0.0
         try:
-            return float(pct_match.group(1))
+            raw_percent = float(pct_match.group(1))
+            # Clamp to 0-100 to handle estimation inaccuracies
+            return min(100.0, max(0.0, raw_percent))
         except ValueError:
             return 0.0
 

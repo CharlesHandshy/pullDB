@@ -180,7 +180,7 @@ def _stream_download(
 
             # Progress callback every 64MB
             if downloaded >= next_progress:
-                percent = round((downloaded / total_bytes) * 100, 1) if total_bytes > 0 else 0.0
+                percent = min(100.0, round((downloaded / total_bytes) * 100, 1)) if total_bytes > 0 else 0.0
                 elapsed = time.monotonic() - start_time
                 logger.info(
                     "Download progress",
