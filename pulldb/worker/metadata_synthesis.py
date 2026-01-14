@@ -29,8 +29,14 @@ logger = get_logger("pulldb.worker.metadata_synthesis")
 # Mydumper extended INSERTs average ~200 bytes per row including syntax overhead
 DEFAULT_BYTES_PER_ROW = 200
 
-# Default sample size for row estimation (8KB is enough for accurate extrapolation)
-DEFAULT_SAMPLE_BYTES = 8192
+# Sample size for row estimation
+# 64KB provides better accuracy than 8KB by diluting INSERT header overhead
+# (header ~30 bytes is 0.4% of 8KB vs 0.05% of 64KB)
+DEFAULT_SAMPLE_BYTES = 65536
+
+# Safety margin for row estimation to ensure progress never exceeds 100%
+# Multiplier applied to estimated rows (1.10 = 10% overestimate)
+ESTIMATION_SAFETY_MARGIN = 1.10
 
 
 def get_gzip_uncompressed_size(filepath: str) -> int:
@@ -72,6 +78,22 @@ def estimate_rows_from_size(uncompressed_size: int, bytes_per_row: int = DEFAULT
     return max(1, uncompressed_size // bytes_per_row)
 
 
+def _apply_safety_margin(rows: int, margin: float = ESTIMATION_SAFETY_MARGIN) -> int:
+    """Apply safety margin to row estimate to prevent progress overflow.
+
+    A 10% overestimate ensures progress bars never exceed 100%, even with
+    sampling variance. Better UX to show 90% complete than 110%.
+
+    Args:
+        rows: Raw estimated row count.
+        margin: Multiplier to apply (default: 1.10 for 10% safety).
+
+    Returns:
+        Adjusted row count with safety margin applied, minimum 1.
+    """
+    return max(1, int(rows * margin))
+
+
 def estimate_rows_by_sampling(
     filepath: str,
     sample_bytes: int = DEFAULT_SAMPLE_BYTES,
@@ -82,15 +104,21 @@ def estimate_rows_by_sampling(
     More accurate than pure ISIZE/200 because it measures actual row density
     in the specific file's format (extended inserts, column count, data types).
 
-    Phase 1B improvement: ±15% accuracy vs ±50% for hardcoded bytes-per-row.
+    Phase 1C: 64KB sample + safety margin ensures progress bars never exceed
+    100% while maintaining good estimation accuracy.
+
+    Counting logic:
+    - `),(` = row separators within an INSERT statement
+    - `);` = INSERT statement terminators (each adds 1 row)
+    - Total rows = separators + terminators
 
     Args:
         filepath: Path to gzip-compressed SQL file.
-        sample_bytes: How many uncompressed bytes to sample (default 8KB).
+        sample_bytes: How many uncompressed bytes to sample (default 64KB).
         fallback_bytes_per_row: Fallback divisor if sampling fails.
 
     Returns:
-        Estimated row count (minimum 1).
+        Estimated row count with safety margin applied (minimum 1).
     """
     total_size = get_gzip_uncompressed_size(filepath)
     if total_size == 0:
@@ -102,34 +130,45 @@ def estimate_rows_by_sampling(
             sample = f.read(sample_bytes)
     except Exception as e:
         logger.warning(f"Sampling failed for {filepath}: {e}, using fallback")
-        return estimate_rows_from_size(total_size, fallback_bytes_per_row)
+        return _apply_safety_margin(
+            estimate_rows_from_size(total_size, fallback_bytes_per_row)
+        )
 
     if not sample:
-        return estimate_rows_from_size(total_size, fallback_bytes_per_row)
+        return _apply_safety_margin(
+            estimate_rows_from_size(total_size, fallback_bytes_per_row)
+        )
 
-    # Count row indicators in sample
-    # Mydumper extended INSERT format: "INSERT INTO ... VALUES (...),(...),(...);"
-    # Each row after the first starts with "),(" 
-    # First row is after "INSERT INTO ... VALUES ("
-    rows_in_sample = sample.count("),(") + sample.count("INSERT INTO")
+    # Count row indicators using explicit markers:
+    # - `),(` separates rows within an INSERT: VALUES (row1),(row2),(row3)
+    # - `);` terminates each INSERT statement, representing its final row
+    row_separators = sample.count("),(")  # Rows 2..N within each INSERT
+    statement_ends = sample.count(");")    # Final row of each INSERT
+    rows_in_sample = row_separators + statement_ends
 
     if rows_in_sample == 0:
         # No rows found in sample (e.g., schema file or empty), use fallback
-        return estimate_rows_from_size(total_size, fallback_bytes_per_row)
+        return _apply_safety_margin(
+            estimate_rows_from_size(total_size, fallback_bytes_per_row)
+        )
 
     # Calculate bytes per row from sample
     sample_len = len(sample.encode("utf-8"))
     bytes_per_row_measured = sample_len / rows_in_sample
 
     # Extrapolate to full file
-    estimated_rows = int(total_size / bytes_per_row_measured)
+    raw_estimated_rows = int(total_size / bytes_per_row_measured)
+
+    # Apply safety margin to prevent progress overflow
+    estimated_rows = _apply_safety_margin(raw_estimated_rows)
 
     logger.debug(
         f"Sampled {filepath}: {rows_in_sample} rows in {sample_len} bytes "
-        f"({bytes_per_row_measured:.1f} bytes/row) → {estimated_rows} total"
+        f"({bytes_per_row_measured:.1f} bytes/row) → {raw_estimated_rows} raw, "
+        f"{estimated_rows} with margin"
     )
 
-    return max(1, estimated_rows)
+    return estimated_rows
 
 
 def parse_filename(filename: str) -> tuple[str, str] | None:
@@ -171,9 +210,9 @@ def parse_filename(filename: str) -> tuple[str, str] | None:
 def count_rows_in_file(filepath: str) -> int:
     """Estimate rows in a mydumper SQL file using sampling.
 
-    Phase 1B: Uses 8KB sample to measure actual bytes-per-row, then
-    extrapolates using gzip ISIZE. Provides ~15% accuracy vs ~50%
-    for hardcoded 200 bytes/row.
+    Phase 1C: Uses 64KB sample to measure actual bytes-per-row, then
+    extrapolates using gzip ISIZE with 10% safety margin to ensure
+    progress bars never exceed 100%.
 
     The function name is preserved for backward compatibility, but the
     implementation now estimates rather than counts exactly.
@@ -182,7 +221,7 @@ def count_rows_in_file(filepath: str) -> int:
         filepath: Path to a .sql.gz mydumper data file.
 
     Returns:
-        Estimated row count (minimum 1).
+        Estimated row count with safety margin (minimum 1).
     """
     return estimate_rows_by_sampling(filepath)
 

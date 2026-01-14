@@ -9,6 +9,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../scripts"))
 
 from pulldb.worker.metadata_synthesis import (
     DEFAULT_BYTES_PER_ROW,
+    ESTIMATION_SAFETY_MARGIN,
     count_rows_in_file,
     estimate_rows_by_sampling,
     estimate_rows_from_size,
@@ -114,8 +115,9 @@ def test_count_rows_in_file_uses_isize_estimation() -> None:
         create_dummy_sql_gz(filepath, content)
 
         estimated = count_rows_in_file(filepath)
-        # With sampling, should be within 20% of actual 100 rows
-        assert 80 <= estimated <= 120, f"Expected ~100 rows, got {estimated}"
+        # With sampling + safety margin (1.10), expect ~110 for 100 actual rows
+        # Allow 20% variance: 88 to 132
+        assert 88 <= estimated <= 132, f"Expected ~110 rows (100 + margin), got {estimated}"
 
 
 def test_count_rows_in_file_nonexistent_returns_one() -> None:
@@ -130,7 +132,7 @@ def test_count_rows_in_file_nonexistent_returns_one() -> None:
 
 
 def test_estimate_rows_by_sampling_accuracy() -> None:
-    """Test that sampling gives reasonable accuracy (±20%)."""
+    """Test that sampling gives reasonable accuracy with safety margin."""
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, "test.sql.gz")
 
@@ -140,8 +142,9 @@ def test_estimate_rows_by_sampling_accuracy() -> None:
         create_dummy_sql_gz(filepath, content)
 
         estimated = estimate_rows_by_sampling(filepath)
-        # Should be within 20% of actual 500
-        assert 400 <= estimated <= 600, f"Expected ~500, got {estimated}"
+        # With 10% safety margin, expect ~550 for 500 actual rows
+        # Allow 20% variance around the margined value: 440 to 660
+        assert 440 <= estimated <= 660, f"Expected ~550 (500 + margin), got {estimated}"
 
 
 def test_estimate_rows_by_sampling_extended_inserts() -> None:
@@ -162,8 +165,9 @@ def test_estimate_rows_by_sampling_extended_inserts() -> None:
 
         estimated = estimate_rows_by_sampling(filepath)
         actual = rows_per_insert * num_inserts  # 1000 rows
-        # Should be within 20% of actual
-        assert actual * 0.8 <= estimated <= actual * 1.2, f"Expected ~{actual}, got {estimated}"
+        # With 10% safety margin, expect ~1100 for 1000 actual rows
+        # Allow 20% variance: 880 to 1320
+        assert actual * 0.88 <= estimated <= actual * 1.32, f"Expected ~{actual * 1.1}, got {estimated}"
 
 
 def test_estimate_rows_by_sampling_small_file() -> None:
@@ -171,14 +175,14 @@ def test_estimate_rows_by_sampling_small_file() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, "small.sql.gz")
 
-        # Small file with just 10 rows (less than 8KB sample)
+        # Small file with just 10 rows (less than 64KB sample)
         rows = [f"({i},'x')" for i in range(10)]
         content = "INSERT INTO `t` VALUES " + ",".join(rows) + ";\n"
         create_dummy_sql_gz(filepath, content)
 
         estimated = estimate_rows_by_sampling(filepath)
-        # Should be within 50% for small files (less data to sample)
-        assert 5 <= estimated <= 15, f"Expected ~10, got {estimated}"
+        # With margin, expect ~11 for 10 rows. Allow 50% variance for small files
+        assert 5 <= estimated <= 17, f"Expected ~11, got {estimated}"
 
 
 def test_estimate_rows_by_sampling_fallback_no_rows() -> None:
@@ -249,11 +253,13 @@ def test_synthesize_metadata_integration() -> None:
         s2 = "`mydb`.`table2`"
 
         assert s1 in config
-        # Table 1: ~100 rows total (50+50), allow ±30% for small files
+        # Table 1: ~100 rows total (50+50), with 10% margin expect ~110
+        # Allow ±30% for small files: 77 to 143
         table1_rows = int(config[s1]["rows"])
-        assert 70 <= table1_rows <= 130, f"Expected ~100 rows for table1, got {table1_rows}"
+        assert 77 <= table1_rows <= 143, f"Expected ~110 rows for table1, got {table1_rows}"
 
         assert s2 in config
-        # Table 2: ~20 rows, allow ±50% for very small files
+        # Table 2: ~20 rows, with margin expect ~22
+        # Allow ±50% for very small files: 11 to 33
         table2_rows = int(config[s2]["rows"])
-        assert 10 <= table2_rows <= 30, f"Expected ~20 rows for table2, got {table2_rows}"
+        assert 11 <= table2_rows <= 33, f"Expected ~22 rows for table2, got {table2_rows}"
