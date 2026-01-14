@@ -10,6 +10,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../scripts"))
 from pulldb.worker.metadata_synthesis import (
     DEFAULT_BYTES_PER_ROW,
     count_rows_in_file,
+    estimate_rows_by_sampling,
     estimate_rows_from_size,
     get_gzip_uncompressed_size,
     parse_filename,
@@ -103,16 +104,18 @@ def test_estimate_rows_from_size_invalid_bytes_per_row() -> None:
 
 
 def test_count_rows_in_file_uses_isize_estimation() -> None:
-    """Test that count_rows_in_file now uses ISIZE estimation."""
+    """Test that count_rows_in_file uses sampling for accurate estimation."""
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, "test.sql.gz")
-        # Create content of known size
-        content = "A" * 2000  # 2000 bytes = 10 rows at 200 bytes/row
+        # Create realistic SQL content with known row count
+        # Extended INSERT format: INSERT INTO ... VALUES (...),(...),...
+        rows = [f"({i},'value{i}')" for i in range(100)]
+        content = "INSERT INTO `t` VALUES " + ",".join(rows) + ";\n"
         create_dummy_sql_gz(filepath, content)
 
-        rows = count_rows_in_file(filepath)
-        # Should estimate ~10 rows (2000 / 200)
-        assert rows == 10, f"Expected ~10 estimated rows, got {rows}"
+        estimated = count_rows_in_file(filepath)
+        # With sampling, should be within 20% of actual 100 rows
+        assert 80 <= estimated <= 120, f"Expected ~100 rows, got {estimated}"
 
 
 def test_count_rows_in_file_nonexistent_returns_one() -> None:
@@ -121,20 +124,97 @@ def test_count_rows_in_file_nonexistent_returns_one() -> None:
     assert rows == 1
 
 
-def test_synthesize_metadata_integration() -> None:
-    """Test end-to-end metadata synthesis with ISIZE estimation.
+# ============================================================================
+# Phase 1B: Sampling Tests
+# ============================================================================
 
-    Note: Row counts are now estimates based on uncompressed file size,
-    not exact counts. We verify the INI structure is correct and that
-    tables are detected properly.
+
+def test_estimate_rows_by_sampling_accuracy() -> None:
+    """Test that sampling gives reasonable accuracy (±20%)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filepath = os.path.join(tmpdir, "test.sql.gz")
+
+        # Create file with known row count: 500 rows
+        rows = [f"({i},'user{i}','user{i}@example.com')" for i in range(500)]
+        content = "INSERT INTO `users` VALUES " + ",".join(rows) + ";\n"
+        create_dummy_sql_gz(filepath, content)
+
+        estimated = estimate_rows_by_sampling(filepath)
+        # Should be within 20% of actual 500
+        assert 400 <= estimated <= 600, f"Expected ~500, got {estimated}"
+
+
+def test_estimate_rows_by_sampling_extended_inserts() -> None:
+    """Test sampling with extended INSERT format (multiple chunks)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filepath = os.path.join(tmpdir, "extended.sql.gz")
+
+        # Create realistic mydumper extended INSERT format
+        # Multiple INSERT statements as mydumper does for large tables
+        rows_per_insert = 200
+        num_inserts = 5
+        content = ""
+        for _ in range(num_inserts):
+            rows = [f"({i},'data{i}')" for i in range(rows_per_insert)]
+            content += "INSERT INTO `t` VALUES " + ",".join(rows) + ";\n"
+
+        create_dummy_sql_gz(filepath, content)
+
+        estimated = estimate_rows_by_sampling(filepath)
+        actual = rows_per_insert * num_inserts  # 1000 rows
+        # Should be within 20% of actual
+        assert actual * 0.8 <= estimated <= actual * 1.2, f"Expected ~{actual}, got {estimated}"
+
+
+def test_estimate_rows_by_sampling_small_file() -> None:
+    """Test sampling works correctly for files smaller than sample size."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filepath = os.path.join(tmpdir, "small.sql.gz")
+
+        # Small file with just 10 rows (less than 8KB sample)
+        rows = [f"({i},'x')" for i in range(10)]
+        content = "INSERT INTO `t` VALUES " + ",".join(rows) + ";\n"
+        create_dummy_sql_gz(filepath, content)
+
+        estimated = estimate_rows_by_sampling(filepath)
+        # Should be within 50% for small files (less data to sample)
+        assert 5 <= estimated <= 15, f"Expected ~10, got {estimated}"
+
+
+def test_estimate_rows_by_sampling_fallback_no_rows() -> None:
+    """Test fallback when sampling finds no row markers."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filepath = os.path.join(tmpdir, "norows.sql.gz")
+
+        # Content without INSERT or ),( patterns
+        content = "-- This is just a comment\n" * 100
+        create_dummy_sql_gz(filepath, content)
+
+        estimated = estimate_rows_by_sampling(filepath)
+        # Should fall back to ISIZE/200 estimation
+        assert estimated >= 1  # At minimum 1
+
+
+def test_estimate_rows_by_sampling_nonexistent_file() -> None:
+    """Test sampling returns 1 for nonexistent file."""
+    estimated = estimate_rows_by_sampling("/nonexistent/path/file.sql.gz")
+    assert estimated == 1
+
+
+def test_synthesize_metadata_integration() -> None:
+    """Test end-to-end metadata synthesis with sampling estimation.
+
+    Note: Row counts are now estimates based on sampling + ISIZE.
+    We verify the INI structure is correct and row estimates are reasonable.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create some dummy files with known content sizes
-        # Each file has predictable uncompressed size for estimation
+        # Create files with realistic SQL content for accurate sampling
 
-        # Table 1: Two chunks with substantial content
-        chunk1_content = "A" * 600  # 600 bytes -> 3 rows estimated
-        chunk2_content = "A" * 400  # 400 bytes -> 2 rows estimated
+        # Table 1: Two chunks with 50 rows each = 100 total
+        rows1 = [f"({i},'data{i}')" for i in range(50)]
+        chunk1_content = "INSERT INTO `table1` VALUES " + ",".join(rows1) + ";\n"
+        rows2 = [f"({i},'data{i}')" for i in range(50, 100)]
+        chunk2_content = "INSERT INTO `table1` VALUES " + ",".join(rows2) + ";\n"
         create_dummy_sql_gz(
             os.path.join(tmpdir, "mydb.table1.00000.sql.gz"),
             chunk1_content,
@@ -144,8 +224,9 @@ def test_synthesize_metadata_integration() -> None:
             chunk2_content,
         )
 
-        # Table 2: Single small file
-        table2_content = "A" * 200  # 200 bytes -> 1 row estimated
+        # Table 2: Single file with 20 rows
+        rows3 = [f"({i},'x')" for i in range(20)]
+        table2_content = "INSERT INTO `table2` VALUES " + ",".join(rows3) + ";\n"
         create_dummy_sql_gz(
             os.path.join(tmpdir, "mydb.table2.sql.gz"), table2_content
         )
@@ -163,18 +244,16 @@ def test_synthesize_metadata_integration() -> None:
         config = configparser.ConfigParser()
         config.read(output_ini)
 
-        assert (
-            "mydb.table1" in config.sections() or "`mydb`.`table1`" in config.sections()
-        )
-
         # Check section names (synthesize_metadata uses backticks)
         s1 = "`mydb`.`table1`"
         s2 = "`mydb`.`table2`"
 
         assert s1 in config
-        # Table 1: 600 + 400 = 1000 bytes / 200 = 5 estimated rows
-        assert config[s1]["rows"] == "5", f"Expected 5 rows for table1, got {config[s1]['rows']}"
+        # Table 1: ~100 rows total (50+50), allow ±30% for small files
+        table1_rows = int(config[s1]["rows"])
+        assert 70 <= table1_rows <= 130, f"Expected ~100 rows for table1, got {table1_rows}"
 
         assert s2 in config
-        # Table 2: 200 bytes / 200 = 1 estimated row
-        assert config[s2]["rows"] == "1", f"Expected 1 row for table2, got {config[s2]['rows']}"
+        # Table 2: ~20 rows, allow ±50% for very small files
+        table2_rows = int(config[s2]["rows"])
+        assert 10 <= table2_rows <= 30, f"Expected ~20 rows for table2, got {table2_rows}"
