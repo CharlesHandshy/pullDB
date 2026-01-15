@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-01-09T23:55:28.680106",
+  "timestamp": "2026-01-14T15:58:43.476610",
   "total_pages": 23,
   "pages_with_errors": 0,
   "pages_with_warnings": 1,
@@ -8,7 +8,7 @@
       "url": "/web/login",
       "name": "Login Page",
       "status_code": 200,
-      "load_time_ms": 532.65,
+      "load_time_ms": 529.4,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/auth/login_page.png",
       "issues": [],
       "checks": {
@@ -21,7 +21,7 @@
       "url": "/web/auth/profile",
       "name": "Profile Page",
       "status_code": 200,
-      "load_time_ms": 537.0,
+      "load_time_ms": 539.17,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/auth/profile_page.png",
       "issues": [],
       "checks": {
@@ -34,7 +34,7 @@
       "url": "/web/change-password",
       "name": "Change Password",
       "status_code": 200,
-      "load_time_ms": 546.72,
+      "load_time_ms": 545.63,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/auth/change_password.png",
       "issues": [],
       "checks": {
@@ -47,7 +47,7 @@
       "url": "/web/dashboard",
       "name": "Dashboard",
       "status_code": 200,
-      "load_time_ms": 535.85,
+      "load_time_ms": 536.59,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/dashboard/dashboard.png",
       "issues": [],
       "checks": {
@@ -60,7 +60,7 @@
       "url": "/web/jobs",
       "name": "Jobs List",
       "status_code": 200,
-      "load_time_ms": 586.65,
+      "load_time_ms": 580.78,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/jobs_list.png",
       "issues": [],
       "checks": {
@@ -73,7 +73,7 @@
       "url": "/web/jobs?view=active",
       "name": "Jobs Active Tab",
       "status_code": 200,
-      "load_time_ms": 577.86,
+      "load_time_ms": 575.83,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/jobs_active_tab.png",
       "issues": [],
       "checks": {
@@ -86,7 +86,7 @@
       "url": "/web/jobs?view=history",
       "name": "Jobs History Tab",
       "status_code": 200,
-      "load_time_ms": 578.12,
+      "load_time_ms": 576.58,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/jobs_history_tab.png",
       "issues": [],
       "checks": {
@@ -99,7 +99,7 @@
       "url": "/web/jobs/job-001",
       "name": "Job Detail - Queued",
       "status_code": 200,
-      "load_time_ms": 539.26,
+      "load_time_ms": 537.08,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/job_detail_-_queued.png",
       "issues": [],
       "checks": {
@@ -112,7 +112,7 @@
       "url": "/web/jobs/job-002",
       "name": "Job Detail - Running",
       "status_code": 200,
-      "load_time_ms": 533.89,
+      "load_time_ms": 536.33,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/job_detail_-_running.png",
       "issues": [],
       "checks": {
@@ -125,7 +125,7 @@
       "url": "/web/jobs/job-003",
       "name": "Job Detail - Complete",
       "status_code": 200,
-      "load_time_ms": 535.43,
+      "load_time_ms": 540.94,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/job_detail_-_complete.png",
       "issues": [],
       "checks": {
@@ -138,7 +138,7 @@
       "url": "/web/jobs/job-004",
       "name": "Job Detail - Failed",
       "status_code": 200,
-      "load_time_ms": 536.86,
+      "load_time_ms": 540.81,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/jobs/job_detail_-_failed.png",
       "issues": [],
       "checks": {
@@ -151,7 +151,7 @@
       "url": "/web/restore",
       "name": "New Restore",
       "status_code": 200,
-      "load_time_ms": 552.16,
+      "load_time_ms": 544.79,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/restore/new_restore.png",
       "issues": [],
       "checks": {
@@ -164,7 +164,7 @@
       "url": "/web/manager",
       "name": "Manager Dashboard",
       "status_code": 200,
-      "load_time_ms": 565.07,
+      "load_time_ms": 577.48,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/manager/manager_dashboard.png",
       "issues": [],
       "checks": {
@@ -177,7 +177,7 @@
       "url": "/web/admin",
       "name": "Admin Dashboard",
       "status_code": 200,
-      "load_time_ms": 538.18,
+      "load_time_ms": 540.95,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/admin_dashboard.png",
       "issues": [],
       "checks": {
@@ -190,7 +190,7 @@
       "url": "/web/admin/styleguide",
       "name": "Style Guide",
       "status_code": 200,
-      "load_time_ms": 547.2,
+      "load_time_ms": 549.46,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/style_guide.png",
       "issues": [],
       "checks": {
@@ -203,7 +203,7 @@
       "url": "/web/admin/users",
       "name": "Users Management",
       "status_code": 200,
-      "load_time_ms": 585.67,
+      "load_time_ms": 591.36,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/users_management.png",
       "issues": [],
       "checks": {
@@ -216,7 +216,7 @@
       "url": "/web/admin/hosts",
       "name": "Hosts Management",
       "status_code": 200,
-      "load_time_ms": 667.06,
+      "load_time_ms": 676.75,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/hosts_management.png",
       "issues": [],
       "checks": {
@@ -229,7 +229,7 @@
       "url": "/web/admin/settings",
       "name": "System Settings",
       "status_code": 200,
-      "load_time_ms": 670.73,
+      "load_time_ms": 562.53,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/system_settings.png",
       "issues": [],
       "checks": {
@@ -242,7 +242,7 @@
       "url": "/web/admin/prune-logs/preview",
       "name": "Prune Logs",
       "status_code": 200,
-      "load_time_ms": 541.3,
+      "load_time_ms": 546.52,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/prune_logs.png",
       "issues": [],
       "checks": {
@@ -255,7 +255,7 @@
       "url": "/web/admin/cleanup-staging/preview",
       "name": "Cleanup Staging",
       "status_code": 200,
-      "load_time_ms": 537.98,
+      "load_time_ms": 538.42,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/cleanup_staging.png",
       "issues": [],
       "checks": {
@@ -268,7 +268,7 @@
       "url": "/web/admin/orphans/preview",
       "name": "Orphan Databases",
       "status_code": 200,
-      "load_time_ms": 538.32,
+      "load_time_ms": 687.26,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/admin/orphan_databases.png",
       "issues": [],
       "checks": {
@@ -281,7 +281,7 @@
       "url": "/web/admin/audit",
       "name": "Audit Logs",
       "status_code": 200,
-      "load_time_ms": 572.37,
+      "load_time_ms": 579.94,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/audit/audit_logs.png",
       "issues": [],
       "checks": {
@@ -294,7 +294,7 @@
       "url": "/web/nonexistent-page-404",
       "name": "404 Error Page",
       "status_code": 404,
-      "load_time_ms": 513.66,
+      "load_time_ms": 514.96,
       "screenshot": "/home/charleshandshy/Projects/pullDB/tests/e2e/screenshots/errors/404_error_page.png",
       "issues": [
         {

@@ -659,14 +659,25 @@ class AdminTaskExecutor:
         Args:
             task: The admin task with parameters.
         """
+        from pathlib import Path
         from pulldb.worker.cleanup import delete_job_databases
         from pulldb.domain.models import JobStatus
+        from pulldb.infra.workdir_cleanup import cleanup_job_work_dir
 
         params = task.parameters_json or {}
         job_infos = params.get("job_infos", [])
         hard_delete = params.get("hard_delete", False)
         skip_database_drops = params.get("skip_database_drops", False)
         total_jobs = params.get("total_jobs", len(job_infos))
+
+        # Get work_dir for cleanup on hard delete
+        work_dir: Path | None = None
+        if hard_delete and self.settings_repo:
+            work_dir_str = self.settings_repo.get_setting("work_directory")
+            if work_dir_str:
+                work_dir = Path(work_dir_str)
+            else:
+                work_dir = Path("/opt/pulldb.service/work")  # Default
 
         # Initialize or restore result tracking (for resume)
         # Use 'progress' key to match what bulk_delete_status endpoint reads
@@ -797,6 +808,9 @@ class AdminTaskExecutor:
                         },
                     )
                     self.job_repo.hard_delete_job(job_id)
+                    # Clean up work directory on hard delete
+                    if work_dir:
+                        cleanup_job_work_dir(job_id, work_dir)
                     processed_list.append({
                         "job_id": job_id,
                         "staging_dropped": False,
@@ -926,6 +940,9 @@ class AdminTaskExecutor:
                             },
                         )
                         self.job_repo.hard_delete_job(job_id)
+                        # Clean up work directory on hard delete
+                        if work_dir:
+                            cleanup_job_work_dir(job_id, work_dir)
                     else:
                         self.job_repo.mark_job_deleted(job_id)
                         self.audit_repo.log_action(

@@ -1,22 +1,25 @@
 import configparser
 import gzip
 import os
-import sys
 import tempfile
 
-# Add scripts directory to path so we can import synthesize_metadata
-sys.path.append(os.path.join(os.path.dirname(__file__), "../scripts"))
-
-from pulldb.worker.metadata_synthesis import (
+from pulldb.worker.backup_metadata import (
     DEFAULT_BYTES_PER_ROW,
     ESTIMATION_SAFETY_MARGIN,
+    _synthesize_metadata,
     count_rows_in_file,
     estimate_rows_by_sampling,
     estimate_rows_from_size,
     get_gzip_uncompressed_size,
+    parse_binlog_position,
     parse_filename,
-    synthesize_metadata,
 )
+
+
+def synthesize_metadata(backup_dir: str, output_file: str) -> None:
+    """Wrapper for _synthesize_metadata with old 2-arg signature."""
+    binlog = parse_binlog_position(backup_dir)
+    _synthesize_metadata(backup_dir, output_file, binlog)
 
 
 def create_dummy_sql_gz(filepath: str, content: str) -> None:

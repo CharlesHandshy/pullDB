@@ -451,6 +451,7 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     - Load configuration from environment
     - Establish MySQL coordination pool
     - Register signal handlers for graceful shutdown
+    - Start config hot-reloader for runtime setting updates
     - Emit lifecycle metrics (start, active gauge, stop)
     - Run polling loop until stop requested
 
@@ -468,6 +469,8 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     host_repo: HostRepository | None = None
     admin_task_repo: AdminTaskRepository | None = None
     admin_task_executor: AdminTaskExecutor | None = None
+    config_reloader = None
+    workdir_cleaner = None
 
     try:
         # 1. Bootstrap config and pool using shared bootstrap module
@@ -492,7 +495,31 @@ def main(argv: t.Sequence[str] | None = None) -> int:
         # 4. Build executor with full config (reuse host_repo)
         job_executor = _build_job_executor(config, job_repo, host_repo)
 
-        # 5. Build admin task executor (if not in simulation mode)
+        # 5. Start config hot-reloader (updates config object when settings change)
+        if not is_simulation_mode():
+            from pulldb.infra.config_reload import ConfigReloader, ReloadableConfig
+            
+            def on_config_reload(new_settings: ReloadableConfig) -> None:
+                """Update config object with new settings."""
+                config.myloader_timeout_seconds = new_settings.myloader_timeout_seconds
+                config.myloader_threads = new_settings.myloader_threads
+                config.myloader_default_args = tuple(new_settings.myloader_default_args)
+                config.myloader_extra_args = tuple(new_settings.myloader_extra_args)
+                logger.info(
+                    "Config hot-reloaded: myloader_timeout=%ds, threads=%d",
+                    config.myloader_timeout_seconds,
+                    config.myloader_threads,
+                )
+            
+            config_reloader = ConfigReloader(
+                pool=pool,
+                on_reload=on_config_reload,
+                check_interval=300,  # 5 minutes
+                service_name="worker",
+            )
+            config_reloader.start()
+
+        # 6. Build admin task executor (if not in simulation mode)
         if not is_simulation_mode() and host_repo:
             admin_task_repo = AdminTaskRepository(pool)
             user_repo = UserRepository(pool)
@@ -508,9 +535,34 @@ def main(argv: t.Sequence[str] | None = None) -> int:
                 settings_repo=settings_repo,
             )
             logger.info("Admin task executor initialized")
+
+            # 7. Start work directory orphan cleaner
+            from pulldb.infra.workdir_cleanup import WorkDirCleaner
+
+            # Get settings for cleanup interval and dry-run mode
+            cleanup_interval_str = settings_repo.get_setting("workdir_cleanup_interval")
+            cleanup_interval = int(cleanup_interval_str) if cleanup_interval_str else 3600
+            dry_run_str = settings_repo.get_setting("workdir_cleanup_dry_run")
+            dry_run = dry_run_str.lower() in ("true", "1", "yes") if dry_run_str else True
+
+            if cleanup_interval > 0:
+                workdir_cleaner = WorkDirCleaner(
+                    pool=pool,
+                    job_repo=job_repo,
+                    work_dir=config.work_dir,
+                    check_interval=cleanup_interval,
+                    dry_run=dry_run,
+                )
+                workdir_cleaner.start()
+            else:
+                logger.info("WorkDirCleaner disabled (interval=0)")
     except Exception as exc:
         _emit_fatal(exc)
         _set_worker_active(0, "fatal")
+        if config_reloader:
+            config_reloader.stop()
+        if workdir_cleaner:
+            workdir_cleaner.stop()
         return 1
 
     # Cleanup zombie jobs before starting the main loop
@@ -541,10 +593,18 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     except Exception as exc:
         _emit_fatal(exc)
         _set_worker_active(0, "fatal")
+        if config_reloader:
+            config_reloader.stop()
+        if workdir_cleaner:
+            workdir_cleaner.stop()
         return 1
 
     _emit_stop_event(stop_event)
     _set_worker_active(0, "shutdown")
+    if config_reloader:
+        config_reloader.stop()
+    if workdir_cleaner:
+        workdir_cleaner.stop()
     return 0
 
 

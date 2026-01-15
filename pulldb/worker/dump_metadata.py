@@ -1,11 +1,14 @@
 """Dump metadata parsing for restore progress tracking.
 
+Note: The primary implementation is now in backup_metadata.py.
+This module re-exports from there for backward compatibility.
+
 Parses mydumper backup metadata to extract table row counts for accurate
 progress estimation during myloader execution.
 
 Supports:
 - mydumper 0.19+ INI format metadata with `rows=` entries
-- mydumper 0.9 format via file scanning (using metadata_synthesis.count_rows_in_file)
+- mydumper 0.9 format via file scanning (using backup_metadata.count_rows_in_file)
 
 HCA Layer: features (pulldb/worker/)
 """
@@ -18,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pulldb.infra.logging import get_logger
-from pulldb.worker.metadata_synthesis import count_rows_in_file, parse_filename
+from pulldb.worker.backup_metadata import count_rows_in_file, parse_filename
 
 logger = get_logger("pulldb.worker.dump_metadata")
 

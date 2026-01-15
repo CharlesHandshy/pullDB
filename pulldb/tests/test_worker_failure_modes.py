@@ -169,7 +169,17 @@ def test_run_myloader_binary_missing() -> None:
     spec.backup_dir = "/tmp/backup"  # Must be a string for Path()
 
     # Mock run_command to raise CommandExecutionError (simulating FileNotFoundError)
-    with mock.patch("pulldb.worker.restore.run_command_streaming") as mock_run:
+    # Also mock metadata functions since backup_dir doesn't exist
+    with (
+        mock.patch("pulldb.worker.restore.run_command_streaming") as mock_run,
+        mock.patch("pulldb.worker.restore.ensure_myloader_compatibility"),
+        mock.patch("pulldb.worker.restore.get_backup_metadata") as mock_meta,
+    ):
+        mock_meta.return_value = mock.Mock(
+            format=mock.Mock(value="INI_0_19"),
+            tables=[],
+            total_rows=0,
+        )
         mock_run.side_effect = CommandExecutionError(
             ["/non/existent/myloader"],
             FileNotFoundError(2, "No such file or directory"),

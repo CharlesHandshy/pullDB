@@ -63,23 +63,41 @@ create_user_and_group() {
 # Step 2: Merge/Create Configuration Files
 # =============================================================================
 
+# Pre-purge backup location (created by prerm before purge)
+ENV_BACKUP_DIR="/var/lib/pulldb"
+ENV_BACKUP_FILE="${ENV_BACKUP_DIR}/.env.pre-purge"
+
 configure_env_file() {
     echo "Step 2a: Configuring .env file..."
     
     local ENV_EXAMPLE="${INSTALL_PREFIX}/env.example"
+    local RESTORED_FROM_BACKUP=0
+    
+    # Check for pre-purge backup (saved by prerm before dpkg -P)
+    # This allows recovery of settings even after a full purge + reinstall
+    if [ ! -f "${ENV_FILE}" ] && [ -f "${ENV_BACKUP_FILE}" ]; then
+        echo "  Restoring .env from pre-purge backup..."
+        cp "${ENV_BACKUP_FILE}" "${ENV_FILE}"
+        RESTORED_FROM_BACKUP=1
+        # Keep backup around for safety, will be overwritten on next remove/purge
+    fi
     
     if [ -f "${ENV_FILE}" ] && [ -f "${ENV_EXAMPLE}" ]; then
         # Backup existing .env
         cp "${ENV_FILE}" "${ENV_FILE}.backup.${BACKUP_TIMESTAMP}"
         echo "  Backed up existing .env to .env.backup.${BACKUP_TIMESTAMP}"
         
-        # Merge existing with new template
+        # Merge existing with new template (existing values take precedence)
         if [ -x "${MERGE_SCRIPT}" ]; then
             "${MERGE_SCRIPT}" env "${ENV_FILE}" "${ENV_EXAMPLE}" "${ENV_FILE}.merged"
             mv "${ENV_FILE}.merged" "${ENV_FILE}"
-            echo "  Merged configuration with new template"
+            echo "  Merged configuration with new template (existing values preserved)"
         else
             echo "  Warning: Merge script not found, preserving existing .env"
+        fi
+        
+        if [ "$RESTORED_FROM_BACKUP" = "1" ]; then
+            echo "  Settings restored from pre-purge backup"
         fi
     elif [ -f "${ENV_EXAMPLE}" ]; then
         # Fresh install - copy template
@@ -522,6 +540,34 @@ VALUES ('${SERVICE_UUID}', NULL);
     echo "  Service account created successfully"
 }
 
+sync_env_to_database() {
+    echo "Step 6b: Syncing .env settings to database..."
+    
+    # This ensures database has the same settings as .env file after merge/restore.
+    # Important for upgrades where .env was preserved but database might be stale,
+    # or after restore from pre-purge backup.
+    
+    # Ensure pulldb-admin is available
+    if ! command -v pulldb-admin >/dev/null 2>&1; then
+        # Try direct path
+        if [ ! -f "${INSTALL_PREFIX}/venv/bin/pulldb-admin" ]; then
+            echo "  Warning: pulldb-admin not available, skipping sync"
+            return
+        fi
+        PULLDB_ADMIN="${INSTALL_PREFIX}/venv/bin/pulldb-admin"
+    else
+        PULLDB_ADMIN="pulldb-admin"
+    fi
+    
+    # Run the sync (--yes bypasses confirmation prompt)
+    if ${PULLDB_ADMIN} settings push --yes 2>/dev/null; then
+        echo "  Settings synced from .env to database"
+    else
+        echo "  Warning: Failed to sync settings to database"
+        echo "    Run 'pulldb-admin settings push' manually after install"
+    fi
+}
+
 install_systemd_units() {
     echo "Step 6c: Installing systemd units..."
     
@@ -702,6 +748,7 @@ case "$1" in
         ensure_paths
         install_python_package
         check_database_schema
+        sync_env_to_database
         install_systemd_units
         start_services
         validate_installation

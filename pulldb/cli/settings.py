@@ -17,10 +17,17 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 
 import click
+
+# Import env file utilities from shared infrastructure layer
+from pulldb.infra.envfile import (
+    DEFAULT_ENV_FILE_PATHS,
+    find_env_file,
+    read_env_file,
+    write_env_setting,
+)
 
 # Import setting definitions from domain layer (single source of truth)
 from pulldb.domain.settings import (
@@ -29,11 +36,8 @@ from pulldb.domain.settings import (
 )
 
 
-# .env file locations (in priority order)
-ENV_FILE_PATHS = [
-    Path("/opt/pulldb.service/.env"),  # Installed system
-    Path(__file__).parent.parent.parent / ".env",  # Repo root (dev)
-]
+# Alias for backward compatibility
+ENV_FILE_PATHS = DEFAULT_ENV_FILE_PATHS
 
 
 # Known settings with their environment variable names and defaults
@@ -42,12 +46,10 @@ ENV_FILE_PATHS = [
 KNOWN_SETTINGS: dict[str, tuple[str, str | None, str]] = get_known_settings_compat()
 
 
+# Aliases for local functions that wrap the shared utilities
 def _find_env_file() -> Path | None:
     """Find the .env file to use for read/write operations."""
-    for path in ENV_FILE_PATHS:
-        if path.exists():
-            return path
-    return None
+    return find_env_file()
 
 
 def _read_env_file(env_path: Path) -> dict[str, str]:
@@ -56,28 +58,7 @@ def _read_env_file(env_path: Path) -> dict[str, str]:
     Returns:
         Dict mapping env var names to their values.
     """
-    settings: dict[str, str] = {}
-    if not env_path.exists():
-        return settings
-
-    with open(env_path) as f:
-        for line in f:
-            line = line.strip()
-            # Skip comments and empty lines
-            if not line or line.startswith("#"):
-                continue
-            # Handle KEY=value format
-            if "=" in line:
-                key, _, value = line.partition("=")
-                key = key.strip()
-                value = value.strip()
-                # Remove surrounding quotes if present
-                if (value.startswith("'") and value.endswith("'")) or (
-                    value.startswith('"') and value.endswith('"')
-                ):
-                    value = value[1:-1]
-                settings[key] = value
-    return settings
+    return read_env_file(env_path)
 
 
 def _write_env_setting(env_path: Path, env_var: str, value: str) -> bool:
@@ -86,33 +67,10 @@ def _write_env_setting(env_path: Path, env_var: str, value: str) -> bool:
     Returns:
         True if setting was added/updated, False on error.
     """
-    if not env_path.exists():
-        click.echo(f"Warning: .env file not found at {env_path}", err=True)
-        return False
-
-    lines: list[str] = []
-    found = False
-    pattern = re.compile(rf"^{re.escape(env_var)}\s*=")
-
-    with open(env_path) as f:
-        for line in f:
-            if pattern.match(line.strip()):
-                # Replace existing line
-                lines.append(f"{env_var}={value}\n")
-                found = True
-            else:
-                lines.append(line)
-
-    if not found:
-        # Add new setting at end of file
-        if lines and not lines[-1].endswith("\n"):
-            lines.append("\n")
-        lines.append(f"{env_var}={value}\n")
-
-    with open(env_path, "w") as f:
-        f.writelines(lines)
-
-    return True
+    success, error = write_env_setting(env_path, env_var, value)
+    if not success and error:
+        click.echo(f"Warning: {error}", err=True)
+    return success
 
 
 def _get_env_value_for_key(key: str, env_settings: dict[str, str]) -> str | None:

@@ -1,5 +1,6 @@
 """Admin routes for Web2 interface."""
 
+from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Request, Form, Query
@@ -2797,6 +2798,7 @@ from pulldb.domain.validation import (
     validate_setting_value,
     try_create_directory,
 )
+from pulldb.infra.envfile import find_env_file, write_env_setting
 
 
 def _get_setting_source(
@@ -2857,10 +2859,24 @@ async def list_settings(
     user: User = Depends(require_admin),
 ) -> HTMLResponse:
     """List all system settings grouped by category."""
+    # Check for env/database sync issues
+    from pulldb.infra.settings_sync import check_env_db_sync
+
+    sync_result = check_env_db_sync()
+    sync_warning = None
+    # Only show warning for actual differences or db_only settings
+    # (env_only settings are fine - they're defaults that haven't been changed via UI)
+    if sync_result.differences or sync_result.db_only:
+        sync_warning = sync_result
+
     # Get all database settings
     db_settings: dict[str, str] = {}
     if hasattr(state, "settings_repo") and state.settings_repo:
-        db_settings = state.settings_repo.get_all_settings()
+        all_settings = state.settings_repo.get_all_settings()
+        # Filter out internal _system_ keys (used for operational state)
+        db_settings = {
+            k: v for k, v in all_settings.items() if not k.startswith("_system_")
+        }
 
     # Build settings list from registry
     settings_list = []
@@ -2915,9 +2931,171 @@ async def list_settings(
             "audit_logs": audit_logs,
             "user": user,
             "breadcrumbs": get_breadcrumbs("admin_settings"),
+            "sync_warning": sync_warning,
         },
     )
 
+
+# =============================================================================
+# Settings Sync - Sync DB to .env and notify services
+# IMPORTANT: These routes MUST be defined BEFORE /settings/{key} routes
+# because FastAPI matches routes in registration order, and {key} would
+# otherwise capture "sync-to-env" and "sync-status" as key values.
+# =============================================================================
+
+@router.post("/settings/sync-to-env")
+async def sync_settings_to_env(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> dict:
+    """Sync database settings to .env file.
+
+    Only syncs settings that have changed (dirty_keys). If dirty_keys is empty
+    or not provided, syncs all settings.
+
+    Returns the sync result with any errors.
+    """
+    from pulldb.domain.settings import SETTING_REGISTRY
+
+    # Parse JSON body to get dirty_keys
+    dirty_keys: list[str] | None = None
+    try:
+        body = await request.json()
+        dirty_keys = body.get("dirty_keys")
+    except Exception:
+        pass  # No body or invalid JSON - sync all
+
+    env_path = find_env_file()
+    if not env_path:
+        return {"success": False, "error": "No .env file found"}
+
+    # Get all database settings (excluding internal _system_ keys)
+    all_db_settings = state.settings_repo.get_all_settings()
+    db_settings = {
+        k: v for k, v in all_db_settings.items() if not k.startswith("_system_")
+    }
+    if not db_settings:
+        return {"success": False, "error": "No settings in database to sync"}
+
+    # If dirty_keys provided, only sync those; otherwise sync all
+    keys_to_sync = dirty_keys if dirty_keys else list(db_settings.keys())
+
+    updated = 0
+    failed = []
+    for key in keys_to_sync:
+        if key not in db_settings:
+            continue  # Skip if key not in DB
+        value = db_settings[key]
+        # Get env var name from registry or derive it
+        meta = SETTING_REGISTRY.get(key)
+        if meta:
+            env_var = meta.env_var
+        else:
+            env_var = f"PULLDB_{key.upper()}"
+
+        success, error = write_env_setting(env_path, env_var, value)
+        if success:
+            updated += 1
+        else:
+            failed.append(f"{key}: {error}")
+
+    # Audit log
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        try:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="settings_sync_to_env",
+                detail=f"Synced {updated} settings to .env",
+                context={"updated": updated, "failed": len(failed)},
+            )
+        except Exception:
+            pass
+
+    # Signal services to reload (touch a marker file)
+    _signal_config_reload()
+
+    if failed:
+        return {
+            "success": True,
+            "message": f"Synced {updated} settings to .env ({len(failed)} failed)",
+            "warnings": failed,
+            "reload_signaled": True,
+        }
+
+    return {
+        "success": True,
+        "message": f"Synced {updated} settings to .env",
+        "reload_signaled": True,
+    }
+
+
+@router.get("/settings/sync-status")
+async def get_sync_status(
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> dict:
+    """Get current sync status between .env and database."""
+    from pulldb.infra.settings_sync import check_env_db_sync
+
+    result = check_env_db_sync()
+
+    return {
+        "is_synced": result.is_synced,
+        "env_file_path": result.env_file_path,
+        "error": result.error,
+        "differences": [
+            {
+                "key": m.key,
+                "env_var": m.env_var,
+                "env_value": m.env_value,
+                "db_value": m.db_value,
+            }
+            for m in result.differences
+        ],
+        "env_only": len(result.env_only),
+        "db_only": len(result.db_only),
+        "summary": result.summary,
+    }
+
+
+def _signal_config_reload() -> bool:
+    """Signal services to reload configuration.
+
+    Creates/updates a marker file that services watch for config changes.
+    Services should check this file's mtime and reload when it changes.
+
+    Returns:
+        True if signal was written successfully, False otherwise.
+    """
+    import logging
+    import time
+
+    logger = logging.getLogger(__name__)
+
+    marker_path = Path("/var/lib/pulldb/.config-reload")
+    try:
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        marker_path.write_text(str(time.time()))
+        return True
+    except Exception as e:
+        logger.warning("Failed to write reload marker to %s: %s", marker_path, e)
+        # Fallback to install prefix
+        fallback = Path("/opt/pulldb.service/.config-reload")
+        try:
+            fallback.write_text(str(time.time()))
+            return True
+        except Exception as e2:
+            logger.warning(
+                "Failed to write reload marker to fallback %s: %s", fallback, e2
+            )
+            return False
+
+
+# =============================================================================
+# Individual Setting Operations (CRUD)
+# NOTE: These {key} routes must come AFTER the specific /sync-* routes above
+# =============================================================================
 
 @router.post("/settings/{key}")
 async def update_setting(
@@ -2977,15 +3155,50 @@ async def update_setting(
         except Exception:
             pass  # Audit is best-effort
 
+    # Sync to .env file if setting has an env_var mapping
+    # Check if this setting is hot-reloadable (no restart needed)
+    from pulldb.infra.config_reload import ReloadableConfig
+
+    env_sync_warning: str | None = None
+    restart_required = False
+    is_hot_reloadable = ReloadableConfig.is_hot_reloadable(key)
+
+    if meta and meta.env_var:
+        env_path = find_env_file()
+        if env_path:
+            success, error = write_env_setting(env_path, meta.env_var, value)
+            if success:
+                # Only require restart for settings that can't be hot-reloaded
+                restart_required = not is_hot_reloadable
+            else:
+                env_sync_warning = (
+                    f"Database updated, but env file sync failed: {error}. "
+                    "Run 'pulldb-admin settings pull' to sync manually."
+                )
+        else:
+            env_sync_warning = (
+                "Database updated, but no .env file found to sync. "
+                "Services will use database value on next restart."
+            )
+
+    # Signal hot-reload if this is a hot-reloadable setting
+    if is_hot_reloadable:
+        _signal_config_reload()
+
     # Return updated setting data
     db_settings = state.settings_repo.get_all_settings()
     setting_dict = _build_setting_dict(key, db_settings, meta)
 
-    return {
+    response: dict = {
         "success": True,
         "setting": setting_dict,
         "message": f"Setting '{key}' updated successfully",
+        "restart_required": restart_required,
+        "hot_reloaded": is_hot_reloadable,
     }
+    if env_sync_warning:
+        response["warning"] = env_sync_warning
+    return response
 
 
 @router.delete("/settings/{key}")

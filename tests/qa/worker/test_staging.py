@@ -217,11 +217,12 @@ class TestCleanupOrphanedStaging:
 
     def test_successful_cleanup_with_orphans(self, conn_spec) -> None:
         """Cleanup drops orphaned databases."""
-        # Calls: SHOW DATABASES, processlist, DROP, SHOW DATABASES (verify)
+        # Calls: SHOW DATABASES, processlist (initial), processlist (in loop), DROP, SHOW DATABASES (verify)
         mock_cursor = MagicMock()
         mock_cursor.fetchall.side_effect = [
             [("mysql",), ("charleqatemplate_aaaaaaaaaaaa",)],  # SHOW DATABASES
-            [],  # information_schema.processlist (no active connections)
+            [],  # information_schema.processlist (initial check)
+            [],  # information_schema.processlist (re-check in loop before DROP)
             [("mysql",)],  # SHOW DATABASES verification (orphan dropped)
         ]
 
@@ -268,13 +269,15 @@ class TestCleanupOrphanedStaging:
         import mysql.connector
 
         mock_cursor = MagicMock()
-        # Calls: SHOW DATABASES, processlist, DROP (fails)
+        # Calls: SHOW DATABASES, processlist (initial), processlist (in loop), DROP (fails)
         # fetchall calls:
         #   1. SHOW DATABASES - returns databases including orphan
-        #   2. processlist - returns empty (no active connections, so DROP proceeds)
+        #   2. processlist (initial) - returns empty
+        #   3. processlist (re-check in loop) - returns empty, so DROP proceeds
         mock_cursor.fetchall.side_effect = [
             [("mysql",), ("charleqatemplate_aaaaaaaaaaaa",)],  # SHOW DATABASES
-            [],  # processlist - no active connections
+            [],  # processlist - initial check
+            [],  # processlist - re-check in loop before DROP
         ]
 
         def execute_side_effect(sql):

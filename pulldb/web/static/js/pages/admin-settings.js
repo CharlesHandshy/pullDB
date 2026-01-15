@@ -20,6 +20,8 @@
     let currentTab = 'job_limits';
     let pendingSave = null;
     let pendingCreateDir = null;
+    // Track settings that have been modified since page load (for dirty key sync)
+    let dirtyKeys = new Set();
 
     // ==========================================================================
     // Tab Management
@@ -190,7 +192,23 @@
             const result = await response.json();
             
             if (result.success) {
-                showToast(result.message, 'success');
+                // Track this key as dirty for sync
+                dirtyKeys.add(key);
+                
+                // Show warning if env sync failed
+                if (result.warning) {
+                    showToast(result.warning, 'warning');
+                } else if (result.hot_reloaded) {
+                    showToast(result.message + ' (services will auto-reload)', 'success');
+                } else {
+                    showToast(result.message, 'success');
+                }
+                
+                // Show restart banner only for non-hot-reloadable settings
+                if (result.restart_required) {
+                    showRestartBanner();
+                }
+                
                 window.location.reload();
             } else {
                 if (validationMsg) {
@@ -247,6 +265,9 @@
             const result = await response.json();
             
             if (result.success) {
+                // Track this key as dirty for sync
+                dirtyKeys.add(key);
+                
                 showToast(result.message, 'success');
                 window.location.reload();
             } else {
@@ -358,6 +379,45 @@
     };
 
     // ==========================================================================
+    // Restart Banner
+    // ==========================================================================
+
+    function showRestartBanner() {
+        // Check if banner already exists
+        if (document.getElementById('restart-banner')) return;
+        
+        const banner = document.createElement('div');
+        banner.id = 'restart-banner';
+        banner.className = 'restart-banner';
+        banner.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span>Path or binary settings changed. Restart services (pulldb-api, pulldb-worker) to apply.</span>
+            <button type="button" onclick="sessionStorage.removeItem('pulldb-restart-required'); this.parentElement.remove()" class="banner-close">&times;</button>
+        `;
+        
+        // Insert after page header
+        const header = document.querySelector('.page-header-row');
+        if (header && header.parentNode) {
+            header.parentNode.insertBefore(banner, header.nextSibling);
+        } else {
+            document.querySelector('.content-body')?.prepend(banner);
+        }
+        
+        // Store in session so it persists across reload
+        sessionStorage.setItem('pulldb-restart-required', 'true');
+    }
+
+    function checkRestartBanner() {
+        if (sessionStorage.getItem('pulldb-restart-required') === 'true') {
+            showRestartBanner();
+        }
+    }
+
+    // ==========================================================================
     // Toast Notifications
     // ==========================================================================
 
@@ -381,6 +441,77 @@
         document.body.appendChild(container);
         return container;
     }
+
+    // ==========================================================================
+    // Sync to .env
+    // ==========================================================================
+
+    window.syncToEnv = async function() {
+        const btn = document.getElementById('sync-to-env-btn');
+        const originalHtml = btn ? btn.innerHTML : '';
+        
+        // Show loading state
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `
+                <svg class="icon-sm animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" opacity="0.25"></circle>
+                    <path d="M12 2a10 10 0 0 1 10 10" opacity="0.75"></path>
+                </svg>
+                <span>Syncing...</span>
+            `;
+        }
+        
+        try {
+            // Send dirty keys to only sync changed settings (empty array = sync all)
+            const keysToSync = Array.from(dirtyKeys);
+            
+            const response = await fetch('/web/admin/settings/sync-to-env', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ dirty_keys: keysToSync }),
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Clear dirty keys on successful sync
+                dirtyKeys.clear();
+                sessionStorage.removeItem('pulldb-dirty-keys');
+                
+                showToast(data.message, 'success');
+                
+                // Hide the warning banner if it exists
+                const banner = document.getElementById('sync-warning-banner');
+                if (banner) {
+                    banner.style.transition = 'opacity 0.3s ease-out';
+                    banner.style.opacity = '0';
+                    setTimeout(() => banner.remove(), 300);
+                }
+                
+                // Show reload notice if services were signaled
+                if (data.reload_signaled) {
+                    showToast('Services will reload configuration shortly', 'info');
+                }
+                
+                if (data.warnings && data.warnings.length > 0) {
+                    showToast(`Warnings: ${data.warnings.join(', ')}`, 'warning');
+                }
+            } else {
+                showToast(data.error || 'Sync failed', 'error');
+            }
+        } catch (error) {
+            showToast('Failed to sync settings: ' + error.message, 'error');
+        } finally {
+            // Restore button state
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        }
+    };
 
     // ==========================================================================
     // Keyboard Shortcuts
@@ -408,6 +539,26 @@
         const tabParam = urlParams.get('tab');
         if (tabParam) {
             switchTab(tabParam);
+        }
+        
+        // Check if restart banner should be shown
+        checkRestartBanner();
+        
+        // Restore dirty keys from session storage (survives page reloads)
+        const savedDirtyKeys = sessionStorage.getItem('pulldb-dirty-keys');
+        if (savedDirtyKeys) {
+            try {
+                dirtyKeys = new Set(JSON.parse(savedDirtyKeys));
+            } catch (e) {
+                dirtyKeys = new Set();
+            }
+        }
+    });
+    
+    // Persist dirty keys to session storage before page unload
+    window.addEventListener('beforeunload', function() {
+        if (dirtyKeys.size > 0) {
+            sessionStorage.setItem('pulldb-dirty-keys', JSON.stringify(Array.from(dirtyKeys)));
         }
     });
 

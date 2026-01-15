@@ -253,18 +253,26 @@ def cleanup_orphaned_staging(
 
         # Get databases with active connections (e.g., myloader still running)
         # We must not DROP these - they'll be cleaned up by subsequent jobs
-        try:
-            cursor.execute(
-                "SELECT db FROM information_schema.processlist "
-                "WHERE db IS NOT NULL GROUP BY db"
-            )
-            active_db_rows = cast(list[tuple[Any, ...]], cursor.fetchall())
-            active_databases = {str(row[0]) for row in active_db_rows}
-        except mysql.connector.Error:
-            # If we can't check, assume none are active (fail-safe: DROP may block)
-            active_databases = set()
+        def get_active_databases() -> set[str]:
+            """Query processlist to find databases with active connections."""
+            try:
+                cursor.execute(
+                    "SELECT db FROM information_schema.processlist "
+                    "WHERE db IS NOT NULL GROUP BY db"
+                )
+                active_rows = cast(list[tuple[Any, ...]], cursor.fetchall())
+                return {str(row[0]) for row in active_rows}
+            except mysql.connector.Error:
+                # If we can't check, assume none are active (fail-safe: DROP may block)
+                return set()
+
+        active_databases = get_active_databases()
 
         for idx, orphan_db in enumerate(staging_candidates):
+            # Re-check active connections BEFORE each DROP to avoid blocking
+            # on connections that started after our initial check
+            active_databases = get_active_databases()
+
             # Skip databases with active connections (myloader may still be running
             # from a canceled job - we let it finish rather than blocking on MDL)
             if orphan_db in active_databases:

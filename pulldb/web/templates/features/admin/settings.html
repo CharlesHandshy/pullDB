@@ -21,14 +21,91 @@
                 System Settings
             </h1>
         </div>
-        <button class="btn-icon" onclick="exportSettings()" title="Export Settings to JSON" aria-label="Export settings to JSON">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" x2="12" y1="15" y2="3"/>
+        <div class="page-header-right" style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary" onclick="syncToEnv()" title="Sync database settings to .env file" id="sync-to-env-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                    <path d="M3 3v5h5"/>
+                    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                    <path d="M16 16h5v5"/>
+                </svg>
+                <span>Sync to .env</span>
+            </button>
+            <button class="btn-icon" onclick="exportSettings()" title="Export Settings to JSON" aria-label="Export settings to JSON">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" x2="12" y1="15" y2="3"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Sync Warning Banner (if .env and database are out of sync) -->
+    {% if sync_warning %}
+    <div class="alert alert-warning mb-4" id="sync-warning-banner">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="alert-icon">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <div style="flex: 1;">
+            <strong>Settings Out of Sync</strong>
+            <p class="mt-1 mb-2">
+                The <code>.env</code> file and database have different values. 
+                This can cause unexpected behavior since environment variables take precedence.
+            </p>
+            {% if sync_warning.differences %}
+            <details class="sync-details" open>
+                <summary>▼ {{ sync_warning.differences|length }} setting(s) with different values</summary>
+                <ul class="sync-list mt-2" style="margin-left: 1rem; font-size: 0.875rem;">
+                    {% for m in sync_warning.differences %}
+                    <li>
+                        <code>{{ m.key }}</code>: 
+                        <span style="color: var(--text-muted);">env=</span><code>{{ m.env_value[:50] }}{% if m.env_value|length > 50 %}...{% endif %}</code>
+                        vs
+                        <span style="color: var(--text-muted);">db=</span><code>{{ m.db_value[:50] }}{% if m.db_value|length > 50 %}...{% endif %}</code>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </details>
+            {% endif %}
+            {% if sync_warning.env_only %}
+            <details class="sync-details">
+                <summary>▶ {{ sync_warning.env_only|length }} setting(s) in .env only (not in database)</summary>
+                <ul class="sync-list mt-2" style="margin-left: 1rem; font-size: 0.875rem;">
+                    {% for m in sync_warning.env_only %}
+                    <li>
+                        <code>{{ m.key }}</code>: 
+                        <span style="color: var(--text-muted);">env=</span><code>{{ m.env_value[:50] }}{% if m.env_value|length > 50 %}...{% endif %}</code>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </details>
+            {% endif %}
+            {% if sync_warning.db_only %}
+            <details class="sync-details">
+                <summary>▶ {{ sync_warning.db_only|length }} setting(s) in database only (not in .env)</summary>
+                <ul class="sync-list mt-2" style="margin-left: 1rem; font-size: 0.875rem;">
+                    {% for m in sync_warning.db_only %}
+                    <li>
+                        <code>{{ m.key }}</code>: 
+                        <span style="color: var(--text-muted);">db=</span><code>{{ m.db_value[:50] }}{% if m.db_value|length > 50 %}...{% endif %}</code>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </details>
+            {% endif %}
+        </div>
+        <button class="btn btn-warning" onclick="syncToEnv()" style="white-space: nowrap;">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
             </svg>
+            Sync Now
         </button>
     </div>
+    {% endif %}
 
     <!-- Category Tabs (icon-only with tooltips) -->
     <div class="tabs mb-4">

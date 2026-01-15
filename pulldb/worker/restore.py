@@ -48,13 +48,15 @@ from pulldb.worker.atomic_rename import (
     AtomicRenameSpec,
     atomic_rename_staging_to_target,
 )
-from pulldb.worker.dump_metadata import parse_dump_metadata
+from pulldb.worker.backup_metadata import (
+    ensure_myloader_compatibility,
+    get_backup_metadata,
+)
 from pulldb.worker.metadata import (
     MetadataConnectionSpec,
     MetadataSpec,
     inject_metadata_table,
 )
-from pulldb.worker.metadata_synthesis import ensure_compatible_metadata
 from pulldb.worker.post_sql import PostSQLConnectionSpec, execute_post_sql
 from pulldb.worker.processlist_monitor import (
     ProcesslistMonitor,
@@ -245,6 +247,7 @@ def run_myloader(
     progress_callback: Callable[[float, dict[str, Any]], None] | None = None,
     processlist_monitor: ProcesslistMonitor | None = None,
     abort_check: Callable[[], bool] | None = None,
+    event_callback: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> MyLoaderResult:
     """Execute myloader and return structured result.
 
@@ -254,6 +257,7 @@ def run_myloader(
         progress_callback: Called with (percent, detail_dict) for progress updates.
         processlist_monitor: Optional monitor for per-table progress from MySQL processlist.
         abort_check: Optional callback that returns True if job should abort.
+        event_callback: Optional callback for validation events (row counting, etc.).
 
     Raises:
         MyLoaderError: On non-zero exit, startup failure, or timeout.
@@ -266,13 +270,15 @@ def run_myloader(
     version_info = _detect_backup_version(spec.backup_dir)
     logger.info(f"Detected backup version info: {version_info}")
 
-    # Ensure metadata compatibility (synthesize if needed)
-    ensure_compatible_metadata(spec.backup_dir)
-
-    # Parse dump metadata for row counts (used for rows/sec calculation)
-    dump_meta = parse_dump_metadata(spec.backup_dir)
-    total_rows = dump_meta.total_rows
-    logger.info(f"Dump metadata: {len(dump_meta.tables)} tables, {total_rows:,} total rows")
+    # Ensure metadata compatibility and get row estimates
+    # For legacy 0.9 backups, this counts rows with progress events
+    ensure_myloader_compatibility(spec.backup_dir, event_callback=event_callback)
+    backup_meta = get_backup_metadata(spec.backup_dir)
+    total_rows = backup_meta.total_rows
+    logger.info(
+        f"Backup metadata: {backup_meta.format.value} format, "
+        f"{len(backup_meta.tables)} tables, {total_rows:,} total rows"
+    )
 
     # Count tasks for file-based progress
     total_tasks = _count_restore_tasks(spec.backup_dir)
@@ -285,7 +291,7 @@ def run_myloader(
 
     # Build table -> row count mapping for row-based estimates
     table_row_counts: dict[str, int] = {}
-    for t in dump_meta.tables:
+    for t in backup_meta.tables:
         table_row_counts[t.table] = t.rows
 
     # Regex for parsing myloader output
@@ -599,6 +605,7 @@ def orchestrate_restore_workflow(
                     progress_callback=wrapped_progress_callback,
                     processlist_monitor=processlist_monitor,
                     abort_check=spec.abort_check,
+                    event_callback=_emit_event,
                 )
         finally:
             # Always stop the monitor

@@ -1,6 +1,12 @@
 #!/bin/sh
 set -e
 
+INSTALL_PREFIX="/opt/pulldb.service"
+ENV_FILE="${INSTALL_PREFIX}/.env"
+# Safe backup location that survives purge (outside INSTALL_PREFIX)
+ENV_BACKUP_DIR="/var/lib/pulldb"
+ENV_BACKUP_FILE="${ENV_BACKUP_DIR}/.env.pre-purge"
+
 WORKER_SERVICE="pulldb-worker.service"
 API_SERVICE="pulldb-api.service"
 WEB_SERVICE="pulldb-web.service"
@@ -22,9 +28,22 @@ stop_services() {
     fi
 }
 
+backup_env_for_purge() {
+    # Backup .env to a location OUTSIDE INSTALL_PREFIX before purge
+    # This allows postinst to restore settings even after a full purge
+    if [ -f "${ENV_FILE}" ]; then
+        mkdir -p "${ENV_BACKUP_DIR}"
+        cp "${ENV_FILE}" "${ENV_BACKUP_FILE}"
+        chmod 600 "${ENV_BACKUP_FILE}"
+        echo "  Backed up .env to ${ENV_BACKUP_FILE} (will be restored on reinstall)"
+    fi
+}
+
 case "$1" in
     remove|upgrade|deconfigure)
         stop_services
+        # For remove/upgrade, also backup .env in case user later purges
+        backup_env_for_purge
         ;;
     failed-upgrade)
         ;;

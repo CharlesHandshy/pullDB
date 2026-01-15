@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -57,7 +58,59 @@ MAX_STATUS_LIMIT = 1000
 # Web UI enabled by default, can be disabled with PULLDB_WEB_ENABLED=false
 WEB_ENABLED = os.getenv("PULLDB_WEB_ENABLED", "true").lower() in ("true", "1", "yes")
 
-app = fastapi.FastAPI(title="pullDB API Service", version="1.0.0")
+# Global config reloader instance (started in lifespan)
+_config_reloader = None
+
+
+@contextlib.asynccontextmanager
+async def lifespan(app: fastapi.FastAPI):
+    """Lifespan context manager for startup/shutdown tasks."""
+    global _config_reloader
+    
+    # Initialize state on startup
+    try:
+        state = _initialize_state()
+        app.state.api_state = state
+        
+        # Start config reloader for hot-reload support (non-simulation only)
+        if not is_simulation_mode() and state.pool:
+            from pulldb.infra.config_reload import ConfigReloader, ReloadableConfig
+            import logging
+            logger = logging.getLogger("pulldb.api")
+            
+            def on_config_reload(new_settings: ReloadableConfig) -> None:
+                """Update config object with new settings."""
+                state.config.myloader_timeout_seconds = new_settings.myloader_timeout_seconds
+                state.config.myloader_threads = new_settings.myloader_threads
+                state.config.myloader_default_args = tuple(new_settings.myloader_default_args)
+                state.config.myloader_extra_args = tuple(new_settings.myloader_extra_args)
+                logger.info(
+                    "API config hot-reloaded: myloader_timeout=%ds",
+                    state.config.myloader_timeout_seconds,
+                )
+            
+            _config_reloader = ConfigReloader(
+                pool=state.pool,
+                on_reload=on_config_reload,
+                check_interval=300,  # 5 minutes
+                service_name="api",
+            )
+            _config_reloader.start()
+    except Exception as e:
+        import logging
+        logging.getLogger("pulldb.api").warning(
+            "Failed to initialize API state on startup: %s", e
+        )
+        # State will be initialized lazily on first request
+    
+    yield
+    
+    # Cleanup on shutdown
+    if _config_reloader:
+        _config_reloader.stop()
+
+
+app = fastapi.FastAPI(title="pullDB API Service", version="1.0.0", lifespan=lifespan)
 
 # Mount unified web UI router (if enabled)
 if WEB_ENABLED:
@@ -368,8 +421,31 @@ class UserInfoResponse(pydantic.BaseModel):
 
 
 @app.get("/api/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> dict:
+    """Health check endpoint with config reloader status.
+
+    Returns:
+        - status: "ok" if healthy
+        - warnings: list of any degraded subsystems (e.g., config reload errors)
+    """
+    result: dict = {"status": "ok"}
+
+    # Check config reloader status
+    if _config_reloader:
+        reloader_health = _config_reloader.get_health_status()
+        if reloader_health.get("last_reload_error"):
+            result["warnings"] = [
+                {
+                    "type": "config_reload_failed",
+                    "message": reloader_health["last_reload_error"].get(
+                        "error_message", "Unknown error"
+                    ),
+                    "since": reloader_health["last_reload_error"].get("failed_at"),
+                    "using_stale_config": True,
+                }
+            ]
+
+    return result
 
 
 @app.get("/api/users/{username}", response_model=UserInfoResponse)
@@ -4147,6 +4223,19 @@ def main_web(argv: list[str] | None = None) -> int:
         web_app.add_exception_handler(PasswordResetRequiredError, create_password_reset_required_handler())
         web_app.add_exception_handler(MaintenanceRequiredError, create_maintenance_required_handler())
         web_app.add_exception_handler(StarletteHTTPException, create_http_exception_handler(web_templates))
+
+        # Add validation error handler for debugging
+        from fastapi.exceptions import RequestValidationError
+        from fastapi.responses import JSONResponse
+        import logging
+        
+        @web_app.exception_handler(RequestValidationError)
+        async def validation_exception_handler(request, exc):
+            logging.error(f"Validation error on {request.url}: {exc.errors()}")
+            return JSONResponse(
+                status_code=422,
+                content={"detail": exc.errors()},
+            )
     except ImportError as e:
         print(f"Error: Web UI module not available: {e}")
         return 1

@@ -5883,3 +5883,169 @@ class DisallowedUserRepository:
                 return True, row.get("reason") or "Username not allowed"
 
         return False, None
+
+
+# =============================================================================
+# Connection Monitoring Utilities
+# =============================================================================
+
+
+@dataclass
+class ActiveConnection:
+    """Represents an active MySQL connection from PROCESSLIST."""
+
+    process_id: int
+    user: str
+    database: str | None
+    command: str
+    time_seconds: int
+    state: str | None
+    info: str | None  # Query being executed (truncated)
+
+
+def get_active_loader_connections(
+    pool: MySQLPool,
+    user: str = "pulldb_loader",
+    database_pattern: str | None = None,
+) -> list[ActiveConnection]:
+    """Get active connections for the loader user, optionally filtered by database.
+
+    Used to check if a staging database has orphaned connections from a timed-out
+    restore job before attempting DROP DATABASE.
+
+    Args:
+        pool: MySQL connection pool.
+        user: MySQL username to filter (default: pulldb_loader).
+        database_pattern: Optional SQL LIKE pattern for database name filtering.
+            E.g., 'charle%' to match all staging DBs for user 'charle'.
+
+    Returns:
+        List of ActiveConnection objects for matching connections.
+
+    Example:
+        >>> conns = get_active_loader_connections(pool, database_pattern='charle%')
+        >>> for conn in conns:
+        ...     print(f"{conn.database}: {conn.command} ({conn.time_seconds}s)")
+    """
+    with pool.connection() as conn:
+        cursor = conn.cursor(dictionary=True)
+
+        # Build query with optional database filter
+        if database_pattern:
+            cursor.execute(
+                """
+                SELECT 
+                    ID as process_id,
+                    USER as user,
+                    DB as db,
+                    COMMAND as command,
+                    TIME as time_seconds,
+                    STATE as state,
+                    INFO as info
+                FROM INFORMATION_SCHEMA.PROCESSLIST
+                WHERE USER = %s AND DB LIKE %s
+                ORDER BY TIME DESC
+                """,
+                (user, database_pattern),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT 
+                    ID as process_id,
+                    USER as user,
+                    DB as db,
+                    COMMAND as command,
+                    TIME as time_seconds,
+                    STATE as state,
+                    INFO as info
+                FROM INFORMATION_SCHEMA.PROCESSLIST
+                WHERE USER = %s AND DB IS NOT NULL
+                ORDER BY TIME DESC
+                """,
+                (user,),
+            )
+
+        rows = cursor.fetchall()
+
+    return [
+        ActiveConnection(
+            process_id=row["process_id"],
+            user=row["user"],
+            database=row["db"],
+            command=row["command"],
+            time_seconds=row["time_seconds"] or 0,
+            state=row["state"],
+            info=row["info"],
+        )
+        for row in rows
+    ]
+
+
+def get_connections_for_database(
+    pool: MySQLPool,
+    database: str,
+    user: str | None = None,
+) -> list[ActiveConnection]:
+    """Get all active connections to a specific database.
+
+    Args:
+        pool: MySQL connection pool.
+        database: Exact database name to check.
+        user: Optional username filter.
+
+    Returns:
+        List of ActiveConnection objects for the database.
+    """
+    with pool.connection() as conn:
+        cursor = conn.cursor(dictionary=True)
+
+        if user:
+            cursor.execute(
+                """
+                SELECT 
+                    ID as process_id,
+                    USER as user,
+                    DB as db,
+                    COMMAND as command,
+                    TIME as time_seconds,
+                    STATE as state,
+                    INFO as info
+                FROM INFORMATION_SCHEMA.PROCESSLIST
+                WHERE DB = %s AND USER = %s
+                ORDER BY TIME DESC
+                """,
+                (database, user),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT 
+                    ID as process_id,
+                    USER as user,
+                    DB as db,
+                    COMMAND as command,
+                    TIME as time_seconds,
+                    STATE as state,
+                    INFO as info
+                FROM INFORMATION_SCHEMA.PROCESSLIST
+                WHERE DB = %s
+                ORDER BY TIME DESC
+                """,
+                (database,),
+            )
+
+        rows = cursor.fetchall()
+
+    return [
+        ActiveConnection(
+            process_id=row["process_id"],
+            user=row["user"],
+            database=row["db"],
+            command=row["command"],
+            time_seconds=row["time_seconds"] or 0,
+            state=row["state"],
+            info=row["info"],
+        )
+        for row in rows
+    ]
