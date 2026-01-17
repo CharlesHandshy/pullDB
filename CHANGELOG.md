@@ -1,6 +1,33 @@
 CHANGELOG
 =========
 
+v1.0.4 - 2026-01-17
+-------------------
+### Custom Target Database Name Feature
+
+User-controlled target database naming - full control over restored database names.
+
+### Added
+- `custom_target` column in `jobs` table tracks custom target usage (migration: `00910_jobs_custom_target.sql`)
+- `custom_target_used` field in API responses shows if custom naming was applied
+- `target=` token in CLI for specifying custom database names (1-51 lowercase letters only)
+- `TargetCollisionError` for when target database already exists with different owner
+- Pre-flight target verification in executor prevents accidental overwrites
+- Job details page shows "Custom Target" badge and user-specified name
+- Comprehensive QA test suite: `tests/qa/test_custom_target.py` (49 tests)
+
+### Changed
+- `delete_job_databases()` now accepts `custom_target` parameter for proper cleanup
+- `MetadataSpec` includes `owner_user_id`, `owner_user_code`, `custom_target` for ownership tracking
+- Target database construction logic now supports both auto-generated and custom naming modes
+- API schemas updated with `JobRequest.custom_target` and `JobResponse.custom_target_used`
+- Web UI shows "Custom Target: {name}" on job status page when custom naming used
+
+### Security
+- Custom targets validated against known customer names to prevent masquerading
+- Ownership verification prevents overwriting databases owned by different users
+- Only lowercase letters allowed (no special characters, numbers, or underscores)
+
 v1.0.1 - 2026-01-08
 -------------------
 ### Aurora MySQL Compatibility & Atomic Rename Hardening

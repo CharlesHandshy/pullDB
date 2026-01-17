@@ -1,5 +1,5 @@
 Package: pulldb
-Version: 1.0.1
+Version: 1.0.4
 Section: admin
 Priority: optional
 Architecture: amd64
