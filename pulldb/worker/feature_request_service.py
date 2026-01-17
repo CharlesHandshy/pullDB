@@ -379,16 +379,19 @@ class FeatureRequestService:
     ) -> FeatureRequest | None:
         """Cast or change a vote on a feature request.
         
+        Users can only vote for ONE request at a time. Voting for a new request
+        automatically removes any previous vote from other requests.
+        
         Args:
             request_id: The request ID to vote on.
             user_id: ID of the user voting.
-            vote_value: 1 for upvote, -1 for downvote, 0 to remove vote.
+            vote_value: 1 to vote, 0 to remove vote.
             
         Returns:
             The updated request or None if not found.
         """
-        if vote_value not in (-1, 0, 1):
-            raise ValueError("vote_value must be -1, 0, or 1")
+        if vote_value not in (0, 1):
+            raise ValueError("vote_value must be 0 or 1")
         
         with self.db_pool.connection() as conn:
             cur = conn.cursor()
@@ -401,74 +404,78 @@ class FeatureRequestService:
                 if not cur.fetchone():
                     return None
                 
-                # Get existing vote
+                # Find user's existing vote (on ANY request)
                 cur.execute(
-                    """SELECT vote_value FROM feature_request_votes 
-                       WHERE request_id = %s AND user_id = %s""",
-                    (request_id, user_id)
+                    """SELECT request_id, vote_value FROM feature_request_votes 
+                       WHERE user_id = %s""",
+                    (user_id,)
                 )
                 existing = cur.fetchone()
-                old_vote = existing[0] if existing else 0
+                old_request_id = existing[0] if existing else None
+                old_vote = existing[1] if existing else 0
                 
                 if vote_value == 0:
-                    # Remove vote
-                    if existing:
+                    # Remove vote from this request
+                    if existing and old_request_id == request_id:
                         cur.execute(
                             """DELETE FROM feature_request_votes 
-                               WHERE request_id = %s AND user_id = %s""",
-                            (request_id, user_id)
+                               WHERE user_id = %s""",
+                            (user_id,)
                         )
-                        delta = -old_vote
-                    else:
-                        delta = 0  # No vote to remove
+                        # Decrement vote count on this request
+                        cur.execute(
+                            """UPDATE feature_requests 
+                               SET vote_score = vote_score - 1,
+                                   upvote_count = upvote_count - 1
+                               WHERE request_id = %s""",
+                            (request_id,)
+                        )
                 elif existing:
-                    # Update existing vote
-                    if vote_value != old_vote:
+                    # User has existing vote somewhere
+                    if old_request_id == request_id:
+                        # Already voted for this request - no change needed
+                        pass
+                    else:
+                        # Move vote from old request to new request
+                        # Update the vote record to point to new request
                         cur.execute(
                             """UPDATE feature_request_votes 
-                               SET vote_value = %s, created_at = %s
-                               WHERE request_id = %s AND user_id = %s""",
-                            (vote_value, datetime.now(UTC), request_id, user_id)
+                               SET request_id = %s, created_at = %s
+                               WHERE user_id = %s""",
+                            (request_id, datetime.now(UTC), user_id)
                         )
-                        delta = vote_value - old_vote
-                    else:
-                        delta = 0  # Same vote, no change
+                        # Decrement old request's vote count
+                        cur.execute(
+                            """UPDATE feature_requests 
+                               SET vote_score = vote_score - 1,
+                                   upvote_count = upvote_count - 1
+                               WHERE request_id = %s""",
+                            (old_request_id,)
+                        )
+                        # Increment new request's vote count
+                        cur.execute(
+                            """UPDATE feature_requests 
+                               SET vote_score = vote_score + 1,
+                                   upvote_count = upvote_count + 1
+                               WHERE request_id = %s""",
+                            (request_id,)
+                        )
                 else:
-                    # New vote
+                    # New vote - user hasn't voted before
                     vote_id = str(uuid.uuid4())
                     cur.execute(
                         """INSERT INTO feature_request_votes 
                            (vote_id, request_id, user_id, vote_value, created_at)
                            VALUES (%s, %s, %s, %s, %s)""",
-                        (vote_id, request_id, user_id, vote_value, datetime.now(UTC))
+                        (vote_id, request_id, user_id, 1, datetime.now(UTC))
                     )
-                    delta = vote_value
-                
-                # Update aggregates
-                if delta != 0:
-                    up_delta = 1 if delta > 0 else (-1 if old_vote == 1 else 0)
-                    down_delta = 1 if delta < 0 else (-1 if old_vote == -1 else 0)
-                    
-                    # Actually calculate correct deltas based on state change
-                    up_delta = 0
-                    down_delta = 0
-                    
-                    if old_vote == 1 and vote_value != 1:
-                        up_delta = -1
-                    if old_vote == -1 and vote_value != -1:
-                        down_delta = -1
-                    if vote_value == 1 and old_vote != 1:
-                        up_delta += 1
-                    if vote_value == -1 and old_vote != -1:
-                        down_delta += 1
-                    
+                    # Increment vote count
                     cur.execute(
                         """UPDATE feature_requests 
-                           SET vote_score = vote_score + %s,
-                               upvote_count = upvote_count + %s,
-                               downvote_count = downvote_count + %s
+                           SET vote_score = vote_score + 1,
+                               upvote_count = upvote_count + 1
                            WHERE request_id = %s""",
-                        (delta, up_delta, down_delta, request_id)
+                        (request_id,)
                     )
                 
                 conn.commit()
