@@ -1,0 +1,645 @@
+{% extends "base.html" %}
+
+{% block title %}Feature Requests - pullDB{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
+<style>
+/* Vote controls */
+.vote-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.vote-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 12px;
+    line-height: 1;
+    color: var(--text-muted);
+    border-radius: var(--radius-sm);
+    transition: all 0.15s ease;
+}
+
+.vote-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.vote-btn.voted.vote-up {
+    color: var(--success-500);
+}
+
+.vote-btn.voted.vote-down {
+    color: var(--error-500);
+}
+
+.vote-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.vote-score {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 28px;
+    text-align: center;
+}
+
+.vote-score.positive {
+    color: var(--success-500);
+}
+
+.vote-score.negative {
+    color: var(--error-500);
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-badge.open {
+    background: var(--bg-success-subtle);
+    color: var(--text-success);
+}
+
+.status-badge.in_progress {
+    background: var(--bg-primary-subtle);
+    color: var(--text-primary);
+}
+
+.status-badge.complete {
+    background: var(--bg-neutral-subtle);
+    color: var(--text-muted);
+}
+
+.status-badge.declined {
+    background: var(--bg-danger-subtle);
+    color: var(--text-danger);
+}
+
+/* Request title */
+.request-title {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.request-title:hover {
+    color: var(--primary-500);
+    cursor: pointer;
+}
+
+/* User display */
+.user-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.user-icon-sm {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-full);
+    color: var(--text-muted);
+}
+
+.user-icon-sm svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* Modal for creating requests */
+.modal-wide {
+    max-width: 600px;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.form-group input,
+.form-group textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 2px rgba(var(--primary-500-rgb), 0.2);
+}
+
+.form-group textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+
+.char-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: right;
+    margin-top: 4px;
+}
+
+/* Request detail modal */
+.request-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.request-detail-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+}
+
+.request-detail-meta {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+}
+
+.request-detail-description {
+    padding: 16px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    margin-bottom: 16px;
+    white-space: pre-wrap;
+}
+
+.admin-response-section {
+    border-top: 1px solid var(--border-default);
+    padding-top: 16px;
+    margin-top: 16px;
+}
+
+.admin-response-section h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.admin-response-content {
+    padding: 12px;
+    background: var(--bg-warning-subtle);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="requests-page">
+    <!-- Page Header with Stats -->
+    <div class="page-header-row mb-4">
+        <div class="page-header-left">
+            <h1 class="page-title">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                Feature Requests
+            </h1>
+            <button class="btn-icon btn-icon-primary ml-2" onclick="showNewRequestModal()" title="Submit Feature Request" aria-label="Submit feature request">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" x2="12" y1="5" y2="19"/>
+                    <line x1="5" x2="19" y1="12" y2="12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="status-bar">
+            <span class="status-item" title="Total Requests">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span class="status-count" id="stat-total">{{ stats.total }}</span>
+            </span>
+            <span class="status-divider"></span>
+            <span class="status-item status-enabled" title="Open Requests">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span class="status-count" id="stat-open">{{ stats.open }}</span>
+            </span>
+            <span class="status-item status-manager" title="In Progress">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2v4"/>
+                    <path d="m16.2 7.8 2.9-2.9"/>
+                    <path d="M18 12h4"/>
+                    <path d="m16.2 16.2 2.9 2.9"/>
+                    <path d="M12 18v4"/>
+                    <path d="m4.9 19.1 2.9-2.9"/>
+                    <path d="M2 12h4"/>
+                    <path d="m4.9 4.9 2.9 2.9"/>
+                </svg>
+                <span class="status-count" id="stat-in-progress">{{ stats.in_progress }}</span>
+            </span>
+            <span class="status-divider"></span>
+            <span class="status-item" title="Completed">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <span class="status-count" id="stat-complete">{{ stats.complete }}</span>
+            </span>
+        </div>
+    </div>
+
+    <!-- Requests Card with LazyTable -->
+    <div class="card lazy-table-height-viewport">
+        <div id="requests-table-container" class="h-full"></div>
+    </div>
+</div>
+
+<!-- New Request Modal -->
+<div id="new-request-modal" class="modal modal-hidden">
+    <div class="modal-backdrop" onclick="hideNewRequestModal()"></div>
+    <div class="modal-content modal-wide">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px; margin-right: 8px;">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                Submit Feature Request
+            </h3>
+            <button type="button" class="modal-close" onclick="hideNewRequestModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" x2="6" y1="6" y2="18"/>
+                    <line x1="6" x2="18" y1="6" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <form id="new-request-form" onsubmit="submitNewRequest(event)">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="request-title">Title <span class="text-danger">*</span></label>
+                    <input type="text" id="request-title" name="title" required minlength="5" maxlength="200" placeholder="Brief description of your feature request">
+                    <div class="char-count"><span id="title-count">0</span>/200</div>
+                </div>
+                <div class="form-group">
+                    <label for="request-description">Description (optional)</label>
+                    <textarea id="request-description" name="description" maxlength="2000" placeholder="Provide more details about what you'd like to see..."></textarea>
+                    <div class="char-count"><span id="desc-count">0</span>/2000</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="hideNewRequestModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="submit-request-btn">Submit Request</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Request Detail Modal -->
+<div id="request-detail-modal" class="modal modal-hidden">
+    <div class="modal-backdrop" onclick="hideDetailModal()"></div>
+    <div class="modal-content modal-wide">
+        <div class="modal-header">
+            <h3 class="modal-title">Feature Request</h3>
+            <button type="button" class="modal-close" onclick="hideDetailModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" x2="6" y1="6" y2="18"/>
+                    <line x1="6" x2="18" y1="6" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div id="request-detail-content">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="hideDetailModal()">Close</button>
+            {% if user.role == 'admin' %}
+            <button type="button" class="btn btn-primary" id="admin-edit-btn" onclick="showAdminEdit()">Edit Status</button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=8"></script>
+<script>
+(function() {
+    'use strict';
+
+    const container = document.getElementById('requests-table-container');
+    if (!container) {
+        console.error('[requests] Container not found');
+        return;
+    }
+
+    const isAdmin = {{ 'true' if user.role == 'admin' else 'false' }};
+
+    // User icon SVG
+    const userIconSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+
+    // ==========================================================================
+    // Column Renderers
+    // ==========================================================================
+
+    const formatDate = (val) => {
+        if (!val) return '-';
+        const d = new Date(val);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    const renderVote = (val, row) => {
+        const upClass = row.user_vote === 1 ? ' voted' : '';
+        const downClass = row.user_vote === -1 ? ' voted' : '';
+        const scoreClass = val > 0 ? ' positive' : (val < 0 ? ' negative' : '');
+        
+        return `
+            <div class="vote-controls">
+                <button class="vote-btn vote-up${upClass}" onclick="window.voteRequest('${row.request_id}', ${row.user_vote === 1 ? 0 : 1})" title="Upvote">▲</button>
+                <span class="vote-score${scoreClass}">${val}</span>
+                <button class="vote-btn vote-down${downClass}" onclick="window.voteRequest('${row.request_id}', ${row.user_vote === -1 ? 0 : -1})" title="Downvote">▼</button>
+            </div>`;
+    };
+
+    const renderTitle = (val, row) => {
+        return `<span class="request-title" onclick="window.showRequestDetail('${row.request_id}')">${val}</span>`;
+    };
+
+    const renderStatus = (val) => {
+        const labels = {
+            'open': 'Open',
+            'in_progress': 'In Progress',
+            'complete': 'Complete',
+            'declined': 'Declined'
+        };
+        return `<span class="status-badge ${val}">${labels[val] || val}</span>`;
+    };
+
+    const renderUser = (val, row) => {
+        const username = row.submitted_by_username || val || '-';
+        return `<span class="user-cell"><div class="user-icon-sm">${userIconSvg}</div><span>${username}</span></span>`;
+    };
+
+    // ==========================================================================
+    // Column Definitions
+    // ==========================================================================
+
+    const COLUMNS = [
+        { 
+            key: 'vote_score', 
+            label: 'Score', 
+            sortable: true, 
+            width: '70px',
+            render: renderVote
+        },
+        { 
+            key: 'title', 
+            label: 'Request', 
+            sortable: true, 
+            filterable: true,
+            render: renderTitle
+        },
+        { 
+            key: 'status', 
+            label: 'Status', 
+            sortable: true, 
+            filterable: true, 
+            width: '110px',
+            render: renderStatus
+        },
+        { 
+            key: 'submitted_by_user_code', 
+            label: 'By', 
+            sortable: true, 
+            width: '100px',
+            render: renderUser
+        },
+        { 
+            key: 'created_at', 
+            label: 'Date', 
+            sortable: true, 
+            width: '110px',
+            render: formatDate
+        }
+    ];
+
+    // ==========================================================================
+    // Initialize LazyTable
+    // ==========================================================================
+
+    const table = new LazyTable(container, {
+        dataUrl: '/web/requests/api/list',
+        columns: COLUMNS,
+        pageSize: 50,
+        sortColumn: 'vote_score',
+        sortDirection: 'desc',
+        emptyMessage: 'No feature requests yet. Be the first to submit one!',
+        rowHeight: 52,
+    });
+
+    // Store table reference for refresh
+    window._requestsTable = table;
+
+    // ==========================================================================
+    // Voting
+    // ==========================================================================
+
+    window.voteRequest = async function(requestId, voteValue) {
+        try {
+            const response = await fetch(`/web/requests/api/vote/${requestId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ vote_value: voteValue })
+            });
+            const result = await response.json();
+            
+            if (result.error) {
+                showToast(result.error, 'error');
+                return;
+            }
+            
+            // Refresh table
+            table.refresh();
+            
+        } catch (err) {
+            console.error('Vote error:', err);
+            showToast('Failed to submit vote', 'error');
+        }
+    };
+
+    // ==========================================================================
+    // Request Detail Modal
+    // ==========================================================================
+
+    let currentRequest = null;
+
+    window.showRequestDetail = async function(requestId) {
+        // Find request in table data
+        const row = table._cache?.find(r => r.request_id === requestId);
+        if (!row) return;
+        
+        currentRequest = row;
+        
+        const content = document.getElementById('request-detail-content');
+        const statusLabel = {
+            'open': 'Open',
+            'in_progress': 'In Progress',
+            'complete': 'Complete',
+            'declined': 'Declined'
+        }[row.status] || row.status;
+        
+        let html = `
+            <div class="request-detail-header">
+                <div class="request-detail-title">${row.title}</div>
+                <span class="status-badge ${row.status}">${statusLabel}</span>
+            </div>
+            <div class="request-detail-meta">
+                Submitted by <strong>${row.submitted_by_username || row.submitted_by_user_code}</strong>
+                on ${formatDate(row.created_at)}
+                • ${row.vote_score} votes (${row.upvote_count}↑ ${row.downvote_count}↓)
+            </div>
+        `;
+        
+        if (row.description) {
+            html += `<div class="request-detail-description">${row.description}</div>`;
+        }
+        
+        if (row.admin_response) {
+            html += `
+                <div class="admin-response-section">
+                    <h4>Admin Response</h4>
+                    <div class="admin-response-content">${row.admin_response}</div>
+                </div>
+            `;
+        }
+        
+        content.innerHTML = html;
+        
+        document.getElementById('request-detail-modal').classList.remove('modal-hidden');
+    };
+
+    window.hideDetailModal = function() {
+        document.getElementById('request-detail-modal').classList.add('modal-hidden');
+        currentRequest = null;
+    };
+
+})();
+
+// ==========================================================================
+// New Request Modal
+// ==========================================================================
+
+function showNewRequestModal() {
+    document.getElementById('new-request-form').reset();
+    document.getElementById('title-count').textContent = '0';
+    document.getElementById('desc-count').textContent = '0';
+    document.getElementById('new-request-modal').classList.remove('modal-hidden');
+    document.getElementById('request-title').focus();
+}
+
+function hideNewRequestModal() {
+    document.getElementById('new-request-modal').classList.add('modal-hidden');
+}
+
+// Character counters
+document.getElementById('request-title')?.addEventListener('input', function() {
+    document.getElementById('title-count').textContent = this.value.length;
+});
+
+document.getElementById('request-description')?.addEventListener('input', function() {
+    document.getElementById('desc-count').textContent = this.value.length;
+});
+
+async function submitNewRequest(event) {
+    event.preventDefault();
+    
+    const title = document.getElementById('request-title').value.trim();
+    const description = document.getElementById('request-description').value.trim();
+    
+    if (title.length < 5) {
+        showToast('Title must be at least 5 characters', 'error');
+        return;
+    }
+    
+    const btn = document.getElementById('submit-request-btn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+    
+    try {
+        const response = await fetch('/web/requests/api/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, description })
+        });
+        const result = await response.json();
+        
+        if (result.error) {
+            showToast(result.error, 'error');
+            return;
+        }
+        
+        showToast('Feature request submitted!', 'success');
+        hideNewRequestModal();
+        
+        // Refresh table
+        if (window._requestsTable) {
+            window._requestsTable.refresh();
+        }
+        
+        // Update stats
+        const openCount = document.getElementById('stat-open');
+        const totalCount = document.getElementById('stat-total');
+        if (openCount) openCount.textContent = parseInt(openCount.textContent) + 1;
+        if (totalCount) totalCount.textContent = parseInt(totalCount.textContent) + 1;
+        
+    } catch (err) {
+        console.error('Submit error:', err);
+        showToast('Failed to submit request', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Submit Request';
+    }
+}
+
+// Simple toast function (assuming one exists globally)
+function showToast(message, type) {
+    if (window.showToast && typeof window.showToast === 'function') {
+        window.showToast(message, type);
+    } else {
+        // Fallback
+        alert(message);
+    }
+}
+</script>
+{% endblock %}

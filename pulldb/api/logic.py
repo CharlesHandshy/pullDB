@@ -116,6 +116,7 @@ def _get_pulldb_metadata_owner(
     Returns:
         Tuple of (has_pulldb_table, owner_user_id, owner_user_code).
         If no pullDB table exists: (False, None, None).
+        If pullDB table exists but uses old schema (no owner columns): (True, None, None).
         On connection errors: (False, None, None) (fail safe).
     """
     import mysql.connector
@@ -138,6 +139,17 @@ def _get_pulldb_metadata_owner(
             cursor.close()
             conn.close()
             return (False, None, None)
+        
+        # pullDB table exists - check if it has owner columns (new schema)
+        cursor.execute("SHOW COLUMNS FROM `pullDB` LIKE 'owner_user_id'")
+        has_owner_columns = cursor.fetchone() is not None
+        
+        if not has_owner_columns:
+            # Old schema - table exists but no owner tracking
+            # This is still a pullDB-managed database, just from before ownership feature
+            cursor.close()
+            conn.close()
+            return (True, None, None)
         
         # Get owner info from the most recent entry
         cursor.execute(
@@ -698,9 +710,8 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
                 detail=(
-                    f"Database '{target}' exists on '{dbhost}' but was NOT created by pullDB "
-                    f"(no pullDB metadata table found). Cannot overwrite external databases. "
-                    f"Choose a different target name."
+                    f"Database '{target}' exists but is not pullDB-managed (no metadata table). "
+                    f"Choose a different target name or manually remove the database before restoring."
                 ),
             )
         
