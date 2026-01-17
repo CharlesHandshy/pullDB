@@ -458,14 +458,16 @@
     // Initialize LazyTable
     // ==========================================================================
 
-    const table = new LazyTable(container, {
-        dataUrl: '/web/requests/api/list',
+    const table = new LazyTable({
+        container: container,
+        fetchUrl: '/web/requests/api/list',
         columns: COLUMNS,
         pageSize: 50,
         sortColumn: 'vote_score',
         sortDirection: 'desc',
         emptyMessage: 'No feature requests yet. Be the first to submit one!',
         rowHeight: 52,
+        rowIdKey: 'request_id',
     });
 
     // Store table reference for refresh
