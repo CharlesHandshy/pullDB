@@ -55,10 +55,11 @@ class FeatureRequestService:
                 SUM(CASE WHEN status = 'declined' THEN 1 ELSE 0 END) as declined_count
             FROM feature_requests
         """
-        async with self.db_pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(query)
-                row = await cur.fetchone()
+        with self.db_pool.connection() as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute(query)
+                row = cur.fetchone()
                 if row:
                     return FeatureRequestStats(
                         total=row[0] or 0,
@@ -68,6 +69,8 @@ class FeatureRequestService:
                         declined=row[4] or 0,
                     )
                 return FeatureRequestStats()
+            finally:
+                cur.close()
 
     async def list_requests(
         self,
@@ -148,11 +151,12 @@ class FeatureRequestService:
             LIMIT %s OFFSET %s
         """
         
-        async with self.db_pool.connection() as conn:
-            async with conn.cursor() as cur:
+        with self.db_pool.connection() as conn:
+            cur = conn.cursor()
+            try:
                 # Get total count
-                await cur.execute(count_query, params)
-                count_row = await cur.fetchone()
+                cur.execute(count_query, params)
+                count_row = cur.fetchone()
                 total = count_row[0] if count_row else 0
                 
                 # Get requests
@@ -162,8 +166,8 @@ class FeatureRequestService:
                 query_params.extend(params)
                 query_params.extend([limit, offset])
                 
-                await cur.execute(query, query_params)
-                rows = await cur.fetchall()
+                cur.execute(query, query_params)
+                rows = cur.fetchall()
                 
                 requests = []
                 for row in rows:
@@ -186,6 +190,8 @@ class FeatureRequestService:
                     ))
                 
                 return requests, total
+            finally:
+                cur.close()
 
     async def get_request(
         self,
@@ -236,10 +242,11 @@ class FeatureRequestService:
             WHERE fr.request_id = %s
         """
         
-        async with self.db_pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(query, params)
-                row = await cur.fetchone()
+        with self.db_pool.connection() as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute(query, params)
+                row = cur.fetchone()
                 
                 if not row:
                     return None
@@ -261,6 +268,8 @@ class FeatureRequestService:
                     submitted_by_user_code=row[13],
                     user_vote=row[14],
                 )
+            finally:
+                cur.close()
 
     async def create_request(
         self,
@@ -287,9 +296,10 @@ class FeatureRequestService:
             ) VALUES (%s, %s, %s, %s, 'open', 0, 0, 0, %s, %s)
         """
         
-        async with self.db_pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(query, (
+        with self.db_pool.connection() as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute(query, (
                     request_id,
                     user_id,
                     data.title,
@@ -297,7 +307,9 @@ class FeatureRequestService:
                     now,
                     now,
                 ))
-            await conn.commit()
+                conn.commit()
+            finally:
+                cur.close()
         
         logger.info(f"Created feature request {request_id}: {data.title}")
         
@@ -346,12 +358,15 @@ class FeatureRequestService:
             WHERE request_id = %s
         """
         
-        async with self.db_pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(query, params)
+        with self.db_pool.connection() as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute(query, params)
                 if cur.rowcount == 0:
                     return None
-            await conn.commit()
+                conn.commit()
+            finally:
+                cur.close()
         
         logger.info(f"Updated feature request {request_id}")
         return await self.get_request(request_id)
@@ -375,29 +390,30 @@ class FeatureRequestService:
         if vote_value not in (-1, 0, 1):
             raise ValueError("vote_value must be -1, 0, or 1")
         
-        async with self.db_pool.connection() as conn:
-            async with conn.cursor() as cur:
+        with self.db_pool.connection() as conn:
+            cur = conn.cursor()
+            try:
                 # Check if request exists
-                await cur.execute(
+                cur.execute(
                     "SELECT 1 FROM feature_requests WHERE request_id = %s",
                     (request_id,)
                 )
-                if not await cur.fetchone():
+                if not cur.fetchone():
                     return None
                 
                 # Get existing vote
-                await cur.execute(
+                cur.execute(
                     """SELECT vote_value FROM feature_request_votes 
                        WHERE request_id = %s AND user_id = %s""",
                     (request_id, user_id)
                 )
-                existing = await cur.fetchone()
+                existing = cur.fetchone()
                 old_vote = existing[0] if existing else 0
                 
                 if vote_value == 0:
                     # Remove vote
                     if existing:
-                        await cur.execute(
+                        cur.execute(
                             """DELETE FROM feature_request_votes 
                                WHERE request_id = %s AND user_id = %s""",
                             (request_id, user_id)
@@ -408,7 +424,7 @@ class FeatureRequestService:
                 elif existing:
                     # Update existing vote
                     if vote_value != old_vote:
-                        await cur.execute(
+                        cur.execute(
                             """UPDATE feature_request_votes 
                                SET vote_value = %s, created_at = %s
                                WHERE request_id = %s AND user_id = %s""",
@@ -420,7 +436,7 @@ class FeatureRequestService:
                 else:
                     # New vote
                     vote_id = str(uuid.uuid4())
-                    await cur.execute(
+                    cur.execute(
                         """INSERT INTO feature_request_votes 
                            (vote_id, request_id, user_id, vote_value, created_at)
                            VALUES (%s, %s, %s, %s, %s)""",
@@ -446,7 +462,7 @@ class FeatureRequestService:
                     if vote_value == -1 and old_vote != -1:
                         down_delta += 1
                     
-                    await cur.execute(
+                    cur.execute(
                         """UPDATE feature_requests 
                            SET vote_score = vote_score + %s,
                                upvote_count = upvote_count + %s,
@@ -454,8 +470,10 @@ class FeatureRequestService:
                            WHERE request_id = %s""",
                         (delta, up_delta, down_delta, request_id)
                     )
-            
-            await conn.commit()
+                
+                conn.commit()
+            finally:
+                cur.close()
         
         return await self.get_request(request_id, user_id)
 
@@ -468,14 +486,17 @@ class FeatureRequestService:
         Returns:
             True if deleted, False if not found.
         """
-        async with self.db_pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
+        with self.db_pool.connection() as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute(
                     "DELETE FROM feature_requests WHERE request_id = %s",
                     (request_id,)
                 )
                 deleted = cur.rowcount > 0
-            await conn.commit()
+                conn.commit()
+            finally:
+                cur.close()
         
         if deleted:
             logger.info(f"Deleted feature request {request_id}")

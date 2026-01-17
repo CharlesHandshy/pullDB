@@ -307,12 +307,12 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label for="request-title">Title <span class="text-danger">*</span></label>
-                    <input type="text" id="request-title" name="title" required minlength="5" maxlength="200" placeholder="Brief description of your feature request">
+                    <input type="text" id="request-title" name="title" required minlength="5" maxlength="200" placeholder="Brief description of your feature request" oninput="document.getElementById('title-count').textContent = this.value.length">
                     <div class="char-count"><span id="title-count">0</span>/200</div>
                 </div>
                 <div class="form-group">
                     <label for="request-description">Description (optional)</label>
-                    <textarea id="request-description" name="description" maxlength="2000" placeholder="Provide more details about what you'd like to see..."></textarea>
+                    <textarea id="request-description" name="description" maxlength="2000" placeholder="Provide more details about what you'd like to see..." oninput="document.getElementById('desc-count').textContent = this.value.length"></textarea>
                     <div class="char-count"><span id="desc-count">0</span>/2000</div>
                 </div>
             </div>
@@ -561,31 +561,63 @@
 // ==========================================================================
 
 function showNewRequestModal() {
-    document.getElementById('new-request-form').reset();
-    document.getElementById('title-count').textContent = '0';
-    document.getElementById('desc-count').textContent = '0';
-    document.getElementById('new-request-modal').classList.remove('modal-hidden');
-    document.getElementById('request-title').focus();
+    const form = document.getElementById('new-request-form');
+    if (form) form.reset();
+    const titleCount = document.getElementById('title-count');
+    const descCount = document.getElementById('desc-count');
+    if (titleCount) titleCount.textContent = '0';
+    if (descCount) descCount.textContent = '0';
+    const modal = document.getElementById('new-request-modal');
+    if (modal) modal.classList.remove('modal-hidden');
+    const titleInput = document.getElementById('request-title');
+    if (titleInput) titleInput.focus();
 }
 
 function hideNewRequestModal() {
-    document.getElementById('new-request-modal').classList.add('modal-hidden');
+    const modal = document.getElementById('new-request-modal');
+    if (modal) modal.classList.add('modal-hidden');
 }
 
-// Character counters
-document.getElementById('request-title')?.addEventListener('input', function() {
-    document.getElementById('title-count').textContent = this.value.length;
-});
-
-document.getElementById('request-description')?.addEventListener('input', function() {
-    document.getElementById('desc-count').textContent = this.value.length;
+// Character counters - set up after DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    const titleInput = document.getElementById('request-title');
+    const descInput = document.getElementById('request-description');
+    const titleCount = document.getElementById('title-count');
+    const descCount = document.getElementById('desc-count');
+    
+    if (titleInput && titleCount) {
+        titleInput.addEventListener('input', function() {
+            titleCount.textContent = this.value.length;
+        });
+        // Also handle keyup for better responsiveness
+        titleInput.addEventListener('keyup', function() {
+            titleCount.textContent = this.value.length;
+        });
+    }
+    
+    if (descInput && descCount) {
+        descInput.addEventListener('input', function() {
+            descCount.textContent = this.value.length;
+        });
+        descInput.addEventListener('keyup', function() {
+            descCount.textContent = this.value.length;
+        });
+    }
 });
 
 async function submitNewRequest(event) {
     event.preventDefault();
     
-    const title = document.getElementById('request-title').value.trim();
-    const description = document.getElementById('request-description').value.trim();
+    const titleInput = document.getElementById('request-title');
+    const descInput = document.getElementById('request-description');
+    
+    if (!titleInput) {
+        console.error('Title input not found');
+        return;
+    }
+    
+    const title = titleInput.value.trim();
+    const description = descInput ? descInput.value.trim() : '';
     
     if (title.length < 5) {
         showToast('Title must be at least 5 characters', 'error');
@@ -593,8 +625,10 @@ async function submitNewRequest(event) {
     }
     
     const btn = document.getElementById('submit-request-btn');
-    btn.disabled = true;
-    btn.textContent = 'Submitting...';
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Submitting...';
+    }
     
     try {
         const response = await fetch('/web/requests/api/create', {
@@ -627,18 +661,31 @@ async function submitNewRequest(event) {
         console.error('Submit error:', err);
         showToast('Failed to submit request', 'error');
     } finally {
-        btn.disabled = false;
-        btn.textContent = 'Submit Request';
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Submit Request';
+        }
     }
 }
 
-// Simple toast function (assuming one exists globally)
+// Toast function with fallback
 function showToast(message, type) {
-    if (window.showToast && typeof window.showToast === 'function') {
-        window.showToast(message, type);
+    // Check for global toast function
+    if (window.Toast && typeof window.Toast.show === 'function') {
+        window.Toast.show(message, type);
+    } else if (window.showToastMessage && typeof window.showToastMessage === 'function') {
+        window.showToastMessage(message, type);
     } else {
-        // Fallback
-        alert(message);
+        // Fallback: create a simple toast
+        const toast = document.createElement('div');
+        toast.className = 'toast toast-' + (type || 'info');
+        toast.style.cssText = 'position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;z-index:10000;font-size:14px;max-width:400px;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+        toast.style.background = type === 'error' ? '#ef4444' : type === 'success' ? '#22c55e' : '#3b82f6';
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(function() {
+            toast.remove();
+        }, 4000);
     }
 }
 </script>
