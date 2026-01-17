@@ -94,7 +94,11 @@
             </div>
             <div class="details-header-item">
                 <span class="details-header-label">Submitted</span>
-                <span class="details-header-value">{{ job.submitted_at.strftime('%Y-%m-%d %H:%M:%S') if job.submitted_at else '—' }}</span>
+                <span class="details-header-value">
+                    {% if job.submitted_at %}
+                    <span data-utc="{{ job.submitted_at.isoformat() }}Z" data-format="datetime">{{ job.submitted_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</span>
+                    {% else %}—{% endif %}
+                </span>
             </div>
             {% if job.status.value in ['deployed', 'complete', 'superseded'] and job.expires_at %}
             <div class="details-header-item">
@@ -103,11 +107,11 @@
                     {% if job.is_locked %}
                     <span class="badge badge-info">Locked</span>
                     {% elif job.is_expired %}
-                    {{ job.expires_at.strftime('%Y-%m-%d') }} <span class="badge badge-danger ml-1">Expired</span>
+                    <span data-utc="{{ job.expires_at.isoformat() }}Z" data-format="date">{{ job.expires_at.strftime('%Y-%m-%d') }}</span> <span class="badge badge-danger ml-1">Expired</span>
                     {% elif job.is_expiring(7) %}
-                    {{ job.expires_at.strftime('%Y-%m-%d') }} <span class="badge badge-warning ml-1">Soon</span>
+                    <span data-utc="{{ job.expires_at.isoformat() }}Z" data-format="date">{{ job.expires_at.strftime('%Y-%m-%d') }}</span> <span class="badge badge-warning ml-1">Soon</span>
                     {% else %}
-                    {{ job.expires_at.strftime('%Y-%m-%d') }}
+                    <span data-utc="{{ job.expires_at.isoformat() }}Z" data-format="date">{{ job.expires_at.strftime('%Y-%m-%d') }}</span>
                     {% endif %}
                 </span>
             </div>
@@ -327,6 +331,24 @@
                 </div>
             </div>
             {% endif %}
+
+            {# Performance summary row - shown after job completion #}
+            {% if profile and job.status.value in ['deployed', 'complete', 'superseded'] %}
+            <div class="log-progress-summary">
+                <span class="log-progress-summary-icon">✓</span>
+                <span class="log-progress-summary-text">
+                    Complete: {{ "%.1f"|format(profile.total_duration_seconds) }}s total
+                    <span class="log-progress-separator">•</span>
+                    {{ "%.1f"|format(profile.total_bytes / 1024 / 1024) }} MB
+                    <span class="log-progress-separator">•</span>
+                    {% if profile.total_duration_seconds > 0 %}
+                    {{ "%.2f"|format((profile.total_bytes / 1024 / 1024) / profile.total_duration_seconds) }} MB/s avg
+                    {% else %}
+                    — MB/s avg
+                    {% endif %}
+                </span>
+            </div>
+            {% endif %}
         </div>
         {% endif %}
         
@@ -341,7 +363,7 @@
             {% if is_new_block %}
             <div class="log-block {% if log.event_type in ['failed', 'error'] %}log-block--error{% elif log.event_type in ['complete', 'deployed', 'restore_complete', 'atomic_rename_complete', 'atomic_rename_validation_pass'] %}log-block--success{% endif %}">
                 <div class="log-header">
-                    <span class="log-timestamp">{{ log.logged_at.strftime('%H:%M:%S') }}</span>
+                    <span class="log-timestamp" data-utc="{{ log.logged_at.isoformat() }}Z" data-format="time">{{ log.logged_at.strftime('%H:%M:%S') }}</span>
                     <span class="log-task">{{ log.event_type }}</span>
                     {# Special header info for certain event types #}
                     {% if log.event_type == 'post_sql_script_complete' and data is mapping %}
@@ -560,15 +582,50 @@
 
 <script>
 function copyToClipboard(text, btn) {
-    navigator.clipboard.writeText(text).then(function() {
-        // Visual feedback
-        btn.classList.add('copied');
-        setTimeout(function() {
-            btn.classList.remove('copied');
-        }, 1500);
-    }).catch(function(err) {
-        console.error('Failed to copy:', err);
-    });
+    // Try modern clipboard API first (requires HTTPS or localhost)
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(function() {
+            showCopySuccess(btn);
+        }).catch(function(err) {
+            console.error('Clipboard API failed:', err);
+            fallbackCopy(text, btn);
+        });
+    } else {
+        // Fallback for HTTP or older browsers
+        fallbackCopy(text, btn);
+    }
+}
+
+function fallbackCopy(text, btn) {
+    // Create temporary textarea
+    var textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    
+    try {
+        var successful = document.execCommand('copy');
+        if (successful) {
+            showCopySuccess(btn);
+        } else {
+            console.error('Fallback copy failed');
+        }
+    } catch (err) {
+        console.error('Fallback copy error:', err);
+    }
+    
+    document.body.removeChild(textarea);
+}
+
+function showCopySuccess(btn) {
+    btn.classList.add('copied');
+    setTimeout(function() {
+        btn.classList.remove('copied');
+    }, 1500);
 }
 </script>
 

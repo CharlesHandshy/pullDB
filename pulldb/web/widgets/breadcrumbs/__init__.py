@@ -158,6 +158,11 @@ BREADCRUMB_PATHS: dict[str, list[tuple[str, str | None]]] = {
         ("Administration", "/web/admin"),
         ("Audit Logs", None),
     ],
+    # Feature Requests section
+    "feature_requests": [
+        ("Dashboard", "/web/dashboard"),
+        ("Feature Requests", None),
+    ],
     # Profile section
     "profile": [
         ("Dashboard", "/web/dashboard"),
