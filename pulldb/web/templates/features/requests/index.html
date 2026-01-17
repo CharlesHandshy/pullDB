@@ -77,7 +77,7 @@
     color: var(--text-muted);
 }
 
-.status-badge.declined {
+.status-badge.rejected {
     background: var(--bg-danger-subtle);
     color: var(--text-danger);
 }
@@ -393,7 +393,7 @@
             'open': 'Open',
             'in_progress': 'In Progress',
             'complete': 'Complete',
-            'declined': 'Declined'
+            'rejected': 'Rejected'
         };
         return `<span class="status-badge ${val}">${labels[val] || val}</span>`;
     };
@@ -510,7 +510,7 @@
             'open': 'Open',
             'in_progress': 'In Progress',
             'complete': 'Complete',
-            'declined': 'Declined'
+            'rejected': 'Rejected'
         }[row.status] || row.status;
         
         let html = `

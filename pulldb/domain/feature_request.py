@@ -16,7 +16,11 @@ class FeatureRequestStatus(str, Enum):
     OPEN = "open"
     IN_PROGRESS = "in_progress"
     COMPLETE = "complete"
-    DECLINED = "declined"
+    REJECTED = "rejected"
+
+
+# Primary admin UUID - only this user can change feature request status
+PRIMARY_ADMIN_ID = "00000000-0000-0000-0000-000000000002"
 
 
 class FeatureRequest(BaseModel):
@@ -72,4 +76,4 @@ class FeatureRequestStats(BaseModel):
     open: int = 0
     in_progress: int = 0
     complete: int = 0
-    declined: int = 0
+    rejected: int = 0

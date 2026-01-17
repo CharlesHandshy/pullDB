@@ -4106,16 +4106,16 @@ class FeatureRequestCreateRequest(pydantic.BaseModel):
 
 
 class FeatureRequestUpdateRequest(pydantic.BaseModel):
-    """Request to update a feature request (admin only)."""
+    """Request to update a feature request (primary admin only)."""
 
-    status: str | None = None  # open, in_progress, complete, declined
+    status: str | None = None  # open, in_progress, complete, rejected
     admin_response: str | None = pydantic.Field(None, max_length=2000)
 
 
 class VoteRequest(pydantic.BaseModel):
     """Request to cast a vote."""
 
-    vote_value: int = pydantic.Field(..., ge=-1, le=1)  # -1 (down), 0 (remove), 1 (up)
+    vote_value: int = pydantic.Field(..., ge=0, le=1)  # 0 (remove), 1 (vote)
 
 
 class FeatureRequestStatsResponse(pydantic.BaseModel):
@@ -4125,7 +4125,7 @@ class FeatureRequestStatsResponse(pydantic.BaseModel):
     open: int
     in_progress: int
     complete: int
-    declined: int
+    rejected: int
 
 
 def _get_feature_service(state: APIState):
@@ -4150,7 +4150,7 @@ async def get_feature_request_stats(
         open=stats.open,
         in_progress=stats.in_progress,
         complete=stats.complete,
-        declined=stats.declined,
+        rejected=stats.rejected,
     )
 
 
@@ -4288,7 +4288,7 @@ async def update_feature_request(
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid status: {data.status}. Valid values: open, in_progress, complete, declined"
+                detail=f"Invalid status: {data.status}. Valid values: open, in_progress, complete, rejected"
             )
     
     r = await service.update_request(

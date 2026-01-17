@@ -52,7 +52,7 @@ class FeatureRequestService:
                 SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open_count,
                 SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_count,
                 SUM(CASE WHEN status = 'complete' THEN 1 ELSE 0 END) as complete_count,
-                SUM(CASE WHEN status = 'declined' THEN 1 ELSE 0 END) as declined_count
+                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected_count
             FROM feature_requests
         """
         with self.db_pool.connection() as conn:
@@ -66,7 +66,7 @@ class FeatureRequestService:
                         open=row[1] or 0,
                         in_progress=row[2] or 0,
                         complete=row[3] or 0,
-                        declined=row[4] or 0,
+                        rejected=row[4] or 0,
                     )
                 return FeatureRequestStats()
             finally:
@@ -337,8 +337,8 @@ class FeatureRequestService:
             updates.append("status = %s")
             params.append(data.status.value)
             
-            # Set completed_at when marking complete/declined
-            if data.status in (FeatureRequestStatus.COMPLETE, FeatureRequestStatus.DECLINED):
+            # Set completed_at when marking complete/rejected
+            if data.status in (FeatureRequestStatus.COMPLETE, FeatureRequestStatus.REJECTED):
                 updates.append("completed_at = %s")
                 params.append(datetime.now(UTC))
             else:

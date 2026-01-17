@@ -31,7 +31,7 @@ async def requests_page(
         "open": 0,
         "in_progress": 0,
         "complete": 0,
-        "declined": 0,
+        "rejected": 0,
     }
     
     try:
@@ -42,7 +42,7 @@ async def requests_page(
             "open": stats_obj.open,
             "in_progress": stats_obj.in_progress,
             "complete": stats_obj.complete,
-            "declined": stats_obj.declined,
+            "rejected": stats_obj.rejected,
         }
     except Exception:
         pass
@@ -236,15 +236,19 @@ async def update_request_api(
     request_id: str,
     request: Request,
     state: Any = Depends(get_api_state),
-    user: User = Depends(require_login),  # We'll check admin inside
+    user: User = Depends(require_login),  # We'll check primary admin inside
 ) -> dict:
-    """Update a feature request (admin only)."""
-    from pulldb.domain.feature_request import FeatureRequestStatus, FeatureRequestUpdate
+    """Update a feature request (primary admin only)."""
+    from pulldb.domain.feature_request import (
+        FeatureRequestStatus,
+        FeatureRequestUpdate,
+        PRIMARY_ADMIN_ID,
+    )
     from pulldb.worker.feature_request_service import FeatureRequestService
     
-    # Check admin
-    if user.role != "admin":
-        return {"error": "Admin access required"}
+    # Check primary admin - only the first installed admin can change status
+    if user.user_id != PRIMARY_ADMIN_ID:
+        return {"error": "Only the primary administrator can update feature request status"}
     
     try:
         body = await request.json()
