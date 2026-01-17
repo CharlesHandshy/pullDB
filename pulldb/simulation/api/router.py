@@ -23,7 +23,7 @@ from pulldb.simulation.core.scenarios import (
     ScenarioType,
     get_scenario_manager,
 )
-from pulldb.simulation.core.state import get_simulation_state, reset_simulation
+from pulldb.simulation.core.state import SimulationState, get_simulation_state, reset_simulation
 
 
 router = APIRouter(prefix="/simulation", tags=["simulation"])
@@ -205,7 +205,11 @@ async def activate_scenario(
 
     Resets simulation state and applies the specified scenario configuration,
     including S3 fixtures and command configurations.
+    Also seeds the 3 dev users (devuser, devadmin, devmanager) with auth credentials.
+    If scenario has initial_jobs > 0, creates queued jobs for the dev user.
     """
+    from pulldb.simulation import seed_dev_scenario
+    
     manager = get_scenario_manager()
 
     # Validate scenario type
@@ -219,11 +223,19 @@ async def activate_scenario(
             f"Valid types: {valid_types}",
         ) from None
 
-    # Activate scenario
+    # Activate scenario (this calls reset_simulation())
     scenario = manager.activate_scenario(scenario_type)
 
-    # Count S3 fixtures loaded
+    # Seed dev users and auth credentials
     state = get_simulation_state()
+    seed_dev_scenario(state, "lean")  # Use lean to get 3 basic users
+    _seed_auth_credentials(state)
+
+    # Create initial jobs if scenario requires them
+    if scenario.initial_jobs > 0:
+        _seed_scenario_jobs(state, scenario.initial_jobs)
+
+    # Count S3 fixtures loaded
     with state.lock:
         s3_fixtures = sum(len(keys) for keys in state.s3_buckets.values())
 
@@ -233,6 +245,82 @@ async def activate_scenario(
         scenario_name=scenario.name,
         s3_fixtures_loaded=s3_fixtures,
     )
+
+
+def _seed_auth_credentials(state: SimulationState) -> None:
+    """Seed auth credentials for dev users.
+    
+    Password: PullDB_Dev2025! (bcrypt hash)
+    """
+    # Pre-computed bcrypt hash for "PullDB_Dev2025!"
+    test_hash = "$2b$12$XnisilncYSnbIvEinwVYTePMF/DMiVUwpUSv8BuOWSlPH5sRam.zG"
+    
+    with state.lock:
+        for user_id in ["usr-001", "usr-002", "usr-003"]:
+            state.auth_credentials[user_id] = {
+                "password_hash": test_hash,
+                "totp_secret": None,
+                "failed_attempts": 0,
+                "locked_until": None,
+            }
+
+
+def _seed_scenario_jobs(state: SimulationState, count: int) -> None:
+    """Seed queued jobs for scenarios with initial_jobs > 0.
+    
+    Creates jobs owned by devuser (usr-001) in QUEUED status.
+    """
+    import uuid
+    from datetime import UTC, timedelta
+    
+    from pulldb.domain.models import Job, JobEvent, JobStatus
+    
+    with state.lock:
+        for i in range(count):
+            job_id = str(uuid.uuid4())
+            now = datetime.now(UTC)
+            
+            # Create job owned by devuser
+            target = f"devusracme{i+1}"
+            staging_name = f"{target}_{job_id.replace('-', '')[:12]}"
+            
+            job = Job(
+                id=job_id,
+                target=target,
+                dbhost="db1.pulldb.test",
+                status=JobStatus.QUEUED,
+                owner_user_id="usr-001",
+                owner_username="devuser",
+                owner_user_code="devusr",
+                submitted_at=now - timedelta(minutes=5 * (i + 1)),
+                started_at=None,
+                completed_at=None,
+                worker_id=None,
+                error_detail=None,
+                staging_name=staging_name,
+                staging_cleaned_at=None,
+                current_operation=None,
+                options_json={
+                    "customer": f"acme{i+1}",
+                    "backup_env": "prd",
+                    "s3_key": f"s3://pulldb-backups/prd/acme{i+1}/latest.xbstream.zst",
+                },
+                custom_target=False,
+                expires_at=None,
+                locked_at=None,
+                locked_by=None,
+            )
+            state.jobs[job_id] = job
+            
+            # Create initial "created" event
+            event = JobEvent(
+                id=len(state.job_events) + 1,
+                job_id=job_id,
+                event_type="created",
+                detail="Job queued",
+                logged_at=job.submitted_at,
+            )
+            state.job_events.append(event)
 
 
 @router.get("/events", response_model=EventHistoryResponse)

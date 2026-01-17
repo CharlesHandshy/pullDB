@@ -12,6 +12,7 @@ from pulldb.domain.errors import (
     JobExecutionError,
     MyLoaderError,
     PostSQLError,
+    TargetCollisionError,
 )
 
 
@@ -183,3 +184,59 @@ def test_error_can_be_raised() -> None:
 
     assert "Insufficient space" in str(exc_info.value)
     assert exc_info.value.detail["job_id"] == "test"
+
+
+# ---------------------------------------------------------------------------
+# TargetCollisionError Tests
+# ---------------------------------------------------------------------------
+
+
+def test_target_collision_error_external_db() -> None:
+    """TargetCollisionError provides solutions for external database collision."""
+    error = TargetCollisionError(
+        job_id="abc123",
+        target="customerdb",
+        dbhost="db-host-1.example.com",
+        collision_type="external_db",
+    )
+
+    assert error.detail["job_id"] == "abc123"
+    assert error.detail["target"] == "customerdb"
+    assert error.detail["dbhost"] == "db-host-1.example.com"
+    assert error.detail["collision_type"] == "external_db"
+    assert "NOT created by pullDB" in str(error)
+    assert any("different target" in sol for sol in error.solutions)
+
+
+def test_target_collision_error_owner_mismatch() -> None:
+    """TargetCollisionError provides solutions for owner mismatch."""
+    error = TargetCollisionError(
+        job_id="abc123",
+        target="jdoecustomer",
+        dbhost="db-host-1.example.com",
+        collision_type="owner_mismatch",
+        owner_info="jdoe",
+    )
+
+    assert error.detail["collision_type"] == "owner_mismatch"
+    assert error.detail["owner"] == "jdoe"
+    assert "owned by user 'jdoe'" in str(error)
+    assert any("Contact user 'jdoe'" in sol for sol in error.solutions)
+
+
+def test_target_collision_error_inheritance() -> None:
+    """TargetCollisionError inherits from JobExecutionError."""
+    assert issubclass(TargetCollisionError, JobExecutionError)
+
+
+def test_target_collision_error_can_be_raised() -> None:
+    """TargetCollisionError can be raised and caught."""
+    with pytest.raises(TargetCollisionError) as exc_info:
+        raise TargetCollisionError(
+            job_id="test",
+            target="externaldb",
+            dbhost="localhost",
+            collision_type="external_db",
+        )
+
+    assert exc_info.value.detail["target"] == "externaldb"

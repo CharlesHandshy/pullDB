@@ -9,7 +9,7 @@ import os
 import time
 import typing as t
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.logging import get_logger
@@ -99,8 +99,24 @@ class DiscoveryService:
             return self._search_customers_simulation(query, limit)
         return self._search_customers_s3(query, limit)
 
-    def _search_customers_simulation(self, query: str, limit: int) -> list[str]:
-        mock_customers = [
+    def _get_simulation_customers(self) -> list[str]:
+        """Get the list of mock customers for simulation mode.
+        
+        Returns LEAN_CUSTOMERS if in lean scenario, otherwise full list.
+        """
+        try:
+            from pulldb.simulation import get_simulation_state
+            state = get_simulation_state()
+            # Check if lean scenario (has limited customers via settings marker)
+            if state.settings.get("maintenance_mode") == "false" and len(state.hosts) == 1:
+                # Lean mode - use LEAN_CUSTOMERS
+                from pulldb.simulation.core.seeding import LEAN_CUSTOMERS
+                return list(LEAN_CUSTOMERS)
+        except Exception:
+            pass
+        
+        # Full simulation - use standard customer list
+        return [
             "actionpest",
             "actionplumbing",
             "acmehvac",
@@ -111,7 +127,20 @@ class DiscoveryService:
             "fastfix",
             "greenscapes",
             "homeservices",
+            "techcorp",
+            "globalretail",
+            "healthnet",
+            "autoparts",
+            "buildpro",
+            "foodmart",
+            "energyco",
+            "finserve",
+            "edulearn",
+            "medisys",
         ]
+
+    def _search_customers_simulation(self, query: str, limit: int) -> list[str]:
+        mock_customers = self._get_simulation_customers()
         query_lower = query.lower()
         # Filter: only include customers with lowercase letters only (a-z)
         matches = [c for c in mock_customers 
@@ -161,18 +190,7 @@ class DiscoveryService:
         return self._search_customers_pattern_s3(pattern, limit)
 
     def _search_customers_pattern_simulation(self, pattern: str, limit: int) -> list[str]:
-        mock_customers = [
-            "actionpest",
-            "actionplumbing",
-            "acmehvac",
-            "bigcorp",
-            "cleanpro",
-            "deltaplumbing",
-            "eliteelectric",
-            "fastfix",
-            "greenscapes",
-            "homeservices",
-        ]
+        mock_customers = self._get_simulation_customers()
         matching = [
             c for c in mock_customers
             if fnmatch.fnmatch(c.lower(), pattern.lower())
@@ -390,13 +408,19 @@ class DiscoveryService:
     ) -> BackupSearchResult:
         all_results = []
         # Generate more mock results for pagination testing
+        base_date = datetime.now()
         for i in range(20):
-            ts = datetime.now()
+            # Create timestamps going back in time
+            ts = base_date - timedelta(days=i)
             env = "staging" if i % 2 == 0 else "prod"
             if environment not in ("both", env):
                 continue
 
             size_bytes = 1024 * 1024 * 1024 + i * 100 * 1024 * 1024  # ~1GB
+            # Generate valid backup key format: {customer}/daily_mydumper_{customer}_{timestamp}
+            timestamp_str = ts.strftime("%Y-%m-%dT%H-%M-%SZ")
+            day_abbr = ts.strftime("%a")
+            backup_key = f"s3://mock-bucket/daily/{env}/{customer}/daily_mydumper_{customer}_{timestamp_str}_{day_abbr}_dbimp.tar"
             all_results.append(
                 BackupInfo(
                     customer=customer,
@@ -405,7 +429,7 @@ class DiscoveryService:
                     size_mb=round(size_bytes / (1024 * 1024), 1),
                     size_display=format_size(size_bytes),
                     environment=env,
-                    key=f"mock/path/{customer}_{i}.sql.gz",
+                    key=backup_key,
                     bucket="mock-bucket",
                 )
             )

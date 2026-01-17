@@ -21,6 +21,7 @@ from pulldb.domain.errors import (
     CancellationError,
     DownloadError,
     ExtractionError,
+    TargetCollisionError,
 )
 from pulldb.domain.models import Job, JobStatus
 from pulldb.worker.executor import (
@@ -31,6 +32,7 @@ from pulldb.worker.executor import (
     build_lookup_targets_for_location,
     derive_backup_lookup_target,
     extract_tar_archive,
+    pre_flight_verify_target_overwrite_safe,
 )
 
 
@@ -452,3 +454,155 @@ class TestWorkerExecutorHooks:
         assert hooks.discover_backup is custom_discover
         assert hooks.download_backup is custom_download
         assert hooks.extract_archive is custom_extract
+
+
+# ---------------------------------------------------------------------------
+# pre_flight_verify_target_overwrite_safe Tests
+# ---------------------------------------------------------------------------
+
+
+class TestPreFlightVerifyTargetOverwriteSafe:
+    """Tests for pre_flight_verify_target_overwrite_safe function.
+    
+    This function runs BEFORE expensive operations (download, extract, myloader)
+    to detect external database collisions early.
+    """
+
+    @pytest.fixture
+    def sample_job(self) -> MagicMock:
+        """Create sample job mock with overwrite enabled."""
+        job = MagicMock(spec=Job)
+        job.id = SAMPLE_JOB_ID
+        job.target = SAMPLE_TARGET
+        job.dbhost = "db-host-1.example.com"
+        job.owner_user_code = SAMPLE_USER_CODE
+        job.options_json = {"overwrite": "true"}
+        return job
+
+    @pytest.fixture
+    def mock_credentials(self) -> MagicMock:
+        """Create mock MySQL credentials."""
+        creds = MagicMock()
+        creds.host = "db-host-1.example.com"
+        creds.port = 3306
+        creds.username = "admin"
+        creds.password = "secret"
+        return creds
+
+    def test_skips_when_overwrite_false(
+        self, sample_job: MagicMock, mock_credentials: MagicMock
+    ) -> None:
+        """Skips check when overwrite is not enabled."""
+        sample_job.options_json = {"overwrite": "false"}
+
+        # Should return without connecting to DB
+        with patch("mysql.connector.connect") as mock_connect:
+            pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
+            mock_connect.assert_not_called()
+
+    def test_skips_when_overwrite_not_set(
+        self, sample_job: MagicMock, mock_credentials: MagicMock
+    ) -> None:
+        """Skips check when overwrite is not set."""
+        sample_job.options_json = {}
+
+        with patch("mysql.connector.connect") as mock_connect:
+            pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
+            mock_connect.assert_not_called()
+
+    def test_passes_when_target_does_not_exist(
+        self, sample_job: MagicMock, mock_credentials: MagicMock
+    ) -> None:
+        """Passes when target database does not exist."""
+        with patch("mysql.connector.connect") as mock_connect:
+            mock_conn = MagicMock()
+            mock_cursor = MagicMock()
+            mock_connect.return_value = mock_conn
+            mock_conn.cursor.return_value = mock_cursor
+            # SHOW DATABASES returns no results
+            mock_cursor.fetchone.return_value = None
+
+            # Should not raise
+            pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
+
+    def test_passes_when_target_has_pulldb_table_same_owner(
+        self, sample_job: MagicMock, mock_credentials: MagicMock
+    ) -> None:
+        """Passes when target is pullDB-managed and owned by same user."""
+        with patch("mysql.connector.connect") as mock_connect:
+            mock_conn = MagicMock()
+            mock_cursor = MagicMock()
+            mock_connect.return_value = mock_conn
+            mock_conn.cursor.return_value = mock_cursor
+            
+            # First fetchone: SHOW DATABASES - DB exists
+            # Second fetchone: SHOW TABLES LIKE 'pullDB' - table exists
+            # Third fetchone: SELECT owner_user_code - returns job owner
+            mock_cursor.fetchone.side_effect = [
+                (SAMPLE_TARGET,),  # DB exists
+                ("pullDB",),       # pullDB table exists
+                (SAMPLE_USER_CODE,),  # Same owner
+            ]
+
+            # Should not raise
+            pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
+
+    def test_raises_when_external_db(
+        self, sample_job: MagicMock, mock_credentials: MagicMock
+    ) -> None:
+        """Raises TargetCollisionError when target is external database."""
+        with patch("mysql.connector.connect") as mock_connect:
+            mock_conn = MagicMock()
+            mock_cursor = MagicMock()
+            mock_connect.return_value = mock_conn
+            mock_conn.cursor.return_value = mock_cursor
+            
+            # First fetchone: SHOW DATABASES - DB exists
+            # Second fetchone: SHOW TABLES LIKE 'pullDB' - no table (external DB)
+            mock_cursor.fetchone.side_effect = [
+                (SAMPLE_TARGET,),  # DB exists
+                None,              # No pullDB table - external DB
+            ]
+
+            with pytest.raises(TargetCollisionError) as exc_info:
+                pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
+            
+            assert exc_info.value.detail["collision_type"] == "external_db"
+            assert exc_info.value.detail["target"] == SAMPLE_TARGET
+
+    def test_raises_when_owner_mismatch(
+        self, sample_job: MagicMock, mock_credentials: MagicMock
+    ) -> None:
+        """Raises TargetCollisionError when target owned by different user."""
+        with patch("mysql.connector.connect") as mock_connect:
+            mock_conn = MagicMock()
+            mock_cursor = MagicMock()
+            mock_connect.return_value = mock_conn
+            mock_conn.cursor.return_value = mock_cursor
+            
+            # First fetchone: SHOW DATABASES - DB exists
+            # Second fetchone: SHOW TABLES LIKE 'pullDB' - table exists
+            # Third fetchone: SELECT owner_user_code - returns different owner
+            mock_cursor.fetchone.side_effect = [
+                (SAMPLE_TARGET,),  # DB exists
+                ("pullDB",),       # pullDB table exists
+                ("jsmith",),       # Different owner
+            ]
+
+            with pytest.raises(TargetCollisionError) as exc_info:
+                pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
+            
+            assert exc_info.value.detail["collision_type"] == "owner_mismatch"
+            assert exc_info.value.detail["owner"] == "jsmith"
+
+    def test_continues_on_connection_failure(
+        self, sample_job: MagicMock, mock_credentials: MagicMock
+    ) -> None:
+        """Continues with warning when cannot connect to verify."""
+        import mysql.connector
+
+        with patch("mysql.connector.connect") as mock_connect:
+            mock_connect.side_effect = mysql.connector.Error("Connection refused")
+
+            # Should not raise - logs warning and proceeds
+            pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)

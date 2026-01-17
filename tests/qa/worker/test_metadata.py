@@ -80,16 +80,22 @@ class TestMetadataSpec:
         now = datetime.now(UTC)
         spec = MetadataSpec(
             job_id=SAMPLE_JOB_ID,
+            owner_user_id="00000000-0000-0000-0000-000000000001",
+            owner_user_code="TSTCOD",
             owner_username="testuser",
             target_db=SAMPLE_TARGET,
             backup_filename="backup-2025-01-15.tar",
             restore_started_at=now,
             restore_completed_at=now,
+            custom_target=False,
             post_sql_result=None,
         )
         assert spec.job_id == SAMPLE_JOB_ID
         assert spec.owner_username == "testuser"
         assert spec.target_db == SAMPLE_TARGET
+        assert spec.owner_user_id == "00000000-0000-0000-0000-000000000001"
+        assert spec.owner_user_code == "TSTCOD"
+        assert spec.custom_target is False
 
     def test_with_post_sql_result(self) -> None:
         """MetadataSpec can include post_sql_result."""
@@ -110,15 +116,19 @@ class TestMetadataSpec:
         )
         spec = MetadataSpec(
             job_id=SAMPLE_JOB_ID,
+            owner_user_id="00000000-0000-0000-0000-000000000001",
+            owner_user_code="TSTCOD",
             owner_username="testuser",
             target_db=SAMPLE_TARGET,
             backup_filename="backup.tar",
             restore_started_at=now,
             restore_completed_at=now,
+            custom_target=True,
             post_sql_result=post_sql,
         )
         assert spec.post_sql_result is not None
         assert len(spec.post_sql_result.scripts_executed) == 1
+        assert spec.custom_target is True
 
 
 # ---------------------------------------------------------------------------
@@ -147,11 +157,14 @@ class TestInjectMetadataTable:
         now = datetime.now(UTC)
         return MetadataSpec(
             job_id=SAMPLE_JOB_ID,
+            owner_user_id="00000000-0000-0000-0000-000000000001",
+            owner_user_code="TSTCOD",
             owner_username="testuser",
             target_db=SAMPLE_TARGET,
             backup_filename="backup-2025-01-15.tar",
             restore_started_at=now,
             restore_completed_at=now,
+            custom_target=False,
             post_sql_result=None,
         )
 

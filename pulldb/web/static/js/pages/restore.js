@@ -292,7 +292,7 @@
         
         // Load backups
         loadBackups();
-        updateTargetPreview();
+        updateTargetCallout();
         updateSummary();
     }
     
@@ -327,7 +327,7 @@
         
         clearBackupSelection();
         showBackupWaiting();
-        hideTargetPreview();
+        hideTargetCallout();
         updateSummary();
     }
     
@@ -436,7 +436,8 @@
         }
         backupInput.value = key;
         
-        // Show target callout
+        // Show target callout and target preview section
+        updateTargetCallout();
         updateTargetCallout();
         updateSummary();
     };
@@ -481,29 +482,9 @@
     
     function updateTargetCallout() {
         const callout = $('target-callout');
+        const autoPreview = $('auto-target-preview');
         if (!callout || !selectedCustomer || !selectedBackup) {
             hide(callout);
-            return;
-        }
-        
-        const userCode = getUserCode();
-        const suffix = $('suffix') ? $('suffix').value : '';
-        
-        const userCodeEl = $('callout-user-code');
-        const customerEl = $('callout-customer');
-        const suffixEl = $('callout-suffix');
-        
-        if (userCodeEl) userCodeEl.textContent = userCode;
-        if (customerEl) customerEl.textContent = selectedCustomer;
-        if (suffixEl) suffixEl.textContent = suffix;
-        
-        show(callout);
-    }
-    
-    function updateTargetPreview() {
-        const preview = $('target-preview');
-        if (!preview || !selectedCustomer) {
-            hide(preview);
             return;
         }
         
@@ -514,19 +495,23 @@
         const normResult = normalizeCustomerName(selectedCustomer);
         const displayCustomer = normResult.normalized;
         
-        const userCodeEl = $('preview-user-code');
-        const customerEl = $('preview-customer');
-        const suffixEl = $('preview-suffix');
+        const userCodeEl = $('callout-user-code');
+        const customerEl = $('callout-customer');
+        const suffixEl = $('callout-suffix');
         
         if (userCodeEl) userCodeEl.textContent = userCode;
         if (customerEl) customerEl.textContent = displayCustomer;
         if (suffixEl) suffixEl.textContent = suffix;
         
-        show(preview);
+        // Show callout, but auto preview only if not in custom mode
+        show(callout);
+        if (!customTargetEnabled && autoPreview) {
+            show(autoPreview);
+        }
     }
     
-    function hideTargetPreview() {
-        hide($('target-preview'));
+    function hideTargetCallout() {
+        hide($('target-callout'));
     }
 
     // =============================================================================
@@ -543,9 +528,17 @@
         }
         
         if (selectedCustomer && selectedBackup) {
-            const userCode = getUserCode();
-            const suffix = $('suffix') ? $('suffix').value : '';
-            const target = userCode + selectedCustomer + suffix;
+            const customTarget = getCustomTarget();
+            let target;
+            
+            if (customTarget) {
+                target = customTarget;
+            } else {
+                const userCode = getUserCode();
+                const suffix = $('suffix') ? $('suffix').value : '';
+                target = userCode + selectedCustomer + suffix;
+            }
+            
             summary.innerHTML = `Ready to restore <strong>${escapeHtml(selectedCustomer)}</strong> as <strong>${escapeHtml(target)}</strong>`;
         } else if (selectedCustomer) {
             summary.textContent = 'Select a backup to continue';
@@ -579,18 +572,102 @@
                 if (qaInput) qaInput.value = tabId === 'qatemplate' ? 'true' : 'false';
                 isQaMode = tabId === 'qatemplate';
                 
+                // Reset BOTH forms on tab switch
+                resetCustomerForm();
+                resetQaForm();
+                
                 // Handle mode switch
                 if (isQaMode) {
                     const customerHidden = $('customer');
                     if (customerHidden) customerHidden.value = 'qatemplate';
+                    // Disable Customer overwrite, enable QA overwrite
+                    const customerOverwrite = $('overwrite');
+                    const qaOverwrite = $('qa-overwrite');
+                    if (customerOverwrite) customerOverwrite.disabled = true;
+                    if (qaOverwrite) qaOverwrite.disabled = false;
                     loadQaBackups();
                 } else {
                     const customerHidden = $('customer');
                     if (customerHidden) customerHidden.value = selectedCustomer;
+                    // Enable Customer overwrite, disable QA overwrite
+                    const customerOverwrite = $('overwrite');
+                    const qaOverwrite = $('qa-overwrite');
+                    if (customerOverwrite) customerOverwrite.disabled = false;
+                    if (qaOverwrite) qaOverwrite.disabled = true;
                     updateSummary();
                 }
             });
         });
+    }
+    
+    function resetCustomerForm() {
+        // Clear customer selection
+        selectedCustomer = '';
+        const customerHidden = $('customer');
+        if (customerHidden) customerHidden.value = '';
+        
+        const searchInput = $('customer-search');
+        if (searchInput) searchInput.value = '';
+        
+        show($('customer-search-mode'));
+        hide($('customer-selected-mode'));
+        updateSearchStatus('');
+        hide($('customer-normalization-warning'));
+        
+        // Clear backup selection
+        selectedBackup = null;
+        const backupInput = $('backup_key');
+        if (backupInput) backupInput.value = '';
+        hide($('backup-selected-mode'));
+        
+        const backupList = $('backup-list');
+        if (backupList) {
+            backupList.querySelectorAll('tr.is-selected').forEach(tr => tr.classList.remove('is-selected'));
+        }
+        
+        // Hide target callout and reset overwrite
+        hide($('target-callout'));
+        const overwriteCheckbox = $('overwrite');
+        const overwriteWarning = $('overwrite-warning');
+        if (overwriteCheckbox) overwriteCheckbox.checked = false;
+        if (overwriteWarning) overwriteWarning.classList.remove('is-visible');
+        
+        // Reset custom target
+        const customToggle = $('custom-target-toggle');
+        const autoPreview = $('auto-target-preview');
+        const customInput = $('custom_target');
+        if (customToggle) customToggle.checked = false;
+        if (autoPreview) show(autoPreview);
+        if (customInput) {
+            hide(customInput);
+            customInput.value = '';
+        }
+        
+        showBackupWaiting();
+        updateSummary();
+    }
+    
+    function resetQaForm() {
+        // Clear QA backup selection
+        const backupInput = $('backup_key');
+        if (backupInput) backupInput.value = '';
+        
+        hide($('selected-qa-backup-display'));
+        hide($('qa-target-callout'));
+        show($('qa-backup-search-container'));
+        
+        const qaList = $('qa-backup-list');
+        if (qaList) {
+            qaList.querySelectorAll('tr.is-selected').forEach(tr => tr.classList.remove('is-selected'));
+        }
+        
+        // Reset QA overwrite
+        const qaOverwriteCheckbox = $('qa-overwrite');
+        const qaOverwriteWarning = $('qa-overwrite-warning');
+        if (qaOverwriteCheckbox) qaOverwriteCheckbox.checked = false;
+        if (qaOverwriteWarning) qaOverwriteWarning.classList.remove('is-visible');
+        
+        updateQaSummary();
     }
 
     // =============================================================================
@@ -714,7 +791,7 @@
         
         suffixInput.addEventListener('input', (e) => {
             e.target.value = e.target.value.toLowerCase().replace(/[^a-z]/g, '');
-            updateTargetPreview();
+            updateTargetCallout();
             updateTargetCallout();
             if (isQaMode) {
                 updateQaSummary();
@@ -725,18 +802,132 @@
     }
     
     function initOverwriteCheckbox() {
+        // Customer Database overwrite
         const checkbox = $('overwrite');
         const warning = $('overwrite-warning');
         
-        if (!checkbox) return;
+        if (checkbox && warning) {
+            checkbox.addEventListener('change', () => {
+                warning.classList.toggle('is-visible', checkbox.checked);
+            });
+            
+            if (checkbox.checked) {
+                warning.classList.add('is-visible');
+            }
+        }
         
-        checkbox.addEventListener('change', () => {
-            if (warning) warning.classList.toggle('is-visible', checkbox.checked);
+        // QA Template overwrite
+        const qaCheckbox = $('qa-overwrite');
+        const qaWarning = $('qa-overwrite-warning');
+        
+        if (qaCheckbox && qaWarning) {
+            qaCheckbox.addEventListener('change', () => {
+                qaWarning.classList.toggle('is-visible', qaCheckbox.checked);
+            });
+            
+            if (qaCheckbox.checked) {
+                qaWarning.classList.add('is-visible');
+            }
+            
+            // Disable QA overwrite by default (Customer Database tab is active on load)
+            qaCheckbox.disabled = true;
+        }
+    }
+
+    // =============================================================================
+    // Custom Target
+    // =============================================================================
+    
+    let customTargetEnabled = false;
+    
+    function initCustomTarget() {
+        const toggle = $('custom-target-toggle');
+        const autoPreview = $('auto-target-preview');
+        const input = $('custom_target');
+        const suffixGroup = $('suffix-group');
+        const suffixInput = $('suffix');
+        const errorEl = $('custom-target-error');
+        
+        if (!toggle || !input) return;
+        
+        // Check if we have an initial custom target from form preservation
+        if (config.initialCustomTarget) {
+            toggle.checked = true;
+            customTargetEnabled = true;
+            show(input);
+            hide(autoPreview);
+            if (suffixGroup) hide(suffixGroup);
+            if (suffixInput) suffixInput.value = '';
+            input.value = config.initialCustomTarget;
+        }
+        
+        // Toggle handler
+        toggle.addEventListener('change', () => {
+            customTargetEnabled = toggle.checked;
+            
+            if (customTargetEnabled) {
+                show(input);
+                hide(autoPreview);
+                if (suffixGroup) hide(suffixGroup);
+                if (suffixInput) suffixInput.value = '';  // Clear suffix
+                input.focus();
+            } else {
+                hide(input);
+                show(autoPreview);
+                if (suffixGroup) show(suffixGroup);
+                input.value = '';  // Clear custom target
+                updateTargetCallout();  // Refresh auto-generated preview
+            }
+            updateSummary();
         });
         
-        if (checkbox.checked && warning) {
-            warning.classList.add('is-visible');
+        // Input validation and preview
+        input.addEventListener('input', (e) => {
+            // Force lowercase letters only
+            e.target.value = e.target.value.toLowerCase().replace(/[^a-z]/g, '');
+            
+            validateCustomTarget();
+            updateSummary();
+        });
+    }
+    
+    function validateCustomTarget() {
+        const input = $('custom_target');
+        const errorEl = $('custom-target-error');
+        
+        if (!input || !customTargetEnabled) return true;
+        
+        const value = input.value;
+        
+        if (value.length === 0) {
+            hide(errorEl);
+            return true;  // Empty is OK (optional field)
         }
+        
+        if (!/^[a-z]+$/.test(value)) {
+            if (errorEl) {
+                errorEl.textContent = 'Only lowercase letters (a-z) are allowed.';
+                show(errorEl);
+            }
+            return false;
+        }
+        
+        if (value.length > 51) {
+            if (errorEl) {
+                errorEl.textContent = 'Maximum 51 characters allowed.';
+                show(errorEl);
+            }
+            return false;
+        }
+        
+        hide(errorEl);
+        return true;
+    }
+    
+    function getCustomTarget() {
+        if (!customTargetEnabled) return null;
+        const input = $('custom_target');
+        return input && input.value ? input.value : null;
     }
 
     // =============================================================================
@@ -748,7 +939,7 @@
         if (!selector) return;
         
         selector.addEventListener('change', () => {
-            updateTargetPreview();
+            updateTargetCallout();
             updateTargetCallout();
             updateSummary();
         });
@@ -796,6 +987,18 @@
                 }
             }
             
+            // Validate custom target if enabled
+            if (customTargetEnabled) {
+                const customInput = $('custom_target');
+                if (customInput && customInput.value) {
+                    if (!validateCustomTarget()) {
+                        e.preventDefault();
+                        alert('Please fix the custom target name error');
+                        return;
+                    }
+                }
+            }
+            
             // Confirm overwrite - async handler requires preventing default and manual submit
             if (overwrite && overwrite.checked) {
                 e.preventDefault();
@@ -838,6 +1041,7 @@
         initQaDatePicker();
         initSuffixInput();
         initOverwriteCheckbox();
+        initCustomTarget();
         initUserSelector();
         initFormValidation();
         

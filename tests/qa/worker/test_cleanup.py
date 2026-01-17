@@ -19,6 +19,7 @@ from pulldb.worker.cleanup import (
     STAGING_PATTERN,
     CleanupCandidate,
     CleanupResult,
+    JobDeleteResult,
     OrphanCandidate,
     OrphanReport,
     ScheduledCleanupSummary,
@@ -26,6 +27,7 @@ from pulldb.worker.cleanup import (
     _drop_database,
     _list_databases,
     _parse_staging_name,
+    delete_job_databases,
 )
 
 
@@ -347,3 +349,107 @@ class TestDropDatabase:
 
         assert result is False
         mock_exists.assert_called_once_with(mock_credentials, "testdb_abcdef123456")
+
+
+# ---------------------------------------------------------------------------
+# delete_job_databases Tests
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteJobDatabases:
+    """Tests for delete_job_databases function.
+    
+    Focus on the custom_target parameter which skips user_code validation.
+    """
+
+    @pytest.fixture
+    def mock_host_repo(self) -> MagicMock:
+        """Create mock host repository."""
+        mock_repo = MagicMock()
+        mock_creds = MagicMock()
+        mock_creds.host = SAMPLE_DBHOST
+        mock_creds.port = 3306
+        mock_creds.username = "admin"
+        mock_creds.password = "secret"
+        mock_repo.get_host_credentials_for_maintenance.return_value = mock_creds
+        return mock_repo
+
+    def test_rejects_auto_target_without_user_code(
+        self, mock_host_repo: MagicMock
+    ) -> None:
+        """Rejects auto-generated target that doesn't contain owner user_code."""
+        # Target "myspecialdb" does NOT contain user_code "charle"
+        result = delete_job_databases(
+            job_id=SAMPLE_JOB_ID_PREFIX,
+            staging_name="myspecialdb_abcdef123456",
+            target_name="myspecialdb",  # Does NOT contain "charle"
+            owner_user_code="charle",
+            dbhost=SAMPLE_DBHOST,
+            host_repo=mock_host_repo,
+            custom_target=False,  # Auto-generated target
+        )
+
+        assert result.error is not None
+        assert "does not contain" in result.error
+        assert "charle" in result.error
+
+    def test_allows_custom_target_without_user_code(
+        self, mock_host_repo: MagicMock
+    ) -> None:
+        """Allows custom target that doesn't contain owner user_code."""
+        with (
+            patch("pulldb.worker.cleanup._database_exists", return_value=False),
+        ):
+            # Target "myspecialdb" does NOT contain user_code "charle"
+            # But with custom_target=True, this should be allowed
+            result = delete_job_databases(
+                job_id=SAMPLE_JOB_ID_PREFIX,
+                staging_name="myspecialdb_abcdef123456",
+                target_name="myspecialdb",  # Custom target - no user_code prefix
+                owner_user_code="charle",
+                dbhost=SAMPLE_DBHOST,
+                host_repo=mock_host_repo,
+                custom_target=True,  # Custom target - skip user_code check
+            )
+
+        assert result.error is None  # No error - allowed
+
+    def test_allows_auto_target_with_user_code(
+        self, mock_host_repo: MagicMock
+    ) -> None:
+        """Allows auto-generated target that contains owner user_code."""
+        with (
+            patch("pulldb.worker.cleanup._database_exists", return_value=False),
+        ):
+            # Target "charleqatemplate" contains user_code "charle"
+            result = delete_job_databases(
+                job_id=SAMPLE_JOB_ID_PREFIX,
+                staging_name="charleqatemplate_abcdef123456",
+                target_name="charleqatemplate",  # Contains "charle"
+                owner_user_code="charle",
+                dbhost=SAMPLE_DBHOST,
+                host_repo=mock_host_repo,
+                custom_target=False,  # Auto-generated target
+            )
+
+        assert result.error is None  # No error - user_code present
+
+    def test_skip_database_drops_returns_not_existed(
+        self, mock_host_repo: MagicMock
+    ) -> None:
+        """skip_database_drops flag returns without checking databases."""
+        result = delete_job_databases(
+            job_id=SAMPLE_JOB_ID_PREFIX,
+            staging_name="charleqatemplate_abcdef123456",
+            target_name="charleqatemplate",
+            owner_user_code="charle",
+            dbhost=SAMPLE_DBHOST,
+            host_repo=mock_host_repo,
+            skip_database_drops=True,
+        )
+
+        assert result.staging_existed is False
+        assert result.target_existed is False
+        assert result.error is None
+        # Should not call credentials lookup
+        mock_host_repo.get_host_credentials_for_maintenance.assert_not_called()

@@ -594,9 +594,15 @@
             </div>
             <div class="sim-section">
                 <h4>Scenarios</h4>
-                <select id="sim-scenario-select" onchange="activateScenario(this.value)">
-                    <option value="">-- Select Scenario --</option>
-                </select>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <select id="sim-scenario-select" style="flex: 1;">
+                        <option value="">-- Select Scenario --</option>
+                    </select>
+                    <button onclick="loadSelectedScenario()" style="padding: 6px 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Load</button>
+                </div>
+                <div style="margin-top: 8px; font-size: 11px; color: #9ca3af;">
+                    After loading, you'll be redirected to login.
+                </div>
             </div>
             <div class="sim-section">
                 <h4>Event History (Latest 20)</h4>
@@ -944,8 +950,26 @@
             const data = await resp.json();
             await refreshSimulationState();
             await loadEventHistory();
+            return data;
         } catch (e) {
             alert('Failed to activate scenario: ' + e.message);
+            throw e;
+        }
+    };
+    
+    window.loadSelectedScenario = async function() {
+        const select = document.getElementById('sim-scenario-select');
+        const scenarioType = select.value;
+        if (!scenarioType) {
+            alert('Please select a scenario first');
+            return;
+        }
+        try {
+            await activateScenario(scenarioType);
+            // Redirect to login page after successful activation
+            window.location.href = '/web/login';
+        } catch (e) {
+            // Error already shown by activateScenario
         }
     };
     

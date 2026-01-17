@@ -207,8 +207,8 @@ class JobRepository:
                     INSERT INTO jobs
                     (id, owner_user_id, owner_username, owner_user_code, target,
                      staging_name, dbhost, status, submitted_at, options_json,
-                     retry_count)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(6), %s, %s)
+                     retry_count, custom_target)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(6), %s, %s, %s)
                     """,
                     (
                         job_id,
@@ -221,6 +221,7 @@ class JobRepository:
                         job.status.value,
                         json.dumps(job.options_json) if job.options_json else None,
                         job.retry_count,
+                        1 if job.custom_target else 0,
                     ),
                 )
                 conn.commit()
@@ -2551,6 +2552,8 @@ class JobRepository:
             current_operation=self._derive_operation(row),
             cancel_requested_at=row.get("cancel_requested_at"),
             can_cancel=row.get("can_cancel", True),
+            # Custom target tracking
+            custom_target=bool(row.get("custom_target", 0)),
             # Retention & lifecycle fields
             expires_at=row.get("expires_at"),
             locked_at=row.get("locked_at"),

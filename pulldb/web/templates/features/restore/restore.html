@@ -85,33 +85,24 @@
                     <input type="hidden" name="s3env" value="prod">
                     <input type="hidden" id="customer" name="customer" value="{{ form.customer if form and form.customer else '' }}" required>
                     
-                    <!-- Step 1: Date Range -->
-                    <div class="source-step" id="step-date">
-                        <div class="source-step-header">
-                            <span class="source-step-number">1</span>
-                            <span class="source-step-label">Date Range</span>
-                        </div>
-                        <div class="source-step-content">
-                            <div class="date-range-row">
-                                <input type="date" id="date-from" name="date_from" class="form-input" autocomplete="off">
-                                <span class="date-range-separator">to today</span>
-                                <button type="button" class="btn-icon" id="reset-date-btn" title="Reset to last 7 days">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                                        <path d="M3 3v5h5"/>
-                                    </svg>
-                                </button>
-                            </div>
+                    <!-- Date Range -->
+                    <div class="source-field" id="step-date">
+                        <label class="form-label" title="Filter backups by date range">Backups From</label>
+                        <div class="date-filter-row">
+                            <input type="date" id="date-from" name="date_from" class="form-input date-input" autocomplete="off">
+                            <button type="button" class="btn btn-secondary btn-sm" id="reset-date-btn" title="Reset to last 7 days">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                                    <path d="M3 3v5h5"/>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                     
-                    <!-- Step 2: Customer Search -->
-                    <div class="source-step" id="step-customer">
-                        <div class="source-step-header">
-                            <span class="source-step-number">2</span>
-                            <span class="source-step-label">Customer</span>
-                        </div>
-                        <div class="source-step-content">
+                    <!-- Customer Search -->
+                    <div class="source-field" id="step-customer">
+                        <label class="form-label" title="Search for customer database by name">Customer</label>
+                        <div class="source-field-content">
                             <!-- Search mode -->
                             <div id="customer-search-mode">
                                 <div class="search-input-wrapper">
@@ -133,14 +124,13 @@
                         </div>
                     </div>
                     
-                    <!-- Step 3: Backup Selection -->
-                    <div class="source-step" id="step-backup">
-                        <div class="source-step-header">
-                            <span class="source-step-number">3</span>
-                            <span class="source-step-label">Backup</span>
-                            <span class="backup-count" id="backup-count"></span>
+                    <!-- Backup Selection -->
+                    <div class="source-field" id="step-backup">
+                        <div class="source-field-header">
+                            <label class="form-label" title="Select a backup to restore">Backup</label>
+                            <span class="backup-list-count" id="backup-count"></span>
                         </div>
-                        <div class="source-step-content">
+                        <div class="source-field-content">
                             <!-- Waiting for customer -->
                             <div id="backup-waiting" class="backup-placeholder">
                                 Select a customer to see available backups
@@ -159,44 +149,18 @@
                                 </div>
                                 <button type="button" class="btn-link" id="clear-backup-btn">Change</button>
                             </div>
-                            <!-- Target callout -->
-                            <div id="target-callout" class="target-callout js-hidden">
-                                <svg class="target-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
-                                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
-                                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-                                </svg>
-                                <div class="target-info">
-                                    <span class="target-label">Restores to:</span>
-                                    <span class="target-value"><span id="callout-user-code">{{ user.user_code }}</span><span id="callout-customer"></span><span id="callout-suffix"></span></span>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div><!-- End Customer Tab Content -->
                 
                 <!-- QA Template Tab Content -->
                 <div class="tab-content" id="tab-qatemplate">
-                    <div class="qa-template-info">
-                        <div class="info-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <ellipse cx="12" cy="5" rx="9" ry="3"/>
-                                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
-                                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-                            </svg>
-                        </div>
-                        <div class="info-content">
-                            <h4>QA Template Database</h4>
-                            <p>Select a QA template backup to restore to your personal QA database.</p>
-                        </div>
-                    </div>
-                    
                     <!-- Environment: Production only (hidden input) -->
                     <input type="hidden" name="s3env" value="prod">
                     
                     <!-- Date filter for QA -->
-                    <div class="date-filter" id="qa-date-filter">
-                        <label class="form-label">Backups From</label>
+                    <div class="source-field" id="qa-date-filter">
+                        <label class="form-label" title="Filter QA template backups by date">Backups From</label>
                         <div class="date-filter-row">
                             <input type="date" 
                                    id="qa-date-from" 
@@ -209,11 +173,14 @@
                                 </svg>
                             </button>
                         </div>
-                        <p class="form-hint-sm">Shows backups from this date onwards (default: last 7 days)</p>
                     </div>
                     
                     <!-- QA Template backup list (always visible) -->
-                    <div class="backup-list-container is-visible" id="qa-backup-list-container">
+                    <div class="source-field" id="qa-backup-list-container">
+                        <div class="source-field-header">
+                            <label class="form-label" title="Select a QA template backup to restore">Backup</label>
+                            <span class="backup-list-count" id="qa-backup-count">Loading...</span>
+                        </div>
                         <!-- Selected QA backup display -->
                         <div class="selected-display js-hidden" id="selected-qa-backup-display">
                             <svg class="selected-display-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -227,28 +194,7 @@
                             <button type="button" class="selected-display-clear" id="clear-qa-backup-btn">Change</button>
                         </div>
                         
-                        <!-- QA Target database preview (shown after QA backup is selected) -->
-                        <div class="target-callout js-hidden" id="qa-target-callout">
-                            <div class="target-callout-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
-                                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
-                                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-                                </svg>
-                            </div>
-                            <div class="target-callout-content">
-                                <div class="target-callout-label">This backup will restore to your QA template database:</div>
-                                <div class="target-callout-value">
-                                    <span id="qa-callout-user-code">{{ user.user_code }}</span><span class="callout-customer">qatemplate</span><span id="qa-callout-suffix" class="callout-suffix"></span>
-                                </div>
-                            </div>
-                        </div>
-                        
                         <div id="qa-backup-search-container">
-                            <div class="backup-list-header">
-                                <span class="backup-list-title" id="qa-backup-list-title">QA Template Backups</span>
-                                <span class="backup-list-count" id="qa-backup-count">Loading...</span>
-                            </div>
                             <div class="backup-list-scroll" id="qa-backup-list">
                                 <div class="backup-list-empty">
                                     <svg class="backup-list-empty-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -324,8 +270,8 @@
                         {% endif %}
                     </div>
                     
-                    <!-- Suffix -->
-                    <div class="form-group m-0">
+                    <!-- Suffix (hidden when custom target is active) -->
+                    <div class="form-group m-0" id="suffix-group">
                         <label for="suffix" class="form-label">Suffix <span class="label-optional">(optional)</span></label>
                         <input type="text" 
                                id="suffix" 
@@ -338,35 +284,88 @@
                     </div>
                 </div>
                 
-                <!-- Overwrite option -->
-                <div class="overwrite-option">
-                    <div class="overwrite-checkbox-wrapper">
-                        <input type="checkbox" 
-                               id="overwrite" 
-                               name="overwrite" 
-                               value="true" 
-                               class="overwrite-checkbox"
-                               {% if form and form.overwrite %}checked{% endif %}>
-                        <div>
-                            <label for="overwrite" class="overwrite-label">Overwrite existing database</label>
-                            <p class="overwrite-description">If the target database already exists, delete it and restore fresh.</p>
-                        </div>
-                    </div>
-                    <div class="overwrite-warning" id="overwrite-warning">
-                        <svg class="overwrite-warning-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                            <line x1="12" y1="9" x2="12" y2="13"/>
-                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                <!-- Target Database Name section (shown when customer + backup selected) -->
+                <div class="target-callout js-hidden" id="target-callout">
+                    <div class="target-callout-icon target-callout-icon--sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
                         </svg>
-                        <span><strong>Warning:</strong> Existing data in the target database will be permanently deleted.</span>
+                    </div>
+                    <div class="target-callout-content">
+                        <div class="target-callout-label">This backup will restore to:</div>
+                        <div class="target-callout-row">
+                            <!-- Auto-generated name (shown when checkbox unchecked) -->
+                            <div class="target-callout-value" id="auto-target-preview">
+                                <span id="callout-user-code">{{ user.user_code }}</span><span id="callout-customer" class="callout-customer"></span><span id="callout-suffix" class="callout-suffix"></span>
+                            </div>
+                            
+                            <!-- Custom name input (shown when checkbox checked) -->
+                            <input type="text" 
+                                   id="custom_target" 
+                                   name="custom_target" 
+                                   class="target-callout-value target-callout-input js-hidden" 
+                                   placeholder="mycustomdb"
+                                   pattern="[a-z]{1,51}"
+                                   maxlength="51"
+                                   title="Lowercase letters only (a-z). Max 51 characters."
+                                   value="{{ form.custom_target if form and form.custom_target else '' }}">
+                            
+                            <!-- Custom toggle -->
+                            <label class="custom-toggle-inline" title="Use a custom database name instead of auto-generated">
+                                <input type="checkbox" id="custom-target-toggle" class="custom-target-checkbox">
+                                <span>Custom</span>
+                            </label>
+                            
+                            <!-- Overwrite option -->
+                            <label class="custom-toggle-inline" title="Delete existing database and restore fresh if it already exists">
+                                <input type="checkbox" id="overwrite" name="overwrite" value="true" {% if form and form.overwrite %}checked{% endif %}>
+                                <span>Overwrite</span>
+                            </label>
+                        </div>
+                        <div class="custom-target-error js-hidden" id="custom-target-error"></div>
+                        <div class="overwrite-warning" id="overwrite-warning">
+                            <svg class="overwrite-warning-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            <span>This will permanently delete the existing database if it exists.</span>
+                        </div>
                     </div>
                 </div>
                 
-                <!-- Target preview -->
-                <div class="target-preview js-hidden" id="target-preview">
-                    <div class="target-preview-label">Target Database Name</div>
-                    <div class="target-preview-value">
-                        <span id="preview-user-code">{{ user.user_code }}</span><span id="preview-customer" class="preview-customer"></span><span id="preview-suffix" class="preview-suffix"></span>
+                <!-- QA Target Database Name section (shown when QA backup selected) -->
+                <div class="target-callout js-hidden" id="qa-target-callout">
+                    <div class="target-callout-icon target-callout-icon--sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                        </svg>
+                    </div>
+                    <div class="target-callout-content">
+                        <div class="target-callout-label">This backup will restore to:</div>
+                        <div class="target-callout-row">
+                            <div class="target-callout-value">
+                                <span id="qa-callout-user-code">{{ user.user_code }}</span><span class="callout-customer">qatemplate</span><span id="qa-callout-suffix" class="callout-suffix"></span>
+                            </div>
+                            
+                            <!-- Overwrite option for QA -->
+                            <label class="custom-toggle-inline" title="Delete existing database and restore fresh if it already exists">
+                                <input type="checkbox" id="qa-overwrite" name="overwrite" value="true" {% if form and form.overwrite %}checked{% endif %}>
+                                <span>Overwrite</span>
+                            </label>
+                        </div>
+                        <div class="overwrite-warning" id="qa-overwrite-warning">
+                            <svg class="overwrite-warning-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            <span>This will permanently delete the existing database if it exists.</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -398,8 +397,9 @@ window.restoreConfig = {
     userCodeMap: { '{{ user.username }}': '{{ user.user_code }}' },
     {% endif %}
     initialCustomer: '{{ form.customer if form and form.customer else '' }}',
+    initialCustomTarget: '{{ form.custom_target if form and form.custom_target else '' }}',
     currentUserCode: '{{ user.user_code }}'
 };
 </script>
-<script src="/static/js/pages/restore.js"></script>
+<script src="/static/js/pages/restore.js?v={{ static_version }}"></script>
 {% endblock %}

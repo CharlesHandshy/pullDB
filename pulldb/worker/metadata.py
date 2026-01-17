@@ -66,20 +66,26 @@ class MetadataSpec:
 
     Attributes:
         job_id: Job UUID.
+        owner_user_id: UUID of database owner.
+        owner_user_code: 6-char owner identifier.
         owner_username: Username of job owner.
         target_db: Final target database name.
         backup_filename: S3 backup filename used for restore.
         restore_started_at: UTC timestamp when restore began.
         restore_completed_at: UTC timestamp when restore completed.
+        custom_target: Whether custom target naming was used.
         post_sql_result: Post-SQL execution result (if any).
     """
 
     job_id: str
+    owner_user_id: str
+    owner_user_code: str
     owner_username: str
     target_db: str
     backup_filename: str
     restore_started_at: datetime
     restore_completed_at: datetime
+    custom_target: bool
     post_sql_result: PostSQLExecutionResult | None
 
 
@@ -87,13 +93,18 @@ class MetadataSpec:
 _CREATE_METADATA_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS `pullDB` (
     `job_id` VARCHAR(36) NOT NULL COMMENT 'UUID of restore job',
+    `owner_user_id` CHAR(36) NOT NULL COMMENT 'UUID of database owner',
+    `owner_user_code` CHAR(6) NOT NULL COMMENT '6-char owner identifier',
     `restored_by` VARCHAR(255) NOT NULL COMMENT 'Username who initiated restore',
     `restored_at` DATETIME(6) NOT NULL COMMENT 'UTC timestamp of restore completion',
     `target_database` VARCHAR(64) NOT NULL COMMENT 'Final target database name',
     `backup_filename` VARCHAR(512) NOT NULL COMMENT 'S3 backup filename used',
     `restore_duration_seconds` DECIMAL(10, 3) NOT NULL COMMENT 'Total restore duration',
+    `custom_target` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Whether custom target was used',
     `post_sql_report` JSON NULL COMMENT 'Post-SQL execution status (JSON)',
-    PRIMARY KEY (`job_id`)
+    PRIMARY KEY (`job_id`),
+    INDEX `idx_pulldb_owner` (`owner_user_id`),
+    INDEX `idx_pulldb_user_code` (`owner_user_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='pullDB restore metadata - do not modify';
 """
@@ -194,24 +205,30 @@ def inject_metadata_table(
         insert_sql = """
             INSERT INTO `pullDB` (
                 job_id,
+                owner_user_id,
+                owner_user_code,
                 restored_by,
                 restored_at,
                 target_database,
                 backup_filename,
                 restore_duration_seconds,
+                custom_target,
                 post_sql_report
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         try:
             cursor.execute(
                 insert_sql,
                 (
                     metadata_spec.job_id,
+                    metadata_spec.owner_user_id,
+                    metadata_spec.owner_user_code,
                     metadata_spec.owner_username,
                     metadata_spec.restore_completed_at,
                     metadata_spec.target_db,
                     metadata_spec.backup_filename,
                     restore_duration,
+                    1 if metadata_spec.custom_target else 0,
                     post_sql_json,
                 ),
             )

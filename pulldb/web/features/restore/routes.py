@@ -118,46 +118,43 @@ async def search_customers(
     limit: int = Query(100, ge=1, le=500),
     state: Any = Depends(get_api_state),
 ) -> JSONResponse:
-    """JSON endpoint to search customers via API.
+    """JSON endpoint to search customers.
 
-    Proxies to /api/customers/search for unified search behavior.
+    Calls DiscoveryService directly for unified search behavior.
     Returns a list of customers matching the query prefix or pattern.
     Supports wildcard patterns (* and ?) when detected in query.
     """
-    # Forward session cookie for API authentication
-    cookies = {}
-    if session_token := request.cookies.get("session_token"):
-        cookies["session_token"] = session_token
+    from pulldb.domain.services.discovery import DiscoveryService
+    
+    service = DiscoveryService()
+    is_pattern = '*' in q or '?' in q
     
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(
-                f"{_API_BASE_URL}/api/customers/search",
-                params={"q": q, "limit": limit},
-                cookies=cookies,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-    except httpx.HTTPStatusError as e:
+        if is_pattern:
+            customers = service.search_customers_pattern(q, limit)
+        else:
+            if len(q) < 3:
+                return JSONResponse({
+                    "results": [],
+                    "total": 0,
+                    "prefix": q,
+                    "is_pattern": False,
+                })
+            customers = service.search_customers(q, limit)
+    except Exception as e:
         return JSONResponse(
-            {"results": [], "total": 0, "prefix": q, "error": f"API error: {e.response.status_code}"},
-            status_code=200,  # Return 200 to frontend, error in payload
-        )
-    except httpx.RequestError as e:
-        return JSONResponse(
-            {"results": [], "total": 0, "prefix": q, "error": f"Connection error: {e}"},
+            {"results": [], "total": 0, "prefix": q, "error": str(e)},
             status_code=200,
         )
 
-    # Transform API response for frontend compatibility
-    customers = data.get("customers", [])
+    # Transform for frontend compatibility
     results = [{"value": c, "label": c} for c in customers]
 
     return JSONResponse({
         "results": results,
-        "total": data.get("total", 0),
+        "total": len(customers),
         "prefix": q[:3] if len(q) >= 3 else q,
-        "is_pattern": data.get("is_pattern", False),
+        "is_pattern": is_pattern,
     })
 
 
@@ -288,6 +285,7 @@ async def restore_submit(
     overwrite: str | None = Form(None),
     submit_as_user: str | None = Form(None),
     qatemplate: str | None = Form(None),
+    custom_target: str | None = Form(None),
     state: Any = Depends(get_api_state),
     user: User = Depends(require_login),
 ) -> Any:
@@ -296,6 +294,7 @@ async def restore_submit(
     Args:
         submit_as_user: Username to submit job on behalf of (managers/admins only).
         qatemplate: If 'true', this is a QA Template restore.
+        custom_target: Optional custom database name (1-51 lowercase letters).
     """
     
     # Handle QA Template mode - override customer to 'qatemplate'
@@ -366,6 +365,7 @@ async def restore_submit(
                     "dbhost": dbhost,
                     "suffix": suffix,
                     "overwrite": overwrite == "true",
+                    "custom_target": custom_target,
                 }
             },
             status_code=403
@@ -390,10 +390,61 @@ async def restore_submit(
                         "dbhost": dbhost,
                         "suffix": suffix,
                         "overwrite": overwrite == "true",
+                        "custom_target": custom_target,
                     }
                 },
                 status_code=400
             )
+    
+    # === Validate custom_target ===
+    validated_custom_target: str | None = None
+    if custom_target:
+        custom_target = custom_target.strip().lower()
+        if custom_target:  # Not empty after stripping
+            if not custom_target.isalpha() or len(custom_target) > 51:
+                return templates.TemplateResponse(
+                    "features/restore/restore.html",
+                    {
+                        "request": request,
+                        "allowed_hosts": allowed_hosts,
+                        "default_host": user.default_host,
+                        "user": user,
+                        "error": "Custom target must be 1-51 lowercase letters only.",
+                        "active_nav": "restore",
+                        "form": {
+                            "customer": customer,
+                            "s3env": s3env,
+                            "dbhost": dbhost,
+                            "suffix": suffix,
+                            "overwrite": overwrite == "true",
+                            "custom_target": custom_target,
+                        }
+                    },
+                    status_code=400
+                )
+            # Cannot use both suffix and custom_target
+            if suffix:
+                return templates.TemplateResponse(
+                    "features/restore/restore.html",
+                    {
+                        "request": request,
+                        "allowed_hosts": allowed_hosts,
+                        "default_host": user.default_host,
+                        "user": user,
+                        "error": "Cannot use both suffix and custom target name.",
+                        "active_nav": "restore",
+                        "form": {
+                            "customer": customer,
+                            "s3env": s3env,
+                            "dbhost": dbhost,
+                            "suffix": suffix,
+                            "overwrite": overwrite == "true",
+                            "custom_target": custom_target,
+                        }
+                    },
+                    status_code=400
+                )
+            validated_custom_target = custom_target
     
     # === Validate backup_key matches customer ===
     # If backup_key is provided, validate it contains the expected customer pattern
@@ -425,6 +476,7 @@ async def restore_submit(
                                 "dbhost": dbhost,
                                 "suffix": suffix,
                                 "overwrite": overwrite == "true",
+                                "custom_target": validated_custom_target,
                             }
                         },
                         status_code=400
@@ -449,6 +501,7 @@ async def restore_submit(
                                 "dbhost": dbhost,
                                 "suffix": suffix,
                                 "overwrite": overwrite == "true",
+                                "custom_target": validated_custom_target,
                             }
                         },
                         status_code=400
@@ -476,6 +529,7 @@ async def restore_submit(
         suffix=suffix if suffix else None,
         overwrite=overwrite_val,
         backup_path=validated_backup_path,
+        custom_target=validated_custom_target,
     )
 
     try:
@@ -505,6 +559,7 @@ async def restore_submit(
                     "dbhost": dbhost,
                     "suffix": suffix,
                     "overwrite": overwrite_val,
+                    "custom_target": validated_custom_target,
                 }
             },
             status_code=error_status
@@ -526,6 +581,7 @@ async def restore_submit(
                     "dbhost": dbhost,
                     "suffix": suffix,
                     "overwrite": overwrite_val,
+                    "custom_target": validated_custom_target,
                 }
             },
             status_code=400

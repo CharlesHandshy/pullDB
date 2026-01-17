@@ -13,6 +13,7 @@ from pulldb.api.types import APIState
 from pulldb.domain.errors import StagingError
 from pulldb.domain.models import Job, JobStatus, User
 from pulldb.domain.naming import normalize_customer_name
+from pulldb.domain.services.discovery import DiscoveryService
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
 from pulldb.worker.staging import generate_staging_name
 
@@ -28,11 +29,134 @@ class TargetResult:
     normalized_customer: str | None
     was_normalized: bool
     normalization_message: str
+    custom_target_used: bool = False
 
 
 def _letters_only(value: str) -> str:
     """Return lowercase letters-only subset of *value*."""
     return "".join(ch for ch in value.lower() if ch.isalpha())
+
+
+def _is_known_customer_name(name: str) -> bool:
+    """Check if a name matches a known customer in S3.
+    
+    Used to prevent users from accidentally using customer names
+    as custom targets, which could cause confusion.
+    
+    Args:
+        name: The proposed target name to check.
+        
+    Returns:
+        True if the name exactly matches a known customer.
+    """
+    try:
+        service = DiscoveryService()
+        # Search for exact match - use the name as query
+        results = service.search_customers(name, limit=10)
+        # Check if any result is an exact match
+        name_lower = name.lower()
+        return any(r.lower() == name_lower for r in results)
+    except Exception:
+        # If search fails, allow the name (fail open for UX)
+        return False
+
+
+def _target_database_exists_on_host(
+    state: APIState,
+    target: str,
+    dbhost: str,
+) -> bool:
+    """Check if a target database exists on the specified host.
+    
+    Uses host_repo to resolve credentials and queries SHOW DATABASES.
+    
+    Args:
+        state: API state with host_repo.
+        target: Target database name to check.
+        dbhost: Hostname to query.
+        
+    Returns:
+        True if database exists on host, False otherwise.
+        Returns False on connection/query errors (fail safe for UX).
+    """
+    import mysql.connector
+    
+    try:
+        creds = state.host_repo.get_host_credentials(dbhost)
+        conn = mysql.connector.connect(
+            host=creds.host,
+            port=creds.port,
+            user=creds.username,
+            password=creds.password,
+            connect_timeout=10,
+        )
+        cursor = conn.cursor()
+        cursor.execute("SHOW DATABASES LIKE %s", (target,))
+        exists = cursor.fetchone() is not None
+        cursor.close()
+        conn.close()
+        return exists
+    except Exception:
+        # Fail safe - if we can't check, allow the operation
+        return False
+
+
+def _get_pulldb_metadata_owner(
+    state: APIState,
+    target: str,
+    dbhost: str,
+) -> tuple[bool, str | None, str | None]:
+    """Check if target database has pullDB metadata table and get owner.
+    
+    Args:
+        state: API state with host_repo.
+        target: Target database name to check.
+        dbhost: Hostname to query.
+        
+    Returns:
+        Tuple of (has_pulldb_table, owner_user_id, owner_user_code).
+        If no pullDB table exists: (False, None, None).
+        On connection errors: (False, None, None) (fail safe).
+    """
+    import mysql.connector
+    
+    try:
+        creds = state.host_repo.get_host_credentials(dbhost)
+        conn = mysql.connector.connect(
+            host=creds.host,
+            port=creds.port,
+            user=creds.username,
+            password=creds.password,
+            database=target,
+            connect_timeout=10,
+        )
+        cursor = conn.cursor()
+        
+        # Check if pullDB table exists
+        cursor.execute("SHOW TABLES LIKE 'pullDB'")
+        if cursor.fetchone() is None:
+            cursor.close()
+            conn.close()
+            return (False, None, None)
+        
+        # Get owner info from the most recent entry
+        cursor.execute(
+            "SELECT owner_user_id, owner_user_code FROM `pullDB` "
+            "ORDER BY restored_at DESC LIMIT 1"
+        )
+        row: tuple | None = cursor.fetchone()  # type: ignore[assignment]
+        cursor.close()
+        conn.close()
+        
+        if row:
+            owner_user_id = str(row[0]) if row[0] else None
+            owner_user_code = str(row[1]) if row[1] else None
+            return (True, owner_user_id, owner_user_code)
+        return (True, None, None)  # Table exists but empty
+        
+    except Exception:
+        # Fail safe - if we can't check, assume no table (external DB)
+        return (False, None, None)
 
 
 def _select_dbhost(state: APIState, req: JobRequest, user: User) -> str:
@@ -71,12 +195,58 @@ def _construct_target(user: User, req: JobRequest) -> TargetResult:
     - CLI level (parse.py validation)
     - Web UI level (JavaScript validation + input filtering)
     
+    If custom_target is provided, use it directly (user has FULL control).
+    Auto-generated targets still use {user_code}{customer}{suffix} pattern.
+    
     Long customer names (> 42 chars) are automatically normalized via
     truncation + hash suffix to ensure unique, reproducible targets.
     
     Returns:
         TargetResult with target name and normalization metadata.
     """
+    # Handle custom target override - user has FULL control (1-51 lowercase letters)
+    if req.custom_target:
+        custom = req.custom_target.lower()
+        
+        # Validate format: lowercase letters only, 1-51 chars
+        if not custom.isalpha():
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="Custom target database name must contain only lowercase letters (a-z).",
+            )
+        
+        if len(custom) < 1:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="Custom target database name must be at least 1 character.",
+            )
+        
+        if len(custom) > 51:  # MAX_TARGET_LEN from staging.py constants
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="Custom target database name exceeds maximum length of 51 characters.",
+            )
+        
+        # Block customer names as custom targets to prevent confusion
+        if _is_known_customer_name(custom):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Cannot use '{custom}' as a custom target name because it matches "
+                    f"a known customer. Choose a different name to avoid confusion."
+                ),
+            )
+        
+        return TargetResult(
+            target=custom,
+            original_customer=None,
+            normalized_customer=None,
+            was_normalized=False,
+            normalization_message="",
+            custom_target_used=True,
+        )
+    
+    # Auto-generation: {user_code}{customer}{suffix} pattern
     if req.qatemplate:
         target = f"{user.user_code}qatemplate"
         if req.suffix:
@@ -87,6 +257,7 @@ def _construct_target(user: User, req: JobRequest) -> TargetResult:
             normalized_customer=None,
             was_normalized=False,
             normalization_message="",
+            custom_target_used=False,
         )
 
     customer_value = req.customer or ""
@@ -126,6 +297,7 @@ def _construct_target(user: User, req: JobRequest) -> TargetResult:
         normalized_customer=norm_result.normalized if norm_result.was_normalized else None,
         was_normalized=norm_result.was_normalized,
         normalization_message=norm_result.display_message,
+        custom_target_used=False,
     )
 
 
@@ -169,6 +341,10 @@ def _options_snapshot(
         opts["date"] = req.date
     if req.env:
         opts["env"] = req.env
+    
+    # Track if custom target was used (for audit trail)
+    if req.custom_target:
+        opts["custom_target_used"] = "true"
 
     # Resolve backup_path: use provided or auto-discover
     backup_path = req.backup_path
@@ -500,6 +676,54 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
                     ),
                 )
 
+    # CRITICAL: External database protection
+    # If overwrite is enabled, verify the target is either:
+    # 1. Non-existent (safe to create)
+    # 2. pullDB-managed AND owned by this user (safe to overwrite)
+    # External databases (no pullDB table) MUST NEVER be overwritten
+    if req.overwrite and _target_database_exists_on_host(state, target, dbhost):
+        has_pulldb, owner_id, owner_code = _get_pulldb_metadata_owner(state, target, dbhost)
+        
+        if not has_pulldb:
+            # External database - NEVER overwrite
+            emit_event(
+                "job_enqueue_blocked",
+                f"Restore blocked: external database '{target}' on '{dbhost}' detected (no pullDB table)",
+                labels=MetricLabels(
+                    target=target,
+                    phase="enqueue",
+                    status="blocked",
+                ),
+            )
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Database '{target}' exists on '{dbhost}' but was NOT created by pullDB "
+                    f"(no pullDB metadata table found). Cannot overwrite external databases. "
+                    f"Choose a different target name."
+                ),
+            )
+        
+        # pullDB-managed but owned by different user
+        if owner_id and owner_id != user.user_id:
+            emit_event(
+                "job_enqueue_blocked",
+                f"Restore blocked: database '{target}' on '{dbhost}' owned by different user ({owner_code})",
+                labels=MetricLabels(
+                    target=target,
+                    phase="enqueue",
+                    status="blocked",
+                ),
+            )
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Database '{target}' on '{dbhost}' is owned by user '{owner_code}'. "
+                    f"You cannot overwrite another user's database. "
+                    f"Choose a different target name."
+                ),
+            )
+
     # Phase 2: Concurrency controls - check limits before job creation
     check_concurrency_limits(state, user)
     
@@ -521,6 +745,7 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
         submitted_at=datetime.now(UTC),
         options_json=_options_snapshot(req, state, dbhost),
         retry_count=0,
+        custom_target=target_result.custom_target_used,
     )
 
     try:
@@ -611,4 +836,5 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
         original_customer=target_result.original_customer,
         customer_normalized=target_result.was_normalized,
         normalization_message=target_result.normalization_message if target_result.was_normalized else None,
+        custom_target_used=target_result.custom_target_used,
     )

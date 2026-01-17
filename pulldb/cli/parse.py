@@ -67,6 +67,7 @@ class RestoreCLIOptions:
         original_customer: Original customer name before normalization (None if not normalized).
         customer_normalized: True if customer name was normalized (truncated + hashed).
         normalization_message: User-friendly message explaining normalization (empty if none).
+        custom_target: Optional custom target database name (1-51 lowercase letters).
     """
 
     raw_tokens: tuple[str, ...]
@@ -81,6 +82,7 @@ class RestoreCLIOptions:
     original_customer: str | None = None
     customer_normalized: bool = False
     normalization_message: str = ""
+    custom_target: str | None = None
 
 
 _TOKEN_USER = re.compile(r"^(?:--)?user=([A-Za-z0-9_.-]+)$")
@@ -89,11 +91,12 @@ _TOKEN_DBHOST = re.compile(r"^(?:--)?dbhost=([A-Za-z0-9_.-]+)$")
 _TOKEN_DATE = re.compile(r"^(?:--)?date=(\d{4}-\d{2}-\d{2})$")
 _TOKEN_S3ENV = re.compile(r"^(?:--)?s3env=(staging|prod)$")
 _TOKEN_SUFFIX = re.compile(r"^(?:--)?suffix=([a-z]{1,3})$")
+_TOKEN_TARGET = re.compile(r"^(?:--)?target=([a-z]{1,51})$")
 
 
 def _tokenize(
     tokens: Sequence[str],
-) -> tuple[str | None, str | None, bool, str | None, str | None, str | None, str | None, bool]:
+) -> tuple[str | None, str | None, bool, str | None, str | None, str | None, str | None, bool, str | None]:
     """Parse all tokens and return extracted values.
     
     Supports multiple syntax styles:
@@ -102,7 +105,7 @@ def _tokenize(
     - --option value (space-separated)
     
     Returns:
-        Tuple of (username, customer_id, is_qatemplate, suffix, dbhost, date, s3env, overwrite)
+        Tuple of (username, customer_id, is_qatemplate, suffix, dbhost, date, s3env, overwrite, custom_target)
     """
     username: str | None = None
     customer_id: str | None = None
@@ -112,6 +115,7 @@ def _tokenize(
     date: str | None = None
     s3env: str | None = None
     overwrite = False
+    custom_target: str | None = None
     
     i = 0
     while i < len(tokens):
@@ -201,6 +205,27 @@ def _tokenize(
                         "Use lowercase letters only, e.g., 'dev' instead of 'DEV'."
                     )
                 suffix = opt_value
+                i += 2
+                continue
+            elif opt_name == "target":
+                if custom_target is not None:
+                    raise CLIParseError("target specified more than once")
+                target_value = opt_value.lower()  # Force lowercase
+                if not re.match(r"^[a-z]{1,51}$", target_value):
+                    if len(target_value) < 1:
+                        raise CLIParseError(
+                            f"target must be at least 1 lowercase letter. "
+                            f"Got: '{target_value}'."
+                        )
+                    if len(target_value) > MAX_TARGET_LEN:
+                        raise CLIParseError(
+                            f"target exceeds maximum length of {MAX_TARGET_LEN} characters. "
+                            f"Got: '{target_value}' ({len(target_value)} chars)."
+                        )
+                    raise CLIParseError(
+                        f"target must contain only lowercase letters (a-z). Got: '{target_value}'."
+                    )
+                custom_target = target_value
                 i += 2
                 continue
             else:
@@ -301,6 +326,31 @@ def _tokenize(
             i += 1
             continue
 
+        # Check target= token - custom target database name (1-51 lowercase letters)
+        if tok.lstrip("-").startswith("target="):
+            if custom_target is not None:
+                raise CLIParseError(
+                    f"target specified more than once ('{custom_target}', '{tok}')."
+                )
+            target_value = tok.split("=", 1)[1].lower() if "=" in tok else ""
+            if not re.match(r"^[a-z]{1,51}$", target_value):
+                if len(target_value) < 1:
+                    raise CLIParseError(
+                        f"target must be at least 1 lowercase letter. "
+                        f"Got: '{target_value}'."
+                    )
+                if len(target_value) > MAX_TARGET_LEN:
+                    raise CLIParseError(
+                        f"target exceeds maximum length of {MAX_TARGET_LEN} characters. "
+                        f"Got: '{target_value}' ({len(target_value)} chars)."
+                    )
+                raise CLIParseError(
+                    f"target must contain only lowercase letters (a-z). Got: '{target_value}'."
+                )
+            custom_target = target_value
+            i += 1
+            continue
+
         # Handle bare tokens (no = sign) - could be customer or dbhost
         if "=" not in tok and re.match(r"^[A-Za-z0-9_.-]+$", tok):
             # If we don't have a customer yet and token is lowercase letters only,
@@ -329,7 +379,7 @@ def _tokenize(
 
         raise CLIParseError(f"Unrecognized token: '{tok}'")
 
-    return username, customer_id, is_qatemplate, suffix, dbhost, date, s3env, overwrite
+    return username, customer_id, is_qatemplate, suffix, dbhost, date, s3env, overwrite, custom_target
 
 
 def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
@@ -354,7 +404,7 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
         )
 
     # Parse all tokens
-    username, customer_id, is_qatemplate, suffix, dbhost, date, s3env, overwrite = _tokenize(tokens)
+    username, customer_id, is_qatemplate, suffix, dbhost, date, s3env, overwrite, custom_target = _tokenize(tokens)
 
     # Enforce exactly one of customer or qatemplate specified
     if customer_id is None and not is_qatemplate:
@@ -367,6 +417,12 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
         # Defensive; _tokenize already prevents this
         raise CLIParseError(
             "Cannot specify both customer=<id> and qatemplate. Choose one."
+        )
+
+    # Validate: custom_target and suffix cannot be used together
+    if custom_target is not None and suffix is not None:
+        raise CLIParseError(
+            "Cannot use suffix= with target=. Include the suffix in the target name directly."
         )
 
     # Normalize long customer names
@@ -396,6 +452,7 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
         original_customer=original_customer,
         customer_normalized=customer_normalized,
         normalization_message=normalization_message,
+        custom_target=custom_target,
     )
 
 

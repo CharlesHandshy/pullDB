@@ -26,6 +26,11 @@ class JobRequest(pydantic.BaseModel):
         default=None,
         description="Full S3 path to specific backup (e.g., s3://bucket/prefix/customer/daily_mydumper_*.tar)",
     )
+    custom_target: str | None = pydantic.Field(
+        default=None,
+        pattern=r"^[a-z]{1,51}$",
+        description="Custom target database name. 1-51 lowercase letters, user has FULL control.",
+    )
 
 
 class JobResponse(pydantic.BaseModel):
@@ -42,6 +47,8 @@ class JobResponse(pydantic.BaseModel):
     original_customer: str | None = None
     customer_normalized: bool = False
     normalization_message: str | None = None
+    # Indicate if custom target was used
+    custom_target_used: bool = False
 
 
 class JobSummary(pydantic.BaseModel):
@@ -62,6 +69,7 @@ class JobSummary(pydantic.BaseModel):
     source: str | None = None
     cancel_requested_at: datetime | None = None  # For strikethrough styling
     can_cancel: bool = False  # Computed per-user permission
+    custom_target: bool = False  # Indicates custom target name was used
 
 
 class JobHistoryItem(pydantic.BaseModel):

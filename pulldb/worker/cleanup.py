@@ -669,6 +669,7 @@ def delete_job_databases(
     job_repo: JobRepository | None = None,
     skip_protection_check: bool = False,
     skip_database_drops: bool = False,
+    custom_target: bool = False,
 ) -> JobDeleteResult:
     """Delete both staging and target databases for a job.
     
@@ -677,7 +678,8 @@ def delete_job_databases(
     - target_name: The target database ({user_code}{customer/template})
     
     SAFETY CHECKS:
-    - Validates target_name contains the owner's user_code
+    - For auto-generated targets: Validates target_name contains the owner's user_code
+    - For custom targets: Skips user_code check (relies on pullDB metadata ownership)
     - Protected databases are never dropped
     - If job_repo provided: checks no deployed/locked job exists for target
     - Logs all operations
@@ -692,6 +694,7 @@ def delete_job_databases(
         job_repo: Optional JobRepository for deployment protection check.
         skip_protection_check: If True, skip deployed/locked check (use with caution).
         skip_database_drops: If True, skip all database operations (for inaccessible hosts).
+        custom_target: If True, skip user_code-in-name check (custom target naming used).
         
     Returns:
         JobDeleteResult with details of what was found and dropped.
@@ -720,11 +723,13 @@ def delete_job_databases(
         result.target_existed = False
         return result
     
-    # SAFETY: Validate target_name contains owner's user_code
-    if owner_user_code not in target_name:
+    # SAFETY: Validate target_name contains owner's user_code (auto-generated targets only)
+    # For custom targets, this check is skipped - ownership verified via pullDB metadata table
+    if not custom_target and owner_user_code not in target_name:
         result.error = (
             f"Target database '{target_name}' does not contain "
-            f"owner user code '{owner_user_code}' - refusing to delete"
+            f"owner user code '{owner_user_code}' - refusing to delete. "
+            f"(If this is a custom target, set custom_target=True)"
         )
         logger.error(result.error)
         return result
@@ -954,6 +959,7 @@ def execute_delete_job(
         host_repo=host_repo,
         job_repo=job_repo,
         skip_protection_check=False,
+        custom_target=job.custom_target,
     )
 
     if delete_result.error:

@@ -1007,6 +1007,7 @@ async def delete_job_database(
             host_repo=state.host_repo,
             job_repo=state.job_repo,
             skip_database_drops=skip_database_drops,
+            custom_target=job.custom_target,
         )
 
     # Audit log the delete operation

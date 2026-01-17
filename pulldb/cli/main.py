@@ -864,6 +864,7 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     OPTIONS:
       <dbhost>              Target database host (positional, after customer)
       dbhost=<hostname>     Target database host (named parameter)
+      target=<name>         Custom target database name (1-51 lowercase letters)
       suffix=<abc>          Suffix for target database (1-3 lowercase letters)
       date=<YYYY-MM-DD>     Specific backup date (default: latest)
       s3env=<staging|prod|both>  S3 environment (default: PULLDB_S3ENV_DEFAULT or prod)
@@ -872,6 +873,10 @@ def restore_cmd(options: tuple[str, ...]) -> None:
     \b
     ADMIN ONLY:
       user=<username>       Submit job on behalf of another user
+
+    \b
+    NOTE: target= and suffix= cannot be used together. If using target=,
+    include any suffix in the target name directly (e.g., target=mytestdev).
 
     \b
     EXAMPLES:
@@ -886,6 +891,8 @@ def restore_cmd(options: tuple[str, ...]) -> None:
       pulldb restore actionpest dbhost=dev        # dbhost as named arg
       pulldb restore actionpest overwrite
       pulldb restore actionpest s3env=prod
+      pulldb restore actionpest target=mytest     # custom target name
+      pulldb restore qatemplate target=qatest     # qatemplate with custom target
     """
     # Step 1: Parse and validate CLI arguments
     try:
@@ -912,6 +919,7 @@ def restore_cmd(options: tuple[str, ...]) -> None:
         "dbhost": parsed.dbhost,
         "date": parsed.date,
         "overwrite": parsed.overwrite,
+        "custom_target": parsed.custom_target,
     }
     
     # Add environment - use parsed value or default

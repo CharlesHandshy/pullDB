@@ -862,6 +862,7 @@ class AdminTaskExecutor:
                             host_repo=self.host_repo,
                             job_repo=self.job_repo,
                             skip_database_drops=skip_database_drops,
+                            custom_target=job.custom_target,
                         )
 
                     if delete_result.error:

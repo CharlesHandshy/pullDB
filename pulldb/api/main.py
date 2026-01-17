@@ -262,6 +262,7 @@ def _active_jobs(state: APIState, limit: int) -> list[JobSummary]:
                 current_operation=job.current_operation,
                 dbhost=job.dbhost,
                 source=source,
+                custom_target=job.custom_target,
             )
         )
     return result
@@ -323,6 +324,7 @@ def _list_jobs(
             current_operation=job.current_operation,
             dbhost=job.dbhost,
             source=source,
+            custom_target=job.custom_target,
         )
 
         # Apply filters
@@ -1357,6 +1359,7 @@ def _get_paginated_jobs(
             source=source,
             cancel_requested_at=getattr(job, 'cancel_requested_at', None),
             can_cancel=job_can_cancel,
+            custom_target=job.custom_target,
         ))
 
     return PaginatedJobsResponse(
@@ -1577,6 +1580,7 @@ def _get_last_job_by_user(state: APIState, user_code: str) -> LastJobResponse:
         dbhost=job.dbhost,
         source=source,
         current_operation=job.current_operation,
+        custom_target=job.custom_target,
     )
     return LastJobResponse(job=summary, user_code=user_code)
 
@@ -1757,6 +1761,7 @@ def _get_single_job(state: APIState, job_id: str) -> JobSummary:
         source=source,
         cancel_requested_at=state.job_repo.get_cancel_requested_at(job_id),
         can_cancel=job.status.value in ("queued", "running", "canceling"),
+        custom_target=job.custom_target,
     )
 
 

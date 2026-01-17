@@ -24,9 +24,7 @@ Valid options:
 - s3env=<staging|prod> S3 environment (optional)
 - overwrite           Allow overwrite (flag, no value)
 - user=<username>     Override user (admin only, optional)
-
-NOT valid:
-- target=<name>       (target is auto-generated, not user-specifiable)
+- target=<name>       Custom target database name (1-51 lowercase letters, optional)
 """
 
 from __future__ import annotations
@@ -305,9 +303,8 @@ class TestRestoreValidation:
     ) -> None:
         """pulldb restore with unrecognized option fails."""
         result = runner.invoke(
-            cli, ["restore", "customer=testcust", "target=mytarget"]
+            cli, ["restore", "customer=testcust", "unknownoption=value"]
         )
-        # target= is NOT a valid option (target is auto-generated)
         assert result.exit_code != 0
         assert "unrecognized" in result.output.lower()
 
@@ -333,5 +330,117 @@ class TestRestoreDBHost:
         )
         result = runner.invoke(
             cli, ["restore", "customer=testcust", "dbhost=mysql-server.local"]
+        )
+        assert result.exit_code in [0, 1]
+
+
+# ---------------------------------------------------------------------------
+# Restore Command - Custom Target
+# ---------------------------------------------------------------------------
+
+
+class TestRestoreCustomTarget:
+    """Tests for custom target database name feature."""
+
+    @responses.activate
+    def test_restore_custom_target_basic(
+        self, runner: CliRunner, mock_api_env: str, mock_user_env: str
+    ) -> None:
+        """pulldb restore with target=mytestdb works."""
+        responses.add(
+            responses.POST,
+            f"{MOCK_API_BASE}/api/jobs",
+            json={
+                "job_id": SAMPLE_JOB_ID,
+                "target": "mytestdb",
+                "status": "queued",
+                "custom_target_used": True,
+            },
+            status=201,
+        )
+        result = runner.invoke(
+            cli, ["restore", "customer=testcust", "target=mytestdb"]
+        )
+        assert result.exit_code in [0, 1]
+
+    @responses.activate
+    def test_restore_custom_target_min_length(
+        self, runner: CliRunner, mock_api_env: str, mock_user_env: str
+    ) -> None:
+        """pulldb restore with target=a (minimum 1 char) works."""
+        responses.add(
+            responses.POST,
+            f"{MOCK_API_BASE}/api/jobs",
+            json={
+                "job_id": SAMPLE_JOB_ID,
+                "target": "a",
+                "status": "queued",
+            },
+            status=201,
+        )
+        result = runner.invoke(
+            cli, ["restore", "customer=testcust", "target=a"]
+        )
+        assert result.exit_code in [0, 1]
+
+    def test_restore_custom_target_too_long(
+        self, runner: CliRunner, mock_api_env: str
+    ) -> None:
+        """pulldb restore with target > 51 chars fails."""
+        long_target = "a" * 52
+        result = runner.invoke(
+            cli, ["restore", "customer=testcust", f"target={long_target}"]
+        )
+        assert result.exit_code != 0
+        assert "51" in result.output or "maximum" in result.output.lower()
+
+    def test_restore_custom_target_non_alpha(
+        self, runner: CliRunner, mock_api_env: str
+    ) -> None:
+        """pulldb restore with non-alphabetic target fails."""
+        result = runner.invoke(
+            cli, ["restore", "customer=testcust", "target=my-test-123"]
+        )
+        assert result.exit_code != 0
+        assert "lowercase" in result.output.lower() or "letters" in result.output.lower()
+
+    def test_restore_custom_target_with_suffix_fails(
+        self, runner: CliRunner, mock_api_env: str
+    ) -> None:
+        """pulldb restore with both target and suffix fails."""
+        result = runner.invoke(
+            cli, ["restore", "customer=testcust", "target=mytestdb", "suffix=dev"]
+        )
+        assert result.exit_code != 0
+        assert "suffix" in result.output.lower()
+
+    def test_restore_custom_target_case_normalized(
+        self, runner: CliRunner, mock_api_env: str
+    ) -> None:
+        """pulldb restore normalizes target to lowercase."""
+        # This should parse successfully (uppercase is normalized to lowercase)
+        # The CLI should accept it and convert to lowercase
+        from pulldb.cli.parse import parse_restore_args
+        
+        result = parse_restore_args(("customer=testcust", "target=MyTestDB"))
+        assert result.custom_target == "mytestdb"
+
+    @responses.activate
+    def test_restore_custom_target_with_qatemplate(
+        self, runner: CliRunner, mock_api_env: str, mock_user_env: str
+    ) -> None:
+        """pulldb restore qatemplate target=myqa works."""
+        responses.add(
+            responses.POST,
+            f"{MOCK_API_BASE}/api/jobs",
+            json={
+                "job_id": SAMPLE_JOB_ID,
+                "target": "myqa",
+                "status": "queued",
+            },
+            status=201,
+        )
+        result = runner.invoke(
+            cli, ["restore", "qatemplate", "target=myqa"]
         )
         assert result.exit_code in [0, 1]

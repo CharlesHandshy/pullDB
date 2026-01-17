@@ -121,7 +121,6 @@
 }
 
 .detail-code-full {
-    flex: 1;
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     color: var(--gray-200);
@@ -133,13 +132,50 @@
 }
 
 .detail-value-full {
-    flex: 1;
     font-size: var(--text-sm);
     color: var(--gray-200);
 }
 
 [data-theme="light"] .detail-value-full {
     color: var(--gray-700);
+}
+
+/* Copy to clipboard button - override global .copy-btn positioning */
+.detail-row-full .copy-btn {
+    position: static !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    margin-left: var(--space-2);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--gray-400);
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+    flex-shrink: 0;
+    opacity: 1 !important;
+}
+
+.detail-row-full .copy-btn:hover {
+    color: var(--gray-200);
+    background: var(--gray-700);
+}
+
+.detail-row-full .copy-btn.copied {
+    color: var(--success-500);
+}
+
+[data-theme="light"] .detail-row-full .copy-btn {
+    color: var(--gray-500);
+}
+
+[data-theme="light"] .detail-row-full .copy-btn:hover {
+    color: var(--gray-700);
+    background: var(--gray-100);
 }
 
 /* Remove old grid styles */

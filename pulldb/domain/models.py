@@ -254,6 +254,8 @@ class Job:
     cancel_requested_at: datetime | None = None
     # Cancellation control: flips to False atomically when restore begins
     can_cancel: bool = True
+    # Custom target tracking (Phase: Custom Target Feature)
+    custom_target: bool = False
     # Retention & lifecycle fields (Phase: Database Retention)
     expires_at: datetime | None = None
     locked_at: datetime | None = None

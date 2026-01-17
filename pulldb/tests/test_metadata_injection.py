@@ -69,11 +69,14 @@ def _metadata_spec() -> MetadataSpec:
     now = datetime.now(UTC)
     return MetadataSpec(
         job_id="job-xyz",
+        owner_user_id="00000000-0000-0000-0000-000000000001",
+        owner_user_code="TSTCOD",
         owner_username="tester",
         target_db="target_db",
         backup_filename="daily_mydumper_target_2025-11-02T00-00-00Z_Mon_dbimp.tar",
         restore_started_at=now,
         restore_completed_at=now,
+        custom_target=False,
         post_sql_result=None,
     )
 

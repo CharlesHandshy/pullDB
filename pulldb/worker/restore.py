@@ -662,11 +662,14 @@ def orchestrate_restore_workflow(
         )
         metadata_spec = MetadataSpec(
             job_id=job.id,
+            owner_user_id=job.owner_user_id,
+            owner_user_code=job.owner_user_code,
             owner_username=job.owner_username,
             target_db=job.target,
             backup_filename=spec.backup_filename,
             restore_started_at=restore_started_at,
             restore_completed_at=restore_completed_at,
+            custom_target=(job.options_json or {}).get("custom_target_used") == "true",
             post_sql_result=post_sql_result,
         )
         with time_operation(

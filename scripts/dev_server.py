@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 os.environ["PULLDB_MODE"] = "SIMULATION"
 os.environ["PULLDB_AUTH_MODE"] = "both"  # Support both trusted headers and session tokens
+os.environ["PULLDB_API_URL"] = "http://127.0.0.1:8111"  # Dev server port for internal proxies
 
 import asyncio
 import sys
@@ -21,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import uvicorn
+from fastapi import Request
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -41,37 +43,15 @@ class DevAPIState:
     and PULLDB_MODE=SIMULATION deployments.
     """
     
-    # Available scenarios (same as MockAPIState for compatibility)
-    SCENARIOS = {
-        "minimal": {
-            "name": "Minimal",
-            "description": "Infrastructure only (users, hosts, settings) - no jobs",
-        },
-        "dev_mocks": {
-            "name": "Dev Server Mocks",
-            "description": "Large dataset for stress testing (800 jobs)",
-        },
-        "empty": {
-            "name": "Empty State",
-            "description": "Alias for minimal - no jobs",
-        },
-        "busy": {
-            "name": "Busy System",
-            "description": "Many concurrent running jobs",
-        },
-        "all_failed": {
-            "name": "All Failed",
-            "description": "Multiple failed jobs for error testing",
-        },
-        "queue_backlog": {
-            "name": "Queue Backlog",
-            "description": "Many jobs waiting in queue",
-        },
-        "screenshots": {
-            "name": "Screenshots",
-            "description": "Specific job states for documentation screenshots",
-        },
-    }
+    # Import scenarios from seeding module (single source of truth)
+    @property
+    def SCENARIOS(self) -> dict[str, dict[str, str]]:
+        """Get scenarios from seeding module."""
+        from pulldb.simulation.core.seeding import SCENARIOS as SEED_SCENARIOS
+        return {
+            key: {"name": cfg.name, "description": cfg.description}
+            for key, cfg in SEED_SCENARIOS.items()
+        }
     
     def __init__(self, scenario: str = "minimal") -> None:
         from pulldb.api.main import _initialize_simulation_state
@@ -172,7 +152,6 @@ def create_dev_app():
     
     All real API endpoints (jobs, admin, manager, etc.) are inherited from main.py.
     """
-    from fastapi import Request
     from fastapi.responses import RedirectResponse
     from fastapi.staticfiles import StaticFiles
     
@@ -273,29 +252,34 @@ def create_dev_app():
         if len(q) < 3:
             return {"results": [], "total": 0, "prefix": q}
         
-        # Mock customers - match the simulation list
-        mock_customers = [
-            "actionpest",
-            "actionplumbing", 
-            "acmehvac",
-            "bigcorp",
-            "cleanpro",
-            "deltaplumbing",
-            "eliteelectric",
-            "fastfix",
-            "greenscapes",
-            "homeservices",
-            "techcorp",
-            "globalretail",
-            "healthnet",
-            "autoparts",
-            "buildpro",
-            "foodmart",
-            "energyco",
-            "finserve",
-            "edulearn",
-            "medisys",
-        ]
+        # Use lean customers if in lean scenario, otherwise full list
+        dev_api_state = app.state.dev_api_state
+        if dev_api_state.current_scenario == "lean":
+            from pulldb.simulation.core.seeding import LEAN_CUSTOMERS
+            mock_customers = LEAN_CUSTOMERS
+        else:
+            mock_customers = [
+                "actionpest",
+                "actionplumbing", 
+                "acmehvac",
+                "bigcorp",
+                "cleanpro",
+                "deltaplumbing",
+                "eliteelectric",
+                "fastfix",
+                "greenscapes",
+                "homeservices",
+                "techcorp",
+                "globalretail",
+                "healthnet",
+                "autoparts",
+                "buildpro",
+                "foodmart",
+                "energyco",
+                "finserve",
+                "edulearn",
+                "medisys",
+            ]
         
         q_lower = q.lower()
         matches = [c for c in mock_customers if q_lower in c.lower()]
@@ -401,24 +385,31 @@ def create_dev_app():
     @app.get("/api/dropdown/customers")
     async def dropdown_search_customers(q: str = "", limit: int = 20):
         """Search customers for dropdown."""
-        if len(q) < 5:
+        if len(q) < 2:
             return {"results": [], "total": 0}
         
-        # Mock customers
-        mock_customers = [
-            {"id": "acmehvac", "name": "ACME HVAC Services"},
-            {"id": "techcorp", "name": "TechCorp Industries"},
-            {"id": "fastlogistics", "name": "Fast Logistics LLC"},
-            {"id": "globalretail", "name": "Global Retail Inc"},
-            {"id": "healthnet", "name": "HealthNet Medical"},
-            {"id": "autoparts", "name": "AutoParts Express"},
-            {"id": "buildpro", "name": "BuildPro Construction"},
-            {"id": "foodmart", "name": "FoodMart Groceries"},
-            {"id": "energyco", "name": "EnergyCo Power"},
-            {"id": "finserve", "name": "FinServe Banking"},
-            {"id": "edulearn", "name": "EduLearn Academy"},
-            {"id": "medisys", "name": "MediSys Healthcare"},
-        ]
+        # Use lean customers if in lean scenario
+        dev_api_state = app.state.dev_api_state
+        if dev_api_state.current_scenario == "lean":
+            from pulldb.simulation.core.seeding import LEAN_CUSTOMERS
+            mock_customers = [
+                {"id": c, "name": c.upper()} for c in LEAN_CUSTOMERS
+            ]
+        else:
+            mock_customers = [
+                {"id": "acmehvac", "name": "ACME HVAC Services"},
+                {"id": "techcorp", "name": "TechCorp Industries"},
+                {"id": "fastlogistics", "name": "Fast Logistics LLC"},
+                {"id": "globalretail", "name": "Global Retail Inc"},
+                {"id": "healthnet", "name": "HealthNet Medical"},
+                {"id": "autoparts", "name": "AutoParts Express"},
+                {"id": "buildpro", "name": "BuildPro Construction"},
+                {"id": "foodmart", "name": "FoodMart Groceries"},
+                {"id": "energyco", "name": "EnergyCo Power"},
+                {"id": "finserve", "name": "FinServe Banking"},
+                {"id": "edulearn", "name": "EduLearn Academy"},
+                {"id": "medisys", "name": "MediSys Healthcare"},
+            ]
         
         q_lower = q.lower()
         matches = [c for c in mock_customers if q_lower in c["id"].lower() or q_lower in c["name"].lower()]
@@ -493,23 +484,32 @@ def create_dev_app():
             "event_count": len(state.job_repo.events),
         }
     
-    @app.get("/simulation/scenarios")
-    async def simulation_scenarios(request: Request):
-        """Get available simulation scenarios."""
+    @app.get("/dev/scenarios")
+    async def dev_scenarios(request: Request):
+        """Get available dev data seeding scenarios."""
         state: DevAPIState = request.app.state.dev_api_state
         return {
             "current": state.current_scenario,
             "scenarios": [
                 {"type": key, "name": val["name"], "description": val["description"]}
-                for key, val in DevAPIState.SCENARIOS.items()
+                for key, val in state.SCENARIOS.items()
             ]
         }
     
-    @app.post("/simulation/scenarios/activate")
-    async def simulation_scenarios_activate(request: Request):
-        """Activate a simulation scenario - actually switches the mock data!"""
-        body = await request.json()
-        scenario_type = body.get("scenario_type", "dev_mocks")
+    @app.post("/dev/scenarios/activate")
+    async def dev_scenarios_activate(request: Request, scenario_type: str | None = None):
+        """Activate a dev data seeding scenario - switches the mock data!
+        
+        Args:
+            scenario_type: Can be provided as query param or in JSON body.
+        """
+        # Accept scenario_type from query param OR JSON body
+        if scenario_type is None:
+            try:
+                body = await request.json()
+                scenario_type = body.get("scenario_type", "dev_mocks")
+            except Exception:
+                scenario_type = "dev_mocks"
         
         state: DevAPIState = request.app.state.dev_api_state
         result = state.switch_scenario(scenario_type)
@@ -676,6 +676,25 @@ def _load_dev_extensions() -> str:
 _cli_scenario: str | None = None
 
 
+def kill_port(port: int) -> None:
+    """Kill any process using the specified port."""
+    import subprocess
+    try:
+        # Find PIDs using the port
+        result = subprocess.run(
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True,
+            text=True,
+        )
+        pids = result.stdout.strip().split("\n")
+        for pid in pids:
+            if pid:
+                subprocess.run(["kill", "-9", pid], capture_output=True)
+                print(f"  Killed process {pid} using port {port}")
+    except Exception:
+        pass  # lsof may not exist or no process on port
+
+
 def main() -> None:
     """Run the development server."""
     import argparse
@@ -683,12 +702,13 @@ def main() -> None:
     global _cli_scenario
     
     from pulldb.web.dependencies import templates
+    from pulldb.simulation.core.seeding import SCENARIOS
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="pullDB Development Server")
     parser.add_argument(
         "--scenario",
-        choices=list(DevAPIState.SCENARIOS.keys()),
+        choices=list(SCENARIOS.keys()),
         default="busy",
         help="Initial simulation scenario (default: busy)"
     )
@@ -699,6 +719,9 @@ def main() -> None:
         help="Port to run on (default: 8111)"
     )
     args = parser.parse_args()
+    
+    # Kill any existing process on the port
+    kill_port(args.port)
     
     _cli_scenario = args.scenario
 
@@ -718,7 +741,8 @@ def main() -> None:
     # Keep these for any template logic that checks dev mode
     templates.env.globals["dev_mode"] = True
     templates.env.globals["simulation_mode"] = lambda: True
-    scenario_name = DevAPIState.SCENARIOS.get(args.scenario, {}).get("name", "Unknown")
+    scenario_config = SCENARIOS.get(args.scenario)
+    scenario_name = scenario_config.name if scenario_config else "Unknown"
     templates.env.globals["simulation_scenario_name"] = lambda: scenario_name
 
     print("\n" + "=" * 60)

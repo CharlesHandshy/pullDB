@@ -31,6 +31,7 @@ from pulldb.domain.errors import (
     CancellationError,
     DownloadError,
     ExtractionError,
+    TargetCollisionError,
 )
 from pulldb.domain.config import parse_s3_bucket_path
 from pulldb.domain.models import Job
@@ -114,6 +115,138 @@ def derive_backup_lookup_target(job: Job) -> str:
         extra={"job_id": job.id, "target": job.target},
     )
     return job.target
+
+
+def pre_flight_verify_target_overwrite_safe(
+    job: Job,
+    credentials: MySQLCredentials,
+) -> None:
+    """PRE-FLIGHT CHECK: Verify target is safe to overwrite BEFORE expensive operations.
+
+    Called by worker at the START of restore, BEFORE:
+    - Downloading backup from S3
+    - Extracting archive
+    - Running myloader
+    - Any other expensive operations
+
+    APPLIES TO ALL TARGETS (custom and auto-generated) when overwrite=true.
+
+    Args:
+        job: The job being executed.
+        credentials: MySQL credentials for the target host.
+
+    Raises:
+        TargetCollisionError: If target exists but is not pullDB-managed,
+            or if owned by a different user.
+    """
+    import mysql.connector
+
+    options = job.options_json or {}
+    overwrite = options.get("overwrite", "false") == "true"
+
+    # Only check when overwrite is enabled
+    if not overwrite:
+        return  # No overwrite: skip check (new DB will be created)
+
+    logger.info(
+        "Pre-flight check: verifying target is safe to overwrite",
+        extra={"job_id": job.id, "target": job.target, "dbhost": job.dbhost},
+    )
+
+    try:
+        conn = mysql.connector.connect(
+            host=credentials.host,
+            port=credentials.port,
+            user=credentials.username,
+            password=credentials.password,
+            connect_timeout=30,
+        )
+    except mysql.connector.Error as e:
+        # Can't connect - log warning but don't block (API check should have caught issues)
+        logger.warning(
+            "Pre-flight check: cannot connect to verify target - proceeding with caution",
+            extra={"job_id": job.id, "target": job.target, "error": str(e)},
+        )
+        return
+
+    try:
+        cursor = conn.cursor()
+
+        # Check if target database exists
+        cursor.execute("SHOW DATABASES LIKE %s", (job.target,))
+        if cursor.fetchone() is None:
+            logger.info(
+                "Pre-flight check: target does not exist - safe to proceed",
+                extra={"job_id": job.id, "target": job.target},
+            )
+            return  # DB doesn't exist - safe to proceed
+
+        # DB exists - check for pullDB metadata table
+        try:
+            cursor.execute(f"SHOW TABLES IN `{job.target}` LIKE 'pullDB'")
+            has_pulldb_table = cursor.fetchone() is not None
+        except mysql.connector.Error:
+            # Can't query tables - assume external DB (fail safe)
+            has_pulldb_table = False
+
+        if not has_pulldb_table:
+            # FAIL HARD, FAIL FAST: External database detected
+            logger.error(
+                "Pre-flight check FAILED: external database detected",
+                extra={
+                    "job_id": job.id,
+                    "target": job.target,
+                    "dbhost": job.dbhost,
+                    "collision_type": "external_db",
+                },
+            )
+            raise TargetCollisionError(
+                job_id=job.id,
+                target=job.target,
+                dbhost=job.dbhost,
+                collision_type="external_db",
+            )
+
+        # DB exists with pullDB table - check ownership
+        try:
+            cursor.execute(
+                f"SELECT owner_user_code FROM `{job.target}`.pullDB "
+                "ORDER BY restored_at DESC LIMIT 1"
+            )
+            row = cursor.fetchone()
+        except mysql.connector.Error:
+            # Can't query ownership - table may be old schema, allow overwrite
+            row = None
+
+        if row:
+            db_owner_code = str(row[0]) if row[0] else None
+            if db_owner_code and db_owner_code != job.owner_user_code:
+                # FAIL HARD: Database owned by different user
+                logger.error(
+                    "Pre-flight check FAILED: database owned by different user",
+                    extra={
+                        "job_id": job.id,
+                        "target": job.target,
+                        "dbhost": job.dbhost,
+                        "db_owner": db_owner_code,
+                        "job_owner": job.owner_user_code,
+                    },
+                )
+                raise TargetCollisionError(
+                    job_id=job.id,
+                    target=job.target,
+                    dbhost=job.dbhost,
+                    collision_type="owner_mismatch",
+                    owner_info=db_owner_code,
+                )
+
+        logger.info(
+            "Pre-flight check passed: target is pullDB-managed and owned by job owner",
+            extra={"job_id": job.id, "target": job.target},
+        )
+
+    finally:
+        conn.close()
 
 
 def build_lookup_targets_for_location(
@@ -404,6 +537,10 @@ class WorkerJobExecutor:
 
         try:
             host_credentials = self.host_repo.get_host_credentials(job.dbhost)
+
+            # PRE-FLIGHT: Verify target is safe to overwrite BEFORE expensive operations
+            # This catches external databases and ownership conflicts early
+            pre_flight_verify_target_overwrite_safe(job, host_credentials)
 
             # Phase: Discovery
             with profiler.phase(RestorePhase.DISCOVERY) as discovery_profile:
