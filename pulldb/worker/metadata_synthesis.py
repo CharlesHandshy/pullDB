@@ -92,7 +92,8 @@ def get_gzip_uncompressed_size(filepath: str) -> int:
     try:
         with open(filepath, "rb") as f:
             f.seek(-4, 2)  # Seek to last 4 bytes from end
-            return struct.unpack("<I", f.read(4))[0]
+            data = f.read(4)
+            return int(struct.unpack("<I", data)[0])
     except Exception:
         return 0
 

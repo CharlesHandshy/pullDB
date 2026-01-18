@@ -11,7 +11,7 @@ declared dead.
 Example:
     >>> def emit_heartbeat():
     ...     job_repo.append_job_event(job_id, "heartbeat", "Worker alive")
-    >>> 
+    ...
     >>> with HeartbeatContext(emit_heartbeat, interval_seconds=60) as hb:
     ...     do_long_running_work()
     >>> # Heartbeat automatically stopped on exit
