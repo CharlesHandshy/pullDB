@@ -43,6 +43,7 @@ from pulldb.infra.s3 import (
 )
 from pulldb.infra.secrets import MySQLCredentials
 from pulldb.worker.downloader import download_backup
+from pulldb.worker.heartbeat import HeartbeatContext
 from pulldb.worker.post_sql import PostSQLConnectionSpec
 from pulldb.worker.profiling import RestorePhase, RestoreProfiler
 from pulldb.worker.restore import (
@@ -527,11 +528,33 @@ class WorkerJobExecutor:
             raise CancellationError(job_id, phase)
 
     def execute(self, job: Job) -> None:
-        """Run the full restore workflow for a job."""
+        """Run the full restore workflow for a job.
+
+        Wraps execution in a heartbeat context to prevent stale job detection
+        from killing the worker during long-running operations. Heartbeat events
+        are emitted every 60 seconds to keep the job alive.
+        """
         logger.info(
             "Executing job",
             extra={"job_id": job.id, "target": job.target, "phase": "executor_start"},
         )
+
+        # Create heartbeat emission function
+        def _emit_heartbeat() -> None:
+            try:
+                self._append_event(job.id, "heartbeat", {"status": "worker_alive"})
+            except Exception as e:
+                logger.warning(
+                    "Failed to emit heartbeat",
+                    extra={"job_id": job.id, "error": str(e)},
+                )
+
+        # Wrap entire execution in heartbeat context to prevent stale detection
+        with HeartbeatContext(_emit_heartbeat, interval_seconds=60.0):
+            self._execute_workflow(job)
+
+    def _execute_workflow(self, job: Job) -> None:
+        """Internal workflow execution (called within heartbeat context)."""
         job_dir, download_dir, extract_dir = self._prepare_job_dirs(job.id)
         profiler = RestoreProfiler(job.id)
 
