@@ -157,14 +157,14 @@ class SimulationEventBus:
                 try:
                     callback(event)
                 except Exception as e:
-                    logger.error(f"Event callback error: {e}")
+                    logger.error(f"Event callback error: {e}", exc_info=True)
 
             # Notify global subscribers
             for callback in self._subscribers.get(None, []):
                 try:
                     callback(event)
                 except Exception as e:
-                    logger.error(f"Event callback error: {e}")
+                    logger.error(f"Event callback error: {e}", exc_info=True)
 
         return event
 
