@@ -6,6 +6,8 @@ Supports both AWS Secrets Manager (recommended) and SSM Parameter Store
 for credentials.
 
 Milestone 2.7 update: Uses SettingsRepository for MySQL settings access.
+
+HCA Layer: entities
 """
 
 from __future__ import annotations
@@ -14,14 +16,14 @@ import getpass
 import json
 import os
 import shlex
-import typing as t
+from typing import Any, TYPE_CHECKING
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import boto3
 
 
-if t.TYPE_CHECKING:
+if TYPE_CHECKING:
     from pulldb.infra.mysql import MySQLPool
 
 
@@ -181,7 +183,7 @@ class Config:
             if aws_profile:
                 os.environ["AWS_PROFILE"] = aws_profile
 
-            ssm: t.Any = boto3.client("ssm")  # boto3 lacks precise type stubs here
+            ssm: Any = boto3.client("ssm")  # boto3 lacks precise type stubs here
             response = ssm.get_parameter(Name=value, WithDecryption=True)
             parameter_value: str = response["Parameter"]["Value"]
             return parameter_value

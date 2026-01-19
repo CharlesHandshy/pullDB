@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Feature Request Domain Models
 
@@ -7,7 +9,7 @@ Pydantic models for feature requests and votes.
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -28,32 +30,32 @@ class FeatureRequest(BaseModel):
     request_id: str
     submitted_by_user_id: str
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     status: FeatureRequestStatus = FeatureRequestStatus.OPEN
     vote_score: int = 0
     upvote_count: int = 0
     downvote_count: int = 0
     created_at: datetime
     updated_at: datetime
-    completed_at: Optional[datetime] = None
-    admin_response: Optional[str] = None
+    completed_at: datetime | None = None
+    admin_response: str | None = None
     
     # Joined fields (from queries)
-    submitted_by_username: Optional[str] = None
-    submitted_by_user_code: Optional[str] = None
-    user_vote: Optional[int] = None  # Current user's vote: 1, -1, or None
+    submitted_by_username: str | None = None
+    submitted_by_user_code: str | None = None
+    user_vote: int | None = None  # Current user's vote: 1, -1, or None
 
 
 class FeatureRequestCreate(BaseModel):
     """Input for creating a new feature request."""
     title: str = Field(..., min_length=5, max_length=200)
-    description: Optional[str] = Field(None, max_length=2000)
+    description: str | None = Field(None, max_length=2000)
 
 
 class FeatureRequestUpdate(BaseModel):
     """Admin input for updating a feature request."""
-    status: Optional[FeatureRequestStatus] = None
-    admin_response: Optional[str] = Field(None, max_length=2000)
+    status: FeatureRequestStatus | None = None
+    admin_response: str | None = Field(None, max_length=2000)
 
 
 class FeatureRequestVote(BaseModel):
@@ -87,8 +89,8 @@ class FeatureRequestNote(BaseModel):
     note_text: str
     created_at: datetime
     # Joined fields
-    username: Optional[str] = None
-    user_code: Optional[str] = None
+    username: str | None = None
+    user_code: str | None = None
 
 
 class NoteCreate(BaseModel):

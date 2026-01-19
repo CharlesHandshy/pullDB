@@ -5,6 +5,8 @@ Phase 4: Verifies bcrypt hashing and verification works correctly.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 import pytest
 
 from pulldb.auth.password import (

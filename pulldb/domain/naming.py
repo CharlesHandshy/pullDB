@@ -11,6 +11,8 @@ Architecture:
 
 For customer names > 42 chars, we truncate to 38 chars + 4 hex hash suffix = 42 chars.
 The hash is deterministic (MD5-based) so the same input always produces the same output.
+
+HCA Layer: entities (pulldb/domain/)
 """
 
 from __future__ import annotations

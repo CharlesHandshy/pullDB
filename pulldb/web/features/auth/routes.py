@@ -1,9 +1,17 @@
-"""Authentication routes for Web2 interface."""
+from __future__ import annotations
 
+"""Authentication routes for Web2 interface.
+
+HCA Layer: features (pulldb/web/features/)
+"""
+
+import logging
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from pulldb.domain.models import User
 from pulldb.web.dependencies import get_api_state, get_session_user, templates
@@ -526,7 +534,7 @@ async def set_default_host(
     request: Request,
     state: Any = Depends(get_api_state),
     user: User | None = Depends(get_session_user),
-) -> dict:
+) -> dict | JSONResponse:
     """Set user's default database host."""
     from fastapi.responses import JSONResponse
 
@@ -540,6 +548,7 @@ async def set_default_host(
         body = await request.json()
         host = body.get("host", "")
     except Exception:
+        logger.debug("Invalid JSON in set_default_host request", exc_info=True)
         return JSONResponse(
             {"success": False, "error": "Invalid request body"},
             status_code=400,
@@ -683,7 +692,7 @@ async def maintenance_submit(
                 try:
                     if action == "extend":
                         months_str = form.get(f"extend_months_{job_id}", "1")
-                        months = int(months_str)
+                        months = int(str(months_str))
                         if hasattr(state.job_repo, "extend_job_expiration"):
                             # Note: This would need to use RetentionService but for now
                             # we use the repository directly
@@ -693,7 +702,7 @@ async def maintenance_submit(
                             retention_service = RetentionService(
                                 job_repo=state.job_repo,
                                 user_repo=state.user_repo,
-                                settings_repo=settings_repo,
+                                settings_repo=settings_repo,  # type: ignore[arg-type]
                             )
                             await run_in_threadpool(
                                 retention_service.extend_job,
@@ -703,14 +712,14 @@ async def maintenance_submit(
                             )
                     
                     elif action == "lock":
-                        reason = form.get(f"lock_reason_{job_id}", "User locked via maintenance modal")
+                        reason = str(form.get(f"lock_reason_{job_id}", "User locked via maintenance modal"))
                         from pulldb.worker.retention import RetentionService
                         
                         settings_repo = getattr(state, "settings_repo", None)
                         retention_service = RetentionService(
                             job_repo=state.job_repo,
                             user_repo=state.user_repo,
-                            settings_repo=settings_repo,
+                            settings_repo=settings_repo,  # type: ignore[arg-type]
                         )
                         await run_in_threadpool(
                             retention_service.lock_job,
@@ -726,7 +735,7 @@ async def maintenance_submit(
                         retention_service = RetentionService(
                             job_repo=state.job_repo,
                             user_repo=state.user_repo,
-                            settings_repo=settings_repo,
+                            settings_repo=settings_repo,  # type: ignore[arg-type]
                         )
                         await run_in_threadpool(
                             retention_service.unlock_job,

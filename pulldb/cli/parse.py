@@ -23,6 +23,8 @@ Supported option syntax styles:
 
 Errors raise ``CLIParseError`` with actionable messages. No I/O performed; user
 and target uniqueness enforced later by repositories.
+
+HCA Layer: pages
 """
 
 from __future__ import annotations

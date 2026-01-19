@@ -11,6 +11,8 @@ FAIL HARD Design:
 
 This module intentionally keeps no logging side-effects; caller handles
 structured logging so job context (job_id, phase) remains consistent.
+
+HCA Layer: shared
 """
 
 from __future__ import annotations
@@ -18,8 +20,7 @@ from __future__ import annotations
 import re
 import subprocess
 import time
-import typing as t
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 
 from pulldb.domain.models import CommandResult
@@ -203,12 +204,12 @@ class CommandAbortedError(Exception):
 
 def run_command_streaming(
     command: Sequence[str],
-    line_callback: t.Callable[[str], None],
+    line_callback: Callable[[str], None],
     *,
     env: Mapping[str, str] | None = None,
     timeout: float | None = None,
     cwd: str | None = None,
-    abort_check: t.Callable[[], bool] | None = None,
+    abort_check: Callable[[], bool] | None = None,
     abort_check_interval: int = 100,
 ) -> CommandResult:
     """Execute command, streaming merged stdout/stderr to callback.
@@ -327,12 +328,12 @@ class SubprocessExecutor:
     def run_command_streaming(
         self,
         command: Sequence[str],
-        line_callback: t.Callable[[str], None],
+        line_callback: Callable[[str], None],
         *,
         env: Mapping[str, str] | None = None,
         timeout: float | None = None,
         cwd: str | None = None,
-        abort_check: t.Callable[[], bool] | None = None,
+        abort_check: Callable[[], bool] | None = None,
         abort_check_interval: int = 100,
     ) -> CommandResult:
         """Execute command, streaming merged stdout/stderr to callback."""

@@ -1,4 +1,9 @@
-"""Basic import smoke tests ensuring package scaffolding works."""
+from __future__ import annotations
+
+"""Basic import smoke tests ensuring package scaffolding works.
+
+HCA Layer: tests (pulldb/tests/)
+"""
 
 
 def test_import_cli() -> None:

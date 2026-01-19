@@ -7,6 +7,7 @@ Purpose: Common dependencies used by all route modules.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
@@ -20,6 +21,8 @@ from pulldb.simulation import get_scenario_manager
 
 if TYPE_CHECKING:
     from pulldb.api.main import APIState
+
+logger = logging.getLogger(__name__)
 
 # Template configuration - HCA multi-directory support
 # Search order: feature pages → shared layouts → legacy templates
@@ -60,10 +63,11 @@ def _get_active_scenario_name() -> str | None:
         return None
     try:
         manager = get_scenario_manager()
-        if manager.active_scenario:
-            return manager.active_scenario.name.replace("_", " ").title()
-    except Exception:
-        pass
+        current = manager.get_current_scenario()
+        if current:
+            return current.name.replace("_", " ").title()
+    except Exception:  # Graceful degradation - scenario name is informational only
+        logger.debug("Failed to get active scenario name", exc_info=True)
     return None
 
 
@@ -121,8 +125,8 @@ def _get_logo_config() -> dict:
                         "transform": label_style.get("transform", default_label_style["transform"]),
                     },
                 }
-        except Exception:
-            pass
+        except Exception:  # Graceful degradation - use default logo config
+            logger.debug("Failed to load logo config, using defaults", exc_info=True)
 
     return default_config
 
@@ -139,8 +143,8 @@ def _get_admin_dark_mode() -> bool:
         if state and hasattr(state, "settings_repo") and state.settings_repo:
             dark_mode_str = state.settings_repo.get("dark_mode_enabled") or "false"
             return dark_mode_str.lower() in ("true", "1", "yes")
-    except Exception:
-        pass
+    except Exception:  # Graceful degradation - default to light mode
+        logger.debug("Failed to get admin dark mode setting", exc_info=True)
     return False
 
 
@@ -153,8 +157,8 @@ def _get_theme_version() -> int:
         version_file = WEB_DIR / "static" / "css" / "generated" / ".theme-version"
         if version_file.exists():
             return int(version_file.read_text().strip())
-    except Exception:
-        pass
+    except Exception:  # Graceful degradation - use manifest file mtime
+        logger.debug("Failed to read theme version file", exc_info=True)
     return int(Path(WEB_DIR / "static" / "css" / "generated" / "manifest-light.css").stat().st_mtime)
 
 
@@ -181,7 +185,8 @@ def _parse_log_json(detail: str | None) -> dict | str | None:
     if not detail:
         return None
     try:
-        return json.loads(detail)
+        result = json.loads(detail)
+        return result if isinstance(result, dict) else detail
     except (json.JSONDecodeError, TypeError):
         return detail
 
@@ -302,7 +307,8 @@ def get_session_user(
     if not user_id:
         return None
     
-    return state.user_repo.get_user_by_id(user_id)
+    user: User | None = state.user_repo.get_user_by_id(user_id)
+    return user
 
 
 def require_login(

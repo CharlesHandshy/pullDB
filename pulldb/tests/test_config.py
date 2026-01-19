@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 """Tests for Config dataclass and configuration loading.
+
+    HCA Layer: tests
 
 Tests both minimal_from_env (environment only) and from_env_and_mysql
 (environment + MySQL settings table).

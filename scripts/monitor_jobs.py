@@ -15,7 +15,7 @@ import contextlib
 import logging
 import os
 import subprocess
-import typing as t
+from typing import Any, cast
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
@@ -122,7 +122,7 @@ def check_system_activity(config: Config) -> SystemActivity:
     )
 
 
-def get_mysql_processlist(config: Config) -> list[dict[str, t.Any]]:
+def get_mysql_processlist(config: Config) -> list[dict[str, Any]]:
     """Get MySQL processlist from the coordination DB."""
     try:
         pool = build_default_pool(
@@ -134,7 +134,7 @@ def get_mysql_processlist(config: Config) -> list[dict[str, t.Any]]:
         with pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
             cursor.execute("SHOW PROCESSLIST")
-            return t.cast(list[dict[str, t.Any]], cursor.fetchall())
+            return cast(list[dict[str, Any]], cursor.fetchall())
     except Exception as e:
         logger.error(f"Failed to get MySQL processlist: {e}")
         return []

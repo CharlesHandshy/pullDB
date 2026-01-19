@@ -1,11 +1,18 @@
-"""FastAPI-based API service for pullDB."""
+"""FastAPI-based API service for pullDB.
+
+HCA Layer: pages
+"""
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
-import typing as t
+
+logger = logging.getLogger(__name__)
+from collections.abc import Callable
+from typing import Any, cast
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -49,6 +56,7 @@ from pulldb.worker.staging import generate_staging_name
 
 if TYPE_CHECKING:
     from pulldb.auth import AuthRepository
+    from pulldb.worker.feature_request_service import FeatureRequestService
 
 
 DEFAULT_STATUS_LIMIT = 100
@@ -93,7 +101,7 @@ if WEB_ENABLED:
 
         # Favicon routes - browsers request these from root URL
         @app.get("/favicon.ico", include_in_schema=False)
-        async def favicon():
+        async def favicon() -> FileResponse:
             """Serve favicon from /static/images with 1-day cache."""
             favicon_path = IMAGES_DIR / "favicon.ico"
             if favicon_path.exists():
@@ -105,7 +113,7 @@ if WEB_ENABLED:
             raise HTTPException(status_code=404, detail="Favicon not found")
 
         @app.get("/apple-touch-icon.png", include_in_schema=False)
-        async def apple_touch_icon():
+        async def apple_touch_icon() -> FileResponse:
             """Serve Apple touch icon from /static/images with 1-day cache."""
             icon_path = IMAGES_DIR / "apple-touch-icon.png"
             if icon_path.exists():
@@ -118,17 +126,17 @@ if WEB_ENABLED:
 
         # Root URL redirect - browsers hitting / should go to login
         @app.get("/", include_in_schema=False)
-        async def root_redirect():
+        async def root_redirect() -> RedirectResponse:
             """Redirect root URL to web login page."""
             return RedirectResponse(url="/web/login", status_code=302)
 
         app.include_router(web_router)
-        app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
-        app.add_exception_handler(PasswordResetRequiredError, create_password_reset_required_handler())
-        app.add_exception_handler(MaintenanceRequiredError, create_maintenance_required_handler())
+        app.add_exception_handler(SessionExpiredError, create_session_expired_handler())  # type: ignore[arg-type]
+        app.add_exception_handler(PasswordResetRequiredError, create_password_reset_required_handler())  # type: ignore[arg-type]
+        app.add_exception_handler(MaintenanceRequiredError, create_maintenance_required_handler())  # type: ignore[arg-type]
         app.add_exception_handler(StarletteHTTPException, create_http_exception_handler(web_templates))
     except ImportError:
-        pass  # Web UI module not installed
+        logger.debug("Web UI module not installed, skipping web routes")
 
 # Mount simulation control API if in simulation mode
 if is_simulation_mode():
@@ -173,7 +181,7 @@ def _initialize_simulation_state() -> APIState:
         job_repo=SimulatedJobRepository(),
         settings_repo=SimulatedSettingsRepository(),
         host_repo=SimulatedHostRepository(),
-        auth_repo=SimulatedAuthRepository(),
+        auth_repo=SimulatedAuthRepository(),  # type: ignore[arg-type]
         audit_repo=SimulatedAuditRepository(),
     )
 
@@ -207,7 +215,7 @@ def _initialize_real_state() -> APIState:
         auth_repo = AuthRepository(pool)
         audit_repo = AuditRepository(pool)
     except ImportError:
-        pass  # Auth modules not available
+        logger.debug("Auth modules not available, auth_repo/audit_repo will be None")
 
     return APIState(
         config=config,
@@ -223,7 +231,7 @@ def _initialize_real_state() -> APIState:
 
 def get_api_state() -> APIState:
     """FastAPI dependency returning shared API state."""
-    state = t.cast(APIState | None, getattr(app.state, "api_state", None))
+    state = cast(APIState | None, getattr(app.state, "api_state", None))
     if state is not None:
         return state
     try:
@@ -670,7 +678,7 @@ async def register_user(
     except Exception:
         # API key creation failed - continue without it (table may not exist)
         # User can still use web UI, admin can create key later
-        pass
+        logger.debug("API key creation failed during registration for user %s", user.user_id, exc_info=True)
 
     # Disable the account (requires admin/manager approval)
     await run_in_threadpool(
@@ -885,7 +893,7 @@ async def list_hosts(
                 display_hostname = creds.host
         except Exception:
             # Fall back to db_hosts.hostname if resolution fails
-            pass
+            logger.debug("Failed to resolve credentials for host %s", h.hostname, exc_info=True)
         
         host_responses.append(
             HostInfoResponse(
@@ -907,8 +915,8 @@ async def list_hosts(
 async def status_endpoint(
     user: AuthUser,
     state: APIState = Depends(get_api_state),
-) -> dict[str, t.Any]:
-    def _collect() -> dict[str, t.Any]:
+) -> dict[str, Any]:
+    def _collect() -> dict[str, Any]:
         jobs = state.job_repo.get_active_jobs()
         active_count = len(jobs)
         return {
@@ -969,19 +977,6 @@ async def list_active_jobs(
 # --- User's Last Job ---
 
 
-class UserLastJobResponse(pydantic.BaseModel):
-    """Response for user's last job lookup."""
-
-    job_id: str | None = None
-    target: str | None = None
-    status: str | None = None
-    submitted_at: datetime | None = None
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    error_detail: str | None = None
-    found: bool = False
-
-
 def _get_user_last_job(state: APIState, user_code: str) -> UserLastJobResponse:
     """Get the user's most recently submitted job."""
     job = state.job_repo.get_user_last_job(user_code)
@@ -1020,28 +1015,6 @@ async def get_user_last_job(
 
 
 # --- Job ID Resolution ---
-
-
-class JobMatch(pydantic.BaseModel):
-    """A job matching a prefix search."""
-
-    id: str
-    target: str
-    status: str
-    user_code: str
-    submitted_at: datetime | None = None
-
-
-class JobResolveResponse(pydantic.BaseModel):
-    """Response for job ID prefix resolution."""
-
-    resolved_id: str | None = pydantic.Field(
-        None, description="Full job ID if exactly one match"
-    )
-    matches: list[JobMatch] = pydantic.Field(
-        default_factory=list, description="List of matching jobs if multiple"
-    )
-    count: int = pydantic.Field(description="Number of matches found")
 
 
 def _resolve_job_id(state: APIState, prefix: str) -> JobResolveResponse:
@@ -1290,7 +1263,7 @@ def _get_paginated_jobs(
     
     # Text-based wildcard filter for submitted_at (matches formatted date MM/DD/YYYY)
     if submitted_at_filter:
-        def match_submitted(job):
+        def match_submitted(job: Job) -> bool:
             if not job.submitted_at:
                 return False
             # Format date as MM/DD/YYYY for pattern matching
@@ -1387,7 +1360,7 @@ async def get_paginated_jobs(
     filter_submitted_at: str | None = fastapi.Query(None, alias="filter_submitted_at", description="Filter by date (MM/DD/YYYY, wildcards: *)"),
     days: int = fastapi.Query(30, ge=1, le=365, description="History retention days"),
     state: APIState = fastapi.Depends(get_api_state),
-    user: AuthUser = None,
+    user: AuthUser | None = None,
 ) -> PaginatedJobsResponse:
     """Get paginated jobs for LazyTable widget.
 
@@ -1808,7 +1781,7 @@ class PhaseProfileResponse(pydantic.BaseModel):
     bytes_processed: int | None = None
     bytes_per_second: float | None = None
     mbps: float | None = None
-    metadata: dict[str, t.Any] = pydantic.Field(default_factory=dict)
+    metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
 
 
 class JobProfileResponse(pydantic.BaseModel):
@@ -2269,6 +2242,11 @@ def _extend_job_retention(
         )
 
     settings_repo = getattr(state, "settings_repo", None)
+    if settings_repo is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Settings repository not available",
+        )
     retention_service = RetentionService(
         job_repo=state.job_repo,
         user_repo=state.user_repo,
@@ -2312,6 +2290,11 @@ def _lock_job_database(
         )
 
     settings_repo = getattr(state, "settings_repo", None)
+    if settings_repo is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Settings repository not available",
+        )
     retention_service = RetentionService(
         job_repo=state.job_repo,
         user_repo=state.user_repo,
@@ -2354,6 +2337,11 @@ def _unlock_job_database(
         )
 
     settings_repo = getattr(state, "settings_repo", None)
+    if settings_repo is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Settings repository not available",
+        )
     retention_service = RetentionService(
         job_repo=state.job_repo,
         user_repo=state.user_repo,
@@ -2509,7 +2497,7 @@ def _get_paginated_team(
     # Sort
     if sort_column and sort_direction:
         reverse = sort_direction == "desc"
-        sort_keys: dict[str, t.Callable[[User], t.Any]] = {
+        sort_keys: dict[str, Callable[[User], Any]] = {
             "username": lambda u: (u.username or "").lower(),
             "user_code": lambda u: (u.user_code or "").lower(),
             "active_jobs": lambda u: user_active_jobs.get(u.user_id, 0),
@@ -4125,16 +4113,21 @@ class FeatureRequestStatsResponse(pydantic.BaseModel):
     open: int
     in_progress: int
     complete: int
-    rejected: int
+    declined: int
 
 
-def _get_feature_service(state: APIState):
+# Module-level cache for feature service (APIState is immutable NamedTuple)
+_feature_service_cache: FeatureRequestService | None = None
+
+
+def _get_feature_service(state: APIState) -> FeatureRequestService:
     """Get or create feature request service."""
+    global _feature_service_cache
     from pulldb.worker.feature_request_service import FeatureRequestService
     # Service needs async pool, create lazily
-    if not hasattr(state, '_feature_service'):
-        state._feature_service = FeatureRequestService(state.pool)
-    return state._feature_service
+    if _feature_service_cache is None:
+        _feature_service_cache = FeatureRequestService(state.pool)
+    return _feature_service_cache
 
 
 @app.get("/api/feature-requests/stats", response_model=FeatureRequestStatsResponse)
@@ -4150,7 +4143,7 @@ async def get_feature_request_stats(
         open=stats.open,
         in_progress=stats.in_progress,
         complete=stats.complete,
-        rejected=stats.rejected,
+        declined=stats.declined,
     )
 
 
@@ -4419,7 +4412,7 @@ def main_web(argv: list[str] | None = None) -> int:
 
         # Favicon routes - browsers request these from root URL
         @web_app.get("/favicon.ico", include_in_schema=False)
-        async def favicon():
+        async def favicon() -> FileResponse:
             """Serve favicon from /static/images with 1-day cache."""
             favicon_path = IMAGES_DIR / "favicon.ico"
             if favicon_path.exists():
@@ -4431,7 +4424,7 @@ def main_web(argv: list[str] | None = None) -> int:
             raise HTTPException(status_code=404, detail="Favicon not found")
 
         @web_app.get("/apple-touch-icon.png", include_in_schema=False)
-        async def apple_touch_icon():
+        async def apple_touch_icon() -> FileResponse:
             """Serve Apple touch icon from /static/images with 1-day cache."""
             icon_path = IMAGES_DIR / "apple-touch-icon.png"
             if icon_path.exists():
@@ -4444,17 +4437,17 @@ def main_web(argv: list[str] | None = None) -> int:
 
         # Root URL redirect - browsers hitting / should go to login
         @web_app.get("/", include_in_schema=False)
-        async def root_redirect():
+        async def root_redirect() -> RedirectResponse:
             """Redirect root URL to web login page."""
             return RedirectResponse(url="/web/login", status_code=302)
 
         web_app.include_router(web_router)
-        web_app.add_exception_handler(SessionExpiredError, create_session_expired_handler())
-        web_app.add_exception_handler(PasswordResetRequiredError, create_password_reset_required_handler())
-        web_app.add_exception_handler(MaintenanceRequiredError, create_maintenance_required_handler())
+        web_app.add_exception_handler(SessionExpiredError, create_session_expired_handler())  # type: ignore[arg-type]
+        web_app.add_exception_handler(PasswordResetRequiredError, create_password_reset_required_handler())  # type: ignore[arg-type]
+        web_app.add_exception_handler(MaintenanceRequiredError, create_maintenance_required_handler())  # type: ignore[arg-type]
         web_app.add_exception_handler(StarletteHTTPException, create_http_exception_handler(web_templates))
     except ImportError as e:
-        print(f"Error: Web UI module not available: {e}")
+        logger.error("Web UI module not available: %s", e)
         return 1
     
     # Copy state initialization from main app if available

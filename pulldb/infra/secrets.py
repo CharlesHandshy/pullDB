@@ -19,6 +19,8 @@ Other connection parameters from environment:
     - PULLDB_MYSQL_DATABASE: Database name (optional)
 
 See docs/AWS-SETUP.md for complete setup instructions.
+
+HCA Layer: shared (pulldb/infra/)
 """
 
 from __future__ import annotations

@@ -12,6 +12,8 @@ Example:
     >>> repo = JobRepository(pool)
     >>> executor = lambda job: None
     >>> run_poll_loop(repo, executor, max_iterations=10)
+
+HCA Layer: features
 """
 
 from __future__ import annotations
@@ -19,7 +21,8 @@ from __future__ import annotations
 import os
 import socket
 import time
-import typing as t
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from pulldb.domain.models import AdminTask, Job
 from pulldb.infra.logging import current_task_name, get_logger
@@ -32,7 +35,7 @@ from pulldb.infra.metrics import (
 )
 
 
-if t.TYPE_CHECKING:
+if TYPE_CHECKING:
     from pulldb.infra.mysql import AdminTaskRepository, HostRepository, JobRepository
 
 logger = get_logger("pulldb.worker.loop")
@@ -43,8 +46,8 @@ MAX_POLL_INTERVAL_SECONDS = 30.0
 BACKOFF_MULTIPLIER = 2.0
 
 
-JobExecutor = t.Callable[[Job], None]
-AdminTaskExecutorFunc = t.Callable[[AdminTask], None]
+JobExecutor = Callable[[Job], None]
+AdminTaskExecutorFunc = Callable[[AdminTask], None]
 
 
 def get_worker_id() -> str:
@@ -70,7 +73,7 @@ def run_poll_loop(
     *,
     max_iterations: int | None = None,
     poll_interval: float = MIN_POLL_INTERVAL_SECONDS,
-    should_stop: t.Callable[[], bool] | None = None,
+    should_stop: Callable[[], bool] | None = None,
     worker_id: str | None = None,
     admin_task_repo: AdminTaskRepository | None = None,
     admin_task_executor: AdminTaskExecutorFunc | None = None,
@@ -279,10 +282,10 @@ def run_poll_loop(
                             try:
                                 from pulldb.worker.cleanup import execute_delete_job
 
-                                result = execute_delete_job(
+                                delete_result = execute_delete_job(
                                     stale_job, job_repo, host_repo
                                 )
-                                if result.success:
+                                if delete_result.success:
                                     emit_event(
                                         "delete_job_success",
                                         f"job_id={stale_job.id}",
@@ -291,7 +294,7 @@ def run_poll_loop(
                                 else:
                                     emit_event(
                                         "delete_job_retry_failed",
-                                        f"job_id={stale_job.id} error={result.error}",
+                                        f"job_id={stale_job.id} error={delete_result.error}",
                                         MetricLabels(phase="delete_retry", status="error"),
                                     )
                             except Exception as exc:

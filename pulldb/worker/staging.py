@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Staging database lifecycle management for pullDB restore workflow.
 
 This module handles the staging-to-production rename pattern:
@@ -8,6 +10,8 @@ This module handles the staging-to-production rename pattern:
 
 The staging pattern provides zero-downtime restores with validation before
 cutover and rollback capability.
+
+HCA Layer: features (pulldb/worker/)
 """
 
 import re

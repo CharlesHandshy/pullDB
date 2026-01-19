@@ -7,6 +7,8 @@ Provides unified two-phase configuration loading:
 4. Load full config from env + MySQL settings
 
 Both API and Worker services use this pattern to ensure consistency.
+
+HCA Layer: shared (pulldb/infra/)
 """
 
 from __future__ import annotations

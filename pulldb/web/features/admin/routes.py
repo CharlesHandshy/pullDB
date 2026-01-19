@@ -1,6 +1,12 @@
-"""Admin routes for Web2 interface."""
+from __future__ import annotations
 
-from typing import Any, Optional
+"""Admin routes for Web2 interface.
+
+HCA Layer: features (pulldb/web/features/)
+"""
+
+import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -9,6 +15,8 @@ from pulldb.domain.models import JobStatus, User
 from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_MONITOR
 from pulldb.web.dependencies import get_api_state, require_admin, templates
 from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/web/admin", tags=["web-admin"])
 
@@ -74,8 +82,8 @@ async def admin_page(
         try:
             pending_keys = state.auth_repo.get_pending_api_keys()
             pending_keys_count = len(pending_keys)
-        except Exception:
-            pass
+        except Exception:  # Graceful degradation - pending keys count is informational
+            logger.debug("Failed to get pending API keys count", exc_info=True)
 
     stats = {
         "total_users": len(users),
@@ -1610,6 +1618,7 @@ def list_mysql_credential_secrets(prefix: str = "/pulldb/mysql/") -> list[dict[s
         return secrets
     except Exception:
         # Fail gracefully - return empty list if AWS access fails
+        logger.debug("Failed to list MySQL credential secrets from AWS", exc_info=True)
         return []
 
 
@@ -1822,15 +1831,15 @@ def _enrich_host_detail(host: dict, state: Any) -> dict:
                     (host["id"],),
                 )
                 assigned_users = cursor.fetchall()
-        except Exception:
-            pass  # User assignment table may not exist
+        except Exception:  # User assignment table may not exist in all deployments
+            logger.debug("Failed to fetch assigned users (table may not exist)", exc_info=True)
     elif hasattr(state, "auth_repo") and state.auth_repo:
         # For simulated mode, try get_users_for_host if available
         if hasattr(state.auth_repo, "get_users_for_host"):
             try:
                 assigned_users = state.auth_repo.get_users_for_host(host["id"])
-            except Exception:
-                pass
+            except Exception:  # Graceful degradation for simulation mode
+                logger.debug("Failed to get users for host in simulation", exc_info=True)
 
     return {
         **host,
@@ -2011,7 +2020,8 @@ async def update_host_secret(
                     # Re-raise our duplicate error
                     raise
                 except Exception:
-                    # Skip hosts with unresolvable credentials
+                    # Skip hosts with unresolvable credentials - likely misconfigured
+                    logger.debug("Skipping host %s with unresolvable credentials", other_host.hostname, exc_info=True)
                     continue
 
         username_changed = secret_username != current_username
@@ -2911,6 +2921,8 @@ def check_settings_drift(settings_repo: Any) -> list[dict]:
     try:
         db_settings = settings_repo.get_all_settings()
     except Exception:
+        # Graceful degradation: can't check drift if DB access fails
+        logger.debug("Failed to get settings from DB for drift check", exc_info=True)
         return []
 
     return get_settings_drift(db_settings)
@@ -2999,7 +3011,8 @@ async def list_settings(
                 if log.get("action") in ("setting_updated", "setting_reset")
             ][:10]  # Last 10 settings changes
         except Exception:
-            pass  # Audit logs are optional
+            # Graceful degradation: audit logs are informational, page works without
+            logger.debug("Failed to get audit logs for settings page", exc_info=True)
 
     return templates.TemplateResponse(
         "features/admin/settings.html",
@@ -3072,7 +3085,8 @@ async def update_setting(
                 },
             )
         except Exception:
-            pass  # Audit is best-effort
+            # Audit is best-effort - don't fail main operation
+            logger.debug("Failed to log audit for setting update", exc_info=True)
 
     # Return updated setting data
     db_settings = state.settings_repo.get_all_settings()
@@ -3126,7 +3140,8 @@ async def reset_setting(
                 },
             )
         except Exception:
-            pass  # Audit is best-effort
+            # Audit is best-effort - don't fail main operation
+            logger.debug("Failed to log audit for setting reset", exc_info=True)
 
     # Return updated setting data (now showing env/default)
     db_settings = state.settings_repo.get_all_settings()
@@ -3202,7 +3217,8 @@ async def create_setting_directory(
                     },
                 )
             except Exception:
-                pass  # Audit is best-effort
+                # Audit is best-effort - don't fail main operation
+                logger.debug("Failed to log audit for directory creation", exc_info=True)
 
         return {"success": True, "message": f"Directory created: {path}"}
 
@@ -3239,7 +3255,7 @@ async def get_prune_candidates(
     days: int = 90,
     page: int = Query(0, ge=0, description="Page number (0-indexed)"),
     pageSize: int = Query(50, ge=10, le=200, description="Page size"),
-    sortColumn: Optional[str] = None,
+    sortColumn: str | None = None,
     sortDirection: str = "asc",
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
@@ -3518,7 +3534,7 @@ async def get_cleanup_candidates(
     days: int = 7,
     page: int = Query(0, ge=0, description="Page number (0-indexed)"),
     pageSize: int = Query(50, ge=10, le=200, description="Page size"),
-    sortColumn: Optional[str] = None,
+    sortColumn: str | None = None,
     sortDirection: str = "asc",
     state: Any = Depends(get_api_state),
     user: User = Depends(require_admin),
@@ -3976,6 +3992,8 @@ async def get_orphan_distinct_values(
                         "target_name": oc.target_name,
                     })
     except Exception:
+        # Graceful degradation: return empty list for filter options
+        logger.debug("Failed to detect orphaned databases for distinct values", exc_info=True)
         return []  # Return empty list on error - UI will show empty state
     
     # Parse filter order and determine which filters should apply
@@ -4222,7 +4240,7 @@ async def api_user_orphan_candidates(
     from datetime import datetime
 
     # Get all valid user codes
-    valid_user_codes = frozenset()
+    valid_user_codes: frozenset[str] = frozenset()
     if hasattr(state.user_repo, "list_users"):
         valid_user_codes = get_all_user_codes(state.user_repo)
 
@@ -4292,10 +4310,10 @@ async def api_user_orphan_candidates(
             # Check date filters
             if match:
                 for col_key, after_str in date_after.items():
-                    cell_val = orphan_item.get(col_key)
-                    if cell_val:
+                    date_val = orphan_item.get(col_key)
+                    if date_val:
                         try:
-                            cell_dt = datetime.fromisoformat(cell_val.replace("Z", "+00:00"))
+                            cell_dt = datetime.fromisoformat(str(date_val).replace("Z", "+00:00"))
                             after_dt = datetime.fromisoformat(after_str)
                             if cell_dt < after_dt:
                                 match = False
@@ -4304,10 +4322,10 @@ async def api_user_orphan_candidates(
             
             if match:
                 for col_key, before_str in date_before.items():
-                    cell_val = orphan_item.get(col_key)
-                    if cell_val:
+                    date_val = orphan_item.get(col_key)
+                    if date_val:
                         try:
-                            cell_dt = datetime.fromisoformat(cell_val.replace("Z", "+00:00"))
+                            cell_dt = datetime.fromisoformat(str(date_val).replace("Z", "+00:00"))
                             before_dt = datetime.fromisoformat(before_str)
                             if cell_dt > before_dt:
                                 match = False
@@ -4359,7 +4377,7 @@ async def api_user_orphan_distinct_values(
         get_all_user_codes,
     )
 
-    valid_user_codes = frozenset()
+    valid_user_codes: frozenset[str] = frozenset()
     if hasattr(state.user_repo, "list_users"):
         valid_user_codes = get_all_user_codes(state.user_repo)
 
@@ -4533,7 +4551,9 @@ async def execute_user_orphan_deletion(
     from pulldb.worker.cleanup import admin_delete_user_orphan_databases
     
     form_data = await request.form()
-    selected_orphans_json = form_data.get("selected_orphans", "[]")
+    selected_orphans_raw = form_data.get("selected_orphans", "[]")
+    # form_data.get() can return UploadFile | str; ensure we have str
+    selected_orphans_json = str(selected_orphans_raw) if selected_orphans_raw else "[]"
     
     try:
         selected_orphans = json.loads(selected_orphans_json)
@@ -5067,7 +5087,8 @@ async def disallowed_users_page(
                 if u.username.lower() not in DISALLOWED_USERS_HARDCODED
             ]
         except Exception:
-            pass  # Will show empty list
+            # Graceful degradation: show page with empty database list
+            logger.debug("Failed to get disallowed users from database", exc_info=True)
     
     # Sort hardcoded users alphabetically
     hardcoded_users = sorted(DISALLOWED_USERS_HARDCODED)
@@ -5167,8 +5188,14 @@ async def admin_unlock_database(
 
     try:
         from pulldb.worker.retention import RetentionService
+        from pulldb.infra.mysql import SettingsRepository
 
         settings_repo = getattr(state, "settings_repo", None)
+        if not isinstance(settings_repo, SettingsRepository):
+            return RedirectResponse(
+                url=f"{base_url}?{urlencode({'error': 'Settings repository not available'})}",
+                status_code=303,
+            )
         retention_service = RetentionService(
             job_repo=state.job_repo,
             user_repo=state.user_repo,

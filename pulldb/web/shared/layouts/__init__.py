@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Layout templates.
 
 HCA Layer 0: Shared layouts

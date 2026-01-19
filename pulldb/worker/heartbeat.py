@@ -15,12 +15,15 @@ Example:
     >>> with HeartbeatContext(emit_heartbeat, interval_seconds=60) as hb:
     ...     do_long_running_work()
     >>> # Heartbeat automatically stopped on exit
+
+HCA Layer: features
 """
 
 from __future__ import annotations
 
 import threading
-import typing as t
+from collections.abc import Callable
+from types import TracebackType
 
 from pulldb.infra.logging import get_logger
 
@@ -44,7 +47,7 @@ class HeartbeatThread(threading.Thread):
 
     def __init__(
         self,
-        heartbeat_fn: t.Callable[[], None],
+        heartbeat_fn: Callable[[], None],
         interval_seconds: float = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
         name: str = "heartbeat",
     ) -> None:
@@ -128,7 +131,7 @@ class HeartbeatContext:
 
     def __init__(
         self,
-        heartbeat_fn: t.Callable[[], None],
+        heartbeat_fn: Callable[[], None],
         interval_seconds: float = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     ) -> None:
         """Initialize heartbeat context.
@@ -154,7 +157,7 @@ class HeartbeatContext:
         self,
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
-        exc_tb: t.Any,
+        exc_tb: TracebackType | None,
     ) -> None:
         """Stop heartbeat thread and wait for clean shutdown."""
         if self._thread:

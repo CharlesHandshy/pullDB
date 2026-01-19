@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import random
-import typing as t
+from typing import Any
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -432,7 +432,7 @@ def _seed_user_host_assignments(state: SimulationState, mode: str = "standard") 
     
     with state.lock:
         for user_id, host_aliases, default_alias in user_host_assignments:
-            assignments: list[dict[str, t.Any]] = []
+            assignments: list[dict[str, Any]] = []
             default_host_id = host_id_by_alias.get(default_alias)
             
             for alias in host_aliases:
@@ -905,7 +905,7 @@ ORPHAN_DB_SIZES: dict[tuple[str, str, str], float] = {
     ("mysql-staging-02.example.com", "devusrfinserve", "dddeeefff000"): 892.5,
 }
 
-ORPHAN_DB_METADATA: dict[tuple[str, str, str], dict[str, t.Any]] = {
+ORPHAN_DB_METADATA: dict[tuple[str, str, str], dict[str, Any]] = {
     ("mysql-staging-01.example.com", "devusracmehvac", "aaa111bbb222"): {
         "job_id": "aaa111bbb222-7890-abcd-ef12-345678901234",
         "restored_by": "devuser",
@@ -1027,7 +1027,7 @@ def _seed_audit_logs(state: SimulationState, users_dict: dict[str, User], count:
     manager_users = [u for u in users if u.role == UserRole.MANAGER]
     hosts = list(state.hosts.values())
     
-    entries: list[dict[str, t.Any]] = []
+    entries: list[dict[str, Any]] = []
     now = datetime.now(UTC)
     
     for i in range(count):

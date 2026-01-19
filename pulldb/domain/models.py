@@ -10,6 +10,8 @@ Models correspond directly to database tables in the pulldb schema:
 - JobEvent: job_events table
 - DBHost: db_hosts table
 - Setting: settings table
+
+HCA Layer: entities
 """
 
 from __future__ import annotations

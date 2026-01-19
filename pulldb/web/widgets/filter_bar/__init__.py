@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Universal filter bar widget for list pages.
 
 HCA Layer: widgets

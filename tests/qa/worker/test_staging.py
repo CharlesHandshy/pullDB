@@ -195,7 +195,7 @@ class TestCleanupOrphanedStaging:
             timeout_seconds=30,
         )
 
-    def test_successful_cleanup_no_orphans(self, conn_spec) -> None:
+    def test_successful_cleanup_no_orphans(self, conn_spec: StagingConnectionSpec) -> None:
         """Cleanup succeeds with no orphans to drop."""
         mock_cursor = MagicMock()
         mock_cursor.fetchall.side_effect = [
@@ -215,7 +215,7 @@ class TestCleanupOrphanedStaging:
         assert result.target_db == SAMPLE_TARGET
         assert result.orphans_dropped == []
 
-    def test_successful_cleanup_with_orphans(self, conn_spec) -> None:
+    def test_successful_cleanup_with_orphans(self, conn_spec: StagingConnectionSpec) -> None:
         """Cleanup drops orphaned databases."""
         # Calls: SHOW DATABASES, processlist, DROP, SHOW DATABASES (verify)
         mock_cursor = MagicMock()
@@ -236,7 +236,7 @@ class TestCleanupOrphanedStaging:
             "DROP DATABASE IF EXISTS `charleqatemplate_aaaaaaaaaaaa`"
         )
 
-    def test_connection_failure_raises_error(self, conn_spec) -> None:
+    def test_connection_failure_raises_error(self, conn_spec: StagingConnectionSpec) -> None:
         """Connection failure raises StagingError."""
         import mysql.connector
 
@@ -248,7 +248,7 @@ class TestCleanupOrphanedStaging:
                 cleanup_orphaned_staging(conn_spec, SAMPLE_TARGET, SAMPLE_JOB_ID)
             assert "Failed to connect" in str(exc_info.value)
 
-    def test_show_databases_failure_raises_error(self, conn_spec) -> None:
+    def test_show_databases_failure_raises_error(self, conn_spec: StagingConnectionSpec) -> None:
         """SHOW DATABASES failure raises StagingError."""
         import mysql.connector
 
@@ -263,7 +263,7 @@ class TestCleanupOrphanedStaging:
                 cleanup_orphaned_staging(conn_spec, SAMPLE_TARGET, SAMPLE_JOB_ID)
             assert "Failed to list databases" in str(exc_info.value)
 
-    def test_drop_failure_raises_error(self, conn_spec) -> None:
+    def test_drop_failure_raises_error(self, conn_spec: StagingConnectionSpec) -> None:
         """DROP DATABASE failure raises StagingError."""
         import mysql.connector
 
@@ -277,7 +277,7 @@ class TestCleanupOrphanedStaging:
             [],  # processlist - no active connections
         ]
 
-        def execute_side_effect(sql):
+        def execute_side_effect(sql: str) -> None:
             if "DROP" in sql:
                 raise mysql.connector.Error("Drop denied")
 
@@ -291,7 +291,7 @@ class TestCleanupOrphanedStaging:
                 cleanup_orphaned_staging(conn_spec, SAMPLE_TARGET, SAMPLE_JOB_ID)
             assert "Failed to drop" in str(exc_info.value)
 
-    def test_staging_collision_raises_error(self, conn_spec) -> None:
+    def test_staging_collision_raises_error(self, conn_spec: StagingConnectionSpec) -> None:
         """Raises error if staging name exists after cleanup."""
         mock_cursor = MagicMock()
         # Calls: SHOW DATABASES, processlist, SHOW DATABASES (verify)
@@ -309,7 +309,7 @@ class TestCleanupOrphanedStaging:
                 cleanup_orphaned_staging(conn_spec, SAMPLE_TARGET, SAMPLE_JOB_ID)
             assert "still exists" in str(exc_info.value)
 
-    def test_closes_connection_on_success(self, conn_spec) -> None:
+    def test_closes_connection_on_success(self, conn_spec: StagingConnectionSpec) -> None:
         """Connection is closed after successful cleanup."""
         mock_cursor = MagicMock()
         mock_cursor.fetchall.side_effect = [
@@ -326,7 +326,7 @@ class TestCleanupOrphanedStaging:
 
         mock_conn.close.assert_called_once()
 
-    def test_closes_connection_on_error(self, conn_spec) -> None:
+    def test_closes_connection_on_error(self, conn_spec: StagingConnectionSpec) -> None:
         """Connection is closed even on error."""
         import mysql.connector
 

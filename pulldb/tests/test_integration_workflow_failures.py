@@ -3,6 +3,8 @@
 Covers:
 * Myloader failure propagation
 * Post-SQL script execution failure propagation
+
+HCA Layer: tests (pulldb/tests/)
 """
 
 from __future__ import annotations

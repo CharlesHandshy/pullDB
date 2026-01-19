@@ -14,16 +14,19 @@ FAIL HARD Boundaries:
 - Profiling overhead must not degrade restore performance >5%
 - Profile data collection failures must not fail restores
 - Missing profile data triggers warning log but continues restore
+
+HCA Layer: features
 """
 
 from __future__ import annotations
 
 import time
-import typing as t
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
 
 from pulldb.infra.logging import get_logger
 
@@ -64,7 +67,7 @@ class PhaseProfile:
     duration_seconds: float | None = None
     bytes_processed: int | None = None
     bytes_per_second: float | None = None
-    metadata: dict[str, t.Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def mbps(self) -> float | None:
@@ -86,9 +89,9 @@ class PhaseProfile:
             if self.duration_seconds > 0:
                 self.bytes_per_second = bytes_processed / self.duration_seconds
 
-    def to_dict(self) -> dict[str, t.Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        result: dict[str, t.Any] = {
+        result: dict[str, Any] = {
             "phase": self.phase.value,
             "started_at": self.started_at.isoformat(),
         }
@@ -130,7 +133,7 @@ class RestoreProfile:
     def start_phase(
         self,
         phase: RestorePhase,
-        metadata: dict[str, t.Any] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> PhaseProfile:
         """Begin profiling a phase.
 
@@ -157,7 +160,7 @@ class RestoreProfile:
         self,
         phase: RestorePhase,
         bytes_processed: int | None = None,
-        metadata: dict[str, t.Any] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> PhaseProfile | None:
         """Complete profiling for a phase.
 
@@ -225,9 +228,9 @@ class RestoreProfile:
                 )
         return breakdown
 
-    def to_dict(self) -> dict[str, t.Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        result: dict[str, t.Any] = {
+        result: dict[str, Any] = {
             "job_id": self.job_id,
             "started_at": self.started_at.isoformat(),
             "phases": {p.value: prof.to_dict() for p, prof in self.phases.items()},
@@ -281,8 +284,8 @@ class RestoreProfiler:
     def phase(
         self,
         phase: RestorePhase,
-        metadata: dict[str, t.Any] | None = None,
-    ) -> t.Generator[PhaseProfile, None, None]:
+        metadata: dict[str, Any] | None = None,
+    ) -> Generator[PhaseProfile, None, None]:
         """Context manager for profiling a phase.
 
         Args:

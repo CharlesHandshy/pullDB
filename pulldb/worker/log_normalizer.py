@@ -1,4 +1,7 @@
-"""Utilities for normalizing worker subprocess log output."""
+"""Utilities for normalizing worker subprocess log output.
+
+HCA Layer: features
+"""
 
 from __future__ import annotations
 

@@ -1,3 +1,10 @@
+"""CLI entry point module.
+
+HCA Layer: pages
+"""
+
+from __future__ import annotations
+
 from .main import main
 
 

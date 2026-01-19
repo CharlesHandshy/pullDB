@@ -7,6 +7,8 @@ for active worker state, and integrates with the polling loop's stop callback.
 This module intentionally keeps orchestration minimal—full restore workflow
 execution (download + myloader + post-SQL + atomic rename) is handled in
 subsequent modules; the service only manages lifecycle and infrastructure.
+
+HCA Layer: features
 """
 
 from __future__ import annotations
@@ -18,9 +20,10 @@ import signal
 import subprocess
 import sys
 import threading
-import typing as t
+from collections.abc import Sequence
 from pathlib import Path
 from types import FrameType
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -63,7 +66,7 @@ def _positive_float(value: str) -> float:
     return parsed
 
 
-def _parse_args(argv: t.Sequence[str] | None) -> argparse.Namespace:
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     # Get default poll interval from environment or use minimum
     default_poll_interval = MIN_POLL_INTERVAL_SECONDS
     env_poll = os.getenv("PULLDB_WORKER_POLL_INTERVAL")
@@ -160,14 +163,14 @@ def _load_config() -> Config:
     return config
 
 
-def _build_job_repository(config: Config) -> t.Any:
+def _build_job_repository(config: Config) -> Any:
     """Build job repository based on mode."""
     if is_simulation_mode():
         from pulldb.simulation import SimulatedJobRepository
 
         return SimulatedJobRepository()
 
-    kwargs: dict[str, t.Any] = {
+    kwargs: dict[str, Any] = {
         "host": config.mysql_host,
         "user": config.mysql_user,
         "password": config.mysql_password,
@@ -182,7 +185,7 @@ def _build_job_repository(config: Config) -> t.Any:
 
 def _build_job_executor(
     config: Config,
-    job_repo: t.Any,
+    job_repo: Any,
     host_repo: HostRepository | None = None,
 ) -> WorkerJobExecutor:
     """Build job executor with appropriate dependencies for mode.
@@ -444,7 +447,7 @@ def _cleanup_zombies(
         )
 
 
-def main(argv: t.Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Worker daemon main entry point.
 
     Responsibilities:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Simulation domain for pullDB.
 
 This package contains the Mock System implementation, including:
@@ -6,6 +8,8 @@ This package contains the Mock System implementation, including:
 - Mock Process Executor
 - Event bus for observability
 - Scenario engine for chaos engineering
+
+HCA Layer: features (pulldb/simulation/)
 """
 
 from pulldb.simulation.adapters.mock_exec import MockCommandConfig, MockProcessExecutor

@@ -10,6 +10,8 @@ Responsibilities:
     * Return path to downloaded tar archive for extraction phase (future)
 
 Extraction (mydumper tar unpack) will be implemented in a later milestone.
+
+HCA Layer: features (pulldb/worker/)
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from __future__ import annotations
 import os
 import shutil
 import time
-import typing as t
+from collections.abc import Callable
 from typing import Any
 
 from pulldb.domain.errors import DiskCapacityError, DownloadError
@@ -74,8 +76,8 @@ def download_backup(
     spec: BackupSpec,
     job_id: str,
     dest_dir: str,
-    progress_callback: t.Callable[[int, int, float, float], None] | None = None,
-    cancel_check: t.Callable[[], bool] | None = None,
+    progress_callback: Callable[[int, int, float, float], None] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> str:
     """Download backup tar archive with disk capacity preflight.
 
@@ -148,8 +150,8 @@ def _stream_download(
     job_id: str,
     total_bytes: int,
     start_time: float,
-    progress_callback: t.Callable[[int, int, float, float], None] | None = None,
-    cancel_check: t.Callable[[], bool] | None = None,
+    progress_callback: Callable[[int, int, float, float], None] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> None:
     """Stream data from body to file with progress logging.
 
@@ -198,7 +200,7 @@ def _stream_download(
                         progress_callback(downloaded, total_bytes, percent, elapsed)
                     except Exception:
                         # Don't let callback failure break download
-                        pass
+                        logger.debug("Progress callback failed", exc_info=True)
                 next_progress += PROGRESS_INTERVAL_MB * 1024 * 1024
 
             # Cancel check every 128MB

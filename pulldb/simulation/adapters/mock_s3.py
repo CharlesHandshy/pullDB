@@ -1,12 +1,15 @@
 """Mock S3 Client for Simulation Mode.
 
 Implements the S3Client protocol using in-memory state.
+
+HCA Layer: shared
 """
 
 from __future__ import annotations
 
 import logging
-import typing as t
+from collections.abc import Iterator
+from typing import Any
 from io import BytesIO
 
 from pulldb.simulation.core.bus import EventType, get_event_bus
@@ -48,12 +51,12 @@ class MockStreamingBody:
         """Close the stream."""
         self._stream.close()
 
-    def iter_lines(self, chunk_size: int = 1024) -> t.Iterator[bytes]:
+    def iter_lines(self, chunk_size: int = 1024) -> Iterator[bytes]:
         """Iterate over lines in the stream."""
         for line in self._content.splitlines():
             yield line
 
-    def iter_chunks(self, chunk_size: int = 1024) -> t.Iterator[bytes]:
+    def iter_chunks(self, chunk_size: int = 1024) -> Iterator[bytes]:
         """Iterate over chunks of the stream."""
         self._stream.seek(0)
         while True:
@@ -108,7 +111,7 @@ class MockS3Client:
 
     def head_object(
         self, bucket: str, key: str, profile: str | None = None
-    ) -> dict[str, t.Any]:
+    ) -> dict[str, Any]:
         """Return object metadata (HEAD)."""
         with self.state.lock:
             if bucket in self.state.s3_buckets and key in self.state.s3_buckets[bucket]:
@@ -134,7 +137,7 @@ class MockS3Client:
 
     def get_object(
         self, bucket: str, key: str, profile: str | None = None
-    ) -> dict[str, t.Any]:
+    ) -> dict[str, Any]:
         """Return object (streaming body).
         
         Returns unique content per key for more realistic simulation.

@@ -5,6 +5,8 @@ Phase 4: Validates role enum values and User model integration.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 from datetime import UTC, datetime
 
 import pytest

@@ -7,6 +7,8 @@ domain `MyLoaderError` exceptions (FAIL HARD semantics).
 The wrapper intentionally limits scope to command construction +
 error translation. Higher-level workflow orchestration (staging
 creation, post-SQL, rename) will reside elsewhere.
+
+HCA Layer: features
 """
 
 from __future__ import annotations
@@ -228,7 +230,8 @@ def _detect_backup_version(backup_dir: str) -> str:
                         return "0.19+ (INI metadata)"
                     return "0.9 (Legacy metadata)"
         except Exception:
-            pass  # Fallback if unreadable
+            # Graceful degradation: if metadata unreadable, continue to fallback
+            logger.debug("Failed to read metadata file %s", metadata_path, exc_info=True)
 
     # 2. Fallback: .zst extension is definitive for 0.19+
     #    (.gz is NOT reliable - both formats can use gzip compression)

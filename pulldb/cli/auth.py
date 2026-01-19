@@ -16,6 +16,8 @@ stores the API key and secret for future CLI use.
 
 Optional:
 - PULLDB_API_KEY_USER: Username associated with this API key (server-side config)
+
+HCA Layer: pages (pulldb/cli/)
 """
 
 from __future__ import annotations
@@ -23,9 +25,12 @@ from __future__ import annotations
 import getpass
 import hashlib
 import hmac
+import logging
 import os
 import subprocess
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 from pathlib import Path
 
 
@@ -71,7 +76,8 @@ def get_calling_username() -> str:
             if parts and parts[0] != "root":
                 return parts[0]
     except Exception:
-        pass  # Fall through to USER
+        # Graceful fallback to USER environment variable
+        logger.debug("'who am i' command failed", exc_info=True)
 
     return os.environ.get("USER") or getpass.getuser() or "unknown"
 
@@ -106,7 +112,8 @@ def _load_credentials_from_file() -> tuple[str, str] | None:
         if key_id and secret:
             return key_id, secret
     except Exception:
-        pass
+        # Credentials file unreadable - will fall back to environment
+        logger.debug("Failed to load credentials from file", exc_info=True)
 
     return None
 

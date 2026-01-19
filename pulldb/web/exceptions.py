@@ -6,7 +6,8 @@ Purpose: Centralized exception handling for web routes.
 
 from __future__ import annotations
 
-import typing as t
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from fastapi import Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -60,7 +61,7 @@ class ResourceNotFoundError(Exception):
         super().__init__(f"{resource_type} not found: {resource_id}")
 
 
-def create_session_expired_handler() -> t.Callable[[Request, SessionExpiredError], t.Awaitable[Response]]:
+def create_session_expired_handler() -> Callable[[Request, SessionExpiredError], Awaitable[Response]]:
     """Create exception handler for SessionExpiredError.
 
     Returns a response that clears the session cookie and redirects to login.
@@ -89,7 +90,7 @@ def create_session_expired_handler() -> t.Callable[[Request, SessionExpiredError
     return handler
 
 
-def create_password_reset_required_handler() -> t.Callable[[Request, PasswordResetRequiredError], t.Awaitable[Response]]:
+def create_password_reset_required_handler() -> Callable[[Request, PasswordResetRequiredError], Awaitable[Response]]:
     """Create exception handler for PasswordResetRequiredError.
 
     Redirects user to the change-password page.
@@ -115,7 +116,7 @@ def create_password_reset_required_handler() -> t.Callable[[Request, PasswordRes
     return handler
 
 
-def create_maintenance_required_handler() -> t.Callable[[Request, MaintenanceRequiredError], t.Awaitable[Response]]:
+def create_maintenance_required_handler() -> Callable[[Request, MaintenanceRequiredError], Awaitable[Response]]:
     """Create exception handler for MaintenanceRequiredError.
 
     Redirects user to the maintenance acknowledgment page.
@@ -143,7 +144,7 @@ def create_maintenance_required_handler() -> t.Callable[[Request, MaintenanceReq
 
 def create_http_exception_handler(
     templates: Jinja2Templates,
-) -> t.Callable[[Request, Exception], t.Awaitable[Response]]:
+) -> Callable[[Request, Any], Awaitable[Response]]:
     """Create exception handler for HTTPException that renders HTML for web routes.
 
     For requests to /web/* paths, renders a user-friendly error page.

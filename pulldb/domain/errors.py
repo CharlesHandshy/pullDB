@@ -8,6 +8,8 @@ Example:
     >>> raise DiskCapacityError(
     ...     job_id="abc123", required_gb=150, available_gb=80, volume="/mnt/data"
     ... )
+
+HCA Layer: entities
 """
 
 from __future__ import annotations

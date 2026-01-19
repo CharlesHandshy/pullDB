@@ -6,6 +6,8 @@ by size, date, and customer.
 Commands:
 - backups list: List customers with backup statistics (aggregated)
 - backups search: Search backups by customer pattern with filters
+
+HCA Layer: pages
 """
 
 from __future__ import annotations
@@ -14,7 +16,6 @@ import fnmatch
 import json
 import os
 import re
-import typing as t
 from dataclasses import asdict, dataclass
 from datetime import datetime
 

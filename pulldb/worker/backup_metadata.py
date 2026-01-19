@@ -313,6 +313,8 @@ def _get_gzip_uncompressed_size(filepath: str) -> int:
             data = f.read(4)
             return int(struct.unpack("<I", data)[0])
     except Exception:
+        # Graceful degradation: return 0 if ISIZE can't be read
+        logger.debug("Failed to get ISIZE for %s", filepath, exc_info=True)
         return 0
 
 

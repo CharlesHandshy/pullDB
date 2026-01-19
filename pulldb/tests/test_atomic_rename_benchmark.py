@@ -3,6 +3,8 @@
 Focus on input validation FAIL HARD diagnostics and JSON output structure.
 We avoid timing assertions (non-deterministic) by validating presence of
 expected keys and reasonable positive values.
+
+HCA Layer: tests (pulldb/tests/)
 """
 
 from __future__ import annotations

@@ -7,6 +7,8 @@ service entry point wires configuration + CLI arguments correctly.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 import time
 import typing as t
 from types import SimpleNamespace

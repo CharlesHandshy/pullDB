@@ -15,6 +15,8 @@ We intentionally DO NOT fail the suite on missing objects; an empty result
 emits an assertion error only if credentials and bucket access succeeded
 but zero matching keys were returned (this might indicate an upstream
 backup pipeline issue).
+
+HCA Layer: tests (pulldb/tests/)
 """
 
 from __future__ import annotations

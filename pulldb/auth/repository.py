@@ -3,6 +3,8 @@
 Phase 4: Handles password verification, session creation/validation,
 and 2FA verification. Separate from UserRepository to maintain
 single responsibility.
+
+HCA Layer: features (pulldb/auth/)
 """
 
 from __future__ import annotations
@@ -67,7 +69,7 @@ class AuthRepository:
             )
             row = cursor.fetchone()
             if row and row[1] is not None:  # locked_at is not null
-                logger.warning(f"Blocked attempt to {action} locked user: {row[0]}")
+                logger.warning("Blocked attempt to %s locked user: %s", action, row[0])
                 raise LockedUserError(row[0], action)
 
     def get_password_hash(self, user_id: str) -> str | None:
@@ -436,7 +438,8 @@ class AuthRepository:
             )
             conn.commit()
 
-            return row.get("user_id")
+            user_id = row.get("user_id")
+            return str(user_id) if user_id is not None else None
 
     def get_api_key_user(self, key_id: str) -> str | None:
         """Get the user_id associated with an API key.
@@ -482,7 +485,8 @@ class AuthRepository:
             if expires_at and expires_at < datetime.now(UTC):
                 return None
 
-            return row.get("user_id")
+            user_id = row.get("user_id")
+            return str(user_id) if user_id is not None else None
 
     def get_api_key_secret_hash(self, key_id: str) -> str | None:
         """Get the secret hash for an API key (for HMAC verification).
@@ -523,7 +527,8 @@ class AuthRepository:
             if expires_at and expires_at < datetime.now(UTC):
                 return None
 
-            return row.get("key_secret_hash")
+            secret_hash = row.get("key_secret_hash")
+            return str(secret_hash) if secret_hash is not None else None
 
     def get_api_key_secret(self, key_id: str) -> str | None:
         """Get the plaintext secret for an API key (for HMAC verification).
@@ -569,7 +574,8 @@ class AuthRepository:
             if expires_at and expires_at < datetime.now(UTC):
                 return None
 
-            return row.get("key_secret")
+            secret = row.get("key_secret")
+            return str(secret) if secret is not None else None
 
     def revoke_api_key(self, key_id: str) -> bool:
         """Revoke an API key (mark inactive).
@@ -587,7 +593,7 @@ class AuthRepository:
                 (key_id,),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def reactivate_api_key(self, key_id: str) -> bool:
         """Reactivate a revoked API key.
@@ -613,7 +619,7 @@ class AuthRepository:
                 (key_id,),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def delete_api_key(self, key_id: str) -> bool:
         """Delete a single API key permanently.
@@ -634,7 +640,7 @@ class AuthRepository:
                 (key_id,),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def delete_api_keys_for_user(self, user_id: str) -> int:
         """Delete all API keys for a user.
@@ -654,7 +660,7 @@ class AuthRepository:
                 (user_id,),
             )
             conn.commit()
-            return cursor.rowcount
+            return int(cursor.rowcount)
 
     def list_api_keys_for_user(self, user_id: str) -> list[dict]:
         """List all API keys for a user.
@@ -757,7 +763,7 @@ class AuthRepository:
                 (approved_by, key_id),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def get_api_key_info(self, key_id: str) -> dict | None:
         """Get full info about an API key.
@@ -782,7 +788,8 @@ class AuthRepository:
                 """,
                 (key_id,),
             )
-            return cursor.fetchone()
+            row = cursor.fetchone()
+            return dict(row) if row else None
 
     def update_api_key_last_used(
         self, key_id: str, ip_address: str | None = None
@@ -830,7 +837,7 @@ class AuthRepository:
                 (max_age_days,),
             )
             conn.commit()
-            return cursor.rowcount
+            return int(cursor.rowcount)
 
     def get_all_api_keys(
         self, include_inactive: bool = False, user_id: str | None = None
@@ -1007,7 +1014,7 @@ class AuthRepository:
                 (token_hash,),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def invalidate_all_user_sessions(self, user_id: str) -> int:
         """Invalidate all sessions for user.
@@ -1028,7 +1035,7 @@ class AuthRepository:
                 (user_id,),
             )
             conn.commit()
-            return cursor.rowcount
+            return int(cursor.rowcount)
 
     def cleanup_expired_sessions(self) -> int:
         """Remove all expired sessions from database.
@@ -1044,7 +1051,7 @@ class AuthRepository:
                 "DELETE FROM sessions WHERE expires_at < UTC_TIMESTAMP(6)"
             )
             conn.commit()
-            return cursor.rowcount
+            return int(cursor.rowcount)
 
     def get_user_session_count(self, user_id: str) -> int:
         """Get count of active sessions for user.
@@ -1167,7 +1174,8 @@ class AuthRepository:
             )
             row = cursor.fetchone()
             if row:
-                return row["hostname"]
+                hostname = row["hostname"]
+                return str(hostname) if hostname is not None else None
             return None
 
     def get_user_allowed_hosts(self, user_id: str) -> list[str]:

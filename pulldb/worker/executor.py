@@ -11,6 +11,8 @@ workflow implementation. It encapsulates the per-job orchestration steps:
 
 All filesystem activity is isolated under ``config.work_dir / <job_id>`` so
 cleanup is deterministic and failures do not leak temp data across jobs.
+
+HCA Layer: features
 """
 
 from __future__ import annotations
@@ -19,10 +21,11 @@ import json
 import shutil
 import tarfile
 import time
-import typing as t
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pulldb.domain.config import Config, S3BackupLocationConfig
 from pulldb.domain.errors import (
@@ -60,7 +63,7 @@ from pulldb.worker.staging import StagingConnectionSpec
 
 logger = get_logger("pulldb.worker.executor")
 
-JobExecutor = t.Callable[[Job], None]
+JobExecutor = Callable[[Job], None]
 
 # Extraction progress emission thresholds (hybrid: bytes OR files OR time)
 EXTRACTION_PROGRESS_BYTES = 64 * 1024 * 1024  # Every 64MB
@@ -69,7 +72,7 @@ EXTRACTION_PROGRESS_TIME = 30.0  # Every 30 seconds (fallback for large single f
 
 # Type alias for extraction progress callback
 # (extracted_bytes, total_bytes, percent, elapsed_seconds, files_extracted, total_files)
-ExtractionProgressCallback = t.Callable[[int, int, float, float, int, int], None]
+ExtractionProgressCallback = Callable[[int, int, float, float, int, int], None]
 
 
 def derive_backup_lookup_target(job: Job) -> str:
@@ -222,7 +225,7 @@ def pre_flight_verify_target_overwrite_safe(
             row = None
 
         if row:
-            db_owner_code = str(row[0]) if row[0] else None
+            db_owner_code = str(row[0]) if row[0] else None  # type: ignore[index]
             if db_owner_code and db_owner_code != job.owner_user_code:
                 # FAIL HARD: Database owned by different user
                 logger.error(
@@ -278,7 +281,7 @@ def extract_tar_archive(
     dest_dir: Path,
     job_id: str,
     progress_callback: ExtractionProgressCallback | None = None,
-    abort_check: t.Callable[[], bool] | None = None,
+    abort_check: Callable[[], bool] | None = None,
 ) -> str:
     """Extract tar archive into *dest_dir* with progress reporting.
 
@@ -319,7 +322,7 @@ def _safe_extract_with_progress(
     tar: tarfile.TarFile,
     dest: Path,
     progress_callback: ExtractionProgressCallback | None,
-    abort_check: t.Callable[[], bool] | None,
+    abort_check: Callable[[], bool] | None,
     job_id: str,
 ) -> None:
     """Extract tar members with progress tracking and abort support.
@@ -387,7 +390,7 @@ def _default_extract_archive(
     dest_dir: Path,
     job_id: str,
     progress_callback: ExtractionProgressCallback | None = None,
-    abort_check: t.Callable[[], bool] | None = None,
+    abort_check: Callable[[], bool] | None = None,
 ) -> str:
     """Forward to extract_tar_archive as overridable hook."""
     return extract_tar_archive(
@@ -418,12 +421,12 @@ def _get_dir_size(path: Path) -> int:
 class WorkerExecutorDependencies:
     """Repositories and shared clients required by the executor.
 
-    Uses t.Any types to allow both real and simulated implementations.
+    Uses Any types to allow both real and simulated implementations.
     """
 
-    job_repo: t.Any  # JobRepository or SimulatedJobRepository
-    host_repo: t.Any  # HostRepository or SimulatedHostRepository
-    s3_client: t.Any  # S3Client or MockS3Client
+    job_repo: Any  # JobRepository or SimulatedJobRepository
+    host_repo: Any  # HostRepository or SimulatedHostRepository
+    s3_client: Any  # S3Client or MockS3Client
 
 
 @dataclass(slots=True)
@@ -439,22 +442,22 @@ class WorkerExecutorTimeouts:
 class WorkerExecutorHooks:
     """Optional hook overrides for discovery, download, and extraction."""
 
-    discover_backup: t.Callable[[S3Client, str, str, str, str | None], BackupSpec] = (
+    discover_backup: Callable[[S3Client, str, str, str, str | None], BackupSpec] = (
         discover_latest_backup
     )
-    download_backup: t.Callable[
+    download_backup: Callable[
         [
             S3Client,
             BackupSpec,
             str,
             str,
-            t.Callable[[int, int, float, float], None] | None,
-            t.Callable[[], bool] | None,
+            Callable[[int, int, float, float], None] | None,
+            Callable[[], bool] | None,
         ],
         str,
     ] = download_backup
-    extract_archive: t.Callable[
-        [str, Path, str, ExtractionProgressCallback | None, t.Callable[[], bool] | None],
+    extract_archive: Callable[
+        [str, Path, str, ExtractionProgressCallback | None, Callable[[], bool] | None],
         str,
     ] = _default_extract_archive
 
@@ -726,7 +729,7 @@ class WorkerJobExecutor:
             )
 
             def _restore_progress_callback(
-                percent: float, detail: dict[str, t.Any]
+                percent: float, detail: dict[str, Any]
             ) -> None:
                 nonlocal last_percent_logged
                 nonlocal last_processlist_key
@@ -782,7 +785,7 @@ class WorkerJobExecutor:
                     last_percent_logged = percent
 
             # Event callback for internal workflow phases (post_sql, metadata, atomic_rename)
-            def _workflow_event_callback(event_type: str, detail: dict[str, t.Any]) -> None:
+            def _workflow_event_callback(event_type: str, detail: dict[str, Any]) -> None:
                 self._append_event(job.id, event_type, detail)
 
             workflow_spec = build_restore_workflow_spec(
@@ -1091,7 +1094,7 @@ class WorkerJobExecutor:
         self,
         job_id: str,
         event_type: str,
-        detail: dict[str, t.Any],
+        detail: dict[str, Any],
     ) -> None:
         detail_json = json.dumps(detail, separators=(",", ":"))
         try:
@@ -1142,7 +1145,7 @@ class WorkerJobExecutor:
                 extra={"job_id": job.id, "target": job.target},
             )
 
-    def _extract_failure_detail(self, exc: Exception) -> dict[str, t.Any]:
+    def _extract_failure_detail(self, exc: Exception) -> dict[str, Any]:
         """Extract structured failure detail from exception, redacting secrets.
 
         Extracts stdout/stderr from exceptions that capture command output,
@@ -1165,7 +1168,7 @@ class WorkerJobExecutor:
         )
         from pulldb.domain.errors import JobExecutionError
 
-        result: dict[str, t.Any] = {
+        result: dict[str, Any] = {
             "error": exc.__class__.__name__,
             "detail": redact_sensitive_data(str(exc)),
         }

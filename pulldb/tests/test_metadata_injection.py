@@ -2,6 +2,8 @@
 
 We simulate MySQL connection/cursor behavior to avoid real database.
 Focus: error translation paths and successful insert flow.
+
+HCA Layer: tests (pulldb/tests/)
 """
 
 from __future__ import annotations

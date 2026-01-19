@@ -5,6 +5,8 @@ Phase 4: Validates UserRole enum and User model updates.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 from dataclasses import asdict
 from datetime import UTC, datetime
 

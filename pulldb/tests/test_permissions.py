@@ -5,6 +5,8 @@ Phase 4: Verifies role-based access control logic.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 from datetime import UTC, datetime
 
 import pytest

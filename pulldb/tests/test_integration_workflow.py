@@ -16,6 +16,8 @@ error translation, post-SQL execution, and atomic rename parameterization.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 from datetime import UTC, datetime
 from pathlib import Path
 

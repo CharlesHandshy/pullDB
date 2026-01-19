@@ -16,12 +16,15 @@ Deferred / Future Enhancements:
 - Row count diffs & anomaly detection
 - Transactional wrapping for smaller batches of scripts
 - Parallelizable categorization (not needed for current sanitized scripts)
+
+HCA Layer: features
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 # ruff: noqa: I001
 from datetime import UTC, datetime

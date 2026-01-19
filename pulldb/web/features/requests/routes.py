@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 """Feature Requests routes for Web UI.
 
 HCA Layer: features
 Purpose: Feature request submission, voting, and browsing with LazyTable pagination.
 """
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
@@ -45,7 +50,8 @@ async def requests_page(
             "declined": stats_obj.declined,
         }
     except Exception:
-        pass
+        # Graceful degradation: stats are informational, page works without them
+        logger.debug("Failed to get feature request stats", exc_info=True)
 
     return templates.TemplateResponse(
         "features/requests/index.html",

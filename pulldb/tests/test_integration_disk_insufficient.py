@@ -3,6 +3,8 @@
 Simulates a restore workflow phase where downloader preflight raises
 DiskCapacityError. We directly invoke ensure_disk_capacity to keep
 scope focused on error translation (no actual S3 download performed).
+
+HCA Layer: tests (pulldb/tests/)
 """
 
 from __future__ import annotations

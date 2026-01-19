@@ -4,6 +4,8 @@ Phase 4: Uses bcrypt for secure password storage. This module provides
 a simple interface for hashing and verifying passwords.
 
 Note: Requires bcrypt>=4.2.0 to be installed.
+
+HCA Layer: features (pulldb/auth/)
 """
 
 from __future__ import annotations

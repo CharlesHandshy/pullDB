@@ -1,4 +1,7 @@
-"""Service for discovering backups and customers in S3."""
+"""Service for discovering backups and customers in S3.
+
+HCA Layer: entities
+"""
 
 from __future__ import annotations
 
@@ -7,7 +10,7 @@ import fnmatch
 import json
 import os
 import time
-import typing as t
+from typing import Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -74,7 +77,7 @@ class BackupSearchResult:
 class SearchContext:
     """Context for backup search operations."""
 
-    s3: t.Any
+    s3: Any
     bucket: str
     prefix: str
     profile: str | None
@@ -113,7 +116,8 @@ class DiscoveryService:
                 from pulldb.simulation.core.seeding import LEAN_CUSTOMERS
                 return list(LEAN_CUSTOMERS)
         except Exception:
-            pass
+            # Graceful fallback to full customer list
+            logger.debug("Failed to get lean simulation customers", exc_info=True)
         
         # Full simulation - use standard customer list
         return [
@@ -281,11 +285,13 @@ class DiscoveryService:
                     if exact_keys:
                         customers.append(search_prefix)
                 except Exception:
-                    pass
+                    # S3 listing can fail for various reasons - continue without exact match
+                    logger.debug("Failed to check exact folder %s", exact_folder, exc_info=True)
 
             customer_set.update(customers)
         except Exception:
-            pass
+            # Multi-source search - continue with other sources
+            logger.debug("Failed to list customers from S3", exc_info=True)
 
     def _get_cached_customers(
         self, bucket: str, prefix: str
@@ -356,7 +362,8 @@ class DiscoveryService:
                     if exact_keys:
                         customers.append(query_lower)
                 except Exception:
-                    pass
+                    # S3 listing can fail - continue without exact match
+                    logger.debug("Failed to check exact folder %s", exact_folder, exc_info=True)
 
             customer_set.update(customers)
 

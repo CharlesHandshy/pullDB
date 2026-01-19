@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 """Audit routes for Web2 interface.
 
 HCA Layer: features
 Purpose: Admin-only audit log browsing with LazyTable pagination.
 """
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
@@ -45,7 +50,8 @@ async def audit_page(
                 else:
                     stats["system_actions"] += 1
         except Exception:
-            pass
+            # Graceful degradation: stats are informational, page works without them
+            logger.debug("Failed to get audit stats", exc_info=True)
 
     return templates.TemplateResponse(
         "features/audit/index.html",
@@ -314,4 +320,6 @@ async def get_audit_distinct_values(
         return sorted(values)
         
     except Exception:
+        # Graceful degradation: return empty list for filter options
+        logger.debug("Failed to get distinct values for column %s", column, exc_info=True)
         return []

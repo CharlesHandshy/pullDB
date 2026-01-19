@@ -24,6 +24,8 @@ Manager Constraints:
 - Managers can submit jobs FOR users they manage (job owner = target user for naming)
 - All "submit for user" actions are audit logged
 - Anyone can view audit logs (transparency)
+
+HCA Layer: entities (pulldb/domain/)
 """
 
 from __future__ import annotations

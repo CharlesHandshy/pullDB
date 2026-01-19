@@ -11,6 +11,8 @@ CLEANUP PHILOSOPHY:
    For each job, verify the DB exists, drop it, confirm deletion, then archive.
 2. Orphan detection: Databases matching the pattern but with no job record are
    NEVER auto-deleted. Instead, generate an admin report for manual review.
+
+HCA Layer: features
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import mysql.connector
 
@@ -300,7 +302,7 @@ def _list_databases(credentials: MySQLCredentials) -> list[str]:
         cursor = conn.cursor()
         cursor.execute("SHOW DATABASES")
         rows = cursor.fetchall()
-        return [str(row[0]) for row in rows]
+        return [str(row[0]) for row in rows]  # type: ignore[index]
     finally:
         conn.close()
 
@@ -340,8 +342,8 @@ def _get_all_database_sizes_mb(credentials: MySQLCredentials) -> dict[str, float
             GROUP BY t1.table_schema
         """)
         rows = cursor.fetchall()
-        # Type assertion: rows are tuples of (str, float)
-        return {str(row[0]): float(row[1] or 0.0) for row in rows if row[0]}
+        # Type assertion: cursor without dictionary=True returns tuples of (str, float)
+        return {str(row[0]): float(row[1] or 0.0) for row in rows if row[0]}  # type: ignore[arg-type, index]
     except Exception as e:
         logger.warning("Failed to get database sizes: %s", e)
         return {}
@@ -378,8 +380,8 @@ def _get_database_size_mb(credentials: MySQLCredentials, db_name: str) -> float 
             WHERE table_schema = %s
         """, (db_name,))
         row = cursor.fetchone()
-        if row and row[0] is not None:
-            return float(row[0])
+        if row and row[0] is not None:  # type: ignore[index]
+            return float(row[0])  # type: ignore[index, arg-type]
         return 0.0  # Empty database
     except Exception as e:
         logger.warning("Failed to get size for database %s: %s", db_name, e)
@@ -418,7 +420,7 @@ def _get_databases_with_pulldb_table(credentials: MySQLCredentials) -> frozenset
         """)
         rows = cursor.fetchall()
         # Type assertion: rows are tuples of (str,)
-        return frozenset(str(row[0]) for row in rows if row[0])
+        return frozenset(str(row[0]) for row in rows if row[0])  # type: ignore[index]
     except Exception as e:
         logger.warning("Failed to query databases with pullDB table: %s", e)
         return frozenset()
@@ -454,7 +456,7 @@ def _has_pulldb_table(credentials: MySQLCredentials, db_name: str) -> bool:
             WHERE table_schema = %s AND table_name = 'pullDB'
         """, (db_name,))
         row = cursor.fetchone()
-        return bool(row and row[0] > 0)
+        return bool(row and row[0] > 0)  # type: ignore[index, operator]
     except Exception as e:
         logger.warning("Failed to check pullDB table in %s: %s", db_name, e)
         return False
@@ -493,7 +495,7 @@ def get_orphan_metadata(
             SELECT COUNT(*) as cnt FROM information_schema.TABLES 
             WHERE table_schema = %s AND table_name = 'pullDB'
         """, (db_name,))
-        row = cursor.fetchone()
+        row: dict[str, Any] | None = cursor.fetchone()  # type: ignore[assignment]
         if not row or row["cnt"] == 0:
             return None
         
@@ -508,14 +510,16 @@ def get_orphan_metadata(
         if not meta_row:
             return None
         
+        # Cast to dict for type checker (cursor with dictionary=True returns dict)
+        meta: dict[str, Any] = meta_row  # type: ignore[assignment]
+        duration = meta.get("restore_duration_seconds")
         return OrphanMetadata(
-            job_id=meta_row.get("job_id"),
-            restored_by=meta_row.get("restored_by"),
-            restored_at=meta_row.get("restored_at"),
-            target_database=meta_row.get("target_database"),
-            backup_filename=meta_row.get("backup_filename"),
-            restore_duration_seconds=float(meta_row["restore_duration_seconds"]) 
-                if meta_row.get("restore_duration_seconds") else None,
+            job_id=str(meta["job_id"]) if meta.get("job_id") else None,
+            restored_by=str(meta["restored_by"]) if meta.get("restored_by") else None,
+            restored_at=meta.get("restored_at"),
+            target_database=str(meta["target_database"]) if meta.get("target_database") else None,
+            backup_filename=str(meta["backup_filename"]) if meta.get("backup_filename") else None,
+            restore_duration_seconds=float(duration) if duration else None,
         )
     except Exception as e:
         logger.warning("Failed to get metadata for orphan %s: %s", db_name, e)
@@ -1155,7 +1159,7 @@ def execute_stale_running_cleanup(
             )
             emit_counter(
                 "stale_running_jobs_recovered",
-                MetricLabels(phase="stale_recovery", status="success"),
+                labels=MetricLabels(phase="stale_recovery", status="success"),
             )
         else:
             logger.warning(
@@ -2604,7 +2608,7 @@ def _process_retention_cleanup_host(
             try:
                 _drop_job_database(
                     job=job,
-                    cursor=cursor,
+                    cursor=cursor,  # type: ignore[arg-type]
                     job_repo=job_repo,
                     result=result,
                     dry_run=dry_run,

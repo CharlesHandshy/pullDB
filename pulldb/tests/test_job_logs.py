@@ -9,6 +9,8 @@ See docs/KNOWLEDGE-POOL.md "CLI Architecture & Scope" for rationale.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 import pytest
 
 

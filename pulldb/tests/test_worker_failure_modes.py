@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 """Tests for worker component failure modes (FAIL HARD verification).
+
+    HCA Layer: tests
 
 Covers edge cases and failure paths identified in atom evaluation:
 - Service: Config/Repo/Executor build failures

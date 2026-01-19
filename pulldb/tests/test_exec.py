@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 # ruff: noqa: I001  # import layout stable for test clarity
 from typing import Any, NoReturn
 import subprocess

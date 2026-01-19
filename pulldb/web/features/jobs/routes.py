@@ -1,8 +1,16 @@
-"""Jobs routes for Web2 interface."""
+from __future__ import annotations
+
+"""Jobs routes for Web2 interface.
+
+HCA Layer: features (pulldb/web/features/)
+"""
 
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -345,7 +353,8 @@ def _get_retention_options(state: Any) -> list[dict[str, Any]]:
     """
     if hasattr(state, "settings_repo") and state.settings_repo:
         if hasattr(state.settings_repo, "get_retention_options"):
-            return state.settings_repo.get_retention_options()
+            result: list[dict[str, Any]] = state.settings_repo.get_retention_options()
+            return result
     
     # Default fallback
     return [
@@ -1173,12 +1182,12 @@ async def api_jobs_paginated(
             "can_cancel": can_cancel,
             "can_delete": can_delete,
             "cancel_requested_at": cancel_requested_at.isoformat() if cancel_requested_at else None,
-            # Retention fields
-            "expires_at": getattr(j, "expires_at", None).isoformat() if getattr(j, "expires_at", None) else None,
-            "locked_at": getattr(j, "locked_at", None).isoformat() if getattr(j, "locked_at", None) else None,
+            # Retention fields (use walrus operator to avoid repeated getattr)
+            "expires_at": (exp := getattr(j, "expires_at", None)) and exp.isoformat(),
+            "locked_at": (lock := getattr(j, "locked_at", None)) and lock.isoformat(),
             "is_locked": getattr(j, "locked_at", None) is not None,
-            "db_dropped_at": getattr(j, "db_dropped_at", None).isoformat() if getattr(j, "db_dropped_at", None) else None,
-            "superseded_at": getattr(j, "superseded_at", None).isoformat() if getattr(j, "superseded_at", None) else None,
+            "db_dropped_at": (drop := getattr(j, "db_dropped_at", None)) and drop.isoformat(),
+            "superseded_at": (sup := getattr(j, "superseded_at", None)) and sup.isoformat(),
         })
     
     total_count = len(all_rows)
@@ -1335,6 +1344,7 @@ async def bulk_delete_jobs(
         hard_delete = body.get("hard_delete", False)
         skip_database_drops = body.get("skip_database_drops", False)
     except Exception:
+        logger.debug("Invalid JSON in bulk delete request", exc_info=True)
         return {"error": "Invalid JSON body", "success": False}
 
     if not job_ids:
@@ -1495,7 +1505,7 @@ async def extend_job_retention(
     form = await request.form()
     months_str = form.get("months", "1")
     try:
-        months = int(months_str)
+        months = int(str(months_str))
     except (TypeError, ValueError):
         months = 1
 
@@ -1526,7 +1536,7 @@ async def extend_job_retention(
         retention_service = RetentionService(
             job_repo=state.job_repo,
             user_repo=state.user_repo,
-            settings_repo=settings_repo,
+            settings_repo=settings_repo,  # type: ignore[arg-type]
         )
         await run_in_threadpool(
             retention_service.extend_job,
@@ -1584,7 +1594,7 @@ async def lock_job_database(
         retention_service = RetentionService(
             job_repo=state.job_repo,
             user_repo=state.user_repo,
-            settings_repo=settings_repo,
+            settings_repo=settings_repo,  # type: ignore[arg-type]
         )
         await run_in_threadpool(
             retention_service.lock_job,
@@ -1643,7 +1653,7 @@ async def unlock_job_database(
         retention_service = RetentionService(
             job_repo=state.job_repo,
             user_repo=state.user_repo,
-            settings_repo=settings_repo,
+            settings_repo=settings_repo,  # type: ignore[arg-type]
         )
         await run_in_threadpool(
             retention_service.unlock_job,
@@ -1753,7 +1763,7 @@ async def api_lock_job(
         retention_service = RetentionService(
             job_repo=state.job_repo,
             user_repo=state.user_repo,
-            settings_repo=settings_repo,
+            settings_repo=settings_repo,  # type: ignore[arg-type]
         )
         success = await run_in_threadpool(
             retention_service.lock_job,
@@ -1813,7 +1823,7 @@ async def api_unlock_job(
         retention_service = RetentionService(
             job_repo=state.job_repo,
             user_repo=state.user_repo,
-            settings_repo=settings_repo,
+            settings_repo=settings_repo,  # type: ignore[arg-type]
         )
         success = await run_in_threadpool(
             retention_service.unlock_job,

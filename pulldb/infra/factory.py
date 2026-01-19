@@ -2,12 +2,14 @@
 
 Handles creation of infrastructure components (repositories, clients)
 based on configuration (Real vs Simulation).
+
+HCA Layer: shared
 """
 
 from __future__ import annotations
 
 import os
-import typing as t
+from typing import Any
 
 from pulldb.domain.interfaces import (
     HostRepository,
@@ -40,7 +42,7 @@ def get_job_repository() -> JobRepository:
     from pulldb.infra.mysql import JobRepository as MySQLJobRepository
 
     pool = _get_real_mysql_pool()
-    return MySQLJobRepository(pool)
+    return MySQLJobRepository(pool)  # type: ignore[return-value]
 
 
 def get_s3_client(profile: str | None = None, region: str | None = None) -> S3Client:
@@ -67,7 +69,7 @@ def get_process_executor() -> ProcessExecutor:
     return SubprocessExecutor()
 
 
-def get_auth_repository():
+def get_auth_repository() -> Any:
     """Get AuthRepository implementation.
     
     Returns:
@@ -97,7 +99,7 @@ def get_host_repository() -> HostRepository:
     if is_simulation_mode():
         from pulldb.simulation import SimulatedHostRepository
 
-        return SimulatedHostRepository()
+        return SimulatedHostRepository()  # type: ignore[return-value]
 
     from pulldb.infra.mysql import HostRepository as MySQLHostRepository
     from pulldb.infra.secrets import CredentialResolver
@@ -105,7 +107,7 @@ def get_host_repository() -> HostRepository:
     pool = _get_real_mysql_pool()
     aws_profile = os.getenv("PULLDB_AWS_PROFILE")
     resolver = CredentialResolver(aws_profile=aws_profile)
-    return MySQLHostRepository(pool, resolver)
+    return MySQLHostRepository(pool, resolver)  # type: ignore[return-value]
 
 
 def get_settings_repository() -> SettingsRepository:
@@ -121,7 +123,7 @@ def get_settings_repository() -> SettingsRepository:
     return MySQLSettingsRepository(pool)
 
 
-def get_disallowed_user_repository() -> t.Any:
+def get_disallowed_user_repository() -> Any:
     """Get DisallowedUserRepository implementation."""
     # No simulation mode for this repository (simple lookup)
     from pulldb.infra.mysql import DisallowedUserRepository
@@ -130,7 +132,7 @@ def get_disallowed_user_repository() -> t.Any:
     return DisallowedUserRepository(pool)
 
 
-def get_audit_repository() -> t.Any:
+def get_audit_repository() -> Any:
     """Get AuditRepository implementation.
     
     Returns:
@@ -146,7 +148,7 @@ def get_audit_repository() -> t.Any:
     return AuditRepository(pool)
 
 
-def get_provisioning_service(actor_user_id: str) -> t.Any:
+def get_provisioning_service(actor_user_id: str) -> Any:
     """Get HostProvisioningService instance.
     
     Creates a configured provisioning service with all dependencies injected.
@@ -181,7 +183,7 @@ def get_provisioning_service(actor_user_id: str) -> t.Any:
     )
 
 
-def _get_real_mysql_pool() -> t.Any:
+def _get_real_mysql_pool() -> Any:
     """Create real MySQL connection pool."""
     from pulldb.infra.mysql import MySQLPool
     from pulldb.infra.secrets import CredentialResolver

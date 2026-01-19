@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Bulk action widget for admin operations.
 
 HCA Layer: widgets

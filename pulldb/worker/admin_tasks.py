@@ -5,12 +5,14 @@ Processes admin tasks from the admin_tasks queue. Currently supports:
 
 Integrates with audit logging for compliance. Uses pulldb_loader credentials
 for database drops (resolved per-host via HostRepository).
+
+HCA Layer: features (pulldb/worker/)
 """
 
 from __future__ import annotations
 
 import logging
-import typing as t
+from typing import Any, TYPE_CHECKING
 
 import mysql.connector
 
@@ -19,7 +21,7 @@ from pulldb.infra.metrics import MetricLabels, emit_event
 from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
-if t.TYPE_CHECKING:
+if TYPE_CHECKING:
     from pulldb.infra.mysql import (
         AdminTaskRepository,
         AuditRepository,
@@ -160,7 +162,7 @@ class AdminTaskExecutor:
             raise ValueError("target_user_code is required for force_delete_user")
 
         # Initialize result tracking
-        result: dict[str, t.Any] = {
+        result: dict[str, Any] = {
             "databases_dropped": [],
             "databases_failed": [],
             "databases_skipped": [],
@@ -457,7 +459,7 @@ class AdminTaskExecutor:
                 """,
                 (user_id,),
             )
-            jobs_deleted = cursor.rowcount
+            jobs_deleted: int = cursor.rowcount
             conn.commit()
 
             logger.info(
@@ -528,7 +530,7 @@ class AdminTaskExecutor:
         specific_hosts = params.get("hosts")  # Optional: limit to specific hosts
 
         # Initialize result tracking
-        result: dict[str, t.Any] = {
+        result: dict[str, Any] = {
             "hosts_scanned": 0,
             "hosts_failed": [],
             "orphans_found": 0,
@@ -680,7 +682,7 @@ class AdminTaskExecutor:
         skipped_list: list[dict] = existing_result.get("_skipped_list", [])
         
         # Progress dict for status polling (counts, not full lists)
-        progress: dict[str, t.Any] = {
+        progress: dict[str, Any] = {
             "total": total_jobs,
             "processed": existing_progress.get("processed", 0),
             "soft_deleted": existing_progress.get("soft_deleted", 0),
@@ -689,7 +691,7 @@ class AdminTaskExecutor:
         }
         
         # Full result structure
-        result: dict[str, t.Any] = {
+        result: dict[str, Any] = {
             "progress": progress,
             "_processed_list": processed_list,
             "_failed_list": failed_list,
@@ -1048,7 +1050,7 @@ class AdminTaskExecutor:
             )
 
             # Build result for task
-            result: dict[str, t.Any] = {
+            result: dict[str, Any] = {
                 "candidates_found": cleanup_result.candidates_found,
                 "databases_dropped": cleanup_result.databases_dropped,
                 "databases_skipped": cleanup_result.databases_skipped,

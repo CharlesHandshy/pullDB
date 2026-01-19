@@ -17,6 +17,8 @@ Features:
 - Version enforcement with auto-deployment
 - Advisory locks to prevent concurrent deployments
 - Streaming progress output for job logs
+
+HCA Layer: features
 """
 
 from __future__ import annotations
@@ -617,12 +619,13 @@ def atomic_rename_staging_to_target(
                         
                         # Check for special status rows (v1.0.1+)
                         if len(row) >= 2:
-                            status = str(row[1]) if len(row) > 1 else None
+                            status = str(row[1]) if len(row) > 1 else None  # type: ignore[index]
                             if status == 'target_dropped':
                                 # Target database was dropped (overwrite mode)
+                                db_name = str(row[0]) if row[0] else ""  # type: ignore[index]
                                 _emit_event("atomic_rename_target_dropped", {
-                                    "target_db": str(row[0]),
-                                    "message": f"Existing database '{row[0]}' dropped (overwrite enabled)",
+                                    "target_db": db_name,
+                                    "message": f"Existing database '{db_name}' dropped (overwrite enabled)",
                                 })
                                 continue  # Don't count as table progress
                         
@@ -632,7 +635,7 @@ def atomic_rename_staging_to_target(
                             "tables_renamed": table_counter,
                             "total_tables": staging_table_count,
                             "percent": round((table_counter / staging_table_count) * 100, 1) if staging_table_count > 0 else 100,
-                            "message": str(row[0]) if row else None,
+                            "message": str(row[0]) if row else None,  # type: ignore[index]
                         })
         except mysql.connector.Error as e:
             raise AtomicRenameError(

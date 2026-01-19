@@ -13,6 +13,8 @@ Usage:
     pulldb-admin secrets set <secret-id>   # Create/update secret
     pulldb-admin secrets delete <secret-id> # Delete secret
     pulldb-admin secrets test <secret-id>  # Test secret connectivity
+
+HCA Layer: pages
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ import os
 import secrets as secrets_module
 import string
 import sys
-import typing as t
+from typing import Any
 from dataclasses import dataclass
 
 import boto3
@@ -45,7 +47,7 @@ def _mask_password(password: str) -> str:
     return "****"
 
 
-def _get_aws_session(profile: str | None = None, region: str | None = None) -> t.Any:
+def _get_aws_session(profile: str | None = None, region: str | None = None) -> Any:
     """Get boto3 session with profile and region."""
     profile = profile or os.getenv("PULLDB_AWS_PROFILE")
     region = region or os.getenv("PULLDB_AWS_REGION", "us-east-1")
@@ -55,7 +57,7 @@ def _get_aws_session(profile: str | None = None, region: str | None = None) -> t
 
 def _get_secrets_manager_client(
     profile: str | None = None, region: str | None = None
-) -> t.Any:
+) -> Any:
     """Get Secrets Manager client."""
     session = _get_aws_session(profile, region)
     return session.client("secretsmanager")
@@ -112,7 +114,7 @@ def list_secrets(ctx: click.Context, prefix: str, json_out: bool) -> None:
     client = _get_secrets_manager_client(ctx.obj["profile"], ctx.obj["region"])
 
     try:
-        secrets: list[dict[str, t.Any]] = []
+        secrets: list[dict[str, Any]] = []
         paginator = client.get_paginator("list_secrets")
 
         for page in paginator.paginate(
@@ -226,7 +228,7 @@ def _process_set_secret(ctx: click.Context, params: SecretParams) -> None:
             raise click.ClickException("No password provided via stdin")
 
     # Build secret value
-    secret_data: dict[str, t.Any] = {
+    secret_data: dict[str, Any] = {
         "host": params.host,
         "password": password,
         "port": params.port,
@@ -263,7 +265,7 @@ def _process_set_secret(ctx: click.Context, params: SecretParams) -> None:
         click.echo(f"✓ Updated secret: {params.secret_id}")
     else:
         # Create new secret
-        create_args: dict[str, t.Any] = {
+        create_args: dict[str, Any] = {
             "Name": params.secret_id,
             "SecretString": secret_string,
         }
@@ -375,7 +377,7 @@ def delete_secret(
     client = _get_secrets_manager_client(ctx.obj["profile"], ctx.obj["region"])
 
     try:
-        delete_args: dict[str, t.Any] = {"SecretId": secret_id}
+        delete_args: dict[str, Any] = {"SecretId": secret_id}
 
         if force:
             delete_args["ForceDeleteWithoutRecovery"] = True
@@ -462,7 +464,8 @@ def test_secret(
 
         cursor = conn.cursor()
         cursor.execute("SELECT VERSION()")
-        version = cursor.fetchone()[0]
+        row = cursor.fetchone()
+        version = str(row[0]) if row else "unknown"  # type: ignore[index]
         cursor.close()
         conn.close()
 

@@ -2,12 +2,14 @@
 
 Holds the "database" state (jobs, users, hosts, settings) in thread-safe
 structures. Acts as the single source of truth for all Mock Repositories.
+
+HCA Layer: features
 """
 
 from __future__ import annotations
 
 import threading
-import typing as t
+from typing import Any
 from dataclasses import dataclass, field
 
 from pulldb.domain.models import DBHost, Job, JobEvent, User
@@ -22,9 +24,9 @@ class SimulationState:
     users: dict[str, User] = field(default_factory=dict)
     hosts: dict[str, DBHost] = field(default_factory=dict)
     settings: dict[str, str] = field(default_factory=dict)
-    settings_metadata: dict[str, dict[str, t.Any]] = field(default_factory=dict)
+    settings_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
     job_events: list[JobEvent] = field(default_factory=list)
-    audit_logs: list[dict[str, t.Any]] = field(default_factory=list)
+    audit_logs: list[dict[str, Any]] = field(default_factory=list)
     
     # S3 State
     # bucket_name -> list of keys
@@ -36,11 +38,11 @@ class SimulationState:
     
     # Auth state (Phase 4)
     # user_id -> {password_hash, totp_secret, etc.}
-    auth_credentials: dict[str, dict[str, t.Any]] = field(default_factory=dict)
+    auth_credentials: dict[str, dict[str, Any]] = field(default_factory=dict)
     # token_hash -> session data
-    sessions: dict[str, dict[str, t.Any]] = field(default_factory=dict)
+    sessions: dict[str, dict[str, Any]] = field(default_factory=dict)
     # user_id -> list of {host_id, is_default, assigned_at, assigned_by}
-    user_hosts: dict[str, list[dict[str, t.Any]]] = field(default_factory=dict)
+    user_hosts: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     
     # Job cancellation tracking (set of job_ids with pending cancellation requests)
     cancellation_requested: set[str] = field(default_factory=set)
@@ -53,15 +55,15 @@ class SimulationState:
     # (hostname, db_name) -> size in MB for mock orphan databases
     orphan_sizes: dict[tuple[str, str], float] = field(default_factory=dict)
     # (hostname, db_name) -> OrphanMetadata for mock metadata (lazy import to avoid circular)
-    orphan_metadata: dict[tuple[str, str], t.Any] = field(default_factory=dict)
+    orphan_metadata: dict[tuple[str, str], Any] = field(default_factory=dict)
     
     # Phase 0.5: API keys for approval workflow screenshots
     # key_id -> {user_id, name, host_name, created_at, approved_at, approved_by, is_active, ...}
-    api_keys: dict[str, dict[str, t.Any]] = field(default_factory=dict)
+    api_keys: dict[str, dict[str, Any]] = field(default_factory=dict)
     
     # Phase 0.5: Disallowed usernames for admin page screenshots
     # username -> {reason, is_hardcoded, created_at, created_by}
-    disallowed_usernames: dict[str, dict[str, t.Any]] = field(default_factory=dict)
+    disallowed_usernames: dict[str, dict[str, Any]] = field(default_factory=dict)
     
     # Phase 0.5: Host credential error state tracking
     # hostname -> error message (if credentials failed)

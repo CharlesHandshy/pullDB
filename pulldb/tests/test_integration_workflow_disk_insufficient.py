@@ -9,6 +9,8 @@ should never raise `DiskCapacityError`; such failures are handled upstream.
 We mark this test as xfail to document the architectural separation and
 avoid false failure signals. Future downloader integration tests should
 exercise `ensure_disk_capacity` behavior directly.
+
+HCA Layer: tests (pulldb/tests/)
 """
 
 from __future__ import annotations

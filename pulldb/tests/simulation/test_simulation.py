@@ -5,6 +5,8 @@ Phase 4 validation tests to ensure the Mock System works correctly.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 import threading
 import time
 import uuid

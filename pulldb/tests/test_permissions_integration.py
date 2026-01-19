@@ -6,6 +6,8 @@ permissions system (RBAC).
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 from datetime import UTC, datetime
 
 import pytest

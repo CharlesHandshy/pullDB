@@ -6,6 +6,8 @@ queue without race conditions. Uses SELECT FOR UPDATE SKIP LOCKED pattern.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 import threading
 import uuid
 from datetime import UTC, datetime

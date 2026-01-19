@@ -2,17 +2,20 @@
 
 Provides a pub/sub system for tracing all simulation events.
 Enables observability, debugging, and test assertions on event sequences.
+
+HCA Layer: features
 """
 
 from __future__ import annotations
 
 import logging
 import threading
-import typing as t
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +58,11 @@ class SimulationEvent:
     event_type: EventType
     timestamp: datetime
     source: str  # Component that emitted the event (e.g., "MockS3Client")
-    data: dict[str, t.Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
     job_id: str | None = None  # Optional job context
 
 
-EventCallback = t.Callable[[SimulationEvent], None]
+EventCallback = Callable[[SimulationEvent], None]
 
 
 class SimulationEventBus:
@@ -87,7 +90,7 @@ class SimulationEventBus:
         self,
         callback: EventCallback,
         event_type: EventType | None = None,
-    ) -> t.Callable[[], None]:
+    ) -> Callable[[], None]:
         """Subscribe to events.
 
         Args:
@@ -114,7 +117,7 @@ class SimulationEventBus:
         self,
         event_type: EventType,
         source: str,
-        data: dict[str, t.Any] | None = None,
+        data: dict[str, Any] | None = None,
         job_id: str | None = None,
     ) -> SimulationEvent:
         """Emit an event to all subscribers.
@@ -213,7 +216,7 @@ class SimulationEventBus:
         self,
         event_type: EventType,
         timeout: float = 5.0,
-        predicate: t.Callable[[SimulationEvent], bool] | None = None,
+        predicate: Callable[[SimulationEvent], bool] | None = None,
     ) -> SimulationEvent | None:
         """Wait for a specific event (useful for tests).
 

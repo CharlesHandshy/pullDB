@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Audit feature module for pullDB Web UI.
 
 HCA Layer: features

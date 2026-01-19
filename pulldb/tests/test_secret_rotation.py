@@ -10,6 +10,8 @@ Tests the atomic credential rotation workflow including:
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest

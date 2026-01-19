@@ -9,6 +9,8 @@ are in pulldb-admin tests, not here. See docs/KNOWLEDGE-POOL.md for CLI architec
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 import pytest
 
 

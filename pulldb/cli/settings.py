@@ -11,6 +11,8 @@ Usage:
     pulldb-admin settings pull           # Sync: database → .env file
     pulldb-admin settings push           # Sync: .env file → database
     pulldb-admin settings diff           # Show differences between db and .env
+
+HCA Layer: pages
 """
 
 from __future__ import annotations

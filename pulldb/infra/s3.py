@@ -20,13 +20,15 @@ Associated schema file (inside archive, validated prior to download)::
 
 Note: Multi-format support (newer directory style dumps) is deferred. This
 implementation targets tar archives present in staging bucket.
+
+HCA Layer: shared
 """
 
 from __future__ import annotations
 
 import os
 import re
-import typing as t
+from typing import Any
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -117,11 +119,11 @@ class S3Client:
         """
         self._default_profile = profile
         self._default_region = region
-        self._clients: dict[str | None, boto3.client] = {}
+        self._clients: dict[str | None, Any] = {}
         # Initialize default client
         self._clients[profile] = self._create_client(profile, region)
 
-    def _create_client(self, profile: str | None, region: str | None) -> boto3.client:
+    def _create_client(self, profile: str | None, region: str | None) -> Any:
         # Construct a Session without relying on **kwargs expansion to keep
         # mypy strict mode happy and avoid arg-type confusion. Only pass
         # explicitly provided values.
@@ -149,12 +151,13 @@ class S3Client:
                 if env_profile is not None:
                     os.environ["AWS_PROFILE"] = env_profile
         except Exception:  # pragma: no cover - defensive catch for strange local env
+            logger.debug("Failed to create S3 client, falling back to default", exc_info=True)
             return boto3.client(
                 "s3",
                 region_name=(region or "us-east-1"),
             )
 
-    def get_client(self, profile: str | None = None) -> boto3.client:
+    def get_client(self, profile: str | None = None) -> Any:
         """Get or create a boto3 client for the specified profile."""
         target_profile = profile if profile is not None else self._default_profile
         if target_profile not in self._clients:
@@ -188,10 +191,10 @@ class S3Client:
         while True:
             page_count += 1
             if page_count % 10 == 0:
-                logger.info(f"Listing keys page {page_count} for {bucket}/{prefix}")
+                logger.info("Listing keys page %d for %s/%s", page_count, bucket, prefix)
             # Use max_keys for page size if specified and smaller than default
             page_size = min(max_keys, 1000) if max_keys else 1000
-            params: dict[str, t.Any] = {
+            params: dict[str, Any] = {
                 "Bucket": bucket,
                 "Prefix": prefix,
                 "MaxKeys": page_size,
@@ -283,7 +286,7 @@ class S3Client:
         continuation: str | None = None
 
         while True:
-            params: dict[str, t.Any] = {
+            params: dict[str, Any] = {
                 "Bucket": bucket,
                 "Prefix": prefix,
                 "Delimiter": "/",
@@ -343,7 +346,7 @@ class S3Client:
 
         while True:
             page_count += 1
-            params: dict[str, t.Any] = {
+            params: dict[str, Any] = {
                 "Bucket": bucket,
                 "Prefix": prefix,
                 "MaxKeys": 1000,
@@ -436,10 +439,11 @@ def discover_latest_backup(
     # {prefix}{target}/daily_mydumper_{target}_...
     search_prefix = f"{prefix}{target}/daily_mydumper_{target}_"
 
-    logger.info(f"Starting list_keys for bucket={bucket} prefix={search_prefix}")
+    logger.info("Starting list_keys for bucket=%s prefix=%s", bucket, search_prefix)
     keys = s3.list_keys(bucket, search_prefix, profile=profile)
     logger.info(
-        f"Found {len(keys)} keys for target '{target}' in {bucket}/{search_prefix}"
+        "Found %d keys for target '%s' in %s/%s",
+        len(keys), target, bucket, search_prefix,
     )
 
     if not keys:
@@ -454,7 +458,7 @@ def discover_latest_backup(
         filename = key.rsplit("/", 1)[-1]
         match = regex.match(filename)
         if not match:
-            logger.warning(f"Regex mismatch: {filename}")
+            logger.warning("Regex mismatch: %s", filename)
             # Detect structurally similar filename with bad timestamp to
             # provide clearer diagnostic (test expectation).
             if filename.startswith(f"daily_mydumper_{target}_") and (
@@ -493,7 +497,7 @@ def discover_latest_backup(
     newest_ts, newest_key = candidates[0]
 
     # Retrieve size for disk planning
-    logger.info(f"Head object for {newest_key}")
+    logger.info("Head object for %s", newest_key)
     head = s3.head_object(bucket, newest_key, profile=profile)
     size_bytes = int(head.get("ContentLength", 0))
 

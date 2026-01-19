@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 """Smoke test for Native Ephemeral Isolation strategy.
+
+    HCA Layer: tests
 
 Verifies that the isolated_mysql fixture correctly sets up a private,
 socket-based MySQL instance and that the application can connect to it.

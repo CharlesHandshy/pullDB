@@ -5,11 +5,13 @@ Provides REST endpoints to control the simulation engine:
 - Switch scenarios
 - View event history
 - Inject chaos at runtime
+
+HCA Layer: pages
 """
 
 from __future__ import annotations
 
-import typing as t
+from typing import Any
 from dataclasses import replace
 from datetime import datetime
 
@@ -92,7 +94,7 @@ class EventInfo(BaseModel):
     timestamp: datetime
     source: str
     job_id: str | None = None
-    data: dict[str, t.Any]
+    data: dict[str, Any]
 
 
 class EventHistoryResponse(BaseModel):
@@ -124,9 +126,9 @@ class InjectChaosResponse(BaseModel):
 class StateSnapshotResponse(BaseModel):
     """Snapshot of current simulation state."""
 
-    jobs: list[dict[str, t.Any]]
-    users: list[dict[str, t.Any]]
-    hosts: list[dict[str, t.Any]]
+    jobs: list[dict[str, Any]]
+    users: list[dict[str, Any]]
+    hosts: list[dict[str, Any]]
     settings: dict[str, str]
     s3_buckets: dict[str, list[str]]
 
@@ -415,7 +417,7 @@ async def get_state_snapshot() -> StateSnapshotResponse:
 
     with state.lock:
         # Convert jobs to dicts
-        jobs: list[dict[str, t.Any]] = []
+        jobs: list[dict[str, Any]] = []
         for job in state.jobs.values():
             submitted_at_str = (
                 job.submitted_at.isoformat() if job.submitted_at else None
@@ -433,7 +435,7 @@ async def get_state_snapshot() -> StateSnapshotResponse:
             )
 
         # Convert users to dicts
-        users: list[dict[str, t.Any]] = []
+        users: list[dict[str, Any]] = []
         for user in state.users.values():
             users.append(
                 {
@@ -445,7 +447,7 @@ async def get_state_snapshot() -> StateSnapshotResponse:
             )
 
         # Convert hosts to dicts
-        hosts: list[dict[str, t.Any]] = []
+        hosts: list[dict[str, Any]] = []
         for host in state.hosts.values():
             hosts.append(
                 {

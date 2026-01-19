@@ -7,6 +7,8 @@ severity, and optional structured fields (job_id, target, phase).
 Example:
     >>> logger = get_logger("pulldb.worker")
     >>> logger.info("Job started", extra={"job_id": "123", "phase": "download"})
+
+HCA Layer: shared
 """
 
 from __future__ import annotations

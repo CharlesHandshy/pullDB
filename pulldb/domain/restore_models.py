@@ -7,6 +7,8 @@ Design Goals:
   * Keep IO contracts explicit and typed
   * Provide stable surface for upcoming workflow tests
   * Avoid premature coupling to CLI/API layers
+
+HCA Layer: entities (pulldb/domain/)
 """
 
 from __future__ import annotations

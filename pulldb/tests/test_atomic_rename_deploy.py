@@ -9,6 +9,8 @@ flags.
 FAIL HARD expectations: each failure scenario must surface a structured
 diagnostic (Goal/Problem/Root Cause/Solutions) and exit with code 1. We capture
 stderr to assert presence of those fields.
+
+HCA Layer: tests (pulldb/tests/)
 """
 
 from __future__ import annotations

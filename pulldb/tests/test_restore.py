@@ -3,6 +3,8 @@
 These tests simulate myloader using the Python interpreter to avoid
 external binary dependency. This exercises command construction,
 non-zero exit translation, and timeout handling.
+
+HCA Layer: tests (pulldb/tests/)
 """
 
 from __future__ import annotations

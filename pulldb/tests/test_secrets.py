@@ -6,6 +6,8 @@ Integration tests against real AWS services should be run separately.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 import json
 import os
 from collections.abc import Generator

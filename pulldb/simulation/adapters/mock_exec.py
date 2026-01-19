@@ -2,6 +2,8 @@
 
 Implements the ProcessExecutor protocol.
 Simulates command execution with configurable delays and outcomes.
+
+HCA Layer: shared
 """
 
 from __future__ import annotations

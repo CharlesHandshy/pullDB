@@ -15,14 +15,19 @@ Commands:
 
 Note: To submit jobs on behalf of other users, use:
   pulldb restore <customer> user=<username>
+
+HCA Layer: pages
 """
 
 from __future__ import annotations
 
 import getpass
+import logging
 import os
 import sys
-import typing as t
+from collections.abc import Sequence
+
+logger = logging.getLogger(__name__)
 
 import click
 from dotenv import load_dotenv
@@ -88,7 +93,8 @@ def _get_system_username() -> str:
     try:
         return getpass.getuser()
     except Exception:
-        # Fallback to environment variable
+        # Fallback to environment variable if getpass fails
+        logger.debug("getpass.getuser() failed, falling back to env", exc_info=True)
         return os.environ.get("USER", os.environ.get("USERNAME", "unknown"))
 
 
@@ -185,7 +191,7 @@ cli.add_command(keys_group)
 cli.add_command(disallow_group)
 
 
-def main(argv: t.Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Main entry point for pulldb-admin CLI.
 
     Args:

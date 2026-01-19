@@ -13,6 +13,8 @@ Metrics categories:
 
 All metrics are emitted as structured JSON log events with metric_type field
 for easy filtering and aggregation.
+
+HCA Layer: shared (pulldb/infra/)
 """
 
 from __future__ import annotations

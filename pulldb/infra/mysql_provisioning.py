@@ -10,6 +10,8 @@ Used by the web admin Add Host flow to automate all MySQL setup in one step.
 
 FAIL HARD: All functions return structured results with actionable error messages.
 No silent degradation - failures include diagnostic information.
+
+HCA Layer: shared
 """
 
 from __future__ import annotations
@@ -163,7 +165,8 @@ def test_admin_connection(
             try:
                 conn.close()
             except Exception:
-                pass
+                # Connection cleanup failure - connection may already be closed
+                logger.debug("Failed to close MySQL connection in test_admin_connection", exc_info=True)
 
 
 def _get_connection_suggestions(
@@ -336,7 +339,8 @@ def create_pulldb_user(
             try:
                 conn.close()
             except Exception:
-                pass
+                # Connection cleanup failure - connection may already be closed
+                logger.debug("Failed to close MySQL connection in create_pulldb_user", exc_info=True)
 
 
 def create_pulldb_database(
@@ -414,7 +418,8 @@ def create_pulldb_database(
             try:
                 conn.close()
             except Exception:
-                pass
+                # Connection cleanup failure - connection may already be closed
+                logger.debug("Failed to close MySQL connection in create_pulldb_database", exc_info=True)
 
 
 def deploy_stored_procedure(
@@ -548,7 +553,8 @@ def deploy_stored_procedure(
             try:
                 conn.close()
             except Exception:
-                pass
+                # Connection cleanup failure - connection may already be closed
+                logger.debug("Failed to close MySQL connection in deploy_stored_procedure", exc_info=True)
 
 
 def _get_minimal_procedure_sql() -> str:
@@ -797,7 +803,7 @@ def sync_mysql_credentials(
 
             # Replicate grants (skip the USAGE grant)
             for grant_row in grants:
-                grant_stmt = grant_row[0]
+                grant_stmt = str(grant_row[0])  # type: ignore[index]
                 # Skip USAGE grants (no real privileges)
                 if "USAGE ON" in grant_stmt:
                     continue
@@ -869,7 +875,8 @@ def sync_mysql_credentials(
             try:
                 conn.close()
             except Exception:
-                pass
+                # Connection cleanup failure - connection may already be closed
+                logger.debug("Failed to close MySQL connection in update_mysql_credentials", exc_info=True)
 
 
 def drop_mysql_user(
@@ -963,4 +970,5 @@ def drop_mysql_user(
             try:
                 conn.close()
             except Exception:
-                pass
+                # Connection cleanup failure - connection may already be closed
+                logger.debug("Failed to close MySQL connection in drop_mysql_user", exc_info=True)

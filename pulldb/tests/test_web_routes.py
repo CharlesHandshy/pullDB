@@ -6,6 +6,8 @@ HCA: Updated to use new HCA structure imports.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 
 class TestWebModuleImport:
     """Tests for web module import and structure."""

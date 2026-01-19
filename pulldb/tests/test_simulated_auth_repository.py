@@ -5,6 +5,8 @@ Phase 4: Validates the authentication repository logic in isolation.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 import hashlib
 import os
 from collections.abc import Generator

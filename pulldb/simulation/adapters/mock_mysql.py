@@ -2,6 +2,8 @@
 
 Implements the Repository protocols using in-memory dictionaries.
 Thread-safe using the shared SimulationState lock.
+
+HCA Layer: shared
 """
 
 from __future__ import annotations
@@ -10,7 +12,7 @@ import logging
 import uuid
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-import typing as t
+from typing import Any
 
 from pulldb.domain.errors import LockedUserError
 from pulldb.domain.models import (
@@ -113,7 +115,7 @@ class SimulatedJobRepository:
         worker_id: str | None = None
     ) -> Job:
         """Helper to create a new Job instance with updated fields."""
-        changes: dict[str, t.Any] = {"status": status}
+        changes: dict[str, Any] = {"status": status}
         if started_at:
             changes["started_at"] = started_at
         if completed_at:
@@ -2646,7 +2648,7 @@ class SimulatedAuthRepository:
                 del self.state.sessions[token_hash]
             return len(to_delete)
 
-    def get_session_by_id(self, session_id: str) -> dict[str, t.Any] | None:
+    def get_session_by_id(self, session_id: str) -> dict[str, Any] | None:
         """Get session details by session_id."""
         with self.state.lock:
             for session in self.state.sessions.values():
@@ -2696,7 +2698,7 @@ class SimulatedAuthRepository:
             # Auto-default: if only one host, it becomes the default
             if len(host_ids) == 1:
                 default_host_id = host_ids[0]
-            new_assignments: list[dict[str, t.Any]] = []
+            new_assignments: list[dict[str, Any]] = []
             for host_id in host_ids:
                 new_assignments.append({
                     'host_id': host_id,
@@ -2740,7 +2742,7 @@ class SimulatedAuthRepository:
     # API Key Management Methods
     # =========================================================================
 
-    def list_api_keys_for_user(self, user_id: str) -> list[t.Any]:
+    def list_api_keys_for_user(self, user_id: str) -> list[Any]:
         """List all API keys for a user.
         
         Does NOT return the secret - that's only available at creation time.
@@ -2787,7 +2789,7 @@ class SimulatedAuthRepository:
             result.sort(key=lambda k: k.created_at or datetime.min.replace(tzinfo=UTC), reverse=True)
             return result
 
-    def get_api_keys_for_user(self, user_id: str) -> list[t.Any]:
+    def get_api_keys_for_user(self, user_id: str) -> list[Any]:
         """Alias for list_api_keys_for_user."""
         return self.list_api_keys_for_user(user_id)
 
@@ -2848,7 +2850,7 @@ class SimulatedAuthRepository:
                 return str(key_data.get('user_id'))
             return None
 
-    def get_api_key_info(self, key_id: str) -> dict[str, t.Any] | None:
+    def get_api_key_info(self, key_id: str) -> dict[str, Any] | None:
         """Get detailed information about an API key.
         
         Args:
@@ -2876,7 +2878,7 @@ class SimulatedAuthRepository:
                 }
             return None
 
-    def get_pending_api_keys(self) -> list[t.Any]:
+    def get_pending_api_keys(self) -> list[Any]:
         """Get all API keys pending approval.
         
         Returns:
@@ -2914,7 +2916,7 @@ class SimulatedAuthRepository:
             result.sort(key=lambda k: k.created_at or datetime.min.replace(tzinfo=UTC), reverse=True)
             return result
 
-    def get_all_api_keys(self) -> list[t.Any]:
+    def get_all_api_keys(self) -> list[Any]:
         """Get all API keys in the system.
         
         Returns:
@@ -2996,7 +2998,7 @@ class SimulatedAuditRepository:
         action: str,
         target_user_id: str | None = None,
         detail: str | None = None,
-        context: dict[str, t.Any] | None = None,
+        context: dict[str, Any] | None = None,
     ) -> str:
         """Record an audit log entry."""
         import json
@@ -3022,7 +3024,7 @@ class SimulatedAuditRepository:
         action: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[dict[str, t.Any]]:
+    ) -> list[dict[str, Any]]:
         """Retrieve audit log entries with optional filtering."""
         import json
 

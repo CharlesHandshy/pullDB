@@ -7,6 +7,8 @@ These interfaces allow for dependency injection and swapping of implementations
 HCA Compliance:
 - Domain Layer: Defines interfaces (Ports).
 - Infra Layer: Implements interfaces (Adapters).
+
+HCA Layer: entities
 """
 
 from __future__ import annotations

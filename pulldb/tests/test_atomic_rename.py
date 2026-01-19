@@ -6,6 +6,8 @@ MySQL instance state). Instead we simulate cursor behavior to verify:
   * Successful path attempts to call cursor.callproc with correct args
 
 The actual SQL procedure is documented in docs/atomic_rename_procedure.sql.
+
+HCA Layer: tests (pulldb/tests/)
 """
 
 from __future__ import annotations

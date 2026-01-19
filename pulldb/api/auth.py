@@ -17,6 +17,8 @@ All authenticated endpoints should use the dependency functions:
 
 These dependencies support BOTH HMAC signatures AND cookies for maximum
 compatibility with CLI tools and web UI.
+
+HCA Layer: pages (pulldb/api/)
 """
 
 from __future__ import annotations
@@ -63,7 +65,7 @@ def get_api_secret(key_id: str, auth_repo: object | None = None) -> str | None:
         # This may raise KeyPendingApprovalError - let it propagate
         secret = auth_repo.get_api_key_secret(key_id)
         if secret:
-            return secret
+            return str(secret)
 
     # Priority 2: Environment variable (backward compatibility)
     configured_key = os.getenv("PULLDB_API_KEY")
@@ -96,7 +98,7 @@ def get_user_for_api_key(key_id: str, auth_repo: object | None = None) -> str | 
         user_id = auth_repo.get_api_key_user(key_id)
         if user_id:
             # Return user_id - the caller will look up username
-            return user_id
+            return str(user_id)
 
     # Priority 2: Environment variable (backward compatibility)
     configured_key = os.getenv("PULLDB_API_KEY")
@@ -185,12 +187,16 @@ def _get_api_state_dependency() -> "APIState":
     FastAPI's dependency override system will work because we use
     Depends(_get_api_state_dependency), not a direct function call.
     """
+    from typing import cast
     from pulldb.api.main import get_api_state, app
+    from pulldb.api.types import APIState
     
     # Check if there's a dependency override for get_api_state
     if get_api_state in app.dependency_overrides:
-        return app.dependency_overrides[get_api_state]()
-    return get_api_state()
+        result = app.dependency_overrides[get_api_state]()
+        return cast(APIState, result)
+    state = get_api_state()
+    return cast(APIState, state)
 
 
 async def get_authenticated_user(
@@ -290,6 +296,7 @@ async def get_authenticated_user(
 
         # If we got a user_id from database, look up by ID; otherwise by username
         # Check if it looks like a UUID (36 chars with hyphens)
+        user: User | None
         if len(user_or_username) == 36 and user_or_username.count("-") == 4:
             # It's a user_id from the database
             user = await run_in_threadpool(
@@ -482,6 +489,7 @@ async def get_optional_user(
 
         # If we got a user_id from database, look up by ID; otherwise by username
         # Check if it looks like a UUID (36 chars with hyphens)
+        user: User | None
         if len(user_or_username) == 36 and user_or_username.count("-") == 4:
             # It's a user_id from the database
             user = await run_in_threadpool(

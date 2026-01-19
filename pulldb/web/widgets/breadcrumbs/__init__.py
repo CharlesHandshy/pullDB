@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Breadcrumb widget for navigation context.
 
 HCA Layer: widgets

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Metadata synthesis logic for myloader compatibility.
 
 .. deprecated:: 1.1.0
@@ -16,6 +18,8 @@ This module provides functionality to:
 
 Performance: Uses O(1) estimation instead of decompressing all files.
 For an 86 GiB backup, this reduces synthesis time from ~20 minutes to ~2 seconds.
+
+HCA Layer: features (pulldb/worker/)
 """
 
 import configparser
@@ -108,6 +112,8 @@ def get_gzip_uncompressed_size(filepath: str) -> int:
             data = f.read(4)
             return int(struct.unpack("<I", data)[0])
     except Exception:
+        # Graceful degradation: return 0 if ISIZE can't be read
+        logger.debug("Failed to get ISIZE for %s", filepath, exc_info=True)
         return 0
 
 

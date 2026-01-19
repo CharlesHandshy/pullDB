@@ -3,6 +3,8 @@
 Implements connection pooling and repository pattern for database access.
 All database operations are encapsulated in repository classes to enforce
 business rules and provide clean abstractions.
+
+HCA Layer: shared (pulldb/infra/)
 """
 
 from __future__ import annotations
@@ -10,7 +12,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import typing as t
+from collections.abc import Iterator
+from typing import Any, cast
 import uuid
 import warnings
 from contextlib import contextmanager
@@ -30,6 +33,7 @@ from pulldb.domain.models import (
     Job,
     JobEvent,
     JobStatus,
+    MaintenanceItems,
     User,
     UserDetail,
     UserRole,
@@ -64,7 +68,7 @@ class MySQLPool:
     Will be replaced with a real pooled implementation and per-host connections.
     """
 
-    def __init__(self, **kwargs: t.Any) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         """Initialize MySQL connection pool.
 
         Args:
@@ -73,7 +77,7 @@ class MySQLPool:
         self._kwargs = kwargs
 
     @contextmanager
-    def connection(self) -> t.Iterator[t.Any]:
+    def connection(self) -> Iterator[Any]:
         """Get a database connection from the pool.
 
         Yields:
@@ -86,7 +90,7 @@ class MySQLPool:
             conn.close()
 
     @contextmanager
-    def transaction(self) -> t.Iterator[t.Any]:
+    def transaction(self) -> Iterator[Any]:
         """Get a database connection with explicit transaction control.
 
         Disables autocommit for manual transaction management. Commits on
@@ -104,7 +108,7 @@ class MySQLPool:
             ...     # Commits automatically on exit
         """
         conn = mysql.connector.connect(**self._kwargs)
-        conn.autocommit = False
+        conn.autocommit = False  # type: ignore[union-attr]
         try:
             yield conn
             conn.commit()
@@ -134,7 +138,7 @@ def build_default_pool(
     Returns:
         Configured MySQLPool instance.
     """
-    kwargs: dict[str, t.Any] = {
+    kwargs: dict[str, Any] = {
         "host": host,
         "user": user,
         "password": password,
@@ -620,7 +624,7 @@ class JobRepository:
                 """,
                 (retention_months, job_id),
             )
-            updated = cursor.rowcount > 0
+            updated = bool(cursor.rowcount > 0)
             conn.commit()
             
             if not updated:
@@ -685,7 +689,7 @@ class JobRepository:
                 (job_id,),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def mark_jobs_expired_batch(self, job_ids: list[str]) -> int:
         """Mark multiple deployed jobs as expired in a single transaction.
@@ -714,7 +718,7 @@ class JobRepository:
                 tuple(job_ids),
             )
             conn.commit()
-            return cursor.rowcount
+            return int(cursor.rowcount)
 
     def mark_job_failed(self, job_id: str, error: str) -> None:
         """Mark job as failed with error detail.
@@ -797,7 +801,7 @@ class JobRepository:
                 (job_id,),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def request_cancellation(self, job_id: str) -> bool:
         """Request cancellation of a job.
@@ -832,7 +836,7 @@ class JobRepository:
                 (job_id,),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def mark_job_canceled(self, job_id: str, reason: str | None = None) -> None:
         """Mark job as canceled and set completed_at timestamp.
@@ -872,7 +876,6 @@ class JobRepository:
         Args:
             job_id: UUID of job.
         """
-        import json
 
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
@@ -958,7 +961,6 @@ class JobRepository:
         Returns:
             Claimed job (still in 'deleting' status) or None if no stale jobs.
         """
-        import json
 
         with self.pool.transaction() as conn:
             cursor = conn.cursor(dictionary=True)
@@ -1069,7 +1071,6 @@ class JobRepository:
             job_id: UUID of job.
             error_detail: Optional error detail (defaults to retry exhaustion message).
         """
-        import json
 
         detail = error_detail or "Delete failed after 5 attempts"
         with self.pool.connection() as conn:
@@ -1209,7 +1210,6 @@ class JobRepository:
             True if job was marked failed, False if job not found or already
             transitioned to another state.
         """
-        import json
 
         detail = error_detail or "Worker died during restore (stale job recovery)"
 
@@ -1289,7 +1289,7 @@ class JobRepository:
                 "DELETE FROM jobs WHERE id = %s",
                 (job_id,),
             )
-            deleted = cursor.rowcount > 0
+            deleted = bool(cursor.rowcount > 0)
             conn.commit()
             return deleted
 
@@ -1457,7 +1457,7 @@ class JobRepository:
                 LEFT JOIN LatestEvents le ON j.id = le.job_id AND le.rn = 1
             """
 
-            params: list[t.Any] = []
+            params: list[Any] = []
             if statuses:
                 placeholders = ", ".join(["%s"] * len(statuses))
                 query += f" WHERE j.status IN ({placeholders})"
@@ -1537,7 +1537,7 @@ class JobRepository:
                 WHERE j.status IN ('complete', 'failed', 'canceled')
             """
 
-            params: list[t.Any] = []
+            params: list[Any] = []
 
             # Retention filter
             if retention_days is not None:
@@ -1616,7 +1616,7 @@ class JobRepository:
                 )
             """
 
-            params: list[t.Any] = []
+            params: list[Any] = []
 
             # User filter
             if user_code:
@@ -1684,7 +1684,7 @@ class JobRepository:
                 WHERE j.status IN ('failed', 'canceled', 'deleted', 'deleting', 'expired', 'complete', 'superseded')
             """
 
-            params: list[t.Any] = []
+            params: list[Any] = []
 
             # Retention filter
             if retention_days is not None:
@@ -1751,7 +1751,7 @@ class JobRepository:
                 FROM jobs
                 WHERE 1=1
             """
-            params: list[t.Any] = []
+            params: list[Any] = []
 
             if active_only:
                 query += " AND status IN ('queued', 'running')"
@@ -1774,7 +1774,7 @@ class JobRepository:
             rows = cursor.fetchall()
             return [self._row_to_job(row) for row in rows]
 
-    def _fetch_active_job_rows(self, cursor: t.Any) -> list[dict[str, t.Any]]:
+    def _fetch_active_job_rows(self, cursor: Any) -> list[dict[str, Any]]:
         """Fetch active jobs using view when available.
 
         Older coordination databases might be missing the active_jobs view,
@@ -1783,7 +1783,7 @@ class JobRepository:
         if self._active_jobs_view_available:
             try:
                 cursor.execute(_ACTIVE_JOBS_VIEW_QUERY)
-                return t.cast(list[dict[str, t.Any]], cursor.fetchall())
+                return cast(list[dict[str, Any]], cursor.fetchall())
             except mysql_errors.ProgrammingError as exc:
                 if getattr(exc, "errno", None) == errorcode.ER_NO_SUCH_TABLE:
                     self._active_jobs_view_available = False
@@ -1795,7 +1795,7 @@ class JobRepository:
                     raise
 
         cursor.execute(_ACTIVE_JOBS_TABLE_QUERY)
-        return t.cast(list[dict[str, t.Any]], cursor.fetchall())
+        return cast(list[dict[str, Any]], cursor.fetchall())
 
     def get_jobs_by_user(self, user_id: str) -> list[Job]:
         """Get all jobs for a user.
@@ -2015,7 +2015,7 @@ class JobRepository:
         retention_days: int = 7,
         offset: int = 0,
         limit: int = 100,
-    ) -> dict[str, t.Any]:
+    ) -> dict[str, Any]:
         """Get jobs with completed staging databases eligible for cleanup.
 
         Returns jobs that completed more than retention_days ago and still
@@ -2123,7 +2123,7 @@ class JobRepository:
                 FROM job_events
                 WHERE job_id = %s
             """
-            params: list[t.Any] = [job_id]
+            params: list[Any] = [job_id]
 
             if since_id is not None:
                 query += " AND id > %s"
@@ -2174,7 +2174,7 @@ class JobRepository:
                 """,
                 (retention_days,),
             )
-            deleted_count = cursor.rowcount
+            deleted_count = int(cursor.rowcount)
             conn.commit()
             return deleted_count
 
@@ -2293,7 +2293,7 @@ class JobRepository:
                 """,
                 tuple(job_ids),
             )
-            deleted_count = cursor.rowcount
+            deleted_count = int(cursor.rowcount)
             conn.commit()
             return deleted_count
 
@@ -2344,7 +2344,7 @@ class JobRepository:
                     (retention_days,),
                 )
 
-            deleted_count = cursor.rowcount
+            deleted_count = int(cursor.rowcount)
             conn.commit()
             return deleted_count
 
@@ -2494,7 +2494,7 @@ class JobRepository:
             )
             conn.commit()
 
-    def _row_to_job(self, row: dict[str, t.Any]) -> Job:
+    def _row_to_job(self, row: dict[str, Any]) -> Job:
         """Convert MySQL row to Job dataclass.
 
         Args:
@@ -2564,7 +2564,7 @@ class JobRepository:
             superseded_by_job_id=row.get("superseded_by_job_id"),
         )
 
-    def _derive_operation(self, row: dict[str, t.Any]) -> str | None:
+    def _derive_operation(self, row: dict[str, Any]) -> str | None:
         """Derive user-friendly operation string from job status and last event."""
         status = row.get("status")
         if status == "complete":
@@ -2614,7 +2614,8 @@ class JobRepository:
         if event_type == "restore_failed":
             return "Restoring"
 
-        return event_type.replace("_", " ").capitalize()
+        # Fallback: convert event_type like "download_started" to "Download started"
+        return str(event_type).replace("_", " ").capitalize()
 
     def find_orphaned_staging_databases(
         self, older_than_hours: int, dbhost: str | None = None
@@ -2640,7 +2641,7 @@ class JobRepository:
               AND status IN ('complete', 'failed', 'canceled')
               AND completed_at < DATE_SUB(NOW(), INTERVAL %s HOUR)
         """
-        params: list[t.Any] = [older_than_hours]
+        params: list[Any] = [older_than_hours]
 
         if dbhost:
             query += " AND dbhost = %s"
@@ -2706,7 +2707,7 @@ class JobRepository:
                 (locked_by, job_id),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def unlock_job(self, job_id: str) -> bool:
         """Unlock a job's database.
@@ -2728,7 +2729,7 @@ class JobRepository:
                 (job_id,),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def lock_for_restore(self, job_id: str, worker_id: str) -> bool:
         """Lock job for restore phase, preventing further cancellation.
@@ -2767,7 +2768,7 @@ class JobRepository:
                 (f"worker:{worker_id}", job_id),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def mark_db_dropped(self, job_id: str) -> None:
         """Mark that the actual database was dropped from target host.
@@ -3010,7 +3011,7 @@ class JobRepository:
 
     def get_maintenance_items(
         self, user_id: str, notice_days: int, grace_days: int
-    ) -> "MaintenanceItems":
+    ) -> MaintenanceItems:
         """Get maintenance items for a user's daily modal.
 
         Returns jobs grouped by maintenance status: expired, expiring, locked.
@@ -3023,8 +3024,6 @@ class JobRepository:
         Returns:
             MaintenanceItems with expired, expiring, and locked job lists.
         """
-        from pulldb.domain.models import MaintenanceItems
-
         with self.pool.connection() as conn:
             cursor = conn.cursor(dictionary=True)
             # Query all potentially relevant jobs in one query
@@ -3169,7 +3168,7 @@ class JobRepository:
             rows = cursor.fetchall()
             return [self._row_to_job(row) for row in rows]
 
-    def _row_to_active_job(self, row: dict[str, t.Any]) -> Job:
+    def _row_to_active_job(self, row: dict[str, Any]) -> Job:
         """Convert active_jobs view row to Job dataclass.
 
         The active_jobs view returns fewer fields than the full jobs table.
@@ -3199,7 +3198,7 @@ class JobRepository:
             can_cancel=bool(row.get("can_cancel", True)),
         )
 
-    def _row_to_job_event(self, row: dict[str, t.Any]) -> JobEvent:
+    def _row_to_job_event(self, row: dict[str, Any]) -> JobEvent:
         """Convert MySQL row to JobEvent dataclass.
 
         Args:
@@ -3771,7 +3770,7 @@ class UserRepository:
             
             return last_ack_date < today
 
-    def _row_to_user(self, row: dict[str, t.Any]) -> User:
+    def _row_to_user(self, row: dict[str, Any]) -> User:
         """Convert database row to User dataclass.
 
         Args:
@@ -3826,7 +3825,7 @@ class UserRepository:
             )
             row = cursor.fetchone()
             if row and row[1] is not None:  # locked_at is not null
-                logger.warning(f"Blocked attempt to {action} locked user: {row[0]}")
+                logger.warning("Blocked attempt to %s locked user: %s", action, row[0])
                 raise LockedUserError(row[0], action)
 
     def _check_user_not_locked_by_username(self, username: str, action: str) -> None:
@@ -3849,7 +3848,7 @@ class UserRepository:
             )
             row = cursor.fetchone()
             if row and row[1] is not None:
-                logger.warning(f"Blocked attempt to {action} locked user: {row[0]}")
+                logger.warning("Blocked attempt to %s locked user: %s", action, row[0])
                 raise LockedUserError(row[0], action)
 
     def get_users_managed_by(self, manager_id: str) -> list[User]:
@@ -4198,7 +4197,7 @@ class AuditRepository:
         action: str,
         target_user_id: str | None = None,
         detail: str | None = None,
-        context: dict[str, t.Any] | None = None,
+        context: dict[str, Any] | None = None,
     ) -> str:
         """Record an audit log entry.
 
@@ -4212,7 +4211,6 @@ class AuditRepository:
         Returns:
             Audit log ID.
         """
-        import json
 
         audit_id = str(uuid.uuid4())
         context_json = json.dumps(context) if context else None
@@ -4237,7 +4235,7 @@ class AuditRepository:
         action: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[dict[str, t.Any]]:
+    ) -> list[dict[str, Any]]:
         """Retrieve audit log entries with optional filtering.
 
         Args:
@@ -4250,10 +4248,9 @@ class AuditRepository:
         Returns:
             List of audit log dictionaries with user details.
         """
-        import json
 
         conditions = []
-        params: list[t.Any] = []
+        params: list[Any] = []
 
         if actor_user_id:
             conditions.append("a.actor_user_id = %s")
@@ -4316,7 +4313,7 @@ class AuditRepository:
             Count of matching audit log entries.
         """
         conditions = []
-        params: list[t.Any] = []
+        params: list[Any] = []
 
         if actor_user_id:
             conditions.append("actor_user_id = %s")
@@ -4849,7 +4846,7 @@ class HostRepository:
             ValueError: If host not found or limits invalid.
         """
         updates = []
-        params: list[t.Any] = []
+        params: list[Any] = []
 
         if host_alias is not None:
             updates.append("host_alias = %s")
@@ -4939,7 +4936,7 @@ class HostRepository:
 
             for i in range(check_count):
                 cursor.execute("SHOW PROCESSLIST")
-                rows = cursor.fetchall()
+                rows: list[dict[str, Any]] = cursor.fetchall()  # type: ignore[assignment]
 
                 # Check if any process is using the staging database
                 for row in rows:
@@ -4975,7 +4972,7 @@ class HostRepository:
         finally:
             conn.close()
 
-    def _row_to_dbhost(self, row: dict[str, t.Any]) -> DBHost:
+    def _row_to_dbhost(self, row: dict[str, Any]) -> DBHost:
         """Convert database row to DBHost dataclass.
 
         Args:
@@ -5192,7 +5189,7 @@ class SettingsRepository:
                 (key,),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            return bool(cursor.rowcount > 0)
 
     def get_all_settings_with_metadata(self) -> list[dict[str, str | None]]:
         """Get all settings with their metadata (description, updated_at).
@@ -5809,6 +5806,7 @@ class DisallowedUserRepository:
                 return True
         except Exception:
             # Duplicate key or other error
+            logger.debug("Failed to add disallowed user '%s'", username, exc_info=True)
             return False
 
     def remove(self, username: str) -> tuple[bool, str]:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # HCA Layer 3: Widgets
 # ====================
 # Purpose: Composite UI components that combine entities and shared atoms.

@@ -5,6 +5,8 @@ They do NOT attempt systemd operations (skipped via --no-systemd).
 
 Note: Tests that run the full installer require root for symlink creation
 in /usr/local/bin/. Mark them as integration tests or skip in non-root mode.
+
+HCA Layer: tests (pulldb/tests/)
 """
 
 from __future__ import annotations

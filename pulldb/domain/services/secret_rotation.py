@@ -14,6 +14,8 @@ WORKFLOW:
 
 The service handles rollback scenarios and provides manual fix instructions
 when partial failures occur.
+
+HCA Layer: entities
 """
 
 from __future__ import annotations
@@ -184,7 +186,8 @@ def _test_mysql_connection(
             try:
                 conn.close()
             except Exception:
-                pass
+                # Connection cleanup failure - connection may already be closed
+                logger.debug("Failed to close MySQL connection in test function", exc_info=True)
 
 
 def _alter_mysql_password(
@@ -231,7 +234,7 @@ def _alter_mysql_password(
             )
             row = cursor.fetchone()
             if row:
-                user_host = row[0]
+                user_host = str(row[0])  # type: ignore[index]
                 logger.debug(f"Detected MySQL user host: {current_username}@{user_host}")
         except MySQLError:
             # If we can't query mysql.user (permissions), fall back to '%'
@@ -264,7 +267,8 @@ def _alter_mysql_password(
             try:
                 conn.close()
             except Exception:
-                pass
+                # Connection cleanup failure - connection may already be closed
+                logger.debug("Failed to close MySQL connection in alter function", exc_info=True)
 
 
 def rotate_host_secret(

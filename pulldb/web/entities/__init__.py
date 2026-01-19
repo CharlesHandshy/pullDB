@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # HCA Layer 1: Entities
 # =====================
 # Purpose: Data-bound display templates for domain objects.

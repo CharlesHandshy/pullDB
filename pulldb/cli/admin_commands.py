@@ -8,14 +8,19 @@ Commands:
 
 Note: To submit jobs on behalf of other users, use:
   pulldb restore <customer> user=<username>
+
+HCA Layer: pages
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
-import typing as t
+from typing import Any
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 import click
 
@@ -248,7 +253,7 @@ def cleanup_cmd(
         return
 
     # Group by host
-    by_host: dict[str, list[t.Any]] = {}
+    by_host: dict[str, list[Any]] = {}
     for orphan in orphans:
         host = orphan.dbhost or "unknown"
         by_host.setdefault(host, []).append(orphan)
@@ -533,7 +538,7 @@ def hosts_provision(
     )
 
     if json_out:
-        output: dict[str, t.Any] = {
+        output: dict[str, Any] = {
             "success": result.success,
             "message": result.message,
             "host_id": result.host_id,
@@ -817,7 +822,7 @@ def users_enable(username: str) -> None:
                 click.echo("Use 'pulldb-admin keys approve <key_id>' to approve CLI access.")
     except Exception:
         # Don't fail the enable command if key check fails
-        pass
+        logger.debug("Failed to check pending API keys during user enable", exc_info=True)
 
 
 @users_group.command("disable")
@@ -1149,7 +1154,7 @@ def disallow_list(json_out: bool) -> None:
     db_entries = repo.get_all()
 
     # Build combined list
-    all_entries: list[dict[str, t.Any]] = []
+    all_entries: list[dict[str, Any]] = []
 
     # Add hardcoded entries
     for username in sorted(DISALLOWED_USERS_HARDCODED):
@@ -1358,14 +1363,14 @@ def run_retention_cleanup_cmd(
     from pulldb.worker.retention import RetentionService
 
     retention_service = RetentionService(
-        job_repo=job_repo,
-        user_repo=user_repo,
-        settings_repo=settings_repo,
+        job_repo=job_repo,  # type: ignore[arg-type]
+        user_repo=user_repo,  # type: ignore[arg-type]
+        settings_repo=settings_repo,  # type: ignore[arg-type]
     )
 
     grace_days_str = settings_repo.get_setting("cleanup_grace_days")
     grace_days = int(grace_days_str) if grace_days_str else 7
-    candidates = job_repo.get_expired_cleanup_candidates(grace_days=grace_days)
+    candidates = job_repo.get_expired_cleanup_candidates(grace_days=grace_days)  # type: ignore[attr-defined]
 
     if not candidates:
         if json_out:
@@ -1397,7 +1402,7 @@ def run_retention_cleanup_cmd(
             click.echo(f"Found {len(candidates)} expired database(s):\n")
 
             # Group by host
-            by_host: dict[str, list[t.Any]] = {}
+            by_host: dict[str, list[Any]] = {}
             for job in candidates:
                 host = job.dbhost or "unknown"
                 by_host.setdefault(host, []).append(job)
@@ -1422,9 +1427,9 @@ def run_retention_cleanup_cmd(
     from pulldb.worker.cleanup import run_retention_cleanup
 
     result = run_retention_cleanup(
-        job_repo=job_repo,
-        host_repo=host_repo,
-        settings_repo=settings_repo,
+        job_repo=job_repo,  # type: ignore[arg-type]
+        host_repo=host_repo,  # type: ignore[arg-type]
+        settings_repo=settings_repo,  # type: ignore[arg-type]
     )
 
     if json_out:

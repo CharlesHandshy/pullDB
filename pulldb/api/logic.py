@@ -1,10 +1,16 @@
-"""Business logic for pullDB API."""
+"""Business logic for pullDB API.
+
+HCA Layer: pages
+"""
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+
+logger = logging.getLogger(__name__)
 
 from fastapi import HTTPException, status
 
@@ -59,6 +65,7 @@ def _is_known_customer_name(name: str) -> bool:
         return any(r.lower() == name_lower for r in results)
     except Exception:
         # If search fails, allow the name (fail open for UX)
+        logger.debug("Customer search failed for '%s', allowing name", name, exc_info=True)
         return False
 
 
@@ -99,6 +106,7 @@ def _target_database_exists_on_host(
         return exists
     except Exception:
         # Fail safe - if we can't check, allow the operation
+        logger.debug("Database existence check failed for '%s' on '%s'", target, dbhost, exc_info=True)
         return False
 
 
@@ -169,6 +177,7 @@ def _get_pulldb_metadata_owner(
         
     except Exception:
         # Fail safe - if we can't check, assume no table (external DB)
+        logger.debug("Metadata owner check failed for '%s' on '%s'", target, dbhost, exc_info=True)
         return (False, None, None)
 
 
@@ -452,7 +461,8 @@ def _options_snapshot(
                 if creds.port and creds.port != 3306:
                     opts["resolved_mysql_port"] = str(creds.port)
         except Exception:
-            pass  # Best effort - don't fail job submission if resolution fails
+            # Best effort - don't fail job submission if resolution fails
+            logger.debug("Failed to resolve MySQL host for '%s'", dbhost, exc_info=True)
 
     # Snapshot execution config
     if state.config:
@@ -808,7 +818,7 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
                     )
         except Exception:
             # Supersession is non-critical - don't fail job submission
-            pass
+            logger.debug("Job supersession failed for target '%s'", target, exc_info=True)
 
     stored = state.job_repo.get_job_by_id(job_id) or job
 

@@ -6,6 +6,8 @@ These tests ensure FAIL HARD semantics produce actionable error messages.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 import pytest
 
 from pulldb.cli.parse import (

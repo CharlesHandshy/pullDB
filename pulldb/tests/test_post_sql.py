@@ -7,6 +7,8 @@ connection + cursor object implementing the subset we use.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 from dataclasses import dataclass
 from pathlib import Path
 

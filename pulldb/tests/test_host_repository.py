@@ -7,6 +7,8 @@ MANDATE: Uses AWS Secrets Manager for DB login via conftest.py fixtures.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 import uuid
 from datetime import UTC, datetime
 from typing import Any

@@ -1,7 +1,15 @@
-"""Restore routes for Web2 interface."""
+from __future__ import annotations
 
+"""Restore routes for Web2 interface.
+
+HCA Layer: features (pulldb/web/features/)
+"""
+
+import logging
 import os
-import typing as t
+from typing import Any
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
@@ -55,7 +63,8 @@ def _get_default_host_for_user(user: User, customer: str | None, state: Any) -> 
             if jobs and jobs[0].dbhost:
                 return str(jobs[0].dbhost)
         except Exception:
-            pass  # Fall through to default
+            # Graceful degradation: fall through to default host
+            logger.debug("Failed to find recent job for default host", exc_info=True)
     
     return user.default_host
 
@@ -185,7 +194,7 @@ async def search_backups(
         cookies["session_token"] = session_token
     
     try:
-        params: dict[str, t.Any] = {
+        params: dict[str, Any] = {
             "customer": customer,
             "environment": env,
             "limit": limit,

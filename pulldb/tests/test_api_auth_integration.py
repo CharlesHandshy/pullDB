@@ -6,6 +6,8 @@ components and enforces security controls.
 
 from __future__ import annotations
 
+"""HCA Layer: tests."""
+
 import os
 from collections.abc import Generator
 from unittest import mock

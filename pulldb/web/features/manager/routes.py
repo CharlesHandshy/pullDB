@@ -1,4 +1,9 @@
-"""Manager routes for Web2 interface."""
+from __future__ import annotations
+
+"""Manager routes for Web2 interface.
+
+HCA Layer: features (pulldb/web/features/)
+"""
 
 from typing import Any
 

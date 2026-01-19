@@ -9,6 +9,8 @@ Design Principles (FAIL HARD):
 - Provide clear diagnostics: which operation failed and MySQL error details.
 - Do not attempt retries or workarounds.
 - Table schema is fixed and immutable for prototype (no migrations).
+
+HCA Layer: features (pulldb/worker/)
 """
 
 from __future__ import annotations

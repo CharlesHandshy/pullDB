@@ -2,13 +2,16 @@
 
 Provides predefined scenarios and chaos injection capabilities
 for testing various failure modes and edge cases.
+
+HCA Layer: features
 """
 
 from __future__ import annotations
 
 import logging
 import random
-import typing as t
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -16,7 +19,7 @@ from pulldb.simulation.adapters.mock_exec import MockCommandConfig
 from pulldb.simulation.core.bus import EventType, get_event_bus
 from pulldb.simulation.core.state import get_simulation_state, reset_simulation
 
-if t.TYPE_CHECKING:
+if TYPE_CHECKING:
     from pulldb.simulation.adapters.mock_exec import MockProcessExecutor
 
 logger = logging.getLogger(__name__)
@@ -81,7 +84,7 @@ class Scenario:
     initial_jobs: int = 0
 
     # Custom setup function
-    setup_fn: t.Callable[[], None] | None = None
+    setup_fn: Callable[[], None] | None = None
 
 
 # Singleton scenario manager

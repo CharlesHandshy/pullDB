@@ -1,6 +1,6 @@
 """Router registry for pullDB web UI.
 
-HCA Layer: Foundation
+HCA Layer: pages
 Purpose: Central registry that imports and aggregates all feature routers.
 
 This is the single entry point for including all web routes in the FastAPI app.

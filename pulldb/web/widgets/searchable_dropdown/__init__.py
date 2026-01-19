@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Searchable dropdown widget for type-ahead search/select functionality.
 
 HCA Layer: widgets

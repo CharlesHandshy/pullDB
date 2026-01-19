@@ -1,16 +1,23 @@
-"""Entry point for the `pulldb` CLI."""
+"""Entry point for the `pulldb` CLI.
+
+HCA Layer: pages
+"""
 
 from __future__ import annotations
 
 import importlib
 import json as json_module
+import logging
 import os
 import re
 import sys
 import time
-import typing as t
+
+logger = logging.getLogger(__name__)
+from collections.abc import Sequence
 from datetime import datetime
 from types import ModuleType
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
 import click
 from dotenv import load_dotenv
@@ -45,13 +52,13 @@ except PermissionError:
 DEFAULT_API_URL = "http://localhost:8080"
 MAX_STATUS_LIMIT = 1000
 
-if t.TYPE_CHECKING:  # pragma: no cover - typing-only import
+if TYPE_CHECKING:  # pragma: no cover - typing-only import
     import requests as requests_module
     from requests import RequestException, Response
 else:
-    requests_module = t.cast(ModuleType, importlib.import_module("requests"))
-    RequestException = t.cast(type[Exception], requests_module.RequestException)
-    Response = t.cast(type, requests_module.Response)
+    requests_module = cast(ModuleType, importlib.import_module("requests"))
+    RequestException = cast(type[Exception], requests_module.RequestException)
+    Response = cast(type, requests_module.Response)
 
 
 # Note: _get_calling_username is imported from pulldb.cli.auth
@@ -102,7 +109,8 @@ def _get_user_info(username: str) -> tuple[str, str | None]:
             data = response.json()
             return username, data.get("user_code")
     except Exception:
-        pass  # Silently fail - user info is optional for help display
+        # Graceful fallback: user info is optional for help display
+        logger.debug("Failed to get user info for %s", username, exc_info=True)
     return username, None
 
 
@@ -144,7 +152,8 @@ def _get_user_state(username: str) -> tuple[str, str | None, bool]:
                     # User exists but no credentials on this host
                     return UserState.NO_HOST_CREDENTIALS, data.get("user_code"), False
         except Exception:
-            pass  # Fall through to NOT_REGISTERED on error
+            # Fall through to NOT_REGISTERED on error
+            logger.debug("Failed to check user existence for %s", username, exc_info=True)
         return UserState.NOT_REGISTERED, None, False
     
     try:
@@ -197,7 +206,7 @@ def _get_user_state(username: str) -> tuple[str, str | None, bool]:
                         # Treat as no valid credentials (key may have been deleted/corrupted)
                         return UserState.NO_HOST_CREDENTIALS, data.get("user_code"), False
             except Exception:
-                pass
+                logger.debug("Failed to parse 401 response details", exc_info=True)
             return UserState.NOT_REGISTERED, None, False
         if response.status_code == 200:
             data = response.json()
@@ -208,7 +217,8 @@ def _get_user_state(username: str) -> tuple[str, str | None, bool]:
                 return UserState.DISABLED, user_code, has_password
             return UserState.ENABLED, user_code, has_password
     except Exception:
-        pass  # On API error, allow access (fail open for connectivity issues)
+        # On API error, allow access (fail open for connectivity issues)
+        logger.debug("API error checking user state, failing open", exc_info=True)
     return UserState.ENABLED, None, False
 
 
@@ -282,7 +292,7 @@ def _resolve_job_id(job_id_or_prefix: str) -> str:
 
     # Single match - return it
     if resolved_id:
-        return resolved_id
+        return str(resolved_id)
 
     # Multiple matches - prompt user to select
     if count > 1:
@@ -311,7 +321,7 @@ def _resolve_job_id(job_id_or_prefix: str) -> str:
             try:
                 idx = int(choice)
                 if 1 <= idx <= len(matches):
-                    return matches[idx - 1]["id"]
+                    return str(matches[idx - 1]["id"])
                 click.echo(f"Please enter a number between 1 and {len(matches)}")
             except ValueError:
                 click.echo("Invalid input. Enter a number or 'q' to quit.")
@@ -347,7 +357,7 @@ def _print_formatted_detail(detail: str, indent: str = "  ") -> None:
 
 
 def _print_formatted_dict(
-    data: dict[str, t.Any], indent: str = "  ", max_depth: int = 3, depth: int = 0
+    data: dict[str, Any], indent: str = "  ", max_depth: int = 3, depth: int = 0
 ) -> None:
     """Recursively print a dictionary with proper formatting."""
     if depth >= max_depth:
@@ -382,7 +392,7 @@ def _print_formatted_dict(
             click.echo(f"{indent}{key}: {value}")
 
 
-def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
+def _api_post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
     base_url, timeout = _load_api_config()
     url = f"{base_url}{path}"
     # Serialize body for signature computation - MUST send this exact body
@@ -446,7 +456,7 @@ def _api_post(path: str, payload: dict[str, t.Any]) -> dict[str, t.Any]:
     raise click.ClickException("Received invalid response from server.")
 
 
-def _api_get(path: str, params: dict[str, t.Any]) -> list[dict[str, t.Any]]:
+def _api_get(path: str, params: dict[str, Any]) -> list[dict[str, Any]]:
     base_url, timeout = _load_api_config()
     url = f"{base_url}{path}"
     headers = get_auth_headers(method="GET", path=path, body=None)
@@ -481,7 +491,7 @@ def _api_get(path: str, params: dict[str, t.Any]) -> list[dict[str, t.Any]]:
     raise click.ClickException("Received invalid response from server.")
 
 
-def _api_get_object(path: str, params: dict[str, t.Any]) -> dict[str, t.Any]:
+def _api_get_object(path: str, params: dict[str, Any]) -> dict[str, Any]:
     """GET request expecting object (dict) response."""
     base_url, timeout = _load_api_config()
     url = f"{base_url}{path}"
@@ -517,7 +527,7 @@ def _api_get_object(path: str, params: dict[str, t.Any]) -> dict[str, t.Any]:
     raise click.ClickException("Received invalid response from server.")
 
 
-def _parse_json_response(response: Response) -> t.Any:
+def _parse_json_response(response: Response) -> Any:
     try:
         return response.json()
     except ValueError as exc:
@@ -587,7 +597,7 @@ def _format_api_error(response: Response) -> str:
         return f"Request failed ({status}): {response.reason or 'Unknown error'}"
 
 
-def _parse_iso(value: t.Any) -> datetime | None:
+def _parse_iso(value: Any) -> datetime | None:
     if value in (None, ""):
         return None
     if isinstance(value, str):
@@ -603,7 +613,7 @@ def _parse_iso(value: t.Any) -> datetime | None:
     return None
 
 
-class _JobSummary(t.Protocol):
+class _JobSummary(Protocol):
     id: str
     target: str
     status: str
@@ -613,7 +623,7 @@ class _JobSummary(t.Protocol):
     staging_name: str | None
 
 
-class _JobRow(t.NamedTuple):
+class _JobRow(NamedTuple):
     id: str
     target: str
     status: str
@@ -627,7 +637,7 @@ class _JobRow(t.NamedTuple):
     source: str | None
 
 
-def _job_row_from_payload(payload: dict[str, t.Any]) -> _JobRow:
+def _job_row_from_payload(payload: dict[str, Any]) -> _JobRow:
     try:
         job_id = str(payload["id"])
         target = str(payload["target"])
@@ -835,7 +845,8 @@ def cli(ctx: click.Context) -> None:
                         else:
                             click.echo(f"Default host: {default_host}")
             except Exception:
-                pass  # Silently skip if we can't get host info
+                # Silently skip if we can't get host info
+                logger.debug("Failed to get default host info", exc_info=True)
             
             click.echo("")
             click.echo(ctx.get_help())
@@ -911,7 +922,7 @@ def restore_cmd(options: tuple[str, ...]) -> None:
         username = _get_calling_username()
 
     # Step 3: Relay request to API service
-    payload: dict[str, t.Any] = {
+    payload: dict[str, Any] = {
         "user": username,
         "customer": parsed.customer_id,
         "qatemplate": parsed.is_qatemplate,
@@ -1057,10 +1068,10 @@ def status_cmd(
                 _, user_code = _get_user_info(username)
                 if user_code:
                     result = _api_get_object("/api/jobs/my-last", {"user_code": user_code})
-                    job_data = result.get("job")
-                    if job_data:
-                        resolved_id = job_data.get("id")
-                        job_status = job_data.get("status")
+                    job_data_maybe = result.get("job")
+                    if isinstance(job_data_maybe, dict):
+                        resolved_id = job_data_maybe.get("id")
+                        job_status = job_data_maybe.get("status")
             except _APIError:
                 pass
         
@@ -1086,6 +1097,10 @@ def status_cmd(
     if limit <= 0 or limit > MAX_STATUS_LIMIT:
         raise click.UsageError(f"--limit must be between 1 and {MAX_STATUS_LIMIT}")
 
+    # Helper for datetime formatting (used multiple places in this command)
+    def _fmt_dt(dt: datetime | None) -> str:
+        return dt.isoformat(timespec="seconds") if dt else "—"
+
     # When no arguments/flags: show user's last submitted job
     if not job_id and not active and not history and not filter_status:
         try:
@@ -1093,18 +1108,15 @@ def status_cmd(
             _, user_code = _get_user_info(username)
             if user_code:
                 result = _api_get_object("/api/jobs/my-last", {"user_code": user_code})
-                job_data = result.get("job")
-                if job_data:
+                job_data_maybe = result.get("job")
+                if isinstance(job_data_maybe, dict):
                     click.echo(click.style("Your last submitted job:", bold=True))
                     click.echo()
                     if json_out:
-                        click.echo(json_module.dumps(job_data, separators=(",", ":")))
+                        click.echo(json_module.dumps(job_data_maybe, separators=(",", ":")))
                     else:
                         # Format single job display
-                        row = _job_row_from_payload(job_data)
-
-                        def _fmt_dt(dt: datetime | None) -> str:
-                            return dt.isoformat(timespec="seconds") if dt else "—"
+                        row = _job_row_from_payload(job_data_maybe)
 
                         # Build table for single job
                         fields: list[tuple[str, str]] = [
@@ -1140,7 +1152,7 @@ def status_cmd(
             # Fall through to normal listing if we can't get user's last job
             pass
 
-    params: dict[str, t.Any] = {"limit": limit}
+    params: dict[str, Any] = {"limit": limit}
     if active:
         params["active"] = "true"
     if history:
@@ -1189,10 +1201,6 @@ def status_cmd(
         return
 
     # Table output
-    # Determine column widths
-    def _fmt_dt(dt: datetime | None) -> str:
-        return dt.isoformat(timespec="seconds") if dt else "—"
-
     primary_rows: list[list[str]] = []
     staging_values: list[str] = []
     for summary in summaries:
@@ -1416,7 +1424,7 @@ def search_cmd(args: tuple[str, ...]) -> None:
         raise click.UsageError("limit must be between 1 and 500")
 
     # Call customer search API
-    params: dict[str, t.Any] = {
+    params: dict[str, Any] = {
         "q": query,
         "limit": limit,
     }
@@ -1493,7 +1501,7 @@ def list_cmd(args: tuple[str, ...]) -> None:
         raise click.UsageError("limit must be between 1 and 100")
 
     # Call backup search API
-    params: dict[str, t.Any] = {
+    params: dict[str, Any] = {
         "customer": customer,
         "environment": environment,
         "limit": limit,
@@ -1608,7 +1616,7 @@ def _stream_job_events(job_id: str) -> None:
 
     click.echo("(Ctrl+C to stop)")
     while True:
-        params: dict[str, t.Any] = {}
+        params: dict[str, Any] = {}
         if last_id is not None:
             params["since_id"] = last_id
 
@@ -1782,7 +1790,7 @@ def events_cmd(job_id: str, json_out: bool, follow: bool, limit: int, full: bool
         return
 
     # Fetch events
-    params: dict[str, t.Any] = {"limit": limit}
+    params: dict[str, Any] = {"limit": limit}
     try:
         events = _api_get(f"/api/jobs/{resolved_id}/events", params)
     except _APIError as exc:
@@ -1924,7 +1932,7 @@ def history_cmd(
         raise click.UsageError("--days must be between 1 and 365")
 
     # Build query params
-    params: dict[str, t.Any] = {
+    params: dict[str, Any] = {
         "limit": limit,
         "days": days,
     }
@@ -2595,7 +2603,7 @@ def setpass_cmd(ctx: click.Context, current_password: str, new_password: str) ->
         raise click.ClickException(f"Cannot connect to API: {exc}") from exc
 
 
-def main(argv: t.Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Main entry point for pullDB CLI.
 
     Args:
