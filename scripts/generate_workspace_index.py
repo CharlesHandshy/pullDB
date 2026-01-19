@@ -416,19 +416,27 @@ def find_test_files() -> list[str]:
 
 
 def find_schema_files() -> list[dict[str, str]]:
-    """Find schema SQL files."""
+    """Find schema SQL files from structured directories."""
     schema_files = []
     if SCHEMA_DIR.exists():
-        for f in sorted(SCHEMA_DIR.glob("*.sql")):
-            name = f.name
-            # Parse table/view from filename
-            parts = name.split("_", 1)
-            if len(parts) == 2:
-                purpose = parts[1].replace(".sql", "")
-            else:
-                purpose = name.replace(".sql", "")
+        # Schema layout: 00_tables/, 01_views/, 02_seed/, 03_users/
+        for subdir in ["00_tables", "01_views", "02_seed", "03_users"]:
+            subdir_path = SCHEMA_DIR / subdir
+            if subdir_path.exists():
+                for f in sorted(subdir_path.glob("*.sql")):
+                    name = f.name
+                    # Parse table/view from filename
+                    parts = name.split("_", 1)
+                    if len(parts) == 2:
+                        purpose = parts[1].replace(".sql", "")
+                    else:
+                        purpose = name.replace(".sql", "")
 
-            schema_files.append({"name": name, "purpose": purpose})
+                    schema_files.append({
+                        "name": f"{subdir}/{name}",
+                        "purpose": purpose,
+                        "category": subdir
+                    })
 
     return schema_files
 

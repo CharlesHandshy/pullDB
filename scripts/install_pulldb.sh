@@ -24,7 +24,6 @@ PYTHON_BIN="python3"
 ASSUME_YES=0
 NO_SYSTEMD=0
 DO_VALIDATE=0
-NO_MIGRATE=0
 INSTALL_PREFIX=""
 AWS_PROFILE=""
 COORD_SECRET=""
@@ -100,7 +99,6 @@ Options:
   --tmp-dir DIR           Temp directory for downloads (default /mnt/data/tmp)
   --yes                   Assume yes for all confirmations
   --no-systemd            Do not install or enable systemd unit
-  --no-migrate            Do not run database migrations
   --validate              Validate AWS profile and secret existence
   --python BIN            Python interpreter (default python3)
   --help                  Show this help
@@ -139,8 +137,6 @@ parse_args() {
         ASSUME_YES=1; shift ;;
       --no-systemd)
         NO_SYSTEMD=1; shift ;;
-      --no-migrate)
-        NO_MIGRATE=1; shift ;;
       --validate)
         DO_VALIDATE=1; shift ;;
       --python)
@@ -279,21 +275,6 @@ create_virtualenv() {
   fi
 }
 
-install_dbmate() {
-  # DEPRECATED: dbmate is no longer used
-  # Schema updates are now handled by postinst via schema_migrations table
-  info "Note: dbmate is deprecated. Schema updates happen automatically during package install."
-  return 0
-}
-
-run_migrations() {
-  # DEPRECATED: Migrations are now handled by postinst
-  # Schema files from schema/pulldb_service/ are applied automatically
-  info "Note: Schema updates are applied automatically during package installation."
-  info "To verify: mysql -e 'SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at'"
-  return 0
-}
-
 create_cli_symlinks() {
   info "Creating CLI symlinks in /usr/local/bin..."
   local venv_bin="${INSTALL_PREFIX}/venv/bin"
@@ -385,19 +366,6 @@ main() {
   create_virtualenv "$INSTALL_PREFIX/venv"
   create_cli_symlinks
   validate_aws
-  
-  # Install dbmate and run migrations
-  if [[ $NO_MIGRATE -eq 1 ]]; then
-    warn "--no-migrate specified; skipping database migrations."
-  else
-    if install_dbmate; then
-      if confirm "Run database migrations?"; then
-        run_migrations || true
-      else
-        warn "Skipping migrations. Run later with: ${INSTALL_PREFIX}/scripts/pulldb-migrate.sh up"
-      fi
-    fi
-  fi
 
   if [[ $NO_SYSTEMD -eq 1 ]]; then
     warn "--no-systemd specified; skipping unit install."

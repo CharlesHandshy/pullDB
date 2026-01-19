@@ -12,6 +12,9 @@ Commands:
 - hosts: Manage registered database hosts (list, add, enable, disable, cred)
 - users: View and manage users
 - disallow: Manage disallowed usernames (list, add, remove)
+
+Note: To submit jobs on behalf of other users, use:
+  pulldb restore <customer> user=<username>
 """
 
 from __future__ import annotations

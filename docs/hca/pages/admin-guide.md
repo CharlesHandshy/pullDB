@@ -2,9 +2,9 @@
 
 [← Back to Documentation Index](START-HERE.md)
 
-> **Version**: 1.0.0 | **Last Updated**: January 2026
+> **Version**: 1.0.1 | **Last Updated**: January 2026
 
-This guide covers system administration tasks: schema migrations, cleanup operations, monitoring, and maintenance.
+This guide covers system administration tasks: user and host management, cleanup operations, monitoring, and maintenance.
 
 **Related:** [Deployment](deployment.md) · [CLI Reference](cli-reference.md) · [Runbooks](../design/)
 
@@ -12,13 +12,52 @@ This guide covers system administration tasks: schema migrations, cleanup operat
 
 ## Table of Contents
 
-1. [User Management](#user-management)
-2. [API Key Management](#api-key-management)
-3. [Schema Migrations](#schema-migrations)
-4. [Staging Cleanup](#staging-cleanup)
-5. [Settings Management](#settings-management)
-6. [Health Monitoring](#health-monitoring)
-7. [Troubleshooting](#troubleshooting)
+1. [Admin Dashboard](#admin-dashboard)
+2. [User Management](#user-management)
+3. [Host Management](#host-management)
+4. [API Key Management](#api-key-management)
+5. [Database Lifecycle](#database-lifecycle)
+6. [Cleanup Tools](#cleanup-tools)
+7. [Disallowed Users](#disallowed-users)
+8. [Audit Logs](#audit-logs)
+9. [Schema Migrations](#schema-migrations)
+10. [Settings Management](#settings-management)
+11. [Health Monitoring](#health-monitoring)
+12. [Troubleshooting](#troubleshooting)
+
+---
+
+## Admin Dashboard
+
+The Admin Dashboard provides an at-a-glance view of system health and key metrics.
+
+**Web UI:** Administration → Dashboard
+
+### System Statistics Cards
+
+| Card | Description |
+|------|-------------|
+| **Active Jobs** | Jobs currently in `queued` or `running` state |
+| **Failed (24h)** | Jobs that failed in the last 24 hours |
+| **Total Users** | Registered user count (enabled + disabled) |
+| **Enabled Hosts** | Database hosts available for restores |
+| **Pending Keys** | API keys awaiting approval |
+| **Orphan DBs** | Detected orphan staging databases |
+
+### Host Health Overview
+
+Shows each registered host with:
+- Current status (enabled/disabled)
+- Active job count
+- Last successful restore time
+- Connection status indicator
+
+### Quick Access Links
+
+- **Pending API Keys** - Badge shows count needing approval
+- **Active Jobs** - View currently running restores
+- **Cleanup Tools** - Access cleanup utilities
+- **System Settings** - Configure system behavior
 
 ---
 
@@ -71,10 +110,121 @@ pulldb-admin users demote jsmith
 
 ### Web UI User Management
 
-Navigate to **Administration > Users** to:
-- View all users with status
-- Enable/disable users
-- Promote/demote admins
+Navigate to **Administration → Users** to:
+
+**User List (LazyTable)**:
+- Sortable columns: username, user_code, role, status, created_at, last_login
+- Filter by role: user, manager, admin
+- Filter by status: enabled, disabled
+- Click row to view user details
+
+**User Actions**:
+- **Enable/Disable**: Toggle user access
+- **Force Password Reset**: Require password change on next login
+- **Set Role**: Assign user, manager, or admin role
+- **Set Manager**: Assign a manager for the user
+- **View Jobs**: See user's job history and active jobs
+
+**User Detail Page** shows:
+- Account information and timestamps
+- Role and manager assignment
+- API key list with statuses
+- Active/recent jobs count
+- Storage usage
+
+---
+
+## Host Management
+
+Manage database hosts where restores are performed.
+
+**Web UI:** Administration → Hosts
+
+### Host List
+
+The host list shows:
+- Hostname and alias
+- Status (enabled/disabled)
+- Max concurrent jobs setting
+- Active job count
+- Last successful restore
+- Credential status
+
+### Add Host (Simple)
+
+For hosts with credentials already in AWS Secrets Manager:
+
+```bash
+pulldb-admin hosts add new-db-01 --max-concurrent=2
+```
+
+Or via Web UI:
+1. Click **Add Host**
+2. Enter hostname/alias
+3. Enter AWS Secrets Manager reference
+4. Set max concurrent jobs
+5. Click **Add**
+
+### Provision Host (Full Wizard)
+
+For new hosts needing complete setup:
+
+**Web UI:** Administration → Hosts → **Provision New Host**
+
+The wizard performs:
+1. **Test Connectivity** - Verify network access
+2. **Create MySQL User** - Create `pulldb_restore` user
+3. **Create Database** - Create `pulldb_restore` database
+4. **Deploy Procedures** - Install stored procedures
+5. **Store Credentials** - Save to AWS Secrets Manager
+6. **Register Host** - Add to pullDB
+
+**CLI equivalent:**
+```bash
+pulldb-admin hosts provision new-db-01
+```
+
+### Test Connection
+
+Verify a host is properly configured:
+
+```bash
+pulldb-admin hosts test localhost
+```
+
+Tests:
+- Network connectivity
+- Credential validity
+- Required permissions
+- Stored procedure version
+
+### Credential Rotation
+
+Rotate MySQL credentials for security:
+
+**Web UI:** Administration → Hosts → [hostname] → **Rotate Credentials**
+
+**CLI:**
+```bash
+pulldb-admin secrets rotate-host localhost
+```
+
+Rotation is atomic (all-or-nothing):
+1. Validate current credentials
+2. Generate new password
+3. Update MySQL user
+4. Update AWS Secrets Manager
+5. Verify new credentials
+
+### Host Detail Page
+
+The host detail page shows:
+- Connection information
+- Current credentials (masked)
+- Active jobs on this host
+- Historical job statistics
+- Stored procedure version
+- Quick rotate button
 
 ---
 
@@ -187,7 +337,214 @@ This is intentional—user activation and host authorization are separate securi
 
 ---
 
-## Schema Management
+## Database Lifecycle
+
+Restored databases have a lifecycle from creation through retention and eventual cleanup.
+
+### Status Flow
+
+```
+queued → running → deployed → (expired OR deleted OR superseded)
+              ↓
+          failed/canceled
+```
+
+### Retention System
+
+When a restore completes, the database enters a retention period:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `database_retention_days` | 30 | Days until expiration warning |
+| `database_max_extensions` | 3 | Maximum retention extensions |
+| `database_extension_days` | 7 | Days added per extension |
+
+**User Actions:**
+- **Extend** - Add time before expiration
+- **Lock** - Prevent cleanup (with reason)
+- **Delete** - Remove database immediately
+
+### Locked Databases
+
+**Web UI:** Administration → Locked Databases
+
+Users can lock databases to prevent automatic cleanup:
+- Lock requires a reason
+- Locked databases skip retention cleanup
+- Admins can view all locked databases
+- Admins can unlock any database
+
+**CLI:**
+```bash
+# Via API (no direct CLI command)
+curl -X POST http://localhost:8080/api/jobs/<job_id>/lock \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Production testing"}'
+```
+
+### Superseding
+
+When a user restores the same target again:
+1. New job is created
+2. Old job marked `superseded`
+3. Old staging database cleaned up
+4. User only sees the latest restore
+
+---
+
+## Cleanup Tools
+
+**Web UI:** Administration → Cleanup
+
+### Job Event Log Pruning
+
+Remove old event logs to manage database size:
+
+**Web UI:** Administration → Cleanup → **Prune Event Logs**
+
+```bash
+# Preview (dry run)
+curl -X POST "http://localhost:8080/api/admin/prune-logs?days=30&dry_run=true"
+
+# Execute
+curl -X POST "http://localhost:8080/api/admin/prune-logs?days=30&dry_run=false"
+```
+
+### Staging Database Cleanup
+
+Clean orphaned staging databases from failed/interrupted jobs:
+
+```bash
+# Preview
+pulldb-admin cleanup --dry-run
+
+# Execute
+pulldb-admin cleanup --execute --older-than=24
+```
+
+**Web UI:** Administration → Cleanup → **Staging Cleanup**
+
+### Orphan Database Detection
+
+Databases matching staging pattern but with no job record:
+
+**Web UI:** Administration → Cleanup → **Orphan Databases**
+
+Features:
+- LazyTable with filtering and sorting
+- View metadata from `pullDB` table in each database
+- Single delete or bulk delete
+- Per-host filtering
+
+**CLI:**
+```bash
+pulldb-admin cleanup --dry-run  # Shows orphans
+```
+
+### User Orphan Databases
+
+Databases restored by users who no longer exist:
+
+**Web UI:** Administration → Cleanup → **User Orphans**
+
+These are databases where:
+- Owner user has been deleted
+- Database still exists on host
+- Manual cleanup required
+
+### Retention Cleanup
+
+Delete expired databases that are past retention:
+
+```bash
+# Preview
+pulldb-admin run-retention-cleanup --dry-run
+
+# Execute
+pulldb-admin run-retention-cleanup --execute
+```
+
+---
+
+## Disallowed Users
+
+Prevent specific usernames from registering accounts.
+
+**Web UI:** Administration → Disallowed Users
+
+### Hardcoded List
+
+Some usernames are hardcoded as disallowed (e.g., `admin`, `root`, `test`).
+
+### Database Additions
+
+Administrators can add usernames to the disallow list:
+
+```bash
+# Add user
+pulldb-admin disallow add baduser --reason="Policy violation"
+
+# List all
+pulldb-admin disallow list
+
+# Remove
+pulldb-admin disallow remove baduser --force
+```
+
+**Web UI:** Click **Add Disallowed User**, enter username and reason.
+
+---
+
+## Audit Logs
+
+Track administrative actions for compliance and debugging.
+
+**Web UI:** Administration → Audit Logs
+
+### Logged Actions
+
+| Action Type | Description |
+|-------------|-------------|
+| `user_enabled` | User account enabled |
+| `user_disabled` | User account disabled |
+| `user_role_changed` | User role modified |
+| `key_approved` | API key approved |
+| `key_revoked` | API key revoked |
+| `host_added` | Database host registered |
+| `host_removed` | Database host removed |
+| `setting_changed` | System setting modified |
+| `orphan_deleted` | Orphan database deleted |
+
+### Browsing Logs
+
+- Filter by action type
+- Filter by admin user
+- Filter by date range
+- Full-text search in details
+
+### Example Queries
+
+```sql
+-- Recent admin actions
+SELECT * FROM audit_logs 
+ORDER BY created_at DESC 
+LIMIT 100;
+
+-- Actions by specific admin
+SELECT * FROM audit_logs 
+WHERE admin_username = 'charles'
+ORDER BY created_at DESC;
+
+-- User-related actions today
+SELECT * FROM audit_logs 
+WHERE action_type LIKE 'user_%'
+  AND created_at > CURDATE()
+ORDER BY created_at DESC;
+```
+
+---
+
+## Schema Migrations
 
 pullDB uses numbered SQL files for database schema. Schema files are stored in `/opt/pulldb.service/schema/pulldb_service/` and automatically applied during package installation.
 
@@ -256,68 +613,6 @@ Best practices:
 
 ---
 
-## Staging Cleanup
-
-Restore jobs create temporary staging databases (`{target}_{job_id_prefix}`). These are normally cleaned up, but can become orphaned if a user never re-restores the same target.
-
-### Safety Guarantees
-
-A staging database is **only** cleaned up if ALL conditions are met:
-1. Matches staging pattern `{target}_{hex12}`
-2. Has a matching job record in pullDB database
-3. Job is in terminal state (complete/failed/canceled)
-4. Job completed more than N days ago (default: 7)
-
-**Non-pullDB databases are NEVER touched** - without a matching job record, databases are assumed to be user-owned.
-
-### CLI Commands
-
-```bash
-# Preview cleanup (dry run)
-pulldb-admin cleanup --dry-run
-
-# Execute cleanup
-pulldb-admin cleanup --execute
-
-# Custom age threshold
-pulldb-admin cleanup --older-than=14 --execute
-
-# Specific host only
-pulldb-admin cleanup --dbhost=dev-db-01 --execute
-```
-
-### Scheduled Cleanup
-
-Add to cron for automated daily cleanup:
-```bash
-# Daily at 4am
-0 4 * * * pulldb-admin cleanup --older-than=7 --execute >> /var/log/pulldb-cleanup.log 2>&1
-```
-
-Or use systemd timer:
-```ini
-# /etc/systemd/system/pulldb-cleanup.timer
-[Unit]
-Description=Run pullDB staging cleanup daily
-
-[Timer]
-OnCalendar=*-*-* 04:00:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
-### Age Threshold Recommendations
-
-| Environment | Recommended Days | Rationale |
-|-------------|-----------------|-----------|
-| Development | 1-3 | Fast iteration, less storage |
-| Staging | 5-7 | Allow debugging time |
-| Production | 7-14 | Conservative for investigations |
-
----
-
 ## Settings Management
 
 Settings control system behavior. They can be stored in database, `.env` file, or both.
@@ -326,12 +621,15 @@ Settings control system behavior. They can be stored in database, `.env` file, o
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `myloader_binary` | string | `/opt/pulldb.service/bin/myloader-0.19.3-3` | Path to myloader |
+| `myloader_binary` | string | `/opt/pulldb.service/bin/myloader` | Path to myloader |
 | `myloader_threads` | int | `8` | Parallel restore threads |
 | `myloader_timeout_seconds` | int | `7200` | Max execution time (2 hours) |
 | `work_directory` | string | `/opt/pulldb.service/work` | Working directory |
 | `max_active_jobs_per_user` | int | `0` | Per-user limit (0=unlimited) |
 | `max_active_jobs_global` | int | `0` | System limit (0=unlimited) |
+| `database_retention_days` | int | `30` | Default retention period |
+| `database_max_extensions` | int | `3` | Max retention extensions |
+| `database_extension_days` | int | `7` | Days added per extension |
 
 ### Priority Order
 

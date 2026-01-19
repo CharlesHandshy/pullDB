@@ -6,19 +6,19 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 
 **Related:** [Deployment](deployment.md) · [policies/](policies/) · [terraform/](terraform/)
 
-Last updated: 2026-01-06
-Current version: v0.3.0
+Last updated: 2026-01-18
+Current version: v1.0.5
 Phases complete: 0-6
 
 ---
 
-## Package Contents Summary (v0.3.0)
+## Package Contents Summary (v1.0.5)
 
 | Component | Path in Package | Size |
 |-----------|-----------------|------|
-| Python wheel | `/opt/pulldb.service/dist/pulldb-0.3.0-py3-none-any.whl` | ~6MB |
+| Python wheel | `/opt/pulldb.service/dist/pulldb-1.0.5-py3-none-any.whl` | ~6MB |
 | myloader binary | `/opt/pulldb.service/bin/myloader-0.19.3-3` | 8.4MB |
-| Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 41 SQL files |
+| Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 23 SQL files |
 | Systemd units | `/opt/pulldb.service/systemd/` | 6 files |
 | Config templates | `/opt/pulldb.service/env.example`, `aws.config.example` | - |
 | After-SQL templates | `/opt/pulldb.service/template_after_sql/` | 12 customer scripts |
@@ -186,17 +186,30 @@ User-initiated deletion of completed job databases with full audit trail.
 ### Job Status Lifecycle
 
 ```
-QUEUED → RUNNING → COMPLETE/FAILED/CANCELED → DELETED (soft delete)
+                    ┌──────────────────────────────────────────┐
+                    │                                          │
+QUEUED → RUNNING → DEPLOYED → EXPIRED → DELETED               │
+           │           │                                       │
+           ├→ FAILED   ├→ SUPERSEDED (replaced by new restore)│
+           │           │                                       │
+           └→ CANCELING → CANCELED ────────────────────────────┘
+                                                               │
+DEPLOYED → DELETING → DELETED (user-initiated) ───────────────┘
 ```
 
-| Status | Terminal? | Deletable? | Notes |
-|--------|-----------|------------|-------|
-| `queued` | ❌ | ❌ | Active - cannot delete |
-| `running` | ❌ | ❌ | Active - cannot delete |
-| `complete` | ✅ | ✅ | Standard terminal state |
-| `failed` | ✅ | ✅ | Standard terminal state |
-| `canceled` | ✅ | ✅ | Standard terminal state |
-| `deleted` | ✅ | ❌ | Already deleted |
+| Status | Terminal? | Active? | Deletable? | Notes |
+|--------|-----------|---------|------------|-------|
+| `queued` | ❌ | ✅ | ❌ | Waiting for worker |
+| `running` | ❌ | ✅ | ❌ | Worker processing |
+| `canceling` | ❌ | ✅ | ❌ | Cancel requested, stopping at checkpoint |
+| `deployed` | ❌ | ✅ | ✅ | Database live, user working |
+| `expired` | ✅ | ❌ | ✅ | Retention passed, awaiting cleanup |
+| `failed` | ✅ | ❌ | ✅ | Execution failed |
+| `complete` | ✅ | ❌ | ✅ | User marked complete |
+| `canceled` | ✅ | ❌ | ✅ | Canceled by user |
+| `superseded` | ✅ | ❌ | ✅ | Replaced by newer restore |
+| `deleting` | ❌ | ❌ | ❌ | Bulk delete in progress |
+| `deleted` | ✅ | ❌ | ❌ | Already deleted |
 
 ### Delete Modes
 

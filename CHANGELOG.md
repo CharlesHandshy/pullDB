@@ -1,6 +1,27 @@
 CHANGELOG
 =========
 
+v1.0.5 - 2026-01-18
+-------------------
+### Admin Job Submission & Heartbeat Fix
+
+Fixes admin role check for job submission and adds comprehensive heartbeat mechanism.
+
+### Added
+- `pulldb-admin restore` command with `--as-user` flag for admin job submission
+- Heartbeat thread in worker executor emits events every 60s during long operations
+- Smart row estimation in metadata synthesis using mydumper chunk math and gzip ISIZE
+- Comprehensive test coverage: 88 tests for heartbeat/metadata (unit + integration + E2E)
+
+### Fixed
+- Admin users with `role=ADMIN` can now submit jobs for other users via `user=` parameter
+- `validate_job_submission_user()` now checks both `is_admin` flag AND `UserRole.ADMIN/SERVICE`
+- Metadata synthesis no longer blocks for 20+ minutes on large backups (was causing stale detection)
+
+### Changed
+- Metadata synthesis uses O(1) row estimation instead of decompressing entire files
+- Worker heartbeat provides 15x safety margin against 15-minute stale timeout
+
 v1.0.4 - 2026-01-17
 -------------------
 ### Custom Target Database Name Feature

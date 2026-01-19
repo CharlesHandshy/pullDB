@@ -1,10 +1,10 @@
 {
-  "version": "0.3.0",
-  "last_updated": "2026-01-06",
+  "version": "1.0.5",
+  "last_updated": "2026-01-18",
   "package": {
-    "wheel": "pulldb-0.3.0-py3-none-any.whl",
+    "wheel": "pulldb-1.0.5-py3-none-any.whl",
     "myloader": "myloader-0.19.3-3",
-    "schema_files": 41,
+    "schema_files": 23,
     "systemd_units": 6,
     "after_sql_templates": 12
   },
@@ -93,11 +93,20 @@
     }
   },
   "schema": {
-    "canonical_doc": "docs/mysql-schema.md",
+    "canonical_doc": "docs/hca/entities/mysql-schema.md",
     "database": "pulldb_service",
     "schema_dir": "schema/pulldb_service/",
-    "schema_file_count": 41,
-    "hosts_table": "db_hosts"
+    "schema_file_count": 23,
+    "hosts_table": "db_hosts",
+    "tables": [
+      "auth_users", "auth_credentials", "sessions", "api_keys",
+      "db_hosts", "user_hosts", "jobs", "job_events", 
+      "locks", "settings", "admin_tasks", "audit_logs",
+      "procedure_deployments", "disallowed_users", 
+      "feature_requests", "feature_request_votes", "feature_request_notes",
+      "schema_migrations"
+    ],
+    "views": ["active_jobs"]
   },
   "mysql_users": {
     "api": "pulldb_api",
@@ -256,7 +265,7 @@
     }
   },
   "rbac": {
-    "roles": ["USER", "MANAGER", "ADMIN"],
+    "roles": ["USER", "MANAGER", "ADMIN", "SERVICE"],
     "permissions": {
       "view_own_jobs": ["USER", "MANAGER", "ADMIN"],
       "submit_own_jobs": ["USER", "MANAGER", "ADMIN"],
@@ -273,8 +282,15 @@
       "permissions": "pulldb/domain/permissions.py",
       "models": "pulldb/domain/models.py"
     },
-    "manager_relationship_table": "manager_user_relationship"
+    "manager_relationship_table": "auth_users.manager_id"
   },
+  "job_statuses": {
+    "all": ["queued", "running", "canceling", "deployed", "expired", "failed", "complete", "canceled", "deleting", "deleted", "superseded"],
+    "active": ["queued", "running", "canceling", "deployed"],
+    "terminal": ["complete", "failed", "canceled", "deleted", "expired"],
+    "deletable": ["deployed", "expired", "failed", "complete", "canceled", "superseded"]
+  },
+  "admin_task_types": ["force_delete_user", "scan_user_orphans", "bulk_delete_jobs", "retention_cleanup"],
   "simulation": {
     "package": "pulldb/simulation/",
     "components": {
@@ -330,7 +346,7 @@
     },
     "admin_tasks": {
       "executor": "pulldb/worker/admin_tasks.py",
-      "task_types": ["force_delete_user", "bulk_delete_jobs"]
+      "task_types": ["force_delete_user", "scan_user_orphans", "bulk_delete_jobs", "retention_cleanup"]
     },
     "backup_analysis": {
       "cli": "pulldb/cli/backup_commands.py",

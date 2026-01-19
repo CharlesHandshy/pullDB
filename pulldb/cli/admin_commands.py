@@ -5,11 +5,15 @@ Commands:
 - cleanup: Cleanup orphaned staging databases and work files
 - hosts: Manage registered database hosts
 - users: View and manage users
+
+Note: To submit jobs on behalf of other users, use:
+  pulldb restore <customer> user=<username>
 """
 
 from __future__ import annotations
 
 import json
+import os
 import typing as t
 from datetime import datetime
 

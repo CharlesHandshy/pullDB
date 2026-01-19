@@ -172,70 +172,127 @@
                         <span class="command-badge">User Command</span>
                     </div>
                     
-                    <h3>Parameters</h3>
+                    <h3>Source Selection</h3>
                     <table class="param-table">
                         <thead>
                             <tr>
                                 <th>Parameter</th>
                                 <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>&lt;customer&gt;</code></td>
+                                <td>Yes*</td>
+                                <td>Customer ID (positional, lowercase letters only)</td>
+                            </tr>
+                            <tr>
+                                <td><code>qatemplate</code></td>
+                                <td>Yes*</td>
+                                <td>Restore QA template instead of customer</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p class="text-muted">* Either <code>&lt;customer&gt;</code> or <code>qatemplate</code> is required, but not both.</p>
+                    
+                    <h3>Target Options</h3>
+                    <table class="param-table">
+                        <thead>
+                            <tr>
+                                <th>Option</th>
                                 <th>Default</th>
                                 <th>Description</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
-                                <td>&lt;customer&gt;</td>
-                                <td>Yes*</td>
-                                <td>-</td>
-                                <td>Customer ID (positional, lowercase letters only)</td>
-                            </tr>
-                            <tr>
-                                <td>qatemplate</td>
-                                <td>Yes*</td>
-                                <td>-</td>
-                                <td>Restore QA template instead of customer</td>
-                            </tr>
-                            <tr>
-                                <td>dbhost=</td>
-                                <td>No</td>
-                                <td>localhost</td>
+                                <td><code>dbhost=</code></td>
+                                <td>Default host</td>
                                 <td>Target database host</td>
                             </tr>
                             <tr>
-                                <td>suffix=</td>
-                                <td>No</td>
+                                <td><code>suffix=</code></td>
                                 <td>-</td>
-                                <td>Suffix for target database (1-3 lowercase letters)</td>
+                                <td>Suffix for target database (1-3 lowercase letters, pattern: <code>^[a-z]{1,3}$</code>)</td>
                             </tr>
                             <tr>
-                                <td>date=</td>
-                                <td>No</td>
-                                <td>Latest</td>
-                                <td>Specific backup date (YYYY-MM-DD)</td>
+                                <td><code>--custom-target=NAME</code></td>
+                                <td>-</td>
+                                <td>Override target database name (1-51 lowercase letters, pattern: <code>^[a-z]{1,51}$</code>)</td>
                             </tr>
                             <tr>
-                                <td>s3env=</td>
-                                <td>No</td>
-                                <td>prod</td>
-                                <td>S3 environment (staging|prod|both)</td>
-                            </tr>
-                            <tr>
-                                <td>overwrite</td>
-                                <td>No</td>
+                                <td><code>overwrite</code></td>
                                 <td>false</td>
                                 <td>Overwrite existing target database</td>
                             </tr>
                         </tbody>
                     </table>
-                    <p class="text-muted">* Either <code>&lt;customer&gt;</code> or <code>qatemplate</code> is required, but not both. Username is auto-detected from your SSH session.</p>
+                    
+                    <div class="warning-callout">
+                        <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        <div>
+                            <strong>Custom Target + Suffix</strong><br>
+                            <code>--custom-target</code> and <code>suffix=</code> cannot be used together. Include any suffix directly in your custom target name.
+                        </div>
+                    </div>
+                    
+                    <h3>Backup Selection</h3>
+                    <table class="param-table">
+                        <thead>
+                            <tr>
+                                <th>Option</th>
+                                <th>Default</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>date=</code></td>
+                                <td>Latest</td>
+                                <td>Specific backup date (YYYY-MM-DD)</td>
+                            </tr>
+                            <tr>
+                                <td><code>s3env=</code></td>
+                                <td>prod</td>
+                                <td>S3 environment: <code>staging</code>, <code>prod</code>, or <code>both</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>--backup-path=S3_KEY</code></td>
+                                <td>-</td>
+                                <td>Use specific backup (from <code>pulldb list</code> output)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <h3>Admin Options</h3>
+                    <table class="param-table">
+                        <thead>
+                            <tr>
+                                <th>Option</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>--on-behalf-of=USER</code></td>
+                                <td>Submit job for another user (admin only)</td>
+                            </tr>
+                        </tbody>
+                    </table>
                     
                     <h3>Target Database Naming</h3>
-                    <p>Your restored database is named using your <strong>user code</strong> (first 6 alpha characters of username). All names use <strong>lowercase letters only [a-z]</strong> — no uppercase, numbers, symbols, or spaces:</p>
-                    <pre><code>&lt;usercode&gt;&lt;customer&gt;&lt;suffix&gt;</code></pre>
-                    <p>Example: User <code>charles</code> (code: <code>chrles</code>) restoring customer <code>acme</code> with suffix <code>dev</code>:</p>
+                    <p>Your restored database is named using your <strong>user code</strong> (first 6 alpha characters of username). All names use <strong>lowercase letters only [a-z]</strong>:</p>
+                    <pre><code>&lt;usercode&gt;&lt;customer&gt;[&lt;suffix&gt;]</code></pre>
+                    <p>Example: User <code>charles</code> (code: <code>chrles</code>) restoring customer <code>acme</code>:</p>
                     <ul>
-                        <li><strong>Target database:</strong> <code>chrlesacme</code> (or <code>chrlesacmedev</code> with suffix)</li>
-                        <li><strong>Staging (temp):</strong> <code>chrlesacmeabcdefgh</code> (8-char job ID prefix appended)</li>
+                        <li><strong>Default:</strong> <code>chrlesacme</code></li>
+                        <li><strong>With suffix <code>dev</code>:</strong> <code>chrlesacmedev</code></li>
+                        <li><strong>Custom target:</strong> Whatever you specify (1-51 lowercase letters)</li>
                     </ul>
                 </div>
                 
@@ -255,17 +312,23 @@
                         <div class="terminal-line"><span class="comment"># Basic restore - latest backup</span></div>
                         <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme</span></div>
                         <div class="terminal-line"></div>
+                        <div class="terminal-line"><span class="comment"># Restore QA template</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore qatemplate</span></div>
+                        <div class="terminal-line"></div>
                         <div class="terminal-line"><span class="comment"># Restore specific date</span></div>
                         <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme date=2026-01-01</span></div>
                         <div class="terminal-line"></div>
-                        <div class="terminal-line"><span class="comment"># Restore to remote host</span></div>
-                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme dbhost=dev-db-01</span></div>
+                        <div class="terminal-line"><span class="comment"># Restore with custom target name</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme --custom-target=myprojectdev</span></div>
                         <div class="terminal-line"></div>
                         <div class="terminal-line"><span class="comment"># Restore with suffix for multiple copies</span></div>
                         <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme suffix=dev</span></div>
                         <div class="terminal-line"></div>
                         <div class="terminal-line"><span class="comment"># Overwrite existing database</span></div>
                         <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme overwrite</span></div>
+                        <div class="terminal-line"></div>
+                        <div class="terminal-line"><span class="comment"># Admin: restore on behalf of another user</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb restore acme --on-behalf-of=jsmith</span></div>
                     </div>
                 </div>
             </section>
@@ -359,13 +422,19 @@
                 </div>
                 
                 <h3>Job States</h3>
+                <p>Jobs can be in one of 11 possible states:</p>
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px;">
                     <span class="status-badge queued">QUEUED</span>
                     <span class="status-badge running">RUNNING</span>
+                    <span class="status-badge" style="background: var(--color-warning-bg); color: var(--color-warning);">CANCELING</span>
                     <span class="status-badge complete">COMPLETE</span>
-                    <span class="status-badge" style="background: var(--color-info-bg); color: var(--color-info);">DEPLOYED</span>
+                    <span class="status-badge" style="background: var(--color-primary-bg); color: var(--color-primary);">DEPLOYED</span>
+                    <span class="status-badge" style="background: var(--color-bg-secondary); color: var(--color-text-muted);">EXPIRED</span>
+                    <span class="status-badge" style="background: var(--color-bg-secondary); color: var(--color-text-muted);">SUPERSEDED</span>
                     <span class="status-badge failed">FAILED</span>
                     <span class="status-badge canceled">CANCELED</span>
+                    <span class="status-badge" style="background: var(--color-danger-bg); color: var(--color-danger);">DELETING</span>
+                    <span class="status-badge" style="background: var(--color-bg-secondary); color: var(--color-text-muted);">DELETED</span>
                 </div>
                 <p class="mt-4">See <a href="../concepts/job-lifecycle.html" style="color: var(--color-primary);">Job Lifecycle</a> for detailed state descriptions.</p>
             </section>

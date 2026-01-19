@@ -93,6 +93,8 @@
                     <a href="restore.html" class="sidebar-link">Restore Workflow</a>
                     <a href="jobs.html" class="sidebar-link">Jobs Management</a>
                     <a href="profile.html" class="sidebar-link">Profile & API Keys</a>
+                    <a href="requests.html" class="sidebar-link">Feature Requests</a>
+                    <a href="manager.html" class="sidebar-link">Manager Interface</a>
                     <a href="admin.html" class="sidebar-link active">Admin Panel</a>
                 </div>
                 <div class="sidebar-section">
@@ -101,8 +103,11 @@
                     <a href="#users" class="sidebar-link">User Management</a>
                     <a href="#hosts" class="sidebar-link">Host Management</a>
                     <a href="#api-keys" class="sidebar-link">API Key Management</a>
+                    <a href="#disallowed-users" class="sidebar-link">Disallowed Users</a>
+                    <a href="#locked-databases" class="sidebar-link">Locked Databases</a>
                     <a href="#settings" class="sidebar-link">System Settings</a>
                     <a href="#maintenance" class="sidebar-link">Maintenance</a>
+                    <a href="#background-tasks" class="sidebar-link">Background Tasks</a>
                 </div>
             </nav>
         </aside>
@@ -711,6 +716,194 @@
                     </picture>
                     <figcaption>1. Disallowed users list — 2. Block reason — 3. Actions</figcaption>
                 </figure>
+            </section>
+            
+            <!-- Background Tasks Section -->
+            <section class="content-section" id="background-tasks">
+                <h2>Background Tasks</h2>
+                <p>
+                    The Background Tasks section shows system maintenance tasks running in the background.
+                    Only one task can run at a time to prevent resource conflicts.
+                </p>
+                
+                <h3>Task Types</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Task</th>
+                            <th>Description</th>
+                            <th>Trigger</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>force_delete_user</code></td>
+                            <td>Completely remove a user and all their data</td>
+                            <td>Manual (UI or CLI)</td>
+                        </tr>
+                        <tr>
+                            <td><code>scan_user_orphans</code></td>
+                            <td>Find databases owned by deleted users</td>
+                            <td>Post user-deletion</td>
+                        </tr>
+                        <tr>
+                            <td><code>bulk_delete_jobs</code></td>
+                            <td>Delete multiple jobs and their databases</td>
+                            <td>Manual (Admin)</td>
+                        </tr>
+                        <tr>
+                            <td><code>retention_cleanup</code></td>
+                            <td>Drop expired databases (respects locks)</td>
+                            <td>Scheduled (timer)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>Task States</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0;">
+                    <span class="status-badge queued">pending</span>
+                    <span class="status-badge running">running</span>
+                    <span class="status-badge complete">complete</span>
+                    <span class="status-badge failed">failed</span>
+                </div>
+                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Single Task Enforcement</strong><br>
+                        The system enforces exactly one running task at a time. New tasks wait in "pending" 
+                        until the current task completes.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Disallowed Users Section -->
+            <section class="content-section" id="disallowed-users">
+                <h2>Disallowed Users</h2>
+                <p>
+                    The Disallowed Users page manages a blacklist of usernames that cannot be registered.
+                    This prevents users from creating accounts with system-reserved names or inappropriate usernames.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/disallowed-users.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/disallowed-users.png" alt="Disallowed Users management page" loading="lazy">
+                    </picture>
+                    <figcaption>1. Disallowed username list — 2. Add new entry — 3. Hardcoded indicator — 4. Delete button</figcaption>
+                </figure>
+                
+                <h3>Username Types</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Description</th>
+                            <th>Removable</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Hardcoded</strong></td>
+                            <td>System-reserved names (admin, root, system, etc.)</td>
+                            <td>❌ No</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Custom</strong></td>
+                            <td>Admin-added usernames</td>
+                            <td>✅ Yes</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>Adding a Disallowed Username</h3>
+                <ol class="feature-list">
+                    <li>Enter the username in the "Add Username" field</li>
+                    <li>Optionally provide a reason for blocking</li>
+                    <li>Click <strong>Add</strong> to save</li>
+                </ol>
+                
+                <div class="info-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Case Insensitive</strong><br>
+                        Username matching is case-insensitive. Adding "Admin" will also block "admin", "ADMIN", etc.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Locked Databases Section -->
+            <section class="content-section" id="locked-databases">
+                <h2>Locked Databases</h2>
+                <p>
+                    The Locked Databases page shows all deployed databases that users have locked to prevent
+                    automatic expiration. Admins can view lock details and override locks if necessary.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/annotated/dark/admin/locked-dbs.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/annotated/light/admin/locked-dbs.png" alt="Locked Databases management page" loading="lazy">
+                    </picture>
+                    <figcaption>1. Database name — 2. Lock owner — 3. Lock date — 4. Unlock button</figcaption>
+                </figure>
+                
+                <h3>Lock Information</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Column</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Target</code></td>
+                            <td>The database name that is locked</td>
+                        </tr>
+                        <tr>
+                            <td><code>Host</code></td>
+                            <td>MySQL server where the database resides</td>
+                        </tr>
+                        <tr>
+                            <td><code>Locked By</code></td>
+                            <td>Username who locked the database</td>
+                        </tr>
+                        <tr>
+                            <td><code>Locked At</code></td>
+                            <td>When the lock was applied</td>
+                        </tr>
+                        <tr>
+                            <td><code>Reason</code></td>
+                            <td>User-provided reason for locking (if any)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>Admin Unlock</h3>
+                <p>
+                    Admins can forcibly unlock a database if needed. This removes the lock and allows
+                    normal retention and cleanup to proceed.
+                </p>
+                
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Communicate Before Unlocking</strong><br>
+                        Before forcibly unlocking a database, contact the lock owner to understand why
+                        they locked it. Unlocking may cause unexpected data loss if the database expires.
+                    </div>
+                </div>
             </section>
             
             <!-- Next Steps -->

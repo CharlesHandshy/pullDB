@@ -27,13 +27,53 @@ and target uniqueness enforced later by repositories.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from pulldb.domain.naming import MAX_CUSTOMER_LEN, normalize_customer_name
 
+# =============================================================================
+# Customer Name Normalization (inlined from pulldb.domain.naming for client)
+# =============================================================================
+# MySQL database names: max 64 characters
+# Staging name format: {target}_{12_hex_job_id} = target max 51 chars
+# Target format: {user_code(6)}{customer(42)}{suffix(3)} = 51 chars max
+# Customer max: 42 characters
+
+MAX_CUSTOMER_LEN = 42
+_HASH_SUFFIX_LEN = 4  # 4 hex chars for long name truncation
+_TRUNCATE_LEN = MAX_CUSTOMER_LEN - _HASH_SUFFIX_LEN  # 38 chars
+
+
+def _compute_hash_suffix(name: str) -> str:
+    """Compute deterministic 4-character alphabetic hash suffix from name."""
+    digest = hashlib.md5(name.encode("utf-8")).digest()
+    result: list[str] = []
+    for i in range(_HASH_SUFFIX_LEN):
+        byte_val = digest[i]
+        letter = chr(ord('a') + (byte_val % 26))
+        result.append(letter)
+    return ''.join(result)
+
+
+def normalize_customer_name(customer: str) -> str:
+    """Normalize a customer name to fit within MAX_CUSTOMER_LEN characters.
+    
+    If <= 42 chars, returns unchanged. If > 42 chars, truncates to 38 chars
+    and appends a 4-character deterministic hash suffix.
+    """
+    if len(customer) <= MAX_CUSTOMER_LEN:
+        return customer
+    truncated = customer[:_TRUNCATE_LEN]
+    hash_suffix = _compute_hash_suffix(customer)
+    return f"{truncated}{hash_suffix}"
+
+
+# =============================================================================
+# CLI Parse Constants
+# =============================================================================
 
 USER_CODE_LEN = 6
 MAX_TARGET_LEN = 51  # Without staging suffix; see architecture docs
@@ -432,12 +472,15 @@ def parse_restore_args(tokens: Sequence[str]) -> RestoreCLIOptions:
     normalization_message = ""
     
     if customer_id is not None:
-        norm_result = normalize_customer_name(customer_id)
-        normalized_customer = norm_result.normalized
-        if norm_result.was_normalized:
-            original_customer = norm_result.original
+        normalized_customer = normalize_customer_name(customer_id)
+        if normalized_customer != customer_id:
+            original_customer = customer_id
             customer_normalized = True
-            normalization_message = norm_result.display_message
+            normalization_message = (
+                f"Customer name '{customer_id}' ({len(customer_id)} chars) "
+                f"exceeds {MAX_CUSTOMER_LEN} character limit. "
+                f"Normalized to '{normalized_customer}' for target database naming."
+            )
 
     return RestoreCLIOptions(
         raw_tokens=tuple(tokens),

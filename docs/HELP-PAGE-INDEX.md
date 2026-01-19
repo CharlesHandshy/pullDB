@@ -1,26 +1,28 @@
 # Help Page Index
 
-> **Generated:** 2026-01-06  
-> **Total Pages:** 13 (including manager.html)  
+> **Generated:** 2026-01-17  
+> **Total Pages:** 14 (indexed in search-index.json)  
 > **Base URL:** http://localhost:8000/web/help/
+> **Version:** 1.0.2
 
 ## Page Inventory
 
-| # | Path | Title | Category | File Size |
-|---|------|-------|----------|-----------|
-| 1 | `/web/help/index.html` | pullDB Help Center | Root | - |
-| 2 | `/web/help/pages/getting-started.html` | Getting Started | Guide | - |
-| 3 | `/web/help/pages/api/index.html` | API Reference | Reference | - |
-| 4 | `/web/help/pages/cli/index.html` | CLI Reference | Reference | - |
-| 5 | `/web/help/pages/concepts/job-lifecycle.html` | Job Lifecycle | Concepts | - |
-| 6 | `/web/help/pages/troubleshooting/index.html` | Troubleshooting | Support | - |
-| 7 | `/web/help/pages/web-ui/index.html` | Web UI Overview | Web UI | - |
-| 8 | `/web/help/pages/web-ui/dashboard.html` | Dashboard Guide | Web UI | - |
-| 9 | `/web/help/pages/web-ui/restore.html` | Restore Wizard | Web UI | - |
-| 10 | `/web/help/pages/web-ui/jobs.html` | Jobs & History | Web UI | - |
-| 11 | `/web/help/pages/web-ui/profile.html` | Profile & Settings | Web UI | - |
-| 12 | `/web/help/pages/web-ui/admin.html` | Administration | Web UI | - |
-| 13 | `/web/help/pages/web-ui/manager.html` | Team Management | Web UI | NEW |
+| # | Path | Title | Category | Status |
+|---|------|-------|----------|--------|
+| 1 | `/web/help/index.html` | pullDB Help Center | Root | ✅ |
+| 2 | `/web/help/pages/getting-started.html` | Getting Started | Guide | ✅ |
+| 3 | `/web/help/pages/api/index.html` | API Reference | Reference | ✅ |
+| 4 | `/web/help/pages/cli/index.html` | CLI Reference | Reference | ✅ |
+| 5 | `/web/help/pages/concepts/job-lifecycle.html` | Job Lifecycle | Concepts | ✅ |
+| 6 | `/web/help/pages/troubleshooting/index.html` | Troubleshooting | Support | ✅ |
+| 7 | `/web/help/pages/web-ui/index.html` | Web UI Overview | Web UI | ✅ |
+| 8 | `/web/help/pages/web-ui/dashboard.html` | Dashboard Guide | Web UI | ✅ |
+| 9 | `/web/help/pages/web-ui/restore.html` | Restore Workflow | Web UI | ✅ |
+| 10 | `/web/help/pages/web-ui/jobs.html` | Jobs Management | Web UI | ✅ |
+| 11 | `/web/help/pages/web-ui/profile.html` | Profile & API Keys | Web UI | ✅ |
+| 12 | `/web/help/pages/web-ui/requests.html` | Feature Requests | Web UI | ✅ **NEW** |
+| 13 | `/web/help/pages/web-ui/manager.html` | Manager Interface | Web UI | ✅ |
+| 14 | `/web/help/pages/web-ui/admin.html` | Admin Panel | Web UI | ✅ |
 
 ## Endpoints by Category
 
@@ -37,14 +39,15 @@
 ### Concepts
 - `GET /web/help/pages/concepts/job-lifecycle.html` → Job states and phases
 
-### Web UI Documentation (NEW)
+### Web UI Documentation
 - `GET /web/help/pages/web-ui/index.html` → Overview, access, navigation
 - `GET /web/help/pages/web-ui/dashboard.html` → Dashboard views by role
 - `GET /web/help/pages/web-ui/restore.html` → 4-step restore wizard
 - `GET /web/help/pages/web-ui/jobs.html` → Job list, filtering, details
 - `GET /web/help/pages/web-ui/profile.html` → Account settings, API keys
-- `GET /web/help/pages/web-ui/admin.html` → User/host/key management
+- `GET /web/help/pages/web-ui/requests.html` → Feature request submission and voting
 - `GET /web/help/pages/web-ui/manager.html` → Team management (managers only)
+- `GET /web/help/pages/web-ui/admin.html` → User/host/key management, disallowed users, locked databases
 
 ### Troubleshooting
 - `GET /web/help/pages/troubleshooting/index.html` → Common issues, FAQ
@@ -52,14 +55,29 @@
 ## Static Assets
 - `GET /web/help/css/help.css` → Main stylesheet
 - `GET /web/help/search-index.json` → Search index (13 pages indexed)
+- `GET /web/help/js/help.js` → Search functionality
 
 ---
 
-## Screenshot Inventory (2026-01-06)
+## Related Documentation
+
+| Document | Description |
+|----------|-------------|
+| [CLI Reference](hca/pages/cli-reference.md) | Full CLI command documentation |
+| [API Reference](hca/pages/api-reference.md) | REST API endpoint documentation |
+| [Admin Guide](hca/pages/admin-guide.md) | Administrative operations |
+| [Feature Requests](hca/features/feature-requests.md) | Feature request system |
+| [Database Lifecycle](hca/features/database-lifecycle.md) | Job states and retention |
+
+---
+
+## Screenshot Inventory (2026-01-17)
 
 > **Location:** `pulldb/web/static/help/screenshots/`  
-> **Total Files:** 254 PNG files  
+> **Total Files:** 254 PNG files + 4 new captures  
 > **Total Size:** 6.7 MB (after pngquant optimization from 19 MB)
+> 
+> **New Screenshots (2026-01-17):** Feature Requests page, Admin Task Status page captured via Playwright (light + dark themes)
 
 ### Directory Structure
 
@@ -69,8 +87,10 @@
 | `dark/` | 65 | Raw dark theme screenshots |
 | `annotated/light/` | 62 | Annotated light screenshots |
 | `annotated/dark/` | 62 | Annotated dark screenshots |
+| `light/requests/` | 1 | Feature requests (new) |
+| `dark/requests/` | 1 | Feature requests dark (new) |
 
-### Screenshots by Category (65 unique)
+### Screenshots by Category (67 unique)
 
 #### Common (9 screenshots)
 | File | Description |
@@ -130,7 +150,7 @@
 | `create-key-modal.png` | Create API key modal |
 | `maintenance-modal.png` | Maintenance mode modal |
 
-#### Admin (23 screenshots)
+#### Admin (25 screenshots)
 | File | Description |
 |------|-------------|
 | `overview.png` | Admin dashboard overview |
@@ -156,6 +176,12 @@
 | `maintenance.png` | Maintenance mode toggle |
 | `audit-log.png` | Audit log viewer |
 | `prune-logs.png` | Prune logs action |
+| `admin-task-status.png` | ✅ **NEW** - Background task status page |
+
+#### Feature Requests (1 screenshot - NEW)
+| File | Description |
+|------|-------------|
+| `feature-requests.png` | ✅ **NEW** - Feature requests list page |
 
 #### Manager (4 screenshots)
 | File | Description |
@@ -240,6 +266,5 @@
 - Consistent navigation across all help pages
 
 ---
-*Audit completed: 2026-01-05*  
-*Fixes verified: 2026-01-05*  
-*This document is auto-updated during help page audits.*
+*Last updated: 2026-01-27*  
+*Search index regenerated via: `python3 scripts/build_help_search_index.py`*

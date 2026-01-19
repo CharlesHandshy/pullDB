@@ -77,7 +77,7 @@
     color: var(--text-muted);
 }
 
-.status-badge.rejected {
+.status-badge.declined {
     background: var(--bg-danger-subtle);
     color: var(--text-danger);
 }
@@ -210,6 +210,194 @@
     border-radius: var(--radius-md);
     font-size: 14px;
 }
+
+/* Notes section */
+.notes-section {
+    border-top: 1px solid var(--border-default);
+    padding-top: 16px;
+    margin-top: 16px;
+}
+
+.notes-section h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.notes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.note-item {
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    border-left: 3px solid var(--primary-500);
+}
+
+.note-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.note-author {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.note-date {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.note-text {
+    font-size: 13px;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+}
+
+.note-delete {
+    background: none;
+    border: none;
+    padding: 2px 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 11px;
+    border-radius: var(--radius-sm);
+}
+
+.note-delete:hover {
+    color: var(--text-danger);
+    background: var(--bg-danger-subtle);
+}
+
+.add-note-form {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+}
+
+.add-note-form textarea {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 13px;
+    resize: vertical;
+    min-height: 60px;
+}
+
+.add-note-form textarea:focus {
+    outline: none;
+    border-color: var(--primary-500);
+}
+
+/* Admin actions section */
+.admin-actions-section {
+    border-top: 1px solid var(--border-default);
+    padding-top: 16px;
+    margin-top: 16px;
+}
+
+.admin-actions-section h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+}
+
+.admin-actions-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.admin-actions-row label {
+    font-size: 13px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* Custom select dropdown */
+.custom-select {
+    position: relative;
+    min-width: 140px;
+}
+
+.custom-select-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-secondary);
+    color: var(--color-text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+}
+
+.custom-select-trigger:hover {
+    border-color: var(--color-border-hover);
+}
+
+.custom-select-trigger:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 2px var(--primary-100);
+}
+
+.custom-select-options {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+    overflow: hidden;
+}
+
+.custom-select-options.show {
+    display: block;
+}
+
+.custom-select-option {
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.custom-select-option:hover {
+    background: var(--color-bg-hover);
+}
+
+.custom-select-option.selected {
+    background: var(--color-primary);
+    color: var(--color-text-inverse);
+}
 </style>
 {% endblock %}
 
@@ -318,7 +506,7 @@
 <!-- Request Detail Modal -->
 <div id="request-detail-modal" class="modal modal-hidden">
     <div class="modal-backdrop" onclick="hideDetailModal()"></div>
-    <div class="modal-content modal-wide">
+    <div class="modal-content modal-wide" style="max-width: 700px;">
         <div class="modal-header">
             <h3 class="modal-title">Feature Request</h3>
             <button type="button" class="modal-close" onclick="hideDetailModal()">
@@ -328,16 +516,81 @@
                 </svg>
             </button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
             <div id="request-detail-content">
                 <!-- Populated by JS -->
             </div>
+            
+            <!-- Notes Section -->
+            <div class="notes-section">
+                <h4>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    Notes
+                </h4>
+                <div id="notes-list" class="notes-list">
+                    <div class="note-loading" style="color: var(--text-muted); font-size: 13px;">Loading notes...</div>
+                </div>
+                <div class="add-note-form">
+                    <textarea id="new-note-text" placeholder="Add a note..." maxlength="2000"></textarea>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="addNote()" style="align-self: flex-end;">Add</button>
+                </div>
+            </div>
+            
+            <!-- Admin Actions (admins only) -->
+            {% if user.role.value == 'admin' %}
+            <div class="admin-actions-section">
+                <h4>Admin Actions</h4>
+                <div class="admin-actions-row">
+                    <label>Status:</label>
+                    <div class="custom-select" id="status-select-wrapper">
+                        <button type="button" class="custom-select-trigger" id="status-select-trigger" onclick="toggleStatusDropdown()">
+                            <span id="status-select-value">Open</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <div class="custom-select-options" id="status-select-options">
+                            <div class="custom-select-option" data-value="open" onclick="selectStatus('open', 'Open')">Open</div>
+                            <div class="custom-select-option" data-value="in_progress" onclick="selectStatus('in_progress', 'In Progress')">In Progress</div>
+                            <div class="custom-select-option" data-value="complete" onclick="selectStatus('complete', 'Complete')">Complete</div>
+                            <div class="custom-select-option" data-value="declined" onclick="selectStatus('declined', 'Declined')">Declined</div>
+                        </div>
+                    </div>
+                    <span id="status-update-indicator" style="font-size: 12px; color: var(--text-success); display: none;">✓ Saved</span>
+                </div>
+            </div>
+            {% endif %}
         </div>
         <div class="modal-footer">
+            <button type="button" class="btn btn-danger" id="withdraw-btn" onclick="confirmWithdrawRequest()" style="display: none;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;margin-right:4px;vertical-align:middle;">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                Withdraw
+            </button>
             <button type="button" class="btn btn-ghost" onclick="hideDetailModal()">Close</button>
-            {% if user.role == 'admin' %}
-            <button type="button" class="btn btn-primary" id="admin-edit-btn" onclick="showAdminEdit()">Edit Status</button>
-            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Withdraw Confirmation Modal -->
+<div id="withdraw-confirm-modal" class="modal modal-hidden">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header">
+            <h3>Withdraw Request?</h3>
+            <button class="close-btn" onclick="hideWithdrawConfirm()">
+                <img src="{{ url_for('static', path='images/x-mark.svg') }}" width="16" height="16" alt="Close">
+            </button>
+        </div>
+        <div class="modal-body" style="padding: 16px 20px;">
+            <p style="margin: 0 0 12px 0; color: var(--color-text-secondary);">Are you sure you want to withdraw this feature request? This action cannot be undone.</p>
+            <p id="withdraw-request-title" style="margin: 0; font-weight: 600;"></p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="hideWithdrawConfirm()">Cancel</button>
+            <button type="button" class="btn btn-danger" onclick="executeWithdraw()">Withdraw</button>
         </div>
     </div>
 </div>
@@ -355,7 +608,8 @@
         return;
     }
 
-    const isAdmin = {{ 'true' if user.role == 'admin' else 'false' }};
+    const isAdmin = {{ 'true' if user.role.value == 'admin' else 'false' }};
+    const currentUserId = '{{ user.user_id }}';
 
     // User icon SVG
     const userIconSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
@@ -385,7 +639,7 @@
     };
 
     const renderTitle = (val, row) => {
-        return `<span class="request-title" onclick="window.showRequestDetail('${row.request_id}')">${val}</span>`;
+        return `<span class="request-title" onclick="event.stopPropagation(); window.showRequestDetail('${row.request_id}')" style="cursor:pointer;display:block">${val}</span>`;
     };
 
     const renderStatus = (val) => {
@@ -393,7 +647,7 @@
             'open': 'Open',
             'in_progress': 'In Progress',
             'complete': 'Complete',
-            'rejected': 'Rejected'
+            'declined': 'Declined'
         };
         return `<span class="status-badge ${val}">${labels[val] || val}</span>`;
     };
@@ -499,9 +753,18 @@
     let currentRequest = null;
 
     window.showRequestDetail = async function(requestId) {
-        // Find request in table data
-        const row = table._cache?.find(r => r.request_id === requestId);
-        if (!row) return;
+        // Find request in LazyTable cache (cache is a Map of page index -> { rows: [...] })
+        let row = null;
+        if (table.cache && table.cache instanceof Map) {
+            for (const pageData of table.cache.values()) {
+                row = pageData.rows?.find(r => r.request_id === requestId);
+                if (row) break;
+            }
+        }
+        if (!row) {
+            console.error('Request not found in table cache:', requestId);
+            return;
+        }
         
         currentRequest = row;
         
@@ -510,7 +773,7 @@
             'open': 'Open',
             'in_progress': 'In Progress',
             'complete': 'Complete',
-            'rejected': 'Rejected'
+            'declined': 'Declined'
         }[row.status] || row.status;
         
         let html = `
@@ -540,12 +803,297 @@
         
         content.innerHTML = html;
         
+        // Set admin status dropdown to current value
+        setStatusDropdownValue(row.status);
+        
+        // Load notes
+        loadNotes(requestId);
+        
+        // Show/hide withdraw button based on ownership
+        const withdrawBtn = document.getElementById('withdraw-btn');
+        if (withdrawBtn) {
+            const isOwner = row.submitted_by_user_id === currentUserId;
+            withdrawBtn.style.display = (isOwner || isAdmin) ? 'inline-flex' : 'none';
+        }
+        
         document.getElementById('request-detail-modal').classList.remove('modal-hidden');
     };
 
     window.hideDetailModal = function() {
         document.getElementById('request-detail-modal').classList.add('modal-hidden');
         currentRequest = null;
+        // Clear notes input
+        const noteInput = document.getElementById('new-note-text');
+        if (noteInput) noteInput.value = '';
+    };
+
+    // ==========================================================================
+    // Notes Functions
+    // ==========================================================================
+
+    async function loadNotes(requestId) {
+        const notesList = document.getElementById('notes-list');
+        notesList.innerHTML = '<div class="note-loading" style="color: var(--text-muted); font-size: 13px;">Loading notes...</div>';
+        
+        try {
+            const response = await fetch(`/web/requests/api/notes/${requestId}`);
+            const result = await response.json();
+            
+            if (result.error) {
+                notesList.innerHTML = `<div style="color: var(--text-danger); font-size: 13px;">Error: ${result.error}</div>`;
+                return;
+            }
+            
+            if (!result.notes || result.notes.length === 0) {
+                notesList.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">No notes yet.</div>';
+                return;
+            }
+            
+            notesList.innerHTML = result.notes.map(note => `
+                <div class="note-item" data-note-id="${note.note_id}">
+                    <div class="note-header">
+                        <span class="note-author">${note.username || note.user_code}</span>
+                        <span>
+                            <span class="note-date">${formatNoteDate(note.created_at)}</span>
+                            ${note.is_mine || isAdmin ? `<button class="note-delete" onclick="deleteNote('${note.note_id}')" title="Delete note">×</button>` : ''}
+                        </span>
+                    </div>
+                    <div class="note-text">${escapeHtml(note.note_text)}</div>
+                </div>
+            `).join('');
+            
+        } catch (err) {
+            console.error('Error loading notes:', err);
+            notesList.innerHTML = '<div style="color: var(--text-danger); font-size: 13px;">Failed to load notes</div>';
+        }
+    }
+
+    window.addNote = async function() {
+        if (!currentRequest) return;
+        
+        const noteInput = document.getElementById('new-note-text');
+        const noteText = noteInput.value.trim();
+        
+        if (!noteText) {
+            showToast('Please enter a note', 'error');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/web/requests/api/notes/${currentRequest.request_id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note_text: noteText })
+            });
+            const result = await response.json();
+            
+            if (result.error) {
+                showToast(result.error, 'error');
+                return;
+            }
+            
+            // Clear input and reload notes
+            noteInput.value = '';
+            loadNotes(currentRequest.request_id);
+            showToast('Note added', 'success');
+            
+        } catch (err) {
+            console.error('Error adding note:', err);
+            showToast('Failed to add note', 'error');
+        }
+    };
+
+    window.deleteNote = async function(noteId) {
+        if (!confirm('Delete this note?')) return;
+        
+        try {
+            const response = await fetch(`/web/requests/api/notes/${noteId}`, {
+                method: 'DELETE'
+            });
+            const result = await response.json();
+            
+            if (result.error) {
+                showToast(result.error, 'error');
+                return;
+            }
+            
+            // Reload notes
+            if (currentRequest) {
+                loadNotes(currentRequest.request_id);
+            }
+            showToast('Note deleted', 'success');
+            
+        } catch (err) {
+            console.error('Error deleting note:', err);
+            showToast('Failed to delete note', 'error');
+        }
+    };
+
+    // ==========================================================================
+    // Admin Status Update (Custom Dropdown)
+    // ==========================================================================
+
+    let currentStatusValue = 'open';
+
+    function setStatusDropdownValue(value) {
+        currentStatusValue = value;
+        const labels = {
+            'open': 'Open',
+            'in_progress': 'In Progress',
+            'complete': 'Complete',
+            'declined': 'Declined'
+        };
+        const trigger = document.getElementById('status-select-value');
+        if (trigger) {
+            trigger.textContent = labels[value] || value;
+        }
+        // Update selected state
+        const options = document.querySelectorAll('.custom-select-option');
+        options.forEach(opt => {
+            opt.classList.toggle('selected', opt.dataset.value === value);
+        });
+    }
+
+    window.toggleStatusDropdown = function() {
+        const options = document.getElementById('status-select-options');
+        if (options) {
+            options.classList.toggle('show');
+        }
+    };
+
+    window.selectStatus = async function(value, label) {
+        // Hide dropdown
+        const options = document.getElementById('status-select-options');
+        if (options) options.classList.remove('show');
+        
+        // Update UI
+        setStatusDropdownValue(value);
+        
+        // Save to server
+        await updateRequestStatusValue(value);
+    };
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.custom-select')) {
+            const options = document.getElementById('status-select-options');
+            if (options) options.classList.remove('show');
+        }
+    });
+
+    async function updateRequestStatusValue(newStatus) {
+        if (!currentRequest) return;
+        
+        const indicator = document.getElementById('status-update-indicator');
+        
+        try {
+            const response = await fetch(`/web/requests/api/update/${currentRequest.request_id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus })
+            });
+            const result = await response.json();
+            
+            if (result.error) {
+                showToast(result.error, 'error');
+                return;
+            }
+            
+            // Update current request object
+            currentRequest.status = newStatus;
+            
+            // Update status badge in modal
+            const statusLabel = {
+                'open': 'Open',
+                'in_progress': 'In Progress',
+                'complete': 'Complete',
+                'declined': 'Declined'
+            }[newStatus] || newStatus;
+            
+            const badge = document.querySelector('.request-detail-header .status-badge');
+            if (badge) {
+                badge.className = `status-badge ${newStatus}`;
+                badge.textContent = statusLabel;
+            }
+            
+            // Show save indicator briefly
+            if (indicator) {
+                indicator.style.display = 'inline';
+                setTimeout(() => { indicator.style.display = 'none'; }, 2000);
+            }
+            
+            // Refresh table
+            table.refresh();
+            
+        } catch (err) {
+            console.error('Error updating status:', err);
+            showToast('Failed to update status', 'error');
+        }
+    };
+
+    // Helper functions
+    function formatNoteDate(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        return d.toLocaleString('en-US', { 
+            month: 'short', day: 'numeric', year: 'numeric',
+            hour: 'numeric', minute: '2-digit'
+        });
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // ==========================================================================
+    // Withdraw/Delete Functions
+    // ==========================================================================
+
+    window.confirmWithdrawRequest = function() {
+        if (!currentRequest) return;
+        
+        const titleEl = document.getElementById('withdraw-request-title');
+        if (titleEl) {
+            titleEl.textContent = currentRequest.title;
+        }
+        
+        document.getElementById('withdraw-confirm-modal').classList.remove('modal-hidden');
+    };
+
+    window.hideWithdrawConfirm = function() {
+        document.getElementById('withdraw-confirm-modal').classList.add('modal-hidden');
+    };
+
+    window.executeWithdraw = async function() {
+        if (!currentRequest) return;
+        
+        try {
+            const response = await fetch(`/web/requests/api/delete/${currentRequest.request_id}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const result = await response.json();
+            
+            if (result.error) {
+                showToast(result.error, 'error');
+                return;
+            }
+            
+            showToast('Feature request withdrawn successfully', 'success');
+            
+            // Close both modals
+            hideWithdrawConfirm();
+            hideDetailModal();
+            
+            // Refresh table
+            table.refresh();
+            
+        } catch (err) {
+            console.error('Error withdrawing request:', err);
+            showToast('Failed to withdraw request', 'error');
+        }
     };
 
 })();

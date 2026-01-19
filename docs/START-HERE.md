@@ -1,6 +1,6 @@
 # pullDB Documentation
 
-> **Version**: 1.0.0 | **Start here to navigate all pullDB documentation**
+> **Version**: 1.0.5 | **Start here to navigate all pullDB documentation**
 
 ---
 
@@ -12,9 +12,9 @@ All documentation is organized by **Hierarchical Containment Architecture** laye
 docs/hca/                 ← ALL documentation lives here
 ├── shared/              Infrastructure (FAIL-HARD)
 ├── entities/            Data models (mysql-schema)
-├── features/            Business logic (staging, atomic rename)
-├── widgets/             Integration (deployment, architecture)
-├── pages/               User guides (CLI, admin, development)
+├── features/            Business logic (staging, lifecycle, feature-requests)
+├── widgets/             Integration (deployment, architecture, lazy-table)
+├── pages/               User guides (CLI, API, admin, development)
 └── plugins/             External tools (myloader, policies, terraform)
 ```
 
@@ -30,6 +30,8 @@ docs/hca/                 ← ALL documentation lives here
 |------|----------|
 | Install & setup | [hca/pages/getting-started.md](hca/pages/getting-started.md) |
 | CLI commands | [hca/pages/cli-reference.md](hca/pages/cli-reference.md) |
+| API integration | [hca/pages/api-reference.md](hca/pages/api-reference.md) |
+| Authentication | [hca/pages/auth-guide.md](hca/pages/auth-guide.md) |
 
 ### 🔧 System Administrator
 
@@ -38,6 +40,7 @@ docs/hca/                 ← ALL documentation lives here
 | Deploy services | [hca/widgets/deployment.md](hca/widgets/deployment.md) |
 | Admin tasks | [hca/pages/admin-guide.md](hca/pages/admin-guide.md) |
 | Architecture | [hca/widgets/architecture.md](hca/widgets/architecture.md) |
+| Troubleshooting | [hca/widgets/troubleshooting.md](hca/widgets/troubleshooting.md) |
 
 ### 🏗️ Infrastructure Engineer
 
@@ -46,6 +49,7 @@ docs/hca/                 ← ALL documentation lives here
 | IAM policies | [hca/plugins/policies/](hca/plugins/policies/) |
 | Terraform | [hca/plugins/terraform/](hca/plugins/terraform/) |
 | AWS facts | [KNOWLEDGE-POOL.md](KNOWLEDGE-POOL.md) |
+| Database lifecycle | [hca/features/database-lifecycle.md](hca/features/database-lifecycle.md) |
 
 ### 🧑‍💻 Contributor
 
@@ -54,6 +58,7 @@ docs/hca/                 ← ALL documentation lives here
 | Development setup | [hca/pages/development.md](hca/pages/development.md) |
 | Schema reference | [hca/entities/mysql-schema.md](hca/entities/mysql-schema.md) |
 | myloader patterns | [hca/plugins/myloader.md](hca/plugins/myloader.md) |
+| Theme system | [hca/features/theme-system.md](hca/features/theme-system.md) |
 
 ---
 

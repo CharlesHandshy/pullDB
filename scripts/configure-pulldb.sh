@@ -261,7 +261,7 @@ configure_database() {
     echo "    - pulldb_worker: Worker service (job management)"
     echo "    - pulldb_loader: Restore operations on target hosts"
     echo ""
-    echo "  See schema/pulldb_service/300_mysql_users.sql for grant statements."
+    echo "  See schema/pulldb_service/03_users/001_mysql_users.sql for grant statements."
     echo ""
     
     # MySQL Host

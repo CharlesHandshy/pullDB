@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feature Requests - pullDB Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../css/help.css">
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="helpApp()" @keydown.slash.window.prevent="focusSearch()" @keydown.escape.window="closeSearch()">
+    
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    
+    <!-- Navigation -->
+    <nav class="nav-glass">
+        <div class="nav-container">
+            <a href="../../index.html" class="nav-logo">
+                <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                </svg>
+                <span class="logo-text">pullDB <span class="logo-help">Help</span></span>
+            </a>
+            
+            <div class="nav-links">
+                <a href="../getting-started.html" class="nav-link">Getting Started</a>
+                <a href="../cli/index.html" class="nav-link">CLI</a>
+                <a href="../api/index.html" class="nav-link">API</a>
+                <a href="../concepts/job-lifecycle.html" class="nav-link">Concepts</a>
+                <a href="index.html" class="nav-link" style="background: var(--color-primary-bg); color: var(--color-primary);">Web UI</a>
+            </div>
+            
+            <div class="nav-actions">
+                <button class="search-trigger" @click="openSearch()" title="Search (/)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <span class="search-hint">/</span>
+                </button>
+                <button class="theme-toggle" @click="toggleTheme()">
+                    <svg x-show="theme === 'light'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg x-show="theme === 'dark'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Search Modal -->
+    <div class="search-modal" x-show="searchOpen" x-transition @click.self="closeSearch()">
+        <div class="search-container" @click.stop>
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" class="search-input" placeholder="Search documentation..." x-model="searchQuery" x-ref="searchInput" @input="performSearch()">
+                <kbd class="search-kbd">ESC</kbd>
+            </div>
+            <div class="search-results" x-show="searchQuery.length > 0">
+                <template x-for="(result, index) in searchResults" :key="result.id">
+                    <a :href="result.url" class="search-result" :class="{ 'active': selectedIndex === index }">
+                        <div class="result-content">
+                            <div class="result-title" x-html="result.title"></div>
+                            <div class="result-preview" x-html="result.preview"></div>
+                        </div>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Page Layout with Sidebar -->
+    <div class="page-layout">
+        <aside class="page-sidebar">
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Web UI Guide</div>
+                    <a href="index.html" class="sidebar-link">Overview</a>
+                    <a href="dashboard.html" class="sidebar-link">Dashboard</a>
+                    <a href="restore.html" class="sidebar-link">Restore Workflow</a>
+                    <a href="jobs.html" class="sidebar-link">Jobs Management</a>
+                    <a href="profile.html" class="sidebar-link">Profile & API Keys</a>
+                    <a href="requests.html" class="sidebar-link active">Feature Requests</a>
+                    <a href="manager.html" class="sidebar-link">Manager Interface</a>
+                    <a href="admin.html" class="sidebar-link">Admin Panel</a>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">On This Page</div>
+                    <a href="#overview" class="sidebar-link">Overview</a>
+                    <a href="#browsing" class="sidebar-link">Browsing Requests</a>
+                    <a href="#submitting" class="sidebar-link">Submitting a Request</a>
+                    <a href="#voting" class="sidebar-link">Voting</a>
+                    <a href="#status" class="sidebar-link">Request Status</a>
+                    <a href="#notes" class="sidebar-link">Adding Notes</a>
+                </div>
+            </nav>
+        </aside>
+        
+        <main class="page-content">
+            <div class="breadcrumbs">
+                <a href="../../index.html">Help</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <a href="index.html">Web UI</a>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span>Feature Requests</span>
+            </div>
+            
+            <h1 class="page-title">Feature Requests</h1>
+            <p class="page-description">
+                The Feature Requests page allows all users to suggest improvements, vote on existing ideas,
+                and track the status of requested features. Access it from the sidebar under "Resources".
+            </p>
+            
+            <div class="info-callout">
+                <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 16v-4M12 8h.01"/>
+                </svg>
+                <div>
+                    <strong>All Users Welcome</strong><br>
+                    Feature Requests is available to all authenticated users. You can browse, submit, and vote
+                    on requests regardless of your role (user, manager, or admin).
+                </div>
+            </div>
+            
+            <!-- Overview Section -->
+            <section class="content-section" id="overview">
+                <h2>Overview</h2>
+                <p>
+                    The Feature Requests system helps the pullDB team understand what improvements matter most
+                    to users. By voting on requests, you help prioritize development efforts.
+                </p>
+                
+                <figure class="screenshot">
+                    <picture>
+                        <source srcset="/static/help/screenshots/dark/requests/feature-requests.png" media="(prefers-color-scheme: dark)">
+                        <img src="/static/help/screenshots/light/requests/feature-requests.png" alt="Feature Requests page showing list of requests with voting" loading="lazy">
+                    </picture>
+                    <figcaption>1. Statistics cards — 2. Submit new request button — 3. Request list with voting — 4. Status filters</figcaption>
+                </figure>
+                
+                <h3>Page Components</h3>
+                <ul class="feature-list">
+                    <li><strong>Statistics Cards</strong> — Overview of request counts by status (Open, In Progress, Complete, Declined)</li>
+                    <li><strong>Submit Button</strong> — Opens the new request form</li>
+                    <li><strong>Request Table</strong> — Sortable, filterable list of all requests</li>
+                    <li><strong>Vote Controls</strong> — Upvote requests you'd like to see implemented</li>
+                </ul>
+            </section>
+            
+            <!-- Browsing Requests Section -->
+            <section class="content-section" id="browsing">
+                <h2>Browsing Requests</h2>
+                <p>
+                    The request list displays all submitted feature requests with key information.
+                    Use the table controls to find requests you're interested in.
+                </p>
+                
+                <h3>Table Columns</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Column</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Votes</code></td>
+                            <td>Total vote count with upvote button — click to vote</td>
+                        </tr>
+                        <tr>
+                            <td><code>Title</code></td>
+                            <td>Request title — click to expand and view details</td>
+                        </tr>
+                        <tr>
+                            <td><code>Status</code></td>
+                            <td>Current status (Open, In Progress, Complete, Declined)</td>
+                        </tr>
+                        <tr>
+                            <td><code>Submitted By</code></td>
+                            <td>Username and user code of the person who submitted</td>
+                        </tr>
+                        <tr>
+                            <td><code>Created</code></td>
+                            <td>When the request was submitted</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>Sorting & Filtering</h3>
+                <ul class="feature-list">
+                    <li><strong>Sort by Votes</strong> — Default sort shows most popular requests first</li>
+                    <li><strong>Sort by Date</strong> — Click "Created" header to see newest requests</li>
+                    <li><strong>Filter by Status</strong> — Use the status column filter to show only Open, Complete, etc.</li>
+                </ul>
+            </section>
+            
+            <!-- Submitting Section -->
+            <section class="content-section" id="submitting">
+                <h2>Submitting a Request</h2>
+                <p>
+                    Have an idea for improving pullDB? Submit a feature request to share it with the team
+                    and other users.
+                </p>
+                
+                <h3>How to Submit</h3>
+                <ol class="feature-list">
+                    <li>Click the <strong>"Submit Request"</strong> button in the top-right corner</li>
+                    <li>Enter a clear, descriptive <strong>title</strong> (5-200 characters)</li>
+                    <li>Optionally add a <strong>description</strong> with more details (up to 2000 characters)</li>
+                    <li>Click <strong>"Submit"</strong> to create the request</li>
+                </ol>
+                
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Before Submitting</strong><br>
+                        Search existing requests first to avoid duplicates. If a similar request exists,
+                        vote for it instead of creating a new one.
+                    </div>
+                </div>
+                
+                <h3>Writing Good Requests</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Element</th>
+                            <th>Good Example</th>
+                            <th>Poor Example</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Title</strong></td>
+                            <td>"Add email notifications for job completion"</td>
+                            <td>"Notifications"</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Description</strong></td>
+                            <td>"Send email when restore completes, with database name and connection details"</td>
+                            <td>"Would be nice to have"</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+            
+            <!-- Voting Section -->
+            <section class="content-section" id="voting">
+                <h2>Voting</h2>
+                <p>
+                    Voting helps prioritize which features get implemented first. Each user gets 
+                    <strong>one vote total</strong> to use across all requests.
+                </p>
+                
+                <h3>How Voting Works</h3>
+                <ul class="feature-list">
+                    <li><strong>Single Vote</strong> — You have one vote to allocate to any request</li>
+                    <li><strong>Upvote</strong> — Click the thumbs-up icon to cast your vote</li>
+                    <li><strong>Move Vote</strong> — Voting on a different request moves your vote there</li>
+                    <li><strong>Remove Vote</strong> — Click the same request again to remove your vote</li>
+                    <li><strong>Vote Indicator</strong> — Green icon shows which request has your vote</li>
+                </ul>
+                
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>One Vote Only</strong><br>
+                        You can only vote for one feature request at a time. If you vote for a new request,
+                        your vote is automatically moved from the previous request. Choose wisely!
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Status Section -->
+            <section class="content-section" id="status">
+                <h2>Request Status</h2>
+                <p>
+                    Each request progresses through a workflow managed by administrators.
+                </p>
+                
+                <div class="state-cards">
+                    <div class="state-card" style="border-left-color: var(--color-success);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-success-bg); color: var(--color-success);">OPEN</span>
+                        </div>
+                        <p>New request awaiting review. Can receive votes.</p>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: var(--color-primary);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-primary-bg); color: var(--color-primary);">IN PROGRESS</span>
+                        </div>
+                        <p>Request approved and actively being worked on.</p>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: var(--color-muted);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-muted-bg); color: var(--color-muted);">COMPLETE</span>
+                        </div>
+                        <p>Feature has been implemented and released.</p>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: var(--color-danger);">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: var(--color-danger-bg); color: var(--color-danger);">DECLINED</span>
+                        </div>
+                        <p>Request was not approved. Admin response explains why.</p>
+                    </div>
+                </div>
+                
+                <h3>Admin Response</h3>
+                <p>
+                    When administrators update a request's status, they may include a response explaining
+                    the decision. This is especially important for declined requests, where the response
+                    explains why the feature won't be implemented.
+                </p>
+            </section>
+            
+            <!-- Notes Section -->
+            <section class="content-section" id="notes">
+                <h2>Adding Notes</h2>
+                <p>
+                    Click on any request to expand its details and view or add notes. Notes allow
+                    discussion about the request.
+                </p>
+                
+                <h3>Note Features</h3>
+                <ul class="feature-list">
+                    <li><strong>View Notes</strong> — Click a request row to expand and see all notes</li>
+                    <li><strong>Add Note</strong> — Type in the note field and submit to add your thoughts</li>
+                    <li><strong>Delete Note</strong> — You can delete your own notes</li>
+                    <li><strong>Timestamps</strong> — Notes show when they were posted and by whom</li>
+                </ul>
+            </section>
+            
+            <!-- Withdrawing Requests Section -->
+            <section class="content-section" id="withdraw">
+                <h2>Withdrawing Your Request</h2>
+                <p>
+                    If you submitted a request and no longer want it tracked, you can withdraw it.
+                </p>
+                
+                <h3>How to Withdraw</h3>
+                <ol class="feature-list">
+                    <li>Find your request in the list</li>
+                    <li>Click to expand the request details</li>
+                    <li>Click the <strong>"Withdraw"</strong> button</li>
+                    <li>Confirm the withdrawal</li>
+                </ol>
+                
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Permanent Action</strong><br>
+                        Withdrawing a request permanently deletes it along with all notes and votes.
+                        This cannot be undone.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Related Topics -->
+            <section class="content-section">
+                <h2>Related Topics</h2>
+                <div class="feature-grid">
+                    <a href="profile.html" class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                        </div>
+                        <h3>Profile & API Keys</h3>
+                        <p>Manage your account settings.</p>
+                    </a>
+                    <a href="dashboard.html" class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="7" height="7"/>
+                                <rect x="14" y="3" width="7" height="7"/>
+                                <rect x="14" y="14" width="7" height="7"/>
+                                <rect x="3" y="14" width="7" height="7"/>
+                            </svg>
+                        </div>
+                        <h3>Dashboard</h3>
+                        <p>Return to your main dashboard.</p>
+                    </a>
+                    <a href="../troubleshooting/index.html" class="feature-card">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                        </div>
+                        <h3>Troubleshooting</h3>
+                        <p>Get help with common issues.</p>
+                    </a>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="page-footer">
+        <div class="footer-container">
+            <div class="footer-content">
+                <p>&copy; 2026 pullDB. All rights reserved.</p>
+                <div class="footer-links">
+                    <a href="../../index.html">Help Home</a>
+                    <a href="../troubleshooting/index.html">Troubleshooting</a>
+                    <a href="../api/index.html">API Reference</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+    
+    <script src="../../js/help.js"></script>
+</body>
+</html>

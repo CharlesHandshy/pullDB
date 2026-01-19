@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # Upgrade script for pullDB
-# Applies database migrations and refreshes the virtualenv with the latest installed wheel.
+# Refreshes the virtualenv with the latest installed wheel.
+# Note: Schema upgrades are not supported - fresh installs only.
 
 INSTALL_PREFIX="${PULLDB_INSTALL_PREFIX:-/opt/pulldb.service}"
 WORKER_SERVICE="pulldb-worker.service"
@@ -20,17 +21,16 @@ fi
 
 # Parse arguments
 ASSUME_YES=0
-SKIP_MIGRATE=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --yes|-y)
             ASSUME_YES=1; shift ;;
-        --no-migrate)
-            SKIP_MIGRATE=1; shift ;;
         --help|-h)
-            echo "Usage: upgrade_pulldb.sh [--yes] [--no-migrate]"
+            echo "Usage: upgrade_pulldb.sh [--yes]"
             echo "  --yes         Non-interactive mode"
-            echo "  --no-migrate  Skip database migrations"
+            echo ""
+            echo "Note: Schema upgrades are not supported. This script only updates"
+            echo "the Python package. For schema changes, manual migration is required."
             exit 0 ;;
         *)
             error "Unknown option: $1"; exit 1 ;;
@@ -44,15 +44,6 @@ info "Stopping services..."
 systemctl stop $WORKER_SERVICE 2>/dev/null || true
 systemctl stop $API_SERVICE 2>/dev/null || true
 systemctl stop $WEB_SERVICE 2>/dev/null || true
-
-# Note: Schema updates are now handled automatically by postinst during dpkg install
-# The schema_migrations table tracks which files have been applied
-if [[ $SKIP_MIGRATE -eq 0 ]]; then
-    info "Schema updates are applied automatically during package installation."
-    info "To verify: mysql -e 'SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at'"
-else
-    warn "--no-migrate specified (schema updates happen during dpkg install anyway)"
-fi
 
 # Update virtual environment
 info "Updating virtual environment..."
@@ -87,4 +78,3 @@ info "Verify status:"
 info "  systemctl status $WORKER_SERVICE"
 info "  systemctl status $API_SERVICE"
 info "  systemctl status $WEB_SERVICE"
-info "  mysql -e 'SELECT * FROM pulldb_service.schema_migrations ORDER BY applied_at'"

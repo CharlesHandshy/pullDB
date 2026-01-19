@@ -16,7 +16,7 @@ class FeatureRequestStatus(str, Enum):
     OPEN = "open"
     IN_PROGRESS = "in_progress"
     COMPLETE = "complete"
-    REJECTED = "rejected"
+    DECLINED = "declined"
 
 
 # Primary admin UUID - only this user can change feature request status
@@ -76,4 +76,21 @@ class FeatureRequestStats(BaseModel):
     open: int = 0
     in_progress: int = 0
     complete: int = 0
-    rejected: int = 0
+    declined: int = 0
+
+
+class FeatureRequestNote(BaseModel):
+    """A note on a feature request."""
+    note_id: str
+    request_id: str
+    user_id: str
+    note_text: str
+    created_at: datetime
+    # Joined fields
+    username: Optional[str] = None
+    user_code: Optional[str] = None
+
+
+class NoteCreate(BaseModel):
+    """Input for creating a note."""
+    note_text: str = Field(..., min_length=1, max_length=2000)

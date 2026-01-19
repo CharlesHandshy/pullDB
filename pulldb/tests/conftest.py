@@ -38,7 +38,7 @@ LOCAL TESTING: If AWS secret resolves to unreachable host, override via:
 DATABASE AUTO-SETUP:
     Tests will automatically:
     1. Create the 'pulldb' database if it doesn't exist
-    2. Deploy the schema from schema/pulldb_service/*.sql
+    2. Deploy the schema from schema/pulldb_service/ (structured directories)
     3. Seed required settings
     4. Clean up (drop database) ONLY if it was created by tests
 
@@ -271,32 +271,38 @@ def _create_database_and_schema(
     _DATABASE_CREATED_BY_TESTS = True
 
     # Deploy schema files
+    # Schema layout: 00_tables/, 01_views/, 02_seed/, 03_users/
     # Schema lives in pulldb_service/ but we create test db named "pulldb"
     schema_dir = _PROJECT_ROOT / "schema" / "pulldb_service"
     mysql_client = shutil.which("mysql")
 
     if mysql_client and schema_dir.exists():
-        for sql_file in sorted(schema_dir.glob("*.sql")):
-            cmd = [mysql_client, "-u", user, "pulldb"]
-            if password:
-                cmd.extend([f"-p{password}"])
-            if socket:
-                cmd.extend(["--socket", socket])
-            else:
-                cmd.extend(["-h", host])
+        # Apply in order: tables -> views -> seed -> users
+        for subdir in ["00_tables", "01_views", "02_seed", "03_users"]:
+            subdir_path = schema_dir / subdir
+            if not subdir_path.exists():
+                continue
+            for sql_file in sorted(subdir_path.glob("*.sql")):
+                cmd = [mysql_client, "-u", user, "pulldb"]
+                if password:
+                    cmd.extend([f"-p{password}"])
+                if socket:
+                    cmd.extend(["--socket", socket])
+                else:
+                    cmd.extend(["-h", host])
 
-            with open(sql_file) as f:
-                result = subprocess.run(
-                    cmd,
-                    check=False,
-                    stdin=f,
-                    capture_output=True,
-                    text=True,
-                )
-                if result.returncode != 0:
-                    raise RuntimeError(
-                        f"Failed to deploy {sql_file.name}: {result.stderr}"
+                with open(sql_file) as f:
+                    result = subprocess.run(
+                        cmd,
+                        check=False,
+                        stdin=f,
+                        capture_output=True,
+                        text=True,
                     )
+                    if result.returncode != 0:
+                        raise RuntimeError(
+                            f"Failed to deploy {subdir}/{sql_file.name}: {result.stderr}"
+                        )
 
     return True
 
@@ -605,7 +611,9 @@ def ensure_database(
             f"Failed to ensure pulldb database exists: {e}\n\n"
             f"Manual setup:\n"
             f"  mysql -u {creds.username} -p -e 'CREATE DATABASE pulldb'\n"
-            f"  cat schema/pulldb_service/*.sql | mysql -u {creds.username} -p pulldb"
+            f"  for d in 00_tables 01_views 02_seed 03_users; do\n"
+            f"    cat schema/pulldb_service/$d/*.sql | mysql -u {creds.username} -p pulldb\n"
+            f"  done"
         )
 
     yield created

@@ -100,14 +100,13 @@ if [ -d "pulldb/binaries" ]; then
 fi
 
 # Copy schema files (required for fresh install)
+# New structure: 00_tables/, 01_views/, 02_seed/, 03_users/
 if [ -d "schema/pulldb_service" ]; then
     mkdir -p "$APP_ROOT/schema/pulldb_service"
-    cp schema/pulldb_service/*.sql "$APP_ROOT/schema/pulldb_service/"
-    echo "Included $(ls schema/pulldb_service/*.sql | wc -l) schema files"
+    cp -r schema/pulldb_service/* "$APP_ROOT/schema/pulldb_service/"
+    total_sql=$(find schema/pulldb_service -name '*.sql' | wc -l)
+    echo "Included ${total_sql} schema files in structured layout"
 fi
-
-# Note: Database migrations are now handled via numbered files in schema/pulldb_service/
-# The postinst script tracks applied files in the schema_migrations table
 
 # Copy documentation and example config files to package root
 # AWS-SETUP.md is optional (may be archived)

@@ -1,6 +1,6 @@
 # pullDB
 
-[![Release](https://img.shields.io/badge/version-1.0.1-blue)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/version-1.0.5-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-520%2B-success.svg)](pulldb/tests/)
@@ -44,10 +44,10 @@ pulldb status
 
 ```bash
 # Download the latest release
-wget https://github.com/CharlesHandshy/pullDB/releases/download/v1.0.0/pulldb_1.0.0_amd64.deb
+wget https://github.com/CharlesHandshy/pullDB/releases/download/v1.0.5/pulldb_1.0.5_amd64.deb
 
 # Install (creates user, venv, systemd services)
-sudo dpkg -i pulldb_1.0.0_amd64.deb
+sudo dpkg -i pulldb_1.0.5_amd64.deb
 
 # Configure
 sudo /opt/pulldb.service/scripts/configure-pulldb.sh
@@ -96,14 +96,28 @@ See [Getting Started](docs/hca/pages/getting-started.md) for complete installati
 ### User Commands
 
 ```bash
-pulldb customer=acme [dbhost=staging-01]  # Submit restore job
-pulldb status [job_id]                     # Check job status
+# Restore operations
+pulldb restore acme                        # Restore latest backup
+pulldb restore acme date=2026-01-15        # Restore specific date
+pulldb restore acme --custom-target=mytest # Custom database name
+pulldb restore qatemplate                  # Restore QA template
+
+# Job monitoring
+pulldb status [job_id]                     # Check job status (--rt for real-time)
 pulldb events <job_id> [--follow]          # Stream job events
-pulldb search <customer>                   # Search available backups
 pulldb history                             # View completed jobs
-pulldb cancel <job_id>                     # Cancel queued/running job
-pulldb hosts                               # List available database hosts
 pulldb profile <job_id>                    # View performance breakdown
+pulldb cancel <job_id>                     # Cancel queued/running job
+
+# Discovery
+pulldb search <customer>                   # Search available backups
+pulldb list <customer>                     # List backup dates
+pulldb hosts                               # List available database hosts
+
+# Account management  
+pulldb register                            # Register new account
+pulldb setpass                             # Set/change password
+pulldb request-host-key                    # Request host authorization
 ```
 
 ### Admin Commands
@@ -111,10 +125,16 @@ pulldb profile <job_id>                    # View performance breakdown
 ```bash
 pulldb-admin settings list                 # View configuration
 pulldb-admin jobs list --active            # View active jobs
-pulldb-admin cleanup --dry-run             # Preview database cleanup
+pulldb-admin jobs cancel <job_id>          # Cancel any job
+pulldb-admin cleanup staging               # Cleanup staging databases
+pulldb-admin run-retention-cleanup         # Process expired databases
 pulldb-admin hosts list                    # View database hosts
+pulldb-admin hosts test <hostname>         # Test host connection
 pulldb-admin users list                    # List all users
 pulldb-admin users enable <username>       # Enable user access
+pulldb-admin keys list --pending           # View pending API keys
+pulldb-admin keys approve <key_id>         # Approve API key
+pulldb-admin disallow add <username>       # Block username
 ```
 
 ## Documentation
@@ -192,4 +212,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-*pullDB v1.0.0 - January 2026*
+*pullDB v1.0.5 - January 2026*

@@ -93,12 +93,14 @@
                     <a href="restore.html" class="sidebar-link active">Restore Workflow</a>
                     <a href="jobs.html" class="sidebar-link">Jobs Management</a>
                     <a href="profile.html" class="sidebar-link">Profile & API Keys</a>
+                    <a href="requests.html" class="sidebar-link">Feature Requests</a>
+                    <a href="manager.html" class="sidebar-link">Manager Interface</a>
                     <a href="admin.html" class="sidebar-link">Admin Panel</a>
                 </div>
                 <div class="sidebar-section">
                     <div class="sidebar-heading">On This Page</div>
                     <a href="#overview" class="sidebar-link">Overview</a>
-                    <a href="#step1" class="sidebar-link">Step 1: Customer</a>
+                    <a href="#step1" class="sidebar-link">Step 1: Source</a>
                     <a href="#step2" class="sidebar-link">Step 2: Backup</a>
                     <a href="#step3" class="sidebar-link">Step 3: Options</a>
                     <a href="#step4" class="sidebar-link">Step 4: Confirm</a>
@@ -142,7 +144,7 @@
                 <div class="steps-visual">
                     <div class="step-item">
                         <div class="step-number">1</div>
-                        <div class="step-label">Customer</div>
+                        <div class="step-label">Source</div>
                     </div>
                     <div class="step-connector"></div>
                     <div class="step-item">
@@ -164,13 +166,30 @@
             
             <!-- Step 1 Section -->
             <section class="content-section" id="step1">
-                <h2>Step 1: Select Customer</h2>
+                <h2>Step 1: Select Source</h2>
                 <p>
-                    Enter the customer ID whose database you want to restore. The system will verify
-                    that backups exist for this customer.
+                    Choose what to restore: a customer database or the QA template. Use the tabs 
+                    at the top of the form to switch between modes.
                 </p>
                 
-                <h3>Customer ID Field</h3>
+                <h3>Restore Mode Tabs</h3>
+                <div class="state-cards" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="state-card">
+                        <div class="state-header">
+                            <span class="state-badge complete">Customer</span>
+                        </div>
+                        <p>Restore a specific customer's database from their backup.</p>
+                    </div>
+                    <div class="state-card">
+                        <div class="state-header">
+                            <span class="state-badge queued">QA Template</span>
+                        </div>
+                        <p>Restore the shared QA template database for testing.</p>
+                    </div>
+                </div>
+                
+                <h3>Customer Mode</h3>
+                <p>Enter the customer ID whose database you want to restore:</p>
                 <ul class="feature-list">
                     <li><strong>Auto-complete</strong> — Start typing to see matching customer IDs</li>
                     <li><strong>Validation</strong> — The system checks if backups exist before proceeding</li>
@@ -187,6 +206,17 @@
                         Customer IDs are case-sensitive. Make sure to enter them exactly as they appear in your backup system.
                     </div>
                 </div>
+                
+                <h3>QA Template Mode</h3>
+                <p>
+                    The QA template is a pre-sanitized database for testing and development. It contains 
+                    representative data without sensitive customer information.
+                </p>
+                <ul class="feature-list">
+                    <li><strong>No Customer Selection</strong> — Skip straight to backup selection</li>
+                    <li><strong>Pre-Sanitized Data</strong> — No post-restore scripts needed</li>
+                    <li><strong>Target Name</strong> — Always restores to <code>{user_code}qatemplate</code></li>
+                </ul>
                 
                 <h3>What Happens</h3>
                 <p>
@@ -279,6 +309,62 @@
                     so you can skip this step for standard restores.
                 </p>
                 
+                <h3>Target Database Name</h3>
+                <p>
+                    The target database name is displayed in the preview callout once you select a backup.
+                    By default, names are auto-generated:
+                </p>
+                
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Mode</th>
+                            <th>Format</th>
+                            <th>Example</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Customer (no suffix)</td>
+                            <td><code>{user_code}{customer}</code></td>
+                            <td><code>jsmithacmecorp</code></td>
+                        </tr>
+                        <tr>
+                            <td>Customer (with suffix)</td>
+                            <td><code>{user_code}{customer}{suffix}</code></td>
+                            <td><code>jsmithacmecorpdev</code></td>
+                        </tr>
+                        <tr>
+                            <td>QA Template</td>
+                            <td><code>{user_code}qatemplate</code></td>
+                            <td><code>jsmithqatemplate</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>Custom Target Name</h3>
+                <p>
+                    Click the <strong>"Custom"</strong> checkbox to override the auto-generated name with your own:
+                </p>
+                <ul class="feature-list">
+                    <li><strong>Pattern</strong> — Lowercase letters only (a-z)</li>
+                    <li><strong>Length</strong> — 1 to 51 characters maximum</li>
+                    <li><strong>Validation</strong> — Real-time feedback on invalid characters</li>
+                </ul>
+                
+                <div class="warning-callout">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>No Suffix with Custom Target</strong><br>
+                        When using a custom target name, the suffix field is hidden. Include any suffix 
+                        directly in your custom name (e.g., <code>myprojectdev</code>).
+                    </div>
+                </div>
+                
                 <h3>Available Options</h3>
                 
                 <table class="param-table">
@@ -296,24 +382,19 @@
                             <td>Default configured host</td>
                         </tr>
                         <tr>
-                            <td><code>Database Name</code></td>
-                            <td>Name for the restored database</td>
-                            <td><code>{customer}_staging</code></td>
+                            <td><code>Suffix</code></td>
+                            <td>1-3 letter suffix appended to database name</td>
+                            <td><em>None</em></td>
                         </tr>
                         <tr>
-                            <td><code>Drop Existing</code></td>
+                            <td><code>Custom</code></td>
+                            <td>Toggle custom target name input</td>
+                            <td>Off (auto-generated)</td>
+                        </tr>
+                        <tr>
+                            <td><code>Overwrite</code></td>
                             <td>Drop database if it already exists</td>
-                            <td>Enabled</td>
-                        </tr>
-                        <tr>
-                            <td><code>Run Post-SQL</code></td>
-                            <td>Execute post-restore SQL scripts</td>
-                            <td>Enabled</td>
-                        </tr>
-                        <tr>
-                            <td><code>Priority</code></td>
-                            <td>Job queue priority (Admin only)</td>
-                            <td>Normal</td>
+                            <td>Off</td>
                         </tr>
                     </tbody>
                 </table>
@@ -325,8 +406,8 @@
                         <line x1="12" y1="17" x2="12.01" y2="17"/>
                     </svg>
                     <div>
-                        <strong>Drop Existing Warning</strong><br>
-                        When "Drop Existing" is enabled, any existing database with the target name will be 
+                        <strong>Overwrite Warning</strong><br>
+                        When "Overwrite" is enabled, any existing database with the target name will be 
                         permanently deleted. Make sure you don't have important data in the target database.
                     </div>
                 </div>

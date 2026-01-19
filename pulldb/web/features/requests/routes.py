@@ -31,7 +31,7 @@ async def requests_page(
         "open": 0,
         "in_progress": 0,
         "complete": 0,
-        "rejected": 0,
+        "declined": 0,
     }
     
     try:
@@ -42,7 +42,7 @@ async def requests_page(
             "open": stats_obj.open,
             "in_progress": stats_obj.in_progress,
             "complete": stats_obj.complete,
-            "rejected": stats_obj.rejected,
+            "declined": stats_obj.declined,
         }
     except Exception:
         pass
@@ -276,6 +276,147 @@ async def update_request_api(
             "status": result.status.value,
             "admin_response": result.admin_response,
         }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.delete("/api/delete/{request_id}")
+async def delete_request_api(
+    request_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> dict:
+    """Delete/withdraw a feature request (owner or admin only)."""
+    from pulldb.worker.feature_request_service import FeatureRequestService
+    
+    try:
+        service = FeatureRequestService(state.pool)
+        
+        # Get the request to check ownership
+        request_obj = await service.get_request(request_id, user.user_id)
+        if not request_obj:
+            return {"error": "Feature request not found"}
+        
+        # Check authorization: owner or admin
+        is_owner = request_obj.submitted_by_user_id == user.user_id
+        is_admin = user.role.value == 'admin'
+        
+        if not is_owner and not is_admin:
+            return {"error": "You can only withdraw your own feature requests"}
+        
+        # Delete the request
+        deleted = await service.delete_request(request_id)
+        
+        if not deleted:
+            return {"error": "Failed to delete feature request"}
+        
+        return {"success": True}
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/api/notes/{request_id}")
+async def get_notes_api(
+    request_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> dict:
+    """Get all notes for a feature request."""
+    from pulldb.worker.feature_request_service import FeatureRequestService
+    
+    try:
+        service = FeatureRequestService(state.pool)
+        notes = await service.list_notes(request_id)
+        
+        return {
+            "notes": [
+                {
+                    "note_id": n.note_id,
+                    "user_id": n.user_id,
+                    "note_text": n.note_text,
+                    "created_at": n.created_at.isoformat() if n.created_at else None,
+                    "username": n.username,
+                    "user_code": n.user_code,
+                    "is_mine": n.user_id == user.user_id,
+                }
+                for n in notes
+            ],
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.post("/api/notes/{request_id}")
+async def add_note_api(
+    request_id: str,
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> dict:
+    """Add a note to a feature request."""
+    from pulldb.domain.feature_request import NoteCreate
+    from pulldb.worker.feature_request_service import FeatureRequestService
+    
+    try:
+        body = await request.json()
+        note_text = body.get("note_text", "").strip()
+        
+        if not note_text:
+            return {"error": "Note text is required"}
+        
+        if len(note_text) > 2000:
+            return {"error": "Note must be at most 2000 characters"}
+        
+        service = FeatureRequestService(state.pool)
+        result = await service.add_note(
+            request_id,
+            user.user_id,
+            NoteCreate(note_text=note_text),
+        )
+        
+        if not result:
+            return {"error": "Feature request not found"}
+        
+        return {
+            "success": True,
+            "note": {
+                "note_id": result.note_id,
+                "user_id": result.user_id,
+                "note_text": result.note_text,
+                "created_at": result.created_at.isoformat() if result.created_at else None,
+                "username": result.username,
+                "user_code": result.user_code,
+                "is_mine": True,
+            },
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.delete("/api/notes/{note_id}")
+async def delete_note_api(
+    note_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> dict:
+    """Delete a note (own notes only, unless admin)."""
+    from pulldb.worker.feature_request_service import FeatureRequestService
+    
+    try:
+        service = FeatureRequestService(state.pool)
+        
+        # Admins can delete any note, users can only delete their own
+        user_id_check = None if user.role == "admin" else user.user_id
+        deleted = await service.delete_note(note_id, user_id_check)
+        
+        if not deleted:
+            return {"error": "Note not found or not authorized"}
+        
+        return {"success": True}
         
     except Exception as e:
         return {"error": str(e)}

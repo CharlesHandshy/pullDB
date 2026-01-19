@@ -1,6 +1,6 @@
 # pullDB REST API Reference
 
-> **Complete API documentation for pullDB v1.0.0**
+> **Complete API documentation for pullDB v1.0.1**
 >
 > The pullDB API is a FastAPI-based REST service running on port **8080** (combined API + Web UI).
 > In web-only mode, the service runs on port **8000**.
@@ -12,9 +12,12 @@
 - [Base URL](#base-url)
 - [Health & Status](#health--status)
 - [Jobs](#jobs)
+- [Database Lifecycle](#database-lifecycle)
 - [Users](#users)
 - [Hosts](#hosts)
 - [Backups](#backups)
+- [Dropdown Endpoints](#dropdown-endpoints)
+- [Feature Requests](#feature-requests)
 - [Manager Endpoints](#manager-endpoints)
 - [Admin Endpoints](#admin-endpoints)
 - [Error Handling](#error-handling)
@@ -125,7 +128,10 @@ Submit a new restore job.
 | `env` | string | ❌ | S3 environment: `staging` or `prod` |
 | `overwrite` | boolean | ❌ | Overwrite existing database (default: false) |
 | `suffix` | string | ❌ | 1-3 lowercase letter suffix for target database (pattern: `^[a-z]{1,3}$`) |
+| `custom_target` | string | ❌ | Custom target database name (1-51 lowercase letters, pattern: `^[a-z]{1,51}$`) |
 | `backup_path` | string | ❌ | Full S3 path to specific backup |
+
+> **Note:** `suffix` and `custom_target` cannot be used together. If using `custom_target`, include any suffix in the target name directly.
 
 **Example - Customer Restore:**
 ```bash
@@ -470,6 +476,92 @@ curl "http://localhost:8080/api/jobs/search?q=jsmith&limit=10"
 
 ---
 
+## Database Lifecycle
+
+These endpoints manage the retention lifecycle of restored databases.
+
+### POST /api/jobs/{job_id}/lock
+
+Lock a job's database to prevent automatic cleanup.
+
+Locked databases are protected from retention cleanup and overwrites.
+Users can only lock their own jobs. Admins can lock any job.
+
+**Request Body:**
+```json
+{
+  "reason": "Production testing - do not delete"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Database locked successfully",
+  "job_id": "8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f",
+  "expires_at": "2026-02-02T15:30:00Z",
+  "locked_at": "2026-01-02T15:30:00Z",
+  "locked_by": "jsmith"
+}
+```
+
+---
+
+### POST /api/jobs/{job_id}/unlock
+
+Unlock a job's database to allow cleanup.
+
+Removes lock protection, making the database eligible for retention cleanup and overwrites.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Database unlocked successfully",
+  "job_id": "8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f",
+  "expires_at": "2026-02-02T15:30:00Z",
+  "locked_at": null,
+  "locked_by": null
+}
+```
+
+---
+
+### POST /api/jobs/{job_id}/extend
+
+Extend the retention period for a job's database.
+
+Adds additional months to the job's expiration date.
+Users can only extend their own jobs. Admins can extend any job.
+
+**Request Body:**
+```json
+{
+  "months": 1
+}
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `months` | integer | 1 | Months to extend (1-12) |
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Retention extended by 1 month(s)",
+  "job_id": "8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f",
+  "expires_at": "2026-03-02T15:30:00Z",
+  "locked_at": null,
+  "locked_by": null
+}
+```
+
+---
+
 ## Users
 
 ### GET /api/users/{username}
@@ -643,96 +735,6 @@ curl "http://localhost:8080/api/customers/search?q=acme"
 
 ---
 
-## Manager Endpoints
-
-These endpoints require `MANAGER` or `ADMIN` role.
-
-### GET /api/manager/team
-
-List team members and their jobs.
-
-```bash
-curl -H "X-Pulldb-User: manager1" "http://localhost:8080/api/manager/team"
-```
-
----
-
-### GET /api/manager/team/distinct
-
-Get distinct user codes in the manager's team.
-
----
-
-## Admin Endpoints
-
-These endpoints require `ADMIN` role.
-
-### POST /api/admin/jobs/bulk-cancel
-
-Bulk cancel jobs matching filters.
-
-**Request Body:**
-```json
-{
-  "view": "active",
-  "filter_status": "queued",
-  "filter_dbhost": "dev-mysql-01",
-  "filter_user_code": "jsmith",
-  "filter_target": "acme",
-  "confirmation": "CANCEL ALL"
-}
-```
-
-### POST /api/admin/prune-logs
-
-Prune old job event logs from database.
-
-### POST /api/admin/cleanup-staging
-
-Clean up orphaned staging databases.
-
-### GET /api/admin/orphan-databases
-
-List orphaned staging databases across all hosts.
-
-### GET /api/admin/orphan-databases/paginated
-
-Paginated list of orphan databases for LazyTable widget.
-
-### GET /api/admin/orphan-databases/{dbhost}/{db_name}/meta
-
-Get metadata from `pullDB` table inside an orphan database.
-
-### DELETE /api/admin/orphan-databases/{dbhost}/{db_name}
-
-Delete a single orphan database.
-
-### POST /api/admin/delete-orphans
-
-Bulk delete orphan databases.
-
-### POST /api/admin/hosts/{host_id}/rotate-secret
-
-Rotate MySQL credentials for a database host. Performs atomic 7-phase rotation:
-
-1. Fetch current credentials from AWS Secrets Manager
-2. Validate current credentials work on MySQL
-3. Generate new secure password
-4. Update MySQL user password
-5. Verify new password works
-6. Update AWS Secrets Manager
-7. Final verification (AWS → MySQL round-trip)
-
-**Request Body:**
-```json
-{
-  "new_password": null,
-  "password_length": 32
-}
-```
-
----
-
 ## Dropdown Endpoints
 
 These endpoints power the web UI autocomplete dropdowns. Each returns a standard response format:
@@ -766,6 +768,578 @@ Search hosts for dropdown. **Minimum 3 characters required.**
 
 ```bash
 curl "http://localhost:8080/api/dropdown/hosts?q=dev&limit=10"
+```
+
+---
+
+## Feature Requests
+
+Endpoints for the feature request voting system.
+
+### GET /api/feature-requests
+
+List all feature requests.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `status` | string | - | Filter by status: new, under-review, planned, in-progress, done, declined |
+| `mine_only` | boolean | false | Only requests created by current user |
+
+**Response:**
+```json
+{
+  "feature_requests": [
+    {
+      "id": "fr_abc123",
+      "title": "Dark mode for dashboard",
+      "description": "Add a dark theme option...",
+      "status": "under-review",
+      "vote_count": 15,
+      "created_by": "jsmith",
+      "created_at": "2026-01-01T10:00:00Z",
+      "has_voted": true
+    }
+  ],
+  "total": 42
+}
+```
+
+---
+
+### GET /api/feature-requests/stats
+
+Get statistics about feature requests.
+
+**Response:**
+```json
+{
+  "total": 42,
+  "by_status": {
+    "new": 10,
+    "under-review": 8,
+    "planned": 5,
+    "in-progress": 3,
+    "done": 12,
+    "declined": 4
+  }
+}
+```
+
+---
+
+### GET /api/feature-requests/{request_id}
+
+Get a single feature request with full details.
+
+**Response:**
+```json
+{
+  "id": "fr_abc123",
+  "title": "Dark mode for dashboard",
+  "description": "Add a dark theme option...",
+  "status": "under-review",
+  "vote_count": 15,
+  "created_by": "jsmith",
+  "created_at": "2026-01-01T10:00:00Z",
+  "updated_at": "2026-01-05T14:00:00Z",
+  "has_voted": true,
+  "notes": [
+    {
+      "id": "note_xyz",
+      "text": "This is being considered for v1.2",
+      "created_by": "admin",
+      "created_at": "2026-01-05T14:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### POST /api/feature-requests
+
+Create a new feature request.
+
+**Request Body:**
+```json
+{
+  "title": "Export job history to CSV",
+  "description": "Allow exporting job history with filters applied..."
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": "fr_def456",
+  "title": "Export job history to CSV",
+  "description": "Allow exporting job history...",
+  "status": "new",
+  "vote_count": 1,
+  "created_by": "jsmith",
+  "created_at": "2026-01-15T10:00:00Z"
+}
+```
+
+---
+
+### PATCH /api/feature-requests/{request_id}
+
+Update a feature request. Users can edit their own requests. Admins can edit any request.
+
+**Request Body:**
+```json
+{
+  "title": "Updated title",
+  "description": "Updated description...",
+  "status": "under-review"
+}
+```
+
+> **Note:** Only admins can change the `status` field.
+
+---
+
+### POST /api/feature-requests/{request_id}/vote
+
+Toggle vote on a feature request (vote or unvote).
+
+**Response:**
+```json
+{
+  "id": "fr_abc123",
+  "vote_count": 16,
+  "has_voted": true
+}
+```
+
+---
+
+### DELETE /api/feature-requests/{request_id}
+
+Delete a feature request. Users can delete their own requests. Admins can delete any request.
+
+**Response:** `204 No Content`
+
+---
+
+## Manager Endpoints
+
+These endpoints require `MANAGER` or `ADMIN` role.
+
+### GET /api/manager/team
+
+List team members with pagination and filtering.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | integer | 0 | Page number (0-indexed) |
+| `pageSize` | integer | 50 | Items per page |
+| `sortColumn` | string | username | Sort by: username, user_code, active_jobs |
+| `sortDirection` | string | asc | Sort direction: asc or desc |
+| `filter_username` | string | - | Filter by username (substring) |
+| `filter_user_code` | string | - | Filter by user code (substring) |
+| `filter_status` | string | - | Filter by status: enabled, disabled |
+
+**Response:**
+```json
+{
+  "rows": [
+    {
+      "user_id": "usr_abc123",
+      "username": "jsmith",
+      "user_code": "JSMITH",
+      "active_jobs": 2,
+      "disabled_at": null,
+      "password_reset_pending": false
+    }
+  ],
+  "totalCount": 15,
+  "filteredCount": 15,
+  "page": 0,
+  "pageSize": 50
+}
+```
+
+---
+
+### GET /api/manager/team/distinct
+
+Get distinct values for team member fields (for filter dropdowns).
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | string | Column to get distinct values: username, user_code, status |
+
+**Response:**
+```json
+{
+  "column": "status",
+  "values": ["enabled", "disabled"]
+}
+```
+
+---
+
+### GET /api/manager/team/{user_id}/jobs
+
+Get jobs for a specific team member.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `view` | string | active | View: active or history |
+| `limit` | integer | 50 | Max results |
+
+**Response:**
+```json
+{
+  "user_id": "usr_abc123",
+  "username": "jsmith",
+  "jobs": [
+    {
+      "id": "8b4c4a3a-...",
+      "target": "jsmith_acme",
+      "status": "running",
+      "submitted_at": "2026-01-15T10:00:00Z"
+    }
+  ],
+  "total": 3
+}
+```
+
+---
+
+## Admin Endpoints
+
+These endpoints require `ADMIN` role.
+
+### POST /api/admin/jobs/bulk-cancel
+
+Bulk cancel jobs matching filters. Requires typing `CANCEL ALL` as confirmation.
+
+**Request Body:**
+```json
+{
+  "view": "active",
+  "filter_status": "queued",
+  "filter_dbhost": "dev-mysql-01",
+  "filter_user_code": "jsmith",
+  "filter_target": "acme",
+  "confirmation": "CANCEL ALL"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Canceled 5 job(s), skipped 0",
+  "canceled_job_ids": ["8b4c4a3a-...", "9c5d5b4b-...", ...]
+}
+```
+
+---
+
+### POST /api/admin/prune-logs
+
+Prune old job event logs from database.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `days` | integer | 30 | Delete events older than N days |
+| `dry_run` | boolean | true | Preview only (default) |
+
+**Response:**
+```json
+{
+  "deleted_count": 15432,
+  "dry_run": false,
+  "days": 30
+}
+```
+
+---
+
+### POST /api/admin/cleanup-staging
+
+Clean up orphaned staging databases matching the `*_<uuid>` pattern.
+
+**Request Body:**
+```json
+{
+  "dbhost": "localhost",
+  "older_than_hours": 24,
+  "dry_run": true
+}
+```
+
+---
+
+### GET /api/admin/orphan-databases
+
+List orphaned staging databases across all hosts.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `dbhost` | string | - | Filter to specific host |
+
+**Response:**
+```json
+{
+  "orphans": [
+    {
+      "database_name": "jsmith_acme_8b4c4a3a",
+      "target_name": "jsmith_acme",
+      "job_id_prefix": "8b4c4a3a",
+      "dbhost": "localhost",
+      "size_mb": 1234.5
+    }
+  ],
+  "total": 3,
+  "scanned_hosts": 2,
+  "errors": []
+}
+```
+
+---
+
+### GET /api/admin/orphan-databases/paginated
+
+Paginated list of orphan databases for LazyTable widget.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | integer | 0 | Page number (0-indexed) |
+| `pageSize` | integer | 50 | Items per page |
+| `sortColumn` | string | database_name | Sort column |
+| `sortDirection` | string | asc | Sort direction |
+| `filter_host` | string | - | Filter by host |
+| `filter_target` | string | - | Filter by target name |
+
+---
+
+### GET /api/admin/orphan-databases/{dbhost}/{db_name}/meta
+
+Get metadata from `pullDB` table inside an orphan database.
+
+**Response:**
+```json
+{
+  "exists": true,
+  "metadata": {
+    "job_id": "8b4c4a3a-85a1-4da2-9f3e-1a2b3c4d5e6f",
+    "created_at": "2026-01-01T10:00:00Z",
+    "customer": "acme_pest"
+  }
+}
+```
+
+---
+
+### DELETE /api/admin/orphan-databases/{dbhost}/{db_name}
+
+Delete a single orphan database.
+
+**Response:**
+```json
+{
+  "success": true,
+  "database_name": "jsmith_acme_8b4c4a3a",
+  "dbhost": "localhost"
+}
+```
+
+---
+
+### POST /api/admin/delete-orphans
+
+Bulk delete orphan databases after admin review.
+
+**Request Body:**
+```json
+{
+  "dbhost": "localhost",
+  "database_names": ["jsmith_acme_8b4c4a3a", "alice_test_9c5d5b4b"],
+  "admin_user": "charles"
+}
+```
+
+**Response:**
+```json
+{
+  "requested": 2,
+  "succeeded": 2,
+  "failed": 0,
+  "results": {
+    "jsmith_acme_8b4c4a3a": true,
+    "alice_test_9c5d5b4b": true
+  }
+}
+```
+
+---
+
+### POST /api/admin/hosts/{host_id}/rotate-secret
+
+Rotate MySQL credentials for a database host. Performs atomic 7-phase rotation:
+
+1. Fetch current credentials from AWS Secrets Manager
+2. Validate current credentials work on MySQL
+3. Generate new secure password
+4. Update MySQL user password
+5. Verify new password works
+6. Update AWS Secrets Manager
+7. Final verification (AWS → MySQL round-trip)
+
+**Request Body:**
+```json
+{
+  "new_password": null,
+  "password_length": 32
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "hostname": "localhost",
+  "phases_completed": 7,
+  "message": "Secret rotated successfully"
+}
+```
+
+---
+
+### GET /api/admin/keys/pending
+
+List API keys awaiting approval.
+
+**Response:**
+```json
+{
+  "keys": [
+    {
+      "key_id": "key_abc123...",
+      "username": "jsmith",
+      "hostname": "dev-workstation",
+      "created_at": "2026-01-05T14:30:00Z"
+    }
+  ],
+  "total": 2
+}
+```
+
+---
+
+### POST /api/admin/keys/approve
+
+Approve a pending API key.
+
+**Request Body:**
+```json
+{
+  "key_id": "key_abc123..."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "key_id": "key_abc123...",
+  "username": "jsmith",
+  "hostname": "dev-workstation"
+}
+```
+
+---
+
+### POST /api/admin/keys/revoke
+
+Revoke an API key.
+
+**Request Body:**
+```json
+{
+  "key_id": "key_abc123...",
+  "reason": "Security incident"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "key_id": "key_abc123...",
+  "message": "Key revoked"
+}
+```
+
+---
+
+### POST /api/admin/keys/reactivate
+
+Reactivate a previously revoked API key.
+
+**Request Body:**
+```json
+{
+  "key_id": "key_abc123..."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "key_id": "key_abc123...",
+  "status": "approved"
+}
+```
+
+---
+
+### GET /api/admin/users/{user_id}/keys
+
+List all API keys for a specific user.
+
+**Response:**
+```json
+{
+  "user_id": "usr_abc123",
+  "username": "jsmith",
+  "keys": [
+    {
+      "key_id": "key_abc123...",
+      "hostname": "dev-workstation",
+      "status": "approved",
+      "created_at": "2026-01-01T10:00:00Z",
+      "last_used_at": "2026-01-15T14:30:00Z"
+    },
+    {
+      "key_id": "key_def456...",
+      "hostname": "laptop",
+      "status": "pending",
+      "created_at": "2026-01-15T10:00:00Z",
+      "last_used_at": null
+    }
+  ]
+}
 ```
 
 ---

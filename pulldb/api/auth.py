@@ -552,7 +552,13 @@ def validate_job_submission_user(
         return
 
     # Admins can submit jobs for anyone
-    if authenticated_user.is_admin:
+    # Check both is_admin flag and role for backwards compatibility
+    from pulldb.domain.models import UserRole
+    is_admin = (
+        authenticated_user.is_admin 
+        or authenticated_user.role in (UserRole.ADMIN, UserRole.SERVICE)
+    )
+    if is_admin:
         return
 
     # Non-admins can only submit jobs for themselves

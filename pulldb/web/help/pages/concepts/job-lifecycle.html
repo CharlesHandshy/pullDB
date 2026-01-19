@@ -122,6 +122,7 @@
                     <a href="#states" class="sidebar-link">Job States</a>
                     <a href="#phases" class="sidebar-link">Processing Phases</a>
                     <a href="#transitions" class="sidebar-link">State Transitions</a>
+                    <a href="#lifecycle" class="sidebar-link">Database Lifecycle</a>
                     <a href="#failure-modes" class="sidebar-link">Failure Modes</a>
                 </div>
             </nav>
@@ -155,21 +156,37 @@
                     <div class="mermaid" data-mermaid="stateDiagram-v2
     [*] --> QUEUED: Submit job
     QUEUED --> RUNNING: Worker picks up
-    RUNNING --> COMPLETE: Success
+    RUNNING --> DEPLOYED: Success
     RUNNING --> FAILED: Error
     QUEUED --> CANCELED: User cancels
-    RUNNING --> CANCELED: User cancels
-    COMPLETE --> [*]
+    RUNNING --> CANCELING: User cancels
+    CANCELING --> CANCELED: Cleanup done
+    DEPLOYED --> EXPIRED: Retention exceeded
+    DEPLOYED --> SUPERSEDED: Newer restore
+    DEPLOYED --> COMPLETE: User done
+    EXPIRED --> DELETING: Cleanup
+    SUPERSEDED --> DELETING: Auto-cleanup
+    COMPLETE --> DELETING: User delete
+    DELETING --> DELETED: DB dropped
+    DELETED --> [*]
     FAILED --> [*]
     CANCELED --> [*]">
 stateDiagram-v2
     [*] --> QUEUED: Submit job
     QUEUED --> RUNNING: Worker picks up
-    RUNNING --> COMPLETE: Success
+    RUNNING --> DEPLOYED: Success
     RUNNING --> FAILED: Error
     QUEUED --> CANCELED: User cancels
-    RUNNING --> CANCELED: User cancels
-    COMPLETE --> [*]
+    RUNNING --> CANCELING: User cancels
+    CANCELING --> CANCELED: Cleanup done
+    DEPLOYED --> EXPIRED: Retention exceeded
+    DEPLOYED --> SUPERSEDED: Newer restore
+    DEPLOYED --> COMPLETE: User done
+    EXPIRED --> DELETING: Cleanup
+    SUPERSEDED --> DELETING: Auto-cleanup
+    COMPLETE --> DELETING: User delete
+    DELETING --> DELETED: DB dropped
+    DELETED --> [*]
     FAILED --> [*]
     CANCELED --> [*]
                     </div>
@@ -180,6 +197,7 @@ stateDiagram-v2
             <section class="content-section" id="states">
                 <h2>Job States</h2>
                 
+                <h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 16px; color: var(--color-text-secondary);">Active States</h3>
                 <div class="state-cards">
                     <div class="state-card queued">
                         <div class="state-header">
@@ -203,14 +221,61 @@ stateDiagram-v2
                         </div>
                     </div>
                     
+                    <div class="state-card" style="border-left-color: #f59e0b;">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: #fef3c7; color: #92400e;">CANCELING</span>
+                            <span class="state-emoji">🛑</span>
+                        </div>
+                        <p>User requested cancellation. Worker is cleaning up resources before marking canceled.</p>
+                        <div class="state-meta">
+                            <span><strong>Duration:</strong> Seconds to 1 minute</span>
+                        </div>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: #10b981;">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: #d1fae5; color: #065f46;">DEPLOYED</span>
+                            <span class="state-emoji">🚀</span>
+                        </div>
+                        <p>Database is live and ready for use. This is the primary working state.</p>
+                        <div class="state-meta">
+                            <span><strong>Duration:</strong> Until expiration or user action</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <h3 style="margin-top: 32px; margin-bottom: 16px; font-size: 16px; color: var(--color-text-secondary);">Terminal States</h3>
+                <div class="state-cards">
                     <div class="state-card complete">
                         <div class="state-header">
                             <span class="state-badge complete">COMPLETE</span>
                             <span class="state-emoji">✅</span>
                         </div>
-                        <p>Job finished successfully. Your database is ready to use.</p>
+                        <p>User marked database as done. Ready for cleanup.</p>
                         <div class="state-meta">
-                            <span><strong>Next step:</strong> Connect to your database</span>
+                            <span><strong>Next step:</strong> Database will be deleted</span>
+                        </div>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: #f97316;">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: #ffedd5; color: #9a3412;">EXPIRED</span>
+                            <span class="state-emoji">⏰</span>
+                        </div>
+                        <p>Retention period exceeded. Database will be automatically deleted.</p>
+                        <div class="state-meta">
+                            <span><strong>Prevention:</strong> Lock database or extend retention</span>
+                        </div>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: #8b5cf6;">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: #ede9fe; color: #5b21b6;">SUPERSEDED</span>
+                            <span class="state-emoji">🔄</span>
+                        </div>
+                        <p>A newer restore of the same database replaced this one.</p>
+                        <div class="state-meta">
+                            <span><strong>Automatic:</strong> Old database cleaned up</span>
                         </div>
                     </div>
                     
@@ -233,6 +298,28 @@ stateDiagram-v2
                         <p>User canceled the job. Resources have been cleaned up.</p>
                         <div class="state-meta">
                             <span><strong>Next step:</strong> Submit a new job if needed</span>
+                        </div>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: #64748b;">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: #f1f5f9; color: #475569;">DELETING</span>
+                            <span class="state-emoji">🗑️</span>
+                        </div>
+                        <p>Database is being dropped. Brief transitional state.</p>
+                        <div class="state-meta">
+                            <span><strong>Duration:</strong> Seconds</span>
+                        </div>
+                    </div>
+                    
+                    <div class="state-card" style="border-left-color: #94a3b8;">
+                        <div class="state-header">
+                            <span class="state-badge" style="background: #e2e8f0; color: #334155;">DELETED</span>
+                            <span class="state-emoji">🪦</span>
+                        </div>
+                        <p>Database has been dropped. Job record retained for history.</p>
+                        <div class="state-meta">
+                            <span><strong>Final:</strong> No further actions possible</span>
                         </div>
                     </div>
                 </div>
@@ -361,7 +448,7 @@ flowchart LR
                         </tr>
                         <tr>
                             <td><span class="state-badge running" style="font-size: 11px;">RUNNING</span></td>
-                            <td><span class="state-badge complete" style="font-size: 11px;">COMPLETE</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #d1fae5; color: #065f46;">DEPLOYED</span></td>
                             <td>All phases finish successfully</td>
                         </tr>
                         <tr>
@@ -376,8 +463,48 @@ flowchart LR
                         </tr>
                         <tr>
                             <td><span class="state-badge running" style="font-size: 11px;">RUNNING</span></td>
-                            <td><span class="state-badge canceled" style="font-size: 11px;">CANCELED</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #fef3c7; color: #92400e;">CANCELING</span></td>
                             <td>User runs <code>pulldb cancel</code></td>
+                        </tr>
+                        <tr>
+                            <td><span class="state-badge" style="font-size: 11px; background: #fef3c7; color: #92400e;">CANCELING</span></td>
+                            <td><span class="state-badge canceled" style="font-size: 11px;">CANCELED</span></td>
+                            <td>Worker finishes cleanup</td>
+                        </tr>
+                        <tr>
+                            <td><span class="state-badge" style="font-size: 11px; background: #d1fae5; color: #065f46;">DEPLOYED</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #ffedd5; color: #9a3412;">EXPIRED</span></td>
+                            <td>Retention period exceeded (if not locked)</td>
+                        </tr>
+                        <tr>
+                            <td><span class="state-badge" style="font-size: 11px; background: #d1fae5; color: #065f46;">DEPLOYED</span></td>
+                            <td><span class="state-badge complete" style="font-size: 11px;">COMPLETE</span></td>
+                            <td>User marks "done" in Web UI</td>
+                        </tr>
+                        <tr>
+                            <td><span class="state-badge" style="font-size: 11px; background: #d1fae5; color: #065f46;">DEPLOYED</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #ede9fe; color: #5b21b6;">SUPERSEDED</span></td>
+                            <td>User restores same database again</td>
+                        </tr>
+                        <tr>
+                            <td><span class="state-badge" style="font-size: 11px; background: #ffedd5; color: #9a3412;">EXPIRED</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #f1f5f9; color: #475569;">DELETING</span></td>
+                            <td>Retention cleanup job runs</td>
+                        </tr>
+                        <tr>
+                            <td><span class="state-badge" style="font-size: 11px; background: #ede9fe; color: #5b21b6;">SUPERSEDED</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #f1f5f9; color: #475569;">DELETING</span></td>
+                            <td>Automatic cleanup after supersession</td>
+                        </tr>
+                        <tr>
+                            <td><span class="state-badge complete" style="font-size: 11px;">COMPLETE</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #f1f5f9; color: #475569;">DELETING</span></td>
+                            <td>User requests deletion</td>
+                        </tr>
+                        <tr>
+                            <td><span class="state-badge" style="font-size: 11px; background: #f1f5f9; color: #475569;">DELETING</span></td>
+                            <td><span class="state-badge" style="font-size: 11px; background: #e2e8f0; color: #334155;">DELETED</span></td>
+                            <td>Database DROP completes</td>
                         </tr>
                     </tbody>
                 </table>
@@ -389,8 +516,71 @@ flowchart LR
                     </svg>
                     <div>
                         <strong>No going back</strong><br>
-                        Once a job reaches a terminal state (COMPLETE, FAILED, CANCELED), it cannot be modified.
+                        Once a job reaches a terminal state (DELETED, FAILED, CANCELED), it cannot be modified.
                         To retry, submit a new job.
+                    </div>
+                </div>
+                
+                <div class="info-callout" style="margin-top: 16px; background: var(--color-success-bg); border-color: var(--color-success);">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <div>
+                        <strong>Protect your databases</strong><br>
+                        Lock deployed databases to prevent automatic expiration. You can also extend retention up to 12 months.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Database Lifecycle Section -->
+            <section class="content-section" id="lifecycle">
+                <h2>Database Lifecycle</h2>
+                <p>
+                    Once a restore completes, the database enters the <strong>DEPLOYED</strong> state and has its own lifecycle
+                    managed by retention policies, user actions, and automatic cleanup.
+                </p>
+                
+                <h3 style="margin-top: 24px; font-size: 15px;">Retention System</h3>
+                <p>Each deployed database has an expiration time based on retention settings:</p>
+                <ul style="margin: 12px 0; padding-left: 24px;">
+                    <li><strong>Default retention:</strong> 7 days (configurable by admin)</li>
+                    <li><strong>Maximum extension:</strong> Up to 12 months</li>
+                    <li><strong>Expiration warning:</strong> Notification before expiry</li>
+                </ul>
+                
+                <h3 style="margin-top: 24px; font-size: 15px;">Protecting Databases</h3>
+                <div class="phase-list">
+                    <div class="phase-item">
+                        <div class="phase-icon">🔒</div>
+                        <div class="phase-content">
+                            <h4 style="margin: 0 0 4px; font-size: 14px;">Lock</h4>
+                            <p style="margin: 0;">Prevents automatic expiration. Use for databases needed indefinitely.</p>
+                        </div>
+                    </div>
+                    <div class="phase-item">
+                        <div class="phase-icon">⏱️</div>
+                        <div class="phase-content">
+                            <h4 style="margin: 0 0 4px; font-size: 14px;">Extend</h4>
+                            <p style="margin: 0;">Add time to retention (1-12 months). Resets expiration clock.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <h3 style="margin-top: 24px; font-size: 15px;">Supersession</h3>
+                <p>
+                    When you restore the <strong>same database</strong> while you already have a deployed version,
+                    the old one is automatically marked <code>SUPERSEDED</code> and queued for deletion.
+                    This prevents accumulation of stale databases.
+                </p>
+                
+                <div class="info-callout" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                    <div>
+                        <strong>Avoid supersession</strong><br>
+                        Use <code>--custom-target</code> to give databases unique names if you need multiple versions of the same source.
                     </div>
                 </div>
             </section>

@@ -15,9 +15,11 @@ from typing import TYPE_CHECKING, Any
 from pulldb.domain.feature_request import (
     FeatureRequest,
     FeatureRequestCreate,
+    FeatureRequestNote,
     FeatureRequestStats,
     FeatureRequestStatus,
     FeatureRequestUpdate,
+    NoteCreate,
 )
 
 if TYPE_CHECKING:
@@ -52,7 +54,7 @@ class FeatureRequestService:
                 SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open_count,
                 SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_count,
                 SUM(CASE WHEN status = 'complete' THEN 1 ELSE 0 END) as complete_count,
-                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected_count
+                SUM(CASE WHEN status = 'declined' THEN 1 ELSE 0 END) as declined_count
             FROM feature_requests
         """
         with self.db_pool.connection() as conn:
@@ -66,7 +68,7 @@ class FeatureRequestService:
                         open=row[1] or 0,
                         in_progress=row[2] or 0,
                         complete=row[3] or 0,
-                        rejected=row[4] or 0,
+                        declined=row[4] or 0,
                     )
                 return FeatureRequestStats()
             finally:
@@ -337,8 +339,8 @@ class FeatureRequestService:
             updates.append("status = %s")
             params.append(data.status.value)
             
-            # Set completed_at when marking complete/rejected
-            if data.status in (FeatureRequestStatus.COMPLETE, FeatureRequestStatus.REJECTED):
+            # Set completed_at when marking complete/declined
+            if data.status in (FeatureRequestStatus.COMPLETE, FeatureRequestStatus.DECLINED):
                 updates.append("completed_at = %s")
                 params.append(datetime.now(UTC))
             else:
@@ -507,4 +509,151 @@ class FeatureRequestService:
         
         if deleted:
             logger.info(f"Deleted feature request {request_id}")
+        return deleted
+
+    # =========================================================================
+    # Notes Methods
+    # =========================================================================
+
+    async def list_notes(
+        self,
+        request_id: str,
+    ) -> list[FeatureRequestNote]:
+        """List all notes for a feature request.
+        
+        Args:
+            request_id: The feature request ID.
+            
+        Returns:
+            List of notes ordered by creation date (newest first).
+        """
+        query = """
+            SELECT
+                n.note_id,
+                n.request_id,
+                n.user_id,
+                n.note_text,
+                n.created_at,
+                u.username,
+                u.user_code
+            FROM feature_request_notes n
+            JOIN auth_users u ON n.user_id = u.user_id
+            WHERE n.request_id = %s
+            ORDER BY n.created_at DESC
+        """
+        
+        with self.db_pool.connection() as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute(query, (request_id,))
+                rows = cur.fetchall()
+                
+                return [
+                    FeatureRequestNote(
+                        note_id=row[0],
+                        request_id=row[1],
+                        user_id=row[2],
+                        note_text=row[3],
+                        created_at=row[4],
+                        username=row[5],
+                        user_code=row[6],
+                    )
+                    for row in rows
+                ]
+            finally:
+                cur.close()
+
+    async def add_note(
+        self,
+        request_id: str,
+        user_id: str,
+        data: NoteCreate,
+    ) -> FeatureRequestNote | None:
+        """Add a note to a feature request.
+        
+        Args:
+            request_id: The feature request ID.
+            user_id: The user adding the note.
+            data: The note data.
+            
+        Returns:
+            The created note or None if request not found.
+        """
+        note_id = str(uuid.uuid4())
+        now = datetime.now(UTC)
+        
+        with self.db_pool.connection() as conn:
+            cur = conn.cursor()
+            try:
+                # Check if request exists
+                cur.execute(
+                    "SELECT 1 FROM feature_requests WHERE request_id = %s",
+                    (request_id,)
+                )
+                if not cur.fetchone():
+                    return None
+                
+                # Insert note
+                cur.execute(
+                    """INSERT INTO feature_request_notes 
+                       (note_id, request_id, user_id, note_text, created_at)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (note_id, request_id, user_id, data.note_text, now)
+                )
+                conn.commit()
+                
+                # Get user info
+                cur.execute(
+                    "SELECT username, user_code FROM auth_users WHERE user_id = %s",
+                    (user_id,)
+                )
+                user_row = cur.fetchone()
+                
+                return FeatureRequestNote(
+                    note_id=note_id,
+                    request_id=request_id,
+                    user_id=user_id,
+                    note_text=data.note_text,
+                    created_at=now,
+                    username=user_row[0] if user_row else None,
+                    user_code=user_row[1] if user_row else None,
+                )
+            finally:
+                cur.close()
+
+    async def delete_note(
+        self,
+        note_id: str,
+        user_id: str | None = None,
+    ) -> bool:
+        """Delete a note.
+        
+        Args:
+            note_id: The note ID to delete.
+            user_id: If provided, only delete if owned by this user.
+                     If None, delete regardless of owner (admin use).
+            
+        Returns:
+            True if deleted, False if not found or not authorized.
+        """
+        with self.db_pool.connection() as conn:
+            cur = conn.cursor()
+            try:
+                if user_id:
+                    # Only delete if owned by user
+                    cur.execute(
+                        "DELETE FROM feature_request_notes WHERE note_id = %s AND user_id = %s",
+                        (note_id, user_id)
+                    )
+                else:
+                    # Admin delete - any note
+                    cur.execute(
+                        "DELETE FROM feature_request_notes WHERE note_id = %s",
+                        (note_id,)
+                    )
+                deleted = cur.rowcount > 0
+                conn.commit()
+            finally:
+                cur.close()
+        
         return deleted
