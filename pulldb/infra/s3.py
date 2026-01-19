@@ -28,10 +28,9 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import boto3
 from botocore.exceptions import ProfileNotFound
@@ -49,6 +48,95 @@ from pulldb.infra.logging import get_logger
 
 
 logger = get_logger("pulldb.infra.s3")
+
+
+@runtime_checkable
+class S3ClientProtocol(Protocol):
+    """Protocol for S3 operations supporting both real and mock implementations.
+
+    Defines the interface for S3 backup discovery operations. Real implementation
+    uses boto3, simulation uses MockS3Client for deterministic testing.
+
+    This protocol enables type-safe dependency injection in WorkerExecutor
+    and other components that need S3 access.
+    """
+
+    def list_keys(
+        self,
+        bucket: str,
+        prefix: str,
+        profile: str | None = None,
+        max_keys: int | None = None,
+    ) -> list[str]:
+        """Return keys under prefix (non-recursive).
+
+        Args:
+            bucket: S3 bucket name.
+            prefix: Prefix to search under.
+            profile: Optional AWS profile name.
+            max_keys: Maximum number of keys to return.
+
+        Returns:
+            List of object keys matching the prefix.
+        """
+        ...
+
+    def head_object(
+        self, bucket: str, key: str, profile: str | None = None
+    ) -> HeadObjectOutputTypeDef:
+        """Return object metadata (HEAD request).
+
+        Args:
+            bucket: S3 bucket name.
+            key: Object key.
+            profile: Optional AWS profile name.
+
+        Returns:
+            Object metadata including ContentLength, LastModified, etc.
+
+        Raises:
+            Exception: If object does not exist or access denied.
+        """
+        ...
+
+    def get_object(
+        self, bucket: str, key: str, profile: str | None = None
+    ) -> GetObjectOutputTypeDef:
+        """Return object with streaming body.
+
+        Args:
+            bucket: S3 bucket name.
+            key: Object key.
+            profile: Optional AWS profile name.
+
+        Returns:
+            Object response with Body (streaming) and metadata.
+
+        Raises:
+            Exception: If object does not exist or access denied.
+        """
+        ...
+
+    def get_object_size(
+        self, bucket: str, key: str, profile: str | None = None
+    ) -> int | None:
+        """Return object size in bytes, or None if not found.
+
+        Uses HEAD request for efficiency.
+
+        Args:
+            bucket: S3 bucket name.
+            key: Object key.
+            profile: Optional AWS profile name.
+
+        Returns:
+            Size in bytes if object exists, None if not found.
+
+        Raises:
+            Exception: For S3 errors other than 404.
+        """
+        ...
+
 
 BACKUP_FILENAME_REGEX = re.compile(
     r"^daily_mydumper_(?P<target>.+?)_(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_[A-Za-z]+_(?:dbimp|db\d+)\.tar$"
