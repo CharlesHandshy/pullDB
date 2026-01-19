@@ -76,7 +76,11 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
             if default_poll_interval <= 0:
                 default_poll_interval = MIN_POLL_INTERVAL_SECONDS
         except ValueError:
-            pass  # Use default
+            logger.debug(
+                "Invalid PULLDB_WORKER_POLL_INTERVAL value, using default %s",
+                MIN_POLL_INTERVAL_SECONDS,
+                extra={"invalid_value": env_poll},
+            )
 
     parser = argparse.ArgumentParser(description="pullDB worker daemon")
     parser.add_argument(
