@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 import mysql.connector
 from mysql.connector import errorcode
 from mysql.connector import errors as mysql_errors
+from mysql.connector.abstracts import MySQLConnectionAbstract
 
 from pulldb.domain.errors import LockedUserError
 from pulldb.domain.models import (
@@ -77,11 +78,11 @@ class MySQLPool:
         self._kwargs = kwargs
 
     @contextmanager
-    def connection(self) -> Iterator[Any]:
+    def connection(self) -> Iterator[MySQLConnectionAbstract]:
         """Get a database connection from the pool.
 
         Yields:
-            MySQL connection object.
+            MySQL connection object with automatic cleanup.
         """
         conn = mysql.connector.connect(**self._kwargs)
         try:
@@ -90,7 +91,7 @@ class MySQLPool:
             conn.close()
 
     @contextmanager
-    def transaction(self) -> Iterator[Any]:
+    def transaction(self) -> Iterator[MySQLConnectionAbstract]:
         """Get a database connection with explicit transaction control.
 
         Disables autocommit for manual transaction management. Commits on
