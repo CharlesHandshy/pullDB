@@ -5805,9 +5805,18 @@ class DisallowedUserRepository:
                 )
                 conn.commit()
                 return True
-        except Exception:
-            # Duplicate key or other error
-            logger.debug("Failed to add disallowed user '%s'", username, exc_info=True)
+        except mysql_errors.IntegrityError:
+            # Duplicate key - user already in disallowed list
+            logger.debug("Disallowed user '%s' already exists", username)
+            return False
+        except mysql_errors.Error as e:
+            # Other MySQL errors - log with more detail
+            logger.warning(
+                "Failed to add disallowed user '%s': %s",
+                username,
+                e,
+                exc_info=True,
+            )
             return False
 
     def remove(self, username: str) -> tuple[bool, str]:
