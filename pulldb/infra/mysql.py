@@ -36,6 +36,7 @@ from pulldb.domain.models import (
     UserSummary,
 )
 from pulldb.infra.secrets import CredentialResolver, MySQLCredentials
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
 logger = logging.getLogger(__name__)
@@ -4931,7 +4932,7 @@ class HostRepository:
             port=credentials.port,
             user=credentials.username,
             password=credentials.password,
-            connect_timeout=30,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
         )
         try:
             cursor = conn.cursor(dictionary=True)

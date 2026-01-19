@@ -393,6 +393,33 @@ check_database_schema() {
     fi
 }
 
+# =============================================================================
+# Step 6b+: Sync Database Settings to .env
+# =============================================================================
+# After schema is applied/verified, sync any database settings to .env.
+# This ensures that operational tunables stored in the database take effect,
+# especially important after a purge+reinstall where .env is recreated from template.
+
+sync_database_settings_to_env() {
+    echo "Step 6b+: Syncing database settings to .env..."
+    
+    PULLDB_ADMIN="${INSTALL_PREFIX}/venv/bin/pulldb-admin"
+    
+    if [ ! -x "${PULLDB_ADMIN}" ]; then
+        echo "  Warning: pulldb-admin not found, skipping settings sync"
+        return
+    fi
+    
+    # Sync database settings to .env (database is source of truth for tunables)
+    # The --yes flag bypasses confirmation prompt
+    # Run as pulldb_service user to access credentials
+    if su -s /bin/bash "${SYSTEM_USER}" -c "${PULLDB_ADMIN} settings pull --yes" 2>/dev/null; then
+        echo "  Database settings synced to .env"
+    else
+        echo "  Note: Settings sync skipped (database may have no custom settings)"
+    fi
+}
+
 create_admin_user() {
     echo "  Setting admin user password..."
     
@@ -662,6 +689,7 @@ case "$1" in
         ensure_paths
         install_python_package
         check_database_schema
+        sync_database_settings_to_env
         install_systemd_units
         start_services
         validate_installation

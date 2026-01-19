@@ -1,8 +1,50 @@
 # Metadata Synthesis Optimization Plan
 
 **Created**: January 13, 2026  
-**Status**: AUDIT COMPLETE - AWAITING IMPLEMENTATION  
+**Updated**: January 19, 2026  
+**Status**: PHASE 1-3 COMPLETE ✅  
 **Root Cause**: 8-minute delay between `restore_started` and `restore_progress` for job 4616272e
+
+---
+
+## Implementation Status
+
+| Phase | Description | Status | Date |
+|-------|-------------|--------|------|
+| **Phase 1** | ISIZE Optimization | ✅ COMPLETE | Jan 16, 2026 |
+| **Phase 1B** | Sampling Enhancement | ⏸️ DEFERRED | — |
+| **Phase 2** | Module Unification | ✅ COMPLETE | Jan 19, 2026 |
+| **Phase 3** | Event Visibility | ✅ COMPLETE | Jan 19, 2026 |
+| **Issue 2** | connect_timeout config | ❌ NOT STARTED | — |
+
+### Phase 1 Completion Notes
+
+Implemented in [metadata_synthesis.py](../pulldb/worker/metadata_synthesis.py) (now deprecated):
+- `get_gzip_uncompressed_size()` — O(1) ISIZE reading
+- `estimate_table_rows()` — Smart chunked/ISIZE heuristics
+- Three-tier strategy: small files (count), medium files (ISIZE), large files (ISIZE)
+- **Performance**: 86 GiB backup synthesis reduced from ~20 min to ~2 sec
+
+Tests added in [test_metadata_synthesis.py](../tests/unit/worker/test_metadata_synthesis.py)
+
+### Phase 2 Completion Notes (Jan 19, 2026)
+
+Unified metadata handling into [backup_metadata.py](../pulldb/worker/backup_metadata.py):
+- Replaces both `metadata_synthesis.py` and `dump_metadata.py` (both deprecated)
+- Public API: `ensure_myloader_compatibility()`, `get_backup_metadata()`, `get_table_row_estimates()`, `parse_binlog_position()`
+- Dataclasses: `MetadataFormat`, `BackupMetadata`, `TableRowEstimate`, `BinlogPosition`
+- Backwards compatibility: aliases for old function names
+- Updated [restore.py](../pulldb/worker/restore.py) to use new module
+
+### Phase 3 Completion Notes (Jan 19, 2026)
+
+Added event callback support for visibility:
+- `ensure_myloader_compatibility()` now accepts `event_callback` parameter
+- Emits `metadata_synthesis_started` and `metadata_synthesis_complete` events
+- `restore.py` passes `_emit_event()` callback to metadata functions
+- Events include: `backup_dir`, `action` (none_needed/upgraded/created), `format`
+
+Tests added in [test_backup_metadata.py](../tests/unit/worker/test_backup_metadata.py)
 
 ---
 
@@ -1277,6 +1319,149 @@ Currently, `ProcesslistMonitor` tracks `INSERT` and `LOAD DATA` statements to de
 
 This phase of table restoration can take significant time for large tables with many indexes, but the UI shows the table as "finished" when data load completes.
 
+#### myloader Verbose Output Signals (Primary Detection Method)
+
+myloader's verbose output provides **explicit signals** for index rebuild phase transitions. This is more reliable than processlist monitoring because it announces phase changes directly.
+
+**Source Code Reference (mydumper/mydumper repository):**
+
+The relevant logging functions are located in these source files:
+
+| File | Function | Message |
+|------|----------|---------|
+| `myloader_worker_index.c` | `create_index_job()` | `"Thread %d: Enqueuing index for table: %s.%s"` |
+| `myloader_worker_index.c` | `process_index()` | `"restoring index: %s.%s"` |
+| `myloader_restore_job.c` | `process_restore_job()` | `"Thread %d: restoring %s %s.%s from %s. Tables %d of %d completed"` (for INDEXES type) |
+| `myloader_restore_job.c` | `process_restore_job()` | `"Thread %d: restoring %s.%s part %d of %d from %s \| Progress %llu of %llu. Tables %d of %d completed"` |
+| `myloader_worker_loader.c` | `loader_thread()` | `"L-Thread %u: ending"` |
+
+**Key Source Code Snippets:**
+
+From `myloader_worker_index.c:create_index_job()`:
+```c
+message("Thread %d: Enqueuing index for table: %s.%s", tdid,
+  dbt->database->target_database, dbt->table_filename);
+```
+
+From `myloader_worker_index.c:process_index()`:
+```c
+g_message("restoring index: %s.%s",
+  dbt->database->source_database, dbt->table_filename);
+```
+
+From `myloader_restore_job.c:process_restore_job()` (JOB_RESTORE_STRING for INDEXES):
+```c
+message("Thread %d: restoring %s %s.%s from %s. Tables %d of %d completed", td->thread_id,
+  rjstmtype2str(rj->data.srj->object), dbt->database->target_database,
+  dbt->source_table_name, rj->filename, total, g_hash_table_size(td->conf->table_hash));
+```
+
+From `myloader_restore_job.c:process_restore_job()` (JOB_RESTORE_FILENAME - data loading):
+```c
+message("Thread %d: restoring %s.%s part %d of %d from %s | Progress %llu of %llu. Tables %d of %d completed",
+  td->thread_id,
+  dbt->database->target_database, dbt->source_table_name, rj->data.drj->index, dbt->count, rj->filename,
+  progress, total_data_sql_files, total, g_hash_table_size(td->conf->table_hash));
+```
+
+From `myloader_worker_loader.c:loader_thread()`:
+```c
+g_message("L-Thread %u: Starting import", td->thread_id);
+// ... at end:
+g_message("L-Thread %u: ending", td->thread_id);
+```
+
+**Note on "Data import ended":** This message appears to come from the loader thread ending, which is printed as `"L-Thread %u: ending"`. The exact "Data import ended" text may be from an older version or interpreted log output. The key signals to detect are:
+
+1. `"Enqueuing index for table:"` - Table data loading complete, index rebuild queued
+2. `"restoring index:"` - Index rebuild starting
+3. `"restoring indexes"` - Index rebuild in progress (when verbose level shows this)
+4. `"L-Thread %u: ending"` - Loader thread completed all work
+
+**Example myloader verbose output during index rebuild:**
+```
+** Message: 06:02:13.767: Thread 2: restoring brunodfoxpest_655929085e57.salesRoutesAccess part 56 of 297 from foxpest.salesRoutesAccess.00159.sql.gz | Progress 600 of 606. Tables 507 of 509 completed
+** Message: 06:02:20.155: Thread 0: Enqueuing index for table: brunodfoxpest_655929085e57.changeLog
+** Message: 06:02:20.155: restoring index: foxpest.changeLog
+** Message: 06:02:20.155: Thread 9: restoring indexes brunodfoxpest_655929085e57.changeLog from index. Tables 507 of 509 completed
+...
+** Message: 06:04:21.888: L-Thread 1: ending
+** Message: 06:04:21.888: L-Thread 2: ending
+** Message: 06:04:30.889: Thread 0: Enqueuing index for table: brunodfoxpest_655929085e57.salesRoutesAccess
+** Message: 06:04:30.889: restoring index: foxpest.salesRoutesAccess
+** Message: 06:04:30.889: Thread 10: restoring indexes brunodfoxpest_655929085e57.salesRoutesAccess from index. Tables 507 of 509 completed
+```
+
+**Key log patterns to parse:**
+
+| Pattern | Signal | Source Function | Information |
+|---------|--------|-----------------|-------------|
+| `Thread %d: Enqueuing index for table: %s.%s` | Index rebuild queued | `create_index_job()` | Table data complete, entering index phase |
+| `restoring index: %s.%s` | Index rebuild starting | `process_index()` | Source database.table being indexed |
+| `restoring indexes %s.%s from index` | Index rebuild active | `process_restore_job()` | Target table being indexed |
+| `restoring %s.%s part %d of %d` | Data loading progress | `process_restore_job()` | Part X of Y for multi-file tables |
+| `Progress %llu of %llu` | Overall progress | `process_restore_job()` | Files processed of total |
+| `Tables %d of %d completed` | Table completion count | `process_restore_job()` | Tables fully restored |
+| `L-Thread %u: ending` | Thread finished | `loader_thread()` | Loader thread completed |
+
+**Regex patterns for log parsing:**
+
+```python
+# In processlist_monitor.py or new myloader_log_parser.py
+
+import re
+
+# Pattern: "Thread 0: Enqueuing index for table: brunodfoxpest_655929085e57.changeLog"
+RE_ENQUEUE_INDEX = re.compile(
+    r"Thread\s+\d+:\s+Enqueuing index for table:\s+([^\s.]+)\.([^\s]+)",
+    re.IGNORECASE
+)
+
+# Pattern: "restoring index: foxpest.changeLog"
+RE_RESTORING_INDEX = re.compile(
+    r"restoring index:\s+([^\s.]+)\.([^\s]+)",
+    re.IGNORECASE
+)
+
+# Pattern: "restoring indexes brunodfoxpest_655929085e57.changeLog from index"  
+RE_RESTORING_INDEXES = re.compile(
+    r"restoring indexes\s+([^\s.]+)\.([^\s]+)\s+from index",
+    re.IGNORECASE
+)
+
+# Pattern: "restoring db.table part X of Y from file | Progress A of B. Tables C of D completed"
+RE_DATA_PROGRESS = re.compile(
+    r"restoring\s+([^\s.]+)\.([^\s]+)\s+part\s+(\d+)\s+of\s+(\d+)\s+from\s+([^\s|]+)\s*\|\s*Progress\s+(\d+)\s+of\s+(\d+)\.\s*Tables\s+(\d+)\s+of\s+(\d+)",
+    re.IGNORECASE
+)
+
+# Pattern: "L-Thread N: ending" (loader thread finished)
+RE_LOADER_THREAD_ENDING = re.compile(
+    r"L-Thread\s+(\d+):\s+ending",
+    re.IGNORECASE
+)
+
+# Pattern: "I-Thread N: ending" (index thread finished, from worker_index_thread)
+RE_INDEX_THREAD_ENDING = re.compile(
+    r"I-Thread\s+(\d+):\s+ending",
+    re.IGNORECASE  
+)
+```
+
+**Detection strategy (dual-source):**
+
+1. **Primary: myloader log parsing** - Most reliable, explicit phase signals
+   - Parse stdout stream as myloader runs
+   - Detect "Enqueuing index" → emit `table_index_rebuild_started`
+   - Track which tables are in index phase
+   
+2. **Secondary: processlist monitoring** - Provides running time, handles edge cases
+   - Continue polling processlist for ALTER TABLE
+   - Use `Time` column to show elapsed seconds
+   - Catches cases where log parsing misses events
+
+**Implementation note:** Since we already capture myloader stdout for logging, we can parse these patterns in the existing output handler without additional I/O.
+
 #### Solution Architecture
 
 ```
@@ -1374,7 +1559,11 @@ class TableRestoreState:
 
 ```python
 def _parse_processlist_rows(self, rows: list[tuple]) -> dict[str, Any]:
-    """Parse processlist for both INSERT/LOAD and ALTER TABLE operations."""
+    """Parse processlist for both INSERT/LOAD and ALTER TABLE operations.
+    
+    Captures the processlist Time column to show how long each query has been
+    running - critical for ALTER TABLE operations which don't report percentage.
+    """
     result = {
         "active_tables": {},      # Table -> progress info
         "loading_tables": [],     # Tables with active INSERT/LOAD
@@ -1385,6 +1574,7 @@ def _parse_processlist_rows(self, rows: list[tuple]) -> dict[str, Any]:
     for row in rows:
         info = str(row[INFO_INDEX]) if row[INFO_INDEX] else ""
         state = str(row[STATE_INDEX]) if row[STATE_INDEX] else ""
+        query_time = int(row[TIME_INDEX]) if row[TIME_INDEX] else 0  # Seconds running
         
         # Check for data loading (existing logic)
         insert_match = RE_INSERT_TABLE.search(info)
@@ -1397,6 +1587,7 @@ def _parse_processlist_rows(self, rows: list[tuple]) -> dict[str, Any]:
             result["active_tables"][table_name] = {
                 "phase": "loading_data",
                 "progress_pct": pct,
+                "running_seconds": query_time,
             }
         
         # NEW: Check for index rebuilding
@@ -1408,10 +1599,14 @@ def _parse_processlist_rows(self, rows: list[tuple]) -> dict[str, Any]:
                 result["active_tables"][table_name] = {
                     "phase": "rebuilding_indexes",
                     "progress_pct": None,  # ALTER TABLE doesn't report %
+                    "running_seconds": query_time,  # Show elapsed time instead
                 }
     
     return result
 ```
+
+**Note**: The processlist `Time` column shows seconds since query started. For ALTER TABLE
+operations that can run for hours, this provides the only indication of activity.
 
 ##### 4. Add ANALYZE TABLE Execution
 
@@ -1554,12 +1749,96 @@ if analyze_after_restore:
 
 | Event | Data | When Emitted |
 |-------|------|--------------|
-| `table_index_rebuild_started` | `{table: str}` | ALTER TABLE ... ADD KEY detected |
-| `table_index_rebuild_complete` | `{table: str}` | ALTER TABLE finishes |
+| `table_index_rebuild_started` | `{table: str, running_seconds: int}` | ALTER TABLE ... ADD KEY detected |
+| `table_index_rebuild_progress` | `{table: str, running_seconds: int}` | Periodic update during ALTER TABLE |
+| `table_index_rebuild_complete` | `{table: str, total_seconds: int}` | ALTER TABLE finishes |
 | `table_analyze_started` | `{table: str}` | ANALYZE TABLE begins |
 | `table_analyze_complete` | `{table, status, message}` | ANALYZE TABLE returns |
 | `analyze_tables_started` | `{table_count: int}` | Batch analysis begins |
 | `analyze_tables_complete` | `{success_count, total_count}` | All tables analyzed |
+
+##### 6b. UI Display for Index Rebuild Phase
+
+For tables in `rebuilding_indexes` phase, the UI should display:
+
+1. **Spinner icon** instead of progress bar (no percentage available)
+2. **Running time** from `running_seconds` formatted as "Xh Ym Zs"
+3. **Phase label** showing "Rebuilding indexes..." 
+
+**Template snippet for job details page:**
+
+```html
+{% for table_name, table_info in tables.items() %}
+<div class="log-progress-table-row">
+    <span class="table-name">{{ table_name }}</span>
+    
+    {% if table_info.phase == "loading_data" %}
+        {# Normal progress bar with percentage #}
+        <div class="log-progress-bar-container">
+            <div class="log-progress-bar" style="width: {{ table_info.progress_pct }}%"></div>
+        </div>
+        <span class="progress-percent">{{ table_info.progress_pct }}%</span>
+    
+    {% elif table_info.phase == "rebuilding_indexes" %}
+        {# Spinner with elapsed time - no percentage available #}
+        <div class="log-progress-spinner-container">
+            <span class="spinner spinner--small"></span>
+            <span class="progress-phase">Rebuilding indexes...</span>
+            <span class="progress-time">{{ table_info.running_seconds | format_duration }}</span>
+        </div>
+    
+    {% elif table_info.phase == "analyzing" %}
+        {# Spinner for ANALYZE TABLE phase #}
+        <div class="log-progress-spinner-container">
+            <span class="spinner spinner--small"></span>
+            <span class="progress-phase">Analyzing statistics...</span>
+        </div>
+    {% endif %}
+</div>
+{% endfor %}
+```
+
+**CSS additions:**
+
+```css
+.log-progress-spinner-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.spinner--small {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+}
+
+.progress-phase {
+    color: var(--warning-text);
+    font-style: italic;
+}
+
+.progress-time {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+```
+
+**Jinja2 filter for duration formatting:**
+
+```python
+def _format_duration(seconds: int) -> str:
+    """Format seconds as human-readable duration (e.g., '1h 23m 45s')."""
+    if seconds < 60:
+        return f"{seconds}s"
+    elif seconds < 3600:
+        m, s = divmod(seconds, 60)
+        return f"{m}m {s}s"
+    else:
+        h, remainder = divmod(seconds, 3600)
+        m, s = divmod(remainder, 60)
+        return f"{h}h {m}m {s}s"
+```
 
 ##### 7. Test Cases
 
@@ -1653,19 +1932,1542 @@ class TestProcesslistAlterTableDetection:
 
 ### Phase 5 Checklist
 
-- [ ] Add `RE_ALTER_TABLE` and `RE_ADD_KEY` regexes to processlist_monitor.py
-- [ ] Add `TableRestorePhase` enum and `TableRestoreState` dataclass
-- [ ] Update `_parse_processlist_rows()` to detect ALTER TABLE ADD KEY
+**myloader Log Parsing (Primary Detection):**
+- [ ] Create `pulldb/worker/myloader_log_parser.py` (NEW FILE - HCA layer: features)
+- [ ] Add `RE_ENQUEUE_INDEX` regex for "Thread %d: Enqueuing index for table: %s.%s" pattern
+- [ ] Add `RE_RESTORING_INDEX` regex for "restoring index: %s.%s" pattern
+- [ ] Add `RE_RESTORING_INDEXES` regex for "restoring indexes %s.%s from index" pattern
+- [ ] Add `RE_DATA_PROGRESS` regex for "restoring %s.%s part %d of %d" pattern
+- [ ] Add `RE_LOADER_THREAD_ENDING` regex for "L-Thread %u: ending" pattern
+- [ ] Add `RE_INDEX_THREAD_ENDING` regex for "I-Thread %u: ending" pattern
+- [ ] Implement `MyloaderLogParser` class with `parse_line()` method
+- [ ] Implement `TablePhaseTracker` to track per-table state transitions
+- [ ] Update `_progress_callback()` in `restore.py` to use log parser
+- [ ] Emit `table_index_rebuild_started` when "Enqueuing index" detected
+- [ ] Emit `table_index_rebuild_complete` when table exits index thread queue
+- [ ] Add tests in `tests/test_myloader_log_parser.py`
+
+**Processlist Monitoring (Secondary/Fallback):**
+- [ ] Add `RE_ALTER_TABLE` regex to `processlist_monitor.py`
+- [ ] Add `RE_ADD_KEY` regex to `processlist_monitor.py`
+- [ ] Add processlist column index constants: `TIME_INDEX = 5` (for Time column)
+- [ ] Add `TableRestorePhase` enum: `LOADING_DATA`, `REBUILDING_INDEXES`, `COMPLETE`
+- [ ] Add `TableRestoreState` dataclass to track per-table state
+- [ ] Update `_parse_processlist_rows()` to detect ALTER TABLE ADD KEY statements
+- [ ] Capture processlist `Time` column as `running_seconds` for all active queries
 - [ ] Track table state transitions: loading → indexing → complete
-- [ ] Create `pulldb/worker/table_analyzer.py` with `analyze_tables()` function
+- [ ] Add tests for ALTER TABLE detection in `tests/test_worker_processlist_monitor.py`
+
+**ANALYZE TABLE (Post-Restore):**
+- [ ] Create `pulldb/worker/table_analyzer.py` (NEW FILE - HCA layer: features)
+- [ ] Implement `AnalyzeResult` dataclass for per-table results
+- [ ] Implement `analyze_tables()` function with batch support
 - [ ] Use `NO_WRITE_TO_BINLOG` to avoid replication overhead
-- [ ] Integrate ANALYZE TABLE into `orchestrate_restore_workflow()`
-- [ ] Add new events to `EVENT_TO_PHASE` mapping in routes.py
-- [ ] Create `tests/test_table_analyzer.py`
-- [ ] Add ALTER TABLE detection tests to processlist_monitor tests
-- [ ] Update UI to show index rebuild phase (optional enhancement)
+- [ ] Add `analyze_after_restore` config option (default: True)
+- [ ] Integrate ANALYZE TABLE into `orchestrate_restore_workflow()` after myloader completes
+- [ ] Add tests in `tests/test_table_analyzer.py`
+
+**State Coordination:**
+- [ ] Create `pulldb/worker/restore_state_tracker.py` (NEW FILE - HCA layer: features)
+- [ ] Implement `RestoreStateTracker` class to merge log parser + processlist signals
+- [ ] Handle race conditions between log events and processlist polling
+- [ ] Track completion: table is done only when BOTH data load AND index rebuild complete
+- [ ] Add tests in `tests/test_restore_state_tracker.py`
+
+**UI Updates:**
+- [ ] Add new events to `EVENT_TO_PHASE` mapping in `routes.py`
+- [ ] Add `_format_duration()` Jinja2 filter to `dependencies.py`
+- [ ] Update job details template with spinner + elapsed time for index rebuild phase
+- [ ] Add CSS for `.log-progress-spinner-container` and `.spinner--small`
+- [ ] Update table progress display to show phase (loading/indexing/analyzing/complete)
+
+**Configuration:**
+- [ ] Add `PULLDB_ANALYZE_AFTER_RESTORE` env var (default: "true")
+- [ ] Add `PULLDB_INDEX_TRACKING_ENABLED` env var (default: "true")
+- [ ] Add settings to admin page for enabling/disabling features
+
+**Testing:**
+- [ ] Create `tests/test_myloader_log_parser.py` with regex and parser tests
+- [ ] Create `tests/test_table_analyzer.py` with ANALYZE TABLE tests
+- [ ] Create `tests/test_restore_state_tracker.py` with state coordination tests
+- [ ] Add ALTER TABLE detection tests to `tests/test_worker_processlist_monitor.py`
+- [ ] Add Time column capture tests
+- [ ] Add integration test for full restore with index tracking
 - [ ] Run full test suite
-- [ ] Manual verification with real myloader restore
+- [ ] Manual verification with real myloader restore (foxpest backup)
+
+---
+
+### Phase 5: Test Specifications
+
+#### File: `tests/test_myloader_log_parser.py` (NEW)
+
+```python
+"""
+Tests for myloader log parser module.
+
+Tests cover:
+1. Individual regex pattern matching
+2. MyloaderLogParser state machine
+3. Event emission
+4. Edge cases and malformed input
+"""
+
+import pytest
+from datetime import datetime
+from unittest.mock import Mock, patch
+
+from pulldb.worker.myloader_log_parser import (
+    MyloaderLogParser,
+    TablePhase,
+    TableState,
+    LogParseResult,
+    RE_ENQUEUE_INDEX,
+    RE_RESTORING_INDEX,
+    RE_RESTORING_INDEXES,
+    RE_DATA_PROGRESS,
+    RE_OVERALL_PROGRESS,
+    RE_LOADER_THREAD_ENDING,
+    RE_INDEX_THREAD_ENDING,
+)
+
+
+class TestRegexPatterns:
+    """Test individual regex pattern matching against myloader output."""
+    
+    def test_enqueue_index_pattern(self):
+        """Matches 'Thread X: Enqueuing index for table: db.table' from myloader_worker_index.c."""
+        line = "Thread 5: Enqueuing index for table: staging_abc123.users"
+        match = RE_ENQUEUE_INDEX.search(line)
+        assert match is not None
+        assert match.group(1) == "5"
+        assert match.group(2) == "staging_abc123"
+        assert match.group(3) == "users"
+    
+    def test_enqueue_index_negative_thread(self):
+        """Thread ID can be -1 per source code."""
+        line = "Thread -1: Enqueuing index for table: staging.changeLog"
+        match = RE_ENQUEUE_INDEX.search(line)
+        assert match is not None
+        assert match.group(1) == "-1"
+    
+    def test_restoring_index_pattern(self):
+        """Matches 'restoring index: db.table' from myloader_worker_index.c:process_index()."""
+        line = "restoring index: foxpest.changeLog"
+        match = RE_RESTORING_INDEX.search(line)
+        assert match is not None
+        assert match.group(1) == "foxpest"
+        assert match.group(2) == "changeLog"
+    
+    def test_restoring_indexes_pattern(self):
+        """Matches 'Thread X: restoring indexes db.table from index' from myloader_restore_job.c."""
+        line = "Thread 3: restoring indexes staging_abc.orders from index file"
+        match = RE_RESTORING_INDEXES.search(line)
+        assert match is not None
+        assert match.group(1) == "3"
+        assert match.group(2) == "staging_abc"
+        assert match.group(3) == "orders"
+    
+    def test_data_progress_pattern(self):
+        """Matches 'Thread X: restoring db.table part N of M from file'."""
+        line = "Thread 2: restoring staging_abc.users part 3 of 10 from users.00002.sql.gz | Progress 45 of 120. Tables 5 of 15 completed"
+        match = RE_DATA_PROGRESS.search(line)
+        assert match is not None
+        assert match.group(1) == "2"          # thread_id
+        assert match.group(2) == "staging_abc" # target_db
+        assert match.group(3) == "users"       # table_name
+        assert match.group(4) == "3"           # part
+        assert match.group(5) == "10"          # total
+        assert "users.00002.sql.gz" in match.group(6)  # filename
+    
+    def test_overall_progress_pattern(self):
+        """Matches 'Progress X of Y. Tables A of B completed'."""
+        line = "Progress 45 of 120. Tables 5 of 15 completed"
+        match = RE_OVERALL_PROGRESS.search(line)
+        assert match is not None
+        assert match.group(1) == "45"   # progress
+        assert match.group(2) == "120"  # total
+        assert match.group(3) == "5"    # tables done
+        assert match.group(4) == "15"   # tables total
+    
+    def test_loader_thread_ending_pattern(self):
+        """Matches 'L-Thread X: ending' from myloader_worker_loader.c."""
+        line = "L-Thread 3: ending"
+        match = RE_LOADER_THREAD_ENDING.search(line)
+        assert match is not None
+        assert match.group(1) == "3"
+    
+    def test_index_thread_ending_pattern(self):
+        """Matches 'I-Thread X: ending' (if used by myloader)."""
+        line = "I-Thread 1: ending"
+        match = RE_INDEX_THREAD_ENDING.search(line)
+        assert match is not None
+        assert match.group(1) == "1"
+    
+    def test_no_match_for_unrelated_lines(self):
+        """Unrelated log lines don't match."""
+        lines = [
+            "Starting myloader...",
+            "Connected to MySQL server",
+            "Some random debug output",
+            "",
+        ]
+        for line in lines:
+            assert RE_ENQUEUE_INDEX.search(line) is None
+            assert RE_RESTORING_INDEX.search(line) is None
+            assert RE_DATA_PROGRESS.search(line) is None
+
+
+class TestMyloaderLogParser:
+    """Test MyloaderLogParser state machine."""
+    
+    def test_parser_initial_state(self):
+        """Parser starts with no tracked tables."""
+        parser = MyloaderLogParser()
+        assert parser.get_all_states() == {}
+        summary = parser.get_summary()
+        assert summary["tables_completed"] == 0
+        assert summary["tables_total"] == 0
+    
+    def test_data_progress_creates_table_state(self):
+        """First data progress message creates table state."""
+        parser = MyloaderLogParser()
+        
+        result = parser.parse_line(
+            "Thread 1: restoring staging.users part 1 of 5 from users.00000.sql.gz"
+        )
+        
+        state = parser.get_table_state("staging.users")
+        assert state is not None
+        assert state.phase == TablePhase.LOADING_DATA
+        assert state.data_parts_completed == 1
+        assert state.data_parts_total == 5
+    
+    def test_data_progress_updates_existing_state(self):
+        """Subsequent data progress updates existing state."""
+        parser = MyloaderLogParser()
+        
+        parser.parse_line("Thread 1: restoring staging.users part 1 of 5 from users.00000.sql.gz")
+        parser.parse_line("Thread 2: restoring staging.users part 2 of 5 from users.00001.sql.gz")
+        
+        state = parser.get_table_state("staging.users")
+        assert state.data_parts_completed == 2
+    
+    def test_enqueue_index_transitions_to_data_complete(self):
+        """'Enqueuing index' marks data complete."""
+        parser = MyloaderLogParser()
+        
+        parser.parse_line("Thread 1: restoring staging.users part 5 of 5 from users.00004.sql.gz")
+        parser.parse_line("Thread 5: Enqueuing index for table: staging.users")
+        
+        state = parser.get_table_state("staging.users")
+        assert state.phase == TablePhase.DATA_COMPLETE
+        assert state.index_started_at is not None
+    
+    def test_restoring_index_transitions_to_rebuilding(self):
+        """'restoring index' marks index rebuild active."""
+        parser = MyloaderLogParser()
+        
+        parser.parse_line("Thread 5: Enqueuing index for table: staging.users")
+        parser.parse_line("restoring index: foxpest.users")
+        
+        # Should find by source table name
+        states = parser.get_all_states()
+        indexing_tables = [s for s in states.values() if s.phase == TablePhase.REBUILDING_INDEXES]
+        assert len(indexing_tables) >= 1
+    
+    def test_event_callback_invoked(self):
+        """Event callback receives correct events."""
+        events = []
+        def callback(event_type, event_data):
+            events.append((event_type, event_data))
+        
+        parser = MyloaderLogParser(event_callback=callback)
+        
+        parser.parse_line("Thread 5: Enqueuing index for table: staging.users")
+        
+        assert len(events) == 1
+        assert events[0][0] == "table_index_rebuild_queued"
+        assert events[0][1]["table"] == "users"
+    
+    def test_overall_progress_tracked(self):
+        """Overall progress is tracked from progress lines."""
+        parser = MyloaderLogParser()
+        
+        parser.parse_line("Progress 45 of 120. Tables 5 of 15 completed")
+        
+        summary = parser.get_summary()
+        assert summary["overall_progress"] == 45
+        assert summary["overall_total"] == 120
+        assert summary["tables_completed"] == 5
+        assert summary["tables_total"] == 15
+    
+    def test_summary_counts_phases(self):
+        """Summary reports tables by phase."""
+        parser = MyloaderLogParser()
+        
+        parser.parse_line("Thread 1: restoring staging.users part 1 of 5 from users.sql.gz")
+        parser.parse_line("Thread 5: Enqueuing index for table: staging.orders")
+        
+        summary = parser.get_summary()
+        phases = summary["tables_by_phase"]
+        assert phases["LOADING_DATA"] >= 1 or phases["DATA_COMPLETE"] >= 1
+
+
+class TestMyloaderLogParserEdgeCases:
+    """Test edge cases and error handling."""
+    
+    def test_empty_line(self):
+        """Empty lines are handled gracefully."""
+        parser = MyloaderLogParser()
+        result = parser.parse_line("")
+        assert result.event_type is None
+    
+    def test_malformed_line(self):
+        """Malformed lines don't crash parser."""
+        parser = MyloaderLogParser()
+        result = parser.parse_line("Thread : Enqueuing index for table: .")
+        # Should not match or should handle gracefully
+        assert True  # No exception raised
+    
+    def test_callback_exception_handled(self):
+        """Exception in callback doesn't crash parser."""
+        def bad_callback(event_type, event_data):
+            raise ValueError("Callback error")
+        
+        parser = MyloaderLogParser(event_callback=bad_callback)
+        # Should log warning but not raise
+        result = parser.parse_line("Thread 5: Enqueuing index for table: staging.users")
+        assert result.event_type == "table_index_rebuild_queued"
+```
+
+#### File: `tests/test_restore_state_tracker.py` (NEW)
+
+```python
+"""
+Tests for restore state tracker that coordinates log parsing and processlist monitoring.
+
+Tests cover:
+1. State coordination between log and processlist signals
+2. Race condition handling
+3. Completion detection
+4. Event emission
+"""
+
+import pytest
+from datetime import datetime
+from unittest.mock import Mock, MagicMock, patch
+
+from pulldb.worker.restore_state_tracker import (
+    RestoreStateTracker,
+    CombinedTableState,
+)
+from pulldb.worker.myloader_log_parser import (
+    MyloaderLogParser,
+    TablePhase,
+)
+
+
+class TestCombinedTableState:
+    """Test combined state dataclass."""
+    
+    def test_is_fully_complete_requires_both(self):
+        """Table is complete only when data AND index are done."""
+        state = CombinedTableState(table_name="users")
+        
+        assert not state.is_fully_complete
+        
+        state.is_data_complete = True
+        assert not state.is_fully_complete
+        
+        state.is_index_complete = True
+        assert state.is_fully_complete
+    
+    def test_effective_phase_complete(self):
+        """Effective phase is 'complete' when both flags set."""
+        state = CombinedTableState(
+            table_name="users",
+            is_data_complete=True,
+            is_index_complete=True,
+        )
+        assert state.effective_phase == "complete"
+    
+    def test_effective_phase_rebuilding_from_log(self):
+        """Log phase determines rebuilding state."""
+        state = CombinedTableState(
+            table_name="users",
+            log_phase=TablePhase.REBUILDING_INDEXES,
+        )
+        assert state.effective_phase == "rebuilding_indexes"
+    
+    def test_effective_phase_rebuilding_from_processlist(self):
+        """Processlist phase as fallback."""
+        state = CombinedTableState(
+            table_name="users",
+            processlist_phase="rebuilding_indexes",
+        )
+        assert state.effective_phase == "rebuilding_indexes"
+    
+    def test_effective_phase_loading(self):
+        """Loading phase detected."""
+        state = CombinedTableState(
+            table_name="users",
+            log_phase=TablePhase.LOADING_DATA,
+        )
+        assert state.effective_phase == "loading_data"
+
+
+class TestRestoreStateTracker:
+    """Test RestoreStateTracker coordination."""
+    
+    def test_log_line_updates_state(self):
+        """Log lines update combined state."""
+        parser = MyloaderLogParser()
+        tracker = RestoreStateTracker(log_parser=parser)
+        
+        tracker.process_log_line(
+            "Thread 1: restoring staging.users part 1 of 5 from users.sql.gz"
+        )
+        
+        state = tracker.get_table_state("staging.users")
+        assert state is not None
+        assert state.log_phase == TablePhase.LOADING_DATA
+    
+    def test_enqueue_marks_data_complete(self):
+        """Enqueue index marks data as complete."""
+        parser = MyloaderLogParser()
+        tracker = RestoreStateTracker(log_parser=parser)
+        
+        tracker.process_log_line(
+            "Thread 5: Enqueuing index for table: staging.users"
+        )
+        
+        state = tracker.get_table_state("staging.users")
+        assert state is not None
+        assert state.is_data_complete
+        assert not state.is_index_complete  # Not yet
+    
+    def test_processlist_update_captures_time(self):
+        """Processlist snapshot captures running time."""
+        parser = MyloaderLogParser()
+        tracker = RestoreStateTracker(log_parser=parser)
+        
+        # First mark data complete
+        tracker.process_log_line(
+            "Thread 5: Enqueuing index for table: staging.users"
+        )
+        
+        # Mock processlist snapshot
+        snapshot = Mock()
+        snapshot.tables = {
+            "staging.users": {
+                "phase": "rebuilding_indexes",
+                "progress_pct": None,
+                "running_seconds": 120,
+            }
+        }
+        
+        tracker.update_from_processlist(snapshot)
+        
+        state = tracker.get_table_state("staging.users")
+        assert state.processlist_running_seconds == 120
+    
+    def test_table_disappearing_from_processlist_marks_complete(self):
+        """Table no longer in processlist after indexing = complete."""
+        events = []
+        def callback(event_type, event_data):
+            events.append((event_type, event_data))
+        
+        parser = MyloaderLogParser()
+        tracker = RestoreStateTracker(
+            log_parser=parser,
+            event_callback=callback,
+        )
+        
+        # Mark data complete and start indexing
+        tracker.process_log_line(
+            "Thread 5: Enqueuing index for table: staging.users"
+        )
+        
+        # First snapshot shows indexing
+        snapshot1 = Mock()
+        snapshot1.tables = {
+            "staging.users": {
+                "phase": "rebuilding_indexes",
+                "running_seconds": 60,
+            }
+        }
+        tracker.update_from_processlist(snapshot1)
+        
+        # Second snapshot - table gone (index complete)
+        snapshot2 = Mock()
+        snapshot2.tables = {}  # No longer in processlist
+        tracker.update_from_processlist(snapshot2)
+        
+        state = tracker.get_table_state("staging.users")
+        assert state.is_data_complete
+        assert state.is_index_complete
+        
+        # Should have emitted completion event
+        complete_events = [e for e in events if e[0] == "table_index_rebuild_complete"]
+        assert len(complete_events) == 1
+    
+    def test_get_tables_for_ui_format(self):
+        """UI format includes expected fields."""
+        parser = MyloaderLogParser()
+        tracker = RestoreStateTracker(log_parser=parser)
+        
+        tracker.process_log_line(
+            "Thread 1: restoring staging.users part 3 of 10 from users.sql.gz"
+        )
+        
+        ui_data = tracker.get_tables_for_ui()
+        
+        assert "staging.users" in ui_data
+        table_info = ui_data["staging.users"]
+        assert "phase" in table_info
+        assert "is_complete" in table_info
+    
+    def test_thread_safety(self):
+        """Concurrent access doesn't cause errors."""
+        import threading
+        
+        parser = MyloaderLogParser()
+        tracker = RestoreStateTracker(log_parser=parser)
+        
+        errors = []
+        
+        def worker(table_num):
+            try:
+                for i in range(100):
+                    tracker.process_log_line(
+                        f"Thread 1: restoring staging.table{table_num} part {i} of 100 from file.sql.gz"
+                    )
+                    tracker.get_all_states()
+            except Exception as e:
+                errors.append(e)
+        
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        
+        assert len(errors) == 0
+```
+
+#### Additional Tests for `tests/test_worker_processlist_monitor.py`
+
+Add these tests to the existing file:
+
+```python
+# Add to existing test file
+
+class TestAlterTableDetection:
+    """Test ALTER TABLE detection for index rebuild tracking."""
+    
+    def test_re_alter_table_matches_simple(self):
+        """Matches basic ALTER TABLE statement."""
+        from pulldb.worker.processlist_monitor import RE_ALTER_TABLE
+        
+        info = "ALTER TABLE `changeLog` ADD KEY `class` (`class`)"
+        match = RE_ALTER_TABLE.search(info)
+        assert match is not None
+        assert match.group(1) == "changeLog"
+    
+    def test_re_alter_table_matches_no_backticks(self):
+        """Matches ALTER TABLE without backticks."""
+        from pulldb.worker.processlist_monitor import RE_ALTER_TABLE
+        
+        info = "ALTER TABLE users ADD KEY idx_email (email)"
+        match = RE_ALTER_TABLE.search(info)
+        assert match is not None
+        assert match.group(1) == "users"
+    
+    def test_re_add_key_matches_simple(self):
+        """Matches ADD KEY clause."""
+        from pulldb.worker.processlist_monitor import RE_ADD_KEY
+        
+        info = "ADD KEY `class` (`class`)"
+        match = RE_ADD_KEY.search(info)
+        assert match is not None
+    
+    def test_re_add_key_matches_primary(self):
+        """Matches ADD PRIMARY KEY."""
+        from pulldb.worker.processlist_monitor import RE_ADD_KEY
+        
+        info = "ADD PRIMARY KEY (`id`)"
+        match = RE_ADD_KEY.search(info)
+        assert match is not None
+    
+    def test_re_add_key_no_match_add_column(self):
+        """Does not match ADD COLUMN."""
+        from pulldb.worker.processlist_monitor import RE_ADD_KEY
+        
+        info = "ADD COLUMN email VARCHAR(255)"
+        match = RE_ADD_KEY.search(info)
+        assert match is None
+    
+    def test_parse_processlist_detects_alter_table(self, processlist_monitor):
+        """ProcesslistMonitor detects ALTER TABLE ADD KEY as index rebuild."""
+        rows = [
+            {
+                "db": "staging_abc123",
+                "Info": "ALTER TABLE `changeLog` ADD KEY `class` (`class`), ADD KEY `category` (`category`)",
+                "State": "altering table",
+                "Time": 45,
+            }
+        ]
+        
+        snapshot = processlist_monitor._parse_processlist_rows(rows)
+        
+        assert "changeLog" in snapshot.tables
+        assert snapshot.tables["changeLog"]["phase"] == "rebuilding_indexes"
+        assert snapshot.tables["changeLog"]["running_seconds"] == 45
+    
+    def test_parse_processlist_ignores_non_index_alter(self, processlist_monitor):
+        """ALTER TABLE ADD COLUMN not flagged as index rebuild."""
+        rows = [
+            {
+                "db": "staging_abc123",
+                "Info": "ALTER TABLE `users` ADD COLUMN `email` VARCHAR(255)",
+                "State": "altering table",
+                "Time": 10,
+            }
+        ]
+        
+        snapshot = processlist_monitor._parse_processlist_rows(rows)
+        
+        # Should not be tracked as index rebuild
+        if "users" in snapshot.tables:
+            assert snapshot.tables["users"].get("phase") != "rebuilding_indexes"
+
+
+class TestTimeColumnCapture:
+    """Test Time column capture for running duration."""
+    
+    def test_time_captured_for_insert(self, processlist_monitor):
+        """INSERT statement captures Time as running_seconds."""
+        rows = [
+            {
+                "db": "staging_abc123",
+                "Info": "INSERT INTO `users` /* COMPLETED: 50% */ ...",
+                "State": "executing",
+                "Time": 120,
+            }
+        ]
+        
+        snapshot = processlist_monitor._parse_processlist_rows(rows)
+        
+        assert "users" in snapshot.tables
+        assert snapshot.tables["users"]["running_seconds"] == 120
+    
+    def test_time_captured_for_load_data(self, processlist_monitor):
+        """LOAD DATA captures Time as running_seconds."""
+        rows = [
+            {
+                "db": "staging_abc123",
+                "Info": "LOAD DATA LOCAL INFILE '/tmp/data.csv' INTO TABLE `orders` /* COMPLETED: 75% */",
+                "State": "executing",
+                "Time": 300,
+            }
+        ]
+        
+        snapshot = processlist_monitor._parse_processlist_rows(rows)
+        
+        assert "orders" in snapshot.tables
+        assert snapshot.tables["orders"]["running_seconds"] == 300
+```
+
+---
+
+### Phase 5: Implementation Order
+
+Implementation should proceed in dependency order:
+
+```
+Phase 5A: Foundation (no dependencies)
+├── 1. Create pulldb/worker/myloader_log_parser.py
+├── 2. Create tests/test_myloader_log_parser.py
+└── 3. Run tests (pytest tests/test_myloader_log_parser.py)
+
+Phase 5B: Processlist Updates (no dependencies)
+├── 4. Update pulldb/worker/processlist_monitor.py
+│     ├── Add RE_ALTER_TABLE, RE_ADD_KEY regexes
+│     ├── Add Time column capture
+│     └── Update _parse_processlist_rows()
+├── 5. Add tests to tests/test_worker_processlist_monitor.py
+└── 6. Run tests (pytest tests/test_worker_processlist_monitor.py)
+
+Phase 5C: State Coordination (depends on 5A, 5B)
+├── 7. Create pulldb/worker/restore_state_tracker.py
+├── 8. Create tests/test_restore_state_tracker.py
+└── 9. Run tests (pytest tests/test_restore_state_tracker.py)
+
+Phase 5D: ANALYZE TABLE (no dependencies)
+├── 10. Create pulldb/worker/table_analyzer.py
+├── 11. Create tests/test_table_analyzer.py
+└── 12. Run tests (pytest tests/test_table_analyzer.py)
+
+Phase 5E: Integration (depends on 5A-5D)
+├── 13. Update pulldb/worker/restore.py
+│      ├── Import new modules
+│      ├── Update _progress_callback() to use log parser
+│      └── Add ANALYZE TABLE call after myloader
+├── 14. Update pulldb/web/features/jobs/routes.py
+│      └── Add new events to EVENT_TO_PHASE
+└── 15. Run full test suite
+
+Phase 5F: UI (depends on 5E)
+├── 16. Add _format_duration() filter to dependencies.py
+├── 17. Update job details template
+├── 18. Add CSS for spinner and phase display
+└── 19. Manual testing with real restore
+
+Phase 5G: Configuration (optional, can be done anytime)
+├── 20. Add PULLDB_ANALYZE_AFTER_RESTORE env var
+└── 21. Add PULLDB_INDEX_TRACKING_ENABLED env var
+```
+
+---
+
+### Phase 5: Detailed File Specifications
+
+#### File 1: `pulldb/worker/myloader_log_parser.py` (NEW)
+
+```python
+"""
+myloader stdout log parser for restore phase detection.
+
+Parses myloader verbose output to detect:
+- Data loading progress (part X of Y)
+- Index rebuild start (Enqueuing index for table)
+- Index rebuild active (restoring index/indexes)
+- Thread completion (L-Thread/I-Thread ending)
+
+HCA Layer: features (pulldb/worker/)
+Depends on: shared (infra/logging)
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum, auto
+from typing import Callable, Optional
+
+from pulldb.infra.logging import get_logger
+
+logger = get_logger("pulldb.worker.myloader_log_parser")
+
+
+class TablePhase(Enum):
+    """Phase of table restore process."""
+    UNKNOWN = auto()
+    LOADING_DATA = auto()      # INSERT/LOAD DATA in progress
+    DATA_COMPLETE = auto()     # Data load finished, waiting for index
+    REBUILDING_INDEXES = auto() # ALTER TABLE ADD KEY in progress
+    COMPLETE = auto()          # All done
+
+
+@dataclass
+class TableState:
+    """Track state for a single table during restore."""
+    table_name: str
+    source_table: str  # Original table name (from source db)
+    target_table: str  # Target table name (in staging db)
+    phase: TablePhase = TablePhase.UNKNOWN
+    data_parts_total: int = 0
+    data_parts_completed: int = 0
+    index_started_at: Optional[datetime] = None
+    index_running_seconds: int = 0
+    last_updated: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class LogParseResult:
+    """Result of parsing a single log line."""
+    event_type: Optional[str] = None  # Event to emit, if any
+    event_data: dict = field(default_factory=dict)
+    table_name: Optional[str] = None
+    phase_change: Optional[TablePhase] = None
+
+
+# Compiled regex patterns based on myloader source code
+# From myloader_worker_index.c:create_index_job()
+RE_ENQUEUE_INDEX = re.compile(
+    r"Thread\s+(-?\d+):\s+Enqueuing index for table:\s+([^\s.]+)\.([^\s]+)",
+    re.IGNORECASE
+)
+
+# From myloader_worker_index.c:process_index()
+RE_RESTORING_INDEX = re.compile(
+    r"restoring index:\s+([^\s.]+)\.([^\s]+)",
+    re.IGNORECASE
+)
+
+# From myloader_restore_job.c - index restore message
+RE_RESTORING_INDEXES = re.compile(
+    r"Thread\s+(\d+):\s+restoring indexes\s+([^\s.]+)\.([^\s]+)\s+from index",
+    re.IGNORECASE
+)
+
+# From myloader_restore_job.c:process_restore_job() - data loading progress
+RE_DATA_PROGRESS = re.compile(
+    r"Thread\s+(\d+):\s+restoring\s+([^\s.]+)\.([^\s]+)\s+part\s+(\d+)\s+of\s+(\d+)\s+from\s+([^\s|]+)",
+    re.IGNORECASE
+)
+
+# Overall progress: "Progress X of Y. Tables A of B completed"
+RE_OVERALL_PROGRESS = re.compile(
+    r"Progress\s+(\d+)\s+of\s+(\d+)\.\s*Tables\s+(\d+)\s+of\s+(\d+)",
+    re.IGNORECASE
+)
+
+# From myloader_worker_loader.c:loader_thread()
+RE_LOADER_THREAD_ENDING = re.compile(
+    r"L-Thread\s+(\d+):\s+ending",
+    re.IGNORECASE
+)
+
+# Index thread ending (from worker_index_thread)
+RE_INDEX_THREAD_ENDING = re.compile(
+    r"I-Thread\s+(\d+):\s+ending",
+    re.IGNORECASE
+)
+
+# Index restore complete for specific table
+RE_INDEX_RESTORE_COMPLETE = re.compile(
+    r"Thread\s+(\d+):\s+restoring\s+INDEXES\s+([^\s.]+)\.([^\s]+)\s+from",
+    re.IGNORECASE
+)
+
+
+class MyloaderLogParser:
+    """
+    Stateful parser for myloader verbose output.
+    
+    Tracks per-table state and emits events when phase transitions occur.
+    """
+    
+    def __init__(
+        self,
+        event_callback: Optional[Callable[[str, dict], None]] = None,
+    ) -> None:
+        """
+        Initialize parser.
+        
+        Args:
+            event_callback: Optional callback invoked when events should be emitted.
+        """
+        self._event_callback = event_callback
+        self._tables: dict[str, TableState] = {}
+        self._overall_progress: int = 0
+        self._overall_total: int = 0
+        self._tables_completed: int = 0
+        self._tables_total: int = 0
+        self._loader_threads_active: int = 0
+        self._index_threads_active: int = 0
+    
+    def parse_line(self, line: str) -> LogParseResult:
+        """
+        Parse a single line of myloader output.
+        
+        Args:
+            line: Raw log line from myloader stdout/stderr.
+            
+        Returns:
+            LogParseResult with any event to emit and state changes.
+        """
+        result = LogParseResult()
+        
+        # Try each pattern in order of specificity
+        
+        # 1. Index enqueue (data load complete, index starting)
+        if match := RE_ENQUEUE_INDEX.search(line):
+            thread_id, target_db, table_name = match.groups()
+            result = self._handle_enqueue_index(target_db, table_name)
+            
+        # 2. Index restore starting
+        elif match := RE_RESTORING_INDEX.search(line):
+            source_db, table_name = match.groups()
+            result = self._handle_restoring_index(source_db, table_name)
+            
+        # 3. Index restore in progress
+        elif match := RE_RESTORING_INDEXES.search(line):
+            thread_id, target_db, table_name = match.groups()
+            result = self._handle_restoring_indexes(target_db, table_name)
+            
+        # 4. Data loading progress
+        elif match := RE_DATA_PROGRESS.search(line):
+            thread_id, target_db, table_name, part, total, filename = match.groups()
+            result = self._handle_data_progress(
+                target_db, table_name, int(part), int(total), filename
+            )
+            
+        # 5. Overall progress
+        if match := RE_OVERALL_PROGRESS.search(line):
+            progress, total, tables_done, tables_total = match.groups()
+            self._overall_progress = int(progress)
+            self._overall_total = int(total)
+            self._tables_completed = int(tables_done)
+            self._tables_total = int(tables_total)
+            
+        # 6. Loader thread ending
+        elif match := RE_LOADER_THREAD_ENDING.search(line):
+            thread_id = match.group(1)
+            self._loader_threads_active = max(0, self._loader_threads_active - 1)
+            
+        # 7. Index thread ending
+        elif match := RE_INDEX_THREAD_ENDING.search(line):
+            thread_id = match.group(1)
+            self._index_threads_active = max(0, self._index_threads_active - 1)
+        
+        # Emit event if callback registered
+        if result.event_type and self._event_callback:
+            self._event_callback(result.event_type, result.event_data)
+        
+        return result
+    
+    def _handle_enqueue_index(self, target_db: str, table_name: str) -> LogParseResult:
+        """Handle 'Enqueuing index for table' message."""
+        key = f"{target_db}.{table_name}"
+        
+        state = self._tables.get(key)
+        if state is None:
+            state = TableState(
+                table_name=key,
+                source_table=table_name,
+                target_table=table_name,
+            )
+            self._tables[key] = state
+        
+        # Transition: data complete, entering index phase
+        old_phase = state.phase
+        state.phase = TablePhase.DATA_COMPLETE
+        state.index_started_at = datetime.utcnow()
+        state.last_updated = datetime.utcnow()
+        
+        return LogParseResult(
+            event_type="table_index_rebuild_queued",
+            event_data={
+                "table": table_name,
+                "target_db": target_db,
+                "full_name": key,
+            },
+            table_name=key,
+            phase_change=TablePhase.DATA_COMPLETE,
+        )
+    
+    def _handle_restoring_index(self, source_db: str, table_name: str) -> LogParseResult:
+        """Handle 'restoring index:' message."""
+        # Find matching table state (may be under target db name)
+        state = None
+        for key, s in self._tables.items():
+            if s.source_table == table_name or key.endswith(f".{table_name}"):
+                state = s
+                break
+        
+        if state is None:
+            # Table not seen before, create state
+            key = f"{source_db}.{table_name}"
+            state = TableState(
+                table_name=key,
+                source_table=table_name,
+                target_table=table_name,
+            )
+            self._tables[key] = state
+        
+        state.phase = TablePhase.REBUILDING_INDEXES
+        state.index_started_at = state.index_started_at or datetime.utcnow()
+        state.last_updated = datetime.utcnow()
+        
+        return LogParseResult(
+            event_type="table_index_rebuild_started",
+            event_data={
+                "table": table_name,
+                "source_db": source_db,
+            },
+            table_name=state.table_name,
+            phase_change=TablePhase.REBUILDING_INDEXES,
+        )
+    
+    def _handle_restoring_indexes(self, target_db: str, table_name: str) -> LogParseResult:
+        """Handle 'restoring indexes ... from index' message."""
+        key = f"{target_db}.{table_name}"
+        
+        state = self._tables.get(key)
+        if state is None:
+            state = TableState(
+                table_name=key,
+                source_table=table_name,
+                target_table=table_name,
+            )
+            self._tables[key] = state
+        
+        state.phase = TablePhase.REBUILDING_INDEXES
+        state.last_updated = datetime.utcnow()
+        
+        # Calculate running time if we have start time
+        running_seconds = 0
+        if state.index_started_at:
+            running_seconds = int(
+                (datetime.utcnow() - state.index_started_at).total_seconds()
+            )
+        state.index_running_seconds = running_seconds
+        
+        return LogParseResult(
+            event_type="table_index_rebuild_progress",
+            event_data={
+                "table": table_name,
+                "target_db": target_db,
+                "running_seconds": running_seconds,
+            },
+            table_name=key,
+        )
+    
+    def _handle_data_progress(
+        self,
+        target_db: str,
+        table_name: str,
+        part: int,
+        total: int,
+        filename: str,
+    ) -> LogParseResult:
+        """Handle data loading progress message."""
+        key = f"{target_db}.{table_name}"
+        
+        state = self._tables.get(key)
+        if state is None:
+            state = TableState(
+                table_name=key,
+                source_table=table_name,
+                target_table=table_name,
+                phase=TablePhase.LOADING_DATA,
+            )
+            self._tables[key] = state
+        
+        state.phase = TablePhase.LOADING_DATA
+        state.data_parts_total = total
+        state.data_parts_completed = part
+        state.last_updated = datetime.utcnow()
+        
+        percent = (part / total * 100) if total > 0 else 0
+        
+        return LogParseResult(
+            event_type="table_data_progress",
+            event_data={
+                "table": table_name,
+                "target_db": target_db,
+                "part": part,
+                "total": total,
+                "percent": percent,
+                "filename": filename,
+            },
+            table_name=key,
+        )
+    
+    def get_table_state(self, table_name: str) -> Optional[TableState]:
+        """Get current state for a table."""
+        return self._tables.get(table_name)
+    
+    def get_all_states(self) -> dict[str, TableState]:
+        """Get all table states."""
+        return self._tables.copy()
+    
+    def get_summary(self) -> dict:
+        """Get summary of current restore state."""
+        phases = {phase: 0 for phase in TablePhase}
+        for state in self._tables.values():
+            phases[state.phase] += 1
+        
+        return {
+            "overall_progress": self._overall_progress,
+            "overall_total": self._overall_total,
+            "tables_completed": self._tables_completed,
+            "tables_total": self._tables_total,
+            "tables_by_phase": {p.name: c for p, c in phases.items()},
+            "loader_threads_active": self._loader_threads_active,
+            "index_threads_active": self._index_threads_active,
+        }
+```
+
+#### File 2: `pulldb/worker/table_analyzer.py` (NEW)
+
+**Full specification at [Section 4: Add ANALYZE TABLE Execution](#4-add-analyze-table-execution) above.**
+
+Summary: Implements `analyze_tables()` function with:
+- `AnalyzeResult` dataclass for per-table results
+- `NO_WRITE_TO_BINLOG` for staging databases
+- Batch processing (default 10 tables per statement)
+- Event callbacks for UI progress
+
+#### File 3: `pulldb/worker/restore_state_tracker.py` (NEW)
+
+```python
+"""
+Coordinated state tracker merging myloader log parsing with processlist monitoring.
+
+Ensures table is only marked complete when BOTH:
+1. Data load finished (from log: "Enqueuing index")
+2. Index rebuild finished (from processlist: no ALTER TABLE, or from log: I-Thread ending)
+
+HCA Layer: features (pulldb/worker/)
+Depends on: myloader_log_parser, processlist_monitor
+"""
+
+from __future__ import annotations
+
+import threading
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Callable, Optional
+
+from pulldb.infra.logging import get_logger
+from pulldb.worker.myloader_log_parser import (
+    MyloaderLogParser,
+    TablePhase,
+    TableState,
+)
+from pulldb.worker.processlist_monitor import (
+    ProcesslistMonitor,
+    ProcesslistSnapshot,
+)
+
+logger = get_logger("pulldb.worker.restore_state_tracker")
+
+
+@dataclass
+class CombinedTableState:
+    """Combined state from log parser and processlist monitor."""
+    table_name: str
+    
+    # From log parser
+    log_phase: TablePhase = TablePhase.UNKNOWN
+    data_parts_completed: int = 0
+    data_parts_total: int = 0
+    
+    # From processlist
+    processlist_phase: Optional[str] = None  # "loading_data", "rebuilding_indexes", None
+    processlist_percent: Optional[float] = None
+    processlist_running_seconds: int = 0
+    
+    # Combined determination
+    is_data_complete: bool = False
+    is_index_complete: bool = False
+    
+    last_updated: datetime = field(default_factory=datetime.utcnow)
+    
+    @property
+    def is_fully_complete(self) -> bool:
+        """Table is complete when both data and indexes are done."""
+        return self.is_data_complete and self.is_index_complete
+    
+    @property
+    def effective_phase(self) -> str:
+        """Determine effective phase from combined signals."""
+        if self.is_fully_complete:
+            return "complete"
+        if self.log_phase == TablePhase.REBUILDING_INDEXES:
+            return "rebuilding_indexes"
+        if self.processlist_phase == "rebuilding_indexes":
+            return "rebuilding_indexes"
+        if self.log_phase in (TablePhase.DATA_COMPLETE, TablePhase.REBUILDING_INDEXES):
+            return "rebuilding_indexes"
+        if self.log_phase == TablePhase.LOADING_DATA:
+            return "loading_data"
+        if self.processlist_phase == "loading_data":
+            return "loading_data"
+        return "unknown"
+
+
+class RestoreStateTracker:
+    """
+    Coordinates state tracking from multiple sources.
+    
+    Uses:
+    - MyloaderLogParser for explicit phase signals from myloader stdout
+    - ProcesslistMonitor for running time and fallback detection
+    
+    Emits unified events when table state changes.
+    """
+    
+    def __init__(
+        self,
+        log_parser: MyloaderLogParser,
+        processlist_monitor: Optional[ProcesslistMonitor] = None,
+        event_callback: Optional[Callable[[str, dict], None]] = None,
+    ) -> None:
+        self._log_parser = log_parser
+        self._processlist_monitor = processlist_monitor
+        self._event_callback = event_callback
+        self._tables: dict[str, CombinedTableState] = {}
+        self._lock = threading.Lock()
+        
+        # Track tables that entered index phase but haven't completed
+        self._tables_in_index_phase: set[str] = set()
+    
+    def process_log_line(self, line: str) -> None:
+        """Process a log line and update combined state."""
+        result = self._log_parser.parse_line(line)
+        
+        if result.table_name:
+            with self._lock:
+                self._update_from_log(result.table_name, result)
+    
+    def update_from_processlist(self, snapshot: ProcesslistSnapshot) -> None:
+        """Update combined state from processlist snapshot."""
+        with self._lock:
+            # Update states for tables in snapshot
+            for table_name, table_info in snapshot.tables.items():
+                if table_name not in self._tables:
+                    self._tables[table_name] = CombinedTableState(table_name=table_name)
+                
+                state = self._tables[table_name]
+                state.processlist_phase = table_info.get("phase")
+                state.processlist_percent = table_info.get("progress_pct")
+                state.processlist_running_seconds = table_info.get("running_seconds", 0)
+                state.last_updated = datetime.utcnow()
+            
+            # Check for tables that were indexing but no longer appear in processlist
+            # This could indicate index completion
+            for table_name in list(self._tables_in_index_phase):
+                if table_name not in snapshot.tables:
+                    state = self._tables.get(table_name)
+                    if state and state.is_data_complete and not state.is_index_complete:
+                        # Index likely completed
+                        state.is_index_complete = True
+                        self._tables_in_index_phase.discard(table_name)
+                        self._emit_event("table_index_rebuild_complete", {
+                            "table": table_name,
+                            "total_seconds": state.processlist_running_seconds,
+                        })
+    
+    def _update_from_log(self, table_name: str, result) -> None:
+        """Update state from log parse result."""
+        if table_name not in self._tables:
+            self._tables[table_name] = CombinedTableState(table_name=table_name)
+        
+        state = self._tables[table_name]
+        log_state = self._log_parser.get_table_state(table_name)
+        
+        if log_state:
+            state.log_phase = log_state.phase
+            state.data_parts_completed = log_state.data_parts_completed
+            state.data_parts_total = log_state.data_parts_total
+            
+            # Detect data completion
+            if log_state.phase in (TablePhase.DATA_COMPLETE, TablePhase.REBUILDING_INDEXES):
+                if not state.is_data_complete:
+                    state.is_data_complete = True
+                    self._tables_in_index_phase.add(table_name)
+            
+            # Detect index completion
+            if log_state.phase == TablePhase.COMPLETE:
+                state.is_index_complete = True
+                self._tables_in_index_phase.discard(table_name)
+        
+        state.last_updated = datetime.utcnow()
+    
+    def _emit_event(self, event_type: str, data: dict) -> None:
+        """Emit event if callback registered."""
+        if self._event_callback:
+            try:
+                self._event_callback(event_type, data)
+            except Exception as e:
+                logger.warning(f"Event callback error: {e}")
+    
+    def get_table_state(self, table_name: str) -> Optional[CombinedTableState]:
+        """Get combined state for a table."""
+        with self._lock:
+            return self._tables.get(table_name)
+    
+    def get_all_states(self) -> dict[str, CombinedTableState]:
+        """Get all table states."""
+        with self._lock:
+            return self._tables.copy()
+    
+    def get_tables_for_ui(self) -> dict[str, dict]:
+        """Get table states formatted for UI consumption."""
+        with self._lock:
+            result = {}
+            for name, state in self._tables.items():
+                result[name] = {
+                    "phase": state.effective_phase,
+                    "progress_pct": state.processlist_percent,
+                    "running_seconds": state.processlist_running_seconds,
+                    "is_complete": state.is_fully_complete,
+                }
+            return result
+```
+
+#### File 4: Updates to `pulldb/worker/restore.py`
+
+**Changes needed:**
+
+```python
+# Add imports
+from pulldb.worker.myloader_log_parser import MyloaderLogParser
+from pulldb.worker.restore_state_tracker import RestoreStateTracker
+from pulldb.worker.table_analyzer import analyze_tables
+
+# In run_myloader() - update _progress_callback to use log parser:
+
+def run_myloader(...):
+    # ... existing setup ...
+    
+    # NEW: Create log parser
+    log_parser = MyloaderLogParser(event_callback=progress_callback)
+    
+    def _progress_callback(line: str) -> None:
+        nonlocal completed_tasks, rows_restored
+        
+        # NEW: Parse line for index tracking
+        log_parser.parse_line(line)
+        
+        # ... existing progress handling ...
+
+# In orchestrate_restore_workflow() - add ANALYZE TABLE:
+
+def orchestrate_restore_workflow(spec: RestoreWorkflowSpec) -> dict[str, object]:
+    # ... existing workflow ...
+    
+    # After myloader completes successfully:
+    if result.exit_code == 0 and spec.analyze_after_restore:
+        _emit_event("analyze_tables_started", {
+            "table_count": len(restored_tables)
+        })
+        
+        analyze_results = analyze_tables(
+            conn=staging_conn,
+            database=staging_db_name,
+            tables=restored_tables,
+            use_local=True,
+            event_callback=_emit_event,
+        )
+        
+        success_count = sum(1 for r in analyze_results if r.msg_type == "status")
+        _emit_event("analyze_tables_complete", {
+            "success_count": success_count,
+            "total_count": len(analyze_results),
+        })
+```
+
+#### File 5: Updates to `pulldb/worker/processlist_monitor.py`
+
+**Add after existing regex definitions (~line 30):**
+
+```python
+# NEW: Regex for ALTER TABLE detection
+RE_ALTER_TABLE = re.compile(
+    r"ALTER\s+TABLE\s+`?([^\s`(]+)`?",
+    re.IGNORECASE
+)
+
+# NEW: Regex to confirm it's an ADD KEY operation (index rebuild)
+RE_ADD_KEY = re.compile(
+    r"ADD\s+(PRIMARY\s+)?KEY",
+    re.IGNORECASE
+)
+
+# Processlist column indices (when using cursor without dictionary)
+# Id, User, Host, db, Command, Time, State, Info
+COLUMN_ID = 0
+COLUMN_USER = 1
+COLUMN_HOST = 2
+COLUMN_DB = 3
+COLUMN_COMMAND = 4
+COLUMN_TIME = 5  # Seconds the query has been running
+COLUMN_STATE = 6
+COLUMN_INFO = 7
+```
+
+**Update `_parse_processlist_rows()` method:**
+
+```python
+def _parse_processlist_rows(
+    self, rows: list[dict[str, Any]]
+) -> ProcesslistSnapshot:
+    """Parse processlist rows into snapshot."""
+    tables: dict[str, TableProgress] = {}
+    active_threads = 0
+
+    for row in rows:
+        db = row.get("db") or row.get("Db")
+        info = row.get("Info") or row.get("info") or ""
+        state = row.get("State") or row.get("state") or ""
+        query_time = row.get("Time") or row.get("time") or 0  # NEW: capture Time
+        
+        if db != self._config.staging_db:
+            continue
+        
+        if not info or not isinstance(info, str):
+            continue
+
+        # Existing: Check for INSERT/LOAD with completion comment
+        info_upper = info.upper()
+        has_completed = "/* COMPLETED:" in info_upper
+        has_data_op = "INSERT" in info_upper or "LOAD" in info_upper
+        
+        if has_completed and has_data_op:
+            active_threads += 1
+            table_match = RE_INSERT_TABLE.search(info) or RE_LOAD_TABLE.search(info)
+            if table_match:
+                table_name = table_match.group(1)
+                percent = self._extract_percent(info)
+                self._update_table_progress(
+                    tables, table_name, percent, 
+                    phase="loading_data",
+                    running_seconds=int(query_time),
+                )
+            continue
+        
+        # NEW: Check for ALTER TABLE ADD KEY (index rebuild)
+        if state == "altering table" or RE_ALTER_TABLE.search(info):
+            alter_match = RE_ALTER_TABLE.search(info)
+            if alter_match and RE_ADD_KEY.search(info):
+                table_name = alter_match.group(1)
+                active_threads += 1
+                self._update_table_progress(
+                    tables, table_name, None,
+                    phase="rebuilding_indexes",
+                    running_seconds=int(query_time),
+                )
+
+    return ProcesslistSnapshot(
+        tables=tables,
+        active_threads=active_threads,
+        timestamp=time.monotonic(),
+    )
+```
+
+#### File 6: Updates to `pulldb/web/features/jobs/routes.py`
+
+**Add to EVENT_TO_PHASE mapping:**
+
+```python
+EVENT_TO_PHASE = {
+    # ... existing mappings ...
+    
+    # NEW: Index rebuild tracking events
+    "table_index_rebuild_queued": "restoring",
+    "table_index_rebuild_started": "restoring",
+    "table_index_rebuild_progress": "restoring",
+    "table_index_rebuild_complete": "restoring",
+    
+    # NEW: ANALYZE TABLE events
+    "analyze_tables_started": "restoring",
+    "table_analyze_started": "restoring",
+    "table_analyze_complete": "restoring",
+    "table_analyze_failed": "restoring",
+    "analyze_tables_complete": "restoring",
+}
+```
+
+#### File 7: UI Template Updates
+
+**Add to job details template (table progress section):**
+
+```html
+{% for table_name, table_info in tables.items() %}
+<div class="log-progress-table-row">
+    <span class="table-name">{{ table_name }}</span>
+    
+    {% if table_info.phase == "loading_data" %}
+        <div class="log-progress-bar-container">
+            <div class="log-progress-bar" style="width: {{ table_info.progress_pct or 0 }}%"></div>
+        </div>
+        <span class="progress-percent">{{ table_info.progress_pct or 0 | round(1) }}%</span>
+    
+    {% elif table_info.phase == "rebuilding_indexes" %}
+        <div class="log-progress-spinner-container">
+            <span class="spinner spinner--small"></span>
+            <span class="progress-phase">Rebuilding indexes...</span>
+            <span class="progress-time">{{ table_info.running_seconds | format_duration }}</span>
+        </div>
+    
+    {% elif table_info.phase == "analyzing" %}
+        <div class="log-progress-spinner-container">
+            <span class="spinner spinner--small"></span>
+            <span class="progress-phase">Analyzing statistics...</span>
+        </div>
+    
+    {% elif table_info.phase == "complete" or table_info.is_complete %}
+        <div class="log-progress-complete">
+            <span class="icon-check">✓</span>
+            <span class="progress-phase">Complete</span>
+        </div>
+    {% endif %}
+</div>
+{% endfor %}
+```
+
+#### File 8: CSS Additions
+
+**Add to main CSS file:**
+
+```css
+/* Phase 5: Index rebuild spinner display */
+.log-progress-spinner-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.spinner--small {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+}
+
+.progress-phase {
+    color: var(--warning-text);
+    font-style: italic;
+}
+
+.progress-time {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+}
+
+.log-progress-complete {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--success-text);
+}
+
+.icon-check {
+    color: var(--success-text);
+    font-weight: bold;
+}
+```
+
+#### File 9: Jinja2 Filter Addition
+
+**Add to `pulldb/web/dependencies.py`:**
+
+```python
+def _format_duration(seconds: int | None) -> str:
+    """Format seconds as human-readable duration (e.g., '1h 23m 45s')."""
+    if seconds is None or seconds < 0:
+        return "0s"
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    elif seconds < 3600:
+        m, s = divmod(seconds, 60)
+        return f"{m}m {s}s"
+    else:
+        h, remainder = divmod(seconds, 3600)
+        m, s = divmod(remainder, 60)
+        return f"{h}h {m}m {s}s"
+
+# Register filter with Jinja2 environment
+app.jinja_env.filters["format_duration"] = _format_duration
+```
 
 ---
 
@@ -1723,11 +3525,15 @@ class TestProcesslistAlterTableDetection:
 - [ ] Update documentation
 
 ### Phase 5: Index Rebuild Tracking & ANALYZE TABLE (MEDIUM PRIORITY)
-- [ ] Extend ProcesslistMonitor to track ALTER TABLE statements (index rebuilds)
-- [ ] Add table state machine: `loading_data` → `rebuilding_indexes` → `complete`
-- [ ] Don't mark table "finished" until ALTER TABLE completes
-- [ ] Execute `ANALYZE TABLE` on each restored table for accurate statistics
-- [ ] Emit granular events: `table_index_rebuild_*`, `table_analyze_*`
+- [ ] Create `pulldb/worker/myloader_log_parser.py` with log parsing and state tracking
+- [ ] Update ProcesslistMonitor with ALTER TABLE detection and Time column capture
+- [ ] Create `pulldb/worker/restore_state_tracker.py` to coordinate log + processlist signals
+- [ ] Create `pulldb/worker/table_analyzer.py` with `analyze_tables()` function
+- [ ] Update `restore.py` to use log parser and call ANALYZE TABLE post-restore
+- [ ] Add new events to `EVENT_TO_PHASE` in routes.py
+- [ ] Add UI updates: `_format_duration()` filter, spinner, phase display
+- [ ] Create comprehensive tests for all new modules
+- [ ] Manual verification with real myloader restore (foxpest backup)
 
 ---
 
@@ -1764,12 +3570,20 @@ class TestProcesslistAlterTableDetection:
 ### Phase 5 (Index Tracking & ANALYZE TABLE)
 | File | Change |
 |------|--------|
-| `pulldb/worker/processlist_monitor.py` | Add `RE_ALTER_TABLE`, `RE_ADD_KEY` regexes; `TableRestorePhase` enum; update `_parse_processlist_rows()` |
+| `pulldb/worker/myloader_log_parser.py` | NEW - `MyloaderLogParser` class, `TablePhase` enum, regex patterns for myloader stdout |
 | `pulldb/worker/table_analyzer.py` | NEW - `analyze_tables()` function with batch support |
-| `pulldb/worker/restore.py` | Integrate ANALYZE TABLE after myloader completes |
-| `pulldb/web/features/jobs/routes.py` | Add new events: `table_index_rebuild_*`, `table_analyze_*` |
-| `tests/test_table_analyzer.py` | NEW - tests for analyze_tables() |
-| `tests/test_worker_processlist_monitor.py` | Add ALTER TABLE detection tests |
+| `pulldb/worker/restore_state_tracker.py` | NEW - `RestoreStateTracker` coordinates log parser + processlist |
+| `pulldb/worker/processlist_monitor.py` | Add `RE_ALTER_TABLE`, `RE_ADD_KEY` regexes; add `Time` column capture; update `_parse_processlist_rows()` |
+| `pulldb/worker/restore.py` | Import new modules; update `_progress_callback()` to use log parser; add ANALYZE TABLE call |
+| `pulldb/web/features/jobs/routes.py` | Add new events: `table_index_rebuild_*`, `table_analyze_*` to `EVENT_TO_PHASE` |
+| `pulldb/web/dependencies.py` | Add `_format_duration()` Jinja2 filter |
+| `pulldb/web/templates/jobs/details.html` | Add phase display with spinner for index rebuild |
+| `pulldb/web/static/css/main.css` | Add `.log-progress-spinner-container`, `.spinner--small`, `.progress-phase` styles |
+| `pulldb/domain/config.py` | Add `analyze_after_restore` and `index_tracking_enabled` config options |
+| `tests/test_myloader_log_parser.py` | NEW - tests for regex patterns and parser state machine |
+| `tests/test_table_analyzer.py` | NEW - tests for `analyze_tables()` |
+| `tests/test_restore_state_tracker.py` | NEW - tests for state coordination |
+| `tests/test_worker_processlist_monitor.py` | Add ALTER TABLE detection and Time column tests |
 
 ---
 

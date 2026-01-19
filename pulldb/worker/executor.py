@@ -42,6 +42,11 @@ from pulldb.infra.s3 import (
     discover_latest_backup,
 )
 from pulldb.infra.secrets import MySQLCredentials
+from pulldb.infra.timeouts import (
+    DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
+    DEFAULT_MYSQL_OPERATION_TIMEOUT,
+    DEFAULT_POST_SQL_TIMEOUT,
+)
 from pulldb.worker.downloader import download_backup
 from pulldb.worker.heartbeat import HeartbeatContext
 from pulldb.worker.post_sql import PostSQLConnectionSpec
@@ -56,9 +61,6 @@ from pulldb.worker.staging import StagingConnectionSpec
 logger = get_logger("pulldb.worker.executor")
 
 JobExecutor = t.Callable[[Job], None]
-
-DEFAULT_MYSQL_TIMEOUT_SECONDS = 7200
-DEFAULT_POST_SQL_TIMEOUT_SECONDS = 600
 
 # Extraction progress emission thresholds (hybrid: bytes OR files OR time)
 EXTRACTION_PROGRESS_BYTES = 64 * 1024 * 1024  # Every 64MB
@@ -160,7 +162,7 @@ def pre_flight_verify_target_overwrite_safe(
             port=credentials.port,
             user=credentials.username,
             password=credentials.password,
-            connect_timeout=30,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
         )
     except mysql.connector.Error as e:
         # Can't connect - log warning but don't block (API check should have caught issues)
@@ -428,8 +430,9 @@ class WorkerExecutorDependencies:
 class WorkerExecutorTimeouts:
     """Timeout configuration in seconds for restore phases."""
 
-    staging_seconds: int = DEFAULT_MYSQL_TIMEOUT_SECONDS
-    post_sql_seconds: int = DEFAULT_POST_SQL_TIMEOUT_SECONDS
+    staging_seconds: int = DEFAULT_MYSQL_OPERATION_TIMEOUT
+    post_sql_seconds: int = DEFAULT_POST_SQL_TIMEOUT
+    connect_timeout_seconds: int = DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
 @dataclass(slots=True)
@@ -479,6 +482,7 @@ class WorkerJobExecutor:
         self.work_dir.mkdir(parents=True, exist_ok=True)
         self.staging_timeout_seconds = timeout_cfg.staging_seconds
         self.post_sql_timeout_seconds = timeout_cfg.post_sql_seconds
+        self.connect_timeout_seconds = timeout_cfg.connect_timeout_seconds
         self._discover_backup = hook_cfg.discover_backup
         self._download_backup = hook_cfg.download_backup
         self._extract_archive = hook_cfg.extract_archive
@@ -1070,6 +1074,7 @@ class WorkerJobExecutor:
             mysql_user=creds.username,
             mysql_password=creds.password,
             timeout_seconds=self.staging_timeout_seconds,
+            connect_timeout_seconds=self.connect_timeout_seconds,
         )
         post_sql_conn = PostSQLConnectionSpec(
             staging_db=job.staging_name,
@@ -1078,8 +1083,7 @@ class WorkerJobExecutor:
             mysql_port=creds.port,
             mysql_user=creds.username,
             mysql_password=creds.password,
-            # Use default connect_timeout (5s) from PostSQLConnectionSpec
-            # post_sql_timeout_seconds is for script execution, not connection
+            # Post-SQL uses shorter connect_timeout since already in staging
         )
         return staging_conn, post_sql_conn
 

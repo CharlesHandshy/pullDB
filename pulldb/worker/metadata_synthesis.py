@@ -1,5 +1,9 @@
 """Metadata synthesis logic for myloader compatibility.
 
+.. deprecated:: 1.1.0
+    This module is deprecated. Use :mod:`pulldb.worker.backup_metadata` instead.
+    This module will be removed in version 2.0.0.
+
 Ensures that backups from older mydumper versions (0.9.x) which produce
 text-based metadata files are compatible with myloader 0.19.x which expects
 INI-style metadata files.
@@ -19,11 +23,20 @@ import gzip
 import os
 import re
 import struct
+import warnings
 from collections import defaultdict
 from pathlib import Path
 
 from pulldb.infra.logging import get_logger
 
+# Emit deprecation warning on import
+warnings.warn(
+    "pulldb.worker.metadata_synthesis is deprecated. "
+    "Use pulldb.worker.backup_metadata instead. "
+    "This module will be removed in version 2.0.0.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 logger = get_logger("pulldb.worker.metadata_synthesis")
 

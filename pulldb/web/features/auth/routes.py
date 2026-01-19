@@ -98,6 +98,15 @@ async def login_submit(
                         if items.expired or items.expiring or items.locked:
                             redirect_url = "/web/maintenance"
 
+    # Check for settings drift (admin users only)
+    if redirect_url == "/web/dashboard/" and user.is_admin:
+        from pulldb.web.features.admin.routes import check_settings_drift
+
+        if hasattr(state, "settings_repo") and state.settings_repo:
+            drift_items = check_settings_drift(state.settings_repo)
+            if drift_items:
+                redirect_url = "/web/admin/settings-sync"
+
     response = RedirectResponse(url=redirect_url, status_code=303)
     response.set_cookie(
         key="session_token",

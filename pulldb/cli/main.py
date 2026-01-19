@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from pulldb import __version__
 from pulldb.cli.auth import get_auth_headers, get_calling_username, get_current_username
 from pulldb.cli.parse import CLIParseError, parse_restore_args
+from pulldb.infra.timeouts import DEFAULT_API_CLIENT_TIMEOUT
 
 # UUID validation pattern (copied from domain.validation to keep CLI self-contained)
 _UUID_PATTERN = re.compile(
@@ -42,7 +43,6 @@ except PermissionError:
 
 
 DEFAULT_API_URL = "http://localhost:8080"
-DEFAULT_API_TIMEOUT_SECONDS = 30.0
 MAX_STATUS_LIMIT = 1000
 
 if t.TYPE_CHECKING:  # pragma: no cover - typing-only import
@@ -62,7 +62,7 @@ _get_calling_username = get_calling_username
 def _load_api_config() -> tuple[str, float]:
     """Resolve API base URL and timeout from environment variables."""
     base_url = os.getenv("PULLDB_API_URL", DEFAULT_API_URL).rstrip("/")
-    timeout_raw = os.getenv("PULLDB_API_TIMEOUT", str(DEFAULT_API_TIMEOUT_SECONDS))
+    timeout_raw = os.getenv("PULLDB_API_TIMEOUT", str(DEFAULT_API_CLIENT_TIMEOUT))
     try:
         timeout = float(timeout_raw)
     except ValueError as exc:  # FAIL HARD: invalid timeout configuration

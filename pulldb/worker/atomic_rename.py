@@ -32,16 +32,13 @@ import mysql.connector
 
 from pulldb.domain.errors import AtomicRenameError
 from pulldb.infra.logging import get_logger
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
 logger = get_logger("pulldb.worker.atomic_rename")
 
 # Expected stored procedure version (must match procedure file)
 EXPECTED_PROCEDURE_VERSION = "1.0.1"
-
-
-# Default connection timeout - short because if you can't connect in 30s, something is wrong
-DEFAULT_CONNECT_TIMEOUT_SECONDS = 30
 
 
 @dataclass(slots=True, frozen=True)
@@ -65,7 +62,7 @@ class AtomicRenameConnectionSpec:
     mysql_user: str
     mysql_password: str
     timeout_seconds: int
-    connect_timeout_seconds: int = DEFAULT_CONNECT_TIMEOUT_SECONDS
+    connect_timeout_seconds: int = DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
 @dataclass(slots=True, frozen=True)

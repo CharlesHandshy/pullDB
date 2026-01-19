@@ -33,6 +33,7 @@ import mysql.connector
 
 from pulldb.domain.errors import PostSQLError
 from pulldb.infra.logging import get_logger
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_MONITOR
 
 SCRIPT_EXTENSION = ".sql"
 MAX_SCRIPT_SIZE_BYTES = 2_000_000  # 2 MB safety cap to prevent runaway memory
@@ -74,7 +75,7 @@ class PostSQLConnectionSpec:
     mysql_port: int
     mysql_user: str
     mysql_password: str
-    connect_timeout: int = 5
+    connect_timeout: int = DEFAULT_MYSQL_CONNECT_TIMEOUT_MONITOR
 
 
 def _discover_scripts(directory: Path) -> list[Path]:
@@ -147,7 +148,7 @@ def execute_post_sql(
             user=spec.mysql_user,
             password=spec.mysql_password,
             database=spec.staging_db,
-            connection_timeout=spec.connect_timeout,
+            connect_timeout=spec.connect_timeout,
             autocommit=True,
         )
     except Exception as e:  # pragma: no cover - connection failure path

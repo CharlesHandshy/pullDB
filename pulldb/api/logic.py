@@ -15,6 +15,7 @@ from pulldb.domain.models import Job, JobStatus, User
 from pulldb.domain.naming import normalize_customer_name
 from pulldb.domain.services.discovery import DiscoveryService
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_API
 from pulldb.worker.staging import generate_staging_name
 
 
@@ -88,7 +89,7 @@ def _target_database_exists_on_host(
             port=creds.port,
             user=creds.username,
             password=creds.password,
-            connect_timeout=10,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
         )
         cursor = conn.cursor()
         cursor.execute("SHOW DATABASES LIKE %s", (target,))
@@ -129,7 +130,7 @@ def _get_pulldb_metadata_owner(
             user=creds.username,
             password=creds.password,
             database=target,
-            connect_timeout=10,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
         )
         cursor = conn.cursor()
         

@@ -21,6 +21,7 @@ import mysql.connector
 
 from pulldb.domain.errors import StagingError
 from pulldb.infra.logging import get_logger
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
 logger = get_logger("pulldb.worker.staging")
@@ -37,10 +38,6 @@ JOB_ID_PREFIX_LENGTH = 12
 
 # Pattern for matching orphaned staging databases: {target}_[0-9a-f]{12}
 STAGING_PATTERN_TEMPLATE = r"^{target}_[0-9a-f]{{12}}$"
-
-
-# Default connection timeout - short because if you can't connect in 30s, something is wrong
-DEFAULT_CONNECT_TIMEOUT_SECONDS = 30
 
 
 @dataclass(slots=True, frozen=True)
@@ -64,7 +61,7 @@ class StagingConnectionSpec:
     mysql_user: str
     mysql_password: str
     timeout_seconds: int
-    connect_timeout_seconds: int = DEFAULT_CONNECT_TIMEOUT_SECONDS
+    connect_timeout_seconds: int = DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
 @dataclass(slots=True, frozen=True)

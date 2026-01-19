@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from pulldb.domain.models import JobStatus, User
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_MONITOR
 from pulldb.web.dependencies import get_api_state, require_admin, templates
 from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
@@ -2402,7 +2403,7 @@ async def test_host_connection(
                 port=creds.port,
                 user=creds.username or "pulldb_loader",
                 password=creds.password,
-                connection_timeout=5,
+                connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_MONITOR,
             )
             checks["connection_valid"] = True
             checks["connection_message"] = f"Connected to {creds.host}:{creds.port}"
@@ -2848,6 +2849,102 @@ def _build_setting_dict(
         "source": source,
         "env_var": meta.env_var if meta else f"PULLDB_{key.upper()}",
     }
+
+
+def get_settings_drift(db_settings: dict[str, str]) -> list[dict]:
+    """Detect settings that differ between database and environment.
+
+    Compares database values against current environment variables.
+    Only checks settings defined in SETTING_REGISTRY with a database value.
+
+    Args:
+        db_settings: Dict of setting_key -> value from database
+
+    Returns:
+        List of dicts with keys: setting_key, db_value, env_value, description
+        Only includes settings where db_value != env_value
+    """
+    differences = []
+    for key, meta in SETTING_REGISTRY.items():
+        db_value = db_settings.get(key)
+        if db_value is None:
+            # No database value, nothing to drift from
+            continue
+
+        env_value = _os.getenv(meta.env_var)
+        if env_value is None:
+            # env not set, but db has value = drift
+            differences.append({
+                "setting_key": key,
+                "db_value": db_value,
+                "env_value": "(not set)",
+                "env_var": meta.env_var,
+                "description": meta.description,
+            })
+        elif db_value != env_value:
+            # Different values = drift
+            differences.append({
+                "setting_key": key,
+                "db_value": db_value,
+                "env_value": env_value,
+                "env_var": meta.env_var,
+                "description": meta.description,
+            })
+
+    return differences
+
+
+def check_settings_drift(settings_repo: Any) -> list[dict]:
+    """Check for settings drift using a settings repository.
+
+    Wrapper around get_settings_drift that handles repository access.
+
+    Args:
+        settings_repo: SettingsRepository instance
+
+    Returns:
+        List of drift entries (empty if no drift detected)
+    """
+    if settings_repo is None:
+        return []
+
+    try:
+        db_settings = settings_repo.get_all_settings()
+    except Exception:
+        return []
+
+    return get_settings_drift(db_settings)
+
+
+@router.get("/settings-sync", response_class=HTMLResponse)
+async def settings_sync_page(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> HTMLResponse:
+    """Show settings sync notification page.
+
+    Displays settings that differ between database and environment,
+    requiring admin acknowledgment before continuing.
+    """
+    from fastapi.concurrency import run_in_threadpool
+
+    # Get drift information
+    drift_items = []
+    if hasattr(state, "settings_repo") and state.settings_repo:
+        drift_items = await run_in_threadpool(
+            check_settings_drift, state.settings_repo
+        )
+
+    return templates.TemplateResponse(
+        "features/admin/settings_sync.html",
+        {
+            "request": request,
+            "user": user,
+            "drift_items": drift_items,
+            "active_nav": None,  # No nav highlighting for modal-like pages
+        },
+    )
 
 
 @router.get("/settings", response_class=HTMLResponse)

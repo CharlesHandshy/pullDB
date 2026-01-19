@@ -34,6 +34,7 @@ from pulldb.infra.secrets import (
     CredentialResolver,
     safe_upsert_single_secret,
 )
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_API
 
 
 logger = logging.getLogger(__name__)
@@ -140,7 +141,7 @@ def _test_mysql_connection(
             port=port,
             user=username,
             password=password,
-            connect_timeout=10,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
         )
 
         if check_alter_user:
@@ -215,7 +216,7 @@ def _alter_mysql_password(
             port=port,
             user=current_username,
             password=current_password,
-            connect_timeout=10,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
             autocommit=True,
         )
         cursor = conn.cursor()

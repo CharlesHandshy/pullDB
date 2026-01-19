@@ -1,5 +1,9 @@
 """Dump metadata parsing for restore progress tracking.
 
+.. deprecated:: 1.1.0
+    This module is deprecated. Use :mod:`pulldb.worker.backup_metadata` instead.
+    This module will be removed in version 2.0.0.
+
 Parses mydumper backup metadata to extract table row counts for accurate
 progress estimation during myloader execution.
 
@@ -13,12 +17,22 @@ HCA Layer: features (pulldb/worker/)
 from __future__ import annotations
 
 import configparser
+import warnings
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
 from pulldb.infra.logging import get_logger
 from pulldb.worker.metadata_synthesis import count_rows_in_file, parse_filename
+
+# Emit deprecation warning on import
+warnings.warn(
+    "pulldb.worker.dump_metadata is deprecated. "
+    "Use pulldb.worker.backup_metadata instead. "
+    "This module will be removed in version 2.0.0.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 logger = get_logger("pulldb.worker.dump_metadata")
 

@@ -24,6 +24,8 @@ from typing import Any
 import mysql.connector
 from mysql.connector import Error as MySQLError
 
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_API
+
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +105,7 @@ def test_admin_connection(
             user=username,
             password=password,
             database=database,
-            connect_timeout=10,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
         )
 
         cursor = conn.cursor()
@@ -241,7 +243,7 @@ def create_pulldb_user(
             port=port,
             user=admin_username,
             password=admin_password,
-            connect_timeout=10,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
             autocommit=True,
         )
         cursor = conn.cursor()
@@ -363,7 +365,7 @@ def create_pulldb_database(
             port=port,
             user=username,
             password=password,
-            connect_timeout=10,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
             autocommit=True,
         )
         cursor = conn.cursor()
@@ -478,7 +480,7 @@ def deploy_stored_procedure(
             user=username,
             password=password,
             database=database,
-            connect_timeout=10,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
             autocommit=True,
         )
         cursor = conn.cursor()
@@ -744,7 +746,7 @@ def sync_mysql_credentials(
             port=mysql_port,
             user=current_username,
             password=current_password,
-            connect_timeout=10,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
             autocommit=True,
         )
         cursor = conn.cursor()
@@ -899,7 +901,7 @@ def drop_mysql_user(
             port=mysql_port,
             user=admin_username,
             password=admin_password,
-            connect_timeout=10,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
             autocommit=True,
         )
         cursor = conn.cursor()

@@ -33,6 +33,7 @@ from botocore.config import Config as BotoConfig
 from botocore.exceptions import BotoCoreError, ClientError
 
 from pulldb.domain.models import MySQLCredentials
+from pulldb.infra.timeouts import DEFAULT_AWS_CONNECT_TIMEOUT, DEFAULT_AWS_READ_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +81,8 @@ class CredentialResolver:
         self,
         aws_profile: str | None = None,
         aws_region: str | None = None,
-        connect_timeout: float = 5.0,
-        read_timeout: float = 10.0,
+        connect_timeout: float = DEFAULT_AWS_CONNECT_TIMEOUT,
+        read_timeout: float = DEFAULT_AWS_READ_TIMEOUT,
     ) -> None:
         """Initialize CredentialResolver.
 
@@ -90,8 +91,8 @@ class CredentialResolver:
                 environment variable or default AWS credentials chain.
             aws_region: AWS region for API calls. If None, uses PULLDB_AWS_REGION,
                 then AWS_DEFAULT_REGION, then defaults to 'us-east-1'.
-            connect_timeout: Connection timeout in seconds (default: 5.0).
-            read_timeout: Read timeout in seconds (default: 10.0).
+            connect_timeout: Connection timeout in seconds (default from timeouts module).
+            read_timeout: Read timeout in seconds (default from timeouts module).
         """
         self.aws_profile = aws_profile or os.getenv("PULLDB_AWS_PROFILE")
         self.aws_region = (

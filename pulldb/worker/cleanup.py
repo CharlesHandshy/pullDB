@@ -25,6 +25,7 @@ import mysql.connector
 
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_gauge
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
 if TYPE_CHECKING:
@@ -293,7 +294,7 @@ def _list_databases(credentials: MySQLCredentials) -> list[str]:
         port=credentials.port,
         user=credentials.username,
         password=credentials.password,
-        connect_timeout=30,
+        connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
     )
     try:
         cursor = conn.cursor()
@@ -321,7 +322,7 @@ def _get_all_database_sizes_mb(credentials: MySQLCredentials) -> dict[str, float
         port=credentials.port,
         user=credentials.username,
         password=credentials.password,
-        connect_timeout=30,
+        connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
     )
     try:
         cursor = conn.cursor()
@@ -367,7 +368,7 @@ def _get_database_size_mb(credentials: MySQLCredentials, db_name: str) -> float 
         port=credentials.port,
         user=credentials.username,
         password=credentials.password,
-        connect_timeout=30,
+        connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
     )
     try:
         cursor = conn.cursor()
@@ -406,7 +407,7 @@ def _get_databases_with_pulldb_table(credentials: MySQLCredentials) -> frozenset
         port=credentials.port,
         user=credentials.username,
         password=credentials.password,
-        connect_timeout=30,
+        connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
     )
     try:
         cursor = conn.cursor()
@@ -444,7 +445,7 @@ def _has_pulldb_table(credentials: MySQLCredentials, db_name: str) -> bool:
         port=credentials.port,
         user=credentials.username,
         password=credentials.password,
-        connect_timeout=30,
+        connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
     )
     try:
         cursor = conn.cursor()
@@ -483,7 +484,7 @@ def get_orphan_metadata(
         user=credentials.username,
         password=credentials.password,
         database=db_name,
-        connect_timeout=30,
+        connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
     )
     try:
         cursor = conn.cursor(dictionary=True)
@@ -574,7 +575,7 @@ def _drop_database(credentials: MySQLCredentials, db_name: str) -> bool:
         port=credentials.port,
         user=credentials.username,
         password=credentials.password,
-        connect_timeout=30,
+        connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
         autocommit=True,
     )
     try:
@@ -641,7 +642,7 @@ def _drop_target_database_unsafe(credentials: MySQLCredentials, db_name: str) ->
         port=credentials.port,
         user=credentials.username,
         password=credentials.password,
-        connect_timeout=30,
+        connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
         autocommit=True,
     )
     try:
@@ -2335,7 +2336,7 @@ def admin_delete_user_orphan_databases(
                 port=credentials.port,
                 user=credentials.username,
                 password=credentials.password,
-                connect_timeout=30,
+                connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
                 autocommit=True,
             )
             try:

@@ -1,6 +1,6 @@
 {
   "version": "1.0.5",
-  "last_updated": "2026-01-18",
+  "last_updated": "2026-01-19",
   "package": {
     "wheel": "pulldb-1.0.5-py3-none-any.whl",
     "myloader": "myloader-0.19.3-3",
@@ -352,5 +352,29 @@
       "cli": "pulldb/cli/backup_commands.py",
       "commands": ["backups list", "backups search"]
     }
+  },
+  "myloader_resume_recovery": {
+    "CRITICAL": "Resume file contains files TO PROCESS, NOT files to skip",
+    "common_mistake": "Putting completed files in resume (opposite of intended behavior)",
+    "correct_usage": {
+      "resume_file_content": "Only the .sql.gz files you want myloader to load",
+      "includes": ["schema files (-schema.sql.gz)", "data files (.00000.sql.gz, etc.)"],
+      "excludes": ["already loaded tables", "metadata files"]
+    },
+    "commands": {
+      "create_resume": "ls -1 *.sql.gz | grep -E '^dbname\\.tablename[\\.-]' > resume",
+      "verify": "wc -l resume && grep -c tablename resume"
+    },
+    "prerequisites": {
+      "drop_partial_tables": "Tables with partial data must be dropped first",
+      "metadata_format": "Must be 0.19-compatible INI format",
+      "metadata_synthesis": "from pulldb.worker.metadata_synthesis import ensure_compatible_metadata"
+    },
+    "myloader_flags": {
+      "resume": "--resume (expects resume file in backup dir)",
+      "no_overwrite": "Do NOT use --overwrite-tables with partial data"
+    },
+    "discovery_date": "2026-01-19",
+    "lesson": "myloader --help says: 'Expect to find resume file in backup dir and will only process those files'"
   }
 }

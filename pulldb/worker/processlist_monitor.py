@@ -19,6 +19,7 @@ from typing import Any
 import mysql.connector
 
 from pulldb.infra.logging import get_logger
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_MONITOR
 
 logger = get_logger("pulldb.worker.processlist_monitor")
 
@@ -196,7 +197,7 @@ class ProcesslistMonitor:
                 port=self._config.mysql_port,
                 user=self._config.mysql_user,
                 password=self._config.mysql_password,
-                connection_timeout=5,
+                connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_MONITOR,
             )
         except Exception as e:
             logger.warning(f"Processlist monitor connection failed: {e}")

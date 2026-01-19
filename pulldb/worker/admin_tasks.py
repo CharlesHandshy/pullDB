@@ -16,6 +16,7 @@ import mysql.connector
 
 from pulldb.domain.models import AdminTask, AdminTaskStatus, AdminTaskType
 from pulldb.infra.metrics import MetricLabels, emit_event
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
 if t.TYPE_CHECKING:
@@ -383,7 +384,7 @@ class AdminTaskExecutor:
             port=credentials.port,
             user=credentials.username,
             password=credentials.password,
-            connect_timeout=30,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
             autocommit=True,
         )
         try:
@@ -413,7 +414,7 @@ class AdminTaskExecutor:
             port=credentials.port,
             user=credentials.username,
             password=credentials.password,
-            connect_timeout=30,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
         )
         try:
             cursor = conn.cursor()

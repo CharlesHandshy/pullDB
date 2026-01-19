@@ -6,6 +6,95 @@
 
 ---
 
+## 2026-01-14 | Phase 5 Plan Audit and Expansion
+
+### Context
+User requested full audit and expansion of Phase 5 plan (Index Rebuild Tracking & ANALYZE TABLE) in METADATA-SYNTHESIS-OPTIMIZATION-PLAN.md. Explicit instruction: "DO NOT BUILD NOR START SERVICE. Build out a full plan and update the PLAN only."
+
+Prior work in session:
+- Researched mydumper/mydumper GitHub repository for actual myloader source code
+- Verified log message patterns from source files (myloader_worker_index.c, myloader_restore_job.c, myloader_worker_loader.c)
+- Updated plan with verified regex patterns and function references
+
+### What Was Done
+
+**Expanded Phase 5 Checklist** (from 6 items to 50+ items):
+- Added HCA layer annotations for all new files
+- Added explicit file creation items with paths
+- Added state coordination section (RestoreStateTracker)
+- Added configuration section (env vars, admin settings)
+- Detailed testing requirements
+
+**Added Complete File Specifications**:
+1. `pulldb/worker/myloader_log_parser.py` (NEW) - 350+ lines of complete implementation spec
+2. `pulldb/worker/restore_state_tracker.py` (NEW) - 200+ lines of complete implementation spec
+3. `pulldb/worker/table_analyzer.py` - Cross-referenced existing spec at Section 4
+4. Updates to `restore.py` - Integration points specified
+5. Updates to `processlist_monitor.py` - New regexes and Time column capture
+6. Updates to `routes.py` - New EVENT_TO_PHASE mappings
+7. UI template updates - Phase display with spinner
+8. CSS additions - New classes for phase display
+9. Jinja2 filter - `_format_duration()` implementation
+
+**Added Complete Test Specifications**:
+1. `tests/test_myloader_log_parser.py` (NEW) - 200+ lines covering:
+   - Regex pattern matching tests
+   - Parser state machine tests
+   - Event emission tests
+   - Edge cases and error handling
+2. `tests/test_restore_state_tracker.py` (NEW) - 150+ lines covering:
+   - Combined state tracking
+   - Completion detection
+   - Thread safety
+3. Additional tests for `test_worker_processlist_monitor.py`:
+   - ALTER TABLE detection
+   - Time column capture
+
+**Added Implementation Order Section**:
+- Phase 5A: Foundation (log parser)
+- Phase 5B: Processlist Updates
+- Phase 5C: State Coordination
+- Phase 5D: ANALYZE TABLE
+- Phase 5E: Integration
+- Phase 5F: UI
+- Phase 5G: Configuration
+
+**Updated Files to Modify Table**:
+- Phase 5 section expanded from 6 entries to 15 entries
+- Includes all new files and test files
+
+**Updated Summary Checklist**:
+- Expanded from 5 high-level items to 9 actionable items
+
+### Rationale
+
+**Comprehensive Planning (Engineering-DNA principle)**:
+Per AGENT-CONTEXT.md: "Before creating or modifying files: Determine HCA layer, Place file correctly, Validate imports, Name explicitly." The expanded plan provides clear HCA layer assignments for each new file.
+
+**Source Code Verification**:
+Regex patterns and log messages were verified against actual mydumper source code on GitHub, not speculative. This ensures the implementation will correctly parse myloader output.
+
+**Test-First Specification**:
+Complete test specifications written before implementation ensures:
+- Clear acceptance criteria
+- No ambiguity in expected behavior
+- Tests can be implemented immediately when work begins
+
+**Implementation Order**:
+Dependency-aware ordering prevents:
+- Import errors from missing modules
+- Integration issues from incomplete components
+- Test failures from missing fixtures
+
+### Files Modified
+- `docs/METADATA-SYNTHESIS-OPTIMIZATION-PLAN.md` (expanded from ~2100 lines to ~3615 lines)
+- `.pulldb/SESSION-LOG.md` (this entry)
+
+### Next Steps
+Plan is complete and ready for implementation. Implementation should follow Phase 5A-5G order.
+
+---
+
 ## 2026-01-08 | Admin Audit Page Bouncing Rows Fix
 
 ### Context

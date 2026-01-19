@@ -30,6 +30,8 @@ import click
 import mysql.connector
 from botocore.exceptions import ClientError
 
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_API
+
 # Constants
 PASSWORD_MASK_LENGTH = 4
 DEFAULT_PASSWORD_LENGTH = 32
@@ -455,7 +457,7 @@ def test_secret(
             user=test_username,
             password=password,
             database=database,
-            connect_timeout=10,
+            connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
         )
 
         cursor = conn.cursor()

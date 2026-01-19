@@ -22,14 +22,11 @@ import mysql.connector
 
 from pulldb.domain.errors import MetadataInjectionError
 from pulldb.infra.logging import get_logger
+from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 from pulldb.worker.post_sql import PostSQLExecutionResult
 
 
 logger = get_logger("pulldb.worker.metadata")
-
-
-# Default connection timeout - short because if you can't connect in 30s, something is wrong
-DEFAULT_CONNECT_TIMEOUT_SECONDS = 30
 
 
 @dataclass(slots=True, frozen=True)
@@ -55,7 +52,7 @@ class MetadataConnectionSpec:
     mysql_user: str
     mysql_password: str
     timeout_seconds: int
-    connect_timeout_seconds: int = DEFAULT_CONNECT_TIMEOUT_SECONDS
+    connect_timeout_seconds: int = DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
 @dataclass(slots=True, frozen=True)

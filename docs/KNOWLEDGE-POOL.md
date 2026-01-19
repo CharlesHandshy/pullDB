@@ -6,7 +6,7 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 
 **Related:** [Deployment](deployment.md) · [policies/](policies/) · [terraform/](terraform/)
 
-Last updated: 2026-01-18
+Last updated: 2026-01-19
 Current version: v1.0.5
 Phases complete: 0-6
 
@@ -1057,6 +1057,81 @@ This file should be created and applied in the production account only. Keep sec
 - **Testing Restriction**: Use `dev-db-01` or `localhost` for testing purposes.
 - **MySQL Root Socket Auth**: On localhost, root MySQL user uses `auth_socket` plugin (no password needed when connecting via Unix socket). Scripts running as root MUST use socket auth, not TCP with password.
 - **Schema Updates (Jan 2026)**: The package installer (postinst) now automatically applies new schema files from `schema/pulldb_service/` and tracks them in the `schema_migrations` table. No separate migration command is needed.
+
+### myloader --resume Manual Recovery (Jan 2026)
+
+**Critical Knowledge**: myloader's `--resume` flag behavior is the **opposite** of what you might expect.
+
+- **Common Misconception**: Resume file = "files already done, skip these"
+- **Actual Behavior**: Resume file = "files TO PROCESS" (only these files will be loaded)
+
+**Scenario**: Partial restore failed, need to reload only specific tables (e.g., `changeLog`, `salesRoutesAccess`)
+
+**Correct Resume File Setup**:
+```bash
+# Resume file should contain ONLY the files you want to load
+cd /path/to/extracted/backup
+ls -1 *.sql.gz | grep -E "^dbname\.changeLog[\.-]|^dbname\.salesRoutesAccess[\.-]" > resume
+
+# Verify contents - should be schema + data files for target tables only
+wc -l resume  # e.g., 608 files for 2 tables
+```
+
+**Resume File Format**:
+- One filename per line (just the filename, not full path)
+- Includes both `-schema.sql.gz` and `.00000.sql.gz` (data) files
+- Example:
+  ```
+  foxpest.changeLog-schema.sql.gz
+  foxpest.changeLog.00000.sql.gz
+  foxpest.changeLog.00001.sql.gz
+  ...
+  foxpest.salesRoutesAccess-schema.sql.gz
+  foxpest.salesRoutesAccess.00000.sql.gz
+  ```
+
+**myloader Command**:
+```bash
+myloader-0.19.3-3 \
+  --host=$DB_HOST \
+  --user=$DB_USER \
+  --password="$DB_PASS" \
+  --database=$STAGING_DB \
+  --directory=/path/to/extracted/backup \
+  --threads=4 \
+  --resume \
+  --optimize-keys=AFTER_IMPORT_PER_TABLE
+```
+
+**Pre-Requisites Before Resume**:
+1. **Tables must be dropped first** if they already have partial data
+2. **Metadata file** must be 0.19-compatible INI format (use `ensure_compatible_metadata()`)
+3. **Resume file** must contain ONLY the files to load
+
+**Metadata File Synthesis** (if backup has old mydumper 0.9 format):
+```python
+from pulldb.worker.metadata_synthesis import ensure_compatible_metadata
+ensure_compatible_metadata('/path/to/extracted/backup')
+```
+
+**Verification Commands**:
+```bash
+# Count files to load
+wc -l resume
+
+# Breakdown by table
+grep -c "^dbname\.changeLog" resume
+grep -c "^dbname\.salesRoutesAccess" resume
+
+# Verify no other tables included
+grep -v "changeLog" resume | grep -v "salesRoutesAccess" | head
+```
+
+**Common Mistakes**:
+1. ❌ Putting "completed" files in resume (opposite of intended behavior)
+2. ❌ Including metadata file references (myloader ignores non-.sql.gz entries)
+3. ❌ Using `--overwrite-tables` with existing partial data (use DROP + resume instead)
+4. ❌ Forgetting to include schema files (tables won't exist to load data into)
 
 ### Packaging & Installation Lessons (Jan 2026)
 
