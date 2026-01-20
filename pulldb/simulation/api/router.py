@@ -19,6 +19,9 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from pulldb.auth.password import hash_password
+from pulldb.infra.logging import get_logger
+
+logger = get_logger("pulldb.simulation.api.router")
 from pulldb.simulation import SimulatedAuthRepository, SimulatedUserRepository
 from pulldb.simulation.core.bus import EventType, get_event_bus
 from pulldb.simulation.core.scenarios import (
@@ -217,13 +220,14 @@ async def activate_scenario(
     # Validate scenario type
     try:
         scenario_type = ScenarioType(request.scenario_type)
-    except ValueError:
+    except ValueError as e:
         valid_types = [st.value for st in ScenarioType]
+        logger.debug("Invalid scenario type: %s", request.scenario_type, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid scenario type: {request.scenario_type}. "
             f"Valid types: {valid_types}",
-        ) from None
+        ) from e
 
     # Activate scenario (this calls reset_simulation())
     scenario = manager.activate_scenario(scenario_type)
@@ -343,13 +347,14 @@ async def get_events(
     if event_type:
         try:
             parsed_event_type = EventType(event_type)
-        except ValueError:
+        except ValueError as e:
             valid_types = [et.value for et in EventType]
+            logger.debug("Invalid event type: %s", event_type, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid event type: {event_type}. "
                 f"Valid types: {valid_types}",
-            ) from None
+            ) from e
 
     events = bus.get_history(
         event_type=parsed_event_type,
