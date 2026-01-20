@@ -131,6 +131,12 @@ def build_restore_workflow_spec(
             (event_type, detail_dict) for post_sql_started, post_sql_complete,
             metadata_started, metadata_complete, atomic_rename_started,
             atomic_rename_complete events.
+
+    Returns:
+        RestoreWorkflowSpec ready for execution.
+
+    Raises:
+        ValueError: If job.staging_name is not set.
     """
     if not job.staging_name:
         raise ValueError("job.staging_name is required to build restore workflow spec")
