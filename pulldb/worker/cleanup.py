@@ -28,6 +28,7 @@ import mysql.connector
 
 from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_gauge
+from pulldb.infra.mysql_utils import quote_identifier
 from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
@@ -585,7 +586,7 @@ def _drop_database(credentials: MySQLCredentials, db_name: str) -> bool:
     )
     try:
         cursor = conn.cursor()
-        cursor.execute(f"DROP DATABASE IF EXISTS `{db_name}`")
+        cursor.execute(f"DROP DATABASE IF EXISTS {quote_identifier(db_name)}")
         logger.info(f"Dropped staging database: {db_name}")
     finally:
         conn.close()
@@ -652,7 +653,7 @@ def _drop_target_database_unsafe(credentials: MySQLCredentials, db_name: str) ->
     )
     try:
         cursor = conn.cursor()
-        cursor.execute(f"DROP DATABASE IF EXISTS `{db_name}`")
+        cursor.execute(f"DROP DATABASE IF EXISTS {quote_identifier(db_name)}")
         logger.info(f"Dropped target database: {db_name}")
     finally:
         conn.close()
@@ -2344,7 +2345,7 @@ def admin_delete_user_orphan_databases(
             )
             try:
                 cursor = conn.cursor()
-                cursor.execute(f"DROP DATABASE IF EXISTS `{db_name}`")
+                cursor.execute(f"DROP DATABASE IF EXISTS {quote_identifier(db_name)}")
                 logger.info(
                     "Admin %s deleted user-orphan database: %s on %s",
                     admin_user,
@@ -2702,8 +2703,8 @@ def _drop_job_database(
 
     # Drop the database
     try:
-        # Use backticks for identifier quoting
-        cursor.execute(f"DROP DATABASE IF EXISTS `{db_name}`")
+        # Use quote_identifier for safe SQL identifier handling
+        cursor.execute(f"DROP DATABASE IF EXISTS {quote_identifier(db_name)}")
         logger.info(
             "Dropped expired database %s on %s (job %s)",
             db_name,

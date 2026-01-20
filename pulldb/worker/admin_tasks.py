@@ -18,6 +18,7 @@ import mysql.connector
 
 from pulldb.domain.models import AdminTask, AdminTaskStatus, AdminTaskType
 from pulldb.infra.metrics import MetricLabels, emit_event
+from pulldb.infra.mysql_utils import quote_identifier
 from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
@@ -394,8 +395,8 @@ class AdminTaskExecutor:
         )
         try:
             cursor = conn.cursor()
-            # Use backticks to handle special characters in database names
-            cursor.execute(f"DROP DATABASE IF EXISTS `{db_name}`")
+            # Use quote_identifier for safe SQL identifier handling
+            cursor.execute(f"DROP DATABASE IF EXISTS {quote_identifier(db_name)}")
             logger.info(f"Dropped database: {db_name}")
         finally:
             conn.close()
