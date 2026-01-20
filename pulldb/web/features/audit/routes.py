@@ -6,6 +6,7 @@ HCA Layer: features
 Purpose: Admin-only audit log browsing with LazyTable pagination.
 """
 
+import json
 import logging
 from typing import Any
 
@@ -113,7 +114,6 @@ async def get_audit_logs_api(
             context_str = ""
             if context_data:
                 # Format context as readable string
-                import json
                 try:
                     context_str = json.dumps(context_data, indent=2)
                 except Exception:

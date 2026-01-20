@@ -20,6 +20,7 @@ HCA Layer: features
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -248,8 +249,6 @@ class RestoreProfile:
 
     def to_event_detail(self) -> str:
         """Generate JSON string for job_events detail column."""
-        import json
-
         return json.dumps(self.to_dict(), separators=(",", ":"))
 
 
@@ -372,8 +371,6 @@ def parse_profile_from_event(event_detail: str) -> RestoreProfile | None:
     Returns:
         Parsed RestoreProfile or None if parsing fails.
     """
-    import json
-
     try:
         data = json.loads(event_detail)
         profile = RestoreProfile(

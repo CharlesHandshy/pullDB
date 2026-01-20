@@ -5,6 +5,7 @@ from __future__ import annotations
 HCA Layer: features (pulldb/web/features/)
 """
 
+import json
 import logging
 from typing import Any
 
@@ -4547,7 +4548,6 @@ async def execute_user_orphan_deletion(
     Expects form data with selected_orphans as JSON array of 
     [{dbhost: string, database_name: string}, ...]
     """
-    import json
     from pulldb.worker.cleanup import admin_delete_user_orphan_databases
     
     form_data = await request.form()
