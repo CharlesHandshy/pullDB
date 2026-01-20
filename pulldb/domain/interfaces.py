@@ -14,6 +14,7 @@ HCA Layer: entities
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime
 from typing import Any, Protocol
 
 from pulldb.domain.models import (
@@ -912,3 +913,277 @@ class SettingsRepository(Protocol):
             True if deleted, False if not found.
         """
         ...
+
+
+# ============================================================================
+# Authentication & Authorization Protocols
+# ============================================================================
+
+
+class AuthRepository(Protocol):
+    """Protocol for authentication repository.
+
+    Manages password hashes, TOTP secrets, password reset state,
+    and API key authentication.
+    """
+
+    def get_password_hash(self, user_id: str) -> str | None:
+        """Get stored password hash for user.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            bcrypt password hash, or None if no password set.
+        """
+        ...
+
+    def set_password_hash(self, user_id: str, password_hash: str) -> None:
+        """Set password hash for user.
+
+        Args:
+            user_id: UUID of the user.
+            password_hash: bcrypt hash to store.
+        """
+        ...
+
+    def has_password(self, user_id: str) -> bool:
+        """Check if user has a password set.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            True if password is set.
+        """
+        ...
+
+    def mark_password_reset(self, user_id: str) -> None:
+        """Mark user as requiring password reset on next login.
+
+        Args:
+            user_id: UUID of the user.
+        """
+        ...
+
+    def clear_password_reset(self, user_id: str) -> None:
+        """Clear password reset requirement.
+
+        Args:
+            user_id: UUID of the user.
+        """
+        ...
+
+    def is_password_reset_required(self, user_id: str) -> bool:
+        """Check if user must reset password.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            True if password reset is required.
+        """
+        ...
+
+    def get_password_reset_at(self, user_id: str) -> datetime | None:
+        """Get timestamp when password reset was flagged.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Datetime when reset was required, or None.
+        """
+        ...
+
+    def get_totp_secret(self, user_id: str) -> str | None:
+        """Get TOTP secret for user.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            Base32-encoded TOTP secret, or None if not enabled.
+        """
+        ...
+
+    def set_totp_secret(self, user_id: str, totp_secret: str) -> None:
+        """Set TOTP secret for user.
+
+        Args:
+            user_id: UUID of the user.
+            totp_secret: Base32-encoded secret.
+        """
+        ...
+
+    def disable_totp(self, user_id: str) -> None:
+        """Disable TOTP for user.
+
+        Args:
+            user_id: UUID of the user.
+        """
+        ...
+
+    def is_totp_enabled(self, user_id: str) -> bool:
+        """Check if TOTP is enabled for user.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            True if TOTP is configured.
+        """
+        ...
+
+    def create_api_key(
+        self,
+        user_id: str,
+        name: str,
+        secret_hash: str,
+        expires_at: datetime | None = None,
+    ) -> str:
+        """Create new API key for user.
+
+        Args:
+            user_id: UUID of the user.
+            name: Human-readable name for the key.
+            secret_hash: bcrypt hash of the API secret.
+            expires_at: Optional expiration timestamp.
+
+        Returns:
+            Key ID (UUID) of the created key.
+        """
+        ...
+
+    def verify_api_key(self, key_id: str, secret: str) -> str | None:
+        """Verify API key and return user_id if valid.
+
+        Args:
+            key_id: API key identifier.
+            secret: API secret to verify.
+
+        Returns:
+            user_id if key is valid and not expired, None otherwise.
+        """
+        ...
+
+    def get_api_key_user(self, key_id: str) -> str | None:
+        """Get user_id for an API key.
+
+        Args:
+            key_id: API key identifier.
+
+        Returns:
+            user_id if key exists, None otherwise.
+        """
+        ...
+
+    def revoke_api_key(self, key_id: str) -> bool:
+        """Revoke (soft-delete) an API key.
+
+        Args:
+            key_id: API key identifier.
+
+        Returns:
+            True if revoked, False if not found.
+        """
+        ...
+
+
+class DisallowedUserRepository(Protocol):
+    """Protocol for disallowed username checks.
+
+    Manages database entries that extend the hardcoded disallowed list.
+    """
+
+    def exists(self, username: str) -> bool:
+        """Check if username is in database disallowed list.
+
+        Args:
+            username: Username to check (case-insensitive).
+
+        Returns:
+            True if username is disallowed in database.
+        """
+        ...
+
+    def add(
+        self,
+        username: str,
+        reason: str | None = None,
+        created_by: str | None = None,
+    ) -> bool:
+        """Add a username to the disallowed list.
+
+        Args:
+            username: Username to disallow (stored lowercase).
+            reason: Optional reason for disallowing.
+            created_by: User ID who added this entry.
+
+        Returns:
+            True if added, False if already exists.
+        """
+        ...
+
+    def remove(self, username: str) -> bool:
+        """Remove a username from the disallowed list.
+
+        Args:
+            username: Username to remove.
+
+        Returns:
+            True if removed, False if not found or hardcoded.
+        """
+        ...
+
+
+class AuditRepository(Protocol):
+    """Protocol for audit logging.
+
+    Records manager/admin actions for transparency and compliance.
+    """
+
+    def log_action(
+        self,
+        actor_user_id: str,
+        action: str,
+        target_user_id: str | None = None,
+        detail: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> str:
+        """Record an audit log entry.
+
+        Args:
+            actor_user_id: User ID of who performed the action.
+            action: Action type (e.g., 'submit_for_user', 'create_user').
+            target_user_id: User ID affected (if applicable).
+            detail: Human-readable detail of the action.
+            context: Additional JSON context data.
+
+        Returns:
+            Audit log ID (UUID).
+        """
+        ...
+
+    def get_audit_logs(
+        self,
+        actor_user_id: str | None = None,
+        target_user_id: str | None = None,
+        action: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Retrieve audit log entries with optional filtering.
+
+        Args:
+            actor_user_id: Filter by actor (who did the action).
+            target_user_id: Filter by target user (who was affected).
+            action: Filter by action type.
+            limit: Maximum number of results.
+            offset: Offset for pagination.
+
+        Returns:
+            List of audit log dictionaries.
+        """
+        ...
+

@@ -167,12 +167,19 @@ def _load_config() -> Config:
     return config
 
 
-def _build_job_repository(config: Config) -> Any:
-    """Build job repository based on mode."""
+def _build_job_repository(config: Config) -> JobRepository:
+    """Build job repository based on mode.
+    
+    Args:
+        config: Application configuration with MySQL connection details.
+    
+    Returns:
+        JobRepository implementation (real or simulated).
+    """
     if is_simulation_mode():
         from pulldb.simulation import SimulatedJobRepository
 
-        return SimulatedJobRepository()
+        return SimulatedJobRepository()  # type: ignore[return-value]
 
     kwargs: dict[str, Any] = {
         "host": config.mysql_host,
@@ -184,12 +191,12 @@ def _build_job_repository(config: Config) -> Any:
         kwargs["unix_socket"] = config.mysql_socket
 
     pool = MySQLPool(**kwargs)
-    return JobRepository(pool)
+    return JobRepository(pool)  # type: ignore[return-value]
 
 
 def _build_job_executor(
     config: Config,
-    job_repo: Any,
+    job_repo: JobRepository,
     host_repo: HostRepository | None = None,
 ) -> WorkerJobExecutor:
     """Build job executor with appropriate dependencies for mode.
