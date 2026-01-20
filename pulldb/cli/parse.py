@@ -220,8 +220,8 @@ def _tokenize(
                     raise CLIParseError(f"Invalid date format '{opt_value}'. Use YYYY-MM-DD")
                 try:
                     datetime.strptime(opt_value, "%Y-%m-%d")
-                except ValueError:
-                    raise CLIParseError(f"Invalid date '{opt_value}'") from None
+                except ValueError as e:
+                    raise CLIParseError(f"Invalid date '{opt_value}'") from e
                 date = opt_value
                 i += 2
                 continue
@@ -328,10 +328,10 @@ def _tokenize(
             # Validate date is a real date
             try:
                 datetime.strptime(date_str, "%Y-%m-%d")
-            except ValueError:
+            except ValueError as e:
                 raise CLIParseError(
                     f"Invalid date '{date_str}'. Must be a valid date in YYYY-MM-DD format."
-                ) from None
+                ) from e
             date = date_str
             i += 1
             continue
