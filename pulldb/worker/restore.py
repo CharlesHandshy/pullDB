@@ -312,6 +312,19 @@ def run_myloader(
     )
 
     def _progress_callback(line: str) -> None:
+        """Parse myloader output line and emit progress updates.
+        
+        Parses thread status messages to track:
+        - Files started/finished restoring
+        - Row count estimates from table metadata
+        - Throughput and ETA calculations
+        
+        Updates nonlocal counters (completed_tasks, rows_restored) and
+        calls progress_callback with detailed status dict.
+        
+        Args:
+            line: Single line of myloader stdout/stderr output.
+        """
         nonlocal completed_tasks, rows_restored
 
         filename = None
