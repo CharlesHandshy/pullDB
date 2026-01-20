@@ -170,6 +170,19 @@ class MockS3Client:
             )
             raise S3Error("404", f"Key {key} not found in bucket {bucket}", "GetObject")
 
+    def get_object_size(
+        self, bucket: str, key: str, profile: str | None = None
+    ) -> int | None:
+        """Return object size in bytes, or None if not found.
+
+        Uses HEAD request logic for consistency.
+        """
+        try:
+            metadata = self.head_object(bucket, key, profile)
+            return metadata.get("ContentLength")
+        except S3Error:
+            return None
+
     def load_fixtures(self, bucket: str, keys: list[str]) -> None:
         """Load mock keys into a bucket."""
         with self.state.lock:
