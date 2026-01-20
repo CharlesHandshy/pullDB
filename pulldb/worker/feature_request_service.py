@@ -28,6 +28,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Sort column constants for feature request listing
+SORT_COLUMN_VOTE_SCORE = "vote_score"
+SORT_COLUMN_CREATED_AT = "created_at"
+SORT_COLUMN_STATUS = "status"
+SORT_COLUMN_TITLE = "title"
+VALID_SORT_COLUMNS = frozenset({
+    SORT_COLUMN_VOTE_SCORE,
+    SORT_COLUMN_CREATED_AT,
+    SORT_COLUMN_STATUS,
+    SORT_COLUMN_TITLE,
+})
+DEFAULT_SORT_COLUMN = SORT_COLUMN_VOTE_SCORE
+DEFAULT_LIST_LIMIT = 100
+
 
 class FeatureRequestService:
     """Service for managing feature requests and votes.
@@ -78,9 +92,9 @@ class FeatureRequestService:
         self,
         current_user_id: str | None = None,
         status_filter: list[str] | None = None,
-        sort_by: str = "vote_score",
+        sort_by: str = DEFAULT_SORT_COLUMN,
         sort_order: str = "desc",
-        limit: int = 100,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[list[FeatureRequest], int]:
         """List feature requests with optional filtering.
@@ -108,9 +122,8 @@ class FeatureRequestService:
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         
         # Validate sort column
-        valid_sort_cols = {"vote_score", "created_at", "status", "title"}
-        if sort_by not in valid_sort_cols:
-            sort_by = "vote_score"
+        if sort_by not in VALID_SORT_COLUMNS:
+            sort_by = DEFAULT_SORT_COLUMN
         sort_order = "DESC" if sort_order.lower() == "desc" else "ASC"
         
         # Count query
