@@ -111,7 +111,7 @@ def get_logger(name: str, level: int | None = None) -> logging.Logger:
     # Determine log level from parameter or environment
     if level is None:
         level_name = os.environ.get("PULLDB_LOG_LEVEL", "INFO").upper()
-        level = getattr(logging, level_name, logging.INFO)
+        level = cast(int, getattr(logging, level_name, logging.INFO))
 
     logger = logging.getLogger(name)
 

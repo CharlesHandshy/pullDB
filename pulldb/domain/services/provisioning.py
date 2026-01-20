@@ -57,8 +57,10 @@ class HostRepositoryProtocol(Protocol):
         hostname: str,
         max_concurrent: int,
         credential_ref: str | None,
+        *,
         host_id: str | None = None,
         host_alias: str | None = None,
+        max_running_jobs: int | None = None,
         max_active_jobs: int | None = None,
     ) -> None:
         """Add a new host to the database."""
@@ -67,6 +69,7 @@ class HostRepositoryProtocol(Protocol):
     def update_host_config(
         self,
         host_id: str,
+        *,
         host_alias: str | None = None,
         credential_ref: str | None = None,
         max_running_jobs: int | None = None,

@@ -287,7 +287,10 @@ class Job:
         if self.expires_at is None:
             return False
         from datetime import UTC
-        return datetime.now(UTC).replace(tzinfo=None) > self.expires_at
+        now = datetime.now(UTC)
+        # Handle both naive and aware datetimes for expires_at
+        expires = self.expires_at if self.expires_at.tzinfo else self.expires_at.replace(tzinfo=UTC)
+        return now > expires
 
     def is_expiring(self, notice_days: int = 7) -> bool:
         """Check if this database is expiring soon (within notice window).
@@ -301,9 +304,11 @@ class Job:
         if self.expires_at is None:
             return False
         from datetime import UTC, timedelta
-        now = datetime.now(UTC).replace(tzinfo=None)
+        now = datetime.now(UTC)
+        # Handle both naive and aware datetimes for expires_at
+        expires = self.expires_at if self.expires_at.tzinfo else self.expires_at.replace(tzinfo=UTC)
         notice_threshold = now + timedelta(days=notice_days)
-        return now < self.expires_at <= notice_threshold
+        return now < expires <= notice_threshold
 
     def get_maintenance_status(self, notice_days: int = 7) -> str | None:
         """Get the maintenance status for UI display.
@@ -551,3 +556,25 @@ class MaintenanceItems:
         User can acknowledge without taking action.
         """
         return bool(self.expired)
+
+
+@dataclass(frozen=True)
+class DisallowedUser:
+    """Represents a disallowed username entry.
+
+    Used for usernames that cannot be registered (e.g., reserved names,
+    banned users). Works alongside hardcoded list in pulldb/domain/validation.py.
+
+    Attributes:
+        username: The disallowed username (lowercase).
+        reason: Why this username is disallowed.
+        is_hardcoded: True if from initial seed (cannot be removed via UI).
+        created_at: When entry was created.
+        created_by: User ID who added (None for hardcoded/seed).
+    """
+
+    username: str
+    reason: str | None
+    is_hardcoded: bool
+    created_at: datetime | None = None
+    created_by: str | None = None

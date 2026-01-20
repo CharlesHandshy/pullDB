@@ -4,5 +4,3 @@ from __future__ import annotations
 
 HCA Layer: entities (pulldb/domain/)
 """
-
-__all__ = ["config"]

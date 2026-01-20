@@ -181,7 +181,7 @@ def _initialize_simulation_state() -> APIState:
         job_repo=SimulatedJobRepository(),
         settings_repo=SimulatedSettingsRepository(),
         host_repo=SimulatedHostRepository(),
-        auth_repo=SimulatedAuthRepository(),  # type: ignore[arg-type]
+        auth_repo=SimulatedAuthRepository(),
         audit_repo=SimulatedAuditRepository(),
     )
 
@@ -393,8 +393,8 @@ async def get_user_info(
     Returns user_code for the given username. Used by CLI to display
     user identity when running under sudo.
     """
-    user = await run_in_threadpool(state.user_repo.get_user_by_username, username)
-    if not user:
+    looked_up_user = await run_in_threadpool(state.user_repo.get_user_by_username, username)
+    if not looked_up_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User '{username}' not found",
@@ -404,14 +404,14 @@ async def get_user_info(
     has_password = False
     if state.auth_repo:
         has_password = await run_in_threadpool(
-            state.auth_repo.has_password, user.user_id
+            state.auth_repo.has_password, looked_up_user.user_id
         )
     
     return UserInfoResponse(
-        username=user.username,
-        user_code=user.user_code,
-        is_admin=user.is_admin,
-        is_disabled=user.disabled,
+        username=looked_up_user.username,
+        user_code=looked_up_user.user_code,
+        is_admin=looked_up_user.is_admin,
+        is_disabled=looked_up_user.disabled,
         has_password=has_password,
     )
 
@@ -1543,7 +1543,7 @@ def _get_last_job_by_user(state: APIState, user_code: str) -> LastJobResponse:
 
     summary = JobSummary(
         id=job.id,
-        status=job.status,
+        status=job.status.value,
         target=job.target,
         user_code=job.owner_user_code or user_code,
         submitted_at=job.submitted_at,
@@ -2893,13 +2893,13 @@ def _get_orphan_report(state: APIState, dbhost: str | None) -> AllOrphansRespons
     total_orphans = 0
 
     if dbhost:
-        hosts = [type("H", (), {"hostname": dbhost})()]
+        hostnames = [dbhost]
     else:
-        hosts = state.host_repo.get_enabled_hosts()
+        hostnames = [h.hostname for h in state.host_repo.get_enabled_hosts()]
 
-    for host in hosts:
+    for hostname in hostnames:
         result = detect_orphaned_databases(
-            dbhost=host.hostname,
+            dbhost=hostname,
             job_repo=state.job_repo,
             host_repo=state.host_repo,
         )
@@ -2907,7 +2907,7 @@ def _get_orphan_report(state: APIState, dbhost: str | None) -> AllOrphansRespons
         # Handle error string return (connection failure)
         if isinstance(result, str):
             errors.append(HostScanError(
-                hostname=host.hostname,
+                hostname=hostname,
                 message=result,
             ))
             continue
@@ -2927,7 +2927,7 @@ def _get_orphan_report(state: APIState, dbhost: str | None) -> AllOrphansRespons
 
         reports.append(
             OrphanReportResponse(
-                dbhost=host.hostname,
+                dbhost=hostname,
                 scanned_at=orphan_report.scanned_at.isoformat(),
                 orphans=orphan_items,
                 count=len(orphan_items),
@@ -2936,7 +2936,7 @@ def _get_orphan_report(state: APIState, dbhost: str | None) -> AllOrphansRespons
         total_orphans += len(orphan_items)
 
     return AllOrphansResponse(
-        hosts_scanned=len(hosts),
+        hosts_scanned=len(hostnames),
         total_orphans=total_orphans,
         reports=reports,
         errors=errors,
@@ -3065,19 +3065,19 @@ def _get_paginated_orphans(
 
     # Get all enabled hosts (or filter to specific host)
     if filter_host:
-        hosts = [type("H", (), {"hostname": filter_host})()]
+        hostnames = [filter_host]
     else:
-        hosts = state.host_repo.get_enabled_hosts()
+        hostnames = [h.hostname for h in state.host_repo.get_enabled_hosts()]
 
-    for host in hosts:
+    for hostname in hostnames:
         result = detect_orphaned_databases(
-            dbhost=host.hostname,
+            dbhost=hostname,
             job_repo=state.job_repo,
             host_repo=state.host_repo,
         )
 
         if isinstance(result, str):
-            errors.append(HostScanError(hostname=host.hostname, message=result))
+            errors.append(HostScanError(hostname=hostname, message=result))
             continue
 
         orphan_report: OrphanReport = result
@@ -3869,7 +3869,7 @@ def _search_hosts_dropdown(
         DropdownOption(
             value=host.hostname,
             label=host.hostname,
-            sublabel="active" if host.is_active else "inactive",
+            sublabel="active" if host.enabled else "inactive",
         )
         for host in hosts
     ]

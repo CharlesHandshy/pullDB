@@ -78,7 +78,13 @@ TIER 4: Session (Task-specific)
 2. **KNOWLEDGE-POOL FIRST**: Query before solving—don't rediscover
 3. **CONTINUOUS LEARNING**: Add discoveries to KNOWLEDGE-POOL.md immediately
 4. **FAIL HARD**: Never silently degrade. Fail with: (1) what attempted, (2) why failed, (3) solutions
-5. **SESSION LOGGING**: Automatically log work to `.pulldb/SESSION-LOG.md` (see below)
+5. **ROOT CAUSE FIXING**: FIX IT - NOT BANDAID IT. See `engineering-dna/protocols/root-cause-fixing.md`
+   - Search for source of problem
+   - Reflect on problem to plan complete fix
+   - Test the fix and verify it solves the root cause
+   - Check edge cases and related code
+   - Never suppress errors via configuration—fix the actual code
+6. **SESSION LOGGING**: Automatically log work to `.pulldb/SESSION-LOG.md` (see below)
 
 ## Session Logging (AUTOMATIC)
 

@@ -23,7 +23,7 @@ from pulldb.domain.feature_request import (
 )
 
 if TYPE_CHECKING:
-    from pulldb.infra.mysql import MySQLPool
+    from pulldb.infra.mysql import MySQLPool, TypedDictCursor, TypedTupleCursor
 
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ class FeatureRequestService:
             FROM feature_requests
         """
         with self.db_pool.connection() as conn:
-            cur = conn.cursor()
+            cur = TypedTupleCursor(conn.cursor())
             try:
                 cur.execute(query)
                 row = cur.fetchone()
@@ -167,7 +167,7 @@ class FeatureRequestService:
         """
         
         with self.db_pool.connection() as conn:
-            cur = conn.cursor()
+            cur = TypedTupleCursor(conn.cursor())
             try:
                 # Get total count
                 cur.execute(count_query, params)
@@ -258,7 +258,7 @@ class FeatureRequestService:
         """
         
         with self.db_pool.connection() as conn:
-            cur = conn.cursor()
+            cur = TypedTupleCursor(conn.cursor())
             try:
                 cur.execute(query, params)
                 row = cur.fetchone()
@@ -312,7 +312,7 @@ class FeatureRequestService:
         """
         
         with self.db_pool.connection() as conn:
-            cur = conn.cursor()
+            cur = TypedTupleCursor(conn.cursor())
             try:
                 cur.execute(query, (
                     request_id,
@@ -374,7 +374,7 @@ class FeatureRequestService:
         """
         
         with self.db_pool.connection() as conn:
-            cur = conn.cursor()
+            cur = TypedTupleCursor(conn.cursor())
             try:
                 cur.execute(query, params)
                 if cur.rowcount == 0:
@@ -412,7 +412,7 @@ class FeatureRequestService:
             raise ValueError("vote_value must be 0 or 1")
         
         with self.db_pool.connection() as conn:
-            cur = conn.cursor()
+            cur = TypedTupleCursor(conn.cursor())
             try:
                 # Check if request exists
                 cur.execute(
@@ -512,7 +512,7 @@ class FeatureRequestService:
             True if deleted, False if not found.
         """
         with self.db_pool.connection() as conn:
-            cur = conn.cursor()
+            cur = TypedTupleCursor(conn.cursor())
             try:
                 cur.execute(
                     "DELETE FROM feature_requests WHERE request_id = %s",
@@ -559,7 +559,7 @@ class FeatureRequestService:
         """
         
         with self.db_pool.connection() as conn:
-            cur = conn.cursor()
+            cur = TypedTupleCursor(conn.cursor())
             try:
                 cur.execute(query, (request_id,))
                 rows = cur.fetchall()
@@ -599,7 +599,7 @@ class FeatureRequestService:
         now = datetime.now(UTC)
         
         with self.db_pool.connection() as conn:
-            cur = conn.cursor()
+            cur = TypedTupleCursor(conn.cursor())
             try:
                 # Check if request exists
                 cur.execute(
@@ -653,7 +653,7 @@ class FeatureRequestService:
             True if deleted, False if not found or not authorized.
         """
         with self.db_pool.connection() as conn:
-            cur = conn.cursor()
+            cur = TypedTupleCursor(conn.cursor())
             try:
                 if user_id:
                     # Only delete if owned by user

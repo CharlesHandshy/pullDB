@@ -76,7 +76,7 @@ class SimulationState:
     
     # Orphan database simulation
     # hostname -> set of database names that exist on that staging host
-    staging_databases: dict[str, set[str]] = field(default_factory=set)
+    staging_databases: dict[str, set[str]] = field(default_factory=dict)
     # (hostname, db_name) tuples of orphans deleted this session
     deleted_orphans: set[tuple[str, str]] = field(default_factory=set)
     # (hostname, db_name) -> size in MB for mock orphan databases

@@ -33,6 +33,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 var(--space-4);
+    padding-left: calc(var(--space-4) + 5px); /* Account for accent bar */
     height: var(--header-height, 56px);
     z-index: 200; /* Above sidebar */
 }
@@ -97,26 +98,21 @@
     color: var(--gray-400);
 }
 
-/* 3px attention strip */
+/* Note: The sidebar-trigger element in sidebar.css provides the 5px accent bar.
+   This attention-strip class is deprecated but kept for backwards compatibility. */
 .attention-strip {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 3px;
-    height: 100vh;
-    background: linear-gradient(180deg, var(--primary-400) 0%, var(--primary-600) 50%, var(--primary-400) 100%);
-    z-index: 300;
+    display: none;
 }
 
 /* Main container */
 .app-main {
     grid-row: 1 / -1;
     grid-column: 1;
-    margin-left: 3px;
+    margin-left: 5px;
     display: grid;
     grid-template-rows: auto 1fr auto;
-    height: 100%;
-    width: calc(100vw - 3px);
+    height: calc(100% - var(--footer-height)); /* Account for fixed footer */
+    width: calc(100vw - 5px);
     overflow: hidden;
 }
 
@@ -319,7 +315,10 @@
    ================================================================= */
 
 .app-footer {
-    grid-row: 3;
+    position: fixed;
+    bottom: 0;
+    left: 5px; /* Align with accent bar */
+    right: 0;
     background: white;
     border-top: 1px solid var(--gray-200);
     padding: var(--space-2) var(--space-4);
@@ -328,6 +327,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    height: var(--footer-height);
+    min-height: var(--footer-height);
+    z-index: 100; /* Below sidebar-trigger (200) but above content */
 }
 
 .footer-left {

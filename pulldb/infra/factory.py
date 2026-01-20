@@ -9,7 +9,7 @@ HCA Layer: shared
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pulldb.domain.interfaces import (
     AuditRepository,
@@ -22,6 +22,11 @@ from pulldb.domain.interfaces import (
     SettingsRepository,
     UserRepository,
 )
+
+
+if TYPE_CHECKING:
+    from pulldb.domain.services.provisioning import HostProvisioningService
+    from pulldb.infra.mysql import MySQLPool
 
 
 def get_mode() -> str:

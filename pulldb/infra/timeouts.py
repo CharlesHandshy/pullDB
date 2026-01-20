@@ -75,11 +75,11 @@ def get_mysql_connect_timeout_monitor() -> int:
 # Operation Timeouts (for long-running MySQL operations)
 # =============================================================================
 
-# Default timeout for myloader/staging operations (2 hours)
-DEFAULT_MYSQL_OPERATION_TIMEOUT = 7200
+# Default timeout for myloader/staging operations (24 hours)
+DEFAULT_MYSQL_OPERATION_TIMEOUT = 86400
 
-# Default timeout for post-SQL script execution (10 minutes)
-DEFAULT_POST_SQL_TIMEOUT = 600
+# Default timeout for post-SQL script execution (30 minutes)
+DEFAULT_POST_SQL_TIMEOUT = 1800
 
 
 # =============================================================================
@@ -87,13 +87,13 @@ DEFAULT_POST_SQL_TIMEOUT = 600
 # =============================================================================
 
 # Running jobs without heartbeat updates are considered stale after this many minutes
-STALE_RUNNING_TIMEOUT_MINUTES = 15
+STALE_RUNNING_TIMEOUT_MINUTES = 30
 
 # Orphaned task queue entries are reclaimed after this many minutes
-STALE_TASK_TIMEOUT_MINUTES = 10
+STALE_TASK_TIMEOUT_MINUTES = 30
 
 # Jobs stuck in "deleting" state are considered stale after this many minutes
-STALE_DELETE_TIMEOUT_MINUTES = 5
+STALE_DELETE_TIMEOUT_MINUTES = 30
 
 
 # =============================================================================

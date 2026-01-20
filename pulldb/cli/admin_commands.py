@@ -512,6 +512,7 @@ def hosts_provision(
     # Prompt for password if not provided
     if admin_password is None:
         admin_password = click.prompt("MySQL admin password", hide_input=True)
+    assert admin_password is not None  # Assured by click.prompt above
 
     # Get actor user_id (CLI runs as admin)
     user_repo = get_user_repository()
@@ -618,6 +619,7 @@ def hosts_test(
     # Prompt for password if not provided
     if password is None:
         password = click.prompt("MySQL password", hide_input=True)
+    assert password is not None  # Assured by click.prompt above
 
     click.echo(f"Testing connection to {mysql_host}:{mysql_port} as {username}...")
 

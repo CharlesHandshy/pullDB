@@ -851,6 +851,7 @@ def _seed_custom_target_jobs(
                 worker_id = random.choice(WORKERS)
             
             if status in (JobStatus.DEPLOYED, JobStatus.FAILED):
+                assert started_at is not None  # Set in RUNNING/DEPLOYED/FAILED branch above
                 finished_at = started_at + timedelta(minutes=random.randint(10, 60))
             
             if status == JobStatus.FAILED:
@@ -1349,7 +1350,7 @@ def seed_lean_users(state: SimulationState) -> dict[str, User]:
     return _seed_users(state, "lean")
 
 
-def seed_lean_host(state: SimulationState) -> DBHost:
+def seed_lean_host(state: SimulationState) -> DBHost | None:
     """Legacy: Seed lean host."""
     hosts = _seed_hosts(state, "lean")
     return hosts[0] if hosts else None

@@ -52,7 +52,7 @@ class TestMinimalFromEnv:
         assert config.default_dbhost is None
         assert config.myloader_binary == "/opt/pulldb.service/bin/myloader-0.19.3-3"
         assert config.myloader_extra_args == ()
-        assert config.myloader_timeout_seconds == 7200.0
+        assert config.myloader_timeout_seconds == 86400.0
         assert config.myloader_threads == 8
 
     def test_minimal_with_explicit_values(self) -> None:

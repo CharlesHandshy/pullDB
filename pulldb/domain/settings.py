@@ -113,7 +113,7 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
     "myloader_timeout_seconds": SettingMeta(
         key="myloader_timeout_seconds",
         env_var="PULLDB_MYLOADER_TIMEOUT_SECONDS",
-        default="7200",
+        default="86400",
         description="Maximum execution time (seconds)",
         setting_type=SettingType.INTEGER,
         category=SettingCategory.MYLOADER,

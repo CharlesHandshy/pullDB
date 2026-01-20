@@ -107,7 +107,7 @@ PULLDB_COORDINATION_SECRET="aws-ssm:/pulldb/mysql/coordination-db"
 | `myloader_binary` | path | (code default) | myloader executable path |
 | `myloader_default_args` | string | (code default) | Default myloader arguments |
 | `myloader_extra_args` | string | (empty) | Additional myloader arguments |
-| `myloader_timeout_seconds` | float | `7200` | myloader execution timeout |
+| `myloader_timeout_seconds` | float | `86400` | myloader execution timeout |
 | `myloader_threads` | int | `8` | myloader thread count |
 
 **Query settings:**
@@ -139,7 +139,7 @@ WHERE setting_key = 'setting_name';
 | `PULLDB_MYLOADER_DEFAULT_ARGS` | env, mysql | (see below) | Default myloader CLI arguments |
 | `PULLDB_MYLOADER_EXTRA_ARGS` | env, mysql | (empty) | Additional myloader arguments |
 | `PULLDB_MYLOADER_THREADS` | env, mysql | `8` | Thread count for parallel restore |
-| `PULLDB_MYLOADER_TIMEOUT_SECONDS` | env, mysql | `7200` | Maximum restore duration (seconds) |
+| `PULLDB_MYLOADER_TIMEOUT_SECONDS` | env, mysql | `86400` | Maximum restore duration (seconds) |
 
 **Default myloader arguments:**
 ```

@@ -529,7 +529,7 @@ async def change_password(
         )
 
 
-@router.post("/auth/set-default-host")
+@router.post("/auth/set-default-host", response_model=None)
 async def set_default_host(
     request: Request,
     state: Any = Depends(get_api_state),

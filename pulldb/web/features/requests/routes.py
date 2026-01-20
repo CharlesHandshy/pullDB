@@ -15,10 +15,17 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 
 from pulldb.domain.models import User
+from pulldb.infra.factory import is_simulation_mode
 from pulldb.web.dependencies import get_api_state, require_login, templates
 from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
 router = APIRouter(prefix="/web/requests", tags=["web-requests"])
+
+
+# Simulation mode error response
+SIMULATION_MODE_ERROR = {
+    "error": "Feature requests are not available in simulation mode (no database connection)"
+}
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -39,19 +46,23 @@ async def requests_page(
         "declined": 0,
     }
     
-    try:
-        service = FeatureRequestService(state.pool)
-        stats_obj = await service.get_stats()
-        stats = {
-            "total": stats_obj.total,
-            "open": stats_obj.open,
-            "in_progress": stats_obj.in_progress,
-            "complete": stats_obj.complete,
-            "declined": stats_obj.declined,
-        }
-    except Exception:
-        # Graceful degradation: stats are informational, page works without them
-        logger.debug("Failed to get feature request stats", exc_info=True)
+    # Check for simulation mode - pool will be None
+    simulation_mode = is_simulation_mode() or state.pool is None
+    
+    if not simulation_mode:
+        try:
+            service = FeatureRequestService(state.pool)
+            stats_obj = await service.get_stats()
+            stats = {
+                "total": stats_obj.total,
+                "open": stats_obj.open,
+                "in_progress": stats_obj.in_progress,
+                "complete": stats_obj.complete,
+                "declined": stats_obj.declined,
+            }
+        except Exception:
+            # Graceful degradation: stats are informational, page works without them
+            logger.debug("Failed to get feature request stats", exc_info=True)
 
     return templates.TemplateResponse(
         "features/requests/index.html",
@@ -61,6 +72,7 @@ async def requests_page(
             "user": user,
             "stats": stats,
             "breadcrumbs": get_breadcrumbs("feature_requests"),
+            "simulation_mode": simulation_mode,
         },
     )
 
@@ -87,6 +99,17 @@ async def get_requests_api(
         }
     """
     from pulldb.worker.feature_request_service import FeatureRequestService
+    
+    # Check for simulation mode - pool will be None
+    if is_simulation_mode() or state.pool is None:
+        return {
+            "rows": [],
+            "totalCount": 0,
+            "filteredCount": 0,
+            "pageIndex": page,
+            "pageSize": pageSize,
+            "simulation_mode": True,
+        }
     
     try:
         service = FeatureRequestService(state.pool)
@@ -172,6 +195,10 @@ async def vote_api(
     """Cast or change a vote on a feature request."""
     from pulldb.worker.feature_request_service import FeatureRequestService
     
+    # Check for simulation mode - pool will be None
+    if is_simulation_mode() or state.pool is None:
+        return SIMULATION_MODE_ERROR
+    
     try:
         body = await request.json()
         vote_value = body.get("vote_value", 0)
@@ -206,6 +233,10 @@ async def create_request_api(
     """Create a new feature request."""
     from pulldb.domain.feature_request import FeatureRequestCreate
     from pulldb.worker.feature_request_service import FeatureRequestService
+    
+    # Check for simulation mode - pool will be None
+    if is_simulation_mode() or state.pool is None:
+        return SIMULATION_MODE_ERROR
     
     try:
         body = await request.json()
@@ -252,6 +283,10 @@ async def update_request_api(
     )
     from pulldb.worker.feature_request_service import FeatureRequestService
     
+    # Check for simulation mode - pool will be None
+    if is_simulation_mode() or state.pool is None:
+        return SIMULATION_MODE_ERROR
+    
     # Check primary admin - only the first installed admin can change status
     if user.user_id != PRIMARY_ADMIN_ID:
         return {"error": "Only the primary administrator can update feature request status"}
@@ -296,6 +331,10 @@ async def delete_request_api(
     """Delete/withdraw a feature request (owner or admin only)."""
     from pulldb.worker.feature_request_service import FeatureRequestService
     
+    # Check for simulation mode - pool will be None
+    if is_simulation_mode() or state.pool is None:
+        return SIMULATION_MODE_ERROR
+    
     try:
         service = FeatureRequestService(state.pool)
         
@@ -332,6 +371,10 @@ async def get_notes_api(
     """Get all notes for a feature request."""
     from pulldb.worker.feature_request_service import FeatureRequestService
     
+    # Check for simulation mode - pool will be None
+    if is_simulation_mode() or state.pool is None:
+        return {"notes": [], "simulation_mode": True}
+    
     try:
         service = FeatureRequestService(state.pool)
         notes = await service.list_notes(request_id)
@@ -365,6 +408,10 @@ async def add_note_api(
     """Add a note to a feature request."""
     from pulldb.domain.feature_request import NoteCreate
     from pulldb.worker.feature_request_service import FeatureRequestService
+    
+    # Check for simulation mode - pool will be None
+    if is_simulation_mode() or state.pool is None:
+        return SIMULATION_MODE_ERROR
     
     try:
         body = await request.json()
@@ -411,6 +458,10 @@ async def delete_note_api(
 ) -> dict:
     """Delete a note (own notes only, unless admin)."""
     from pulldb.worker.feature_request_service import FeatureRequestService
+    
+    # Check for simulation mode - pool will be None
+    if is_simulation_mode() or state.pool is None:
+        return SIMULATION_MODE_ERROR
     
     try:
         service = FeatureRequestService(state.pool)

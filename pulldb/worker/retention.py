@@ -17,7 +17,7 @@ from pulldb.domain.models import Job, JobStatus, MaintenanceItems
 
 
 if TYPE_CHECKING:
-    from pulldb.infra.mysql import JobRepository, SettingsRepository, UserRepository
+    from pulldb.domain.interfaces import JobRepository, SettingsRepository, UserRepository
 
 
 logger = logging.getLogger(__name__)
@@ -98,14 +98,15 @@ class RetentionService:
         """
         job = self.job_repo.get_job_by_id(job_id)
         if not job:
-            logger.warning("extend_job_not_found", job_id=job_id)
+            logger.warning("extend_job_not_found: job_id=%s", job_id, extra={"job_id": job_id})
             return False
 
         if job.status not in (JobStatus.DEPLOYED, JobStatus.COMPLETE):
             logger.warning(
-                "extend_job_not_deployed",
-                job_id=job_id,
-                status=job.status.value,
+                "extend_job_not_deployed: job_id=%s, status=%s",
+                job_id,
+                job.status.value,
+                extra={"job_id": job_id, "status": job.status.value},
             )
             return False
 
@@ -141,11 +142,16 @@ class RetentionService:
         )
 
         logger.info(
-            "job_expiration_extended",
-            job_id=job_id,
-            user_id=user_id,
-            months=months,
-            new_expires_at=new_expires_at.isoformat(),
+            "job_expiration_extended: job_id=%s, user_id=%s, months=%d",
+            job_id,
+            user_id,
+            months,
+            extra={
+                "job_id": job_id,
+                "user_id": user_id,
+                "months": months,
+                "new_expires_at": new_expires_at.isoformat(),
+            },
         )
         return True
 
@@ -162,19 +168,20 @@ class RetentionService:
         """
         job = self.job_repo.get_job_by_id(job_id)
         if not job:
-            logger.warning("lock_job_not_found", job_id=job_id)
+            logger.warning("lock_job_not_found: job_id=%s", job_id, extra={"job_id": job_id})
             return False
 
         if job.status not in (JobStatus.DEPLOYED, JobStatus.COMPLETE):
             logger.warning(
-                "lock_job_not_deployed",
-                job_id=job_id,
-                status=job.status.value,
+                "lock_job_not_deployed: job_id=%s, status=%s",
+                job_id,
+                job.status.value,
+                extra={"job_id": job_id, "status": job.status.value},
             )
             return False
 
         if job.is_locked:
-            logger.info("lock_job_already_locked", job_id=job_id)
+            logger.info("lock_job_already_locked: job_id=%s", job_id, extra={"job_id": job_id})
             return False
 
         success = self.job_repo.lock_job(job_id, username)
@@ -185,10 +192,10 @@ class RetentionService:
                 f"Locked by {username}",
             )
             logger.info(
-                "job_database_locked",
-                job_id=job_id,
-                user_id=user_id,
-                locked_by=username,
+                "job_database_locked: job_id=%s, locked_by=%s",
+                job_id,
+                username,
+                extra={"job_id": job_id, "user_id": user_id, "locked_by": username},
             )
         return success
 
@@ -204,11 +211,11 @@ class RetentionService:
         """
         job = self.job_repo.get_job_by_id(job_id)
         if not job:
-            logger.warning("unlock_job_not_found", job_id=job_id)
+            logger.warning("unlock_job_not_found: job_id=%s", job_id, extra={"job_id": job_id})
             return False
 
         if not job.is_locked:
-            logger.info("unlock_job_not_locked", job_id=job_id)
+            logger.info("unlock_job_not_locked: job_id=%s", job_id, extra={"job_id": job_id})
             return False
 
         success = self.job_repo.unlock_job(job_id)
@@ -219,9 +226,9 @@ class RetentionService:
                 f"Unlocked by user {user_id}",
             )
             logger.info(
-                "job_database_unlocked",
-                job_id=job_id,
-                user_id=user_id,
+                "job_database_unlocked: job_id=%s",
+                job_id,
+                extra={"job_id": job_id, "user_id": user_id},
             )
         return success
 
@@ -239,14 +246,15 @@ class RetentionService:
         """
         job = self.job_repo.get_job_by_id(job_id)
         if not job:
-            logger.warning("mark_for_removal_not_found", job_id=job_id)
+            logger.warning("mark_for_removal_not_found: job_id=%s", job_id, extra={"job_id": job_id})
             return False
 
         if job.is_locked:
             logger.warning(
-                "mark_for_removal_locked",
-                job_id=job_id,
-                locked_by=job.locked_by,
+                "mark_for_removal_locked: job_id=%s, locked_by=%s",
+                job_id,
+                job.locked_by,
+                extra={"job_id": job_id, "locked_by": job.locked_by},
             )
             return False
 
@@ -261,9 +269,10 @@ class RetentionService:
         )
 
         logger.info(
-            "job_marked_for_removal",
-            job_id=job_id,
-            user_id=user_id,
+            "job_marked_for_removal: job_id=%s, user_id=%s",
+            job_id,
+            user_id,
+            extra={"job_id": job_id, "user_id": user_id},
         )
         return True
 
@@ -351,22 +360,27 @@ class RetentionService:
                 results[action.job_id] = self.extend_job(action.job_id, months, user_id)
             else:
                 logger.warning(
-                    "unknown_maintenance_action",
-                    job_id=action.job_id,
-                    action=action.action,
+                    "unknown_maintenance_action: job_id=%s, action=%s",
+                    action.job_id,
+                    action.action,
+                    extra={"job_id": action.job_id, "action": action.action},
                 )
                 results[action.job_id] = False
 
         # Always record acknowledgment, regardless of actions taken
-        from datetime import date
+        from datetime import UTC, datetime
 
-        self.user_repo.set_last_maintenance_ack(user_id, date.today())
+        self.user_repo.set_last_maintenance_ack(user_id, datetime.now(UTC))
 
         logger.info(
-            "maintenance_acknowledged",
-            user_id=user_id,
-            actions_processed=len(actions),
-            actions_skipped=sum(1 for a in actions if not a.action),
+            "maintenance_acknowledged: processed=%d, skipped=%d",
+            len(actions),
+            sum(1 for a in actions if not a.action),
+            extra={
+                "user_id": user_id,
+                "actions_processed": len(actions),
+                "actions_skipped": sum(1 for a in actions if not a.action),
+            },
         )
 
         return results

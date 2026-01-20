@@ -623,7 +623,7 @@ Settings control system behavior. They can be stored in database, `.env` file, o
 |---------|------|---------|-------------|
 | `myloader_binary` | string | `/opt/pulldb.service/bin/myloader` | Path to myloader |
 | `myloader_threads` | int | `8` | Parallel restore threads |
-| `myloader_timeout_seconds` | int | `7200` | Max execution time (2 hours) |
+| `myloader_timeout_seconds` | int | `86400` | Max execution time (24 hours) |
 | `work_directory` | string | `/opt/pulldb.service/work` | Working directory |
 | `max_active_jobs_per_user` | int | `0` | Per-user limit (0=unlimited) |
 | `max_active_jobs_global` | int | `0` | System limit (0=unlimited) |

@@ -339,11 +339,3 @@ body.no-sidebar .sidebar-trigger,
 body.no-sidebar .app-sidebar {
     display: none;
 }
-
-/* =================================================================
-   DARK MODE
-   Sidebar is already dark-themed, minimal adjustments needed
-   ================================================================= */
-[data-theme="dark"] .sidebar-footer {
-    border-top-color: var(--gray-800);
-}

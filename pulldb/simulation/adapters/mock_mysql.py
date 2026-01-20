@@ -13,7 +13,7 @@ import logging
 import uuid
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, ClassVar
 
 from pulldb.domain.errors import LockedUserError
 from pulldb.domain.models import (
@@ -21,6 +21,7 @@ from pulldb.domain.models import (
     Job,
     JobEvent,
     JobStatus,
+    MaintenanceItems,
     MySQLCredentials,
     User,
     UserDetail,
@@ -920,20 +921,18 @@ class SimulatedJobRepository:
             "errors": errors,
         }
 
-    def mark_job_staging_cleaned(self, job_id: str) -> bool:
+    def mark_job_staging_cleaned(self, job_id: str) -> None:
         """Mark a job's staging database as cleaned.
 
         Sets staging_cleaned_at to current time.
-        Returns True if job was found and updated, False otherwise.
         """
         with self.state.lock:
             job = self.state.jobs.get(job_id)
             if not job:
-                return False
+                return
 
             updated_job = replace(job, staging_cleaned_at=datetime.now(UTC))
             self.state.jobs[job_id] = updated_job
-            return True
 
     # ==================== Database Retention & Lifecycle Methods ====================
 
@@ -1464,9 +1463,9 @@ class SimulatedJobRepository:
                 )
 
     # Constants for stale running job recovery (mirroring real JobRepository)
-    STALE_RUNNING_TIMEOUT_MINUTES = 15
-    STALE_RUNNING_PROCESS_CHECK_COUNT = 3
-    STALE_RUNNING_PROCESS_CHECK_DELAY_SECONDS = 2.0
+    STALE_RUNNING_TIMEOUT_MINUTES: ClassVar[int] = 15
+    STALE_RUNNING_PROCESS_CHECK_COUNT: ClassVar[int] = 3
+    STALE_RUNNING_PROCESS_CHECK_DELAY_SECONDS: ClassVar[float] = 2.0
 
     def get_candidate_stale_running_job(
         self,
@@ -2085,6 +2084,43 @@ class SimulatedUserRepository:
             if user.user_code in self.state.users_by_code:
                 self.state.users_by_code[user.user_code] = updated
 
+    def set_last_maintenance_ack(self, user_id: str, ack_date: datetime) -> None:
+        """Set last maintenance acknowledgment date for a user.
+
+        Args:
+            user_id: User UUID.
+            ack_date: Date to record (typically today's date).
+        """
+        with self.state.lock:
+            user = self.state.users.get(user_id)
+            if not user:
+                raise ValueError(f"User not found: {user_id}")
+            
+            updated = replace(user, last_maintenance_ack=ack_date)
+            self.state.users[user_id] = updated
+            if user.user_code in self.state.users_by_code:
+                self.state.users_by_code[user.user_code] = updated
+
+    def needs_maintenance_ack(self, user_id: str) -> bool:
+        """Check if user needs to acknowledge maintenance modal today.
+
+        Args:
+            user_id: User UUID.
+
+        Returns:
+            True if user hasn't acknowledged today, False otherwise.
+        """
+        with self.state.lock:
+            user = self.state.users.get(user_id)
+            if not user:
+                return False
+            
+            if user.last_maintenance_ack is None:
+                return True
+            
+            today = datetime.now(UTC).date()
+            return user.last_maintenance_ack.date() < today
+
 
 class SimulatedHostRepository:
     """In-memory implementation of HostRepository."""
@@ -2337,6 +2373,57 @@ class SimulatedHostRepository:
             
             del self.state.hosts[target_hostname]
 
+    def get_host_credentials_for_maintenance(self, hostname: str) -> Any:
+        """Get resolved MySQL credentials for maintenance operations.
+
+        Similar to get_host_credentials but allows disabled hosts.
+        In simulation mode, returns a mock credential dict.
+
+        Args:
+            hostname: Hostname to get credentials for.
+
+        Returns:
+            Mock credentials dict for simulation.
+
+        Raises:
+            ValueError: If host not found.
+        """
+        with self.state.lock:
+            host = self.state.hosts.get(hostname)
+            if not host:
+                raise ValueError(f"Host not found: {hostname}")
+            
+            # Return mock credentials suitable for simulation
+            return {
+                'host': hostname,
+                'port': 3306,
+                'user': 'simulated_user',
+                'password': 'simulated_password',
+            }
+
+    def is_staging_db_active(
+        self,
+        hostname: str,
+        staging_name: str,
+        check_count: int = 3,
+        check_delay_seconds: float = 2.0,
+    ) -> bool:
+        """Check if a staging database has active MySQL processes.
+
+        In simulation mode, always returns False (no active processes).
+
+        Args:
+            hostname: Database host to check.
+            staging_name: Staging database name to look for.
+            check_count: Number of times to check (default 3).
+            check_delay_seconds: Delay between checks (default 2.0).
+
+        Returns:
+            False in simulation mode (no active processes).
+        """
+        # Simulation mode: always report no active processes
+        return False
+
 
 class SimulatedSettingsRepository:
     """In-memory implementation of SettingsRepository."""
@@ -2440,6 +2527,74 @@ class SimulatedSettingsRepository:
                     'updated_at': meta.get('updated_at'),
                 })
             return results
+
+    def get_cleanup_grace_days(self) -> int:
+        """Get days after expiry before automatic cleanup.
+
+        Returns:
+            Number of days. Default: 7.
+        """
+        val = self.get_setting("cleanup_grace_days")
+        if val is None:
+            return 7  # Default: 7 days
+        try:
+            return max(0, int(val))
+        except ValueError:
+            return 7
+
+    def get_max_retention_months(self) -> int:
+        """Get maximum retention months for database expiration.
+
+        Returns:
+            Maximum months a database can be retained (1-12). Default: 6.
+        """
+        val = self.get_setting("max_retention_months")
+        if val is None:
+            return 6  # Default: 6 months
+        try:
+            return max(1, min(12, int(val)))
+        except ValueError:
+            return 6
+
+    def get_expiring_notice_days(self) -> int:
+        """Get days before expiry to show warning notice.
+
+        Returns:
+            Number of days. Default: 7.
+        """
+        val = self.get_setting("expiring_notice_days")
+        if val is None:
+            return 7  # Default: 7 days
+        try:
+            return max(0, int(val))
+        except ValueError:
+            return 7
+
+    def get_retention_options(
+        self, include_now: bool = False
+    ) -> list[tuple[str, str]]:
+        """Get retention dropdown options based on current settings.
+
+        Args:
+            include_now: Whether to include "Now" (immediate removal) option.
+
+        Returns:
+            List of (value, label) tuples for dropdown options.
+        """
+        max_months = self.get_max_retention_months()
+        options: list[tuple[str, str]] = []
+        
+        if include_now:
+            options.append(("now", "Now"))
+        
+        # Add month options up to max
+        for months in range(1, max_months + 1):
+            if months == 1:
+                options.append(("1", "1 month"))
+            else:
+                options.append((str(months), f"{months} months"))
+        
+        return options
 
 
 class SimulatedAuthRepository:

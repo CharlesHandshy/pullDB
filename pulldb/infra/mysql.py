@@ -13,7 +13,7 @@ import hashlib
 import json
 import logging
 from collections.abc import Iterator
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 import uuid
 import warnings
 from contextlib import contextmanager
@@ -32,6 +32,7 @@ from pulldb.domain.models import (
     AdminTaskStatus,
     AdminTaskType,
     DBHost,
+    DisallowedUser,
     Job,
     JobEvent,
     JobStatus,
@@ -50,6 +51,7 @@ logger = logging.getLogger(__name__)
 # Type aliases for MySQL cursor results with dictionary=True
 # These help Pylance understand the actual runtime types
 DictRow = dict[str, Any]
+TupleRow = tuple[Any, ...]
 
 
 def _dict_row(row: Any) -> DictRow | None:
@@ -65,6 +67,134 @@ def _dict_row(row: Any) -> DictRow | None:
 def _dict_rows(rows: Any) -> list[DictRow]:
     """Cast fetchall() result to list[DictRow] for cursors with dictionary=True."""
     return cast(list[DictRow], rows)
+
+
+class TypedDictCursor:
+    """Wrapper around MySQL cursor with proper type annotations for dictionary mode.
+    
+    mysql-connector-python's type stubs use generic RowType/RowItemType that don't
+    narrow when dictionary=True. This wrapper provides correctly typed fetchone()
+    and fetchall() methods for dictionary cursors.
+    
+    Usage:
+        with pool.connection() as conn:
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
+            cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+            row = cursor.fetchone()  # Returns dict[str, Any] | None
+            if row:
+                username = row.get("username")  # Type-safe access
+    """
+    
+    def __init__(self, cursor: Any) -> None:
+        """Wrap a MySQL cursor created with dictionary=True."""
+        self._cursor = cursor
+    
+    def execute(self, query: str, params: Any = None) -> None:
+        """Execute a query with optional parameters."""
+        if params is None:
+            self._cursor.execute(query)
+        else:
+            self._cursor.execute(query, params)
+    
+    def executemany(self, query: str, params: list[Any]) -> None:
+        """Execute a query with multiple parameter sets."""
+        self._cursor.executemany(query, params)
+    
+    def fetchone(self) -> DictRow | None:
+        """Fetch one row as a dictionary."""
+        return cast(DictRow | None, self._cursor.fetchone())
+    
+    def fetchall(self) -> list[DictRow]:
+        """Fetch all rows as dictionaries."""
+        return cast(list[DictRow], self._cursor.fetchall())
+    
+    def fetchmany(self, size: int = 1) -> list[DictRow]:
+        """Fetch many rows as dictionaries."""
+        return cast(list[DictRow], self._cursor.fetchmany(size))
+    
+    @property
+    def rowcount(self) -> int:
+        """Number of rows affected by the last execute."""
+        return cast(int, self._cursor.rowcount)
+    
+    @property
+    def lastrowid(self) -> int | None:
+        """Last auto-incremented ID."""
+        return cast(int | None, self._cursor.lastrowid)
+    
+    def close(self) -> None:
+        """Close the cursor."""
+        self._cursor.close()
+    
+    def __enter__(self) -> "TypedDictCursor":
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, *args: Any) -> None:
+        """Context manager exit - closes cursor."""
+        self.close()
+
+
+class TypedTupleCursor:
+    """Wrapper around MySQL cursor with proper type annotations for tuple mode.
+    
+    For cursors created without dictionary=True, rows are tuples.
+    This wrapper provides correctly typed fetchone() and fetchall() methods.
+    Also exposes nextset() for multi-statement query support.
+    """
+    
+    def __init__(self, cursor: Any) -> None:
+        """Wrap a MySQL cursor (without dictionary=True)."""
+        self._cursor = cursor
+    
+    def execute(self, query: str, params: Any = None) -> None:
+        """Execute a query with optional parameters."""
+        if params is None:
+            self._cursor.execute(query)
+        else:
+            self._cursor.execute(query, params)
+    
+    def executemany(self, query: str, params: list[Any]) -> None:
+        """Execute a query with multiple parameter sets."""
+        self._cursor.executemany(query, params)
+    
+    def fetchone(self) -> TupleRow | None:
+        """Fetch one row as a tuple."""
+        return cast(TupleRow | None, self._cursor.fetchone())
+    
+    def fetchall(self) -> list[TupleRow]:
+        """Fetch all rows as tuples."""
+        return cast(list[TupleRow], self._cursor.fetchall())
+    
+    def fetchmany(self, size: int = 1) -> list[TupleRow]:
+        """Fetch many rows as tuples."""
+        return cast(list[TupleRow], self._cursor.fetchmany(size))
+    
+    @property
+    def rowcount(self) -> int:
+        """Number of rows affected by the last execute."""
+        return cast(int, self._cursor.rowcount)
+    
+    @property
+    def lastrowid(self) -> int | None:
+        """Last auto-incremented ID."""
+        return cast(int | None, self._cursor.lastrowid)
+    
+    def nextset(self) -> bool | None:
+        """Move to next result set (for multi-statement queries)."""
+        return cast(bool | None, self._cursor.nextset())
+    
+    def close(self) -> None:
+        """Close the cursor."""
+        self._cursor.close()
+    
+    def __enter__(self) -> "TypedTupleCursor":
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, *args: Any) -> None:
+        """Context manager exit - closes cursor."""
+        self.close()
 
 
 _ACTIVE_JOBS_VIEW_QUERY = """
@@ -123,7 +253,7 @@ class MySQLPool:
 
         Example:
             >>> with pool.transaction() as conn:
-            ...     cursor = conn.cursor()
+            ...     cursor = TypedTupleCursor(conn.cursor())
             ...     cursor.execute("SELECT ... FOR UPDATE")
             ...     cursor.execute("UPDATE ...")
             ...     # Commits automatically on exit
@@ -136,6 +266,55 @@ class MySQLPool:
         except Exception:
             conn.rollback()
             raise
+        finally:
+            conn.close()
+
+    @contextmanager
+    def dict_cursor(self) -> Iterator[TypedDictCursor]:
+        """Get a typed dictionary cursor with automatic cleanup.
+        
+        This is the preferred way to query when you need to access columns by name.
+        The cursor's fetchone() returns dict[str, Any] | None with proper typing.
+        
+        Yields:
+            TypedDictCursor with properly typed fetch methods.
+            
+        Example:
+            >>> with pool.dict_cursor() as cursor:
+            ...     cursor.execute("SELECT id, name FROM users")
+            ...     row = cursor.fetchone()
+            ...     if row:
+            ...         print(row.get("name"))  # Type-safe access
+        """
+        conn = mysql.connector.connect(**self._kwargs)
+        try:
+            raw_cursor = TypedDictCursor(conn.cursor(dictionary=True))
+            cursor = TypedDictCursor(raw_cursor)
+            try:
+                yield cursor
+            finally:
+                cursor.close()
+        finally:
+            conn.close()
+
+    @contextmanager
+    def tuple_cursor(self) -> Iterator[TypedTupleCursor]:
+        """Get a typed tuple cursor with automatic cleanup.
+        
+        This is for queries where positional access is acceptable.
+        The cursor's fetchone() returns tuple[Any, ...] | None with proper typing.
+        
+        Yields:
+            TypedTupleCursor with properly typed fetch methods.
+        """
+        conn = mysql.connector.connect(**self._kwargs)
+        try:
+            raw_cursor = TypedTupleCursor(conn.cursor())
+            cursor = TypedTupleCursor(raw_cursor)
+            try:
+                yield cursor
+            finally:
+                cursor.close()
         finally:
             conn.close()
 
@@ -192,11 +371,11 @@ class JobRepository:
 
     # Constants for stale running job recovery
     # Higher than delete timeout (5 min) because restores take longer
-    STALE_RUNNING_TIMEOUT_MINUTES = 15
+    STALE_RUNNING_TIMEOUT_MINUTES: ClassVar[int] = 15
     # Number of process list checks before declaring a job stale
-    STALE_RUNNING_PROCESS_CHECK_COUNT = 3
+    STALE_RUNNING_PROCESS_CHECK_COUNT: ClassVar[int] = 3
     # Delay between process list checks (seconds)
-    STALE_RUNNING_PROCESS_CHECK_DELAY_SECONDS = 2.0
+    STALE_RUNNING_PROCESS_CHECK_DELAY_SECONDS: ClassVar[float] = 2.0
 
     def __init__(self, pool: MySQLPool) -> None:
         """Initialize repository with connection pool.
@@ -226,7 +405,7 @@ class JobRepository:
         job_id = job.id if job.id else str(uuid.uuid4())
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             try:
                 cursor.execute(
                     """
@@ -281,7 +460,7 @@ class JobRepository:
             stacklevel=2,
         )
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -328,7 +507,7 @@ class JobRepository:
             ...     process(job)
         """
         with self.pool.transaction() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             # SELECT with FOR UPDATE SKIP LOCKED:
             # - FOR UPDATE: Locks the row until transaction commits
@@ -415,7 +594,7 @@ class JobRepository:
             Job or None if not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -447,7 +626,7 @@ class JobRepository:
             List of matching jobs, empty if none found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             # Use LIKE for prefix matching - escape any special characters
             safe_prefix = prefix.replace("%", r"\%").replace("_", r"\_")
             cursor.execute(
@@ -486,7 +665,7 @@ class JobRepository:
             List of matching jobs ordered by submission time (newest first).
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             # Escape special SQL LIKE characters
             safe_query = query.replace("%", r"\%").replace("_", r"\_")
 
@@ -540,7 +719,7 @@ class JobRepository:
             The most recent job for the user, or None if no jobs found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -579,7 +758,7 @@ class JobRepository:
             stacklevel=2,
         )
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs
@@ -619,7 +798,7 @@ class JobRepository:
             no longer in 'running' status (e.g., marked failed by stale recovery).
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             # Get max_retention_months from settings (default 6)
             cursor.execute(
                 """SELECT COALESCE(
@@ -670,7 +849,7 @@ class JobRepository:
             ValueError: If job not found or not in deployed status.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs
@@ -697,7 +876,7 @@ class JobRepository:
             True if job was updated, False if not found or not eligible.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs
@@ -725,7 +904,7 @@ class JobRepository:
             return 0
             
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             placeholders = ", ".join(["%s"] * len(job_ids))
             cursor.execute(
                 f"""
@@ -761,7 +940,7 @@ class JobRepository:
             error: Error message describing failure.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs
@@ -788,7 +967,7 @@ class JobRepository:
             True if restore_started event exists, False otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT 1 FROM job_events
@@ -812,7 +991,7 @@ class JobRepository:
             True if status was updated, False if job not in running state.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs
@@ -844,7 +1023,7 @@ class JobRepository:
             ValueError: If job not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs
@@ -871,7 +1050,7 @@ class JobRepository:
         """
         error_detail = reason or "Canceled by user request"
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs
@@ -899,7 +1078,7 @@ class JobRepository:
         """
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             # Get current retry_count before incrementing
             cursor.execute(
@@ -947,7 +1126,7 @@ class JobRepository:
         """
         error_detail = detail or "Databases deleted by user"
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs
@@ -984,7 +1163,7 @@ class JobRepository:
         """
 
         with self.pool.transaction() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             # Find stale deleting jobs that haven't exceeded retry limit.
             # IMPORTANT: Only recover jobs that are the NEWEST for their target.
@@ -1095,7 +1274,7 @@ class JobRepository:
 
         detail = error_detail or "Delete failed after 5 attempts"
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs
@@ -1153,7 +1332,7 @@ class JobRepository:
             stale_timeout_minutes = self.STALE_RUNNING_TIMEOUT_MINUTES
 
         with self.pool.transaction() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             # Find running jobs with no recent activity (based on job_events).
             # IMPORTANT: Only recover jobs that are the NEWEST for their target.
@@ -1235,7 +1414,7 @@ class JobRepository:
         detail = error_detail or "Worker died during restore (stale job recovery)"
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
 
             # Only update if still in 'running' status (prevent race conditions)
             cursor.execute(
@@ -1299,7 +1478,7 @@ class JobRepository:
             True if job was deleted, False if job not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             # Delete job_events first (FK constraint)
             cursor.execute(
                 "DELETE FROM job_events WHERE job_id = %s",
@@ -1327,7 +1506,7 @@ class JobRepository:
             True if cancellation requested or job is in canceling state.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT (cancel_requested_at IS NOT NULL OR status = 'canceling') as is_requested
@@ -1358,7 +1537,7 @@ class JobRepository:
             True if job should abort immediately.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT status, cancel_requested_at IS NOT NULL AS cancel_requested
@@ -1387,7 +1566,7 @@ class JobRepository:
             Datetime when cancellation was requested, or None if not requested.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 "SELECT cancel_requested_at FROM jobs WHERE id = %s",
                 (job_id,),
@@ -1408,7 +1587,7 @@ class JobRepository:
             Human-readable operation string, or None if job not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT j.status,
@@ -1439,7 +1618,7 @@ class JobRepository:
             List of active jobs ordered by submitted_at.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             rows = self._fetch_active_job_rows(cursor)
             return [self._row_to_active_job(row) for row in rows]
 
@@ -1460,7 +1639,7 @@ class JobRepository:
             List of jobs with populated current_operation.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             query = """
                 WITH LatestEvents AS (
@@ -1504,7 +1683,7 @@ class JobRepository:
             The most recent Job, or None if no jobs found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code,
@@ -1547,7 +1726,7 @@ class JobRepository:
             List of historical jobs with populated fields including error_detail.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             query = """
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
@@ -1620,7 +1799,7 @@ class JobRepository:
             List of jobs representing owned databases, newest first.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             # Active (in-progress) OR deployed (not expired)
             # Note: Frontend checks for expired jobs and updates their status
@@ -1691,7 +1870,7 @@ class JobRepository:
             List of historical jobs, newest first.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             # Failed/canceled/deleted/expired/complete/superseded jobs go to History
             query = """
@@ -1762,7 +1941,7 @@ class JobRepository:
             List of matching jobs ordered by submission time (newest first).
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             query = """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -1831,7 +2010,7 @@ class JobRepository:
             List of jobs ordered by submitted_at DESC.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -1861,7 +2040,7 @@ class JobRepository:
             True if no active jobs for target, False otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT COUNT(*) as count
@@ -1886,7 +2065,7 @@ class JobRepository:
             Count of active jobs for the user.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM jobs
@@ -1906,7 +2085,7 @@ class JobRepository:
             Total count of active jobs across all users.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM jobs
@@ -1928,7 +2107,7 @@ class JobRepository:
             Count of active jobs for the host.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM jobs
@@ -1951,7 +2130,7 @@ class JobRepository:
             Count of running jobs for the host.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM jobs
@@ -1974,7 +2153,7 @@ class JobRepository:
             Total count of all jobs for the host.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM jobs
@@ -1995,7 +2174,7 @@ class JobRepository:
             Total count of all jobs for the user.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM jobs
@@ -2018,7 +2197,7 @@ class JobRepository:
             List of dicts with 'name' (target) and 'host' (dbhost) keys.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT DISTINCT target, dbhost
@@ -2051,7 +2230,7 @@ class JobRepository:
             Dict with 'rows' list and 'total_count' integer.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             # Count total candidates
             cursor.execute(
                 """
@@ -2111,7 +2290,7 @@ class JobRepository:
             detail: Optional detail message or JSON payload.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 INSERT INTO job_events
@@ -2137,7 +2316,7 @@ class JobRepository:
             List of events ordered by logged_at.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             query = """
                 SELECT id, job_id, event_type, detail, logged_at
@@ -2184,7 +2363,7 @@ class JobRepository:
             raise ValueError("retention_days must be >= 0")
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             # Only prune events for terminal jobs (complete/failed/canceled)
             cursor.execute(
                 """
@@ -2221,7 +2400,7 @@ class JobRepository:
             Dict with rows (job summaries), totalCount, and totalEvents.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             # Get total counts first
             cursor.execute(
@@ -2302,7 +2481,7 @@ class JobRepository:
             return 0
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             # Use parameterized IN clause
             placeholders = ", ".join(["%s"] * len(job_ids))
             cursor.execute(
@@ -2338,7 +2517,7 @@ class JobRepository:
         exclude_job_ids = exclude_job_ids or []
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
 
             if exclude_job_ids:
                 # Use NOT IN with parameterized query
@@ -2385,7 +2564,7 @@ class JobRepository:
             Job if found, None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             # Match job ID starting with the prefix
             cursor.execute(
                 """
@@ -2415,7 +2594,7 @@ class JobRepository:
             Datetime of completion, or None if not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT logged_at
@@ -2448,7 +2627,7 @@ class JobRepository:
             True if active jobs exist, False otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM jobs
@@ -2474,7 +2653,7 @@ class JobRepository:
             List of Job instances in terminal state older than cutoff.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
@@ -2504,7 +2683,7 @@ class JobRepository:
             job_id: UUID of job to mark as cleaned.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs
@@ -2669,7 +2848,7 @@ class JobRepository:
             params.append(dbhost)
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
             return [self._row_to_job(row) for row in rows]
@@ -2681,7 +2860,7 @@ class JobRepository:
             job_id: Job ID to update.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE jobs SET staging_cleaned_at = NOW() WHERE id = %s",
                 (job_id,),
@@ -2700,7 +2879,7 @@ class JobRepository:
             expires_at: New expiration timestamp.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE jobs SET expires_at = %s WHERE id = %s",
                 (expires_at, job_id),
@@ -2718,7 +2897,7 @@ class JobRepository:
             True if lock was set, False if job not found or already locked.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs 
@@ -2740,7 +2919,7 @@ class JobRepository:
             True if unlocked, False if job not found or wasn't locked.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs 
@@ -2775,7 +2954,7 @@ class JobRepository:
             False if job was already canceled or cancel was requested (abort job).
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs 
@@ -2798,7 +2977,7 @@ class JobRepository:
             job_id: Job ID to mark.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE jobs SET db_dropped_at = UTC_TIMESTAMP(6) WHERE id = %s",
                 (job_id,),
@@ -2822,7 +3001,7 @@ class JobRepository:
             Deployed Job if found, None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -2863,7 +3042,7 @@ class JobRepository:
             Deployed Job if found (any user), None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -2902,7 +3081,7 @@ class JobRepository:
             Locked Job if found (any user), None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -2941,7 +3120,7 @@ class JobRepository:
             Most recent completed Job if found, None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -2976,7 +3155,7 @@ class JobRepository:
             superseded_by_job_id: Job ID of the new restore.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE jobs 
@@ -3007,7 +3186,7 @@ class JobRepository:
             Locked Job if found, None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -3046,7 +3225,7 @@ class JobRepository:
             MaintenanceItems with expired, expiring, and locked job lists.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             # Query all potentially relevant jobs in one query
             cursor.execute(
                 """
@@ -3102,7 +3281,7 @@ class JobRepository:
             List of jobs whose databases can be dropped.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -3132,7 +3311,7 @@ class JobRepository:
             List of locked jobs ordered by user, then lock date.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -3162,7 +3341,7 @@ class JobRepository:
             List of jobs representing active databases.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, owner_user_id, owner_username, owner_user_code, target,
@@ -3267,7 +3446,7 @@ class UserRepository:
             User instance if found, None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
@@ -3319,7 +3498,7 @@ class UserRepository:
             User instance if found, None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
@@ -3367,7 +3546,7 @@ class UserRepository:
             List of User instances.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
@@ -3397,7 +3576,7 @@ class UserRepository:
 
         try:
             with self.pool.connection() as conn:
-                cursor = conn.cursor(dictionary=True)
+                cursor = TypedDictCursor(conn.cursor(dictionary=True))
                 cursor.execute(
                     """
                     INSERT INTO auth_users
@@ -3558,7 +3737,7 @@ class UserRepository:
             True if code exists, False otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "SELECT COUNT(*) FROM auth_users WHERE user_code = %s",
                 (user_code,),
@@ -3576,7 +3755,7 @@ class UserRepository:
             List of UserSummary instances.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT
@@ -3607,7 +3786,7 @@ class UserRepository:
         """
         self._check_user_not_locked_by_username(username, "enable")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE auth_users SET disabled_at = NULL WHERE username = %s",
                 (username,),
@@ -3628,7 +3807,7 @@ class UserRepository:
         """
         self._check_user_not_locked_by_username(username, "disable")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE auth_users SET disabled_at = UTC_TIMESTAMP(6) WHERE username = %s",
                 (username,),
@@ -3649,7 +3828,7 @@ class UserRepository:
         """
         self._check_user_not_locked(user_id, "enable")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE auth_users SET disabled_at = NULL WHERE user_id = %s",
                 (user_id,),
@@ -3670,7 +3849,7 @@ class UserRepository:
         """
         self._check_user_not_locked(user_id, "disable")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE auth_users SET disabled_at = UTC_TIMESTAMP(6) WHERE user_id = %s",
                 (user_id,),
@@ -3689,7 +3868,7 @@ class UserRepository:
             UserDetail instance if found, None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT
@@ -3731,7 +3910,7 @@ class UserRepository:
             Date of last acknowledgment, or None if never acknowledged.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 "SELECT last_maintenance_ack FROM auth_users WHERE user_id = %s",
                 (user_id,),
@@ -3747,7 +3926,7 @@ class UserRepository:
             ack_date: Date to record (typically today's date).
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE auth_users SET last_maintenance_ack = %s WHERE user_id = %s",
                 (ack_date, user_id),
@@ -3764,7 +3943,7 @@ class UserRepository:
             True if user hasn't acknowledged today, False otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT last_maintenance_ack 
@@ -3839,7 +4018,7 @@ class UserRepository:
             LockedUserError: If user is locked.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "SELECT username, locked_at FROM auth_users WHERE user_id = %s",
                 (user_id,),
@@ -3862,7 +4041,7 @@ class UserRepository:
             LockedUserError: If user is locked.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "SELECT username, locked_at FROM auth_users WHERE username = %s",
                 (username,),
@@ -3883,7 +4062,7 @@ class UserRepository:
             Excludes SERVICE role accounts and locked users.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
@@ -3912,7 +4091,7 @@ class UserRepository:
         """
         self._check_user_not_locked(user_id, "change manager for")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE auth_users SET manager_id = %s WHERE user_id = %s",
                 (manager_id, user_id),
@@ -3934,7 +4113,7 @@ class UserRepository:
         """
         self._check_user_not_locked(user_id, "change role for")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE auth_users SET role = %s, is_admin = %s WHERE user_id = %s",
                 (role.value, role == UserRole.ADMIN, user_id),
@@ -3959,7 +4138,7 @@ class UserRepository:
             raise ValueError("max_active_jobs cannot be negative")
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE auth_users SET max_active_jobs = %s WHERE user_id = %s",
                 (max_active_jobs, user_id),
@@ -3982,7 +4161,7 @@ class UserRepository:
             List of matching User instances, ordered by username.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             search_pattern = f"%{query}%"
             cursor.execute(
                 """
@@ -4029,7 +4208,7 @@ class UserRepository:
         """
         self._check_user_not_locked(user_id, "delete")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             
             # Step 1: Verify user exists
             cursor.execute(
@@ -4045,7 +4224,8 @@ class UserRepository:
                 "SELECT COUNT(*) FROM jobs WHERE owner_user_id = %s",
                 (user_id,),
             )
-            job_count = cursor.fetchone()[0]
+            count_row = cursor.fetchone()
+            job_count = count_row[0] if count_row else 0
             if job_count > 0:
                 raise ValueError(
                     f"Cannot delete user with {job_count} job(s) in history. "
@@ -4094,7 +4274,7 @@ class UserRepository:
         for uid in user_ids:
             self._check_user_not_locked(uid, "disable")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             placeholders = ", ".join(["%s"] * len(user_ids))
             cursor.execute(
                 f"""
@@ -4126,7 +4306,7 @@ class UserRepository:
         for uid in user_ids:
             self._check_user_not_locked(uid, "enable")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             placeholders = ", ".join(["%s"] * len(user_ids))
             cursor.execute(
                 f"""
@@ -4159,7 +4339,7 @@ class UserRepository:
         for uid in user_ids:
             self._check_user_not_locked(uid, "reassign manager for")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             placeholders = ", ".join(["%s"] * len(user_ids))
             cursor.execute(
                 f"""
@@ -4181,7 +4361,7 @@ class UserRepository:
             List of users who can manage other users.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT user_id, username, user_code, is_admin, role, created_at,
@@ -4237,7 +4417,7 @@ class AuditRepository:
         context_json = json.dumps(context) if context else None
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 INSERT INTO audit_logs
@@ -4286,7 +4466,7 @@ class AuditRepository:
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 f"""
                 SELECT 
@@ -4349,7 +4529,7 @@ class AuditRepository:
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 f"SELECT COUNT(*) FROM audit_logs WHERE {where_clause}",
                 params,
@@ -4397,7 +4577,7 @@ class HostRepository:
             DBHost instance if found, None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, hostname, host_alias, credential_ref, max_running_jobs,
@@ -4420,7 +4600,7 @@ class HostRepository:
             DBHost instance if found, None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, hostname, host_alias, credential_ref, max_running_jobs,
@@ -4443,7 +4623,7 @@ class HostRepository:
             DBHost instance if found, None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, hostname, host_alias, credential_ref, max_running_jobs,
@@ -4488,7 +4668,7 @@ class HostRepository:
             List of enabled DBHost instances, ordered by hostname.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, hostname, host_alias, credential_ref, max_running_jobs,
@@ -4508,7 +4688,7 @@ class HostRepository:
             List of DBHost instances, ordered by hostname.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT id, hostname, host_alias, credential_ref, max_running_jobs,
@@ -4601,7 +4781,7 @@ class HostRepository:
             raise ValueError(f"Host '{hostname}' not found")
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM jobs
@@ -4636,7 +4816,7 @@ class HostRepository:
             raise ValueError(f"Host '{hostname}' not found")
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM jobs
@@ -4673,7 +4853,7 @@ class HostRepository:
             raise ValueError("max_running_jobs cannot exceed max_active_jobs")
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE db_hosts 
@@ -4691,8 +4871,10 @@ class HostRepository:
         hostname: str,
         max_concurrent: int,
         credential_ref: str | None,
+        *,
         host_id: str | None = None,
         host_alias: str | None = None,
+        max_running_jobs: int | None = None,
         max_active_jobs: int | None = None,
     ) -> None:
         """Add a new database host.
@@ -4703,6 +4885,7 @@ class HostRepository:
             credential_ref: AWS Secrets Manager reference.
             host_id: Optional UUID (generated if not provided).
             host_alias: Optional short alias for the host.
+            max_running_jobs: Optional max running jobs (uses max_concurrent if not set).
             max_active_jobs: Optional max active jobs (defaults to 10).
 
         Raises:
@@ -4713,6 +4896,8 @@ class HostRepository:
             host_id = str(uuid.uuid4())
         if max_active_jobs is None:
             max_active_jobs = 10
+        # Use max_concurrent as fallback for max_running_jobs
+        actual_max_running = max_running_jobs if max_running_jobs is not None else max_concurrent
 
         try:
             with self.pool.connection() as conn:
@@ -4724,7 +4909,7 @@ class HostRepository:
                              enabled, credential_ref)
                         VALUES (%s, %s, %s, %s, %s, TRUE, %s)
                         """,
-                        (host_id, hostname, host_alias, max_concurrent, max_active_jobs, 
+                        (host_id, hostname, host_alias, actual_max_running, max_active_jobs, 
                          credential_ref),
                     )
                     conn.commit()
@@ -4743,7 +4928,7 @@ class HostRepository:
             ValueError: If host not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "DELETE FROM db_hosts WHERE hostname = %s",
                 (hostname,),
@@ -4762,7 +4947,7 @@ class HostRepository:
             ValueError: If host not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE db_hosts SET enabled = TRUE WHERE hostname = %s",
                 (hostname,),
@@ -4781,7 +4966,7 @@ class HostRepository:
             ValueError: If host not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE db_hosts SET enabled = FALSE WHERE hostname = %s",
                 (hostname,),
@@ -4803,7 +4988,7 @@ class HostRepository:
             ValueError: If host not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "DELETE FROM db_hosts WHERE id = %s",
                 (host_id,),
@@ -4825,7 +5010,7 @@ class HostRepository:
             List of matching DBHost instances, ordered by hostname.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             search_pattern = f"%{query}%"
             cursor.execute(
                 """
@@ -4897,7 +5082,7 @@ class HostRepository:
         params.append(host_id)
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 f"UPDATE db_hosts SET {', '.join(updates)} WHERE id = %s",
                 tuple(params),
@@ -4953,7 +5138,7 @@ class HostRepository:
             connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
         )
         try:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             for i in range(check_count):
                 cursor.execute("SHOW PROCESSLIST")
@@ -5037,6 +5222,17 @@ class SettingsRepository:
         """
         self.pool = pool
 
+    def get(self, key: str) -> str | None:
+        """Alias for get_setting().
+
+        Args:
+            key: Setting key to look up.
+
+        Returns:
+            Setting value if found, None otherwise.
+        """
+        return self.get_setting(key)
+
     def get_setting(self, key: str) -> str | None:
         """Get setting value by key.
 
@@ -5047,7 +5243,7 @@ class SettingsRepository:
             Setting value if found, None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT setting_value
@@ -5144,7 +5340,7 @@ class SettingsRepository:
             description: Optional description of setting purpose.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             if description is not None:
                 cursor.execute(
                     """
@@ -5180,7 +5376,7 @@ class SettingsRepository:
             Dictionary mapping setting keys to values.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT setting_key, setting_value
@@ -5201,7 +5397,7 @@ class SettingsRepository:
             True if setting was deleted, False if it didn't exist.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 DELETE FROM settings
@@ -5219,7 +5415,7 @@ class SettingsRepository:
             List of dicts with keys: setting_key, setting_value, description, updated_at
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT setting_key, setting_value, description, updated_at
@@ -5385,7 +5581,7 @@ class AdminTaskRepository:
         parameters_json = json.dumps(parameters) if parameters else None
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             try:
                 cursor.execute(
                     """
@@ -5456,7 +5652,7 @@ class AdminTaskRepository:
             AdminTask instance or None if not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT task_id, task_type, status, requested_by, target_user_id,
@@ -5489,7 +5685,7 @@ class AdminTaskRepository:
             Claimed task (now in 'running' status) or None if no tasks available.
         """
         with self.pool.transaction() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             # First try pending tasks (FIFO order)
             cursor.execute(
@@ -5573,7 +5769,7 @@ class AdminTaskRepository:
         """
         result_json = json.dumps(result) if result else None
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE admin_tasks
@@ -5596,7 +5792,7 @@ class AdminTaskRepository:
         """
         result_json = json.dumps(result) if result else None
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE admin_tasks
@@ -5619,7 +5815,7 @@ class AdminTaskRepository:
         """
         result_json = json.dumps(result)
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE admin_tasks
@@ -5645,7 +5841,7 @@ class AdminTaskRepository:
             List of AdminTask instances.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT task_id, task_type, status, requested_by, target_user_id,
@@ -5671,7 +5867,7 @@ class AdminTaskRepository:
             List of AdminTask instances, newest first.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT task_id, task_type, status, requested_by, target_user_id,
@@ -5723,25 +5919,6 @@ class AdminTaskRepository:
 # =============================================================================
 
 
-@dataclass
-class DisallowedUser:
-    """Represents a disallowed username entry.
-
-    Attributes:
-        username: The disallowed username (lowercase).
-        reason: Why this username is disallowed.
-        is_hardcoded: True if from initial seed (cannot be removed via UI).
-        created_at: When entry was created.
-        created_by: User ID who added (None for hardcoded/seed).
-    """
-
-    username: str
-    reason: str | None
-    is_hardcoded: bool
-    created_at: datetime | None = None
-    created_by: str | None = None
-
-
 class DisallowedUserRepository:
     """Repository for managing disallowed usernames.
 
@@ -5760,7 +5937,7 @@ class DisallowedUserRepository:
             List of DisallowedUser entries, sorted by username.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT username, reason, is_hardcoded, created_at, created_by
@@ -5790,7 +5967,7 @@ class DisallowedUserRepository:
             True if username is disallowed in database.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "SELECT 1 FROM disallowed_users WHERE username = %s",
                 (username.lower(),),
@@ -5815,7 +5992,7 @@ class DisallowedUserRepository:
         """
         try:
             with self.pool.connection() as conn:
-                cursor = conn.cursor()
+                cursor = TypedTupleCursor(conn.cursor())
                 cursor.execute(
                     """
                     INSERT INTO disallowed_users (username, reason, is_hardcoded, created_by)
@@ -5851,7 +6028,7 @@ class DisallowedUserRepository:
             Tuple of (success, message).
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             # Check if exists and if hardcoded
             cursor.execute(
@@ -5905,7 +6082,7 @@ class DisallowedUserRepository:
 
         # Check database list
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 "SELECT reason FROM disallowed_users WHERE username = %s",
                 (username_lower,),

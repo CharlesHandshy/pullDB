@@ -16,7 +16,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from pulldb.domain.errors import KeyPendingApprovalError, KeyRevokedError, LockedUserError
-from pulldb.infra.mysql import MySQLPool
+from pulldb.infra.mysql import MySQLPool, TypedDictCursor, TypedTupleCursor
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class AuthRepository:
             LockedUserError: If user is locked.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "SELECT username, locked_at FROM auth_users WHERE user_id = %s",
                 (user_id,),
@@ -82,7 +82,7 @@ class AuthRepository:
             Password hash if set, None if no password configured.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 "SELECT password_hash FROM auth_credentials WHERE user_id = %s",
                 (user_id,),
@@ -106,7 +106,7 @@ class AuthRepository:
         """
         self._check_user_not_locked(user_id, "set password for")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             # Use INSERT ... ON DUPLICATE KEY UPDATE for upsert
             cursor.execute(
                 """
@@ -150,7 +150,7 @@ class AuthRepository:
         """
         self._check_user_not_locked(user_id, "force password reset for")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 INSERT INTO auth_credentials
@@ -177,7 +177,7 @@ class AuthRepository:
         """
         self._check_user_not_locked(user_id, "clear password reset for")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE auth_credentials
@@ -199,7 +199,7 @@ class AuthRepository:
             True if password reset is required, False otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 "SELECT password_reset_at FROM auth_credentials WHERE user_id = %s",
                 (user_id,),
@@ -217,7 +217,7 @@ class AuthRepository:
             Datetime when reset was requested, None if not required.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 "SELECT password_reset_at FROM auth_credentials WHERE user_id = %s",
                 (user_id,),
@@ -239,7 +239,7 @@ class AuthRepository:
             Base32-encoded TOTP secret if enabled, None otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT totp_secret FROM auth_credentials
@@ -260,7 +260,7 @@ class AuthRepository:
             totp_secret: Base32-encoded TOTP secret.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 INSERT INTO auth_credentials
@@ -282,7 +282,7 @@ class AuthRepository:
             user_id: UUID of the user.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE auth_credentials
@@ -305,7 +305,7 @@ class AuthRepository:
             True if TOTP is enabled, False otherwise.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 "SELECT totp_enabled FROM auth_credentials WHERE user_id = %s",
                 (user_id,),
@@ -363,7 +363,7 @@ class AuthRepository:
         approved_at = "UTC_TIMESTAMP(6)" if auto_approve else None
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             if auto_approve:
                 cursor.execute(
                     """
@@ -403,7 +403,7 @@ class AuthRepository:
         from pulldb.auth.password import verify_password
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT user_id, key_secret_hash, is_active, expires_at
@@ -458,7 +458,7 @@ class AuthRepository:
             KeyRevokedError: If key exists but has been revoked (is_active=False).
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT user_id, is_active, approved_at, expires_at
@@ -501,7 +501,7 @@ class AuthRepository:
             KeyPendingApprovalError: If key exists but is not yet approved.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT key_secret_hash, is_active, approved_at, expires_at
@@ -547,7 +547,7 @@ class AuthRepository:
             KeyRevokedError: If key exists but has been revoked (is_active=False).
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT key_secret, is_active, approved_at, expires_at
@@ -587,7 +587,7 @@ class AuthRepository:
             True if key was revoked, False if not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "UPDATE api_keys SET is_active = FALSE WHERE key_id = %s",
                 (key_id,),
@@ -609,7 +609,7 @@ class AuthRepository:
             True if key was reactivated, False if not found or never approved.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE api_keys 
@@ -634,7 +634,7 @@ class AuthRepository:
             True if key was deleted, False if not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "DELETE FROM api_keys WHERE key_id = %s",
                 (key_id,),
@@ -654,7 +654,7 @@ class AuthRepository:
             Number of keys deleted.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "DELETE FROM api_keys WHERE user_id = %s",
                 (user_id,),
@@ -674,7 +674,7 @@ class AuthRepository:
             List of key info dicts (key_id, name, is_active, created_at, last_used_at).
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT key_id, name, host_name, is_active, approved_at, 
@@ -704,7 +704,7 @@ class AuthRepository:
             List of pending key dicts with user info (username, host_name, etc.).
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT k.key_id, k.name, k.host_name, k.created_at, k.created_from_ip,
@@ -727,7 +727,7 @@ class AuthRepository:
             Number of pending keys for this user.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM api_keys
@@ -751,7 +751,7 @@ class AuthRepository:
             True if key was approved, False if not found or already approved.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE api_keys 
@@ -775,7 +775,7 @@ class AuthRepository:
             Dict with key info including username, or None if not found.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT k.key_id, k.name, k.host_name, k.is_active, k.approved_at,
@@ -803,7 +803,7 @@ class AuthRepository:
             ip_address: IP address of the request (optional).
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 UPDATE api_keys 
@@ -827,7 +827,7 @@ class AuthRepository:
             Number of keys deleted.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 DELETE FROM api_keys
@@ -852,7 +852,7 @@ class AuthRepository:
             List of key info dicts with user details.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             
             conditions = []
             params: list = []
@@ -911,7 +911,7 @@ class AuthRepository:
         expires_at = datetime.now(UTC) + timedelta(hours=ttl_hours)
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 INSERT INTO sessions
@@ -941,7 +941,7 @@ class AuthRepository:
         token_hash = hashlib.sha256(session_token.encode()).hexdigest()
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT session_id, user_id, expires_at
@@ -989,7 +989,7 @@ class AuthRepository:
             session_id: UUID of the session to invalidate.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "DELETE FROM sessions WHERE session_id = %s",
                 (session_id,),
@@ -1008,7 +1008,7 @@ class AuthRepository:
         token_hash = hashlib.sha256(session_token.encode()).hexdigest()
 
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "DELETE FROM sessions WHERE token_hash = %s",
                 (token_hash,),
@@ -1029,7 +1029,7 @@ class AuthRepository:
             Number of sessions invalidated.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "DELETE FROM sessions WHERE user_id = %s",
                 (user_id,),
@@ -1046,7 +1046,7 @@ class AuthRepository:
             Number of sessions removed.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "DELETE FROM sessions WHERE expires_at < UTC_TIMESTAMP(6)"
             )
@@ -1063,7 +1063,7 @@ class AuthRepository:
             Number of active (non-expired) sessions.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM sessions
@@ -1088,7 +1088,7 @@ class AuthRepository:
             List of (host_id, hostname, is_default) tuples.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT uh.host_id, h.hostname, h.host_alias, uh.is_default
@@ -1125,7 +1125,7 @@ class AuthRepository:
         """
         self._check_user_not_locked(user_id, "assign hosts for")
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
 
             # Delete existing assignments
             cursor.execute(
@@ -1161,7 +1161,7 @@ class AuthRepository:
             Canonical hostname of default host, or None if no default set.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT h.hostname
@@ -1188,7 +1188,7 @@ class AuthRepository:
             List of canonical hostnames the user can access.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT h.hostname
@@ -1214,7 +1214,7 @@ class AuthRepository:
             Number of users assigned to this host.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor()
+            cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
                 "SELECT COUNT(*) FROM user_hosts WHERE host_id = %s",
                 (host_id,),
@@ -1232,7 +1232,7 @@ class AuthRepository:
             List of dicts with user_id, username, is_default for each user.
         """
         with self.pool.connection() as conn:
-            cursor = conn.cursor(dictionary=True)
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
                 SELECT u.user_id, u.username, uh.is_default

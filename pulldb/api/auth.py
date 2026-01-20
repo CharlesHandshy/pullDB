@@ -36,6 +36,7 @@ from fastapi.concurrency import run_in_threadpool
 
 if TYPE_CHECKING:
     from pulldb.api.types import APIState
+    from pulldb.domain.interfaces import AuthRepository
     from pulldb.domain.models import User
 
 
@@ -44,7 +45,7 @@ SIGNATURE_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 SIGNATURE_MAX_AGE_SECONDS = 300  # 5 minutes - reject old requests
 
 
-def get_api_secret(key_id: str, auth_repo: object | None = None) -> str | None:
+def get_api_secret(key_id: str, auth_repo: AuthRepository | None = None) -> str | None:
     """Get API secret for a given key ID.
 
     Checks database first (via auth_repo), falls back to environment variables
@@ -77,7 +78,7 @@ def get_api_secret(key_id: str, auth_repo: object | None = None) -> str | None:
     return None
 
 
-def get_user_for_api_key(key_id: str, auth_repo: object | None = None) -> str | None:
+def get_user_for_api_key(key_id: str, auth_repo: AuthRepository | None = None) -> str | None:
     """Get username associated with an API key.
 
     Checks database first (via auth_repo), falls back to environment variables.

@@ -10,14 +10,15 @@ from typing import TYPE_CHECKING, NamedTuple
 from pulldb.domain.config import Config
 
 if TYPE_CHECKING:
-    from pulldb.auth import AuthRepository
     from pulldb.domain.interfaces import (
+        AuditRepository,
+        AuthRepository,
         HostRepository,
         JobRepository,
         SettingsRepository,
         UserRepository,
     )
-    from pulldb.infra.mysql import AuditRepository, MySQLPool
+    from pulldb.infra.mysql import MySQLPool
 
 
 class APIState(NamedTuple):

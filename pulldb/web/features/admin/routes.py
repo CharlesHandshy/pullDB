@@ -1877,6 +1877,7 @@ async def update_host(
         if max_active_jobs > 0 and max_running_jobs > max_active_jobs:
             raise ValueError("max_running_jobs cannot exceed max_active_jobs")
 
+        existing = None
         if hasattr(state, "host_repo") and state.host_repo:
             # First verify host exists
             if hasattr(state.host_repo, "get_host_by_id"):
@@ -2289,14 +2290,17 @@ async def delete_host(
                             SecretId=secret_path,
                             ForceDeleteWithoutRecovery=True,
                         )
-                except client.exceptions.ResourceNotFoundException:
-                    # Secret already doesn't exist - that's fine
-                    pass
                 except Exception as e:
-                    cleanup_warnings.append(
-                        f"Could not delete AWS secret: {e}. "
-                        f"Manual cleanup may be required in AWS Secrets Manager."
-                    )
+                    # Check if it's a ResourceNotFoundException (secret doesn't exist)
+                    error_name = getattr(type(e), "__name__", "")
+                    if "ResourceNotFound" in error_name or "ResourceNotFound" in str(e):
+                        # Secret already doesn't exist - that's fine
+                        pass
+                    else:
+                        cleanup_warnings.append(
+                            f"Could not delete AWS secret: {e}. "
+                            f"Manual cleanup may be required in AWS Secrets Manager."
+                        )
 
         # Step 3: Hard delete the host record - this should always succeed
         state.host_repo.hard_delete_host(host_id)

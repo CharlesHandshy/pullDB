@@ -1,5 +1,6 @@
 """MySQL provisioning utilities for automated host setup.
 
+
 This module provides functions to:
 - Test admin MySQL connections
 - Create pulldb_loader user accounts
@@ -26,6 +27,7 @@ from typing import Any
 import mysql.connector
 from mysql.connector import Error as MySQLError
 
+from pulldb.infra.mysql import TypedTupleCursor
 from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_API
 
 
@@ -110,7 +112,7 @@ def test_admin_connection(
             connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
         )
 
-        cursor = conn.cursor()
+        cursor = TypedTupleCursor(conn.cursor())
 
         # Check privileges by attempting to query mysql.user
         # This tests if user has sufficient access
@@ -249,7 +251,7 @@ def create_pulldb_user(
             connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
             autocommit=True,
         )
-        cursor = conn.cursor()
+        cursor = TypedTupleCursor(conn.cursor())
 
         # Check if user already exists
         cursor.execute(
@@ -372,7 +374,7 @@ def create_pulldb_database(
             connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
             autocommit=True,
         )
-        cursor = conn.cursor()
+        cursor = TypedTupleCursor(conn.cursor())
 
         # Check if database exists
         cursor.execute("SHOW DATABASES LIKE %s", (database,))
@@ -488,7 +490,7 @@ def deploy_stored_procedure(
             connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
             autocommit=True,
         )
-        cursor = conn.cursor()
+        cursor = TypedTupleCursor(conn.cursor())
 
         # Drop existing procedure
         cursor.execute(f"DROP PROCEDURE IF EXISTS {PROCEDURE_NAME}")
@@ -675,15 +677,24 @@ def provision_host_full(
 
     created_resources["procedure_deployed"] = True
 
-    # All steps succeeded
+    # All steps succeeded - user_credentials should be set by Step 2
+    user_creds = created_resources.get("user_credentials")
+    if user_creds is None:
+        # This should never happen if Step 2 succeeded, but handle defensively
+        return ProvisioningResult(
+            success=False,
+            message="Internal error: user credentials not captured after successful provisioning",
+            suggestions=["This is a bug - please report it"],
+        ), created_resources
+
     return ProvisioningResult(
         success=True,
         message="All provisioning steps completed successfully",
         data={
             "mysql_host": mysql_host,
             "mysql_port": mysql_port,
-            "loader_username": created_resources["user_credentials"]["username"],
-            "loader_password": created_resources["user_credentials"]["password"],
+            "loader_username": user_creds["username"],
+            "loader_password": user_creds["password"],
             "database": database,
             "procedure": PROCEDURE_NAME,
         },
@@ -755,7 +766,7 @@ def sync_mysql_credentials(
             connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
             autocommit=True,
         )
-        cursor = conn.cursor()
+        cursor = TypedTupleCursor(conn.cursor())
 
         changes_made = []
 
@@ -911,7 +922,7 @@ def drop_mysql_user(
             connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_API,
             autocommit=True,
         )
-        cursor = conn.cursor()
+        cursor = TypedTupleCursor(conn.cursor())
 
         # Check if user exists first
         cursor.execute(

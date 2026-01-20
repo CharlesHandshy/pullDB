@@ -154,7 +154,7 @@ class Config:
         "--max-threads-per-table=1",
     )
     myloader_extra_args: tuple[str, ...] = ()
-    myloader_timeout_seconds: float = 7200.0
+    myloader_timeout_seconds: float = 86400.0
     myloader_threads: int = 8
     s3_backup_locations: tuple[S3BackupLocationConfig, ...] = ()
 
@@ -230,7 +230,7 @@ class Config:
                 source="PULLDB_MYLOADER_TIMEOUT_SECONDS",
             )
             if timeout_env
-            else 7200.0
+            else 86400.0
         )
         myloader_threads = (
             _parse_positive_int(

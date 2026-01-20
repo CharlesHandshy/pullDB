@@ -83,7 +83,7 @@ class S3ClientProtocol(Protocol):
 
     def head_object(
         self, bucket: str, key: str, profile: str | None = None
-    ) -> HeadObjectOutputTypeDef:
+    ) -> "HeadObjectOutputTypeDef | dict[str, Any]":
         """Return object metadata (HEAD request).
 
         Args:
@@ -101,7 +101,7 @@ class S3ClientProtocol(Protocol):
 
     def get_object(
         self, bucket: str, key: str, profile: str | None = None
-    ) -> GetObjectOutputTypeDef:
+    ) -> "GetObjectOutputTypeDef | dict[str, Any]":
         """Return object with streaming body.
 
         Args:

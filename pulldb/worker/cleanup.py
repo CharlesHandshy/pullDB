@@ -33,6 +33,8 @@ from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
 if TYPE_CHECKING:
+    from mysql.connector.cursor import MySQLCursor
+
     from pulldb.domain.interfaces import (
         HostRepository,
         JobRepository,
@@ -2630,7 +2632,7 @@ def _process_retention_cleanup_host(
 
 def _drop_job_database(
     job: "Job",
-    cursor: "mysql.connector.cursor.MySQLCursor",
+    cursor: "MySQLCursor",
     job_repo: "JobRepository",
     result: RetentionCleanupResult,
     dry_run: bool,

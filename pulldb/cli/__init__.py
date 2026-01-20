@@ -4,5 +4,3 @@ from __future__ import annotations
 
 HCA Layer: pages (pulldb/cli/)
 """
-
-__all__ = ["main"]

@@ -52,11 +52,43 @@ except PermissionError:
 DEFAULT_API_URL = "http://localhost:8080"
 MAX_STATUS_LIMIT = 1000
 
+
+class _RequestsModuleProtocol(Protocol):
+    """Protocol for the requests module to enable proper type checking."""
+
+    RequestException: type[Exception]
+    Response: type
+
+    def get(
+        self,
+        url: str,
+        params: dict[str, Any] | None = ...,
+        headers: dict[str, str] | None = ...,
+        timeout: float | None = ...,
+        **kwargs: Any,
+    ) -> Any: ...
+
+    def post(
+        self,
+        url: str,
+        data: str | bytes | None = ...,
+        json: Any | None = ...,
+        headers: dict[str, str] | None = ...,
+        timeout: float | None = ...,
+        **kwargs: Any,
+    ) -> Any: ...
+
+
 if TYPE_CHECKING:  # pragma: no cover - typing-only import
-    import requests as requests_module
+    import requests
     from requests import RequestException, Response
+
+    # Use protocol-typed variable for type checking so pyright understands the API
+    requests_module: _RequestsModuleProtocol = requests  # type: ignore[assignment]
 else:
-    requests_module = cast(ModuleType, importlib.import_module("requests"))
+    requests_module = cast(
+        _RequestsModuleProtocol, importlib.import_module("requests")
+    )
     RequestException = cast(type[Exception], requests_module.RequestException)
     Response = cast(type, requests_module.Response)
 

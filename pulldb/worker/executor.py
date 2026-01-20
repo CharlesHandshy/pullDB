@@ -38,6 +38,7 @@ from pulldb.domain.errors import (
 )
 from pulldb.domain.config import parse_s3_bucket_path
 from pulldb.domain.models import Job
+from pulldb.domain.restore_models import MyLoaderResult
 from pulldb.infra.logging import get_logger
 from pulldb.infra.mysql_utils import quote_identifier
 from pulldb.infra.s3 import (
@@ -868,7 +869,7 @@ class WorkerJobExecutor:
 
         # Record myloader timing in profiler
         myloader_result = workflow_result.get("myloader")
-        if myloader_result and hasattr(myloader_result, "duration_seconds"):
+        if isinstance(myloader_result, MyLoaderResult):
             myloader_profile = profiler.profile.start_phase(RestorePhase.MYLOADER)
             myloader_profile.duration_seconds = float(myloader_result.duration_seconds)
             myloader_profile.completed_at = datetime.now(UTC)

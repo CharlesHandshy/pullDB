@@ -15,13 +15,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 
 from pulldb.domain.models import (
     CommandResult,
     DBHost,
+    DisallowedUser,
     Job,
     JobEvent,
+    MaintenanceItems,
     User,
     UserDetail,
     UserRole,
@@ -38,6 +40,10 @@ class JobRepository(Protocol):
 
     All job state transitions are atomic and idempotent where possible.
     """
+
+    # Constants for stale running job detection
+    STALE_RUNNING_PROCESS_CHECK_COUNT: ClassVar[int]
+    STALE_RUNNING_PROCESS_CHECK_DELAY_SECONDS: ClassVar[float]
 
     def enqueue_job(self, job: Job) -> str:
         """Insert new job into queue.
@@ -305,6 +311,155 @@ class JobRepository(Protocol):
         """
         ...
 
+    def mark_job_staging_cleaned(self, job_id: str) -> None:
+        """Mark a job's staging database as cleaned.
+
+        Sets staging_cleaned_at timestamp to track that cleanup was performed.
+        This prevents re-processing the same job in future cleanup runs.
+
+        Args:
+            job_id: UUID of job to mark as cleaned.
+        """
+        ...
+
+    def mark_job_deleted(self, job_id: str, detail: str | None = None) -> None:
+        """Mark job as deleted (soft delete complete).
+
+        User-initiated deletion. Updates status to 'deleted' and sets
+        completed_at if not already set. Used after databases are dropped.
+
+        Args:
+            job_id: UUID of job.
+            detail: Optional detail about the deletion (stored in error_detail).
+        """
+        ...
+
+    def mark_job_delete_failed(
+        self, job_id: str, error_detail: str | None = None
+    ) -> None:
+        """Mark job as failed after exhausting delete retry attempts.
+
+        Called when a job has been stuck in 'deleting' and has exceeded
+        the maximum retry count. Sets status to 'failed' with an
+        appropriate error message.
+
+        Args:
+            job_id: UUID of job.
+            error_detail: Optional error detail.
+        """
+        ...
+
+    def mark_stale_running_failed(
+        self,
+        job_id: str,
+        worker_id: str | None = None,
+        error_detail: str | None = None,
+    ) -> bool:
+        """Mark a stale running job as failed after verification.
+
+        Called after confirming (via process list check) that a running job
+        is actually stale and not just a long-running restore. Transitions
+        the job from 'running' to 'failed' and logs the recovery event.
+
+        Args:
+            job_id: UUID of job to mark as failed.
+            worker_id: ID of worker performing the recovery.
+            error_detail: Optional custom error detail.
+
+        Returns:
+            True if job was marked failed, False if job not found or already
+            transitioned to another state.
+        """
+        ...
+
+    def mark_db_dropped(self, job_id: str) -> None:
+        """Mark that the actual database was dropped from target host.
+
+        Args:
+            job_id: Job ID to mark.
+        """
+        ...
+
+    def has_any_deployed_job_for_target(
+        self, target: str, dbhost: str
+    ) -> Job | None:
+        """Check if ANY user has a deployed job for target+host.
+
+        Unlike get_deployed_job_for_target() which is user-scoped, this checks
+        across ALL users. Used for deletion safety - we must never drop a
+        database that ANY user has deployed.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+
+        Returns:
+            Deployed Job if found (any user), None otherwise.
+        """
+        ...
+
+    def has_any_locked_job_for_target(
+        self, target: str, dbhost: str
+    ) -> Job | None:
+        """Check if ANY user has a locked job for target+host.
+
+        Used for deletion safety - we should not drop a database that
+        has been explicitly locked by any user.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+
+        Returns:
+            Locked Job if found (any user), None otherwise.
+        """
+        ...
+
+    def get_job_completion_time(self, job_id: str) -> datetime | None:
+        """Get the completion time of a job from events.
+
+        Looks for the last terminal event (complete, failed, canceled).
+
+        Args:
+            job_id: Job UUID.
+
+        Returns:
+            Datetime of completion, or None if not found.
+        """
+        ...
+
+    def get_old_terminal_jobs(self, dbhost: str, cutoff_date: datetime) -> list[Job]:
+        """Get terminal jobs older than cutoff date for a specific host.
+
+        Used by scheduled cleanup to find jobs whose staging databases
+        may need cleanup.
+
+        Args:
+            dbhost: Database host to filter by.
+            cutoff_date: Only return jobs completed before this date.
+
+        Returns:
+            List of Job instances in terminal state older than cutoff.
+        """
+        ...
+
+    def get_expired_cleanup_candidates(self, grace_days: int) -> list[Job]:
+        """Get jobs eligible for automatic database cleanup.
+
+        Returns deployed jobs that are:
+        - Past expiration + grace period
+        - Not locked
+        - Database not already dropped
+        - Not superseded
+
+        Args:
+            grace_days: Additional days after expiry before cleanup.
+
+        Returns:
+            List of jobs whose databases can be dropped.
+        """
+        ...
+
     def check_target_exclusivity(self, target: str, dbhost: str) -> bool:
         """Check if target can accept new job.
 
@@ -494,21 +649,88 @@ class JobRepository(Protocol):
         """
         ...
 
-
-class AuthRepository(Protocol):
-    """Protocol for authentication operations.
-
-    Manages password hashes and authentication state for users.
-    """
-
-    def get_password_hash(self, user_id: str) -> str | None:
-        """Get stored password hash for user.
+    def set_job_expiration(self, job_id: str, expires_at: datetime) -> None:
+        """Set expiration date for a job's database.
 
         Args:
-            user_id: UUID of the user.
+            job_id: Job ID to update.
+            expires_at: New expiration timestamp.
+        """
+        ...
+
+    def lock_job(self, job_id: str, locked_by: str) -> bool:
+        """Lock a job's database to protect from cleanup and overwrites.
+
+        Args:
+            job_id: Job ID to lock.
+            locked_by: Username of user locking the database.
 
         Returns:
-            Bcrypt password hash if set, None if user has no password.
+            True if lock was set, False if job not found or already locked.
+        """
+        ...
+
+    def unlock_job(self, job_id: str) -> bool:
+        """Unlock a job's database.
+
+        Args:
+            job_id: Job ID to unlock.
+
+        Returns:
+            True if unlocked, False if job not found or wasn't locked.
+        """
+        ...
+
+    def get_deployed_job_for_target(
+        self, target: str, dbhost: str, owner_user_id: str
+    ) -> Job | None:
+        """Get the deployed job for a target+host+user if one exists.
+
+        Used to check if a database already exists before allowing a new restore.
+        A deployed job means the database is live and in use.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+            owner_user_id: User ID who owns the job.
+
+        Returns:
+            Deployed Job if found, None otherwise.
+        """
+        ...
+
+    def get_latest_completed_job_for_target(
+        self, target: str, dbhost: str, owner_user_id: str
+    ) -> Job | None:
+        """Get the most recent completed job for a target+host+user.
+
+        Used for supersession - finding the job to mark as superseded when
+        a new restore to the same target is submitted.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+            owner_user_id: User ID who owns the job.
+
+        Returns:
+            Most recent completed Job if found, None otherwise.
+        """
+        ...
+
+    def get_maintenance_items(
+        self, user_id: str, notice_days: int, grace_days: int
+    ) -> "MaintenanceItems":
+        """Get maintenance items for a user's daily modal.
+
+        Returns jobs grouped by maintenance status: expired, expiring, locked.
+
+        Args:
+            user_id: User ID to get items for.
+            notice_days: Days before expiry to show in "expiring" section.
+            grace_days: Additional grace days after expiry (for reference).
+
+        Returns:
+            MaintenanceItems with expired, expiring, and locked job lists.
         """
         ...
 
@@ -825,6 +1047,34 @@ class UserRepository(Protocol):
         """
         ...
 
+    def list_users(self) -> list[User]:
+        """Get all users.
+
+        Returns:
+            List of User instances.
+        """
+        ...
+
+    def set_last_maintenance_ack(self, user_id: str, ack_date: datetime) -> None:
+        """Set last maintenance acknowledgment date for a user.
+
+        Args:
+            user_id: User UUID.
+            ack_date: Date to record (typically today's date).
+        """
+        ...
+
+    def needs_maintenance_ack(self, user_id: str) -> bool:
+        """Check if user needs to acknowledge maintenance modal today.
+
+        Args:
+            user_id: User UUID.
+
+        Returns:
+            True if user hasn't acknowledged today, False otherwise.
+        """
+        ...
+
 
 class HostRepository(Protocol):
     """Protocol for database host configuration.
@@ -1033,6 +1283,58 @@ class HostRepository(Protocol):
         """
         ...
 
+    def get_host_credentials_for_maintenance(self, hostname: str) -> Any:
+        """Get resolved MySQL credentials for maintenance operations.
+
+        Similar to get_host_credentials but allows disabled hosts.
+        Use for cleanup, deletion, and staging operations that need
+        to work on disabled hosts.
+
+        Args:
+            hostname: Hostname to get credentials for.
+
+        Returns:
+            Resolved credentials instance.
+
+        Raises:
+            ValueError: If host not found (deleted from db_hosts).
+        """
+        ...
+
+    def is_staging_db_active(
+        self,
+        hostname: str,
+        staging_name: str,
+        check_count: int = 3,
+        check_delay_seconds: float = 2.0,
+    ) -> bool:
+        """Check if a staging database has active MySQL processes.
+
+        Performs multiple SHOW PROCESSLIST checks to verify if a restore is
+        still actively running on the staging database. This prevents false
+        positives from treating long-running restores as stale jobs.
+
+        Args:
+            hostname: Database host to check.
+            staging_name: Staging database name to look for in processlist.
+            check_count: Number of times to check (default 3).
+            check_delay_seconds: Delay between checks in seconds (default 2.0).
+
+        Returns:
+            True if any process is using the staging database, False otherwise.
+        """
+        ...
+
+    def list_hosts(self) -> list[DBHost]:
+        """Get all hosts (alias for get_all_hosts).
+
+        Provided for API consistency.
+
+        Returns:
+            List of all DBHost instances.
+        """
+        ...
+
 
 class SettingsRepository(Protocol):
     """Protocol for system settings management.
@@ -1110,6 +1412,62 @@ class SettingsRepository(Protocol):
 
         Returns:
             True if deleted, False if not found.
+        """
+        ...
+
+    def get(self, key: str) -> str | None:
+        """Alias for get_setting().
+
+        Args:
+            key: Setting key name.
+
+        Returns:
+            Setting value if exists, None otherwise.
+        """
+        ...
+
+    def get_staging_retention_days(self) -> int:
+        """Get number of days before staging databases are eligible for cleanup.
+
+        Returns:
+            Retention days. 7 is the default. 0 means cleanup is disabled.
+        """
+        ...
+
+    def get_cleanup_grace_days(self) -> int:
+        """Get days after expiry before automatic cleanup.
+
+        Returns:
+            Number of days. Default: 7.
+        """
+        ...
+
+    def get_max_retention_months(self) -> int:
+        """Get maximum retention months for database expiration.
+
+        Returns:
+            Maximum months a database can be retained (1-12). Default: 6.
+        """
+        ...
+
+    def get_expiring_notice_days(self) -> int:
+        """Get days before expiry to show warning notice.
+
+        Returns:
+            Number of days. Default: 7.
+        """
+        ...
+
+    def get_retention_options(
+        self, include_now: bool = False
+    ) -> list[tuple[str, str]]:
+        """Get retention dropdown options based on current settings.
+
+        Args:
+            include_now: Whether to include "Now" (immediate removal) option.
+
+        Returns:
+            List of (value, label) tuples for dropdown options.
         """
         ...
 
@@ -1237,20 +1595,27 @@ class AuthRepository(Protocol):
     def create_api_key(
         self,
         user_id: str,
-        name: str,
-        secret_hash: str,
-        expires_at: datetime | None = None,
-    ) -> str:
+        name: str | None = None,
+        host_name: str | None = None,
+        created_from_ip: str | None = None,
+        auto_approve: bool = False,
+        approved_by: str | None = None,
+    ) -> tuple[str, str]:
         """Create new API key for user.
+
+        Generates key_id and secret internally. The secret is only returned
+        once and cannot be retrieved later.
 
         Args:
             user_id: UUID of the user.
-            name: Human-readable name for the key.
-            secret_hash: bcrypt hash of the API secret.
-            expires_at: Optional expiration timestamp.
+            name: Optional friendly name for the key (auto-generated if not provided).
+            host_name: Hostname where key was requested.
+            created_from_ip: IP address of the request.
+            auto_approve: If True, automatically approve the key.
+            approved_by: User ID of admin approving (required if auto_approve=True).
 
         Returns:
-            Key ID (UUID) of the created key.
+            Tuple of (key_id, secret) - secret is only returned once!
         """
         ...
 
@@ -1277,6 +1642,17 @@ class AuthRepository(Protocol):
         """
         ...
 
+    def get_api_key_secret(self, key_id: str) -> str | None:
+        """Get the plaintext secret for an API key (for HMAC verification).
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            Plaintext secret if key is active and approved, None if not found.
+        """
+        ...
+
     def revoke_api_key(self, key_id: str) -> bool:
         """Revoke (soft-delete) an API key.
 
@@ -1288,12 +1664,76 @@ class AuthRepository(Protocol):
         """
         ...
 
+    def get_api_keys_for_user(self, user_id: str) -> list[dict[str, Any]]:
+        """Get all API keys for a user.
+
+        Args:
+            user_id: UUID of the user.
+
+        Returns:
+            List of API key info dicts.
+        """
+        ...
+
+    def get_pending_api_keys(self) -> list[dict[str, Any]]:
+        """Get all API keys pending admin approval.
+
+        Returns:
+            List of pending key dicts with user info.
+        """
+        ...
+
+    def approve_api_key(self, key_id: str, approved_by: str) -> bool:
+        """Approve an API key (make it active and usable).
+
+        Args:
+            key_id: The public key identifier to approve.
+            approved_by: User ID of the admin approving the key.
+
+        Returns:
+            True if key was approved, False if not found or already approved.
+        """
+        ...
+
+    def get_api_key_info(self, key_id: str) -> dict[str, Any] | None:
+        """Get full info about an API key.
+
+        Args:
+            key_id: The public key identifier.
+
+        Returns:
+            Dict with key info including username, or None if not found.
+        """
+        ...
+
+    def get_all_api_keys(
+        self, include_inactive: bool = False, user_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Get all API keys with filtering options.
+
+        Args:
+            include_inactive: If True, include revoked keys.
+            user_id: If provided, filter to keys for this user only.
+
+        Returns:
+            List of key info dicts with user details.
+        """
+        ...
+
 
 class DisallowedUserRepository(Protocol):
     """Protocol for disallowed username checks.
 
     Manages database entries that extend the hardcoded disallowed list.
     """
+
+    def get_all(self) -> list[DisallowedUser]:
+        """Get all disallowed usernames from database.
+
+        Returns:
+            List of DisallowedUser entries, sorted by username.
+        """
+        ...
 
     def exists(self, username: str) -> bool:
         """Check if username is in database disallowed list.
@@ -1324,14 +1764,16 @@ class DisallowedUserRepository(Protocol):
         """
         ...
 
-    def remove(self, username: str) -> bool:
+    def remove(self, username: str) -> tuple[bool, str]:
         """Remove a username from the disallowed list.
+
+        Only non-hardcoded entries can be removed.
 
         Args:
             username: Username to remove.
 
         Returns:
-            True if removed, False if not found or hardcoded.
+            Tuple of (success, message) explaining the result.
         """
         ...
 

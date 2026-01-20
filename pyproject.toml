@@ -144,12 +144,23 @@ markers = [
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
-# mysql-connector-python stubs don't properly narrow cursor types when dictionary=True
-# These errors are false positives - the code is correct at runtime
-reportArgumentType = "warning"
-reportIndexIssue = "warning"
-reportAttributeAccessIssue = "warning"
-# Keep strict checking for actual bugs
-reportUnusedImport = "error"
-reportUnusedVariable = "warning"
+include = ["pulldb"]
+exclude = [
+    "**/build/**",
+    "**/dist/**",
+    "**/dist-client/**",
+    "**/.venv/**",
+    "**/.venv-test/**",
+    "**/venv/**",
+    "**/engineering-dna/**",
+    "**/*.egg-info/**",
+    "**/scripts/**",
+    "**/tests/**",
+    "**/typings/**",
+    "**/logs/**"
+]
+# Type checking strictness - catch real bugs
 reportMissingImports = "error"
+reportUnusedImport = "warning"
+reportUnusedVariable = "warning"
+reportUnusedExpression = "warning"

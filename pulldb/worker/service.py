@@ -401,8 +401,8 @@ def _cleanup_zombies(
         with pool.connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT GET_LOCK('pulldb_zombie_cleanup', 0)")
-            result = cursor.fetchone()
-            acquired = result[0] == 1 if result else False
+            lock_result = cursor.fetchone()
+            acquired = lock_result is not None and lock_result[0] == 1
 
             if not acquired:
                 logger.info(

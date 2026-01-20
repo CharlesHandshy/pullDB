@@ -27,12 +27,13 @@
    ================================================================= */
 
 .app-header {
-    background-color: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
+    background-color: var(--color-surface, white);
+    border-bottom: 1px solid var(--color-border, var(--gray-200));
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 var(--space-4);
+    padding-left: calc(var(--space-4) + 5px); /* Account for accent bar */
     height: var(--header-height, 56px);
     z-index: 200; /* Above sidebar */
 }
@@ -81,42 +82,37 @@
 .header-center .breadcrumb-item:not(:last-child)::after {
     content: "/";
     margin-left: 0.375rem;
-    color: var(--color-border);
+    color: var(--gray-300);
 }
 
 .header-center .breadcrumb-link {
-    color: var(--color-text-muted);
+    color: var(--gray-400);
     text-decoration: none;
 }
 
 .header-center .breadcrumb-link:hover {
-    color: var(--color-text-secondary);
+    color: var(--gray-500);
 }
 
 .header-center .breadcrumb-current {
-    color: var(--color-text-muted);
+    color: var(--gray-400);
 }
 
-/* 3px attention strip */
+/* Note: The sidebar-trigger element in sidebar.css provides the 5px accent bar.
+   This attention-strip class is deprecated but kept for backwards compatibility. */
 .attention-strip {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 3px;
-    height: 100vh;
-    background: linear-gradient(180deg, var(--primary-400) 0%, var(--primary-600) 50%, var(--primary-400) 100%);
-    z-index: 300;
+    display: none;
 }
 
 /* Main container */
 .app-main {
     grid-row: 1 / -1;
     grid-column: 1;
-    margin-left: 3px;
+    margin-left: 5px;
     display: grid;
     grid-template-rows: auto 1fr auto;
-    height: 100%;
-    width: calc(100vw - 3px);
+    height: calc(100% - var(--footer-height)); /* Account for fixed footer */
+    width: calc(100vw - 5px);
     overflow: hidden;
 }
 
@@ -126,8 +122,8 @@
 
 .page-header-bar {
     grid-row: 1;
-    background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
+    background: white;
+    border-bottom: 1px solid var(--gray-200);
     height: var(--page-header-height);
     display: flex;
     align-items: center;
@@ -173,7 +169,7 @@
 .page-header-divider {
     width: 1px;
     height: 24px;
-    background: var(--color-border);
+    background: var(--gray-300);
     flex-shrink: 0;
 }
 
@@ -195,25 +191,17 @@
 .page-title {
     font-size: 1.125rem;
     font-weight: 700;
-    color: var(--color-text-primary);
+    color: var(--gray-900);
     letter-spacing: -0.025em;
     line-height: 1.2;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    /* Ensure icon + text stay on same line */
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-.page-title svg {
-    flex-shrink: 0;
 }
 
 .page-subtitle {
     font-size: 0.6875rem;
-    color: var(--color-text-muted);
+    color: var(--gray-500);
     margin-top: 0;
     line-height: 1.2;
 }
@@ -241,7 +229,7 @@
     align-items: center;
     gap: var(--space-2);
     font-size: 0.875rem;
-    color: var(--color-text-primary);
+    color: var(--gray-700);
 }
 
 .header-user-avatar {
@@ -259,7 +247,7 @@
 }
 
 .header-logout {
-    color: var(--color-text-muted);
+    color: var(--gray-500);
     text-decoration: none;
     font-size: 0.8125rem;
     padding: var(--space-1) var(--space-2);
@@ -293,7 +281,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    background: var(--color-bg-primary);
+    background: var(--gray-50);
     overflow: hidden;
 }
 
@@ -307,8 +295,8 @@
 
 /* Legacy content-header support */
 .content-header {
-    background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
+    background: white;
+    border-bottom: 1px solid var(--gray-200);
     padding: var(--space-3) var(--space-4);
     position: sticky;
     top: 0;
@@ -327,15 +315,21 @@
    ================================================================= */
 
 .app-footer {
-    grid-row: 3;
-    background: var(--color-surface);
-    border-top: 1px solid var(--color-border);
+    position: fixed;
+    bottom: 0;
+    left: 5px; /* Align with accent bar */
+    right: 0;
+    background: white;
+    border-top: 1px solid var(--gray-200);
     padding: var(--space-2) var(--space-4);
     font-size: 0.75rem;
-    color: var(--color-text-muted);
+    color: var(--gray-500);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    height: var(--footer-height);
+    min-height: var(--footer-height);
+    z-index: 100; /* Below sidebar-trigger (200) but above content */
 }
 
 .footer-left {
@@ -348,10 +342,38 @@
     display: flex;
     align-items: center;
     font-weight: 500;
-    color: var(--color-text-secondary);
+    color: var(--gray-600);
 }
 
-/* NOTE: Role badge styles moved to entities/badge.css per HCA methodology */
+/* =================================================================
+   ROLE BADGES
+   ================================================================= */
+
+.role-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.375rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.role-badge.admin {
+    background: var(--warning-100);
+    color: var(--warning-600);
+}
+
+.role-badge.manager {
+    background: var(--primary-100);
+    color: var(--primary-600);
+}
+
+.role-badge.developer {
+    background: var(--gray-200);
+    color: var(--gray-600);
+}
 
 /* =================================================================
    RESPONSIVE
@@ -389,7 +411,7 @@
 .page-header .page-title {
     font-size: 1.5rem;
     font-weight: 600;
-    color: var(--color-text-primary);
+    color: var(--gray-900);
     margin: 0;
 }
 
@@ -432,33 +454,108 @@ body.no-sidebar #sidebar-toggle {
 .breadcrumb-item:not(:last-child)::after {
     content: "/";
     margin-left: 0.375rem;
-    color: var(--color-border);
+    color: var(--gray-300);
 }
 
 .breadcrumb-link {
-    color: var(--color-text-muted);
+    color: var(--gray-400);
     text-decoration: none;
 }
 
 .breadcrumb-link:hover {
-    color: var(--color-text-secondary);
+    color: var(--gray-500);
 }
 
 .breadcrumb-current {
-    color: var(--color-text-muted);
+    color: var(--gray-400);
 }
 
 /* =================================================================
-   DARK MODE - Minimal overrides
-   NOTE: Most properties now use semantic variables that auto-adapt.
+   DARK MODE
    ================================================================= */
+
+[data-theme="dark"] .app-header {
+    background: var(--color-surface);
+    border-bottom-color: var(--color-border);
+}
 
 [data-theme="dark"] .header-logo {
     color: var(--color-primary);
 }
 
+[data-theme="dark"] .page-header-bar {
+    background: var(--color-surface);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .page-title {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .page-subtitle {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .page-header-divider {
+    background: var(--gray-600);
+}
+
+[data-theme="dark"] .header-user-info {
+    color: var(--color-text-primary);
+}
+
 [data-theme="dark"] .header-logout:hover {
-    background: var(--color-error-bg);
+    background: rgba(239, 68, 68, 0.15);
+}
+
+[data-theme="dark"] .main-content {
+    background: var(--color-bg-primary);
+}
+
+[data-theme="dark"] .content-header {
+    background: var(--color-surface);
+    border-bottom-color: var(--color-border);
+}
+
+[data-theme="dark"] .app-footer {
+    background: var(--color-surface);
+    border-top-color: var(--color-border);
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .footer-right {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .role-badge.admin {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--warning-400);
+}
+
+[data-theme="dark"] .role-badge.manager {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--primary-400);
+}
+
+[data-theme="dark"] .role-badge.developer {
+    background: var(--gray-700);
+    color: var(--gray-300);
+}
+
+[data-theme="dark"] .breadcrumb-item:not(:last-child)::after {
+    color: var(--gray-600);
+}
+
+[data-theme="dark"] .breadcrumb-link {
+    color: var(--gray-500);
+}
+
+[data-theme="dark"] .breadcrumb-link:hover {
+    color: var(--gray-400);
+}
+
+[data-theme="dark"] .breadcrumb-current {
+    color: var(--gray-500);
 }
 
 /* =================================================================
@@ -490,15 +587,25 @@ body.no-sidebar #sidebar-toggle {
     margin: 0;
     font-size: 1rem;
     font-weight: var(--font-semibold);
-    color: var(--color-text-primary);
+    color: var(--gray-700);
 }
 
 .section-label {
     font-size: 0.6875rem;
     font-weight: 600;
-    color: var(--color-text-muted);
+    color: var(--gray-400);
     text-transform: uppercase;
     letter-spacing: 0.08em;
 }
 
-/* Section headers now use semantic variables that auto-adapt */
+/* ===========================================
+   DARK MODE - SECTION HEADERS
+   =========================================== */
+
+[data-theme="dark"] .section-title {
+    color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .section-label {
+    color: var(--gray-500);
+}
