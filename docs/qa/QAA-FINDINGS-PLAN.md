@@ -24,9 +24,9 @@ This document is organized by batch, with each batch containing:
 |----------|-------|---|-------------------|
 | 🔴 CRITICAL | 50 | 14% | **50 remediated ✅** |
 | 🟠 HIGH | 99 | 27% | **99 remediated ✅** |
-| 🟡 MEDIUM | 129 | 35% | **95 remediated ✅** |
+| 🟡 MEDIUM | 129 | 35% | **106 remediated ✅** |
 | 🟢 LOW | 88 | 24% | 0 remediated |
-| **TOTAL** | 366 | 100% | **244 remediated (67%)** |
+| **TOTAL** | 366 | 100% | **255 remediated (70%)** |
 
 ### Pylance Error Status (Production Code)
 
@@ -41,10 +41,10 @@ This document is organized by batch, with each batch containing:
 |----------|------|------|-----|-----|-----------------|
 | HCA Compliance | 0 | ~~71~~ 0 ✅ | ~~10~~ 0 ✅ | 5 | 5 |
 | Type Hints | ~~50~~ 0 ✅ | ~~11~~ 0 ✅ | ~~12~~ 8 ✅ | 10 | 8 |
-| Docstrings | 0 | 0 | ~~20~~ 11 ✅ | 21 | 18 |
+| Docstrings | 0 | 0 | ~~20~~ 14 ✅ | 21 | 14 |
 | Error Handling | 0 | ~~8~~ 0 ✅ | ~~67~~ 43 ✅ | 29 | 66 |
-| Code Quality | 0 | ~~9~~ 0 ✅ | ~~20~~ 7 ✅ | 23 | 25 |
-| **TOTAL** | ~~50~~ 0 | ~~99~~ 0 | ~~129~~ 34 | 88 | **122** |
+| Code Quality | 0 | ~~9~~ 0 ✅ | ~~20~~ 14 ✅ | 23 | 18 |
+| **TOTAL** | ~~50~~ 0 | ~~99~~ 0 | ~~129~~ 23 | 88 | **111** |
 
 ### Remediation Effort Estimate
 
