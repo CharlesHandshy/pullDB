@@ -21,6 +21,7 @@ from pulldb.domain.models import (
     CommandResult,
     DBHost,
     Job,
+    JobEvent,
     User,
     UserDetail,
     UserRole,
@@ -112,11 +113,15 @@ class JobRepository(Protocol):
         """
         ...
 
-    def mark_job_deployed(self, job_id: str) -> None:
+    def mark_job_deployed(self, job_id: str) -> bool:
         """Mark job as deployed (database live, user working with it).
 
         Args:
             job_id: UUID of the job to mark deployed.
+
+        Returns:
+            True if job was successfully marked deployed, False if job was
+            no longer in expected status.
         """
         ...
 
@@ -196,12 +201,13 @@ class JobRepository(Protocol):
         ...
 
     def get_recent_jobs(
-        self, limit: int = 100, statuses: list[str] | None = None
+        self, limit: int = 100, offset: int = 0, statuses: list[str] | None = None
     ) -> list[Job]:
         """Get recent jobs (active + completed).
 
         Args:
             limit: Maximum results to return.
+            offset: Number of jobs to skip for pagination.
             statuses: Optional status filter.
 
         Returns:
@@ -394,6 +400,100 @@ class JobRepository(Protocol):
             superseded_by_job_id: Job ID of the new restore.
         """
         ...
+
+    def mark_job_canceling(self, job_id: str) -> bool:
+        """Transition a running job to canceling state.
+
+        Sets status to 'canceling' to indicate cancellation is in progress.
+        Worker will detect this and stop at next checkpoint.
+
+        Args:
+            job_id: UUID of job.
+
+        Returns:
+            True if status was updated, False if job not in running state.
+        """
+        ...
+
+    def get_cancel_requested_at(self, job_id: str) -> datetime | None:
+        """Get the timestamp when cancellation was requested for a job.
+
+        Args:
+            job_id: UUID of job.
+
+        Returns:
+            Datetime when cancellation was requested, or None if not requested.
+        """
+        ...
+
+    def get_current_operation(self, job_id: str) -> str | None:
+        """Get user-friendly current operation string for a job.
+
+        Queries the latest job event and derives a human-readable operation
+        string (e.g., "Downloading(45%)", "Restoring", "Queued").
+
+        Args:
+            job_id: UUID of job.
+
+        Returns:
+            Human-readable operation string, or None if job not found.
+        """
+        ...
+
+    def append_job_event(
+        self, job_id: str, event_type: str, detail: str | None = None
+    ) -> None:
+        """Append event to job audit log.
+
+        Args:
+            job_id: UUID of job.
+            event_type: Type of event.
+            detail: Optional detail message or JSON payload.
+        """
+        ...
+
+    def get_job_events(
+        self, job_id: str, since_id: int | None = None
+    ) -> list[JobEvent]:
+        """Get all events for a job, optionally since a specific event ID.
+
+        Args:
+            job_id: UUID of job.
+            since_id: Optional event ID to fetch events after (exclusive).
+
+        Returns:
+            List of events ordered by logged_at.
+        """
+        ...
+
+    def prune_job_events(self, retention_days: int = 90) -> int:
+        """Delete job events older than retention period.
+
+        Args:
+            retention_days: Days to retain events.
+
+        Returns:
+            Number of events deleted.
+        """
+        ...
+
+    def find_job_by_staging_prefix(
+        self, target: str, dbhost: str, job_id_prefix: str
+    ) -> Job | None:
+        """Find a job by its staging database prefix.
+
+        Used by scheduled cleanup to match staging databases to jobs.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+            job_id_prefix: First 12 characters of job UUID.
+
+        Returns:
+            Job if found, None otherwise.
+        """
+        ...
+
 
 class AuthRepository(Protocol):
     """Protocol for authentication operations.
@@ -696,6 +796,35 @@ class UserRepository(Protocol):
         """
         ...
 
+    def create_user_with_code(self, username: str) -> User:
+        """Create new user with auto-generated user_code.
+
+        Unlike get_or_create_user, this method does NOT check for existing users.
+        It always attempts to create a new user.
+
+        Args:
+            username: Username for the new user.
+
+        Returns:
+            Newly created User instance.
+
+        Raises:
+            ValueError: If user_code cannot be generated or username invalid.
+        """
+        ...
+
+    def search_users(self, query: str, limit: int = 15) -> list[User]:
+        """Search for users by username or user_code.
+
+        Args:
+            query: Search string.
+            limit: Maximum number of results to return.
+
+        Returns:
+            List of matching User instances, ordered by username.
+        """
+        ...
+
 
 class HostRepository(Protocol):
     """Protocol for database host configuration.
@@ -811,8 +940,10 @@ class HostRepository(Protocol):
         hostname: str,
         max_concurrent: int,
         credential_ref: str | None,
+        *,
         host_id: str | None = None,
         host_alias: str | None = None,
+        max_running_jobs: int | None = None,
         max_active_jobs: int | None = None,
     ) -> None:
         """Add a new database host.
@@ -823,6 +954,7 @@ class HostRepository(Protocol):
             credential_ref: AWS Secrets Manager reference.
             host_id: Optional UUID (generated if not provided).
             host_alias: Optional short alias.
+            max_running_jobs: Optional max running jobs.
             max_active_jobs: Optional max active jobs (default 10).
         """
         ...
@@ -830,6 +962,7 @@ class HostRepository(Protocol):
     def update_host_config(
         self,
         host_id: str,
+        *,
         host_alias: str | None = None,
         credential_ref: str | None = None,
         max_running_jobs: int | None = None,
@@ -874,6 +1007,29 @@ class HostRepository(Protocol):
 
         Args:
             hostname: Host to disable.
+        """
+        ...
+
+    def get_host_by_id(self, host_id: str) -> DBHost | None:
+        """Get host configuration by ID.
+
+        Args:
+            host_id: UUID string of the host.
+
+        Returns:
+            DBHost instance if found, None otherwise.
+        """
+        ...
+
+    def search_hosts(self, query: str, limit: int = 10) -> list[DBHost]:
+        """Search for hosts by hostname or alias.
+
+        Args:
+            query: Search string.
+            limit: Maximum number of results to return.
+
+        Returns:
+            List of matching DBHost instances, ordered by hostname.
         """
         ...
 

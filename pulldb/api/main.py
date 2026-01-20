@@ -615,9 +615,9 @@ async def register_user(
             detail=exc.message,
         ) from exc
 
-    # Check database disallowed list (if repository available)
-    if hasattr(state, "job_repo") and state.job_repo and hasattr(state.job_repo, "pool"):
-        disallowed_repo = DisallowedUserRepository(state.job_repo.pool)
+    # Check database disallowed list (if pool available)
+    if state.pool is not None:
+        disallowed_repo = DisallowedUserRepository(state.pool)
         is_disallowed, reason = disallowed_repo.is_disallowed(request.username)
         if is_disallowed:
             raise HTTPException(
@@ -2677,7 +2677,12 @@ def _prune_logs(state: APIState, request: PruneLogsRequest) -> PruneLogsResponse
     if request.dry_run:
         # For dry run, we need to count without deleting
         # This uses a similar query to the actual prune
-        with state.job_repo.pool.connection() as conn:
+        if state.pool is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database pool not available",
+            )
+        with state.pool.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
@@ -4126,6 +4131,8 @@ def _get_feature_service(state: APIState) -> FeatureRequestService:
     from pulldb.worker.feature_request_service import FeatureRequestService
     # Service needs async pool, create lazily
     if _feature_service_cache is None:
+        if state.pool is None:
+            raise RuntimeError("FeatureRequestService requires database pool")
         _feature_service_cache = FeatureRequestService(state.pool)
     return _feature_service_cache
 
