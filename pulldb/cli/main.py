@@ -527,7 +527,18 @@ def _api_get_object(path: str, params: dict[str, Any]) -> dict[str, Any]:
     raise click.ClickException("Received invalid response from server.")
 
 
-def _parse_json_response(response: Response) -> Any:
+def _parse_json_response(response: Response) -> dict[str, Any]:
+    """Parse JSON response from API.
+
+    Args:
+        response: HTTP response object.
+
+    Returns:
+        Parsed JSON as dictionary.
+
+    Raises:
+        click.ClickException: If response is not valid JSON.
+    """
     try:
         return response.json()
     except ValueError as exc:

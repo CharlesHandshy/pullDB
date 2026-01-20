@@ -12,6 +12,9 @@ import os
 from typing import Any
 
 from pulldb.domain.interfaces import (
+    AuditRepository,
+    AuthRepository,
+    DisallowedUserRepository,
     HostRepository,
     JobRepository,
     ProcessExecutor,
@@ -69,16 +72,16 @@ def get_process_executor() -> ProcessExecutor:
     return SubprocessExecutor()
 
 
-def get_auth_repository() -> Any:
+def get_auth_repository() -> AuthRepository:
     """Get AuthRepository implementation.
     
     Returns:
         AuthRepository for password and session management.
     """
-    from pulldb.auth.repository import AuthRepository
+    from pulldb.auth.repository import AuthRepository as AuthRepositoryImpl
 
     pool = _get_real_mysql_pool()
-    return AuthRepository(pool)
+    return AuthRepositoryImpl(pool)
 
 
 def get_user_repository() -> UserRepository:
@@ -123,32 +126,33 @@ def get_settings_repository() -> SettingsRepository:
     return MySQLSettingsRepository(pool)
 
 
-def get_disallowed_user_repository() -> Any:
+def get_disallowed_user_repository() -> DisallowedUserRepository:
     """Get DisallowedUserRepository implementation."""
     # No simulation mode for this repository (simple lookup)
-    from pulldb.infra.mysql import DisallowedUserRepository
+    from pulldb.infra.mysql import DisallowedUserRepository as DisallowedUserRepoImpl
 
     pool = _get_real_mysql_pool()
-    return DisallowedUserRepository(pool)
+    return DisallowedUserRepoImpl(pool)
 
 
-def get_audit_repository() -> Any:
+def get_audit_repository() -> AuditRepository | None:
     """Get AuditRepository implementation.
     
     Returns:
-        AuditRepository for logging administrative actions.
+        AuditRepository for logging administrative actions,
+        or None in simulation mode.
     """
     if is_simulation_mode():
         # Return None in simulation mode - audit logging is optional
         return None
 
-    from pulldb.infra.mysql import AuditRepository
+    from pulldb.infra.mysql import AuditRepository as AuditRepositoryImpl
 
     pool = _get_real_mysql_pool()
-    return AuditRepository(pool)
+    return AuditRepositoryImpl(pool)
 
 
-def get_provisioning_service(actor_user_id: str) -> Any:
+def get_provisioning_service(actor_user_id: str) -> "HostProvisioningService":
     """Get HostProvisioningService instance.
     
     Creates a configured provisioning service with all dependencies injected.
@@ -183,7 +187,7 @@ def get_provisioning_service(actor_user_id: str) -> Any:
     )
 
 
-def _get_real_mysql_pool() -> Any:
+def _get_real_mysql_pool() -> "MySQLPool":
     """Create real MySQL connection pool."""
     from pulldb.infra.mysql import MySQLPool
     from pulldb.infra.secrets import CredentialResolver
