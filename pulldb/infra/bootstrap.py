@@ -14,15 +14,11 @@ HCA Layer: shared (pulldb/infra/)
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
 
 from pulldb.domain.config import Config
 from pulldb.infra.logging import get_logger
 from pulldb.infra.mysql import MySQLPool, build_default_pool
 from pulldb.infra.secrets import CredentialResolver
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger("pulldb.infra.bootstrap")
 
