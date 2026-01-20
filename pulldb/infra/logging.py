@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Callable
 from typing import Any, cast
 
 
@@ -130,9 +131,16 @@ def get_logger(name: str, level: int | None = None) -> logging.Logger:
 
 
 def _task_name_log_record_factory(
-    original_factory: Any,
-) -> Any:
-    """Create a log record factory that injects the current task name."""
+    original_factory: Callable[..., logging.LogRecord],
+) -> Callable[..., logging.LogRecord]:
+    """Create a log record factory that injects the current task name.
+
+    Args:
+        original_factory: The original log record factory to wrap.
+
+    Returns:
+        A new factory that injects task_name into LogRecords.
+    """
 
     def factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
         record = cast(logging.LogRecord, original_factory(*args, **kwargs))
