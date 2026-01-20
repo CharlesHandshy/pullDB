@@ -28,9 +28,18 @@ from pulldb.worker.staging import generate_staging_name
 @dataclass(frozen=True)
 class TargetResult:
     """Result of target database name construction.
-    
+
     Tracks whether customer name normalization was applied.
+
+    Attributes:
+        target: Final resolved target database name.
+        original_customer: Customer name before normalization, if provided.
+        normalized_customer: Customer name after normalization, if applied.
+        was_normalized: True if normalization changed the customer name.
+        normalization_message: Human-readable message about normalization.
+        custom_target_used: True if user provided explicit target name.
     """
+
     target: str
     original_customer: str | None
     normalized_customer: str | None
