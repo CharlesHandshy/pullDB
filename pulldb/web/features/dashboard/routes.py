@@ -18,7 +18,15 @@ router = APIRouter(prefix="/web/dashboard", tags=["web-dashboard"])
 
 
 def _get_user_last_job(state: Any, user_code: str) -> Any:
-    """Get user's most recent job."""
+    """Get user's most recent job from the job repository.
+
+    Args:
+        state: Application state containing job_repo.
+        user_code: User code to filter jobs by.
+
+    Returns:
+        The user's most recent Job object, or None if not found.
+    """
     if not hasattr(state, "job_repo") or not state.job_repo:
         return None
     
@@ -37,7 +45,15 @@ def _get_user_last_job(state: Any, user_code: str) -> Any:
 
 
 def _get_user_active_count(state: Any, user_code: str) -> int:
-    """Get count of user's active jobs."""
+    """Get count of user's active jobs.
+
+    Args:
+        state: Application state containing job_repo.
+        user_code: User code to filter jobs by.
+
+    Returns:
+        Number of active jobs owned by the user.
+    """
     if not hasattr(state, "job_repo") or not state.job_repo:
         return 0
     

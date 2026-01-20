@@ -1,11 +1,11 @@
-from __future__ import annotations
+"""Feature Request Domain Models.
 
-"""
-Feature Request Domain Models
+Pydantic models for feature requests and votes.
 
 HCA Layer: entities (pulldb/domain/)
-Pydantic models for feature requests and votes.
 """
+
+from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
