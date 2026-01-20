@@ -17,6 +17,7 @@ HCA Layer: features
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -868,8 +869,6 @@ def execute_delete_job(
     Returns:
         DeleteJobResult with outcome details.
     """
-    import json
-
     result = DeleteJobResult(
         job_id=job.id,
         success=False,

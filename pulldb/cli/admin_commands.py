@@ -907,8 +907,6 @@ def keys_pending(json_out: bool) -> None:
             user_lookup[uid] = u.username
 
     if json_out:
-        import json
-
         output = []
         for key in pending:
             output.append(
@@ -1075,8 +1073,6 @@ def keys_list(username: str | None, show_all: bool, json_out: bool) -> None:
             user_lookup[uid] = u.username
 
     if json_out:
-        import json
-
         output = []
         for key in keys:
             output.append(
