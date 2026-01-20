@@ -25,6 +25,7 @@ import mysql.connector
 
 from pulldb.domain.errors import StagingError
 from pulldb.infra.logging import get_logger
+from pulldb.infra.mysql_utils import quote_identifier
 from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
@@ -289,7 +290,7 @@ def cleanup_orphaned_staging(
                         "total": len(staging_candidates),
                     })
                 drop_start = time.monotonic()
-                cursor.execute(f"DROP DATABASE IF EXISTS `{orphan_db}`")
+                cursor.execute(f"DROP DATABASE IF EXISTS {quote_identifier(orphan_db)}")
                 drop_duration = time.monotonic() - drop_start
                 orphans_dropped.append(orphan_db)
                 if event_callback:

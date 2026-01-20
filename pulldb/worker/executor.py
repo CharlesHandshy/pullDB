@@ -39,6 +39,7 @@ from pulldb.domain.errors import (
 from pulldb.domain.config import parse_s3_bucket_path
 from pulldb.domain.models import Job
 from pulldb.infra.logging import get_logger
+from pulldb.infra.mysql_utils import quote_identifier
 from pulldb.infra.s3 import (
     BackupSpec,
     S3Client,
@@ -190,7 +191,7 @@ def pre_flight_verify_target_overwrite_safe(
 
         # DB exists - check for pullDB metadata table
         try:
-            cursor.execute(f"SHOW TABLES IN `{job.target}` LIKE 'pullDB'")
+            cursor.execute(f"SHOW TABLES IN {quote_identifier(job.target)} LIKE 'pullDB'")
             has_pulldb_table = cursor.fetchone() is not None
         except mysql.connector.Error:
             # Can't query tables - assume external DB (fail safe)
