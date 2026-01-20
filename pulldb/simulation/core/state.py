@@ -17,7 +17,34 @@ from pulldb.domain.models import DBHost, Job, JobEvent, User
 
 @dataclass
 class SimulationState:
-    """Thread-safe in-memory database state."""
+    """Thread-safe in-memory database state for simulation engine.
+
+    Acts as the single source of truth for all Mock Repositories,
+    replacing MySQL tables with Python dictionaries.
+
+    Attributes:
+        jobs: Job ID -> Job mapping (replaces jobs table).
+        users: User ID -> User mapping (replaces users table).
+        hosts: Hostname -> DBHost mapping (replaces db_hosts table).
+        settings: Key -> value mapping (replaces settings table).
+        settings_metadata: Key -> {description, etc.} metadata.
+        job_events: Chronological list of job events.
+        audit_logs: Chronological list of audit entries.
+        s3_buckets: Bucket name -> list of object keys.
+        users_by_code: User code -> User index for quick lookup.
+        auth_credentials: User ID -> auth data (password hash, TOTP, etc.).
+        sessions: Token hash -> session data for auth.
+        user_hosts: User ID -> list of host assignments.
+        cancellation_requested: Set of job IDs with pending cancellation.
+        staging_databases: Hostname -> set of database names on staging.
+        deleted_orphans: Set of (hostname, db_name) tuples deleted this session.
+        orphan_sizes: (hostname, db_name) -> size in MB for orphan databases.
+        orphan_metadata: (hostname, db_name) -> OrphanMetadata for mock data.
+        api_keys: Key ID -> API key configuration dict.
+        disallowed_usernames: Username -> {reason, is_hardcoded, etc.}.
+        host_credential_errors: Hostname -> error message if credentials failed.
+        lock: Reentrant lock for thread-safe operations.
+    """
 
     # Data stores (Table replacements)
     jobs: dict[str, Job] = field(default_factory=dict)
@@ -49,7 +76,7 @@ class SimulationState:
     
     # Orphan database simulation
     # hostname -> set of database names that exist on that staging host
-    staging_databases: dict[str, set[str]] = field(default_factory=dict)
+    staging_databases: dict[str, set[str]] = field(default_factory=set)
     # (hostname, db_name) tuples of orphans deleted this session
     deleted_orphans: set[tuple[str, str]] = field(default_factory=set)
     # (hostname, db_name) -> size in MB for mock orphan databases
