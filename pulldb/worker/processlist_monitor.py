@@ -23,6 +23,11 @@ from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_MONITOR
 
 logger = get_logger("pulldb.worker.processlist_monitor")
 
+# Thread and polling configuration constants
+THREAD_JOIN_TIMEOUT_SECONDS: float = 5.0
+DEBUG_LOG_ROW_LIMIT: int = 2
+DEBUG_INFO_PREVIEW_LENGTH: int = 60
+
 # Regex to extract completion percentage from myloader query comments
 # myloader embeds: /* Completed: 45.67% */
 RE_COMPLETED = re.compile(r"/\*\s*Completed:\s*([\d.]+)%\s*\*/")
@@ -137,7 +142,7 @@ class ProcesslistMonitor:
         """Stop background polling thread."""
         self._stop_event.set()
         if self._thread is not None:
-            self._thread.join(timeout=5.0)
+            self._thread.join(timeout=THREAD_JOIN_TIMEOUT_SECONDS)
             self._thread = None
         logger.info("Stopped processlist monitor")
 
@@ -244,8 +249,8 @@ class ProcesslistMonitor:
             
             matching_rows += 1
             # Log the first few matching rows to debug
-            if matching_rows <= 2:
-                logger.info(f"Processlist row for {db}: Info type={type(info).__name__}, preview={str(info)[:60] if info else 'None'}")
+            if matching_rows <= DEBUG_LOG_ROW_LIMIT:
+                logger.info(f"Processlist row for {db}: Info type={type(info).__name__}, preview={str(info)[:DEBUG_INFO_PREVIEW_LENGTH] if info else 'None'}")
 
             if not info or not isinstance(info, str):
                 continue
