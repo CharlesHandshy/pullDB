@@ -541,6 +541,397 @@ class WorkerJobExecutor:
             )
             raise CancellationError(job_id, phase)
 
+    # -------------------------------------------------------------------------
+    # Workflow Phase Methods
+    # -------------------------------------------------------------------------
+
+    def _run_discovery_phase(
+        self,
+        job: Job,
+        profiler: RestoreProfiler,
+    ) -> tuple[BackupSpec, S3BackupLocationConfig, str]:
+        """Execute discovery phase: locate backup in S3.
+
+        Args:
+            job: Job being executed.
+            profiler: RestoreProfiler for timing.
+
+        Returns:
+            Tuple of (BackupSpec, location config, lookup_target).
+        """
+        with profiler.phase(RestorePhase.DISCOVERY) as discovery_profile:
+            backup_spec, location, lookup_target = self.discover_backup_for_job(job)
+            discovery_profile.metadata["bucket"] = backup_spec.bucket
+            discovery_profile.metadata["key"] = backup_spec.key
+            discovery_profile.metadata["lookup_target"] = lookup_target
+            discovery_profile.metadata["location"] = location.name
+
+        self._append_event(
+            job.id,
+            "backup_selected",
+            {
+                "bucket": backup_spec.bucket,
+                "key": backup_spec.key,
+                "size_bytes": backup_spec.size_bytes,
+                "lookup_target": lookup_target,
+                "location": location.name,
+                "location_format": location.format_tag,
+            },
+        )
+        return backup_spec, location, lookup_target
+
+    def _run_download_phase(
+        self,
+        job: Job,
+        backup_spec: BackupSpec,
+        download_dir: Path,
+        profiler: RestoreProfiler,
+        cancel_check: Callable[[], bool],
+    ) -> str:
+        """Execute download phase: fetch backup from S3.
+
+        Args:
+            job: Job being executed.
+            backup_spec: Discovered backup specification.
+            download_dir: Directory for downloaded archive.
+            profiler: RestoreProfiler for timing.
+            cancel_check: Callback returning True to abort.
+
+        Returns:
+            Path to downloaded archive.
+        """
+        self._append_event(
+            job.id,
+            "download_started",
+            {"bucket": backup_spec.bucket, "key": backup_spec.key},
+        )
+
+        def _progress_callback(
+            downloaded: int, total: int, percent: float, elapsed: float
+        ) -> None:
+            self._append_event(
+                job.id,
+                "download_progress",
+                {
+                    "downloaded_bytes": downloaded,
+                    "total_bytes": total,
+                    "percent_complete": percent,
+                    "elapsed_seconds": round(elapsed, 1),
+                },
+            )
+
+        with profiler.phase(RestorePhase.DOWNLOAD) as download_profile:
+            download_profile.metadata["bucket"] = backup_spec.bucket
+            download_profile.metadata["key"] = backup_spec.key
+            archive_path = self._download_backup(
+                self.s3_client,
+                backup_spec,
+                job.id,
+                str(download_dir),
+                _progress_callback,
+                cancel_check,
+            )
+            download_profile.metadata["bytes_processed"] = backup_spec.size_bytes
+            download_profile.metadata["archive_path"] = archive_path
+
+        self._append_event(
+            job.id,
+            "download_complete",
+            {"path": archive_path},
+        )
+        return archive_path
+
+    def _run_extraction_phase(
+        self,
+        job: Job,
+        archive_path: str,
+        backup_spec: BackupSpec,
+        extract_dir: Path,
+        profiler: RestoreProfiler,
+        cancel_check: Callable[[], bool],
+    ) -> Path:
+        """Execute extraction phase: unpack archive.
+
+        Args:
+            job: Job being executed.
+            archive_path: Path to downloaded archive.
+            backup_spec: Backup specification (for size info).
+            extract_dir: Directory for extraction.
+            profiler: RestoreProfiler for timing.
+            cancel_check: Callback returning True to abort.
+
+        Returns:
+            Path to backup directory (resolved from extraction).
+        """
+        def _extraction_progress_callback(
+            extracted: int,
+            total: int,
+            percent: float,
+            elapsed: float,
+            files_extracted: int,
+            total_files: int,
+        ) -> None:
+            self._append_event(
+                job.id,
+                "extraction_progress",
+                {
+                    "extracted_bytes": extracted,
+                    "total_bytes": total,
+                    "percent_complete": round(percent, 1),
+                    "elapsed_seconds": round(elapsed, 1),
+                    "files_extracted": files_extracted,
+                    "total_files": total_files,
+                },
+            )
+
+        self._append_event(
+            job.id,
+            "extraction_started",
+            {"archive_path": archive_path, "archive_size": backup_spec.size_bytes},
+        )
+
+        with profiler.phase(RestorePhase.EXTRACTION) as extraction_profile:
+            extracted_dir = self._extract_archive(
+                archive_path,
+                extract_dir,
+                job.id,
+                _extraction_progress_callback,
+                cancel_check,
+            )
+            extraction_profile.metadata["extracted_dir"] = extracted_dir
+            extraction_profile.metadata["bytes_processed"] = backup_spec.size_bytes
+
+        self._append_event(
+            job.id,
+            "extraction_complete",
+            {"path": extracted_dir},
+        )
+
+        # Resolve actual backup root (handle top-level directory in tarball)
+        backup_dir = self._resolve_backup_dir(Path(extracted_dir))
+        return backup_dir
+
+    def _build_restore_progress_callback(
+        self,
+        job: Job,
+    ) -> Callable[[float, dict[str, Any]], None]:
+        """Build progress callback for restore phase with deduplication.
+
+        Args:
+            job: Job being executed.
+
+        Returns:
+            Callback function for restore progress updates.
+        """
+        last_percent_logged = -1.0
+        last_processlist_key: tuple[int, int, tuple[tuple[str, int], ...]] | None = None
+
+        def _restore_progress_callback(
+            percent: float, detail: dict[str, Any]
+        ) -> None:
+            nonlocal last_percent_logged
+            nonlocal last_processlist_key
+
+            # Log file statistics as requested
+            if detail.get("status") == "finished":
+                logger.info(
+                    f"Restored file: {detail.get('file')}",
+                    extra={
+                        "job_id": job.id,
+                        "phase": "restore_file",
+                        "file": detail.get("file"),
+                        "percent": f"{percent:.1f}",
+                    },
+                )
+
+            # Deduplicate processlist updates
+            if detail.get("status") == "processlist_update":
+                tables = detail.get("tables", {})
+                table_progress = tuple(
+                    sorted(
+                        (name, int(info.get("percent_complete", 0)))
+                        for name, info in tables.items()
+                    )
+                )
+                current_key = (
+                    int(percent),
+                    detail.get("active_threads", 0),
+                    table_progress,
+                )
+
+                if current_key == last_processlist_key:
+                    return
+
+                last_processlist_key = current_key
+                self._append_event(
+                    job.id,
+                    "restore_progress",
+                    {"percent": percent, "detail": detail},
+                )
+                return
+
+            # Emit progress event (throttled to every 5% or completion)
+            if percent >= 100.0 or (percent - last_percent_logged) >= 5.0:
+                self._append_event(
+                    job.id,
+                    "restore_progress",
+                    {"percent": percent, "detail": detail},
+                )
+                last_percent_logged = percent
+
+        return _restore_progress_callback
+
+    def _run_restore_phase(
+        self,
+        job: Job,
+        backup_spec: BackupSpec,
+        backup_dir: Path,
+        host_credentials: MySQLCredentials,
+        profiler: RestoreProfiler,
+        cancel_check: Callable[[], bool],
+    ) -> dict[str, Any]:
+        """Execute restore phase: run myloader and post-SQL.
+
+        Args:
+            job: Job being executed.
+            backup_spec: Backup specification.
+            backup_dir: Path to extracted backup.
+            host_credentials: MySQL credentials.
+            profiler: RestoreProfiler for timing.
+            cancel_check: Callback returning True to abort.
+
+        Returns:
+            Workflow result dict with timing information.
+
+        Raises:
+            CancellationError: If job cancelled at restore gate.
+        """
+        from pulldb.worker.restore import _detect_backup_version
+
+        # Detect backup format
+        detected_version = _detect_backup_version(str(backup_dir))
+        format_tag = "new" if "0.19" in detected_version else "legacy"
+
+        self._append_event(
+            job.id,
+            "format_detected",
+            {"detected_version": detected_version, "format_tag": format_tag},
+        )
+
+        # Build connection specs
+        script_dir = self._resolve_post_sql_dir(job)
+        staging_conn, post_sql_conn = self._build_connection_specs(
+            job,
+            host_credentials,
+            script_dir,
+        )
+
+        # Build callbacks
+        progress_callback = self._build_restore_progress_callback(job)
+
+        def _workflow_event_callback(event_type: str, detail: dict[str, Any]) -> None:
+            self._append_event(job.id, event_type, detail)
+
+        workflow_spec = build_restore_workflow_spec(
+            config=self.config,
+            job=job,
+            backup_filename=backup_spec.filename,
+            backup_dir=str(backup_dir),
+            staging_conn=staging_conn,
+            post_sql_conn=post_sql_conn,
+            format_tag=format_tag,
+            progress_callback=progress_callback,
+            event_callback=_workflow_event_callback,
+            abort_check=cancel_check,
+        )
+
+        # Lock for restore - point of no return
+        worker_id = job.worker_id or "unknown"
+        if not self.job_repo.lock_for_restore(job.id, worker_id):
+            logger.info(
+                "Cancellation detected at restore gate, aborting before myloader",
+                extra={"job_id": job.id, "phase": "restore_gate"},
+            )
+            raise CancellationError(job.id, "restore_gate")
+
+        self._append_event(
+            job.id,
+            "restore_started",
+            {
+                "backup_filename": backup_spec.filename,
+                "staging_db": job.staging_name,
+            },
+        )
+
+        workflow_result = orchestrate_restore_workflow(workflow_spec)
+
+        # Record myloader timing in profiler
+        myloader_result = workflow_result.get("myloader")
+        if myloader_result and hasattr(myloader_result, "duration_seconds"):
+            myloader_profile = profiler.profile.start_phase(RestorePhase.MYLOADER)
+            myloader_profile.duration_seconds = float(myloader_result.duration_seconds)
+            myloader_profile.completed_at = datetime.now(UTC)
+            extracted_bytes = _get_dir_size(backup_dir)
+            if extracted_bytes > 0 and myloader_profile.duration_seconds > 0:
+                myloader_profile.bytes_processed = extracted_bytes
+                myloader_profile.bytes_per_second = (
+                    extracted_bytes / myloader_profile.duration_seconds
+                )
+
+        # Record internal phase timings
+        for phase_key, phase_enum in [
+            ("post_sql_duration_seconds", RestorePhase.POST_SQL),
+            ("metadata_duration_seconds", RestorePhase.METADATA),
+            ("atomic_rename_duration_seconds", RestorePhase.ATOMIC_RENAME),
+        ]:
+            if phase_key in workflow_result:
+                phase_profile = profiler.profile.start_phase(phase_enum)
+                phase_profile.duration_seconds = float(workflow_result[phase_key])  # type: ignore[arg-type]
+                phase_profile.completed_at = datetime.now(UTC)
+
+        self._append_event(
+            job.id,
+            "restore_complete",
+            {
+                "backup_filename": backup_spec.filename,
+                "target": job.target,
+            },
+        )
+        return workflow_result
+
+    def _finalize_workflow(
+        self,
+        job: Job,
+        profiler: RestoreProfiler,
+    ) -> None:
+        """Finalize successful workflow: emit profile and mark deployed.
+
+        Args:
+            job: Job being executed.
+            profiler: RestoreProfiler with timing data.
+        """
+        profiler.complete()
+        self._append_event(
+            job.id,
+            "restore_profile",
+            profiler.profile.to_dict(),
+        )
+
+        self.job_repo.mark_job_deployed(job.id)
+        logger.info(
+            "Job deployed",
+            extra={
+                "job_id": job.id,
+                "target": job.target,
+                "phase": "executor_deployed",
+                "profile": profiler.profile.phase_breakdown,
+            },
+        )
+
+    # -------------------------------------------------------------------------
+    # Main Entry Points
+    # -------------------------------------------------------------------------
+
     def execute(self, job: Job) -> None:
         """Run the full restore workflow for a job.
 
@@ -568,327 +959,58 @@ class WorkerJobExecutor:
             self._execute_workflow(job)
 
     def _execute_workflow(self, job: Job) -> None:
-        """Internal workflow execution (called within heartbeat context)."""
+        """Internal workflow execution (called within heartbeat context).
+
+        Orchestrates the complete restore workflow through discrete phases:
+        preflight → discovery → download → extraction → restore → finalize.
+
+        Each phase is isolated in its own method for clarity and testability.
+        """
         job_dir, download_dir, extract_dir = self._prepare_job_dirs(job.id)
         profiler = RestoreProfiler(job.id)
+
+        def _cancel_check() -> bool:
+            """Check if job should abort (cancelled or no longer running)."""
+            return bool(self.job_repo.should_abort_job(job.id))
 
         try:
             host_credentials = self.host_repo.get_host_credentials(job.dbhost)
 
-            # PRE-FLIGHT: Verify target is safe to overwrite BEFORE expensive operations
-            # This catches external databases and ownership conflicts early
+            # PRE-FLIGHT: Verify target is safe to overwrite
             pre_flight_verify_target_overwrite_safe(job, host_credentials)
 
-            # Phase: Discovery
-            with profiler.phase(RestorePhase.DISCOVERY) as discovery_profile:
-                backup_spec, location, lookup_target = self.discover_backup_for_job(job)
-                discovery_profile.metadata["bucket"] = backup_spec.bucket
-                discovery_profile.metadata["key"] = backup_spec.key
-                discovery_profile.metadata["lookup_target"] = lookup_target
-                discovery_profile.metadata["location"] = location.name
-
-            self._append_event(
-                job.id,
-                "backup_selected",
-                {
-                    "bucket": backup_spec.bucket,
-                    "key": backup_spec.key,
-                    "size_bytes": backup_spec.size_bytes,
-                    "lookup_target": lookup_target,
-                    "location": location.name,
-                    "location_format": location.format_tag,
-                },
+            # Phase 1: Discovery - locate backup in S3
+            backup_spec, location, lookup_target = self._run_discovery_phase(
+                job, profiler
             )
 
-            self._append_event(
-                job.id,
-                "download_started",
-                {"bucket": backup_spec.bucket, "key": backup_spec.key},
-            )
-
-            def _progress_callback(
-                downloaded: int, total: int, percent: float, elapsed: float
-            ) -> None:
-                self._append_event(
-                    job.id,
-                    "download_progress",
-                    {
-                        "downloaded_bytes": downloaded,
-                        "total_bytes": total,
-                        "percent_complete": percent,
-                        "elapsed_seconds": round(elapsed, 1),
-                    },
-                )
-
-            def _cancel_check() -> bool:
-                # Check if job should abort: cancelled OR no longer running
-                # This catches both user cancellation AND stale recovery marking job failed
-                return bool(self.job_repo.should_abort_job(job.id))
-
-            # Phase: Download
-            with profiler.phase(RestorePhase.DOWNLOAD) as download_profile:
-                download_profile.metadata["bucket"] = backup_spec.bucket
-                download_profile.metadata["key"] = backup_spec.key
-                archive_path = self._download_backup(
-                    self.s3_client,
-                    backup_spec,
-                    job.id,
-                    str(download_dir),
-                    _progress_callback,
-                    _cancel_check,
-                )
-                download_profile.metadata["bytes_processed"] = backup_spec.size_bytes
-                download_profile.metadata["archive_path"] = archive_path
-
-            self._append_event(
-                job.id,
-                "download_complete",
-                {"path": archive_path},
+            # Phase 2: Download - fetch backup archive
+            archive_path = self._run_download_phase(
+                job, backup_spec, download_dir, profiler, _cancel_check
             )
 
             # Checkpoint: check for cancellation after download
             self._check_cancellation(job.id, "post_download")
 
-            # Progress callback for extraction phase
-            def _extraction_progress_callback(
-                extracted: int,
-                total: int,
-                percent: float,
-                elapsed: float,
-                files_extracted: int,
-                total_files: int,
-            ) -> None:
-                self._append_event(
-                    job.id,
-                    "extraction_progress",
-                    {
-                        "extracted_bytes": extracted,
-                        "total_bytes": total,
-                        "percent_complete": round(percent, 1),
-                        "elapsed_seconds": round(elapsed, 1),
-                        "files_extracted": files_extracted,
-                        "total_files": total_files,
-                    },
-                )
-
-            self._append_event(
-                job.id,
-                "extraction_started",
-                {"archive_path": archive_path, "archive_size": backup_spec.size_bytes},
-            )
-
-            # Phase: Extraction
-            with profiler.phase(RestorePhase.EXTRACTION) as extraction_profile:
-                extracted_dir = self._extract_archive(
-                    archive_path,
-                    extract_dir,
-                    job.id,
-                    _extraction_progress_callback,
-                    _cancel_check,
-                )
-                extraction_profile.metadata["extracted_dir"] = extracted_dir
-                # Estimate extracted size from archive size (typically 1:1 for tar)
-                extraction_profile.metadata["bytes_processed"] = backup_spec.size_bytes
-
-            self._append_event(
-                job.id,
-                "extraction_complete",
-                {"path": extracted_dir},
+            # Phase 3: Extraction - unpack archive
+            backup_dir = self._run_extraction_phase(
+                job, archive_path, backup_spec, extract_dir, profiler, _cancel_check
             )
 
             # Checkpoint: check for cancellation after extraction
             self._check_cancellation(job.id, "post_extraction")
 
-            # Resolve actual backup root (handle top-level directory in tarball)
-            backup_dir = self._resolve_backup_dir(Path(extracted_dir))
-
-            # Detect backup format from extracted contents (not S3 bucket)
-            # This determines whether metadata synthesis is needed
-            from pulldb.worker.restore import _detect_backup_version
-
-            detected_version = _detect_backup_version(str(backup_dir))
-            # format_tag is informational only - all backups use myloader 0.19.3-3
-            # with metadata synthesis for legacy formats
-            format_tag = "new" if "0.19" in detected_version else "legacy"
-
-            self._append_event(
-                job.id,
-                "format_detected",
-                {"detected_version": detected_version, "format_tag": format_tag},
-            )
-
             # Checkpoint: check for cancellation before restore starts
             self._check_cancellation(job.id, "pre_restore")
 
-            script_dir = self._resolve_post_sql_dir(job)
-            staging_conn, post_sql_conn = self._build_connection_specs(
-                job,
-                host_credentials,
-                script_dir,
+            # Phase 4: Restore - run myloader and post-SQL
+            self._run_restore_phase(
+                job, backup_spec, backup_dir, host_credentials, profiler, _cancel_check
             )
 
-            # Progress callback for restore phase
-            last_percent_logged = -1.0
-            # Deduplication state for processlist_update events
-            # Key: (rounded_percent, active_threads, tuple of (table, rounded_pct))
-            last_processlist_key: tuple[int, int, tuple[tuple[str, int], ...]] | None = (
-                None
-            )
+            # Phase 5: Finalize - mark deployed
+            self._finalize_workflow(job, profiler)
 
-            def _restore_progress_callback(
-                percent: float, detail: dict[str, Any]
-            ) -> None:
-                nonlocal last_percent_logged
-                nonlocal last_processlist_key
-
-                # Log file statistics as requested
-                if detail.get("status") == "finished":
-                    logger.info(
-                        f"Restored file: {detail.get('file')}",
-                        extra={
-                            "job_id": job.id,
-                            "phase": "restore_file",
-                            "file": detail.get("file"),
-                            "percent": f"{percent:.1f}",
-                        },
-                    )
-
-                # Deduplicate processlist updates - only emit when meaningful change occurs
-                # Emits when: overall percent changes by 1%+ OR any table progress changes by 1%+
-                if detail.get("status") == "processlist_update":
-                    # Build dedup key: overall percent (1% increments) + active threads + per-table progress
-                    tables = detail.get("tables", {})
-                    table_progress = tuple(
-                        sorted(
-                            (name, int(info.get("percent_complete", 0)))
-                            for name, info in tables.items()
-                        )
-                    )
-                    current_key = (
-                        int(percent),
-                        detail.get("active_threads", 0),
-                        table_progress,
-                    )
-
-                    # Skip if identical to last emitted event
-                    if current_key == last_processlist_key:
-                        return
-
-                    last_processlist_key = current_key
-                    self._append_event(
-                        job.id,
-                        "restore_progress",
-                        {"percent": percent, "detail": detail},
-                    )
-                    return
-
-                # Emit progress event (throttled to every 5% or completion)
-                if percent >= 100.0 or (percent - last_percent_logged) >= 5.0:
-                    self._append_event(
-                        job.id,
-                        "restore_progress",
-                        {"percent": percent, "detail": detail},
-                    )
-                    last_percent_logged = percent
-
-            # Event callback for internal workflow phases (post_sql, metadata, atomic_rename)
-            def _workflow_event_callback(event_type: str, detail: dict[str, Any]) -> None:
-                self._append_event(job.id, event_type, detail)
-
-            workflow_spec = build_restore_workflow_spec(
-                config=self.config,
-                job=job,
-                backup_filename=backup_spec.filename,
-                backup_dir=str(backup_dir),
-                staging_conn=staging_conn,
-                post_sql_conn=post_sql_conn,
-                format_tag=format_tag,  # Detected from backup contents
-                progress_callback=_restore_progress_callback,
-                event_callback=_workflow_event_callback,
-                abort_check=_cancel_check,  # Pass cancel check for myloader abort
-            )
-
-            # CRITICAL: Lock for restore - this is the point of no return.
-            # Atomically verify no cancellation was requested and flip can_cancel to FALSE.
-            # This prevents race conditions between cancel requests and restore start.
-            # Use job.worker_id which was set when the job was claimed.
-            worker_id = job.worker_id or "unknown"
-            if not self.job_repo.lock_for_restore(job.id, worker_id):
-                # Cancellation was requested between last checkpoint and now
-                logger.info(
-                    "Cancellation detected at restore gate, aborting before myloader",
-                    extra={"job_id": job.id, "phase": "restore_gate"},
-                )
-                raise CancellationError(job.id, "restore_gate")
-
-            self._append_event(
-                job.id,
-                "restore_started",
-                {
-                    "backup_filename": backup_spec.filename,
-                    "staging_db": job.staging_name,
-                },
-            )
-
-            # Note: orchestrate_restore_workflow internally profiles myloader, post_sql,
-            # metadata, and atomic_rename phases. We wrap the entire call here for
-            # the "restore" phase timing in the executor.
-            workflow_result = orchestrate_restore_workflow(workflow_spec)
-
-            # Add MYLOADER phase with throughput calculation from extracted dir size
-            myloader_result = workflow_result.get("myloader")
-            if myloader_result and hasattr(myloader_result, "duration_seconds"):
-                myloader_profile = profiler.profile.start_phase(RestorePhase.MYLOADER)
-                myloader_profile.duration_seconds = float(myloader_result.duration_seconds)
-                myloader_profile.completed_at = datetime.now(UTC)
-                # Calculate extracted directory size for accurate throughput
-                extracted_bytes = _get_dir_size(backup_dir)
-                if extracted_bytes > 0 and myloader_profile.duration_seconds > 0:
-                    myloader_profile.bytes_processed = extracted_bytes
-                    myloader_profile.bytes_per_second = (
-                        extracted_bytes / myloader_profile.duration_seconds
-                    )
-
-            # Add internal workflow phase durations to profiler (no throughput for SQL ops)
-            # These phases run inside orchestrate_restore_workflow and return timing in result
-            for phase_key, phase_enum in [
-                ("post_sql_duration_seconds", RestorePhase.POST_SQL),
-                ("metadata_duration_seconds", RestorePhase.METADATA),
-                ("atomic_rename_duration_seconds", RestorePhase.ATOMIC_RENAME),
-            ]:
-                if phase_key in workflow_result:
-                    # Create phase profile with just the duration
-                    phase_profile = profiler.profile.start_phase(phase_enum)
-                    phase_profile.duration_seconds = float(workflow_result[phase_key])  # type: ignore[arg-type]
-                    phase_profile.completed_at = datetime.now(UTC)
-
-            self._append_event(
-                job.id,
-                "restore_complete",
-                {
-                    "backup_filename": backup_spec.filename,
-                    "target": job.target,
-                },
-            )
-
-            # Complete profiling and emit profile event
-            profiler.complete()
-            self._append_event(
-                job.id,
-                "restore_profile",
-                profiler.profile.to_dict(),
-            )
-
-            self.job_repo.mark_job_deployed(job.id)
-            logger.info(
-                "Job deployed",
-                extra={
-                    "job_id": job.id,
-                    "target": job.target,
-                    "phase": "executor_deployed",
-                    "profile": profiler.profile.phase_breakdown,
-                },
-            )
         except CancellationError as exc:
             # Cancellation is controlled termination, not an error
             profiler.complete(error=f"Canceled at {exc.detail.get('phase', 'unknown')}")
