@@ -33,13 +33,13 @@ from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
 if TYPE_CHECKING:
-    from pulldb.domain.models import Job
-    from pulldb.infra.mysql import (
+    from pulldb.domain.interfaces import (
         HostRepository,
         JobRepository,
         SettingsRepository,
         UserRepository,
     )
+    from pulldb.domain.models import Job
     from pulldb.infra.secrets import MySQLCredentials
 
 

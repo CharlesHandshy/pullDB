@@ -174,15 +174,18 @@ class SimulatedJobRepository:
                 return None
             return max(user_jobs, key=lambda j: j.submitted_at)
 
-    def mark_job_deployed(self, job_id: str) -> None:
+    def mark_job_deployed(self, job_id: str) -> bool:
         """Mark job as deployed (database is live).
         
         Clears the worker processing lock (locked_at/locked_by) since
         the database is now available for user actions.
+        
+        Returns:
+            True if job was marked deployed, False if job not found or not running.
         """
         with self.state.lock:
             job = self.state.jobs.get(job_id)
-            if job:
+            if job and job.status == JobStatus.RUNNING:
                 updated = self._update_job_status(
                     job, 
                     JobStatus.DEPLOYED, 
@@ -198,6 +201,8 @@ class SimulatedJobRepository:
                     {"target": job.target},
                     job_id=job_id,
                 )
+                return True
+            return False
 
     def mark_job_user_completed(self, job_id: str) -> None:
         """Mark deployed job as complete (user is done with database)."""
@@ -388,7 +393,7 @@ class SimulatedJobRepository:
             ]
 
     def get_recent_jobs(
-        self, limit: int = 100, statuses: list[str] | None = None
+        self, limit: int = 100, offset: int = 0, statuses: list[str] | None = None
     ) -> list[Job]:
         """Get recent jobs (active + completed)."""
         with self.state.lock:
@@ -396,7 +401,8 @@ class SimulatedJobRepository:
             if statuses:
                 jobs = [j for j in jobs if j.status.value in statuses]
             
-            return sorted(jobs, key=lambda j: j.submitted_at, reverse=True)[:limit]
+            sorted_jobs = sorted(jobs, key=lambda j: j.submitted_at, reverse=True)
+            return sorted_jobs[offset : offset + limit]
 
     def get_user_last_job(self, user_code: str) -> Job | None:
         """Get the most recently submitted job for a user."""
@@ -1779,6 +1785,25 @@ class SimulatedUserRepository:
             code = self.generate_user_code(username)
             return self.create_user(username, code)
 
+    def create_user_with_code(self, username: str) -> User:
+        """Create new user with auto-generated user_code.
+
+        Unlike get_or_create_user, this method does NOT check for existing users.
+        It always attempts to create a new user.
+
+        Args:
+            username: Username for the new user.
+
+        Returns:
+            Newly created User instance.
+
+        Raises:
+            ValueError: If user_code cannot be generated or username invalid.
+        """
+        with self.state.lock:
+            code = self.generate_user_code(username)
+            return self.create_user(username, code)
+
     def check_user_code_exists(self, user_code: str) -> bool:
         """Check if user code already exists."""
         with self.state.lock:
@@ -2171,7 +2196,7 @@ class SimulatedHostRepository:
         self, hostname: str, max_concurrent: int, credential_ref: str | None,
         *, host_id: str | None = None, host_alias: str | None = None,
         max_running_jobs: int | None = None, max_active_jobs: int | None = None
-    ) -> str:
+    ) -> None:
         """Add a new host.
         
         Args:
@@ -2182,9 +2207,6 @@ class SimulatedHostRepository:
             host_alias: Optional short alias for the host.
             max_running_jobs: Optional max running jobs. Defaults to max_concurrent.
             max_active_jobs: Optional max active jobs. Defaults to max_running_jobs * 10.
-            
-        Returns:
-            The host ID.
         """
         with self.state.lock:
             if hostname in self.state.hosts:
@@ -2206,7 +2228,6 @@ class SimulatedHostRepository:
                 created_at=datetime.now(UTC)
             )
             self.state.hosts[hostname] = host
-            return final_id
 
     def update_host_config(
         self, host_id: str, *, host_alias: str | None = None,
@@ -2257,6 +2278,20 @@ class SimulatedHostRepository:
                 raise ValueError(f"Host not found: {hostname}")
             
             self.state.hosts[hostname] = replace(host, enabled=False)
+
+    def delete_host(self, hostname: str) -> None:
+        """Delete a database host by hostname.
+
+        Args:
+            hostname: Hostname to delete.
+
+        Raises:
+            ValueError: If host not found.
+        """
+        with self.state.lock:
+            if hostname not in self.state.hosts:
+                raise ValueError(f"Host not found: {hostname}")
+            del self.state.hosts[hostname]
 
     def search_hosts(self, query: str, limit: int = 10) -> list[DBHost]:
         """Search for hosts by hostname or alias.
