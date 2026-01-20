@@ -24,7 +24,7 @@ from typing import Any
 
 from pulldb.domain.errors import DiskCapacityError, DownloadError
 from pulldb.infra.logging import get_logger
-from pulldb.infra.s3 import BackupSpec, S3Client
+from pulldb.infra.s3 import BackupSpec, S3ClientProtocol
 
 
 logger = get_logger("pulldb.worker.downloader")
@@ -72,7 +72,7 @@ def ensure_disk_capacity(job_id: str, required_bytes: int, path: str) -> None:
 
 
 def download_backup(
-    s3: S3Client,
+    s3: S3ClientProtocol,
     spec: BackupSpec,
     job_id: str,
     dest_dir: str,
