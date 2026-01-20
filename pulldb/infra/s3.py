@@ -470,7 +470,7 @@ class S3Client:
 
 
 def discover_latest_backup(
-    s3: S3Client,
+    s3: S3ClientProtocol,
     bucket: str,
     prefix: str,
     target: str,

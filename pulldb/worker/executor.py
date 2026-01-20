@@ -42,6 +42,7 @@ from pulldb.infra.logging import get_logger
 from pulldb.infra.s3 import (
     BackupSpec,
     S3Client,
+    S3ClientProtocol,
     discover_latest_backup,
 )
 from pulldb.infra.secrets import MySQLCredentials
@@ -421,12 +422,18 @@ def _get_dir_size(path: Path) -> int:
 class WorkerExecutorDependencies:
     """Repositories and shared clients required by the executor.
 
-    Uses Any types to allow both real and simulated implementations.
+    Uses Protocol types to allow both real and simulated implementations
+    while enabling static type checking.
+
+    Attributes:
+        job_repo: Repository for job queue operations (JobRepository Protocol).
+        host_repo: Repository for database host info (HostRepository Protocol).
+        s3_client: S3 client for backup discovery/download (S3ClientProtocol).
     """
 
-    job_repo: Any  # JobRepository or SimulatedJobRepository
-    host_repo: Any  # HostRepository or SimulatedHostRepository
-    s3_client: Any  # S3Client or MockS3Client
+    job_repo: Any  # JobRepository Protocol - Any for simulation compatibility
+    host_repo: Any  # HostRepository Protocol - Any for simulation compatibility
+    s3_client: S3ClientProtocol  # S3Client or MockS3Client
 
 
 @dataclass(slots=True)
@@ -442,12 +449,12 @@ class WorkerExecutorTimeouts:
 class WorkerExecutorHooks:
     """Optional hook overrides for discovery, download, and extraction."""
 
-    discover_backup: Callable[[S3Client, str, str, str, str | None], BackupSpec] = (
+    discover_backup: Callable[[S3ClientProtocol, str, str, str, str | None], BackupSpec] = (
         discover_latest_backup
     )
     download_backup: Callable[
         [
-            S3Client,
+            S3ClientProtocol,
             BackupSpec,
             str,
             str,

@@ -5,22 +5,40 @@ HCA Layer: pages
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from pulldb.domain.config import Config
 
 if TYPE_CHECKING:
     from pulldb.auth import AuthRepository
+    from pulldb.domain.interfaces import (
+        HostRepository,
+        JobRepository,
+        SettingsRepository,
+        UserRepository,
+    )
+    from pulldb.infra.mysql import AuditRepository, MySQLPool
 
 
 class APIState(NamedTuple):
-    """Cached application state shared across requests."""
+    """Cached application state shared across requests.
+
+    Attributes:
+        config: Application configuration.
+        pool: MySQLPool in REAL mode, None in SIMULATION mode.
+        user_repo: Repository for user operations.
+        job_repo: Repository for job queue operations.
+        settings_repo: Repository for settings operations.
+        host_repo: Repository for database host operations.
+        auth_repo: Optional auth repository (Phase 4).
+        audit_repo: Optional audit logging repository.
+    """
 
     config: Config
-    pool: Any  # MySQLPool in REAL mode, None in SIMULATION mode
-    user_repo: Any  # UserRepository protocol
-    job_repo: Any  # JobRepository protocol
-    settings_repo: Any  # SettingsRepository protocol
-    host_repo: Any  # HostRepository protocol
-    auth_repo: "AuthRepository | None" = None  # Phase 4: Optional auth repository
-    audit_repo: Any = None  # AuditRepository for audit logging
+    pool: "MySQLPool | None"
+    user_repo: "UserRepository"
+    job_repo: "JobRepository"
+    settings_repo: "SettingsRepository"
+    host_repo: "HostRepository"
+    auth_repo: "AuthRepository | None" = None
+    audit_repo: "AuditRepository | None" = None
