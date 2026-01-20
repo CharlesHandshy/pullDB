@@ -75,7 +75,11 @@ class MockS3Client:
         self._bus = get_event_bus()
 
     def list_keys(
-        self, bucket: str, prefix: str, profile: str | None = None
+        self,
+        bucket: str,
+        prefix: str,
+        profile: str | None = None,
+        max_keys: int | None = None,
     ) -> list[str]:
         """Return keys under prefix (non recursive)."""
         with self.state.lock:
@@ -102,6 +106,9 @@ class MockS3Client:
                     results.add(key)
 
             sorted_results = sorted(results)
+            # Apply max_keys limit if specified
+            if max_keys is not None:
+                sorted_results = sorted_results[:max_keys]
             self._bus.emit(
                 EventType.S3_LIST_KEYS,
                 source="MockS3Client",

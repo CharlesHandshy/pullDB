@@ -191,7 +191,7 @@ def _build_job_repository(config: Config) -> JobRepository:
         kwargs["unix_socket"] = config.mysql_socket
 
     pool = MySQLPool(**kwargs)
-    return JobRepository(pool)  # type: ignore[return-value]
+    return JobRepository(pool)
 
 
 def _build_job_executor(

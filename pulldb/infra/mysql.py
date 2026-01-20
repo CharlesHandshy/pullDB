@@ -24,6 +24,7 @@ import mysql.connector
 from mysql.connector import errorcode
 from mysql.connector import errors as mysql_errors
 from mysql.connector.abstracts import MySQLConnectionAbstract
+from mysql.connector.pooling import PooledMySQLConnection
 
 from pulldb.domain.errors import LockedUserError
 from pulldb.domain.models import (
@@ -45,6 +46,25 @@ from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 
 
 logger = logging.getLogger(__name__)
+
+# Type aliases for MySQL cursor results with dictionary=True
+# These help Pylance understand the actual runtime types
+DictRow = dict[str, Any]
+
+
+def _dict_row(row: Any) -> DictRow | None:
+    """Cast fetchone() result to DictRow for cursors with dictionary=True.
+    
+    mysql-connector-python type stubs don't narrow the return type when
+    dictionary=True is passed. This helper provides type safety for the
+    actual runtime behavior.
+    """
+    return cast(DictRow | None, row)
+
+
+def _dict_rows(rows: Any) -> list[DictRow]:
+    """Cast fetchall() result to list[DictRow] for cursors with dictionary=True."""
+    return cast(list[DictRow], rows)
 
 
 _ACTIVE_JOBS_VIEW_QUERY = """
@@ -78,7 +98,7 @@ class MySQLPool:
         self._kwargs = kwargs
 
     @contextmanager
-    def connection(self) -> Iterator[MySQLConnectionAbstract]:
+    def connection(self) -> Iterator[PooledMySQLConnection | MySQLConnectionAbstract]:
         """Get a database connection from the pool.
 
         Yields:
@@ -91,7 +111,7 @@ class MySQLPool:
             conn.close()
 
     @contextmanager
-    def transaction(self) -> Iterator[MySQLConnectionAbstract]:
+    def transaction(self) -> Iterator[PooledMySQLConnection | MySQLConnectionAbstract]:
         """Get a database connection with explicit transaction control.
 
         Disables autocommit for manual transaction management. Commits on
