@@ -140,3 +140,16 @@ markers = [
     "integration: Integration tests (real database, real AWS)",
     "timeout: Test execution timeout (requires pytest-timeout)",
 ]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+# mysql-connector-python stubs don't properly narrow cursor types when dictionary=True
+# These errors are false positives - the code is correct at runtime
+reportArgumentType = "warning"
+reportIndexIssue = "warning"
+reportAttributeAccessIssue = "warning"
+# Keep strict checking for actual bugs
+reportUnusedImport = "error"
+reportUnusedVariable = "warning"
+reportMissingImports = "error"

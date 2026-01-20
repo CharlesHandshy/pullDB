@@ -352,6 +352,49 @@ class JobRepository(Protocol):
         """
         ...
 
+    def has_active_jobs_for_target(self, target: str, dbhost: str) -> bool:
+        """Check if there are any active jobs for a target.
+
+        Active jobs include queued, running, and canceling states.
+        Used as a safety check before allowing new job submission.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+
+        Returns:
+            True if active jobs exist, False otherwise.
+        """
+        ...
+
+    def get_locked_by_target(
+        self, target: str, dbhost: str, owner_user_id: str
+    ) -> "Job | None":
+        """Find a locked job for a specific target+host+user combination.
+
+        Used to check if a new restore should be blocked due to existing lock.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+            owner_user_id: User ID who owns the job.
+
+        Returns:
+            Locked Job if found, None otherwise.
+        """
+        ...
+
+    def supersede_job(self, job_id: str, superseded_by_job_id: str) -> None:
+        """Mark a job as superseded by a newer restore to the same target.
+
+        Sets status to 'superseded' and records the superseding job ID.
+
+        Args:
+            job_id: Job ID being superseded.
+            superseded_by_job_id: Job ID of the new restore.
+        """
+        ...
+
 class AuthRepository(Protocol):
     """Protocol for authentication operations.
 
