@@ -8,6 +8,7 @@ HCA Layer: shared
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from dataclasses import replace
@@ -1559,7 +1560,6 @@ class SimulatedJobRepository:
             self.state.jobs[job_id] = updated
 
             # Log event
-            import json
             event_detail = json.dumps({
                 "reason": "stale_job_recovery",
                 "recovered_by": worker_id,
@@ -3001,8 +3001,6 @@ class SimulatedAuditRepository:
         context: dict[str, Any] | None = None,
     ) -> str:
         """Record an audit log entry."""
-        import json
-
         with self.state.lock:
             audit_id = str(uuid.uuid4())
             entry = {
@@ -3026,8 +3024,6 @@ class SimulatedAuditRepository:
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         """Retrieve audit log entries with optional filtering."""
-        import json
-
         with self.state.lock:
             filtered = self.state.audit_logs[:]
             
