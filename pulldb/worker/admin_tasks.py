@@ -148,6 +148,9 @@ class AdminTaskExecutor:
 
         Args:
             task: The admin task with parameters.
+
+        Raises:
+            ValueError: If target_user_id or target_user_code is missing.
         """
         params = task.parameters_json or {}
         target_user_id = task.target_user_id

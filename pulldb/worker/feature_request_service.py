@@ -391,6 +391,9 @@ class FeatureRequestService:
             
         Returns:
             The updated request or None if not found.
+            
+        Raises:
+            ValueError: If vote_value is not 0 or 1.
         """
         if vote_value not in (0, 1):
             raise ValueError("vote_value must be 0 or 1")

@@ -96,6 +96,17 @@ def _discover_scripts(directory: Path) -> list[Path]:
 
 
 def _read_script(path: Path) -> str:
+    """Read a SQL script file with size validation.
+    
+    Args:
+        path: Path to the SQL script file.
+        
+    Returns:
+        Script content as UTF-8 string.
+        
+    Raises:
+        ValueError: If script exceeds MAX_SCRIPT_SIZE_BYTES.
+    """
     data = path.read_bytes()
     if len(data) > MAX_SCRIPT_SIZE_BYTES:
         raise ValueError(
