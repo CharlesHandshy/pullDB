@@ -1,7 +1,8 @@
 """Service interface contracts for pullDB Web UI.
 
-HCA Layer 0: Shared contracts
-Purpose: Define interfaces for services that features depend on.
+HCA Layer: shared
+
+Defines interfaces for services that features depend on.
 """
 
 from __future__ import annotations

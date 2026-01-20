@@ -1,7 +1,8 @@
 """Page interface contracts for pullDB Web UI.
 
-HCA Layer 0: Shared contracts
-Purpose: Define the contract for page context data.
+HCA Layer: shared
+
+Defines the contract for page context data.
 """
 
 from __future__ import annotations

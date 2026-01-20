@@ -2,8 +2,9 @@ from __future__ import annotations
 
 """Contract interfaces for pullDB Web UI.
 
-HCA Layer 0: Shared contracts
-Purpose: Define interfaces that modules depend on, not implementations.
+HCA Layer: shared
+
+Defines interfaces that modules depend on, not implementations.
 """
 
 from pulldb.web.shared.contracts.page_contracts import (
