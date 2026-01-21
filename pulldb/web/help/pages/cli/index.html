@@ -99,7 +99,6 @@
                     <a href="#profile" class="sidebar-link">profile</a>
                     <a href="#hosts" class="sidebar-link">hosts</a>
                     <a href="#register" class="sidebar-link">register</a>
-                    <a href="#request-host-key" class="sidebar-link">request-host-key</a>
                     <a href="#setpass" class="sidebar-link">setpass</a>
                 </div>
                 <div class="sidebar-section">
@@ -844,7 +843,7 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
             <!-- Register Command -->
             <section class="content-section" id="register">
                 <h2>pulldb register</h2>
-                <p>Register a new pullDB account. Creates a user account linked to your SSH username.</p>
+                <p>Register a new pullDB account or request access from a new machine. Creates a user account linked to your SSH username.</p>
                 
                 <div class="command-card">
                     <div class="command-header">
@@ -859,84 +858,51 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                                 <td>--password</td>
                                 <td>No</td>
                                 <td>-</td>
-                                <td>Password for the new account (minimum 8 characters). If not provided, you'll be prompted.</td>
+                                <td>Password for the account (minimum 8 characters). Prompted if not provided.</td>
                             </tr>
                         </tbody>
                     </table>
+                    
+                    <h3>Behavior</h3>
+                    <ul>
+                        <li><strong>New User:</strong> Creates a new account with your system username. Account is disabled until approved by admin.</li>
+                        <li><strong>Existing User, New Machine:</strong> If you already have an account but run from a new computer, it automatically requests a new API key for this host.</li>
+                    </ul>
                 </div>
                 
-                <h3>Example</h3>
+                <h3>Example: New User</h3>
                 <div class="terminal-window" style="transform: none;">
                     <div class="terminal-header">
                         <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
-                        <span class="terminal-title">Register Account</span>
+                        <span class="terminal-title">Register New Account</span>
                     </div>
                     <div class="terminal-body">
                         <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb register</span></div>
-                        <div class="terminal-line output">Registering new pullDB account...</div>
-                        <div class="terminal-line output"></div>
-                        <div class="terminal-line output">Username: charles</div>
-                        <div class="terminal-line output">User code: chrles</div>
-                        <div class="terminal-line output"></div>
-                        <div class="terminal-line output">Enter password (min 8 characters): ********</div>
+                        <div class="terminal-line output">Password: ********</div>
                         <div class="terminal-line output">Confirm password: ********</div>
                         <div class="terminal-line output"></div>
-                        <div class="terminal-line output">Account created successfully!</div>
+                        <div class="terminal-line output">✓ Account created successfully!</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">  Username:  charles</div>
+                        <div class="terminal-line output">  User Code: chrles</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">✓ API credentials saved to ~/.pulldb/credentials</div>
+                        <div class="terminal-line output"></div>
+                        <div class="terminal-line output">Your account is pending approval.</div>
+                        <div class="terminal-line output">Contact an administrator to enable your account.</div>
                     </div>
                 </div>
                 
-                <div class="info-callout warning" style="margin-top: 16px;">
-                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                        <line x1="12" y1="9" x2="12" y2="13"/>
-                        <line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
-                    <div>
-                        <strong>Pending Approval:</strong> New accounts are created disabled. Contact an admin to:
-                        (1) enable your account with <code>pulldb-admin users enable &lt;username&gt;</code>, and
-                        (2) approve your API key with <code>pulldb-admin keys approve &lt;key_id&gt;</code>.
-                    </div>
-                </div>
-            </section>
-            
-            <!-- Request Host Key Command -->
-            <section class="content-section" id="request-host-key">
-                <h2>pulldb request-host-key</h2>
-                <p>Request an API key for a new host machine. Use this when you already have an account but need CLI access from a different computer.</p>
-                
-                <div class="command-card">
-                    <div class="command-header">
-                        <code class="command-name">pulldb request-host-key [--host-name TEXT]</code>
-                        <span class="command-badge">User Command</span>
-                    </div>
-                    
-                    <h3>Options</h3>
-                    <table class="param-table">
-                        <tbody>
-                            <tr>
-                                <td>--password</td>
-                                <td>No</td>
-                                <td>-</td>
-                                <td>Your current password. Prompted if not provided.</td>
-                            </tr>
-                            <tr>
-                                <td>--host-name</td>
-                                <td>No</td>
-                                <td>auto</td>
-                                <td>Hostname for this machine. Auto-detected if not provided.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <h3>Example</h3>
+                <h3>Example: Existing User, New Machine</h3>
                 <div class="terminal-window" style="transform: none;">
                     <div class="terminal-header">
                         <div class="terminal-buttons"><span class="btn-close"></span><span class="btn-minimize"></span><span class="btn-maximize"></span></div>
-                        <span class="terminal-title">Request Host Key</span>
+                        <span class="terminal-title">Request Access From New Machine</span>
                     </div>
                     <div class="terminal-body">
-                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb request-host-key</span></div>
+                        <div class="terminal-line"><span class="prompt">$</span> <span class="command">pulldb register</span></div>
+                        <div class="terminal-line output">User 'charles' already exists. Requesting API key for this machine...</div>
+                        <div class="terminal-line output"></div>
                         <div class="terminal-line output">Password: ********</div>
                         <div class="terminal-line output"></div>
                         <div class="terminal-line output">✓ API key requested successfully!</div>
@@ -952,6 +918,19 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                     </div>
                 </div>
                 
+                <div class="info-callout warning" style="margin-top: 16px;">
+                    <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div>
+                        <strong>Pending Approval:</strong> New accounts and API keys require admin approval. Contact an admin to:
+                        (1) enable your account with <code>pulldb-admin users enable &lt;username&gt;</code>, and
+                        (2) approve your API key with <code>pulldb-admin keys approve &lt;key_id&gt;</code>.
+                    </div>
+                </div>
+                
                 <div class="info-callout" style="margin-top: 16px;">
                     <svg class="callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/>
@@ -959,8 +938,7 @@ Use alias or hostname with: pulldb restore &lt;customer&gt; dbhost=&lt;alias&gt;
                         <line x1="12" y1="8" x2="12.01" y2="8"/>
                     </svg>
                     <div>
-                        <strong>When to use:</strong> Each machine needs its own API key. Use <code>pulldb register</code> for your first machine,
-                        then <code>pulldb request-host-key</code> for additional machines.
+                        <strong>One key per machine:</strong> Each computer needs its own API key. Simply run <code>pulldb register</code> on any new machine—it will detect you already have an account and request a new key automatically.
                     </div>
                 </div>
             </section>

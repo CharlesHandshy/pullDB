@@ -257,13 +257,13 @@ def main() -> int:
     parser.add_argument(
         "--input",
         type=Path,
-        default=PROJECT_ROOT / "pulldb" / "web" / "help" / "screenshots" / "light",
+        default=PROJECT_ROOT / "pulldb" / "web" / "static" / "help" / "screenshots" / "light",
         help="Input directory containing screenshots",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=PROJECT_ROOT / "pulldb" / "web" / "help" / "screenshots" / "annotated" / "light",
+        default=PROJECT_ROOT / "pulldb" / "web" / "static" / "help" / "screenshots" / "annotated" / "light",
         help="Output directory for annotated screenshots",
     )
     

@@ -164,7 +164,7 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
                         </button>
                         <div class="accordion-content" x-show="open === 1" x-transition:enter="accordion-enter" x-transition:leave="accordion-leave">
-                            <p><strong>Symptoms:</strong> Job fails in <code>downloading</code> phase with S3 access error.</p>
+                            <p><strong>Symptoms:</strong> Job fails in <code>download</code> phase with S3 access error.</p>
                             
                             <p><strong>Causes:</strong></p>
                             <ul>
@@ -261,7 +261,7 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
                         </button>
                         <div class="accordion-content" x-show="open === 1" x-transition>
-                            <p><strong>Symptoms:</strong> Job fails in <code>restoring</code> phase with CREATE DATABASE error.</p>
+                            <p><strong>Symptoms:</strong> Job fails in <code>myloader</code> phase with CREATE DATABASE error.</p>
                             
                             <p><strong>Causes:</strong></p>
                             <ul>
@@ -289,7 +289,7 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
                         </button>
                         <div class="accordion-content" x-show="open === 2" x-transition>
-                            <p><strong>Symptoms:</strong> Job fails in <code>finalizing</code> phase because target database exists.</p>
+                            <p><strong>Symptoms:</strong> Job fails in <code>atomic_rename</code> phase because target database exists.</p>
                             
                             <p><strong>Solution:</strong> Add <code>overwrite</code> to replace the existing database:</p>
                             <div class="terminal-window" style="transform: none; margin: 12px 0;">
@@ -487,8 +487,8 @@
                                         </div>
                                     </div>
                                 </li>
-                                <li><code>downloading</code> - Large backup, check progress %</li>
-                                <li><code>restoring</code> - Large database, can take 10+ minutes</li>
+                                <li><code>download</code> - Large backup, check progress %</li>
+                                <li><code>myloader</code> - Large database, can take 10+ minutes</li>
                                 <li>If truly stuck, cancel and retry:
                                     <div class="terminal-window" style="transform: none; margin: 12px 0;">
                                         <div class="terminal-body">

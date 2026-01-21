@@ -336,28 +336,42 @@ stateDiagram-v2
                 <div class="diagram-container">
                     <div class="mermaid" data-mermaid="flowchart LR
     subgraph RUNNING
-    A[downloading] --> B[extracting]
-    B --> C[restoring]
-    C --> D[post_sql]
-    D --> E[finalizing]
+    A[discovery] --> B[download]
+    B --> C[extraction]
+    C --> D[myloader]
+    D --> E[post_sql]
+    E --> F[atomic_rename]
     end
-    E --> F((COMPLETE))">
+    F --> G((DEPLOYED))">
 flowchart LR
     subgraph RUNNING
-    A[downloading] --> B[extracting]
-    B --> C[restoring]
-    C --> D[post_sql]
-    D --> E[finalizing]
+    A[discovery] --> B[download]
+    B --> C[extraction]
+    C --> D[myloader]
+    D --> E[post_sql]
+    E --> F[atomic_rename]
     end
-    E --> F((COMPLETE))
+    F --> G((DEPLOYED))
                     </div>
                 </div>
                 
                 <div class="phase-list">
                     <div class="phase-item">
+                        <div class="phase-icon">🔍</div>
+                        <div class="phase-content">
+                            <h3>discovery</h3>
+                            <p>Searches S3 for matching backups and selects the best one based on date and customer name.</p>
+                            <div class="phase-details">
+                                <span><strong>Typical time:</strong> 1-5s</span>
+                                <span><strong>Depends on:</strong> S3 listing speed, number of backups</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="phase-item">
                         <div class="phase-icon">📥</div>
                         <div class="phase-content">
-                            <h3>downloading</h3>
+                            <h3>download</h3>
                             <p>Downloads the compressed backup from S3 to local storage. Progress is tracked and reported.</p>
                             <div class="phase-details">
                                 <span><strong>Typical time:</strong> 30s - 5min</span>
@@ -369,7 +383,7 @@ flowchart LR
                     <div class="phase-item">
                         <div class="phase-icon">📦</div>
                         <div class="phase-content">
-                            <h3>extracting</h3>
+                            <h3>extraction</h3>
                             <p>Decompresses the backup archive. Output size is typically 2-3x the compressed size.</p>
                             <div class="phase-details">
                                 <span><strong>Typical time:</strong> 15s - 2min</span>
@@ -381,7 +395,7 @@ flowchart LR
                     <div class="phase-item">
                         <div class="phase-icon">🔄</div>
                         <div class="phase-content">
-                            <h3>restoring</h3>
+                            <h3>myloader</h3>
                             <p>
                                 Runs <code>myloader</code> to load the data into a <strong>staging database</strong>.
                                 This is usually the longest phase.
@@ -414,9 +428,9 @@ flowchart LR
                     <div class="phase-item">
                         <div class="phase-icon">✨</div>
                         <div class="phase-content">
-                            <h3>finalizing</h3>
+                            <h3>atomic_rename</h3>
                             <p>
-                                Performs the <a href="atomic-rename.html">atomic rename</a> from staging to target database.
+                                Performs the atomic rename from staging to target database.
                                 This is instantaneous and ensures zero downtime.
                             </p>
                             <div class="phase-details">
@@ -665,13 +679,13 @@ flowchart LR
             <section class="related-pages">
                 <h2>Related Pages</h2>
                 <div class="related-cards">
-                    <a href="atomic-rename.html" class="related-card">
-                        <h3>Atomic Rename</h3>
-                        <p>How pullDB ensures zero-downtime database switches</p>
+                    <a href="../cli/index.html#restore" class="related-card">
+                        <h3>Submit a Restore</h3>
+                        <p>Learn how to submit restore jobs via CLI</p>
                     </a>
-                    <a href="staging-databases.html" class="related-card">
-                        <h3>Staging Databases</h3>
-                        <p>Understanding temporary staging databases</p>
+                    <a href="../cli/index.html#status" class="related-card">
+                        <h3>Check Job Status</h3>
+                        <p>Monitor your jobs with the status command</p>
                     </a>
                     <a href="../troubleshooting/index.html" class="related-card">
                         <h3>Troubleshooting</h3>

@@ -401,10 +401,12 @@
                     For running jobs, the progress bar shows which phase is currently executing:
                 </p>
                 <ul class="feature-list">
+                    <li><strong>DISCOVERY</strong> — Finding the best backup in S3</li>
                     <li><strong>DOWNLOAD</strong> — Downloading backup from S3</li>
-                    <li><strong>RESTORE</strong> — Restoring database with myloader</li>
+                    <li><strong>EXTRACTION</strong> — Decompressing backup archive</li>
+                    <li><strong>MYLOADER</strong> — Restoring database with myloader</li>
                     <li><strong>POST_SQL</strong> — Running post-restore SQL scripts</li>
-                    <li><strong>CLEANUP</strong> — Removing temporary files</li>
+                    <li><strong>ATOMIC_RENAME</strong> — Switching staging to target database</li>
                 </ul>
                 <figure class="screenshot">
                     <picture>

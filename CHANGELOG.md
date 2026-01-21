@@ -1,6 +1,33 @@
 CHANGELOG
 =========
 
+v1.0.6 - 2026-01-21
+-------------------
+### Help Documentation & Screenshots Refresh
+
+Complete audit and refresh of Web UI help documentation with fresh screenshots.
+
+### Added
+- `scripts/capture_all_help_screenshots.py` - Automated Playwright screenshot capture tool
+- `requests/feature-requests.png` screenshots (light + dark modes)
+- Full dark/light mode screenshot support for help pages
+
+### Changed
+- Refreshed all 256 help screenshots (66 light + 66 dark raw, 62+62 annotated)
+- Fixed `scripts/annotate_screenshots.py` path bug (web/help → web/static/help)
+- Updated help HTML content for accuracy and consistency across all pages:
+  - Fixed CLI command references and examples
+  - Corrected API endpoint documentation  
+  - Updated job lifecycle descriptions
+  - Improved troubleshooting guidance
+
+### Documentation
+- Help index page content audit and fixes
+- API documentation accuracy improvements
+- CLI reference updates
+- Job lifecycle concept clarifications
+- Troubleshooting page enhancements
+
 v1.0.5 - 2026-01-18
 -------------------
 ### Admin Job Submission & Heartbeat Fix
