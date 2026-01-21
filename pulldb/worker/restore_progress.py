@@ -210,8 +210,18 @@ class RestoreProgressTracker:
     )
     _RE_VERBOSE_RESTORE = re.compile(
         r"Thread \d+: restoring .+ from (.+?)(?: \||\. Tables|$)"
+    )    # Definitive signal that data loading is complete for a table
+    # Message: "Thread N: Enqueuing index for table: staging_db.tablename"
+    _RE_ENQUEUE_INDEX = re.compile(
+        r"Thread\s+\d+:\s+Enqueuing index for table:\s+([^\s.]+)\.([^\s]+)",
+        re.IGNORECASE,
     )
-
+    # Signal that index rebuild has started
+    # Message: "restoring index: staging_db.tablename"
+    _RE_RESTORING_INDEX = re.compile(
+        r"restoring index:\s+([^\s.]+)\.([^\s]+)",
+        re.IGNORECASE,
+    )
     def __init__(
         self,
         table_metadata: list[TableRowEstimate],
@@ -325,16 +335,81 @@ class RestoreProgressTracker:
     def update_from_myloader_line(self, line: str) -> None:
         """Update progress from myloader stdout line.
 
-        Called for each line of myloader output. Detects completion events
-        and marks tables as done.
+        Called for each line of myloader output. Detects:
+        - File completions (chunk finished)
+        - Index enqueue (data 100% complete for table)
+        - Index restore start (indexing phase began)
 
         Args:
             line: Single line from myloader stdout/stderr.
         """
-        # Check for file completion
+        # Check for "Enqueuing index" = data load complete, entering indexing
+        if match := self._RE_ENQUEUE_INDEX.search(line):
+            table_name = match.group(2)  # group(1) is db, group(2) is table
+            self._mark_data_complete(table_name)
+            return
+
+        # Check for "restoring index" = index rebuild actively running
+        if match := self._RE_RESTORING_INDEX.search(line):
+            table_name = match.group(2)
+            self._mark_indexing_started(table_name)
+            return
+
+        # Check for file completion (less reliable but useful for progress)
         table_name = self._extract_completed_table(line)
         if table_name:
             self.mark_table_file_complete(table_name)
+
+    def _mark_data_complete(self, table_name: str) -> None:
+        """Mark table's data load as 100% complete, entering indexing phase.
+
+        Called when myloader emits 'Enqueuing index for table'.
+        This is the definitive signal that all data chunks are loaded.
+
+        Args:
+            table_name: Table name from myloader output.
+        """
+        bare_name = self._normalize_table_name(table_name)
+
+        with self._lock:
+            state = self._tables.get(bare_name)
+            if state is None:
+                logger.debug(f"Ignoring enqueue for unknown table: {table_name}")
+                return
+
+            if state.is_complete:
+                return
+
+            # Data is 100% complete, now entering indexing phase
+            state.percent_complete = 100.0
+            state.phase = "indexing"
+            logger.info(f"Table {bare_name}: data complete, indexes queued")
+
+            self._emit_progress("file_complete")
+
+    def _mark_indexing_started(self, table_name: str) -> None:
+        """Mark table as actively rebuilding indexes.
+
+        Called when myloader emits 'restoring index: db.table'.
+
+        Args:
+            table_name: Table name from myloader output.
+        """
+        bare_name = self._normalize_table_name(table_name)
+
+        with self._lock:
+            state = self._tables.get(bare_name)
+            if state is None:
+                return
+
+            if state.is_complete:
+                return
+
+            # Ensure we're in indexing phase
+            if state.phase != "indexing":
+                state.percent_complete = 100.0
+                state.phase = "indexing"
+                logger.debug(f"Table {bare_name}: indexing started")
 
     def mark_table_file_complete(self, table_name: str) -> None:
         """Mark a table's data file as complete.
