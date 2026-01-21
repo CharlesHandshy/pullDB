@@ -735,6 +735,7 @@
 /* Progress bar fill */
 .log-progress-bar {
     height: 100%;
+    max-width: 100%; /* Clamp to container even if width > 100% */
     border-radius: var(--radius-full);
     transition: width var(--transition-base);
 }

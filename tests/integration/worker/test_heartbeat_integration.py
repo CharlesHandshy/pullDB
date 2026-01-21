@@ -26,7 +26,7 @@ from pulldb.worker.heartbeat import (
     HeartbeatContext,
     HeartbeatThread,
 )
-from pulldb.worker.metadata_synthesis import (
+from pulldb.worker.backup_metadata import (
     ESTIMATED_BYTES_PER_ROW,
     LARGE_FILE_THRESHOLD_BYTES,
     MYDUMPER_DEFAULT_ROWS_PER_CHUNK,

@@ -14,8 +14,6 @@ HCA Layer: features
 from __future__ import annotations
 
 import logging
-import re
-import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -51,7 +49,6 @@ from pulldb.worker.atomic_rename import (
     atomic_rename_staging_to_target,
 )
 from pulldb.worker.backup_metadata import (
-    ensure_myloader_compatibility,
     get_backup_metadata,
 )
 from pulldb.worker.metadata import (
@@ -63,6 +60,7 @@ from pulldb.worker.post_sql import PostSQLConnectionSpec, execute_post_sql
 from pulldb.worker.processlist_monitor import (
     ProcesslistMonitor,
     ProcesslistMonitorConfig,
+    ProcesslistSnapshot,
 )
 from pulldb.worker.staging import (
     StagingConnectionSpec,
@@ -260,6 +258,10 @@ def run_myloader(
 ) -> MyLoaderResult:
     """Execute myloader and return structured result.
 
+    Uses RestoreProgressTracker for unified, row-based progress tracking.
+    Progress is primarily derived from processlist polling (real-time per-table
+    progress), with myloader stdout confirming completions.
+
     Args:
         spec: Myloader command specification.
         timeout: Optional timeout in seconds.
@@ -272,6 +274,8 @@ def run_myloader(
         MyLoaderError: On non-zero exit, startup failure, or timeout.
         CommandAbortedError: If abort_check returns True during execution.
     """
+    from pulldb.worker.restore_progress import create_progress_tracker
+
     logger = logging.getLogger("pulldb.restore.myloader")
     command = _build_command(spec)
 
@@ -282,154 +286,39 @@ def run_myloader(
     # Get backup metadata (ensures compatibility + extracts row counts)
     # This emits metadata_synthesis_started/complete events if callback provided
     backup_meta = get_backup_metadata(spec.backup_dir, event_callback=event_callback)
-    total_rows = backup_meta.total_rows
     logger.info(
         f"Backup metadata: format={backup_meta.format.value}, "
-        f"{len(backup_meta.tables)} tables, {total_rows:,} total rows"
+        f"{len(backup_meta.tables)} tables, {backup_meta.total_rows:,} total rows"
     )
 
-    # Count tasks for file-based progress
-    total_tasks = _count_restore_tasks(spec.backup_dir)
-    completed_tasks = 0
-    logger.info(f"Total restore tasks (files): {total_tasks}")
-
-    # Track rows for throughput calculation
-    restore_start_time = time.monotonic()
-    rows_restored = 0  # Estimated from file completions
-
-    # Build table -> row count mapping for row-based estimates
-    table_row_counts: dict[str, int] = {}
-    for t in backup_meta.tables:
-        table_row_counts[t.table] = t.rows
-
-    # Regex for parsing myloader output
-    re_restoring = re.compile(r"(?:Thread \d+|Message: Thread \d+) restoring (.+)")
-    re_finished = re.compile(
-        r"(?:Thread \d+|Message: Thread \d+) finished restoring (.+)"
-    )
-    re_verbose_restore = re.compile(
-        r"Thread \d+: restoring .+ from (.+?)(?: \||\. Tables|$)"
+    # Create progress tracker - single source of truth
+    tracker = create_progress_tracker(
+        table_metadata=backup_meta.tables,
+        progress_callback=progress_callback,
     )
 
-    def _progress_callback(line: str) -> None:
-        """Parse myloader output line and emit progress updates.
-        
-        Parses thread status messages to track:
-        - Files started/finished restoring
-        - Row count estimates from table metadata
-        - Throughput and ETA calculations
-        
-        Updates nonlocal counters (completed_tasks, rows_restored) and
-        calls progress_callback with detailed status dict.
-        
-        Args:
-            line: Single line of myloader stdout/stderr output.
-        """
-        nonlocal completed_tasks, rows_restored
+    # Connect processlist monitor to tracker
+    if processlist_monitor is not None:
+        # Store original callback and chain through tracker
+        original_pl_callback = processlist_monitor._progress_callback
 
-        filename = None
-        is_finished = False
+        def tracker_processlist_callback(snapshot: ProcesslistSnapshot) -> None:
+            tracker.update_from_processlist(snapshot)
+            # Also call original if set
+            if original_pl_callback:
+                original_pl_callback(snapshot)
 
-        # Check for verbose output
-        match_verbose = re_verbose_restore.search(line)
-        if match_verbose:
-            raw_filename = match_verbose.group(1).strip()
-            filename = Path(raw_filename).name.rstrip(".")
-            is_finished = True
-        elif match_finish := re_finished.search(line):
-            filename = match_finish.group(1).strip()
-            is_finished = True
-        elif match_start := re_restoring.search(line):
-            filename = match_start.group(1).strip()
-            if progress_callback:
-                percent = min(
-                    100.0,
-                    (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0,
-                )
-                # Get processlist snapshot for per-table progress
-                tables_progress = {}
-                active_threads = 0
-                if processlist_monitor:
-                    snapshot = processlist_monitor.get_snapshot()
-                    if snapshot:
-                        active_threads = snapshot.active_threads
-                        for tbl_name, tbl_prog in snapshot.tables.items():
-                            tables_progress[tbl_name] = {
-                                "percent_complete": tbl_prog.percent_complete
-                            }
-                progress_callback(
-                    percent,
-                    {
-                        "status": "started",
-                        "file": filename,
-                        "active_threads": active_threads,
-                        "tables": tables_progress,
-                    },
-                )
-            return
-        elif ("Finished restoring" in line or "Completed" in line) and not is_finished:
-            is_finished = True
-            parts = line.strip().split()
-            filename = parts[-1] if parts else "unknown"
+        processlist_monitor._progress_callback = tracker_processlist_callback
 
-        if is_finished and filename:
-            if ".sql" in filename:
-                completed_tasks += 1
-                # Estimate rows restored from filename (table.sql -> table row count)
-                # Extract table name from filename like "database.table.00000.sql.gz"
-                parts = Path(filename).stem.replace(".sql", "").split(".")
-                if len(parts) >= 2:
-                    table_name = parts[1] if parts[0] != parts[1] else parts[0]
-                    rows_restored += table_row_counts.get(table_name, 0)
-
-            percent = min(
-                100.0, (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0
-            )
-
-            if progress_callback:
-                # Calculate throughput and ETA
-                elapsed = time.monotonic() - restore_start_time
-                rows_per_second = int(rows_restored / elapsed) if elapsed > 0 else 0
-                remaining_rows = total_rows - rows_restored
-                eta_seconds = int(remaining_rows / rows_per_second) if rows_per_second > 0 else None
-
-                # Get processlist snapshot for per-table progress
-                tables_progress = {}
-                active_threads = 0
-                if processlist_monitor:
-                    snapshot = processlist_monitor.get_snapshot()
-                    if snapshot:
-                        active_threads = snapshot.active_threads
-                        for tbl_name, tbl_prog in snapshot.tables.items():
-                            tables_progress[tbl_name] = {
-                                "percent_complete": tbl_prog.percent_complete
-                            }
-
-                progress_callback(
-                    percent,
-                    {
-                        "status": "finished",
-                        "file": filename,
-                        "rows_restored": rows_restored,
-                        "total_rows": total_rows,
-                        "rows_per_second": rows_per_second,
-                        "eta_seconds": eta_seconds,
-                        "active_threads": active_threads,
-                        "tables": tables_progress,
-                    },
-                )
-
-            # Log every 10%
-            if completed_tasks % max(1, total_tasks // 10) == 0:
-                logger.info(
-                    f"Restore progress: {percent:.1f}% "
-                    f"({completed_tasks}/{total_tasks})"
-                )
+    # Line callback feeds tracker
+    def _line_callback(line: str) -> None:
+        """Parse myloader output line and update tracker."""
+        tracker.update_from_myloader_line(line)
 
     try:
         result: CommandResult = run_command_streaming(
             command,
-            line_callback=_progress_callback,
+            line_callback=_line_callback,
             env=spec.env,
             timeout=timeout,
             abort_check=abort_check,
@@ -459,6 +348,9 @@ def run_myloader(
             stdout=result.stdout[-STDOUT_TAIL_LIMIT:],
             stderr=result.stderr[-STDERR_TAIL_LIMIT:],
         )
+
+    # Finalize tracker - marks all tables complete
+    tracker.finalize()
 
     return MyLoaderResult(
         command=result.command,
@@ -550,37 +442,8 @@ def orchestrate_restore_workflow(
         )
 
         # Start processlist monitor for per-table progress tracking
+        # The RestoreProgressTracker in run_myloader will connect to this monitor
         processlist_monitor: ProcesslistMonitor | None = None
-
-        # Shared state for progress updates from processlist monitor thread
-        progress_state_lock = threading.Lock()
-        progress_state: dict[str, Any] = {"percent": 0.0}
-
-        def on_processlist_poll(snapshot: Any) -> None:
-            """Emit progress events on each processlist poll (every 2s)."""
-            if not spec.progress_callback:
-                return
-            # Only emit when there's actual activity
-            if snapshot.active_threads == 0 and not snapshot.tables:
-                return
-            # Build tables progress dict
-            tables_progress: dict[str, dict[str, float]] = {}
-            for tbl_name, tbl_prog in snapshot.tables.items():
-                tables_progress[tbl_name] = {
-                    "percent_complete": tbl_prog.percent_complete
-                }
-            # Get current percent from shared state
-            with progress_state_lock:
-                current_percent = progress_state.get("percent", 0.0)
-            # Emit progress event with processlist data
-            spec.progress_callback(
-                current_percent,
-                {
-                    "status": "processlist_update",
-                    "active_threads": snapshot.active_threads,
-                    "tables": tables_progress,
-                },
-            )
 
         try:
             monitor_config = ProcesslistMonitorConfig(
@@ -591,24 +454,13 @@ def orchestrate_restore_workflow(
                 staging_db=staging_result.staging_db,
                 poll_interval_seconds=2.0,
             )
-            processlist_monitor = ProcesslistMonitor(
-                monitor_config, progress_callback=on_processlist_poll
-            )
+            processlist_monitor = ProcesslistMonitor(monitor_config)
             processlist_monitor.start()
             logger.info(f"Started processlist monitor for {staging_result.staging_db}")
         except Exception as e:
             # Non-fatal: continue without processlist monitoring
             logger.warning(f"Failed to start processlist monitor: {e}")
             processlist_monitor = None
-
-        # Wrap progress callback to update shared state for processlist thread
-        def wrapped_progress_callback(
-            percent: float, detail: dict[str, Any]
-        ) -> None:
-            with progress_state_lock:
-                progress_state["percent"] = percent
-            if spec.progress_callback:
-                spec.progress_callback(percent, detail)
 
         _emit_event("myloader_started", {
             "staging_db": staging_result.staging_db,
@@ -623,15 +475,15 @@ def orchestrate_restore_workflow(
                 myloader_result = run_myloader(
                     spec.myloader_spec,
                     timeout=spec.timeout,
-                    progress_callback=wrapped_progress_callback,
+                    progress_callback=spec.progress_callback,
                     processlist_monitor=processlist_monitor,
                     abort_check=spec.abort_check,
                     event_callback=_emit_event,
                 )
         finally:
-            # Always stop the monitor
+            # Always stop the monitor - no final_poll needed since tracker handles finalization
             if processlist_monitor:
-                processlist_monitor.stop()
+                processlist_monitor.stop(final_poll=False)
                 logger.info("Stopped processlist monitor")
 
         result["myloader"] = myloader_result

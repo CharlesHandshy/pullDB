@@ -38,6 +38,12 @@ RE_INSERT_TABLE = re.compile(r"INSERT\s+INTO\s+`?([^\s`(]+)`?", re.IGNORECASE)
 # LOAD DATA LOCAL INFILE '...' INTO TABLE `tablename`
 RE_LOAD_TABLE = re.compile(r"INTO\s+TABLE\s+`?([^\s`(]+)`?", re.IGNORECASE)
 
+# Regex patterns for index rebuild detection (ALTER TABLE ... ADD KEY)
+# ALTER TABLE `tablename` ADD KEY ... or ALTER TABLE tablename ADD KEY/INDEX
+RE_ALTER_TABLE = re.compile(r"ALTER\s+TABLE\s+`?([^\s`(]+)`?", re.IGNORECASE)
+# Matches ADD KEY or ADD INDEX (index rebuild indicator)
+RE_ADD_KEY = re.compile(r"ADD\s+(?:KEY|INDEX)", re.IGNORECASE)
+
 
 @dataclass(slots=True)
 class TableProgress:
@@ -47,11 +53,15 @@ class TableProgress:
         table: Table name.
         percent_complete: Latest completion percentage (0-100).
         last_updated: Timestamp of last update.
+        phase: Current phase - 'loading' for data import, 'indexing' for ALTER TABLE.
+        running_seconds: Time column from processlist (seconds running).
     """
 
     table: str
     percent_complete: float = 0.0
     last_updated: float = field(default_factory=time.monotonic)
+    phase: str = "loading"  # 'loading' or 'indexing'
+    running_seconds: int = 0
 
 
 @dataclass(slots=True)
@@ -138,8 +148,29 @@ class ProcesslistMonitor:
             f"(interval={self._config.poll_interval_seconds}s)"
         )
 
-    def stop(self) -> None:
-        """Stop background polling thread."""
+    def stop(self, final_poll: bool = True) -> None:
+        """Stop background polling thread.
+
+        Args:
+            final_poll: If True, perform one final poll before stopping to capture
+                the last state of any in-progress tables. This prevents "orphaned"
+                table progress bars when myloader finishes faster than poll interval.
+        """
+        # Perform final poll BEFORE setting stop event to capture last state
+        if final_poll:
+            try:
+                snapshot = self.poll_once()
+                if snapshot:
+                    with self._lock:
+                        self._latest_snapshot = snapshot
+                    if self._progress_callback:
+                        try:
+                            self._progress_callback(snapshot)
+                        except Exception as e:
+                            logger.warning(f"Final progress callback error: {e}")
+            except Exception as e:
+                logger.warning(f"Final processlist poll error: {e}")
+
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=THREAD_JOIN_TIMEOUT_SECONDS)
@@ -224,9 +255,15 @@ class ProcesslistMonitor:
     def _parse_processlist_rows(
         self, rows: list[dict[str, Any]]
     ) -> ProcesslistSnapshot:
-        """Parse processlist rows into snapshot."""
+        """Parse processlist rows into snapshot.
+        
+        Detects two types of operations:
+        1. Data loading: INSERT/LOAD statements with /* Completed: XX% */ comments
+        2. Index rebuild: ALTER TABLE ... ADD KEY/INDEX statements
+        """
         tables: dict[str, TableProgress] = {}
         active_threads = 0
+        indexing_threads = 0
 
         # Debug: log all databases we see in processlist
         all_dbs = set()
@@ -235,14 +272,18 @@ class ProcesslistMonitor:
             if db:
                 all_dbs.add(db)
         if all_dbs:
-            logger.info(f"Processlist dbs seen: {all_dbs}, looking for: {self._config.staging_db}")
+            logger.debug(
+                "processlist_dbs_seen",
+                extra={"dbs": list(all_dbs), "staging_db": self._config.staging_db},
+            )
 
-        # Debug: log matching rows
+        # Process each row
         matching_rows = 0
         for row in rows:
-            # Filter for myloader threads on our staging DB
+            # Filter for threads on our staging DB
             db = row.get("db") or row.get("Db")
             info = row.get("Info") or row.get("info") or ""
+            time_col = row.get("Time") or row.get("time") or 0
 
             if db != self._config.staging_db:
                 continue
@@ -250,14 +291,42 @@ class ProcesslistMonitor:
             matching_rows += 1
             # Log the first few matching rows to debug
             if matching_rows <= DEBUG_LOG_ROW_LIMIT:
-                logger.info(f"Processlist row for {db}: Info type={type(info).__name__}, preview={str(info)[:DEBUG_INFO_PREVIEW_LENGTH] if info else 'None'}")
+                logger.debug(
+                    "processlist_row_matched",
+                    extra={
+                        "db": db,
+                        "info_preview": str(info)[:DEBUG_INFO_PREVIEW_LENGTH] if info else None,
+                    },
+                )
 
             if not info or not isinstance(info, str):
                 continue
 
-            # Look for INSERT or LOAD statements - may start with /* Completed: XX% */ comment
-            # myloader uses INSERT for row-based imports, LOAD DATA for newer bulk imports
             info_upper = info.upper()
+            
+            # Check for ALTER TABLE ... ADD KEY (index rebuild)
+            if "ALTER" in info_upper and RE_ADD_KEY.search(info):
+                alter_match = RE_ALTER_TABLE.search(info)
+                if alter_match:
+                    table_name = alter_match.group(1)
+                    indexing_threads += 1
+                    active_threads += 1
+                    
+                    # Parse Time column for running seconds
+                    running_seconds = 0
+                    try:
+                        running_seconds = int(time_col)
+                    except (ValueError, TypeError):
+                        pass
+                    
+                    # Update or create table progress with indexing phase
+                    self._update_table_progress(
+                        tables, table_name, percent=100.0,
+                        phase="indexing", running_seconds=running_seconds,
+                    )
+                    continue
+
+            # Check for INSERT/LOAD data operations with Completed comment
             has_completed = "/* COMPLETED:" in info_upper
             has_data_op = "INSERT" in info_upper or "LOAD" in info_upper
             if not (has_completed and has_data_op):
@@ -276,8 +345,8 @@ class ProcesslistMonitor:
             # Extract completion percentage
             percent = self._extract_percent(info)
 
-            # Update or create table progress
-            self._update_table_progress(tables, table_name, percent)
+            # Update or create table progress (data loading phase)
+            self._update_table_progress(tables, table_name, percent, phase="loading")
 
         snapshot = ProcesslistSnapshot(
             tables=tables,
@@ -285,7 +354,15 @@ class ProcesslistMonitor:
             timestamp=time.monotonic(),
         )
         if active_threads > 0 or tables:
-            logger.info(f"Processlist snapshot: {active_threads} threads, {len(tables)} tables: {list(tables.keys())[:5]}")
+            logger.debug(
+                "processlist_snapshot",
+                extra={
+                    "active_threads": active_threads,
+                    "indexing_threads": indexing_threads,
+                    "table_count": len(tables),
+                    "tables": list(tables.keys())[:5],
+                },
+            )
         return snapshot
 
     def _extract_percent(self, info: str) -> float:
@@ -303,17 +380,36 @@ class ProcesslistMonitor:
         tables: dict[str, TableProgress],
         table_name: str,
         percent: float,
+        phase: str = "loading",
+        running_seconds: int = 0,
     ) -> None:
-        """Update table progress tracking."""
+        """Update table progress tracking.
+        
+        Args:
+            tables: Dict to update
+            table_name: Name of table
+            percent: Completion percentage (0-100)
+            phase: 'loading' for data import, 'indexing' for ALTER TABLE
+            running_seconds: Time from processlist Time column
+        """
         if table_name in tables:
-            if percent > tables[table_name].percent_complete:
-                tables[table_name].percent_complete = percent
-                tables[table_name].last_updated = time.monotonic()
+            existing = tables[table_name]
+            # Only update percent if higher (loading phase)
+            # Always update to indexing phase if detected
+            if phase == "indexing" or percent > existing.percent_complete:
+                existing.percent_complete = percent
+                existing.last_updated = time.monotonic()
+            # Always update phase if moving to indexing
+            if phase == "indexing":
+                existing.phase = "indexing"
+                existing.running_seconds = running_seconds
         else:
             tables[table_name] = TableProgress(
                 table=table_name,
                 percent_complete=percent,
                 last_updated=time.monotonic(),
+                phase=phase,
+                running_seconds=running_seconds,
             )
 
 

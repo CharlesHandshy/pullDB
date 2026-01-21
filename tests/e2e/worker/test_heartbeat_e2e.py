@@ -23,7 +23,7 @@ from pulldb.worker.heartbeat import (
     HeartbeatContext,
     HeartbeatThread,
 )
-from pulldb.worker.metadata_synthesis import (
+from pulldb.worker.backup_metadata import (
     synthesize_metadata,
     ensure_compatible_metadata,
 )

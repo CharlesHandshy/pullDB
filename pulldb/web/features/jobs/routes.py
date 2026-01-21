@@ -282,7 +282,19 @@ EVENT_TO_PHASE: dict[str, str] = {
     "staging_cleanup_complete": "myloader",
     "myloader_started": "myloader",
     "restore_progress": "myloader",
+    # Index rebuild events - still in myloader phase
+    "table_data_progress": "myloader",
+    "table_index_rebuild_queued": "myloader",
+    "table_index_rebuild_started": "myloader",
+    "table_index_rebuild_confirmed": "myloader",
+    "table_index_rebuild_progress": "myloader",
+    "table_restore_complete": "myloader",
     "restore_complete": "post_sql",
+    # ANALYZE TABLE events
+    "table_analyze_started": "post_sql",
+    "table_analyze_complete": "post_sql",
+    "analyze_batch_started": "post_sql",
+    "analyze_batch_complete": "post_sql",
     "post_sql_started": "post_sql",
     "post_sql_script_complete": "post_sql",
     "post_sql_complete": "post_sql",
@@ -581,19 +593,19 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
     rows_restored = detail_info.get("rows_restored", 0)
     total_rows = detail_info.get("total_rows", 0)
     
-    # Normalize tables data for template
+    # Normalize tables data for template (clamp to 100%)
     tables = {}
     if isinstance(tables_data, dict):
         for table_name, table_info in tables_data.items():
             if isinstance(table_info, dict):
                 tables[table_name] = {
-                    "percent": table_info.get("percent_complete", 0.0),
+                    "percent": min(100.0, table_info.get("percent_complete", 0.0)),
                 }
             elif isinstance(table_info, (int, float)):
-                tables[table_name] = {"percent": float(table_info)}
+                tables[table_name] = {"percent": min(100.0, float(table_info))}
 
     return {
-        "percent_complete": percent if not is_complete else 100.0,
+        "percent_complete": min(100.0, percent) if not is_complete else 100.0,
         "current_file": current_file,
         "status": status,
         "is_complete": is_complete,

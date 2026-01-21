@@ -266,13 +266,14 @@
 
             {# Restore progress bar - overall progress + per-table #}
             {% if restore_stats %}
+            {% set restore_percent_clamped = [restore_stats.percent_complete, 100.0] | min %}
             <div class="log-progress log-progress--restore{% if restore_stats.is_complete %} log-progress--complete{% endif %}" id="restore-progress">
                 <div class="log-progress-bar-row">
                     <span class="log-progress-label">Restore</span>
                     <div class="log-progress-bar-container">
-                        <div class="log-progress-bar" style="width: {{ restore_stats.percent_complete }}%"></div>
+                        <div class="log-progress-bar" style="width: {{ restore_percent_clamped }}%"></div>
                     </div>
-                    <div class="log-progress-percent">{{ "%.1f" | format(restore_stats.percent_complete) }}%</div>
+                    <div class="log-progress-percent">{{ "%.1f" | format(restore_percent_clamped) }}%</div>
                     <span class="log-progress-stats">
                         {% if restore_stats.is_complete %}
                         ✓ {{ "{:,}".format(restore_stats.total_rows) if restore_stats.total_rows else '—' }} rows restored

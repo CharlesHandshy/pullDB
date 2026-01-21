@@ -2,7 +2,7 @@
 
 Tests the consolidated backup metadata handling for:
 - Metadata format detection
-- Row estimation using ISIZE
+- Row estimation using ISIZE and sampling
 - Binlog position parsing
 - Event callback support
 """
@@ -12,8 +12,10 @@ from pathlib import Path
 from typing import Any
 
 from pulldb.worker.backup_metadata import (
+    SAMPLE_BYTES,
     BackupMetadata,
     MetadataFormat,
+    _estimate_rows_by_sampling,
     count_rows_in_file,
     ensure_compatible_metadata,
     ensure_myloader_compatibility,
@@ -253,6 +255,102 @@ INSERT INTO `table` VALUES (4, 'd');
         """Returns 0 for nonexistent file."""
         count = count_rows_in_file("/nonexistent/file.sql.gz")
         assert count == 0
+
+
+class TestEstimateRowsBySampling:
+    """Tests for _estimate_rows_by_sampling function."""
+
+    def test_returns_zero_for_empty_file(self, tmp_path: Path) -> None:
+        """Returns 0 when ISIZE is 0."""
+        gz_path = tmp_path / "empty.sql.gz"
+        with gzip.open(gz_path, "wb") as f:
+            f.write(b"")
+
+        rows = _estimate_rows_by_sampling(str(gz_path))
+        assert rows == 0
+
+    def test_estimates_from_sample(self, tmp_path: Path) -> None:
+        """Estimates rows by sampling first bytes and extrapolating."""
+        rows_content = [f"({i},'value{i}')" for i in range(1000)]
+        content = "INSERT INTO `t` VALUES " + ",".join(rows_content) + ";\n"
+
+        gz_path = tmp_path / "data.sql.gz"
+        with gzip.open(gz_path, "wt") as f:
+            f.write(content)
+
+        estimated = _estimate_rows_by_sampling(str(gz_path))
+        # Should be within 25% of actual 1000 rows
+        assert 750 <= estimated <= 1250, f"Expected ~1000, got {estimated}"
+
+    def test_handles_extended_inserts(self, tmp_path: Path) -> None:
+        """Handles mydumper extended INSERT format correctly."""
+        rows = 500
+        content = "INSERT INTO `users` VALUES " + ",".join(
+            f"({i},'user{i}','user{i}@example.com')" for i in range(rows)
+        ) + ";\n"
+
+        gz_path = tmp_path / "extended.sql.gz"
+        with gzip.open(gz_path, "wt") as f:
+            f.write(content)
+
+        estimated = _estimate_rows_by_sampling(str(gz_path))
+        # Should be within 25% of actual 500 rows
+        assert 375 <= estimated <= 625, f"Expected ~500, got {estimated}"
+
+    def test_handles_mydumper_newline_format(self, tmp_path: Path) -> None:
+        """Handles real mydumper format with newlines between rows.
+
+        Mydumper actually outputs:
+            INSERT INTO `t` VALUES (1,'alice'),
+            (2,'bob'),
+            (3,'charlie');
+
+        Not the single-line format some tests use.
+        """
+        rows = 500
+        # Real mydumper format: comma + newline between rows
+        row_values = [f"({i},'user{i}','user{i}@example.com')" for i in range(rows)]
+        content = "INSERT INTO `users` VALUES " + ",\n".join(row_values) + ";\n"
+
+        gz_path = tmp_path / "mydumper_real.sql.gz"
+        with gzip.open(gz_path, "wt") as f:
+            f.write(content)
+
+        estimated = _estimate_rows_by_sampling(str(gz_path))
+        # Should be within 25% of actual 500 rows
+        assert 375 <= estimated <= 625, f"Expected ~500, got {estimated}"
+
+    def test_uses_fallback_when_no_rows(self, tmp_path: Path) -> None:
+        """Falls back when file has no INSERT statements."""
+        content = "CREATE TABLE `test` (id int);\n"
+        gz_path = tmp_path / "schema.sql.gz"
+        with gzip.open(gz_path, "wt") as f:
+            f.write(content)
+
+        estimated = _estimate_rows_by_sampling(str(gz_path))
+        # Should use fallback (size / 200)
+        assert estimated >= 1
+
+    def test_handles_nonexistent_file(self) -> None:
+        """Returns 0 for nonexistent file."""
+        estimated = _estimate_rows_by_sampling("/nonexistent/file.sql.gz")
+        assert estimated == 0
+
+    def test_custom_sample_size(self, tmp_path: Path) -> None:
+        """Respects custom sample_bytes parameter."""
+        rows_content = [f"({i},'data{i}')" for i in range(200)]
+        content = "INSERT INTO `t` VALUES " + ",".join(rows_content) + ";\n"
+
+        gz_path = tmp_path / "data.sql.gz"
+        with gzip.open(gz_path, "wt") as f:
+            f.write(content)
+
+        small_sample = _estimate_rows_by_sampling(str(gz_path), sample_bytes=1024)
+        large_sample = _estimate_rows_by_sampling(str(gz_path), sample_bytes=16384)
+
+        # Both should give reasonable estimates
+        assert 100 <= small_sample <= 400
+        assert 100 <= large_sample <= 400
 
 
 class TestBackwardsCompatibility:
