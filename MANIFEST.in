@@ -5,6 +5,13 @@ include pulldb/binaries/myloader-0.19.3-3
 # Post-restore SQL scripts (sanitize customer data for dev environments)
 recursive-include pulldb/template_after_sql *.sql *.md
 
+# Exclude tests from distribution (development only)
+prune pulldb/tests
+prune tests
+
+# Exclude legacy myloader binary (superseded by 0.19.3-3)
+exclude pulldb/binaries/myloader-0.9.5
+
 # Exclude test fixtures from distribution
 global-exclude pulldb/binaries/*.tar
 prune pulldb/binaries/dumps

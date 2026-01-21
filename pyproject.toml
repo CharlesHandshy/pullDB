@@ -65,18 +65,20 @@ pulldb = [
     "web/shared/**/*",
     "web/widgets/**/*",
     "web/help/**/*",
-    "binaries/myloader-*",
+    "binaries/myloader-0.19.3-3",
     "images/*",
     "template_after_sql/**/*",
 ]
 
 [tool.setuptools.exclude-package-data]
 pulldb = [
+    "tests/**/*",
     "binaries/*.tar",
     "binaries/*.txt",
     "binaries/*.log",
     "binaries/*.example",
     "binaries/mydumper-*",
+    "binaries/myloader-0.9.5",
     "binaries/zstd-local/**",
     "binaries/*-auth",
     "binaries/dumps/**",
