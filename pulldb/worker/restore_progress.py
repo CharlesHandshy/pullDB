@@ -251,6 +251,7 @@ class RestoreProgressTracker:
         # Mutable state
         self._tables: dict[str, _MutableTableState] = {}
         self._tables_completed: set[str] = set()
+        self._tables_in_processlist: set[str] = set()  # Currently active in processlist
 
         # Initialize table states
         for t in table_metadata:
@@ -299,6 +300,9 @@ class RestoreProgressTracker:
                 state.running_seconds = progress.running_seconds
                 state.last_seen_in_processlist = now
                 state.was_ever_seen = True
+
+            # Store current processlist tables for UI display
+            self._tables_in_processlist = tables_in_processlist
 
             # Check for tables that have left processlist
             # Mark complete if: was seen before, not in processlist now, and either:
@@ -607,9 +611,8 @@ class RestoreProgressTracker:
 
         # Build list of in-progress tables
         # For "finalized" source, include all tables that had progress
-        # For normal updates, only include tables currently active (in processlist recently)
+        # For normal updates, ONLY include tables currently in processlist
         in_progress: list[TableProgressInfo] = []
-        now = time.monotonic()
         
         for state in self._tables.values():
             include_table = False
@@ -618,15 +621,8 @@ class RestoreProgressTracker:
                 # Include all tables that had any progress (now 100%)
                 include_table = state.rows_total > 0
             else:
-                # Normal: include tables that are:
-                # 1. Not complete AND have been seen AND
-                # 2. Either: in processlist recently OR in indexing phase
-                #    (indexing tables may briefly leave processlist between
-                #     data thread ending and ALTER TABLE starting)
-                if not state.is_complete and state.was_ever_seen:
-                    time_since_seen = now - state.last_seen_in_processlist
-                    # Show if seen within last 5 seconds OR in indexing phase
-                    include_table = time_since_seen < 5.0 or state.phase == "indexing"
+                # Normal: ONLY include tables with active threads in processlist
+                include_table = state.name in self._tables_in_processlist
 
             if include_table:
                 table_rows = int(
