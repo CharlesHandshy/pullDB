@@ -2190,11 +2190,11 @@ async def bulk_cancel_jobs(
 class ExtendRetentionRequest(pydantic.BaseModel):
     """Request to extend job retention period."""
 
-    months: int = pydantic.Field(
-        default=1,
+    days: int = pydantic.Field(
+        default=7,
         ge=1,
-        le=12,
-        description="Number of months to extend retention by",
+        le=180,
+        description="Number of days to extend retention by (max 180 = ~6 months)",
     )
 
 
@@ -2221,7 +2221,7 @@ class RetentionActionResponse(pydantic.BaseModel):
 def _extend_job_retention(
     state: APIState,
     job_id: str,
-    months: int,
+    days: int,
     user: User,
 ) -> RetentionActionResponse:
     """Extend retention period for a job."""
@@ -2252,13 +2252,13 @@ def _extend_job_retention(
         user_repo=state.user_repo,
         settings_repo=settings_repo,
     )
-    retention_service.extend_job(job_id, months, user.user_id)
+    retention_service.extend_job(job_id, days, user.user_id)
 
     # Get updated job
     updated_job = state.job_repo.get_job_by_id(job_id)
     return RetentionActionResponse(
         success=True,
-        message=f"Extended retention by {months} month(s)",
+        message=f"Extended retention by {days} day(s)",
         job_id=job_id,
         expires_at=updated_job.expires_at if updated_job else None,
         locked_at=updated_job.locked_at if updated_job else None,
@@ -2373,11 +2373,11 @@ async def extend_job_retention(
 ) -> RetentionActionResponse:
     """Extend retention period for a job's database.
 
-    Adds additional months to the job's expiration date.
+    Adds additional days to the job's expiration date.
     Users can only extend their own jobs. Admins can extend any job.
     """
     return await run_in_threadpool(
-        _extend_job_retention, state, job_id, request.months, user
+        _extend_job_retention, state, job_id, request.days, user
     )
 
 
