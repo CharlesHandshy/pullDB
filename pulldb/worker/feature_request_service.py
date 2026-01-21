@@ -21,9 +21,10 @@ from pulldb.domain.feature_request import (
     FeatureRequestUpdate,
     NoteCreate,
 )
+from pulldb.infra.mysql import TypedDictCursor, TypedTupleCursor
 
 if TYPE_CHECKING:
-    from pulldb.infra.mysql import MySQLPool, TypedDictCursor, TypedTupleCursor
+    from pulldb.infra.mysql import MySQLPool
 
 
 logger = logging.getLogger(__name__)
