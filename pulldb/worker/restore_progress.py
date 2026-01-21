@@ -304,6 +304,8 @@ class RestoreProgressTracker:
             # Mark complete if: was seen before, not in processlist now, and either:
             #   - has file completions (myloader confirmed), OR
             #   - has been gone for > stale timeout (likely complete)
+            # BUT: don't mark complete if table is in indexing phase - it may be
+            #      between data thread ending and ALTER TABLE starting
             for state in self._tables.values():
                 if state.is_complete:
                     continue
@@ -318,6 +320,22 @@ class RestoreProgressTracker:
 
                 # Table was seen but is no longer in processlist
                 time_since_seen = now - state.last_seen_in_processlist
+
+                # Handle indexing tables specially - they may briefly leave
+                # processlist between data thread ending and ALTER starting.
+                # Only mark complete if gone for > 3 seconds.
+                if state.phase == "indexing":
+                    if time_since_seen > 3.0:
+                        # Indexing finished - table is complete
+                        state.is_complete = True
+                        state.percent_complete = 100.0
+                        state.phase = "complete"
+                        self._tables_completed.add(state.name)
+                        logger.info(
+                            f"Table {state.name} complete: indexing finished "
+                            f"(left processlist {time_since_seen:.1f}s ago)"
+                        )
+                    continue
 
                 # Mark complete if has file completions OR stale timeout exceeded
                 if state.files_completed > 0 or time_since_seen > _STALE_TABLE_TIMEOUT_SECONDS:
@@ -600,14 +618,15 @@ class RestoreProgressTracker:
                 # Include all tables that had any progress (now 100%)
                 include_table = state.rows_total > 0
             else:
-                # Normal: only include tables that are:
-                # 1. Not complete AND
-                # 2. Currently in processlist (seen within last poll interval) OR
-                # 3. Were recently active (for brief gaps between processlist polls)
+                # Normal: include tables that are:
+                # 1. Not complete AND have been seen AND
+                # 2. Either: in processlist recently OR in indexing phase
+                #    (indexing tables may briefly leave processlist between
+                #     data thread ending and ALTER TABLE starting)
                 if not state.is_complete and state.was_ever_seen:
                     time_since_seen = now - state.last_seen_in_processlist
-                    # Show if seen within last 5 seconds (allows for poll interval gaps)
-                    include_table = time_since_seen < 5.0
+                    # Show if seen within last 5 seconds OR in indexing phase
+                    include_table = time_since_seen < 5.0 or state.phase == "indexing"
 
             if include_table:
                 table_rows = int(
