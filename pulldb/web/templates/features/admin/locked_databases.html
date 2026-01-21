@@ -88,7 +88,7 @@
                             {% endif %}
                         </td>
                         <td>
-                            {{ item.job.locked_at.strftime('%Y-%m-%d %H:%M') if item.job.locked_at else 'N/A' }}
+                            {{ item.job.locked_at.strftime('%b %d, %y %H:%M') if item.job.locked_at else 'N/A' }}
                         </td>
                         <td>
                             <form method="POST" action="/web/admin/locked-databases/{{ item.job.id }}/unlock" 

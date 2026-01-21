@@ -96,7 +96,7 @@
                 <span class="details-header-label">Submitted</span>
                 <span class="details-header-value">
                     {% if job.submitted_at %}
-                    <span data-utc="{{ job.submitted_at.isoformat() }}Z" data-format="datetime">{{ job.submitted_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</span>
+                    <span data-utc="{{ job.submitted_at.isoformat() }}Z" data-format="datetime">{{ job.submitted_at.strftime('%b %d, %y %H:%M:%S') }} UTC</span>
                     {% else %}—{% endif %}
                 </span>
             </div>
@@ -107,11 +107,11 @@
                     {% if job.is_locked %}
                     <span class="badge badge-info">Locked</span>
                     {% elif job.is_expired %}
-                    <span data-utc="{{ job.expires_at.isoformat() }}Z" data-format="date">{{ job.expires_at.strftime('%Y-%m-%d') }}</span> <span class="badge badge-danger ml-1">Expired</span>
-                    {% elif job.is_expiring(7) %}
-                    <span data-utc="{{ job.expires_at.isoformat() }}Z" data-format="date">{{ job.expires_at.strftime('%Y-%m-%d') }}</span> <span class="badge badge-warning ml-1">Soon</span>
+                    <span data-utc="{{ job.expires_at.isoformat() }}Z" data-format="date">{{ job.expires_at.strftime('%b %d, %y') }}</span> <span class="badge badge-danger ml-1">Expired</span>
+                    {% elif job.is_expiring(7) %>
+                    <span data-utc="{{ job.expires_at.isoformat() }}Z" data-format="date">{{ job.expires_at.strftime('%b %d, %y') }}</span> <span class="badge badge-warning ml-1">Soon</span>
                     {% else %}
-                    <span data-utc="{{ job.expires_at.isoformat() }}Z" data-format="date">{{ job.expires_at.strftime('%Y-%m-%d') }}</span>
+                    <span data-utc="{{ job.expires_at.isoformat() }}Z" data-format="date">{{ job.expires_at.strftime('%b %d, %y') }}</span>
                     {% endif %}
                 </span>
             </div>

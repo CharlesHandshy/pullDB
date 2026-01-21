@@ -104,7 +104,7 @@
           render: (val) => '<code class="job-id-cell" style="font-size: 0.8em;">' + (val || '').substring(0, 12) + '</code>' },
         { key: 'oldest_event', label: 'Date', width: '95px', sortable: true, filterable: true,
           filterType: 'dateRange',
-          render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
+          render: (val) => val ? new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '-' },
         { key: 'status', label: 'Status', width: '100px', sortable: true, filterable: true,
           render: (val) => {
             const cls = val === 'complete' ? 'badge-success' : val === 'failed' ? 'badge-danger' : 'badge-neutral';

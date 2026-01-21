@@ -113,7 +113,7 @@
         { key: 'target_name', label: 'Target', width: '140px', sortable: true, filterable: true },
         { key: 'discovered_at', label: 'Found', width: '90px', sortable: true, filterable: true,
           filterType: 'dateRange',
-          render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
+          render: (val) => val ? new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '-' },
         { key: 'size_mb', label: 'Size', width: '75px', sortable: true,
           render: (val) => {
             if (val === null || val === undefined) return '<span class="size-cell" style="color: var(--gray-400);">-</span>';

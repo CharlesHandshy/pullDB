@@ -177,7 +177,7 @@
         },
         { key: 'restored_at', label: 'Restored', width: '90px', sortable: true, filterable: true,
           filterType: 'dateRange',
-          render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
+          render: (val) => val ? new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '-' },
         { key: 'restored_by', label: 'By', width: '100px', sortable: true, filterable: true,
           render: (val) => val ? '<span style="font-size: 0.85em;">' + val + '</span>' : '-' },
         { key: 'size_mb', label: 'Size', width: '75px', sortable: true,

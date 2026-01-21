@@ -495,7 +495,7 @@
                 <div class="card-body" style="padding: var(--space-3) var(--space-4);">
                     <div class="meta-info">
                         <span class="meta-label">Created</span>
-                        <span class="meta-value">{{ host.created_at.strftime('%b %d, %Y') if host.created_at else 'Unknown' }}</span>
+                        <span class="meta-value">{{ host.created_at.strftime('%b %d, %y') if host.created_at else 'Unknown' }}</span>
                     </div>
                     {% if host.resolved_host_uri %}
                     <div class="meta-info">

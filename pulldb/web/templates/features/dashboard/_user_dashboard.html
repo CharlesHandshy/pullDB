@@ -17,7 +17,7 @@
             <div class="job-detail-target">{{ last_job.target }}</div>
             <div class="job-detail-meta">
                 <span class="font-mono">{{ last_job.id[:8] }}</span>
-                · {% if last_job.submitted_at %}<span data-utc="{{ last_job.submitted_at.isoformat() }}Z" data-format="short">{{ last_job.submitted_at.strftime('%Y-%m-%d %H:%M') }}</span>{% else %}-{% endif %}
+                · {% if last_job.submitted_at %}<span data-utc="{{ last_job.submitted_at.isoformat() }}Z" data-format="short">{{ last_job.submitted_at.strftime('%b %d, %y %H:%M') }}</span>{% else %}-{% endif %}
             </div>
         </div>
         <div class="job-detail-actions">
@@ -67,7 +67,7 @@
                     </span>
                 </td>
                 <td class="text-muted text-sm">
-                    {% if job.submitted_at %}<span data-utc="{{ job.submitted_at.isoformat() }}Z" data-format="short">{{ job.submitted_at.strftime('%m/%d %H:%M') }}</span>{% else %}-{% endif %}
+                    {% if job.submitted_at %}<span data-utc="{{ job.submitted_at.isoformat() }}Z" data-format="short">{{ job.submitted_at.strftime('%b %d, %y %H:%M') }}</span>{% else %}-{% endif %}
                 </td>
             </tr>
             {% endfor %}

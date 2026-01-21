@@ -327,18 +327,18 @@
             </div>
             <div class="task-detail-row">
                 <span class="task-detail-label">Created</span>
-                <span class="task-detail-value">{{ task.created_at.strftime('%Y-%m-%d %H:%M:%S') if task.created_at else 'N/A' }}</span>
+                <span class="task-detail-value">{{ task.created_at.strftime('%b %d, %y %H:%M:%S') if task.created_at else 'N/A' }}</span>
             </div>
             {% if task.started_at %}
             <div class="task-detail-row">
                 <span class="task-detail-label">Started</span>
-                <span class="task-detail-value">{{ task.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                <span class="task-detail-value">{{ task.started_at.strftime('%b %d, %y %H:%M:%S') }}</span>
             </div>
             {% endif %}
             {% if task.completed_at %}
             <div class="task-detail-row">
                 <span class="task-detail-label">Completed</span>
-                <span class="task-detail-value">{{ task.completed_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                <span class="task-detail-value">{{ task.completed_at.strftime('%b %d, %y %H:%M:%S') }}</span>
             </div>
             {% endif %}
             </div>

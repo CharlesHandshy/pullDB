@@ -71,7 +71,7 @@
                                 </td>
                                 <td>{{ job.dbhost }}</td>
                                 <td class="text-danger">
-                                    {{ job.expires_at.strftime('%Y-%m-%d') if job.expires_at else 'N/A' }}
+                                    {{ job.expires_at.strftime('%b %d, %y') if job.expires_at else 'N/A' }}
                                 </td>
                                 <td>
                                     <div class="action-group">
@@ -132,7 +132,7 @@
                                 </td>
                                 <td>{{ job.dbhost }}</td>
                                 <td class="text-warning">
-                                    {{ job.expires_at.strftime('%Y-%m-%d') if job.expires_at else 'N/A' }}
+                                    {{ job.expires_at.strftime('%b %d, %y') if job.expires_at else 'N/A' }}
                                 </td>
                                 <td>
                                     <div class="action-group">
@@ -193,7 +193,7 @@
                                 </td>
                                 <td>{{ job.dbhost }}</td>
                                 <td>
-                                    {{ job.locked_at.strftime('%Y-%m-%d') if job.locked_at else 'N/A' }}
+                                    {{ job.locked_at.strftime('%b %d, %y') if job.locked_at else 'N/A' }}
                                 </td>
                                 <td>
                                     <div class="action-group">

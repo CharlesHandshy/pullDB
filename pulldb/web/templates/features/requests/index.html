@@ -636,7 +636,7 @@
     const formatDate = (val) => {
         if (!val) return '-';
         const d = new Date(val);
-        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
     };
 
     // Thumbs up SVG icon
@@ -1051,7 +1051,7 @@
         if (!dateStr) return '';
         const d = new Date(dateStr);
         return d.toLocaleString('en-US', { 
-            month: 'short', day: 'numeric', year: 'numeric',
+            month: 'short', day: 'numeric', year: '2-digit',
             hour: 'numeric', minute: '2-digit'
         });
     }

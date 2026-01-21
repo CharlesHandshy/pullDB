@@ -31,7 +31,7 @@
                 return date.toLocaleDateString('en-US', {
                     month: 'short',
                     day: 'numeric',
-                    year: 'numeric'
+                    year: '2-digit'
                 });
 
             case 'time':
@@ -58,7 +58,7 @@
                 return date.toLocaleString('en-US', {
                     month: 'short',
                     day: 'numeric',
-                    year: 'numeric',
+                    year: '2-digit',
                     hour: 'numeric',
                     minute: '2-digit',
                     hour12: true

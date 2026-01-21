@@ -81,7 +81,7 @@
     function renderDate(val) {
         if (!val) return '-';
         const d = new Date(val);
-        return d.toLocaleDateString();
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
     }
 
     /**

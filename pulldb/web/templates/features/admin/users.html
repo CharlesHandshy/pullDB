@@ -538,7 +538,7 @@
     const renderDate = (val) => {
         if (!val) return '-';
         const d = new Date(val);
-        return d.toLocaleDateString();
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
     };
     
     const currentUserId = '{{ user.user_id }}';
@@ -1495,8 +1495,8 @@
             const statusClass = !key.is_active ? 'revoked' : (key.is_approved ? 'active' : 'pending');
             const statusLabel = !key.is_active ? 'Revoked' : (key.is_approved ? 'Active' : 'Pending');
             
-            const createdDate = key.created_at ? new Date(key.created_at).toLocaleDateString() : '—';
-            const lastUsed = key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : 'Never';
+            const createdDate = key.created_at ? new Date(key.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—';
+            const lastUsed = key.last_used_at ? new Date(key.last_used_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : 'Never';
             
             html += `
                 <div class="api-key-item" id="api-key-item-${key.key_id}">
