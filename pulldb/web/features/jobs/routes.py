@@ -126,7 +126,6 @@ async def jobs_page(
 
     # Get retention settings for JavaScript
     expiring_warning_days = 7
-    expiring_danger_days = 3
     max_retention_days = 180
     jobs_refresh_interval = 5
     retention_options: list[tuple[str, str]] = []
@@ -135,8 +134,6 @@ async def jobs_page(
     if settings_repo:
         if hasattr(settings_repo, "get_expiring_warning_days"):
             expiring_warning_days = settings_repo.get_expiring_warning_days()
-        if hasattr(settings_repo, "get_expiring_danger_days"):
-            expiring_danger_days = settings_repo.get_expiring_danger_days()
         if hasattr(settings_repo, "get_max_retention_days"):
             max_retention_days = settings_repo.get_max_retention_days()
         if hasattr(settings_repo, "get_jobs_refresh_interval"):
@@ -169,7 +166,6 @@ async def jobs_page(
             "three_days_ago_iso": (datetime.now(UTC) - timedelta(days=3)).isoformat(),
             # Retention settings for JavaScript
             "expiring_warning_days": expiring_warning_days,
-            "expiring_danger_days": expiring_danger_days,
             "max_retention_days": max_retention_days,
             "jobs_refresh_interval": jobs_refresh_interval,
             "retention_options": retention_options,

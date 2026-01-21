@@ -5459,7 +5459,7 @@ class SettingsRepository:
             return 180
 
     def get_expiring_warning_days(self) -> int:
-        """Get days before expiry to show yellow warning badge.
+        """Get days before expiry to show yellow 'will expire soon' warning.
 
         Returns:
             Number of days. Default: 7.
@@ -5471,20 +5471,6 @@ class SettingsRepository:
             return max(0, int(value))
         except ValueError:
             return 7
-
-    def get_expiring_danger_days(self) -> int:
-        """Get days before expiry to show red danger badge.
-
-        Returns:
-            Number of days. Default: 3.
-        """
-        value = self.get_setting("expiring_danger_days")
-        if value is None:
-            return 3
-        try:
-            return max(0, int(value))
-        except ValueError:
-            return 3
 
     # Legacy methods for backward compatibility
     def get_max_retention_months(self) -> int:
