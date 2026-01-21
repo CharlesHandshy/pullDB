@@ -164,6 +164,12 @@ class _MutableTableState:
     is_complete: bool = False
     last_seen_in_processlist: float = 0.0
     files_completed: int = 0  # Track how many chunk files have finished
+    was_ever_seen: bool = False  # Track if table was ever in processlist
+
+
+# Timeout after which a table not in processlist is considered complete
+# If a table had progress and disappears for this long, it's done
+_STALE_TABLE_TIMEOUT_SECONDS = 10.0
 
 
 # =============================================================================
@@ -282,28 +288,36 @@ class RestoreProgressTracker:
                 state.phase = progress.phase
                 state.running_seconds = progress.running_seconds
                 state.last_seen_in_processlist = now
+                state.was_ever_seen = True
 
-            # Check for tables that have left processlist and have file completions
-            # These tables are fully done (all chunks loaded, indexes rebuilt)
+            # Check for tables that have left processlist
+            # Mark complete if: was seen before, not in processlist now, and either:
+            #   - has file completions (myloader confirmed), OR
+            #   - has been gone for > stale timeout (likely complete)
             for state in self._tables.values():
                 if state.is_complete:
                     continue
 
-                # Table was seen before but is no longer in processlist
-                if (
-                    state.last_seen_in_processlist > 0
-                    and state.name not in tables_in_processlist
-                    and state.files_completed > 0
-                ):
-                    # Table had activity, has file completions, now gone from processlist
-                    # This means it's fully complete (data + indexes)
+                # Skip tables never seen in processlist
+                if not state.was_ever_seen:
+                    continue
+
+                # Table is currently in processlist - not stale
+                if state.name in tables_in_processlist:
+                    continue
+
+                # Table was seen but is no longer in processlist
+                time_since_seen = now - state.last_seen_in_processlist
+
+                # Mark complete if has file completions OR stale timeout exceeded
+                if state.files_completed > 0 or time_since_seen > _STALE_TABLE_TIMEOUT_SECONDS:
                     state.is_complete = True
                     state.percent_complete = 100.0
                     state.phase = "complete"
                     self._tables_completed.add(state.name)
                     logger.info(
-                        f"Table {state.name} complete: left processlist after "
-                        f"{state.files_completed} file(s)"
+                        f"Table {state.name} complete: left processlist "
+                        f"({state.files_completed} files, {time_since_seen:.1f}s ago)"
                     )
 
             self._emit_progress("processlist")
@@ -499,17 +513,26 @@ class RestoreProgressTracker:
         eta = int(remaining / rps) if rps > 0 else None
 
         # Build list of in-progress tables
-        # For "finalized" source, include tables that were just marked complete
-        # so the UI can show them at 100% rather than disappearing
+        # For "finalized" source, include all tables that had progress
+        # For normal updates, only include tables currently active (in processlist recently)
         in_progress: list[TableProgressInfo] = []
+        now = time.monotonic()
+        
         for state in self._tables.values():
             include_table = False
+            
             if source == "finalized":
                 # Include all tables that had any progress (now 100%)
                 include_table = state.rows_total > 0
             else:
-                # Normal: only include actively in-progress tables
-                include_table = not state.is_complete and state.percent_complete > 0
+                # Normal: only include tables that are:
+                # 1. Not complete AND
+                # 2. Currently in processlist (seen within last poll interval) OR
+                # 3. Were recently active (for brief gaps between processlist polls)
+                if not state.is_complete and state.was_ever_seen:
+                    time_since_seen = now - state.last_seen_in_processlist
+                    # Show if seen within last 5 seconds (allows for poll interval gaps)
+                    include_table = time_since_seen < 5.0
 
             if include_table:
                 table_rows = int(
