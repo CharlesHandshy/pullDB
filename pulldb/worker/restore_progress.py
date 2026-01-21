@@ -163,6 +163,7 @@ class _MutableTableState:
     running_seconds: float = 0.0
     is_complete: bool = False
     last_seen_in_processlist: float = 0.0
+    files_completed: int = 0  # Track how many chunk files have finished
 
 
 # =============================================================================
@@ -257,12 +258,15 @@ class RestoreProgressTracker:
             snapshot: Latest processlist snapshot from MySQL.
         """
         now = time.monotonic()
+        # Track which tables are currently in processlist
+        tables_in_processlist: set[str] = set()
 
         with self._lock:
             # Update tables seen in processlist
             for table_name, progress in snapshot.tables.items():
                 # Handle table names with/without database prefix
                 bare_name = self._normalize_table_name(table_name)
+                tables_in_processlist.add(bare_name)
                 state = self._tables.get(bare_name)
 
                 if state is None:
@@ -271,13 +275,36 @@ class RestoreProgressTracker:
                     continue
 
                 if state.is_complete:
-                    # Already marked complete by myloader stdout
+                    # Already marked complete
                     continue
 
                 state.percent_complete = min(100.0, progress.percent_complete)
                 state.phase = progress.phase
                 state.running_seconds = progress.running_seconds
                 state.last_seen_in_processlist = now
+
+            # Check for tables that have left processlist and have file completions
+            # These tables are fully done (all chunks loaded, indexes rebuilt)
+            for state in self._tables.values():
+                if state.is_complete:
+                    continue
+
+                # Table was seen before but is no longer in processlist
+                if (
+                    state.last_seen_in_processlist > 0
+                    and state.name not in tables_in_processlist
+                    and state.files_completed > 0
+                ):
+                    # Table had activity, has file completions, now gone from processlist
+                    # This means it's fully complete (data + indexes)
+                    state.is_complete = True
+                    state.percent_complete = 100.0
+                    state.phase = "complete"
+                    self._tables_completed.add(state.name)
+                    logger.info(
+                        f"Table {state.name} complete: left processlist after "
+                        f"{state.files_completed} file(s)"
+                    )
 
             self._emit_progress("processlist")
 
@@ -299,7 +326,8 @@ class RestoreProgressTracker:
         """Mark a table's data file as complete.
 
         Called when myloader finishes restoring a file. For chunked tables,
-        this may be called multiple times (once per chunk).
+        this may be called multiple times (once per chunk). We track file
+        completions and use processlist disappearance to confirm full completion.
 
         Args:
             table_name: Table name from myloader output.
@@ -312,13 +340,18 @@ class RestoreProgressTracker:
                 logger.debug(f"Ignoring completion for unknown table: {table_name}")
                 return
 
-            # File completed - update progress
-            # For chunked tables, we'd need to track parts, but for simplicity
-            # we'll mark it complete when we see it no longer in processlist
-            # OR when myloader explicitly says "finished"
-            logger.debug(f"File completed for table: {bare_name}")
+            if state.is_complete:
+                return
 
-            # Don't emit here - wait for processlist to confirm or finalize()
+            # Track file completions
+            state.files_completed += 1
+            logger.debug(
+                f"File completed for table {bare_name}: "
+                f"{state.files_completed} files done"
+            )
+
+            # Emit progress event for this file completion
+            self._emit_progress("file_complete")
 
     def mark_table_complete(self, table_name: str) -> None:
         """Explicitly mark a table as fully complete.
