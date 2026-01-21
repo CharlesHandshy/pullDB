@@ -916,11 +916,46 @@
     transition: width var(--transition-fast);
 }
 
+/* Indexing phase - amber pulsing bar */
+.log-progress-table-bar--indexing {
+    background: var(--warning-400);
+    animation: indexing-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes indexing-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Complete phase - green solid */
+.log-progress-table-bar--complete {
+    background: var(--success-500);
+}
+
+.log-progress-table-row--complete {
+    opacity: 0.7;
+}
+
 .log-progress-table-percent {
     width: 35px;
     text-align: right;
     color: var(--gray-400);
     font-size: var(--text-xs);
+}
+
+/* Phase indicator (replaces percent when indexing/complete) */
+.log-progress-table-phase {
+    min-width: 70px;
+    text-align: right;
+    color: var(--warning-400);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    animation: indexing-pulse 1.5s ease-in-out infinite;
+}
+
+.log-progress-table-phase--complete {
+    color: var(--success-400);
+    animation: none;
 }
 
 /* ===========================================

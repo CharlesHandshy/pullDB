@@ -294,12 +294,20 @@
                 {% if restore_stats.tables %}
                 <div class="log-progress-tables">
                     {% for table_name, table in restore_stats.tables.items() %}
-                    <div class="log-progress-table-row">
+                    {% set is_indexing = table.phase == 'indexing' %}
+                    {% set is_complete = table.is_complete or table.phase == 'complete' %}
+                    <div class="log-progress-table-row{% if is_indexing %} log-progress-table-row--indexing{% elif is_complete %} log-progress-table-row--complete{% endif %}">
                         <span class="log-progress-table-name" title="{{ table_name }}">{{ table_name }}</span>
                         <div class="log-progress-table-bar-container">
-                            <div class="log-progress-table-bar" style="width: {{ table.percent }}%"></div>
+                            <div class="log-progress-table-bar{% if is_indexing %} log-progress-table-bar--indexing{% elif is_complete %} log-progress-table-bar--complete{% endif %}" style="width: {{ table.percent }}%"></div>
                         </div>
+                        {% if is_indexing %}
+                        <span class="log-progress-table-phase" title="Building indexes (ALTER TABLE)">🔧 Indexing</span>
+                        {% elif is_complete %}
+                        <span class="log-progress-table-phase log-progress-table-phase--complete">✓</span>
+                        {% else %}
                         <span class="log-progress-table-percent">{{ "%.0f" | format(table.percent) }}%</span>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 </div>

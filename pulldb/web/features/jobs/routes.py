@@ -600,9 +600,15 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
             if isinstance(table_info, dict):
                 tables[table_name] = {
                     "percent": min(100.0, table_info.get("percent_complete", 0.0)),
+                    "phase": table_info.get("phase", "loading"),
+                    "is_complete": table_info.get("is_complete", False),
                 }
             elif isinstance(table_info, (int, float)):
-                tables[table_name] = {"percent": min(100.0, float(table_info))}
+                tables[table_name] = {
+                    "percent": min(100.0, float(table_info)),
+                    "phase": "loading",
+                    "is_complete": False,
+                }
 
     return {
         "percent_complete": min(100.0, percent) if not is_complete else 100.0,
