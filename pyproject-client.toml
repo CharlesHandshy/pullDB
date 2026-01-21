@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pulldb-client"
-version = "1.0.5"
+version = "1.0.6"
 description = "pullDB CLI Client - Connect to remote pullDB services"
 readme = "packaging/CLIENT-README.md"
 license = { text = "MIT" }

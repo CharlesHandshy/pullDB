@@ -6,17 +6,17 @@ Purpose: a single-source, trimmed knowledge base used by agents and maintainers.
 
 **Related:** [Deployment](deployment.md) · [policies/](policies/) · [terraform/](terraform/)
 
-Last updated: 2026-01-19
-Current version: v1.0.5
+Last updated: 2026-01-21
+Current version: v1.0.6
 Phases complete: 0-6
 
 ---
 
-## Package Contents Summary (v1.0.5)
+## Package Contents Summary (v1.0.6)
 
 | Component | Path in Package | Size |
 |-----------|-----------------|------|
-| Python wheel | `/opt/pulldb.service/dist/pulldb-1.0.5-py3-none-any.whl` | ~6MB |
+| Python wheel | `/opt/pulldb.service/dist/pulldb-1.0.6-py3-none-any.whl` | ~6MB |
 | myloader binary | `/opt/pulldb.service/bin/myloader-0.19.3-3` | 8.4MB |
 | Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 23 SQL files |
 | Systemd units | `/opt/pulldb.service/systemd/` | 6 files |

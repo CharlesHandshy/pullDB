@@ -31,4 +31,4 @@ def test_version() -> None:
     """Test that version string is accessible."""
     import pulldb
 
-    assert pulldb.__version__ == "1.0.5"
+    assert pulldb.__version__ == "1.0.6"

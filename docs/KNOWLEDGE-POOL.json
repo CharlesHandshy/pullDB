@@ -1,8 +1,8 @@
 {
-  "version": "1.0.5",
-  "last_updated": "2026-01-19",
+  "version": "1.0.6",
+  "last_updated": "2026-01-21",
   "package": {
-    "wheel": "pulldb-1.0.5-py3-none-any.whl",
+    "wheel": "pulldb-1.0.6-py3-none-any.whl",
     "myloader": "myloader-0.19.3-3",
     "schema_files": 23,
     "systemd_units": 6,
