@@ -82,9 +82,9 @@
                                             <option value="lock">Lock (prevent cleanup)</option>
                                         </select>
                                         <div id="extend_{{ job.id }}" class="extend-options" style="display: none;">
-                                            <select name="extend_months_{{ job.id }}" class="form-select form-select-sm">
+                                            <select name="extend_days_{{ job.id }}" class="form-select form-select-sm">
                                                 {% for opt in retention_options %}
-                                                <option value="{{ opt.months }}">{{ opt.label }}</option>
+                                                <option value="{{ opt[0] }}">{{ opt[1] }}</option>
                                                 {% endfor %}
                                             </select>
                                         </div>
@@ -143,9 +143,9 @@
                                             <option value="lock">Lock (prevent cleanup)</option>
                                         </select>
                                         <div id="extend_{{ job.id }}" class="extend-options" style="display: none;">
-                                            <select name="extend_months_{{ job.id }}" class="form-select form-select-sm">
+                                            <select name="extend_days_{{ job.id }}" class="form-select form-select-sm">
                                                 {% for opt in retention_options %}
-                                                <option value="{{ opt.months }}">{{ opt.label }}</option>
+                                                <option value="{{ opt[0] }}">{{ opt[1] }}</option>
                                                 {% endfor %}
                                             </select>
                                         </div>

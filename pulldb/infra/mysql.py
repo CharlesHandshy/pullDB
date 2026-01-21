@@ -776,7 +776,8 @@ class JobRepository:
 
         Called by worker when job successfully finishes. Updates status to
         'deployed', records completion time, sets expires_at based on
-        the max_retention_months setting, and clears the worker processing lock.
+        the default_retention_days setting (default: 7 days = 1 week), 
+        and clears the worker processing lock.
 
         IMPORTANT: Only updates if job is still in 'running' status. This
         prevents race conditions where stale recovery marks a job as failed
@@ -785,7 +786,7 @@ class JobRepository:
         Note:
             The worker_id column is intentionally retained after deployment
             for debugging purposes (to identify which worker processed the job).
-            The expires_at is calculated as completed_at + max_retention_months
+            The expires_at is calculated as completed_at + default_retention_days
             using the current setting value.
             The locked_at/locked_by fields are cleared since the database is now
             available for user actions.
@@ -799,16 +800,16 @@ class JobRepository:
         """
         with self.pool.connection() as conn:
             cursor = TypedTupleCursor(conn.cursor())
-            # Get max_retention_months from settings (default 6)
+            # Get default_retention_days from settings (default 7 = 1 week)
             cursor.execute(
                 """SELECT COALESCE(
                     (SELECT CAST(setting_value AS UNSIGNED) FROM settings 
-                     WHERE setting_key = 'max_retention_months'),
-                    6
-                ) AS retention_months"""
+                     WHERE setting_key = 'default_retention_days'),
+                    7
+                ) AS retention_days"""
             )
             row = cursor.fetchone()
-            retention_months = row[0] if row else 6
+            retention_days = row[0] if row else 7
             
             # Only update if still in running status - prevents overwriting
             # 'failed' status set by stale recovery
@@ -817,12 +818,12 @@ class JobRepository:
                 UPDATE jobs
                 SET status = 'deployed', 
                     completed_at = UTC_TIMESTAMP(6),
-                    expires_at = DATE_ADD(UTC_TIMESTAMP(6), INTERVAL %s MONTH),
+                    expires_at = DATE_ADD(UTC_TIMESTAMP(6), INTERVAL %s DAY),
                     locked_at = NULL,
                     locked_by = NULL
                 WHERE id = %s AND status = 'running'
                 """,
-                (retention_months, job_id),
+                (retention_days, job_id),
             )
             updated = bool(cursor.rowcount > 0)
             conn.commit()
@@ -5429,47 +5430,86 @@ class SettingsRepository:
     # Database Retention Settings
     # -------------------------------------------------------------------------
 
-    def get_max_retention_months(self) -> int:
-        """Get maximum retention months for database expiration.
+    def get_default_retention_days(self) -> int:
+        """Get default retention days for new restores.
 
         Returns:
-            Maximum months a database can be retained (1-12). Default: 6.
+            Default days for new database expiration. Default: 7 (1 week).
         """
-        value = self.get_setting("max_retention_months")
+        value = self.get_setting("default_retention_days")
         if value is None:
-            return 6  # Default: 6 months
+            return 7  # Default: 1 week
         try:
-            return max(1, min(12, int(value)))  # Clamp to 1-12
+            return max(1, int(value))
         except ValueError:
-            return 6
+            return 7
 
-    def get_max_retention_increment(self) -> int:
-        """Get increment step for retention dropdown options.
+    def get_max_retention_days(self) -> int:
+        """Get maximum retention days for database expiration.
 
         Returns:
-            Step size in months (1-5). Default: 3.
+            Maximum days a database can be retained. Default: 180 (~6 months).
         """
-        value = self.get_setting("max_retention_increment")
+        value = self.get_setting("max_retention_days")
         if value is None:
-            return 3  # Default: 3 months
+            return 180  # Default: ~6 months
         try:
-            return max(1, min(5, int(value)))  # Clamp to 1-5
+            return max(1, int(value))
         except ValueError:
-            return 3
+            return 180
 
-    def get_expiring_notice_days(self) -> int:
-        """Get days before expiry to show warning notice.
+    def get_expiring_warning_days(self) -> int:
+        """Get days before expiry to show yellow warning badge.
 
         Returns:
             Number of days. Default: 7.
         """
-        value = self.get_setting("expiring_notice_days")
+        value = self.get_setting("expiring_warning_days")
         if value is None:
             return 7
         try:
             return max(0, int(value))
         except ValueError:
             return 7
+
+    def get_expiring_danger_days(self) -> int:
+        """Get days before expiry to show red danger badge.
+
+        Returns:
+            Number of days. Default: 3.
+        """
+        value = self.get_setting("expiring_danger_days")
+        if value is None:
+            return 3
+        try:
+            return max(0, int(value))
+        except ValueError:
+            return 3
+
+    # Legacy methods for backward compatibility
+    def get_max_retention_months(self) -> int:
+        """Get maximum retention months (deprecated - use get_max_retention_days).
+
+        Returns:
+            Maximum months (calculated from max_retention_days).
+        """
+        return max(1, self.get_max_retention_days() // 30)
+
+    def get_max_retention_increment(self) -> int:
+        """Get increment step for retention dropdown options (deprecated).
+
+        Returns:
+            Step size in months. Default: 1 (now using days-based system).
+        """
+        return 1  # No longer used with new days-based system
+
+    def get_expiring_notice_days(self) -> int:
+        """Get days before expiry to show warning notice (deprecated - use get_expiring_warning_days).
+
+        Returns:
+            Number of days. Default: 7.
+        """
+        return self.get_expiring_warning_days()
 
     def get_cleanup_grace_days(self) -> int:
         """Get days after expiry before automatic cleanup.
@@ -5504,35 +5544,42 @@ class SettingsRepository:
     ) -> list[tuple[str, str]]:
         """Get retention dropdown options based on current settings.
 
-        Generates options starting with 1 month, then stepping by increment
-        up to the maximum retention months.
+        Generates a comprehensive set of options in days, weeks, and months,
+        up to the maximum retention days setting.
 
         Args:
             include_now: Whether to include "Now" (immediate removal) option.
 
         Returns:
             List of (value, label) tuples for dropdown options.
-            Value is string: "now", or number of months as string ("1", "3", etc.)
+            Value is days as string ("1", "7", "30", etc.) or "now".
+            Label is human readable ("+1 day", "+1 week", "+1 month", etc.)
         """
-        max_months = self.get_max_retention_months()
-        increment = self.get_max_retention_increment()
+        max_days = self.get_max_retention_days()
 
         options: list[tuple[str, str]] = []
 
         if include_now:
             options.append(("now", "Now"))
 
-        # Always include 1 month as first option
-        if 1 <= max_months:
-            options.append(("1", "+1 month"))
+        # Days: 1, 3 (if max_days >= 3)
+        if max_days >= 1:
+            options.append(("1", "+1 day"))
+        if max_days >= 3:
+            options.append(("3", "+3 days"))
 
-        # Then step by increment
-        months = increment
-        while months <= max_months:
-            if months != 1:  # Don't duplicate 1
-                label = f"+{months} months"
-                options.append((str(months), label))
-            months += increment
+        # Weeks: 1, 2, 3, 4 weeks
+        for weeks in [1, 2, 3, 4]:
+            days = weeks * 7
+            if days <= max_days:
+                label = f"+{weeks} week" if weeks == 1 else f"+{weeks} weeks"
+                options.append((str(days), label))
+
+        # Months: 2, 3, 4, 5, 6 months (skip 1 month = 4 weeks already covered)
+        for months in [2, 3, 4, 5, 6]:
+            days = months * 30
+            if days <= max_days:
+                options.append((str(days), f"+{months} months"))
 
         return options
 

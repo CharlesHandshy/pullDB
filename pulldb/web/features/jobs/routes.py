@@ -125,20 +125,20 @@ async def jobs_page(
             jobs = getattr(state.job_repo, "active_jobs", [])
 
     # Get retention settings for JavaScript
-    expiring_notice_days = 7
-    max_retention_months = 6
-    max_retention_increment = 3
+    expiring_warning_days = 7
+    expiring_danger_days = 3
+    max_retention_days = 180
     jobs_refresh_interval = 5
     retention_options: list[tuple[str, str]] = []
     
     settings_repo = getattr(state, "settings_repo", None)
     if settings_repo:
-        if hasattr(settings_repo, "get_expiring_notice_days"):
-            expiring_notice_days = settings_repo.get_expiring_notice_days()
-        if hasattr(settings_repo, "get_max_retention_months"):
-            max_retention_months = settings_repo.get_max_retention_months()
-        if hasattr(settings_repo, "get_max_retention_increment"):
-            max_retention_increment = settings_repo.get_max_retention_increment()
+        if hasattr(settings_repo, "get_expiring_warning_days"):
+            expiring_warning_days = settings_repo.get_expiring_warning_days()
+        if hasattr(settings_repo, "get_expiring_danger_days"):
+            expiring_danger_days = settings_repo.get_expiring_danger_days()
+        if hasattr(settings_repo, "get_max_retention_days"):
+            max_retention_days = settings_repo.get_max_retention_days()
         if hasattr(settings_repo, "get_jobs_refresh_interval"):
             jobs_refresh_interval = settings_repo.get_jobs_refresh_interval()
         if hasattr(settings_repo, "get_retention_options"):
@@ -168,9 +168,9 @@ async def jobs_page(
             "managed_user_codes": _get_managed_user_codes(state, user),
             "three_days_ago_iso": (datetime.now(UTC) - timedelta(days=3)).isoformat(),
             # Retention settings for JavaScript
-            "expiring_notice_days": expiring_notice_days,
-            "max_retention_months": max_retention_months,
-            "max_retention_increment": max_retention_increment,
+            "expiring_warning_days": expiring_warning_days,
+            "expiring_danger_days": expiring_danger_days,
+            "max_retention_days": max_retention_days,
             "jobs_refresh_interval": jobs_refresh_interval,
             "retention_options": retention_options,
             # Flash messages
@@ -1519,13 +1519,13 @@ async def extend_job_retention(
 
     base_url = f"/web/jobs/{job_id}"
 
-    # Parse form data
+    # Parse form data - now expects days instead of months
     form = await request.form()
-    months_str = form.get("months", "1")
+    days_str = form.get("days", form.get("months", "7"))  # Support both for compatibility
     try:
-        months = int(str(months_str))
+        days = int(str(days_str))
     except (TypeError, ValueError):
-        months = 1
+        days = 7  # Default to 1 week
 
     if not hasattr(state, "job_repo") or not state.job_repo:
         return RedirectResponse(
@@ -1559,11 +1559,26 @@ async def extend_job_retention(
         await run_in_threadpool(
             retention_service.extend_job,
             job_id,
-            months,
+            days,
             user.user_id,
         )
+        # Format duration for message
+        if days == 0:
+            duration_msg = "set to expire now"
+        elif days == 1:
+            duration_msg = "extended by 1 day"
+        elif days < 7:
+            duration_msg = f"extended by {days} days"
+        elif days == 7:
+            duration_msg = "extended by 1 week"
+        elif days < 30:
+            duration_msg = f"extended by {days // 7} weeks"
+        elif days < 60:
+            duration_msg = "extended by 1 month"
+        else:
+            duration_msg = f"extended by {days // 30} months"
         return RedirectResponse(
-            url=f"{base_url}?{urlencode({'delete_success': f'Extended retention by {months} month(s)'})}",
+            url=f"{base_url}?{urlencode({'delete_success': f'Retention {duration_msg}'})}",
             status_code=303,
         )
     except Exception as e:

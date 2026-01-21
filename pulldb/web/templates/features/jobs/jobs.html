@@ -153,10 +153,10 @@
         managedUserCodes: {{ managed_user_codes | tojson }},
         isAdmin: {{ 'true' if user.is_admin else 'false' }},
         initialView: '{{ view or "active" }}',
-        // Retention settings from server
-        expiringNoticeDays: {{ expiring_notice_days | default(7) }},
-        maxRetentionMonths: {{ max_retention_months | default(6) }},
-        maxRetentionIncrement: {{ max_retention_increment | default(3) }},
+        // Retention settings from server (configurable via admin settings)
+        expiringWarningDays: {{ expiring_warning_days | default(7) }},  // Yellow warning threshold
+        expiringDangerDays: {{ expiring_danger_days | default(3) }},    // Red danger threshold
+        maxRetentionDays: {{ max_retention_days | default(180) }},
         jobsRefreshInterval: {{ jobs_refresh_interval | default(5) }},
         retentionOptions: {{ retention_options | tojson if retention_options else '[]' }}
     };
@@ -349,6 +349,7 @@
         host: (val) => val ? val.split('.')[0] : '-',
         
         // History Expires renderer - simple date display, no dropdown
+        // Uses configurable warning thresholds from server settings
         historyExpires: (val, row) => {
             // Superseded jobs show when they'll be cleaned up (superseded_at + 7 days)
             if (row.superseded_at) {
@@ -364,9 +365,9 @@
                 const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
                 if (diffDays <= 0) {
                     return `<span class="badge badge-danger">Expired</span>`;
-                } else if (diffDays <= 7) {
+                } else if (diffDays <= CONFIG.expiringDangerDays) {
                     return `<span class="badge badge-danger">${dateStr}</span>`;
-                } else if (diffDays <= 30) {
+                } else if (diffDays <= CONFIG.expiringWarningDays) {
                     return `<span class="badge badge-warning">${dateStr}</span>`;
                 }
                 return `<span class="badge badge-neutral">${dateStr}</span>`;
@@ -375,6 +376,7 @@
         },
         
         // Retention status renderer - shows lock icon, badge, or editable dropdown
+        // Uses configurable warning thresholds from server settings
         retention: (val, row) => {
             if (row.is_locked) {
                 return `<span class="badge badge-warning" title="Locked - protected from cleanup">🔒 Locked</span>`;
@@ -395,7 +397,7 @@
             
             if (canEdit) {
                 // Calculate current expiration display - show actual date
-                // Color thresholds: expired = red, <=7 days = red, <=30 days = yellow, >30 = neutral
+                // Color thresholds from settings: expiringDangerDays (red), expiringWarningDays (yellow)
                 let currentLabel = 'Not set';
                 let currentClass = 'expires-not-set';
                 if (row.expires_at) {
@@ -408,23 +410,24 @@
                         currentClass = 'expires-danger';
                     } else {
                         currentLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
-                        if (diffDays <= 7) {
-                            currentClass = 'expires-danger';  // 1 week or less = red
-                        } else if (diffDays <= 30) {
-                            currentClass = 'expires-warning'; // 1 month or less = yellow
+                        if (diffDays <= CONFIG.expiringDangerDays) {
+                            currentClass = 'expires-danger';  // Red danger threshold
+                        } else if (diffDays <= CONFIG.expiringWarningDays) {
+                            currentClass = 'expires-warning'; // Yellow warning threshold
                         } else {
-                            currentClass = 'expires-neutral';  // more than 1 month = neutral
+                            currentClass = 'expires-neutral';  // Normal
                         }
                     }
                 }
                 
                 // Build dropdown with current value as selected
+                // Options now use days (value is days as string)
                 let html = `<select class="extend-select ${currentClass}" data-job-id="${row.id}" title="Click to change expiration">`;
                 html += `<option value="" selected>${currentLabel}</option>`;
                 html += `<option value="now">Now</option>`;
                 const options = CONFIG.retentionOptions.length > 0 
                     ? CONFIG.retentionOptions 
-                    : [['1', '+1mo'], ['3', '+3mo'], ['6', '+6mo']];
+                    : [['7', '+1 week'], ['14', '+2 weeks'], ['30', '+1 month']];
                 for (const [value, label] of options) {
                     html += `<option value="${value}">${label}</option>`;
                 }
@@ -433,7 +436,7 @@
             }
             
             // Non-editable: show badge only
-            // Color thresholds: expired = red, <=7 days = red, <=30 days = yellow, >30 = neutral
+            // Color thresholds from settings: expiringDangerDays (red), expiringWarningDays (yellow)
             if (row.expires_at) {
                 const d = new Date(row.expires_at);
                 const now = new Date();
@@ -441,10 +444,17 @@
                 const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
                 if (diffDays <= 0) {
                     return `<span class="badge badge-danger" title="Expired ${dateStr}">Expired</span>`;
-                } else if (diffDays <= 7) {
+                } else if (diffDays <= CONFIG.expiringDangerDays) {
                     return `<span class="badge badge-danger" title="Expires ${dateStr}">${diffDays}d</span>`;
-                } else if (diffDays <= 30) {
+                } else if (diffDays <= CONFIG.expiringWarningDays) {
                     return `<span class="badge badge-warning" title="Expires ${dateStr}">${diffDays}d</span>`;
+                }
+                // For longer periods, show human-readable format
+                if (diffDays < 14) {
+                    return `<span class="badge badge-neutral" title="Expires ${dateStr}">${diffDays}d</span>`;
+                } else if (diffDays < 60) {
+                    const weeks = Math.floor(diffDays / 7);
+                    return `<span class="badge badge-neutral" title="Expires ${dateStr}">${weeks}w</span>`;
                 }
                 const months = Math.floor(diffDays / 30);
                 return `<span class="badge badge-neutral" title="Expires ${dateStr}">${months}mo</span>`;
@@ -1150,7 +1160,7 @@
         });
         
         // Retention action buttons (delegated)
-        // Extend dropdown change handler
+        // Extend dropdown change handler - now uses days instead of months
         document.addEventListener('change', async (e) => {
             const select = e.target.closest('.extend-select');
             if (select && select.value) {
@@ -1172,18 +1182,29 @@
                     }
                 }
                 
-                const months = selectedValue === 'now' ? '0' : selectedValue;
+                // Value is now in days (or "now" which becomes 0)
+                const days = selectedValue === 'now' ? '0' : selectedValue;
                 try {
                     const response = await fetch(`/web/jobs/${jobId}/extend`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         credentials: 'same-origin',
-                        body: new URLSearchParams({ months })
+                        body: new URLSearchParams({ days })
                     });
                     if (response.ok || response.redirected) {
-                        const msg = selectedValue === 'now' 
-                            ? 'Database marked for immediate cleanup' 
-                            : `Extended retention by ${months} month(s)`;
+                        // Format duration for message
+                        let msg;
+                        if (selectedValue === 'now') {
+                            msg = 'Database marked for immediate cleanup';
+                        } else {
+                            const d = parseInt(days);
+                            if (d === 1) msg = 'Extended retention by 1 day';
+                            else if (d < 7) msg = `Extended retention by ${d} days`;
+                            else if (d === 7) msg = 'Extended retention by 1 week';
+                            else if (d < 30) msg = `Extended retention by ${Math.floor(d / 7)} weeks`;
+                            else if (d < 60) msg = 'Extended retention by 1 month';
+                            else msg = `Extended retention by ${Math.floor(d / 30)} months`;
+                        }
                         showToast(msg, 'success');
                         table?.refresh();
                     } else {

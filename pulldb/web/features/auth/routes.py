@@ -691,8 +691,9 @@ async def maintenance_submit(
                 
                 try:
                     if action == "extend":
-                        months_str = form.get(f"extend_months_{job_id}", "1")
-                        months = int(str(months_str))
+                        # Support both days (new) and months (legacy) parameters
+                        days_str = form.get(f"extend_days_{job_id}", form.get(f"extend_months_{job_id}", "7"))
+                        days = int(str(days_str))
                         if hasattr(state.job_repo, "extend_job_expiration"):
                             # Note: This would need to use RetentionService but for now
                             # we use the repository directly
@@ -707,7 +708,7 @@ async def maintenance_submit(
                             await run_in_threadpool(
                                 retention_service.extend_job,
                                 job_id,
-                                months,
+                                days,
                                 user.user_id,
                             )
                     

@@ -83,14 +83,14 @@ class RetentionService:
         self.user_repo = user_repo
         self.settings_repo = settings_repo
 
-    def extend_job(self, job_id: str, months: int, user_id: str) -> bool:
+    def extend_job(self, job_id: str, days: int, user_id: str) -> bool:
         """Extend a job's database expiration.
 
         Args:
             job_id: Job ID to extend.
-            months: Number of months to extend. If current expires_at is set,
-                   extends from that date; otherwise extends from today.
-                   months=0 means set to now (immediate cleanup).
+            days: Number of days to extend. If current expires_at is set,
+                  extends from that date; otherwise extends from today.
+                  days=0 means set to now (immediate cleanup).
             user_id: User performing the action (for audit).
 
         Returns:
@@ -110,13 +110,13 @@ class RetentionService:
             )
             return False
 
-        max_months = self.settings_repo.get_max_retention_months()
-        if months > max_months:
-            months = max_months
+        max_days = self.settings_repo.get_max_retention_days()
+        if days > max_days:
+            days = max_days
 
         now = datetime.now(UTC).replace(tzinfo=None)
         
-        if months == 0:
+        if days == 0:
             # Setting to "now" for immediate cleanup
             new_expires_at = now
             event_detail = f"Set expiration to now ({new_expires_at.isoformat()}) for immediate cleanup"
@@ -126,12 +126,15 @@ class RetentionService:
             # If base_date is in the past, use today instead
             if base_date < now:
                 base_date = now
-            new_expires_at = base_date + timedelta(days=months * 30)
+            new_expires_at = base_date + timedelta(days=days)
+            
+            # Format human-readable duration
+            duration_str = self._format_duration(days)
             
             if job.expires_at:
-                event_detail = f"Extended expiration by {months} month(s) from {job.expires_at.isoformat()} to {new_expires_at.isoformat()}"
+                event_detail = f"Extended expiration by {duration_str} from {job.expires_at.isoformat()} to {new_expires_at.isoformat()}"
             else:
-                event_detail = f"Set expiration to {months} month(s) from now: {new_expires_at.isoformat()}"
+                event_detail = f"Set expiration to {duration_str} from now: {new_expires_at.isoformat()}"
         
         self.job_repo.set_job_expiration(job_id, new_expires_at)
 
@@ -142,18 +145,42 @@ class RetentionService:
         )
 
         logger.info(
-            "job_expiration_extended: job_id=%s, user_id=%s, months=%d",
+            "job_expiration_extended: job_id=%s, user_id=%s, days=%d",
             job_id,
             user_id,
-            months,
+            days,
             extra={
                 "job_id": job_id,
                 "user_id": user_id,
-                "months": months,
+                "days": days,
                 "new_expires_at": new_expires_at.isoformat(),
             },
         )
         return True
+
+    def _format_duration(self, days: int) -> str:
+        """Format days into human-readable duration string.
+        
+        Args:
+            days: Number of days.
+            
+        Returns:
+            Human-readable string like "1 day", "2 weeks", "3 months".
+        """
+        if days == 1:
+            return "1 day"
+        elif days < 7:
+            return f"{days} days"
+        elif days == 7:
+            return "1 week"
+        elif days < 28:
+            weeks = days // 7
+            return f"{weeks} weeks" if weeks > 1 else "1 week"
+        elif days < 60:
+            return "1 month"
+        else:
+            months = days // 30
+            return f"{months} months"
 
     def lock_job(self, job_id: str, user_id: str, username: str) -> bool:
         """Lock a job's database to protect from cleanup and overwrites.

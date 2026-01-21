@@ -2542,33 +2542,78 @@ class SimulatedSettingsRepository:
         except ValueError:
             return 7
 
-    def get_max_retention_months(self) -> int:
-        """Get maximum retention months for database expiration.
+    def get_default_retention_days(self) -> int:
+        """Get default retention days for new restores.
 
         Returns:
-            Maximum months a database can be retained (1-12). Default: 6.
+            Default days for new database expiration. Default: 7 (1 week).
         """
-        val = self.get_setting("max_retention_months")
+        val = self.get_setting("default_retention_days")
         if val is None:
-            return 6  # Default: 6 months
+            return 7  # Default: 1 week
         try:
-            return max(1, min(12, int(val)))
+            return max(1, int(val))
         except ValueError:
-            return 6
+            return 7
 
-    def get_expiring_notice_days(self) -> int:
-        """Get days before expiry to show warning notice.
+    def get_max_retention_days(self) -> int:
+        """Get maximum retention days for database expiration.
+
+        Returns:
+            Maximum days a database can be retained. Default: 180 (~6 months).
+        """
+        val = self.get_setting("max_retention_days")
+        if val is None:
+            return 180  # Default: ~6 months
+        try:
+            return max(1, int(val))
+        except ValueError:
+            return 180
+
+    def get_expiring_warning_days(self) -> int:
+        """Get days before expiry to show yellow warning badge.
 
         Returns:
             Number of days. Default: 7.
         """
-        val = self.get_setting("expiring_notice_days")
+        val = self.get_setting("expiring_warning_days")
         if val is None:
-            return 7  # Default: 7 days
+            return 7
         try:
             return max(0, int(val))
         except ValueError:
             return 7
+
+    def get_expiring_danger_days(self) -> int:
+        """Get days before expiry to show red danger badge.
+
+        Returns:
+            Number of days. Default: 3.
+        """
+        val = self.get_setting("expiring_danger_days")
+        if val is None:
+            return 3
+        try:
+            return max(0, int(val))
+        except ValueError:
+            return 3
+
+    # Legacy methods for backward compatibility
+    def get_max_retention_months(self) -> int:
+        """Get maximum retention months (deprecated - use get_max_retention_days).
+
+        Returns:
+            Maximum months (calculated from max_retention_days).
+        """
+        return max(1, self.get_max_retention_days() // 30)
+
+    def get_expiring_notice_days(self) -> int:
+        """Get days before expiry to show warning notice (deprecated - use get_expiring_warning_days).
+
+        Returns:
+            Number of days. Default: 7.
+        """
+        return self.get_expiring_warning_days()
 
     def get_retention_options(
         self, include_now: bool = False
@@ -2580,19 +2625,32 @@ class SimulatedSettingsRepository:
 
         Returns:
             List of (value, label) tuples for dropdown options.
+            Value is days as string.
         """
-        max_months = self.get_max_retention_months()
+        max_days = self.get_max_retention_days()
         options: list[tuple[str, str]] = []
         
         if include_now:
             options.append(("now", "Now"))
         
-        # Add month options up to max
-        for months in range(1, max_months + 1):
-            if months == 1:
-                options.append(("1", "1 month"))
-            else:
-                options.append((str(months), f"{months} months"))
+        # Days: 1, 3
+        if max_days >= 1:
+            options.append(("1", "+1 day"))
+        if max_days >= 3:
+            options.append(("3", "+3 days"))
+
+        # Weeks: 1, 2, 3, 4
+        for weeks in [1, 2, 3, 4]:
+            days = weeks * 7
+            if days <= max_days:
+                label = f"+{weeks} week" if weeks == 1 else f"+{weeks} weeks"
+                options.append((str(days), label))
+
+        # Months: 2, 3, 4, 5, 6
+        for months in [2, 3, 4, 5, 6]:
+            days = months * 30
+            if days <= max_days:
+                options.append((str(days), f"+{months} months"))
         
         return options
 
