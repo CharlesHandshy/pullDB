@@ -88,6 +88,7 @@ class TableRowEstimate:
     database: str
     table: str
     rows: int
+    file_count: int = 1  # Number of data files for this table
 
 
 @dataclass(slots=True, frozen=True)
@@ -702,8 +703,24 @@ def _synthesize_metadata(
 
 
 def _parse_ini_metadata(metadata_path: Path) -> list[TableRowEstimate]:
-    """Parse 0.19+ INI format metadata for row counts."""
+    """Parse 0.19+ INI format metadata for row counts.
+    
+    Also counts data files per table by scanning the backup directory.
+    """
     tables: list[TableRowEstimate] = []
+    
+    # Count files per table from the backup directory
+    backup_dir = metadata_path.parent
+    file_counts: dict[tuple[str, str], int] = defaultdict(int)
+    for filepath in backup_dir.glob("*.sql.gz"):
+        result = _parse_mydumper_filename(filepath.name)
+        if result:
+            file_counts[result] += 1
+    # Also check for .sql.zst files
+    for filepath in backup_dir.glob("*.sql.zst"):
+        result = _parse_mydumper_filename(filepath.name.replace(".zst", ".gz"))
+        if result:
+            file_counts[result] += 1
 
     try:
         parser = configparser.ConfigParser()
@@ -740,9 +757,12 @@ def _parse_ini_metadata(metadata_path: Path) -> list[TableRowEstimate]:
                 with contextlib.suppress(ValueError, configparser.Error):
                     rows = parser.getint(section, "rows")
 
+            # Get file count (default to 1 if not found)
+            fc = file_counts.get((database, table), 1)
+
             if rows > 0:
                 tables.append(
-                    TableRowEstimate(database=database, table=table, rows=rows)
+                    TableRowEstimate(database=database, table=table, rows=rows, file_count=fc)
                 )
 
     except Exception as e:
@@ -767,7 +787,7 @@ def _scan_for_row_estimates(backup_dir: Path) -> list[TableRowEstimate]:
     tables: list[TableRowEstimate] = []
     for (db, table), files in table_files.items():
         rows = _estimate_table_rows(files, rows_per_chunk)
-        tables.append(TableRowEstimate(database=db, table=table, rows=rows))
+        tables.append(TableRowEstimate(database=db, table=table, rows=rows, file_count=len(files)))
 
     return tables
 

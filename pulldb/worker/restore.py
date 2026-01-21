@@ -295,6 +295,7 @@ def run_myloader(
     tracker = create_progress_tracker(
         table_metadata=backup_meta.tables,
         progress_callback=progress_callback,
+        event_callback=event_callback,
     )
 
     # Connect processlist monitor to tracker

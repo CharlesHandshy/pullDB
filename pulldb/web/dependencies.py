@@ -280,6 +280,36 @@ templates.env.filters["format_eta"] = _format_eta
 templates.env.filters["format_number"] = _format_number
 
 
+# Event type to human-readable label mapping
+_EVENT_LABELS: dict[str, str] = {
+    # File and table completion events
+    "restore_file_loaded": "file loaded",
+    "restore_table_ready": "table ready",
+    # Other common events keep snake_case with spaces
+}
+
+
+def _format_event_label(event_type: str) -> str:
+    """Convert event type to human-readable label.
+    
+    Returns human-readable label if defined in mapping, otherwise
+    converts snake_case to space-separated words.
+    
+    Args:
+        event_type: The raw event type string (e.g., 'restore_file_loaded').
+        
+    Returns:
+        Human-readable label (e.g., 'file loaded').
+    """
+    if event_type in _EVENT_LABELS:
+        return _EVENT_LABELS[event_type]
+    # Default: replace underscores with spaces
+    return event_type.replace("_", " ")
+
+
+templates.env.filters["format_event_label"] = _format_event_label
+
+
 def get_api_state(request: Request) -> "APIState":
     """Get API state from request.
     

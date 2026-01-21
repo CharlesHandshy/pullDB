@@ -158,6 +158,7 @@ class _MutableTableState:
 
     name: str
     rows_total: int
+    file_count: int = 1  # Total data files for this table
     percent_complete: float = 0.0
     phase: str = "loading"  # 'loading', 'indexing', 'complete'
     running_seconds: float = 0.0
@@ -226,6 +227,7 @@ class RestoreProgressTracker:
         self,
         table_metadata: list[TableRowEstimate],
         on_progress: Callable[[RestoreProgress], None] | None = None,
+        on_event: Callable[[str, dict], None] | None = None,
         throttle_interval_seconds: float = 0.5,
     ) -> None:
         """Initialize tracker.
@@ -234,11 +236,14 @@ class RestoreProgressTracker:
             table_metadata: List of tables with row estimates from backup metadata.
             on_progress: Optional callback invoked on each progress update.
                 Receives immutable RestoreProgress snapshot.
+            on_event: Optional callback for file/table completion events.
+                Called with (event_type: str, event_data: dict).
             throttle_interval_seconds: Minimum interval between progress emissions.
                 Prevents flooding with too many events. Set to 0 to disable.
         """
         self._lock = threading.RLock()  # Reentrant for nested calls
         self._on_progress = on_progress
+        self._on_event = on_event
         self._throttle_interval = throttle_interval_seconds
         self._last_emit_time: float = 0.0
         self._start_time = time.monotonic()
@@ -247,17 +252,25 @@ class RestoreProgressTracker:
         self._total_tables = len(table_metadata)
         self._total_rows = sum(t.rows for t in table_metadata)
         self._table_rows: dict[str, int] = {t.table: t.rows for t in table_metadata}
+        self._table_file_counts: dict[str, int] = {
+            t.table: t.file_count for t in table_metadata
+        }
 
         # Mutable state
         self._tables: dict[str, _MutableTableState] = {}
         self._tables_completed: set[str] = set()
         self._tables_in_processlist: set[str] = set()  # Currently active in processlist
+        
+        # De-duplication for events (prevent identical events)
+        self._emitted_file_events: set[tuple[str, int]] = set()  # (table, file_index)
+        self._emitted_table_ready: set[str] = set()  # table names
 
         # Initialize table states
         for t in table_metadata:
             self._tables[t.table] = _MutableTableState(
                 name=t.table,
                 rows_total=t.rows,
+                file_count=t.file_count,
             )
 
         logger.info(
@@ -405,7 +418,24 @@ class RestoreProgressTracker:
             # Data is 100% complete, now entering indexing phase
             state.percent_complete = 100.0
             state.phase = "indexing"
-            logger.info(f"Table {bare_name}: data complete, indexes queued")
+            files_loaded = state.files_completed
+            file_count = state.file_count
+            logger.info(
+                f"Table {bare_name}: data complete "
+                f"({files_loaded}/{file_count} files), indexes queued"
+            )
+
+            # Emit table ready event (de-duplicated)
+            if self._on_event and bare_name not in self._emitted_table_ready:
+                self._emitted_table_ready.add(bare_name)
+                self._on_event(
+                    "restore_table_ready",
+                    {
+                        "table": bare_name,
+                        "files_loaded": files_loaded,
+                        "file_count": file_count,
+                    },
+                )
 
             self._emit_progress("file_complete")
 
@@ -456,10 +486,26 @@ class RestoreProgressTracker:
 
             # Track file completions
             state.files_completed += 1
+            file_index = state.files_completed  # 1-based
+            file_count = state.file_count
+            
             logger.debug(
                 f"File completed for table {bare_name}: "
-                f"{state.files_completed} files done"
+                f"{file_index} of {file_count} files done"
             )
+
+            # Emit file completion event (de-duplicated)
+            event_key = (bare_name, file_index)
+            if self._on_event and event_key not in self._emitted_file_events:
+                self._emitted_file_events.add(event_key)
+                self._on_event(
+                    "restore_file_loaded",
+                    {
+                        "table": bare_name,
+                        "file_index": file_index,
+                        "file_count": file_count,
+                    },
+                )
 
             # Emit progress event for this file completion
             self._emit_progress("file_complete")
@@ -686,6 +732,7 @@ class RestoreProgressTracker:
 def create_progress_tracker(
     table_metadata: list[TableRowEstimate],
     progress_callback: Callable[[float, dict], None] | None = None,
+    event_callback: Callable[[str, dict], None] | None = None,
 ) -> RestoreProgressTracker:
     """Create a RestoreProgressTracker with compatible callback.
 
@@ -695,12 +742,17 @@ def create_progress_tracker(
     Args:
         table_metadata: List of tables with row estimates.
         progress_callback: Old-style callback receiving (percent, detail_dict).
+        event_callback: Optional callback for file/table completion events.
+            Called with (event_type: str, event_data: dict).
 
     Returns:
         Configured RestoreProgressTracker instance.
     """
     if progress_callback is None:
-        return RestoreProgressTracker(table_metadata=table_metadata)
+        return RestoreProgressTracker(
+            table_metadata=table_metadata,
+            on_event=event_callback,
+        )
 
     def on_progress(p: RestoreProgress) -> None:
         event_dict = p.to_event_dict()
@@ -709,4 +761,5 @@ def create_progress_tracker(
     return RestoreProgressTracker(
         table_metadata=table_metadata,
         on_progress=on_progress,
+        on_event=event_callback,
     )

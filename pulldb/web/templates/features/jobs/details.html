@@ -374,7 +374,7 @@
             <div class="log-block {% if log.event_type in ['failed', 'error'] %}log-block--error{% elif log.event_type in ['complete', 'deployed', 'restore_complete', 'atomic_rename_complete', 'atomic_rename_validation_pass'] %}log-block--success{% endif %}">
                 <div class="log-header">
                     <span class="log-timestamp" data-utc="{{ log.logged_at.isoformat() }}Z" data-format="time">{{ log.logged_at.strftime('%H:%M:%S') }}</span>
-                    <span class="log-task">{{ log.event_type }}</span>
+                    <span class="log-task">{{ log.event_type | format_event_label }}</span>
                     {# Special header info for certain event types #}
                     {% if log.event_type == 'post_sql_script_complete' and data is mapping %}
                     <span class="log-header-meta">{{ data.total_scripts }} scripts from {{ data.source | default('templates') }}</span>
@@ -445,6 +445,20 @@
                     <div class="log-detail log-detail--table">
                         <span class="log-field"><span class="log-field-label">staging</span>{{ data.staging_db | default('?') }}</span>
                         <span class="log-field"><span class="log-field-label">backup</span>{{ data.backup_filename | default('?') }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'restore_file_loaded' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">table</span>{{ data.table | default('?') }}</span>
+                        <span class="log-field"><span class="log-field-label">file</span>{{ data.file_index | default(1) }} of {{ data.file_count | default(1) }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'restore_table_ready' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">table</span>{{ data.table | default('?') }}</span>
+                        {% if data.file_count and data.file_count > 1 %}
+                        <span class="log-field"><span class="log-field-label">files</span>{{ data.files_loaded | default(data.file_count) }} loaded</span>
+                        {% endif %}
                     </div>
                     
                     {% elif log.event_type in ['post_sql_started', 'metadata_started'] and data is mapping %}
