@@ -279,7 +279,7 @@
                         ✓ {{ "{:,}".format(restore_stats.total_rows) if restore_stats.total_rows else '—' }} rows restored
                         {% elif restore_stats.rows_per_second and restore_stats.rows_per_second > 0 %}
                         {{ "{:,}".format(restore_stats.rows_per_second) }} rows/s
-                        {% if restore_stats.eta_seconds %}· {{ restore_stats.eta_seconds | format_duration }}{% endif %}
+                        {% if restore_stats.eta_seconds %}· {{ restore_stats.eta_seconds | format_eta }}{% endif %}
                         {% elif restore_stats.active_threads and restore_stats.active_threads > 0 %}
                         {{ restore_stats.active_threads }} thread{{ 's' if restore_stats.active_threads != 1 else '' }} active
                         {% elif restore_stats.current_file %}
@@ -290,16 +290,17 @@
                     </span>
                 </div>
                 
-                {# Per-table progress bars from processlist #}
-                {% if restore_stats.tables %}
+                {# Per-table progress bars from processlist - hidden during atomic rename #}
+                {% if restore_stats.tables and not atomic_rename_stats %}
                 <div class="log-progress-tables">
                     {% for table_name, table in restore_stats.tables.items() %}
                     {% set is_indexing = table.phase == 'indexing' %}
                     {% set is_complete = table.is_complete or table.phase == 'complete' %}
+                    {% set is_loading = not is_indexing and not is_complete %}
                     <div class="log-progress-table-row{% if is_indexing %} log-progress-table-row--indexing{% elif is_complete %} log-progress-table-row--complete{% endif %}">
                         <span class="log-progress-table-name" title="{{ table_name }}">{{ table_name }}</span>
                         <div class="log-progress-table-bar-container">
-                            <div class="log-progress-table-bar{% if is_indexing %} log-progress-table-bar--indexing{% elif is_complete %} log-progress-table-bar--complete{% endif %}" style="width: {{ table.percent }}%"></div>
+                            <div class="log-progress-table-bar{% if is_loading %} log-progress-table-bar--loading{% elif is_indexing %} log-progress-table-bar--indexing{% elif is_complete %} log-progress-table-bar--complete{% endif %}" style="width: {{ table.percent }}%"></div>
                         </div>
                         {% if is_indexing %}
                         <span class="log-progress-table-phase" title="Building indexes (ALTER TABLE)">🔧 Indexing</span>
@@ -346,9 +347,9 @@
             <div class="log-progress-summary">
                 <span class="log-progress-summary-icon">✓</span>
                 <span class="log-progress-summary-text">
-                    Complete: {{ "%.1f"|format(profile.total_duration_seconds) }}s total
+                    Complete: {{ profile.total_duration_seconds | format_duration }} total
                     <span class="log-progress-separator">•</span>
-                    {{ "%.1f"|format(profile.total_bytes / 1024 / 1024) }} MB
+                    {{ profile.total_bytes | format_filesize }}
                     <span class="log-progress-separator">•</span>
                     {% if profile.total_duration_seconds > 0 %}
                     {{ "%.2f"|format((profile.total_bytes / 1024 / 1024) / profile.total_duration_seconds) }} MB/s avg
@@ -535,7 +536,7 @@
                     {% elif log.event_type == 'restore_profile' and data is mapping %}
                     <div class="log-detail log-detail--table">
                         <span class="log-field"><span class="log-field-label">total</span>{{ data.total_duration_seconds | format_duration }}</span>
-                        <span class="log-field"><span class="log-field-label">size</span>{{ "%.1f"|format((data.total_bytes|default(0)|int) / 1024 / 1024) }} MB</span>
+                        <span class="log-field"><span class="log-field-label">size</span>{{ data.total_bytes | default(0) | format_filesize }}</span>
                     </div>
                     {% if data.phases is mapping %}
                     {% for phase_name, phase in data.phases.items() %}

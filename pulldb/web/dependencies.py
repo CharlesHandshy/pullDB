@@ -203,12 +203,19 @@ def _format_percent(value: float | int | str | None) -> str:
 
 
 def _format_duration(value: float | int | str | None) -> str:
-    """Format duration in seconds (no subseconds)."""
+    """Format duration as H:MM:SS for >=60s, else Xs."""
     if value is None:
         return "—"
     try:
-        num = float(value)
-        return f"{num:.0f}s"
+        secs = int(float(value))
+        if secs < 60:
+            return f"{secs}s"
+        if secs < 3600:
+            return f"{secs // 60}:{secs % 60:02d}"
+        hours = secs // 3600
+        mins = (secs % 3600) // 60
+        sec = secs % 60
+        return f"{hours}:{mins:02d}:{sec:02d}"
     except (ValueError, TypeError):
         return str(value)
 

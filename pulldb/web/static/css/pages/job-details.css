@@ -959,6 +959,53 @@
 }
 
 /* ===========================================
+   PER-TABLE PROGRESS - LOADING ANIMATION
+   =========================================== */
+
+/* Loading phase - green gradient sweep */
+@keyframes loading-gradient {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 100% 50%; }
+}
+
+.log-progress-table-bar--loading {
+    background: linear-gradient(
+        90deg,
+        var(--success-400),
+        var(--success-500),
+        var(--success-600),
+        var(--success-500),
+        var(--success-400)
+    );
+    background-size: 200% 100%;
+    animation: loading-gradient 2s linear infinite;
+}
+
+/* ===========================================
+   PER-TABLE PROGRESS - LIGHT THEME
+   =========================================== */
+
+[data-theme="light"] .log-progress-table-name {
+    color: var(--gray-600);
+}
+
+[data-theme="light"] .log-progress-table-bar-container {
+    background: var(--gray-200);
+}
+
+[data-theme="light"] .log-progress-table-percent {
+    color: var(--gray-600);
+}
+
+[data-theme="light"] .log-progress-table-phase {
+    color: var(--warning-600);
+}
+
+[data-theme="light"] .log-progress-table-phase--complete {
+    color: var(--success-600);
+}
+
+/* ===========================================
    BUTTON VARIANTS
    =========================================== */
 
