@@ -751,19 +751,21 @@ def _parse_ini_metadata(metadata_path: Path) -> list[TableRowEstimate]:
 
             database, table = parts
 
-            # Get row count
+            # Get row count (0 is valid for empty tables)
             rows = 0
             if parser.has_option(section, "rows"):
                 with contextlib.suppress(ValueError, configparser.Error):
                     rows = parser.getint(section, "rows")
 
-            # Get file count (default to 1 if not found)
+            # Get file count (default to 1 if not found - schema file)
             fc = file_counts.get((database, table), 1)
 
-            if rows > 0:
-                tables.append(
-                    TableRowEstimate(database=database, table=table, rows=rows, file_count=fc)
-                )
+            # Include ALL tables, even empty ones (rows=0)
+            # Empty tables still need to be tracked for progress reporting
+            # and are restored/renamed by myloader/atomic_rename
+            tables.append(
+                TableRowEstimate(database=database, table=table, rows=rows, file_count=fc)
+            )
 
     except Exception as e:
         logger.warning(f"Failed to parse INI metadata: {e}")
