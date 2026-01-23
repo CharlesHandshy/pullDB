@@ -36,7 +36,13 @@ from pulldb.infra.metrics import (
 
 
 if TYPE_CHECKING:
-    from pulldb.infra.mysql import AdminTaskRepository, HostRepository, JobRepository
+    from pulldb.infra.mysql import (
+        AdminTaskRepository,
+        HostRepository,
+        JobHistorySummaryRepository,
+        JobRepository,
+        MySQLPool,
+    )
 
 logger = get_logger("pulldb.worker.loop")
 
@@ -341,6 +347,39 @@ def _try_handle_admin_task(
     return True
 
 
+def _try_history_backfill(
+    pool: "MySQLPool",
+    history_repo: "JobHistorySummaryRepository",
+) -> bool:
+    """Attempt to run history backfill if interval has elapsed.
+
+    This is a safety net that runs periodically (every 5 min) to catch
+    jobs whose history save failed in the worker.
+
+    Args:
+        pool: MySQL connection pool.
+        history_repo: Repository for job history summary operations.
+
+    Returns:
+        True if backfill ran and found work, False otherwise.
+    """
+    try:
+        from pulldb.worker.history_backfill import try_run_history_backfill
+
+        result = try_run_history_backfill(pool, history_repo)
+        if result is None:
+            # Skipped (too soon since last run)
+            return False
+        return result.jobs_backfilled > 0
+    except Exception as exc:
+        logger.warning(
+            "History backfill failed",
+            extra={"phase": "history_backfill", "error": str(exc)},
+            exc_info=True,
+        )
+        return False
+
+
 # -----------------------------------------------------------------------------
 # Main Poll Loop
 # -----------------------------------------------------------------------------
@@ -357,6 +396,8 @@ def run_poll_loop(
     admin_task_repo: AdminTaskRepository | None = None,
     admin_task_executor: AdminTaskExecutorFunc | None = None,
     host_repo: HostRepository | None = None,
+    pool: "MySQLPool | None" = None,
+    history_repo: "JobHistorySummaryRepository | None" = None,
 ) -> None:
     """Poll job queue and process jobs.
 
@@ -369,8 +410,10 @@ def run_poll_loop(
     2. Stale running job cleanup - recover stuck jobs
     3. Stale deleting job retry - complete failed deletions
     4. Admin tasks - background maintenance
+    5. History backfill (periodic) - safety net for job history
 
     If no work is found, applies exponential backoff to reduce database load.
+    During idle periods, runs history backfill periodically (every 5 min).
 
     Args:
         job_repo: Repository for job operations.
@@ -385,6 +428,9 @@ def run_poll_loop(
         admin_task_executor: Optional callable for admin task execution.
         host_repo: Optional repository for host credentials (enables stale
             job recovery).
+        pool: Optional MySQL pool for history backfill operations.
+        history_repo: Optional repository for job history summary (enables
+            history backfill safety net).
     """
     effective_worker_id = worker_id or get_worker_id()
     iteration = 0
@@ -438,8 +484,12 @@ def run_poll_loop(
                 current_interval = poll_interval
                 emit_gauge("queue_backoff_interval_seconds", current_interval)
 
-            # No work found - apply exponential backoff
+            # No work found - run periodic maintenance and apply backoff
             if not work_done:
+                # Priority 5: History backfill (runs periodically, not every iteration)
+                if pool and history_repo:
+                    _try_history_backfill(pool, history_repo)
+
                 _apply_backoff(current_interval)
                 current_interval = min(
                     current_interval * BACKOFF_MULTIPLIER,

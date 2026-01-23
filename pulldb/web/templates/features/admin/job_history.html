@@ -1,0 +1,466 @@
+{% extends "base.html" %}
+
+{% block title %}Job History - Admin - pullDB{% endblock %}
+
+{% block page_id %}admin-job-history{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/pages/admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='widgets/lazy_table/lazy_table.css') }}">
+{% endblock %}
+
+{% block header_title %}Job History{% endblock %}
+{% block header_subtitle %}Analytics and pruning for completed restore jobs{% endblock %}
+
+{% block content %}
+{% from "partials/icons/_index.html" import icon %}
+<div class="feature-page job-history-page">
+    <!-- Page Header - Minimalist Pattern -->
+    <div class="page-header-row mb-4">
+        <div class="page-header-left">
+            <h1 class="page-title">
+                {{ icon('clock', size='20', class='icon-md', aria_hidden='true') }}
+                Job History
+            </h1>
+        </div>
+        <div class="flex gap-3 items-center">
+            <span class="inline-flex items-center gap-1 text-muted text-sm" id="stat-summary" title="Total records in history">
+                {{ icon('database', size='16', aria_hidden='true') }}
+                <span id="stat-total">{{ stats.total_records }}</span> records
+            </span>
+        </div>
+    </div>
+
+    {% if flash_message %}
+    <div class="alert alert-{{ flash_type }} mb-4">
+        {% if flash_type == 'success' %}{{ icon('check-circle', size='20', aria_hidden='true') }}
+        {% elif flash_type == 'error' %}{{ icon('alert-circle', size='20', aria_hidden='true') }}
+        {% elif flash_type == 'warning' %}{{ icon('alert-triangle', size='20', aria_hidden='true') }}
+        {% else %}{{ icon('info', size='20', aria_hidden='true') }}{% endif %}
+        <div>{{ flash_message | e }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Records Table - LazyTable handles all filtering -->
+    <div class="card lazy-table-height-viewport">
+        <div id="history-table-container"></div>
+    </div>
+</div>
+
+<!-- Hidden Prune Form - for submitting prune after modal confirmation -->
+<form id="prune-form" method="POST" action="/web/admin/api/job-history/prune" class="js-hidden" aria-hidden="true">
+    <input type="hidden" name="before" id="prune-before">
+    <input type="hidden" name="status" id="prune-status">
+    <input type="hidden" name="username" id="prune-username">
+    <input type="hidden" name="dbhost" id="prune-dbhost">
+</form>
+{% endblock %}
+
+{% block modals %}
+<!-- Prune Records Modal -->
+<div id="prune-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="prune-modal-title">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title" id="prune-modal-title">🗑️ Prune Job History Records</h2>
+            <button type="button" class="modal-close" id="prune-modal-close" aria-label="Close">×</button>
+        </div>
+        <div class="modal-body">
+            <p class="text-muted mb-4">Delete old job history records for analytics cleanup. This does <strong>NOT</strong> affect actual jobs or databases.</p>
+            
+            <div class="form-group mb-3">
+                <label class="form-label" for="prune-date">Delete records before date</label>
+                <input type="date" id="prune-date" class="form-input" max="{{ today }}" required>
+                <span class="form-hint">Records submitted before this date will be deleted</span>
+            </div>
+            
+            <div class="form-group mb-3">
+                <label class="form-label" for="prune-status-select">Status filter (optional)</label>
+                <select id="prune-status-select" class="form-select">
+                    <option value="">All statuses</option>
+                    <option value="complete">Complete only</option>
+                    <option value="failed">Failed only</option>
+                    <option value="canceled">Canceled only</option>
+                </select>
+            </div>
+            
+            <div id="prune-count-display" class="alert alert-info hidden mb-3">
+                <span id="prune-count-text">Counting...</span>
+            </div>
+            
+            <div class="alert alert-warning">
+                <strong>⚠️ This action cannot be undone.</strong>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="prune-cancel">Cancel</button>
+            <button type="button" class="btn btn-danger" id="prune-execute" disabled>Delete Records</button>
+        </div>
+    </div>
+</div>
+
+<!-- Job Detail Modal -->
+<div id="job-detail-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="job-detail-modal-title">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <h2 class="modal-title" id="job-detail-modal-title">📋 Job Details</h2>
+            <button type="button" class="modal-close" id="job-detail-modal-close" aria-label="Close">×</button>
+        </div>
+        <div class="modal-body" id="job-detail-body" style="max-height: 70vh; overflow-y: auto;">
+            <!-- Populated by JS -->
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="job-detail-close">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='widgets/lazy_table/lazy_table.js') }}?v=9"></script>
+<script>
+/**
+ * Job History Page Controller
+ * ====================
+ * HCA Layer: pages (Layer 4)
+ * 
+ * Minimalist pattern: LazyTable handles filtering via column headers.
+ * Prune action uses modal for destructive operation.
+ */
+(function() {
+    'use strict';
+    
+    const API_BASE = '/web/admin/api/job-history';
+    let lazyTable = null;
+
+    // Escape HTML to prevent XSS
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
+    }
+
+    // Column definitions - filtering via LazyTable column headers
+    const columns = [
+        { key: 'job_id', label: 'Job ID', width: '120px', sortable: true, filterable: true, filterType: 'text', filterPlaceholder: 'b875*',
+          render: (val, row) => `<a href="#" class="font-mono link-primary text-xs job-detail-link" data-job='${escapeHtml(JSON.stringify(row))}'>${escapeHtml((val || '').substring(0, 12))}</a>` },
+        { key: 'owner_username', label: 'User', width: '100px', sortable: true, filterable: true,
+          render: (val) => `<span class="font-mono text-sm">${escapeHtml(val || '-')}</span>` },
+        { key: 'target', label: 'Target', width: '150px', sortable: true, filterable: true,
+          render: (val) => `<span class="font-mono text-sm">${escapeHtml(val || '-')}</span>` },
+        { key: 'dbhost', label: 'Host', width: '160px', sortable: true, filterable: true,
+          render: (val) => {
+            if (!val) return '-';
+            // Show shortened host with full tooltip
+            const short = val.split('.')[0].replace(/^db-mysql-/, '').substring(0, 25);
+            return `<span class="font-mono text-xs" title="${escapeHtml(val)}">${escapeHtml(short)}</span>`;
+          }
+        },
+        { key: 'started_at', label: 'Started', width: '140px', sortable: true, filterable: true, filterType: 'dateRange',
+          render: (val) => val ? LocalDateTime.format(new Date(val), 'datetime') : '-' },
+        { key: 'total_duration_seconds', label: 'Duration', width: '90px', sortable: true,
+          render: (val) => {
+            if (!val) return '-';
+            if (val < 60) return `${Math.round(val)}s`;
+            if (val < 3600) return `${Math.floor(val / 60)}m ${Math.round(val % 60)}s`;
+            return `${(val / 3600).toFixed(1)}h`;
+          }
+        },
+        { key: 'final_status', label: 'Status', width: '90px', sortable: true, filterable: true,
+          render: (val) => {
+            const cls = val === 'complete' ? 'badge-success' : val === 'failed' ? 'badge-danger' : 'badge-warning';
+            return `<span class="badge badge-sm ${cls}">${escapeHtml(val || '-')}</span>`;
+          }
+        },
+    ];
+
+    function initTable() {
+        lazyTable = new LazyTable({
+            container: document.getElementById('history-table-container'),
+            columns: columns,
+            fetchUrl: `${API_BASE}/records`,
+            rowHeight: 48,
+            pageSize: 50,
+            rowIdKey: 'job_id',
+            emptyMessage: 'No job history records found. Records are created when jobs complete.',
+            footerSlot: `
+                <a href="/web/admin/" class="btn btn-secondary"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Back to Admin</a>
+            `,
+        });
+    }
+
+    // =========================================================================
+    // Prune Modal Logic (DISABLED - button removed)
+    // =========================================================================
+    /*
+    const pruneModal = document.getElementById('prune-modal');
+    const pruneDateInput = document.getElementById('prune-date');
+    const pruneStatusSelect = document.getElementById('prune-status-select');
+    const pruneCountDisplay = document.getElementById('prune-count-display');
+    const pruneCountText = document.getElementById('prune-count-text');
+    const pruneExecuteBtn = document.getElementById('prune-execute');
+    
+    let pruneCount = 0;
+    
+    function openPruneModal() {
+        pruneModal.classList.remove('hidden');
+        pruneDateInput.value = '';
+        pruneStatusSelect.value = '';
+        pruneCountDisplay.classList.add('hidden');
+        pruneExecuteBtn.disabled = true;
+        pruneCount = 0;
+    }
+    
+    function closePruneModal() {
+        pruneModal.classList.add('hidden');
+    }
+    
+    async function updatePruneCount() {
+        const beforeDate = pruneDateInput.value;
+        if (!beforeDate) {
+            pruneCountDisplay.classList.add('hidden');
+            pruneExecuteBtn.disabled = true;
+            return;
+        }
+        
+        const params = new URLSearchParams();
+        params.append('before', new Date(beforeDate + 'T23:59:59').toISOString());
+        if (pruneStatusSelect.value) {
+            params.append('status', pruneStatusSelect.value);
+        }
+        
+        pruneCountDisplay.classList.remove('hidden');
+        pruneCountText.innerHTML = '<span class="loading-spinner loading-spinner-sm"></span> Counting...';
+        
+        try {
+            const resp = await fetch(`${API_BASE}/count?${params.toString()}`);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            if (data.success) {
+                pruneCount = data.count;
+                if (pruneCount === 0) {
+                    pruneCountText.textContent = 'No records match these criteria.';
+                    pruneExecuteBtn.disabled = true;
+                } else {
+                    pruneCountText.innerHTML = `<strong>${pruneCount.toLocaleString()}</strong> record(s) will be deleted.`;
+                    pruneExecuteBtn.disabled = false;
+                }
+            } else {
+                pruneCountText.textContent = `Error: ${data.message}`;
+                pruneExecuteBtn.disabled = true;
+            }
+        } catch (err) {
+            pruneCountText.textContent = `Error counting: ${err.message}`;
+            pruneExecuteBtn.disabled = true;
+        }
+    }
+    
+    async function executePrune() {
+        const beforeDate = pruneDateInput.value;
+        if (!beforeDate || pruneCount === 0) return;
+        
+        const beforeIso = new Date(beforeDate + 'T23:59:59').toISOString();
+        const status = pruneStatusSelect.value;
+        
+        // Build description for confirmation
+        const dateStr = new Date(beforeDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        let desc = `before ${dateStr}`;
+        if (status) desc += ` (${status} only)`;
+        
+        const confirmed = await showConfirm(
+            `Delete ${pruneCount.toLocaleString()} job history record(s) ${desc}?\n\n` +
+            'This is for analytics data only. Jobs and staging databases are NOT affected.\n\n' +
+            'This action cannot be undone.',
+            {
+                title: 'Confirm Delete',
+                okText: 'Delete Records',
+                type: 'danger'
+            }
+        );
+        
+        if (confirmed) {
+            pruneExecuteBtn.disabled = true;
+            pruneExecuteBtn.innerHTML = '<span class="loading-spinner loading-spinner-sm"></span> Deleting...';
+            
+            // Submit via hidden form
+            document.getElementById('prune-before').value = beforeIso;
+            document.getElementById('prune-status').value = status;
+            document.getElementById('prune-username').value = '';
+            document.getElementById('prune-dbhost').value = '';
+            document.getElementById('prune-form').submit();
+        }
+    }
+    
+    document.getElementById('prune-btn').addEventListener('click', openPruneModal);
+    document.getElementById('prune-modal-close').addEventListener('click', closePruneModal);
+    document.getElementById('prune-cancel').addEventListener('click', closePruneModal);
+    pruneDateInput.addEventListener('change', updatePruneCount);
+    pruneStatusSelect.addEventListener('change', updatePruneCount);
+    pruneExecuteBtn.addEventListener('click', executePrune);
+    
+    pruneModal.addEventListener('click', (e) => {
+        if (e.target === pruneModal) closePruneModal();
+    });
+    */
+
+    // Close on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !jobDetailModal.classList.contains('hidden')) {
+            closeJobDetailModal();
+        }
+    });
+
+    // =========================================================================
+    // Job Detail Modal
+    // =========================================================================
+    
+    const jobDetailModal = document.getElementById('job-detail-modal');
+    const jobDetailBody = document.getElementById('job-detail-body');
+    
+    function formatBytes(bytes) {
+        if (!bytes) return '-';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let i = 0;
+        while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+        return `${bytes.toFixed(1)} ${units[i]}`;
+    }
+    
+    function formatDuration(seconds) {
+        if (!seconds) return '-';
+        if (seconds < 60) return `${seconds.toFixed(1)}s`;
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+        return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+    }
+    
+    function openJobDetailModal(job) {
+        const statusCls = job.final_status === 'complete' ? 'badge-success' : job.final_status === 'failed' ? 'badge-danger' : 'badge-warning';
+        
+        jobDetailBody.innerHTML = `
+            <div class="grid gap-4" style="grid-template-columns: 1fr 1fr;">
+                <div>
+                    <h4 class="text-sm text-muted mb-2">Job Information</h4>
+                    <table class="table table-sm">
+                        <tr><td class="text-muted">Job ID</td><td class="font-mono text-xs">${escapeHtml(job.job_id)}</td></tr>
+                        <tr><td class="text-muted">Status</td><td><span class="badge badge-sm ${statusCls}">${escapeHtml(job.final_status)}</span></td></tr>
+                        <tr><td class="text-muted">User</td><td class="font-mono">${escapeHtml(job.owner_username || '-')}</td></tr>
+                        <tr><td class="text-muted">Target</td><td class="font-mono">${escapeHtml(job.target || '-')}</td></tr>
+                        <tr><td class="text-muted">Worker</td><td class="font-mono text-xs">${escapeHtml(job.worker_id || '-')}</td></tr>
+                    </table>
+                </div>
+                <div>
+                    <h4 class="text-sm text-muted mb-2">Timing</h4>
+                    <table class="table table-sm">
+                        <tr><td class="text-muted">Submitted</td><td>${job.submitted_at ? LocalDateTime.format(new Date(job.submitted_at), 'datetime') : '-'}</td></tr>
+                        <tr><td class="text-muted">Started</td><td>${job.started_at ? LocalDateTime.format(new Date(job.started_at), 'datetime') : '-'}</td></tr>
+                        <tr><td class="text-muted">Completed</td><td>${job.completed_at ? LocalDateTime.format(new Date(job.completed_at), 'datetime') : '-'}</td></tr>
+                        <tr><td class="text-muted">Total Duration</td><td><strong>${formatDuration(job.total_duration_seconds)}</strong></td></tr>
+                    </table>
+                </div>
+            </div>
+            
+            <h4 class="text-sm text-muted mb-2 mt-4">Host</h4>
+            <code class="text-xs" style="word-break: break-all; display: block; padding: 8px; background: var(--bg-tertiary); border-radius: 4px;">${escapeHtml(job.dbhost || '-')}</code>
+            
+            <h4 class="text-sm text-muted mb-2 mt-4">Phase Durations</h4>
+            <table class="table table-sm">
+                <tr>
+                    <td class="text-muted">Discovery</td><td>${formatDuration(job.discovery_duration_seconds)}</td>
+                    <td class="text-muted">Download</td><td>${formatDuration(job.download_duration_seconds)}</td>
+                    <td class="text-muted">Extraction</td><td>${formatDuration(job.extraction_duration_seconds)}</td>
+                </tr>
+                <tr>
+                    <td class="text-muted">MyLoader</td><td>${formatDuration(job.myloader_duration_seconds)}</td>
+                    <td class="text-muted">Post SQL</td><td>${formatDuration(job.post_sql_duration_seconds)}</td>
+                    <td class="text-muted">Atomic Rename</td><td>${formatDuration(job.atomic_rename_duration_seconds)}</td>
+                </tr>
+            </table>
+            
+            <h4 class="text-sm text-muted mb-2 mt-4">Metrics</h4>
+            <table class="table table-sm">
+                <tr>
+                    <td class="text-muted">Tables</td><td>${job.table_count?.toLocaleString() || '-'}</td>
+                    <td class="text-muted">Rows</td><td>${job.total_rows?.toLocaleString() || '-'}</td>
+                    <td class="text-muted">Rows/sec</td><td>${job.restore_rows_per_second?.toLocaleString() || '-'}</td>
+                </tr>
+                <tr>
+                    <td class="text-muted">Archive Size</td><td>${formatBytes(job.archive_size_bytes)}</td>
+                    <td class="text-muted">Extracted Size</td><td>${formatBytes(job.extracted_size_bytes)}</td>
+                    <td class="text-muted">Download Speed</td><td>${job.download_mbps ? job.download_mbps.toFixed(1) + ' Mbps' : '-'}</td>
+                </tr>
+            </table>
+            
+            ${job.error_category ? `
+            <h4 class="text-sm text-muted mb-2 mt-4">Error</h4>
+            <div class="alert alert-danger">
+                <strong>${escapeHtml(job.error_category.replace(/_/g, ' '))}</strong>
+            </div>
+            ` : ''}
+            
+            ${job.backup_s3_path ? `
+            <h4 class="text-sm text-muted mb-2 mt-4">Backup Source</h4>
+            <code class="text-xs" style="word-break: break-all; display: block; padding: 8px; background: var(--bg-tertiary); border-radius: 4px;">${escapeHtml(job.backup_s3_path)}</code>
+            ` : ''}
+        `;
+        
+        jobDetailModal.classList.remove('hidden');
+    }
+    
+    function closeJobDetailModal() {
+        jobDetailModal.classList.add('hidden');
+    }
+    
+    // Event delegation for job detail links
+    document.addEventListener('click', (e) => {
+        const link = e.target.closest('.job-detail-link');
+        if (link) {
+            e.preventDefault();
+            try {
+                const job = JSON.parse(link.dataset.job);
+                openJobDetailModal(job);
+            } catch (err) {
+                console.error('Failed to parse job data:', err);
+            }
+        }
+    });
+    
+    document.getElementById('job-detail-modal-close').addEventListener('click', closeJobDetailModal);
+    document.getElementById('job-detail-close').addEventListener('click', closeJobDetailModal);
+    jobDetailModal.addEventListener('click', (e) => {
+        if (e.target === jobDetailModal) closeJobDetailModal();
+    });
+
+    // =========================================================================
+    // Initialize
+    // =========================================================================
+    
+    try {
+        initTable();
+    } catch (err) {
+        console.error('Failed to initialize job history table:', err);
+        const container = document.getElementById('history-table-container');
+        if (container) {
+            container.innerHTML = `
+                <div class="error-state p-4">
+                    <div class="error-state-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-danger" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    </div>
+                    <h4 class="error-state-title">Failed to load table</h4>
+                    <p class="error-state-description text-danger">${escapeHtml(err.message)}</p>
+                    <button class="btn btn-primary mt-3" onclick="location.reload()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh Page</button>
+                </div>`;
+        }
+    }
+})();
+</script>
+
+<style>
+/* ===========================================
+   Job History Page Styles
+   Minimalist pattern - uses LazyTable for filtering
+   =========================================== */
+
+.job-history-page {
+    padding: var(--space-4);
+}
+</style>
+{% endblock %}

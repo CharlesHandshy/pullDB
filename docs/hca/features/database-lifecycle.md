@@ -102,28 +102,29 @@ Comprehensive guide to job status states, retention policies, locking mechanisms
 
 ### How Retention Works
 
-1. **expiry_at** calculated at deployment: `now() + (retention_hours * hours)`
-2. Worker periodically scans for `expiry_at < now()` where status = `deployed`
-3. Expired jobs marked `expired` → `deleting` → `deleted`
+1. **expires_at** calculated at deployment: `now() + default_retention_days`
+2. Worker periodically scans for `expires_at < now()` where status = `complete`
+3. After `cleanup_grace_days`, expired jobs are cleaned up
 
 ### Retention Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `default_retention_hours` | 168 (7 days) | Default for new jobs |
-| `max_retention_hours` | 720 (30 days) | Maximum extension |
-| `retention_cleanup_hours` | 24 | Hours after expiry before deletion |
+| `default_retention_days` | 7 | Default expiration for new restores |
+| `max_retention_days` | 180 | Maximum retention allowed (~6 months) |
+| `expiring_warning_days` | 7 | Days before expiry to show warning |
+| `cleanup_grace_days` | 7 | Days after expiry before cleanup |
 
 ### User Controls
 
 **View remaining time:**
-- Dashboard shows "Expires in X hours/days"
-- Job detail shows exact `expiry_at` timestamp
+- Dashboard shows "Expires in X days"
+- Job detail shows exact `expires_at` timestamp
 
 **Extend retention:**
 - Click **Extend** on deployed database
-- Select new duration (up to max_retention_hours)
-- Each extension resets expiry_at from current time
+- Select new duration (up to max_retention_days)
+- Each extension resets expires_at from current time
 
 ---
 

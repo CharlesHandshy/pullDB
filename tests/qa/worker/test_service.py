@@ -276,12 +276,12 @@ class TestMainEntryPoint:
         monkeypatch.setenv("PULLDB_WORKER_MYSQL_USER", "test_worker")
         monkeypatch.setenv("PULLDB_MYSQL_HOST", "localhost")
         monkeypatch.setenv("PULLDB_MYSQL_PASSWORD", "testpass")
-        monkeypatch.setenv("PULLDB_MYSQL_DATABASE", "pulldb")
+        monkeypatch.setenv("PULLDB_MYSQL_DATABASE", "pulldb_service")
 
         # Mock dependencies
         mock_cfg = MagicMock()
         mock_cfg.mysql_host = "localhost"
-        mock_cfg.mysql_database = "pulldb"
+        mock_cfg.mysql_database = "pulldb_service"
         mock_pool = MagicMock()
         mock_job_repo = MagicMock()
         mock_job_executor = MagicMock()

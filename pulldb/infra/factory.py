@@ -26,7 +26,7 @@ from pulldb.domain.interfaces import (
 
 if TYPE_CHECKING:
     from pulldb.domain.services.provisioning import HostProvisioningService
-    from pulldb.infra.mysql import MySQLPool
+    from pulldb.infra.mysql import JobHistorySummaryRepository, MySQLPool
 
 
 def get_mode() -> str:
@@ -138,6 +138,22 @@ def get_disallowed_user_repository() -> DisallowedUserRepository:
 
     pool = _get_real_mysql_pool()
     return DisallowedUserRepoImpl(pool)
+
+
+def get_job_history_summary_repository() -> "JobHistorySummaryRepository | None":
+    """Get JobHistorySummaryRepository implementation.
+    
+    Returns:
+        Repository for job history summary operations,
+        or None in simulation mode.
+    """
+    if is_simulation_mode():
+        return None
+    
+    from pulldb.infra.mysql import JobHistorySummaryRepository
+
+    pool = _get_real_mysql_pool()
+    return JobHistorySummaryRepository(pool)
 
 
 def get_audit_repository() -> AuditRepository | None:

@@ -532,6 +532,51 @@ def get_orphan_metadata(
         conn.close()
 
 
+def get_pulldb_job_id(credentials: MySQLCredentials, db_name: str) -> str | None:
+    """Get the job_id from pullDB metadata table for ownership verification.
+
+    This is the AUTHORITATIVE source for database ownership. The pullDB table
+    is created during restore and contains the job_id that created it.
+
+    Args:
+        credentials: MySQL credentials for the host.
+        db_name: Database name to check.
+
+    Returns:
+        job_id if pullDB table exists and has a record, None otherwise.
+    """
+    conn = mysql.connector.connect(
+        host=credentials.host,
+        port=credentials.port,
+        user=credentials.username,
+        password=credentials.password,
+        connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
+    )
+    try:
+        cursor = conn.cursor()
+        # Check if pullDB table exists and get job_id in single query
+        cursor.execute("""
+            SELECT t.TABLE_SCHEMA
+            FROM information_schema.TABLES t
+            WHERE t.TABLE_SCHEMA = %s AND t.TABLE_NAME = 'pullDB'
+        """, (db_name,))
+        if not cursor.fetchone():
+            # No pullDB table - database not created by pullDB
+            return None
+
+        # Query the job_id from pullDB table
+        cursor.execute(f"SELECT job_id FROM `{db_name}`.`pullDB` LIMIT 1")
+        row = cursor.fetchone()
+        if row and row[0]:
+            return str(row[0])
+        return None
+    except Exception as e:
+        logger.warning("Failed to get pullDB job_id for %s: %s", db_name, e)
+        return None
+    finally:
+        conn.close()
+
+
 def _database_exists(credentials: MySQLCredentials, db_name: str) -> bool:
     """Check if a specific database exists on a host.
 
@@ -860,9 +905,17 @@ def execute_delete_job(
 
     Called by the worker when processing a stale deleting job. Handles:
     1. Checking if databases already gone (skip drop, mark deleted)
-    2. Attempting to drop staging and target databases
-    3. Marking job as deleted on success
-    4. Marking job as failed if max retries exceeded
+    2. Verifying staging database ownership matches job ID
+    3. Attempting to drop staging and target databases
+    4. Marking job as deleted on success
+    5. Marking job as failed if max retries exceeded
+    
+    Ownership verification: If the staging database exists but its name suffix
+    doesn't match the job's ID (first 12 hex chars), the job is marked deleted
+    without attempting deletion. This handles cases where:
+    - Worker died and another job took over the same target
+    - Database record was corrupted
+    - Manual intervention occurred
 
     Args:
         job: Job in 'deleting' status (claimed by worker).
@@ -956,7 +1009,110 @@ def execute_delete_job(
         result.databases_already_gone = True
         return result
 
-    # Attempt to drop databases
+    # OWNERSHIP VERIFICATION via pullDB metadata table (AUTHORITATIVE)
+    # The pullDB table is created during restore and contains the job_id.
+    # This is the single source of truth for database ownership.
+    
+    # Check staging database ownership
+    if staging_exists:
+        staging_pulldb_job_id = get_pulldb_job_id(credentials, job.staging_name)
+        
+        if staging_pulldb_job_id is None:
+            # No pullDB table - staging DB wasn't created by pullDB, skip it
+            logger.warning(
+                "Staging database exists but has no pullDB table - skipping deletion",
+                extra={
+                    "job_id": job.id,
+                    "staging_name": job.staging_name,
+                },
+            )
+            detail = json.dumps({
+                "reason": "staging_no_pulldb_table",
+                "staging_name": job.staging_name,
+                "message": "Staging database has no pullDB metadata table - not created by pullDB",
+            })
+            job_repo.append_job_event(job.id, "delete_skipped", detail)
+            # Continue to check target, but mark staging as not ours
+            staging_exists = False  # Treat as not existing for our purposes
+        elif staging_pulldb_job_id != job.id:
+            # pullDB table exists but job_id doesn't match - different job owns this
+            logger.warning(
+                "Staging database exists but belongs to different job - skipping deletion",
+                extra={
+                    "job_id": job.id,
+                    "staging_name": job.staging_name,
+                    "pulldb_job_id": staging_pulldb_job_id,
+                },
+            )
+            detail = json.dumps({
+                "reason": "staging_ownership_mismatch",
+                "staging_name": job.staging_name,
+                "expected_job_id": job.id,
+                "actual_job_id": staging_pulldb_job_id,
+                "message": "Staging database belongs to a different job",
+            })
+            job_repo.append_job_event(job.id, "delete_skipped", detail)
+            # Continue to check target, but mark staging as not ours
+            staging_exists = False  # Treat as not existing for our purposes
+    
+    # Check target database ownership (non-staging database without _hex suffix)
+    if target_exists:
+        target_pulldb_job_id = get_pulldb_job_id(credentials, job.target)
+        
+        if target_pulldb_job_id is None:
+            # No pullDB table - target DB wasn't created by pullDB, skip it
+            logger.warning(
+                "Target database exists but has no pullDB table - skipping deletion",
+                extra={
+                    "job_id": job.id,
+                    "target": job.target,
+                },
+            )
+            detail = json.dumps({
+                "reason": "target_no_pulldb_table",
+                "target": job.target,
+                "message": "Target database has no pullDB metadata table - not created by pullDB",
+            })
+            job_repo.append_job_event(job.id, "delete_skipped", detail)
+            # Mark target as not ours
+            target_exists = False
+        elif target_pulldb_job_id != job.id:
+            # pullDB table exists but job_id doesn't match - different job owns this
+            logger.warning(
+                "Target database exists but belongs to different job - skipping deletion",
+                extra={
+                    "job_id": job.id,
+                    "target": job.target,
+                    "pulldb_job_id": target_pulldb_job_id,
+                },
+            )
+            detail = json.dumps({
+                "reason": "target_ownership_mismatch",
+                "target": job.target,
+                "expected_job_id": job.id,
+                "actual_job_id": target_pulldb_job_id,
+                "message": "Target database belongs to a different job",
+            })
+            job_repo.append_job_event(job.id, "delete_skipped", detail)
+            # Mark target as not ours
+            target_exists = False
+    
+    # If neither database is ours (both failed ownership check), mark job as deleted
+    if not staging_exists and not target_exists:
+        logger.info(
+            "Neither database belongs to this job, marking as deleted",
+            extra={
+                "job_id": job.id,
+                "staging_name": job.staging_name,
+                "target": job.target,
+            },
+        )
+        job_repo.mark_job_deleted(job.id, "Databases not owned by this job - skipped deletion")
+        result.success = True
+        result.databases_already_gone = True
+        return result
+
+    # Attempt to drop databases (only those we verified ownership for)
     delete_result = delete_job_databases(
         job_id=job.id,
         staging_name=job.staging_name,
@@ -2336,6 +2492,17 @@ def admin_delete_user_orphan_databases(
                 results[db_name] = True
                 continue
 
+            # SAFETY: Verify pullDB ownership before dropping
+            # Only drop databases that have a pullDB table (created by pullDB)
+            pulldb_job_id = get_pulldb_job_id(credentials, db_name)
+            if pulldb_job_id is None:
+                logger.warning(
+                    "Admin deletion rejected: %s has no pullDB table - not created by pullDB",
+                    db_name,
+                )
+                results[db_name] = False
+                continue
+
             # Drop the database
             conn = mysql.connector.connect(
                 host=credentials.host,
@@ -2349,10 +2516,11 @@ def admin_delete_user_orphan_databases(
                 cursor = conn.cursor()
                 cursor.execute(f"DROP DATABASE IF EXISTS {quote_identifier(db_name)}")
                 logger.info(
-                    "Admin %s deleted user-orphan database: %s on %s",
+                    "Admin %s deleted user-orphan database: %s on %s (pullDB job: %s)",
                     admin_user,
                     db_name,
                     dbhost,
+                    pulldb_job_id,
                 )
             finally:
                 conn.close()
@@ -2610,6 +2778,7 @@ def _process_retention_cleanup_host(
             try:
                 _drop_job_database(
                     job=job,
+                    conn=conn,
                     cursor=cursor,  # type: ignore[arg-type]
                     job_repo=job_repo,
                     result=result,
@@ -2632,6 +2801,7 @@ def _process_retention_cleanup_host(
 
 def _drop_job_database(
     job: "Job",
+    conn: Any,
     cursor: "MySQLCursor",
     job_repo: "JobRepository",
     result: RetentionCleanupResult,
@@ -2641,6 +2811,7 @@ def _drop_job_database(
 
     Args:
         job: Job whose database to drop.
+        conn: MySQL connection (for ownership check).
         cursor: MySQL cursor.
         job_repo: Job repository.
         result: Result object to update.
@@ -2655,6 +2826,61 @@ def _drop_job_database(
             "Skipping protected database %s for job %s", db_name, job.id
         )
         result.databases_skipped += 1
+        return
+
+    # SAFETY: Verify pullDB ownership before dropping
+    # The pullDB table is the AUTHORITATIVE source for database ownership
+    try:
+        check_cursor = conn.cursor()
+        check_cursor.execute("""
+            SELECT 1 FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = 'pullDB'
+            LIMIT 1
+        """, (db_name,))
+        has_pulldb_table = check_cursor.fetchone() is not None
+
+        if not has_pulldb_table:
+            logger.warning(
+                "SAFETY: Skipping retention cleanup for %s - no pullDB table (job %s). "
+                "Database was not created by pullDB system.",
+                db_name,
+                job.id,
+            )
+            result.databases_skipped += 1
+            result.errors.append(
+                f"No pullDB table in {db_name} - not created by pullDB"
+            )
+            check_cursor.close()
+            return
+
+        # Verify job_id matches
+        check_cursor.execute(f"SELECT job_id FROM `{db_name}`.`pullDB` LIMIT 1")
+        row = check_cursor.fetchone()
+        check_cursor.close()
+        
+        if row and row[0] and str(row[0]) != job.id:
+            logger.warning(
+                "SAFETY: Skipping retention cleanup for %s - job_id mismatch "
+                "(expected %s, found %s). Database belongs to different job.",
+                db_name,
+                job.id,
+                row[0],
+            )
+            result.databases_skipped += 1
+            result.errors.append(
+                f"Job ID mismatch for {db_name}: expected {job.id}, found {row[0]}"
+            )
+            return
+    except Exception as e:
+        logger.warning(
+            "FAIL-SAFE: pullDB ownership check failed for %s (job %s): %s. "
+            "Skipping to prevent potential data loss.",
+            db_name,
+            job.id,
+            e,
+        )
+        result.databases_skipped += 1
+        result.errors.append(f"Ownership check failed for {db_name}: {e}")
         return
 
     # DEFENSE-IN-DEPTH: Double-check no deployed job exists for this target

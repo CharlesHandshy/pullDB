@@ -596,3 +596,24 @@
 [data-theme="dark"] .extend-select:focus {
     box-shadow: 0 0 0 2px var(--primary-900);
 }
+/* Style the dropdown options in dark mode */
+[data-theme="dark"] .extend-select {
+    color-scheme: dark;
+}
+
+[data-theme="dark"] .extend-select option {
+    background-color: var(--gray-800);
+    color: var(--gray-100);
+}
+
+/* Warning variant option styling */
+[data-theme="dark"] .extend-select.expires-warning option {
+    background-color: var(--gray-800);
+    color: var(--gray-100);
+}
+
+/* Danger variant option styling */
+[data-theme="dark"] .extend-select.expires-danger option {
+    background-color: var(--gray-800);
+    color: var(--gray-100);
+}

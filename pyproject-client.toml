@@ -16,13 +16,12 @@ name = "pulldb-client"
 version = "1.0.6"
 description = "pullDB CLI Client - Connect to remote pullDB services"
 readme = "packaging/CLIENT-README.md"
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.12"
 authors = [ { name = "PestRoutes Engineering" } ]
 keywords = ["mysql", "restore", "s3", "backup", "dev", "cli"]
 classifiers = [
   "Programming Language :: Python :: 3",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent"
 ]
 

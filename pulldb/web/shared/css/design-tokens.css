@@ -110,7 +110,7 @@
     --text-2xs: 0.625rem;   /* 10px */
     --text-xs: 0.75rem;     /* 12px */
     --text-sm: 0.875rem;    /* 14px */
-    --color-text-base: 0.9375rem; /* 15px - slightly smaller base */
+    --text-base: 0.9375rem; /* 15px - slightly smaller base */
     --text-md: 1rem;        /* 16px */
     --text-lg: 1.125rem;    /* 18px */
     --text-xl: 1.25rem;     /* 20px */

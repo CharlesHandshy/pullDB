@@ -540,6 +540,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     _set_worker_active(1, "startup")
 
+    # Build history repo for backfill safety net
+    history_repo = None
+    if not is_simulation_mode():
+        from pulldb.infra.mysql import JobHistorySummaryRepository
+        history_repo = JobHistorySummaryRepository(pool)
+        logger.info("History backfill safety net enabled")
+
     try:
         max_iterations = 1 if args.oneshot else args.max_iterations
         run_poll_loop(
@@ -551,6 +558,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             admin_task_repo=admin_task_repo,
             admin_task_executor=admin_task_executor.execute if admin_task_executor else None,
             host_repo=host_repo,
+            pool=pool,
+            history_repo=history_repo,
         )
     except Exception as exc:
         _emit_fatal(exc)

@@ -2584,23 +2584,6 @@ class SimulatedSettingsRepository:
         except ValueError:
             return 7
 
-    # Legacy methods for backward compatibility
-    def get_max_retention_months(self) -> int:
-        """Get maximum retention months (deprecated - use get_max_retention_days).
-
-        Returns:
-            Maximum months (calculated from max_retention_days).
-        """
-        return max(1, self.get_max_retention_days() // 30)
-
-    def get_expiring_notice_days(self) -> int:
-        """Get days before expiry to show warning notice (deprecated - use get_expiring_warning_days).
-
-        Returns:
-            Number of days. Default: 7.
-        """
-        return self.get_expiring_warning_days()
-
     def get_retention_options(
         self, include_now: bool = False
     ) -> list[tuple[str, str]]:

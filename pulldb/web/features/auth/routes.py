@@ -619,18 +619,18 @@ async def maintenance_page(
     
     if hasattr(state, "job_repo") and state.job_repo:
         if hasattr(state.job_repo, "get_maintenance_items"):
-            # Get expiring notice days from settings
-            expiring_notice_days = 7
+            # Get expiring warning days from settings
+            expiring_warning_days = 7
             if hasattr(state, "settings_repo") and state.settings_repo:
-                if hasattr(state.settings_repo, "get_expiring_notice_days"):
-                    expiring_notice_days = await run_in_threadpool(
-                        state.settings_repo.get_expiring_notice_days
+                if hasattr(state.settings_repo, "get_expiring_warning_days"):
+                    expiring_warning_days = await run_in_threadpool(
+                        state.settings_repo.get_expiring_warning_days
                     )
             
             items = await run_in_threadpool(
                 state.job_repo.get_maintenance_items,
                 user.user_id,
-                expiring_notice_days,
+                expiring_warning_days,
                 7,  # grace_days
             )
             expired_jobs = items.expired
@@ -768,17 +768,17 @@ async def maintenance_submit(
         if hasattr(state, "job_repo") and state.job_repo:
             if hasattr(state.job_repo, "get_maintenance_items"):
                 from fastapi.concurrency import run_in_threadpool
-                expiring_notice_days = 7
+                expiring_warning_days = 7
                 if hasattr(state, "settings_repo") and state.settings_repo:
-                    if hasattr(state.settings_repo, "get_expiring_notice_days"):
-                        expiring_notice_days = await run_in_threadpool(
-                            state.settings_repo.get_expiring_notice_days
+                    if hasattr(state.settings_repo, "get_expiring_warning_days"):
+                        expiring_warning_days = await run_in_threadpool(
+                            state.settings_repo.get_expiring_warning_days
                         )
                 
                 items = await run_in_threadpool(
                     state.job_repo.get_maintenance_items,
                     user.user_id,
-                    expiring_notice_days,
+                    expiring_warning_days,
                     7,  # grace_days
                 )
                 expired_jobs = items.expired

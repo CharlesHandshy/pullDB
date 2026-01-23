@@ -54,7 +54,7 @@ def mock_config() -> Config:
     config.mysql_host = "localhost"
     config.mysql_user = "pulldb_worker"
     config.mysql_password = "test_password"
-    config.mysql_database = "pulldb"
+    config.mysql_database = "pulldb_service"
     config.work_dir = "/tmp/pulldb_test"
     config.myloader_binary = "/usr/bin/myloader"
     config.myloader_threads = 4

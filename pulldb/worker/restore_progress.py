@@ -47,7 +47,7 @@ class TableProgressInfo:
     Attributes:
         name: Table name (without database prefix).
         percent_complete: Progress percentage (0-100).
-        phase: Current phase - 'loading' or 'indexing'.
+        phase: Current phase - 'loading', 'indexing', or 'analyzing'.
         rows_loaded: Estimated rows loaded so far.
         rows_total: Total rows expected for this table.
         running_seconds: Time this table has been in current phase.
@@ -56,7 +56,7 @@ class TableProgressInfo:
 
     name: str
     percent_complete: float
-    phase: Literal["loading", "indexing", "complete"]
+    phase: Literal["loading", "indexing", "analyzing", "complete"]
     rows_loaded: int
     rows_total: int
     running_seconds: float = 0.0
@@ -95,7 +95,7 @@ class RestoreProgress:
         throughput: Throughput and ETA stats.
         timestamp: When this snapshot was created.
         source: What triggered this update ('processlist', 'file_complete',
-            'finalized').
+            'finalized', 'analyzing_started', 'analyzing_complete').
     """
 
     percent_complete: float
@@ -106,7 +106,13 @@ class RestoreProgress:
     rows_total: int
     throughput: ThroughputStats
     timestamp: datetime
-    source: Literal["processlist", "file_complete", "finalized"]
+    source: Literal[
+        "processlist",
+        "file_complete",
+        "finalized",
+        "analyzing_started",
+        "analyzing_complete",
+    ]
 
     def to_event_dict(self) -> dict:
         """Convert to dict format for event emission.
@@ -114,9 +120,7 @@ class RestoreProgress:
         Returns:
             Dict compatible with existing restore_progress event format.
         """
-        status = (
-            "processlist_update" if self.source == "processlist" else "finished"
-        )
+        status = "processlist_update" if self.source == "processlist" else "finished"
         # Include BOTH in-progress and recently-completed tables
         # This ensures the UI sees tables transition to 100% rather than
         # suddenly disappearing when finalized
@@ -160,12 +164,13 @@ class _MutableTableState:
     rows_total: int
     file_count: int = 1  # Total data files for this table
     percent_complete: float = 0.0
-    phase: str = "loading"  # 'loading', 'indexing', 'complete'
+    phase: str = "loading"  # 'loading', 'indexing', 'analyzing', 'complete'
     running_seconds: float = 0.0
     is_complete: bool = False
     last_seen_in_processlist: float = 0.0
     files_completed: int = 0  # Track how many chunk files have finished
     was_ever_seen: bool = False  # Track if table was ever in processlist
+    first_seen_time: float = 0.0  # When table was first seen (for duration calc)
 
 
 # Timeout after which a table not in processlist is considered complete
@@ -206,23 +211,50 @@ class RestoreProgressTracker:
     """
 
     # Regex patterns for parsing myloader output
+    # Myloader output format varies by version:
+    #   0.9: "** Message: 15:50:48.537: Thread 7 restoring `db`.`table` part 0"
+    #   0.19: "Thread 5: Enqueuing index for table: db.table"
+    #
+    # All patterns allow optional "** Message: HH:MM:SS.mmm: " prefix
+
+    # Match "Thread N finished restoring" for file completion
     _RE_FINISHED = re.compile(
-        r"(?:Thread \d+|Message: Thread \d+) finished restoring (\S+)"
+        r"(?:\*\* Message: [\d:.]+: )?(?:Thread \d+|Message: Thread \d+) finished restoring (\S+)"
     )
+
+    # Match "Thread N restoring `db`.`table` part N" - table data started loading
+    # Captures table name from backtick-quoted format
     _RE_VERBOSE_RESTORE = re.compile(
-        r"Thread \d+: restoring .+ from (.+?)(?: \||\. Tables|$)"
-    )    # Definitive signal that data loading is complete for a table
-    # Message: "Thread N: Enqueuing index for table: staging_db.tablename"
-    _RE_ENQUEUE_INDEX = re.compile(
-        r"Thread\s+\d+:\s+Enqueuing index for table:\s+([^\s.]+)\.([^\s]+)",
+        r"(?:\*\* Message: [\d:.]+: )?Thread \d+(?: restoring| shutting down)"
+        r"(?:\s+`[^`]+`\.`([^`]+)`(?:\s+part \d+)?)?",
         re.IGNORECASE,
     )
+
+    # Definitive signal that data loading is complete for a table
+    # Message: "Thread N: Enqueuing index for table: staging_db.tablename"
+    # Also matches: "** Message: 06:02:20.155: Thread 0: Enqueuing index for table: db.table"
+    _RE_ENQUEUE_INDEX = re.compile(
+        r"(?:\*\* Message: [\d:.]+: )?Thread\s+\d+:\s+Enqueuing index for table:\s+"
+        r"(?:`?([^`.\s]+)`?\.`?([^`\s]+)`?|([^\s.]+)\.([^\s]+))",
+        re.IGNORECASE,
+    )
+
     # Signal that index rebuild has started
     # Message: "restoring index: staging_db.tablename"
     _RE_RESTORING_INDEX = re.compile(
-        r"restoring index:\s+([^\s.]+)\.([^\s]+)",
+        r"(?:\*\* Message: [\d:.]+: )?restoring index:\s+"
+        r"(?:`?([^`.\s]+)`?\.`?([^`\s]+)`?|([^\s.]+)\.([^\s]+))",
         re.IGNORECASE,
     )
+
+    # Match table file completion from verbose output
+    # "** Message: 15:54:59.179: Thread 5 restoring `db`.`table` part 0" followed by next table
+    # indicates previous table file is done
+    _RE_TABLE_PART_RESTORE = re.compile(
+        r"(?:\*\* Message: [\d:.]+: )?Thread \d+ restoring `[^`]+`\.`([^`]+)`(?:\s+part (\d+))?",
+        re.IGNORECASE,
+    )
+
     def __init__(
         self,
         table_metadata: list[TableRowEstimate],
@@ -260,7 +292,7 @@ class RestoreProgressTracker:
         self._tables: dict[str, _MutableTableState] = {}
         self._tables_completed: set[str] = set()
         self._tables_in_processlist: set[str] = set()  # Currently active in processlist
-        
+
         # De-duplication for events (prevent identical events)
         self._emitted_file_events: set[tuple[str, int]] = set()  # (table, file_index)
         self._emitted_table_ready: set[str] = set()  # table names
@@ -312,6 +344,9 @@ class RestoreProgressTracker:
                 state.phase = progress.phase
                 state.running_seconds = progress.running_seconds
                 state.last_seen_in_processlist = now
+                # Track first time table is seen for duration calculation
+                if not state.was_ever_seen:
+                    state.first_seen_time = now
                 state.was_ever_seen = True
 
             # Store current processlist tables for UI display
@@ -344,10 +379,7 @@ class RestoreProgressTracker:
                 if state.phase == "indexing":
                     if time_since_seen > 3.0:
                         # Indexing finished - table is complete
-                        state.is_complete = True
-                        state.percent_complete = 100.0
-                        state.phase = "complete"
-                        self._tables_completed.add(state.name)
+                        self._mark_table_complete(state, now)
                         logger.info(
                             f"Table {state.name} complete: indexing finished "
                             f"(left processlist {time_since_seen:.1f}s ago)"
@@ -355,11 +387,11 @@ class RestoreProgressTracker:
                     continue
 
                 # Mark complete if has file completions OR stale timeout exceeded
-                if state.files_completed > 0 or time_since_seen > _STALE_TABLE_TIMEOUT_SECONDS:
-                    state.is_complete = True
-                    state.percent_complete = 100.0
-                    state.phase = "complete"
-                    self._tables_completed.add(state.name)
+                if (
+                    state.files_completed > 0
+                    or time_since_seen > _STALE_TABLE_TIMEOUT_SECONDS
+                ):
+                    self._mark_table_complete(state, now)
                     logger.info(
                         f"Table {state.name} complete: left processlist "
                         f"({state.files_completed} files, {time_since_seen:.1f}s ago)"
@@ -367,11 +399,45 @@ class RestoreProgressTracker:
 
             self._emit_progress("processlist")
 
+    def _mark_table_complete(self, state: _MutableTableState, now: float) -> None:
+        """Mark a table as complete and emit table_restore_complete event.
+
+        Args:
+            state: Table state to mark complete.
+            now: Current monotonic time.
+        """
+        state.is_complete = True
+        state.percent_complete = 100.0
+        state.phase = "complete"
+        self._tables_completed.add(state.name)
+
+        # Emit table_restore_complete event with full stats
+        if self._on_event:
+            # Calculate duration from first seen to now
+            duration_seconds = 0.0
+            if state.first_seen_time > 0:
+                duration_seconds = now - state.first_seen_time
+
+            # Calculate rows per second
+            rows_per_second = 0
+            if duration_seconds > 0:
+                rows_per_second = int(state.rows_total / duration_seconds)
+
+            self._on_event(
+                "table_restore_complete",
+                {
+                    "table": state.name,
+                    "rows": state.rows_total,
+                    "duration_seconds": round(duration_seconds, 1),
+                    "rows_per_second": rows_per_second,
+                },
+            )
+
     def update_from_myloader_line(self, line: str) -> None:
         """Update progress from myloader stdout line.
 
         Called for each line of myloader output. Detects:
-        - File completions (chunk finished)
+        - Table restore start (tracking which tables are being worked on)
         - Index enqueue (data 100% complete for table)
         - Index restore start (indexing phase began)
 
@@ -380,20 +446,59 @@ class RestoreProgressTracker:
         """
         # Check for "Enqueuing index" = data load complete, entering indexing
         if match := self._RE_ENQUEUE_INDEX.search(line):
-            table_name = match.group(2)  # group(1) is db, group(2) is table
-            self._mark_data_complete(table_name)
+            # Pattern has 4 groups: (backtick_db, backtick_table, plain_db, plain_table)
+            # Either groups 1,2 or groups 3,4 will have values
+            table_name = match.group(2) or match.group(4)
+            if table_name:
+                self._mark_data_complete(table_name)
             return
 
         # Check for "restoring index" = index rebuild actively running
         if match := self._RE_RESTORING_INDEX.search(line):
-            table_name = match.group(2)
-            self._mark_indexing_started(table_name)
+            # Same pattern structure as ENQUEUE_INDEX
+            table_name = match.group(2) or match.group(4)
+            if table_name:
+                self._mark_indexing_started(table_name)
+            return
+
+        # Check for table data file restore started
+        # This helps track which tables are being worked on even before processlist updates
+        if match := self._RE_TABLE_PART_RESTORE.search(line):
+            table_name = match.group(1)
+            if table_name:
+                # Mark that we've seen this table being restored
+                self._mark_table_restore_started(table_name)
             return
 
         # Check for file completion (less reliable but useful for progress)
         table_name = self._extract_completed_table(line)
         if table_name:
             self.mark_table_file_complete(table_name)
+
+    def _mark_table_restore_started(self, table_name: str) -> None:
+        """Mark that a table restore has started from myloader verbose output.
+
+        This is called when myloader emits "Thread N restoring `db`.`table` part N".
+        It helps track table activity even before processlist updates.
+
+        Args:
+            table_name: Table name being restored.
+        """
+        bare_name = self._normalize_table_name(table_name)
+
+        with self._lock:
+            state = self._tables.get(bare_name)
+            if state is None:
+                return
+
+            if state.is_complete:
+                return
+
+            # Mark table as active if not already
+            if not state.was_ever_seen:
+                state.was_ever_seen = True
+                state.last_seen_in_processlist = time.monotonic()
+                logger.debug(f"Table {bare_name}: restore started from myloader output")
 
     def _mark_data_complete(self, table_name: str) -> None:
         """Mark table's data load as 100% complete, entering indexing phase.
@@ -443,6 +548,11 @@ class RestoreProgressTracker:
         """Mark table as actively rebuilding indexes.
 
         Called when myloader emits 'restoring index: db.table'.
+        This message indicates data load is complete and indexing is underway.
+
+        NOTE: myloader 0.19 does NOT emit "Enqueuing index" messages, so this
+        is often the first signal that data loading finished. We emit
+        restore_table_ready here if not already emitted.
 
         Args:
             table_name: Table name from myloader output.
@@ -452,6 +562,19 @@ class RestoreProgressTracker:
         with self._lock:
             state = self._tables.get(bare_name)
             if state is None:
+                # Table not in tracker - this is normal for empty/schema-only tables
+                # which have no data rows but still have indexes to restore.
+                # We can still emit the event with file counts of 0.
+                if self._on_event and bare_name not in self._emitted_table_ready:
+                    self._emitted_table_ready.add(bare_name)
+                    self._on_event(
+                        "restore_table_ready",
+                        {
+                            "table": bare_name,
+                            "files_loaded": 0,
+                            "file_count": 0,
+                        },
+                    )
                 return
 
             if state.is_complete:
@@ -461,7 +584,22 @@ class RestoreProgressTracker:
             if state.phase != "indexing":
                 state.percent_complete = 100.0
                 state.phase = "indexing"
-                logger.debug(f"Table {bare_name}: indexing started")
+                logger.info(f"Table {bare_name}: indexing started (data complete)")
+
+            # Emit restore_table_ready if not already emitted
+            # This handles myloader 0.19 which skips "Enqueuing index" messages
+            if self._on_event and bare_name not in self._emitted_table_ready:
+                self._emitted_table_ready.add(bare_name)
+                files_loaded = state.files_completed
+                file_count = state.file_count
+                self._on_event(
+                    "restore_table_ready",
+                    {
+                        "table": bare_name,
+                        "files_loaded": files_loaded,
+                        "file_count": file_count,
+                    },
+                )
 
     def mark_table_file_complete(self, table_name: str) -> None:
         """Mark a table's data file as complete.
@@ -488,7 +626,7 @@ class RestoreProgressTracker:
             state.files_completed += 1
             file_index = state.files_completed  # 1-based
             file_count = state.file_count
-            
+
             logger.debug(
                 f"File completed for table {bare_name}: "
                 f"{file_index} of {file_count} files done"
@@ -517,6 +655,7 @@ class RestoreProgressTracker:
             table_name: Table name to mark complete.
         """
         bare_name = self._normalize_table_name(table_name)
+        now = time.monotonic()
 
         with self._lock:
             state = self._tables.get(bare_name)
@@ -524,13 +663,71 @@ class RestoreProgressTracker:
                 return
 
             if not state.is_complete:
-                state.is_complete = True
-                state.percent_complete = 100.0
-                state.phase = "complete"
-                self._tables_completed.add(bare_name)
+                self._mark_table_complete(state, now)
                 logger.debug(f"Table marked complete: {bare_name}")
 
                 self._emit_progress("file_complete")
+
+    def mark_table_analyzing(self, table_name: str) -> None:
+        """Mark a table as being analyzed (ANALYZE TABLE).
+
+        Called when EarlyAnalyzeWorker starts analyzing a table.
+        This transitions the table from 'indexing' phase to 'analyzing' phase.
+
+        Args:
+            table_name: Table name to mark as analyzing.
+        """
+        bare_name = self._normalize_table_name(table_name)
+
+        with self._lock:
+            state = self._tables.get(bare_name)
+            if state is None:
+                # Table not tracked (e.g., schema-only or already removed)
+                # Create a minimal state to track analyzing phase
+                state = _MutableTableState(
+                    name=bare_name,
+                    rows_total=0,
+                    percent_complete=99.0,
+                    phase="analyzing",
+                    is_complete=False,
+                    first_seen_time=time.monotonic(),
+                )
+                self._tables[bare_name] = state
+                logger.debug(f"Created state for analyzing table: {bare_name}")
+                self._emit_progress("analyzing_started")
+                return
+
+            if state.is_complete:
+                # Already complete - don't revert
+                return
+
+            state.phase = "analyzing"
+            state.percent_complete = 99.0  # Show indeterminate progress
+            logger.debug(f"Table {bare_name}: entering analyzing phase")
+            self._emit_progress("analyzing_started")
+
+    def mark_table_analyze_complete(self, table_name: str) -> None:
+        """Mark a table's ANALYZE as complete.
+
+        Called when EarlyAnalyzeWorker finishes analyzing a table.
+        This marks the table as fully complete.
+
+        Args:
+            table_name: Table name to mark as analyze complete.
+        """
+        bare_name = self._normalize_table_name(table_name)
+        now = time.monotonic()
+
+        with self._lock:
+            state = self._tables.get(bare_name)
+            if state is None:
+                return
+
+            if not state.is_complete:
+                self._mark_table_complete(state, now)
+                logger.debug(f"Table analyze complete: {bare_name}")
+
+                self._emit_progress("analyzing_complete")
 
     def get_progress(self) -> RestoreProgress:
         """Get current progress snapshot.
@@ -550,14 +747,12 @@ class RestoreProgressTracker:
         Returns:
             Final progress snapshot with all tables complete.
         """
+        now = time.monotonic()
         with self._lock:
             # Any table still "in progress" is actually done
             for state in self._tables.values():
                 if not state.is_complete:
-                    state.is_complete = True
-                    state.percent_complete = 100.0
-                    state.phase = "complete"
-                    self._tables_completed.add(state.name)
+                    self._mark_table_complete(state, now)
 
             progress = self._build_progress_snapshot("finalized")
 
@@ -643,7 +838,14 @@ class RestoreProgressTracker:
         return total
 
     def _build_progress_snapshot(
-        self, source: Literal["processlist", "file_complete", "finalized"]
+        self,
+        source: Literal[
+            "processlist",
+            "file_complete",
+            "finalized",
+            "analyzing_started",
+            "analyzing_complete",
+        ],
     ) -> RestoreProgress:
         """Build immutable progress snapshot from current state.
 
@@ -659,10 +861,10 @@ class RestoreProgressTracker:
         # For "finalized" source, include all tables that had progress
         # For normal updates, ONLY include tables currently in processlist
         in_progress: list[TableProgressInfo] = []
-        
+
         for state in self._tables.values():
             include_table = False
-            
+
             if source == "finalized":
                 # Include all tables that had any progress (now 100%)
                 include_table = state.rows_total > 0
@@ -671,9 +873,7 @@ class RestoreProgressTracker:
                 include_table = state.name in self._tables_in_processlist
 
             if include_table:
-                table_rows = int(
-                    state.percent_complete / 100.0 * state.rows_total
-                )
+                table_rows = int(state.percent_complete / 100.0 * state.rows_total)
                 in_progress.append(
                     TableProgressInfo(
                         name=state.name,
@@ -705,7 +905,14 @@ class RestoreProgressTracker:
         )
 
     def _emit_progress(
-        self, source: Literal["processlist", "file_complete", "finalized"]
+        self,
+        source: Literal[
+            "processlist",
+            "file_complete",
+            "finalized",
+            "analyzing_started",
+            "analyzing_complete",
+        ],
     ) -> None:
         """Emit progress if throttle allows.
 

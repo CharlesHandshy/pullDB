@@ -88,7 +88,7 @@ class ProcesslistMonitorConfig:
         mysql_port: MySQL server port.
         mysql_user: MySQL user (needs PROCESS privilege).
         mysql_password: MySQL password.
-        poll_interval_seconds: How often to poll (default 2s).
+        poll_interval_seconds: How often to poll (default 0.5s).
         staging_db: Database name to filter queries for.
     """
 
@@ -97,7 +97,7 @@ class ProcesslistMonitorConfig:
     mysql_user: str
     mysql_password: str
     staging_db: str
-    poll_interval_seconds: float = 2.0
+    poll_interval_seconds: float = 0.5
 
 
 class ProcesslistMonitor:

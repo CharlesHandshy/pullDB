@@ -154,6 +154,11 @@ BREADCRUMB_PATHS: dict[str, list[tuple[str, str | None]]] = {
         ("Administration", "/web/admin"),
         ("API Keys", None),
     ],
+    "admin_job_history": [
+        ("Dashboard", "/web/dashboard"),
+        ("Administration", "/web/admin"),
+        ("Job History", None),
+    ],
     # Audit section
     "audit_logs": [
         ("Dashboard", "/web/dashboard"),

@@ -40,7 +40,8 @@ from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 logger = get_logger("pulldb.worker.atomic_rename")
 
 # Expected stored procedure version (must match procedure file)
-EXPECTED_PROCEDURE_VERSION = "1.0.1"
+# Version 1.0.2: Added pullDB ownership verification before DROP target
+EXPECTED_PROCEDURE_VERSION = "1.0.2"
 
 
 @dataclass(slots=True, frozen=True)
@@ -473,7 +474,7 @@ def _get_procedure_schema(cursor: Any) -> str | None:
         "SELECT ROUTINE_SCHEMA FROM information_schema.ROUTINES "
         f"WHERE ROUTINE_NAME = '{RENAME_PROCEDURE_NAME}' "
         "AND ROUTINE_TYPE = 'PROCEDURE' "
-        "ORDER BY ROUTINE_SCHEMA = 'pulldb' DESC, ROUTINE_SCHEMA = 'sys' DESC "
+        "ORDER BY ROUTINE_SCHEMA = 'pulldb_service' DESC, ROUTINE_SCHEMA = 'sys' DESC "
         "LIMIT 1"
     )
     row = cursor.fetchone()

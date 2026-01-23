@@ -5436,3 +5436,336 @@ async def get_user_keys(
         return {"success": True, "keys": enriched_keys}
     except Exception as e:
         return {"success": False, "message": str(e), "keys": []}
+
+
+# =============================================================================
+# Job History Summary - Admin Management
+# =============================================================================
+
+@router.get("/job-history", response_class=HTMLResponse)
+async def job_history_page(
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+    prune_success: int | None = None,
+    prune_error: str | None = None,
+) -> HTMLResponse:
+    """Render the job history management page."""
+    from datetime import date
+
+    from pulldb.infra.factory import get_job_history_summary_repository
+
+    # Build flash message from query params
+    flash_message = None
+    flash_type = None
+    if prune_success is not None:
+        flash_message = f"Successfully deleted {prune_success} history record(s)"
+        flash_type = "success"
+    elif prune_error:
+        flash_message = f"Prune failed: {prune_error}"
+        flash_type = "error"
+
+    # Get stats
+    try:
+        history_repo = get_job_history_summary_repository()
+        stats = history_repo.get_stats()
+    except Exception as e:
+        logger.warning("Failed to get job history stats: %s", e)
+        stats = {
+            "total_records": 0,
+            "oldest_record": None,
+            "newest_record": None,
+            "complete_count": 0,
+            "failed_count": 0,
+            "canceled_count": 0,
+        }
+
+    return templates.TemplateResponse(
+        "features/admin/job_history.html",
+        {
+            "request": request,
+            "active_nav": "admin",
+            "user": user,
+            "stats": stats,
+            "today": date.today().isoformat(),
+            "flash_message": flash_message,
+            "flash_type": flash_type,
+            "breadcrumbs": get_breadcrumbs("admin_job_history"),
+        },
+    )
+
+
+@router.get("/api/job-history/stats")
+async def get_job_history_stats(
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> dict:
+    """Get job history summary statistics."""
+    from pulldb.infra.factory import get_job_history_summary_repository
+
+    try:
+        history_repo = get_job_history_summary_repository()
+        if history_repo is None:
+            # Simulation mode - return empty stats
+            return {
+                "success": True,
+                "stats": {
+                    "total_records": 0,
+                    "oldest_record": None,
+                    "newest_record": None,
+                    "complete_count": 0,
+                    "failed_count": 0,
+                    "canceled_count": 0,
+                },
+            }
+        stats = history_repo.get_stats()
+        # Convert datetime objects for JSON
+        return {
+            "success": True,
+            "stats": {
+                "total_records": stats.get("total_records", 0),
+                "oldest_record": (
+                    stats["oldest_record"].isoformat()
+                    if stats.get("oldest_record") else None
+                ),
+                "newest_record": (
+                    stats["newest_record"].isoformat()
+                    if stats.get("newest_record") else None
+                ),
+                "complete_count": stats.get("complete_count", 0),
+                "failed_count": stats.get("failed_count", 0),
+                "canceled_count": stats.get("canceled_count", 0),
+            },
+        }
+    except Exception as e:
+        logger.warning("Failed to get job history stats: %s", e)
+        return {"success": False, "message": str(e)}
+
+
+@router.get("/api/job-history/count")
+async def get_job_history_count(
+    before: str | None = Query(None, description="Filter before date (ISO format)"),
+    status: str | None = Query(None, description="Filter by status"),
+    username: str | None = Query(None, description="Filter by username"),
+    dbhost: str | None = Query(None, description="Filter by database host"),
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> dict:
+    """Get count of history records matching filters (for preview before delete)."""
+    from datetime import datetime
+    from pulldb.infra.factory import get_job_history_summary_repository
+
+    try:
+        history_repo = get_job_history_summary_repository()
+        if history_repo is None:
+            # Simulation mode - return zero count
+            return {"success": True, "count": 0}
+
+        # Parse before date if provided
+        before_dt = None
+        if before:
+            try:
+                before_dt = datetime.fromisoformat(before.replace('Z', '+00:00'))
+            except ValueError:
+                return {"success": False, "message": f"Invalid date format: {before}"}
+
+        count = history_repo.count_matching(
+            before=before_dt,
+            status=status,
+            username=username,
+            dbhost=dbhost,
+        )
+        return {"success": True, "count": count}
+    except Exception as e:
+        logger.warning("Failed to count job history records: %s", e)
+        return {"success": False, "message": str(e)}
+
+
+@router.post("/api/job-history/prune")
+async def prune_job_history(
+    before: str | None = Form(None, description="Filter before date (ISO format)"),
+    status: str | None = Form(None, description="Filter by status"),
+    username: str | None = Form(None, description="Filter by username"),
+    dbhost: str | None = Form(None, description="Filter by database host"),
+    state: Any = Depends(get_api_state),
+    admin: User = Depends(require_admin),
+) -> RedirectResponse:
+    """Delete job history records matching filters."""
+    from datetime import datetime
+    from urllib.parse import quote
+    from pulldb.infra.factory import get_job_history_summary_repository
+
+    try:
+        history_repo = get_job_history_summary_repository()
+        if history_repo is None:
+            # Simulation mode - no-op
+            return RedirectResponse(
+                url="/web/admin/job-history?prune_error=" + quote("Not available in simulation mode"),
+                status_code=303,
+            )
+
+        # Parse before date if provided
+        before_dt = None
+        if before:
+            try:
+                before_dt = datetime.fromisoformat(before.replace('Z', '+00:00'))
+            except ValueError:
+                return RedirectResponse(
+                    url=f"/web/admin/job-history?prune_error={quote(f'Invalid date: {before}')}",
+                    status_code=303,
+                )
+
+        # Must have at least one filter
+        if not any([before_dt, status, username, dbhost]):
+            return RedirectResponse(
+                url="/web/admin/job-history?prune_error=" + quote("At least one filter required"),
+                status_code=303,
+            )
+
+        # Validate status if provided
+        if status and status not in ("complete", "failed", "canceled"):
+            return RedirectResponse(
+                url=f"/web/admin/job-history?prune_error={quote(f'Invalid status: {status}')}",
+                status_code=303,
+            )
+
+        # Delete based on filters (priority order)
+        deleted = 0
+        if username:
+            deleted = history_repo.delete_by_user(username=username, before=before_dt)
+        elif dbhost:
+            deleted = history_repo.delete_by_host(dbhost=dbhost, before=before_dt)
+        elif status:
+            deleted = history_repo.delete_by_status(status=status, before=before_dt)
+        elif before_dt:
+            deleted = history_repo.delete_by_date(before=before_dt)
+
+        # Audit log
+        if hasattr(state, "audit_repo") and state.audit_repo:
+            detail = f"Admin {admin.username} pruned {deleted} job history records"
+            if before:
+                detail += f" (before={before})"
+            if status:
+                detail += f" (status={status})"
+            if username:
+                detail += f" (username={username})"
+            if dbhost:
+                detail += f" (dbhost={dbhost})"
+            state.audit_repo.log_action(
+                actor_user_id=admin.user_id,
+                action="job_history_pruned",
+                detail=detail,
+            )
+
+        return RedirectResponse(
+            url=f"/web/admin/job-history?prune_success={deleted}",
+            status_code=303,
+        )
+    except Exception as e:
+        logger.exception("Failed to prune job history")
+        return RedirectResponse(
+            url=f"/web/admin/job-history?prune_error={quote(str(e))}",
+            status_code=303,
+        )
+
+
+@router.get("/api/job-history/records")
+async def get_job_history_records(
+    before: str | None = Query(None, description="Filter before date (ISO format)"),
+    after: str | None = Query(None, description="Filter after date (ISO format)"),
+    status: str | None = Query(None, description="Filter by status"),
+    username: str | None = Query(None, description="Filter by username"),
+    dbhost: str | None = Query(None, description="Filter by database host"),
+    page: int | None = Query(None, ge=0, description="Page number (0-indexed)"),
+    pageSize: int | None = Query(None, ge=1, le=200, description="Page size"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(50, ge=1, le=200, description="Max records to return"),
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> dict:
+    """Get paginated job history records."""
+    from datetime import datetime
+    from pulldb.infra.factory import get_job_history_summary_repository
+    import sys
+
+    print(f"DEBUG job-history: page={page}, pageSize={pageSize}, offset={offset}, limit={limit}", file=sys.stderr, flush=True)
+
+    # Support both page/pageSize and offset/limit params (LazyTable uses page/pageSize)
+    if page is not None and pageSize is not None:
+        offset = page * pageSize
+        limit = pageSize
+        print(f"DEBUG job-history: adjusted offset={offset}, limit={limit}", file=sys.stderr, flush=True)
+
+    try:
+        history_repo = get_job_history_summary_repository()
+        if history_repo is None:
+            # Simulation mode - return empty records
+            return {
+                "success": True,
+                "rows": [],
+                "totalCount": 0,
+                "offset": offset,
+                "limit": limit,
+            }
+
+        # Parse dates if provided
+        before_dt = None
+        after_dt = None
+        if before:
+            try:
+                before_dt = datetime.fromisoformat(before.replace('Z', '+00:00'))
+            except ValueError:
+                return {"success": False, "message": f"Invalid date format: {before}"}
+        if after:
+            try:
+                after_dt = datetime.fromisoformat(after.replace('Z', '+00:00'))
+            except ValueError:
+                return {"success": False, "message": f"Invalid date format: {after}"}
+
+        records = history_repo.get_records(
+            before=before_dt,
+            after=after_dt,
+            status=status,
+            username=username,
+            dbhost=dbhost,
+            offset=offset,
+            limit=limit,
+        )
+        print(f"DEBUG job-history: get_records returned {len(records)} records", file=sys.stderr, flush=True)
+
+        # Convert datetime and Decimal objects for JSON serialization
+        from decimal import Decimal
+        serialized = []
+        for rec in records:
+            item = dict(rec)
+            for key, val in item.items():
+                # Convert datetime to ISO string
+                if hasattr(val, "isoformat"):
+                    item[key] = val.isoformat()
+                # Convert Decimal to float
+                elif isinstance(val, Decimal):
+                    item[key] = float(val)
+            serialized.append(item)
+
+        total = history_repo.count_matching(
+            before=before_dt,
+            after=after_dt,
+            status=status,
+            username=username,
+            dbhost=dbhost,
+        )
+
+        logger.info("job-history API: returning %d rows, totalCount=%d", len(serialized), total)
+        response = {
+            "success": True,
+            "rows": serialized,
+            "totalCount": total,
+            "offset": offset,
+            "limit": limit,
+        }
+        print(f"DEBUG job-history: returning response with {len(response.get('rows', []))} rows", file=sys.stderr, flush=True)
+        return response
+    except Exception as e:
+        logger.warning("Failed to get job history records: %s", e)
+        return {"success": False, "message": str(e)}
+

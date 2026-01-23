@@ -54,7 +54,7 @@ class TestConfigIntegration:
         # Set up minimal environment
         os.environ["PULLDB_MYSQL_HOST"] = host
         os.environ["PULLDB_MYSQL_PASSWORD"] = password
-        os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb"  # Match test fixture database
+        os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb_service"  # Match test fixture database
 
         # Bootstrap: Load minimal config (host/password only)
         bootstrap_config = Config.minimal_from_env()
@@ -73,7 +73,7 @@ class TestConfigIntegration:
         assert config.mysql_host == host
         assert config.mysql_user == ""  # Config doesn't load PULLDB_MYSQL_USER
         assert config.mysql_password == password
-        assert config.mysql_database == "pulldb"  # Test database
+        assert config.mysql_database == "pulldb_service"  # Test database
 
         # Verify operational settings came from MySQL settings table
         # (these are populated by conftest.py test data seeding)
@@ -91,7 +91,7 @@ class TestConfigIntegration:
         # Set environment variables that should override MySQL
         os.environ["PULLDB_MYSQL_HOST"] = host
         os.environ["PULLDB_MYSQL_PASSWORD"] = password
-        os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb"  # Match test fixture database
+        os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb_service"  # Match test fixture database
         os.environ["PULLDB_S3_BUCKET_PATH"] = "s3://override-bucket/"
         os.environ["PULLDB_DEFAULT_DBHOST"] = "override-dbhost"
 
@@ -126,7 +126,7 @@ class TestConfigIntegration:
 
         os.environ["PULLDB_MYSQL_HOST"] = host
         os.environ["PULLDB_MYSQL_PASSWORD"] = password
-        os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb"  # Match test fixture database
+        os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb_service"  # Match test fixture database
 
         # Phase 1: Bootstrap
         bootstrap = Config.minimal_from_env()

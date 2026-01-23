@@ -32,6 +32,35 @@ from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 logger = get_logger("pulldb.worker.staging")
 
 
+def _has_pulldb_table(conn: Any, db_name: str) -> bool:
+    """Check if database has pullDB metadata table (ownership marker).
+
+    SAFETY: Only databases with pullDB table were created by pullDB and are
+    safe to drop during orphan cleanup. This prevents dropping databases
+    that happen to match the staging naming pattern but weren't created by us.
+
+    Args:
+        conn: Active MySQL connection.
+        db_name: Database name to check.
+
+    Returns:
+        True if pullDB table exists in the database, False otherwise.
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 1 FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = 'pullDB'
+            LIMIT 1
+        """, (db_name,))
+        result = cursor.fetchone()
+        cursor.close()
+        return result is not None
+    except mysql.connector.Error:
+        # If we can't check, assume it's not ours (fail-safe: don't drop)
+        return False
+
+
 # MySQL database name length limit (63 chars but we use 64 for legacy compatibility)
 MAX_DATABASE_NAME_LENGTH = 64
 
@@ -278,6 +307,22 @@ def cleanup_orphaned_staging(
                     event_callback("staging_drop_skipped", {
                         "database": orphan_db,
                         "reason": "active_connections",
+                    })
+                continue
+
+            # SAFETY: Only drop if database has pullDB table (ownership marker)
+            # This prevents dropping databases that match staging pattern but
+            # weren't created by pullDB
+            if not _has_pulldb_table(connection, orphan_db):
+                logger.warning(
+                    f"Skipping orphan database without pullDB table: {orphan_db}",
+                    extra={"orphan_db": orphan_db, "reason": "no_pulldb_table"},
+                )
+                if event_callback:
+                    event_callback("staging_drop_skipped", {
+                        "database": orphan_db,
+                        "reason": "no_pulldb_table",
+                        "message": "Database has no pullDB metadata table - not created by pullDB",
                     })
                 continue
 

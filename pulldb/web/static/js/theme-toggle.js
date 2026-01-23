@@ -105,6 +105,9 @@
      * Apply theme to the document
      */
     function applyTheme(theme) {
+        // Disable transitions during theme switch for instant update
+        document.documentElement.classList.add('theme-switching');
+        
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem(THEME_KEY, theme);
         
@@ -113,6 +116,13 @@
         
         // Swap the CSS file to the correct mode
         swapThemeCSS(theme);
+        
+        // Re-enable transitions after paint completes
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                document.documentElement.classList.remove('theme-switching');
+            });
+        });
         
         // Update toggle button icon if it exists
         const toggleBtn = document.getElementById('theme-toggle');

@@ -37,7 +37,7 @@ LOCAL TESTING: If AWS secret resolves to unreachable host, override via:
 
 DATABASE AUTO-SETUP:
     Tests will automatically:
-    1. Create the 'pulldb' database if it doesn't exist
+    1. Create the 'pulldb_service' database if it doesn't exist
     2. Deploy the schema from schema/pulldb_service/ (structured directories)
     3. Seed required settings
     4. Clean up (drop database) ONLY if it was created by tests
@@ -141,7 +141,7 @@ def _deploy_schema(socket_path: Path) -> None:
         unix_socket=str(socket_path),
     )
     cursor = conn.cursor()
-    cursor.execute("CREATE DATABASE IF NOT EXISTS pulldb")
+    cursor.execute("CREATE DATABASE IF NOT EXISTS pulldb_service")
     conn.close()
 
     # Deploy schema files (schema dir is pulldb_service/)
@@ -166,7 +166,7 @@ def _deploy_schema(socket_path: Path) -> None:
                         "root",
                         "--socket",
                         str(socket_path),
-                        "pulldb",
+                        "pulldb_service",
                     ],
                     stdin=f,
                     capture_output=True,
@@ -186,7 +186,7 @@ def _seed_isolated_settings(socket_path: Path) -> None:
         user="root",
         password="",
         unix_socket=str(socket_path),
-        database="pulldb",
+        database="pulldb_service",
     )
     cursor = conn.cursor()
     cursor.execute(
@@ -228,7 +228,7 @@ def _check_database_exists(
 
         conn = mysql.connector.connect(**connect_kwargs)
         cursor = conn.cursor()
-        cursor.execute("SHOW DATABASES LIKE 'pulldb'")
+        cursor.execute("SHOW DATABASES LIKE 'pulldb_service'")
         result = cursor.fetchone()
         conn.close()
         return result is not None
@@ -267,14 +267,13 @@ def _create_database_and_schema(
     conn = mysql.connector.connect(**connect_kwargs)
     cursor = conn.cursor()
     cursor.execute(
-        "CREATE DATABASE pulldb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+        "CREATE DATABASE pulldb_service CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
     )
     conn.close()
     _DATABASE_CREATED_BY_TESTS = True
 
     # Deploy schema files
     # Schema layout: 00_tables/, 01_views/, 02_seed/, 03_users/
-    # Schema lives in pulldb_service/ but we create test db named "pulldb"
     schema_dir = _PROJECT_ROOT / "schema" / "pulldb_service"
     mysql_client = shutil.which("mysql")
 
@@ -285,7 +284,7 @@ def _create_database_and_schema(
             if not subdir_path.exists():
                 continue
             for sql_file in sorted(subdir_path.glob("*.sql")):
-                cmd = [mysql_client, "-u", user, "pulldb"]
+                cmd = [mysql_client, "-u", user, "pulldb_service"]
                 if password:
                     cmd.extend([f"-p{password}"])
                 if socket:
@@ -335,7 +334,7 @@ def _drop_database_if_created(
 
         conn = mysql.connector.connect(**connect_kwargs)
         cursor = conn.cursor()
-        cursor.execute("DROP DATABASE IF EXISTS pulldb")
+        cursor.execute("DROP DATABASE IF EXISTS pulldb_service")
         conn.close()
         _DATABASE_CREATED_BY_TESTS = False
     except Exception as e:
@@ -577,10 +576,10 @@ def mysql_credentials(
 def ensure_database(
     mysql_credentials: MySQLCredentials,
 ) -> t.Generator[bool, None, None]:
-    """Ensure the pulldb database exists, creating it if necessary.
+    """Ensure the pulldb_service database exists, creating it if necessary.
 
     This fixture:
-    1. Checks if 'pulldb' database exists
+    1. Checks if 'pulldb_service' database exists
     2. If not, creates it and deploys schema from schema/pulldb_service/*.sql
     3. Tracks whether it was created for cleanup
     4. On teardown, drops the database ONLY if it was created by tests
@@ -604,17 +603,17 @@ def ensure_database(
         )
         if created:
             print(
-                "\n[TEST SETUP] Created pulldb database (will be removed after tests)"
+                "\n[TEST SETUP] Created pulldb_service database (will be removed after tests)"
             )
         else:
-            print("\n[TEST SETUP] Using existing pulldb database (will NOT be removed)")
+            print("\n[TEST SETUP] Using existing pulldb_service database (will NOT be removed)")
     except Exception as e:
         pytest.fail(
-            f"Failed to ensure pulldb database exists: {e}\n\n"
+            f"Failed to ensure pulldb_service database exists: {e}\n\n"
             f"Manual setup:\n"
-            f"  mysql -u {creds.username} -p -e 'CREATE DATABASE pulldb'\n"
+            f"  mysql -u {creds.username} -p -e 'CREATE DATABASE pulldb_service'\n"
             f"  for d in 00_tables 01_views 02_seed 03_users; do\n"
-            f"    cat schema/pulldb_service/$d/*.sql | mysql -u {creds.username} -p pulldb\n"
+            f"    cat schema/pulldb_service/$d/*.sql | mysql -u {creds.username} -p pulldb_service\n"
             f"  done"
         )
 
@@ -655,7 +654,7 @@ def mysql_pool(
         "host": creds.host,
         "user": creds.username,
         "password": creds.password,
-        "database": "pulldb",
+        "database": "pulldb_service",
     }
 
     # Check for socket override
@@ -807,7 +806,7 @@ def isolated_mysql(
     os.environ["PULLDB_TEST_MYSQL_USER"] = "root"
     os.environ["PULLDB_TEST_MYSQL_PASSWORD"] = ""
     os.environ["PULLDB_TEST_MYSQL_SOCKET"] = str(socket_path)
-    os.environ["PULLDB_TEST_MYSQL_DATABASE"] = "pulldb"
+    os.environ["PULLDB_TEST_MYSQL_DATABASE"] = "pulldb_service"
 
     # Set env vars for direct MySQL connections in tests.
     # Note: PULLDB_MYSQL_USER is deprecated; in production, services use:
@@ -819,7 +818,7 @@ def isolated_mysql(
     os.environ["PULLDB_MYSQL_USER"] = "root"  # Only for test fixtures
     os.environ["PULLDB_MYSQL_PASSWORD"] = ""
     os.environ["PULLDB_MYSQL_SOCKET"] = str(socket_path)
-    os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb"
+    os.environ["PULLDB_MYSQL_DATABASE"] = "pulldb_service"
 
     # 6. Deploy Schema
     try:
@@ -858,7 +857,7 @@ def isolated_mysql_pool(
         host="localhost",
         user="root",
         password="",
-        database="pulldb",
+        database="pulldb_service",
         unix_socket=isolated_mysql,
     )
 

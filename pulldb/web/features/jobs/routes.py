@@ -314,6 +314,7 @@ def _derive_current_phase(
         Tuple of (current_phase_id, phase_list) where phase_list has
         entries with 'id', 'label', and 'state' (pending/active/complete/failed).
     """
+    # Determine the actual phase from events
     current_phase = "queued"
     for event in reversed(logs):
         event_type = getattr(event, "event_type", "")
@@ -321,32 +322,35 @@ def _derive_current_phase(
             current_phase = EVENT_TO_PHASE[event_type]
             break
 
-    # Override for terminal states
-    if job_status == "deployed":
+    # For completed/deployed jobs, the phase is "complete"
+    if job_status in ("deployed", "complete"):
         current_phase = "complete"
-    elif job_status == "complete":
-        current_phase = "complete"
-    elif job_status == "failed":
-        current_phase = "failed"
-    elif job_status == "canceled":
-        current_phase = "canceled"
+
+    # Determine if this is a terminal failure/cancel state
+    # (but keep the actual phase where it failed)
+    is_failed = job_status == "failed"
+    is_canceled = job_status == "canceled"
 
     # Build phase list with states
     phase_list = []
     found_current = False
     for phase_id, phase_label in JOB_PHASES:
         if phase_id == current_phase:
-            # Active state for running OR queued jobs on their respective phases
-            if job_status in ("running", "queued"):
-                state = "active"
-            elif job_status == "failed":
+            # This is the current/failed phase
+            if is_failed:
                 state = "failed"
+            elif is_canceled:
+                state = "failed"  # Show canceled phase as failed (red X)
+            elif job_status in ("running", "queued"):
+                state = "active"
             else:
                 state = "complete"
             found_current = True
         elif found_current:
+            # Phases after current: pending (never reached)
             state = "pending"
         else:
+            # Phases before current: complete
             state = "complete"
         phase_list.append({"id": phase_id, "label": phase_label, "state": state})
 
@@ -372,26 +376,50 @@ def _get_retention_options(state: Any) -> list[dict[str, Any]]:
     ]
 
 
+def _get_expiring_warning_days(state: Any) -> int:
+    """Get days before expiry to show warning notice.
+    
+    Returns:
+        Number of days. Default: 7.
+    """
+    if hasattr(state, "settings_repo") and state.settings_repo:
+        if hasattr(state.settings_repo, "get_expiring_warning_days"):
+            return state.settings_repo.get_expiring_warning_days()
+    return 7
+
+
 def _calculate_download_stats(logs: list[Any]) -> dict[str, Any] | None:
     """Extract latest download progress stats from job events.
 
     Scans events for download_progress and download_complete to build
     stats dict with: downloaded_bytes, total_bytes, percent_complete,
-    elapsed_seconds, speed_bps, eta_seconds, is_complete.
+    elapsed_seconds, speed_bps, eta_seconds, is_complete, duration_seconds.
 
     Returns None if no download progress events found.
     """
+    from datetime import datetime
+
     latest_progress: dict[str, Any] | None = None
     is_complete = False
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
     for event in logs:
         event_type = getattr(event, "event_type", "")
         detail = getattr(event, "detail", None)
+        logged_at = getattr(event, "logged_at", None)
+
+        if event_type == "download_started":
+            started_at = logged_at
 
         if event_type == "download_complete":
             is_complete = True
+            completed_at = logged_at
 
         if event_type == "download_progress" and detail:
+            # Track first progress as start if no explicit started event
+            if started_at is None:
+                started_at = logged_at
             # detail is dict or JSON string with: downloaded_bytes, total_bytes, percent_complete, elapsed_seconds
             parsed_detail = detail
             if isinstance(detail, str):
@@ -415,11 +443,20 @@ def _calculate_download_stats(logs: list[Any]) -> dict[str, Any] | None:
     remaining_bytes = max(0, total - downloaded)
     eta_seconds = remaining_bytes / speed_bps if speed_bps > 0 else 0
 
+    # Calculate duration_seconds from timestamps if complete
+    duration_seconds: float | None = None
+    if is_complete and started_at and completed_at:
+        duration_seconds = (completed_at - started_at).total_seconds()
+    elif elapsed > 0:
+        # Use elapsed_seconds from progress for in-progress phases
+        duration_seconds = elapsed
+
     return {
         "downloaded_bytes": downloaded,
         "total_bytes": total,
         "percent_complete": percent if not is_complete else 100.0,
         "elapsed_seconds": elapsed,
+        "duration_seconds": duration_seconds,
         "speed_bps": speed_bps,
         "eta_seconds": eta_seconds,
         "is_complete": is_complete,
@@ -432,10 +469,12 @@ def _calculate_extraction_stats(logs: list[Any]) -> dict[str, Any] | None:
     Scans events for extraction_started, extraction_progress, and
     extraction_complete to build stats dict with: extracted_bytes, total_bytes,
     percent_complete, elapsed_seconds, files_extracted, total_files,
-    speed_bps, eta_seconds, is_complete.
+    speed_bps, eta_seconds, is_complete, duration_seconds.
 
     Returns None if no extraction progress events found.
     """
+    from datetime import datetime
+
     extracted_bytes = 0
     total_bytes = 0
     percent_complete = 0.0
@@ -446,13 +485,17 @@ def _calculate_extraction_stats(logs: list[Any]) -> dict[str, Any] | None:
     has_failed = False
     started = False
     error_message: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
     for event in logs:
         event_type = getattr(event, "event_type", "")
         detail = getattr(event, "detail", None)
+        logged_at = getattr(event, "logged_at", None)
 
         if event_type == "extraction_started":
             started = True
+            started_at = logged_at
             if detail:
                 parsed = detail if isinstance(detail, dict) else None
                 if isinstance(detail, str):
@@ -482,6 +525,7 @@ def _calculate_extraction_stats(logs: list[Any]) -> dict[str, Any] | None:
         elif event_type == "extraction_complete":
             is_complete = True
             percent_complete = 100.0
+            completed_at = logged_at
 
         elif event_type == "extraction_failed":
             has_failed = True
@@ -503,11 +547,20 @@ def _calculate_extraction_stats(logs: list[Any]) -> dict[str, Any] | None:
     remaining_bytes = total_bytes - extracted_bytes
     eta_seconds = int(remaining_bytes / speed_bps) if speed_bps > 0 and not is_complete else 0
 
+    # Calculate duration_seconds from timestamps if complete
+    duration_seconds: float | None = None
+    if is_complete and started_at and completed_at:
+        duration_seconds = (completed_at - started_at).total_seconds()
+    elif elapsed_seconds > 0:
+        # Use elapsed_seconds from progress for in-progress phases
+        duration_seconds = elapsed_seconds
+
     return {
         "extracted_bytes": extracted_bytes,
         "total_bytes": total_bytes,
         "percent_complete": percent_complete,
         "elapsed_seconds": elapsed_seconds,
+        "duration_seconds": duration_seconds,
         "files_extracted": files_extracted,
         "total_files": total_files,
         "speed_bps": speed_bps,
@@ -523,25 +576,35 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
 
     Scans events for restore_progress and restore_complete to build
     stats dict with: percent_complete, current_file, is_complete,
-    active_threads, and per-table progress from processlist.
+    active_threads, per-table progress from processlist, and duration_seconds.
 
     Returns None if no restore progress events found.
     """
+    from datetime import datetime
+
     latest_progress: dict[str, Any] | None = None
     is_complete = False
     has_restoring_event = False
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
     for event in logs:
         event_type = getattr(event, "event_type", "")
         detail = getattr(event, "detail", None)
-
-        if event_type == "restore_complete":
-            is_complete = True
+        logged_at = getattr(event, "logged_at", None)
 
         if event_type == "restoring":
             has_restoring_event = True
+            started_at = logged_at
+
+        if event_type == "restore_complete":
+            is_complete = True
+            completed_at = logged_at
 
         if event_type == "restore_progress" and detail:
+            # Track first progress as start if no explicit restoring event
+            if started_at is None:
+                started_at = logged_at
             parsed_detail = detail
             if isinstance(detail, str):
                 try:
@@ -565,6 +628,7 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
                 "eta_seconds": None,
                 "rows_restored": 0,
                 "total_rows": 0,
+                "duration_seconds": None,
             }
         return None
 
@@ -588,16 +652,23 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
     eta_seconds = detail_info.get("eta_seconds")
     rows_restored = detail_info.get("rows_restored", 0)
     total_rows = detail_info.get("total_rows", 0)
+    tables_completed = detail_info.get("tables_completed", 0)
+    tables_total = detail_info.get("tables_total", 0)
     
-    # Normalize tables data for template (clamp to 100%)
+    # Normalize tables data for template
+    # Only include tables that are NOT complete (active in processlist)
+    # Tables disappear from UI when their thread finishes
     tables = {}
     if isinstance(tables_data, dict):
         for table_name, table_info in tables_data.items():
             if isinstance(table_info, dict):
+                # Skip completed tables - only show active ones
+                if table_info.get("is_complete", False):
+                    continue
                 tables[table_name] = {
                     "percent": min(100.0, table_info.get("percent_complete", 0.0)),
                     "phase": table_info.get("phase", "loading"),
-                    "is_complete": table_info.get("is_complete", False),
+                    "is_complete": False,  # We filtered these out above
                 }
             elif isinstance(table_info, (int, float)):
                 tables[table_name] = {
@@ -605,6 +676,11 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
                     "phase": "loading",
                     "is_complete": False,
                 }
+
+    # Calculate duration_seconds from timestamps if complete
+    duration_seconds: float | None = None
+    if is_complete and started_at and completed_at:
+        duration_seconds = (completed_at - started_at).total_seconds()
 
     return {
         "percent_complete": min(100.0, percent) if not is_complete else 100.0,
@@ -617,36 +693,49 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
         "eta_seconds": eta_seconds,
         "rows_restored": rows_restored,
         "total_rows": total_rows,
+        "tables_completed": tables_completed,
+        "tables_total": tables_total,
+        "duration_seconds": duration_seconds,
     }
-
 
 def _calculate_atomic_rename_stats(logs: list[Any]) -> dict[str, Any] | None:
     """Extract latest atomic rename progress stats from job events.
 
     Scans events for atomic_rename_progress and atomic_rename_complete to build
-    stats dict with: percent_complete, current_table, tables_renamed, total_tables, is_complete.
+    stats dict with: percent_complete, current_table, tables_renamed, total_tables,
+    is_complete, and duration_seconds.
 
     Returns None if no atomic rename progress events found.
     """
+    from datetime import datetime
+
     latest_progress: dict[str, Any] | None = None
     final_progress: dict[str, Any] | None = None
     is_complete = False
     has_executing_event = False
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
     for event in logs:
         event_type = getattr(event, "event_type", "")
         detail = getattr(event, "detail", None)
+        logged_at = getattr(event, "logged_at", None)
+
+        if event_type == "atomic_rename_executing":
+            has_executing_event = True
+            started_at = logged_at
 
         if event_type == "atomic_rename_complete":
             is_complete = True
+            completed_at = logged_at
             # Capture the last progress before completion
             if latest_progress:
                 final_progress = latest_progress.copy()
 
-        if event_type == "atomic_rename_executing":
-            has_executing_event = True
-
         if event_type == "atomic_rename_progress" and detail:
+            # Track first progress as start if no explicit executing event
+            if started_at is None:
+                started_at = logged_at
             parsed_detail = detail
             if isinstance(detail, str):
                 try:
@@ -679,12 +768,18 @@ def _calculate_atomic_rename_stats(logs: list[Any]) -> dict[str, Any] | None:
         if isinstance(detail_info, dict):
             current_table = detail_info.get("table", "")
 
+    # Calculate duration_seconds from timestamps if complete
+    duration_seconds: float | None = None
+    if is_complete and started_at and completed_at:
+        duration_seconds = (completed_at - started_at).total_seconds()
+
     return {
         "percent_complete": 100.0 if is_complete else percent,
         "current_table": current_table if not is_complete else "",
         "tables_renamed": tables_renamed,
         "total_tables": total_tables,
         "is_complete": is_complete,
+        "duration_seconds": duration_seconds,
     }
 
 
@@ -810,6 +905,7 @@ async def job_details(
                 job.owner_user_id == user.user_id or user.is_admin
             ) if job else False,
             "retention_options": _get_retention_options(state),
+            "expiring_warning_days": _get_expiring_warning_days(state),
         },
     )
 

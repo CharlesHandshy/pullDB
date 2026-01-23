@@ -23,7 +23,7 @@ def test_isolation_environment(isolated_mysql: str) -> None:
     assert os.getenv("PULLDB_TEST_MYSQL_SOCKET") == isolated_mysql
     assert os.getenv("PULLDB_TEST_MYSQL_HOST") == "localhost"
     assert os.getenv("PULLDB_TEST_MYSQL_USER") == "root"
-    assert os.getenv("PULLDB_TEST_MYSQL_DATABASE") == "pulldb"
+    assert os.getenv("PULLDB_TEST_MYSQL_DATABASE") == "pulldb_service"
 
 
 @pytest.mark.integration

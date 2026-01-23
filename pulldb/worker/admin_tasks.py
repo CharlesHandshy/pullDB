@@ -38,6 +38,50 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _get_pulldb_job_id(credentials: "MySQLCredentials", db_name: str) -> str | None:
+    """Get job_id from pullDB metadata table for ownership verification.
+
+    SAFETY: The pullDB table is the AUTHORITATIVE source for database ownership.
+    Only databases with a matching pullDB table were created by pullDB.
+
+    Args:
+        credentials: MySQL credentials for the host.
+        db_name: Database name to check.
+
+    Returns:
+        job_id if pullDB table exists and has a record, None otherwise.
+    """
+    conn = mysql.connector.connect(
+        host=credentials.host,
+        port=credentials.port,
+        user=credentials.username,
+        password=credentials.password,
+        connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
+    )
+    try:
+        cursor = conn.cursor()
+        # Check if pullDB table exists
+        cursor.execute("""
+            SELECT 1 FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = 'pullDB'
+            LIMIT 1
+        """, (db_name,))
+        if not cursor.fetchone():
+            return None  # No pullDB table - not created by pullDB
+
+        # Get job_id from pullDB table
+        cursor.execute(f"SELECT job_id FROM `{db_name}`.`pullDB` LIMIT 1")
+        row = cursor.fetchone()
+        if row and row[0]:
+            return str(row[0])
+        return None
+    except Exception as e:
+        logger.warning("Failed to get pullDB job_id for %s: %s", db_name, e)
+        return None
+    finally:
+        conn.close()
+
+
 # Protected databases that must NEVER be dropped
 PROTECTED_DATABASES = frozenset({
     "mysql",
@@ -358,7 +402,7 @@ class AdminTaskExecutor:
         """Drop a target database on the specified host.
 
         Uses pulldb_loader credentials resolved via HostRepository.
-        Includes safety checks for protected databases.
+        Includes safety checks for protected databases and pullDB ownership.
 
         Args:
             db_name: Database name to drop.
@@ -367,7 +411,8 @@ class AdminTaskExecutor:
             target_user_id: User being deleted (for logging).
 
         Raises:
-            ValueError: If attempting to drop a protected database.
+            ValueError: If attempting to drop a protected database or
+                database not created by pullDB.
             Exception: On connection or SQL errors.
         """
         # Safety check: Never drop protected databases
@@ -380,9 +425,18 @@ class AdminTaskExecutor:
         # Resolve credentials for the host
         credentials = self.host_repo.get_host_credentials(db_host)
 
+        # SAFETY: Verify database has pullDB ownership table
+        # Only drop databases that were created by pullDB
+        pulldb_job_id = _get_pulldb_job_id(credentials, db_name)
+        if pulldb_job_id is None:
+            raise ValueError(
+                f"Cannot drop database '{db_name}' - no pullDB metadata table found. "
+                f"Database was not created by pullDB system."
+            )
+
         logger.info(
-            f"Dropping database '{db_name}' on host '{db_host}'",
-            extra={"task_id": task.task_id, "database": db_name, "host": db_host},
+            f"Dropping database '{db_name}' on host '{db_host}' (pullDB job: {pulldb_job_id})",
+            extra={"task_id": task.task_id, "database": db_name, "host": db_host, "pulldb_job_id": pulldb_job_id},
         )
 
         conn = mysql.connector.connect(

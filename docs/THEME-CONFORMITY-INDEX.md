@@ -1,7 +1,7 @@
 # Theme Conformity Index
 
 > **Purpose**: Track theme variable usage across all CSS/HTML files for site-wide theming consistency.
-> **Last Updated**: 2026-01-04
+> **Last Updated**: 2026-01-27
 > **Status**: Active tracking document
 
 ## Overview
@@ -63,6 +63,7 @@ pullDB uses a **semantic CSS variable system** with 68+ theme tokens generated f
 |------|--------|--------|-------|
 | [stats-bar.css](../pulldb/web/widgets/css/stats-bar.css) | ⚠️ | Has `[data-theme="dark"]` overrides | L111, L156 |
 | [sidebar.css](../pulldb/web/widgets/css/sidebar.css) | ✅ | Uses semantic variables | - |
+| [lazy_table.css](../pulldb/web/static/widgets/lazy_table/lazy_table.css) | ⚠️ | Has `[data-theme="dark"]` overrides | L701-870 |
 
 ### Pages Layer CSS (pulldb/web/pages/css/)
 
@@ -98,6 +99,8 @@ pullDB uses a **semantic CSS variable system** with 68+ theme tokens generated f
 | File | Status | Issues | Lines |
 |------|--------|--------|-------|
 | features/admin/partials/_appearance.html | ❌ | Hardcoded toast colors, fallback hex values | L308-310, L347-361 |
+| features/admin/job_history.html | ✅ | Uses semantic variables, admin.css classes | - |
+| features/admin/disallowed_users.html | ✅ | Uses semantic variables, admin.css classes | - |
 | features/admin/settings.html | ✅ | Uses semantic variables | - |
 | features/admin/*.html | ✅ | All compliant | - |
 | features/auth/login.html | ✅ | Uses semantic variables | - |
@@ -212,6 +215,18 @@ The audit script enforces:
 ---
 
 ## Changelog
+
+### 2026-01-27
+- **Fourth pass**: Removed inline styles from admin preview pages
+  - prune_preview.html: Replaced 6 inline styles with utility classes
+  - cleanup_preview.html: Replaced 6 inline styles with utility classes  
+  - orphan_preview.html: Replaced 4 inline styles with utility classes
+- Standardized badge usage to BEM modifiers (`badge--success`, `badge--sm`)
+- Standardized typography utilities (`text-xs`, `text-sm`, `text-muted`, `font-mono`)
+- **Consolidated `.loading-spinner`** to shared/css/utilities.css (was duplicated in restore.css, job_history.html)
+- Added `.loading-spinner--sm` and `.loading-spinner--lg` size modifiers
+- Removed duplicated `.text-success`, `.text-danger`, `.text-warning` from job_history.html inline styles
+- Updated restore.css to reference shared utilities
 
 ### 2025-12-30
 - Initial index created

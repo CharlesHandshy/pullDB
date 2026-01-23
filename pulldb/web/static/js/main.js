@@ -260,6 +260,14 @@ window.showValidationSummary = showValidationSummary;
  * @returns {Promise<boolean>} - Resolves to true if confirmed, false if cancelled
  */
 function showConfirm(message, options = {}) {
+    // Helper to escape HTML for XSS prevention
+    function escapeForConfirm(str) {
+        if (str === null || str === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
+    }
+
     return new Promise((resolve) => {
         const modal = document.getElementById('confirm-modal');
         const header = document.getElementById('confirm-modal-header');
@@ -273,9 +281,9 @@ function showConfirm(message, options = {}) {
             return;
         }
         
-        // Set content
+        // Set content - escape HTML first, then convert newlines to <br>
         title.textContent = options.title || 'Confirm';
-        msg.innerHTML = message.replace(/\n/g, '<br>');
+        msg.innerHTML = escapeForConfirm(message).replace(/\n/g, '<br>');
         okBtn.textContent = options.okText || 'OK';
         
         // Reset header classes and apply type

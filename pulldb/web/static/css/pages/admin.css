@@ -70,6 +70,12 @@
     color: var(--color-text-primary);
 }
 
+/* Small variant for stat values (e.g., date ranges) */
+.admin-stat-value--sm {
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+}
+
 /* ===========================================
    USER MANAGEMENT
    =========================================== */

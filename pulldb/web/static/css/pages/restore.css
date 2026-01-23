@@ -1780,23 +1780,9 @@
 
 /* ===========================================
    LOADING SPINNER
+   NOTE: .loading-spinner is now in shared/css/utilities.css
+   This page uses the standard class from utilities.
    =========================================== */
-
-.loading-spinner {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--gray-200);
-    border-top-color: var(--primary-500);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
 
 /* ===========================================
    JS-HIDDEN UTILITY

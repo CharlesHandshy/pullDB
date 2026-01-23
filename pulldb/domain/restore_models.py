@@ -75,6 +75,8 @@ class MyLoaderResult:
             precision, rounded at caller discretion for logging).
         stdout: Captured stdout (possibly truncated by caller).
         stderr: Captured stderr (possibly truncated by caller).
+        table_count: Number of tables restored (from backup metadata).
+        total_rows: Total rows restored (from backup metadata).
     """
 
     command: list[str]
@@ -84,6 +86,8 @@ class MyLoaderResult:
     duration_seconds: float
     stdout: str
     stderr: str
+    table_count: int | None = None
+    total_rows: int | None = None
 
 
 def build_configured_myloader_spec(

@@ -61,7 +61,7 @@ def cleanup():
                 user="root",
                 password="",
                 unix_socket="/var/run/mysqld/mysqld.sock",
-                database="pulldb",
+                database="pulldb_service",
             )
         except mysql.connector.Error as e2:
             logger.error(f"Failed to connect as root via socket: {e2}")

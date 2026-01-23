@@ -8,32 +8,33 @@
           more-vertical, grip, maximize, minimize, expand, collapse
    ================================================================= #}
 
-{% macro icon_widgets(name, size='20', class='', stroke_width='1.5') %}
+{% macro icon_widgets(name, size='20', class='', stroke_width='1.5', aria_hidden='false') %}
+{%- set aria_attrs = ' aria-hidden="true" focusable="false"' if aria_hidden == 'true' else '' -%}
 {%- if name == 'chevron-up' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="chevron-up">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="chevron-up"{{ aria_attrs }}>
     <path d="m18 15-6-6-6 6"/>
 </svg>
 {%- elif name == 'chevron-down' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="chevron-down">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="chevron-down"{{ aria_attrs }}>
     <path d="m6 9 6 6 6-6"/>
 </svg>
 {%- elif name == 'chevron-left' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="chevron-left">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="chevron-left"{{ aria_attrs }}>
     <path d="m15 18-6-6 6-6"/>
 </svg>
 {%- elif name == 'chevron-right' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="chevron-right">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="chevron-right"{{ aria_attrs }}>
     <path d="m9 18 6-6-6-6"/>
 </svg>
 {%- elif name == 'sort' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="sort">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="sort"{{ aria_attrs }}>
     <path d="m3 16 4 4 4-4"/>
     <path d="M7 20V4"/>
     <path d="m21 8-4-4-4 4"/>
     <path d="M17 4v16"/>
 </svg>
 {%- elif name == 'sort-asc' or name == 'arrow-up-narrow-wide' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="sort-asc">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="sort-asc"{{ aria_attrs }}>
     <path d="m3 8 4-4 4 4"/>
     <path d="M7 4v16"/>
     <path d="M11 12h4"/>
@@ -41,7 +42,7 @@
     <path d="M11 20h10"/>
 </svg>
 {%- elif name == 'sort-desc' or name == 'arrow-down-wide-narrow' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="sort-desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="sort-desc"{{ aria_attrs }}>
     <path d="m3 16 4 4 4-4"/>
     <path d="M7 20V4"/>
     <path d="M11 4h10"/>
@@ -49,63 +50,63 @@
     <path d="M11 12h4"/>
 </svg>
 {%- elif name == 'spinner' or name == 'loader' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }} animate-spin" data-icon="spinner">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }} animate-spin" data-icon="spinner"{{ aria_attrs }}>
     <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
 </svg>
 {%- elif name == 'check-circle' or name == 'success' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="check-circle">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="check-circle"{{ aria_attrs }}>
     <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
     <polyline points="22 4 12 14.01 9 11.01"/>
 </svg>
 {%- elif name == 'x-circle' or name == 'error' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="x-circle">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="x-circle"{{ aria_attrs }}>
     <circle cx="12" cy="12" r="10"/>
     <path d="m15 9-6 6"/>
     <path d="m9 9 6 6"/>
 </svg>
 {%- elif name == 'warning' or name == 'alert-triangle' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="warning">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="warning"{{ aria_attrs }}>
     <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
     <path d="M12 9v4"/>
     <path d="M12 17h.01"/>
 </svg>
 {%- elif name == 'info' or name == 'info-circle' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="info">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="info"{{ aria_attrs }}>
     <circle cx="12" cy="12" r="10"/>
     <path d="M12 16v-4"/>
     <path d="M12 8h.01"/>
 </svg>
 {%- elif name == 'help' or name == 'help-circle' or name == 'question' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="help">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="help"{{ aria_attrs }}>
     <circle cx="12" cy="12" r="10"/>
     <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
     <path d="M12 17h.01"/>
 </svg>
 {%- elif name == 'close' or name == 'x' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="close">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="close"{{ aria_attrs }}>
     <path d="M18 6 6 18"/>
     <path d="m6 6 12 12"/>
 </svg>
 {%- elif name == 'menu' or name == 'hamburger' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="menu">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="menu"{{ aria_attrs }}>
     <line x1="4" x2="20" y1="12" y2="12"/>
     <line x1="4" x2="20" y1="6" y2="6"/>
     <line x1="4" x2="20" y1="18" y2="18"/>
 </svg>
 {%- elif name == 'more-horizontal' or name == 'dots-horizontal' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="more-horizontal">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="more-horizontal"{{ aria_attrs }}>
     <circle cx="12" cy="12" r="1"/>
     <circle cx="19" cy="12" r="1"/>
     <circle cx="5" cy="12" r="1"/>
 </svg>
 {%- elif name == 'more-vertical' or name == 'dots-vertical' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="more-vertical">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="more-vertical"{{ aria_attrs }}>
     <circle cx="12" cy="12" r="1"/>
     <circle cx="12" cy="5" r="1"/>
     <circle cx="12" cy="19" r="1"/>
 </svg>
 {%- elif name == 'grip' or name == 'drag-handle' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="grip">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="grip"{{ aria_attrs }}>
     <circle cx="9" cy="5" r="1"/>
     <circle cx="9" cy="12" r="1"/>
     <circle cx="9" cy="19" r="1"/>
@@ -114,26 +115,26 @@
     <circle cx="15" cy="19" r="1"/>
 </svg>
 {%- elif name == 'maximize' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="maximize">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="maximize"{{ aria_attrs }}>
     <polyline points="15 3 21 3 21 9"/>
     <polyline points="9 21 3 21 3 15"/>
     <line x1="21" x2="14" y1="3" y2="10"/>
     <line x1="3" x2="10" y1="21" y2="14"/>
 </svg>
 {%- elif name == 'minimize' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="minimize">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="minimize"{{ aria_attrs }}>
     <polyline points="4 14 10 14 10 20"/>
     <polyline points="20 10 14 10 14 4"/>
     <line x1="14" x2="21" y1="10" y2="3"/>
     <line x1="3" x2="10" y1="21" y2="14"/>
 </svg>
 {%- elif name == 'expand' or name == 'chevrons-down' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="expand">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="expand"{{ aria_attrs }}>
     <path d="m7 6 5 5 5-5"/>
     <path d="m7 13 5 5 5-5"/>
 </svg>
 {%- elif name == 'collapse' or name == 'chevrons-up' -%}
-<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="collapse">
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ stroke_width }}" stroke-linecap="round" stroke-linejoin="round" class="{{ class }}" data-icon="collapse"{{ aria_attrs }}>
     <path d="m17 11-5-5-5 5"/>
     <path d="m17 18-5-5-5 5"/>
 </svg>

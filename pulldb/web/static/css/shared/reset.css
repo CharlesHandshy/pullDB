@@ -208,6 +208,19 @@ button,
 }
 
 /* ===========================================
+   THEME SWITCHING - Instant transition
+   Disables all transitions during theme toggle
+   to prevent slow cascading color changes.
+   =========================================== */
+
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+    transition: none !important;
+}
+
+/* ===========================================
    SCROLLBAR STYLING
    =========================================== */
 

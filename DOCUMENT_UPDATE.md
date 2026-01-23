@@ -683,9 +683,9 @@ class AdminTaskType(Enum):
 | `max_active_jobs_global` | integer | limits |
 | `staging_retention_days` | integer | retention |
 | `job_log_retention_days` | integer | retention |
-| `max_retention_months` | integer | retention |
-| `max_retention_increment` | integer | retention |
-| `expiring_notice_days` | integer | retention |
+| `default_retention_days` | integer | retention |
+| `max_retention_days` | integer | retention |
+| `expiring_warning_days` | integer | retention |
 | `cleanup_grace_days` | integer | retention |
 
 ### E. Protected Databases (Never Dropped)

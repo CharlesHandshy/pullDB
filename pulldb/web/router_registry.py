@@ -18,6 +18,7 @@ from pulldb.web.features.auth.routes import router as auth_router
 from pulldb.web.features.dashboard.routes import router as dashboard_router
 from pulldb.web.features.jobs.routes import router as jobs_router
 from pulldb.web.features.manager.routes import router as manager_router
+from pulldb.web.features.mockup.routes import router as mockup_router
 from pulldb.web.features.requests.routes import router as requests_router
 from pulldb.web.features.restore.routes import router as restore_router
 
@@ -33,6 +34,7 @@ main_router.include_router(admin_router)
 main_router.include_router(audit_router)
 main_router.include_router(manager_router)
 main_router.include_router(requests_router)
+main_router.include_router(mockup_router)
 
 # Export for use in main application
 __all__ = ["main_router"]

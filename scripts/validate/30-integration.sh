@@ -210,7 +210,7 @@ test_schema_deployment() {
     local host="${PULLDB_TEST_MYSQL_HOST:-localhost}"
     local user="${PULLDB_TEST_MYSQL_USER:-pulldb_test}"
     local password="${PULLDB_TEST_MYSQL_PASSWORD:-test123}"
-    local database="pulldb"
+    local database="pulldb_service"
     
     if [[ "$VALIDATE_DRY_RUN" == true ]]; then
         check_info "[DRY-RUN] Would test schema deployment"

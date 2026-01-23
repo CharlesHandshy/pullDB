@@ -7,51 +7,29 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/pages/admin.css') }}">
 <style>
-/* Disallowed Users Page Specific Styles */
+/* ===========================================
+   Disallowed Users Page Specific Styles
+   Uses admin.css for stat cards
+   =========================================== */
+
 .disallowed-page {
     max-width: 900px;
     margin: 0 auto;
 }
 
-.stats-row {
-    display: flex;
-    gap: var(--space-lg);
-    margin-bottom: var(--space-lg);
+/* Stat card color variants for this page */
+.admin-stat-card--warning {
+    border-color: var(--warning-300);
 }
 
-.stat-card {
-    background: var(--surface-secondary);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    padding: var(--space-md);
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
+.admin-stat-card--primary {
+    border-color: var(--primary-300);
 }
 
-.stat-card .stat-value {
-    font-size: var(--font-size-xl);
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.stat-card .stat-label {
-    font-size: var(--font-size-sm);
-    color: var(--text-secondary);
-}
-
-.stat-card.hardcoded {
-    border-color: var(--warning-muted);
-}
-
-.stat-card.database {
-    border-color: var(--primary-muted);
-}
-
+/* Add form layout */
 .add-form {
     display: flex;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-lg);
+    gap: var(--space-2);
 }
 
 .add-form input[type="text"] {
@@ -182,15 +160,15 @@
         </div>
     </div>
 
-    <!-- Stats -->
-    <div class="stats-row">
-        <div class="stat-card hardcoded">
-            <div class="stat-value" id="stat-hardcoded">{{ hardcoded_count }}</div>
-            <div class="stat-label">Hardcoded (System)</div>
+    <!-- Stats - uses admin.css .admin-stats-row / .admin-stat-card -->
+    <div class="admin-stats-row mb-4">
+        <div class="admin-stat-card admin-stat-card--warning">
+            <div class="admin-stat-label">Hardcoded (System)</div>
+            <div class="admin-stat-value" id="stat-hardcoded">{{ hardcoded_count }}</div>
         </div>
-        <div class="stat-card database">
-            <div class="stat-value" id="stat-database">{{ database_count }}</div>
-            <div class="stat-label">Database (Admin-Added)</div>
+        <div class="admin-stat-card admin-stat-card--primary">
+            <div class="admin-stat-label">Database (Admin-Added)</div>
+            <div class="admin-stat-value" id="stat-database">{{ database_count }}</div>
         </div>
     </div>
 

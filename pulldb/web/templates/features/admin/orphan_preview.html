@@ -40,8 +40,8 @@
 
 <!-- Info Panel -->
 <div class="card card-padding mb-4">
-    <div style="display: flex; gap: var(--space-4); align-items: center; justify-content: space-between;">
-        <div style="color: var(--gray-600); font-size: 0.875rem;">
+    <div class="flex gap-4 items-center justify-between">
+        <div class="text-muted text-sm">
             Orphan databases match the staging naming pattern but have no associated job record.
             They may be remnants from interrupted restores or manual testing.
         </div>
@@ -53,7 +53,7 @@
 
 <!-- Preview Table -->
 <div class="card card-padding">
-    <div style="color: var(--gray-500); font-size: 0.875rem; margin-bottom: var(--space-3);">
+    <div class="text-muted text-sm mb-3">
         Click X to exclude items from deletion. Exclusions persist through filter changes.
     </div>
 
@@ -107,7 +107,7 @@
         { key: 'dbhost', label: 'Host', width: '130px', sortable: true, filterable: true,
           render: (val) => {
             const hostname = val ? val.split('.')[0] : '-';
-            return '<span style="font-size: 0.85em;">' + hostname + '</span>';
+            return '<span class="text-sm">' + hostname + '</span>';
           }
         },
         { key: 'target_name', label: 'Target', width: '140px', sortable: true, filterable: true },
@@ -116,7 +116,7 @@
           render: (val) => val ? new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '-' },
         { key: 'size_mb', label: 'Size', width: '75px', sortable: true,
           render: (val) => {
-            if (val === null || val === undefined) return '<span class="size-cell" style="color: var(--gray-400);">-</span>';
+            if (val === null || val === undefined) return '<span class="size-cell text-muted">-</span>';
             const formatted = val >= 1000 ? (val / 1024).toFixed(1) + ' GB' : val.toFixed(1) + ' MB';
             return '<span class="size-cell">' + formatted + '</span>';
           }

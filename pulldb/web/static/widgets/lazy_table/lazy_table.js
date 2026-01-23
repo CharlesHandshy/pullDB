@@ -541,9 +541,11 @@ class LazyTable {
         
         try {
             await this.fetchPage(0);
+            console.debug('LazyTable: fetchInitialData complete, cache:', this.cache, 'totalCount:', this.totalCount);
             this.render();
         } catch (error) {
             // Error already shown by fetchPage
+            console.error('LazyTable: fetchInitialData error', error);
         }
     }
 
@@ -604,9 +606,14 @@ class LazyTable {
                 rows: data.rows || data.data || [],
                 timestamp: Date.now()
             });
+            const firstRow = (data.rows || data.data || [])[0];
+            console.debug('LazyTable: cached page', pageIndex, 'rows:', (data.rows || data.data || []).length);
+            console.debug('LazyTable: first row keys:', firstRow ? Object.keys(firstRow) : 'none');
+            console.debug('LazyTable: first row owner_username:', firstRow?.owner_username, 'dbhost:', firstRow?.dbhost, 'total_duration_seconds:', firstRow?.total_duration_seconds);
             
             this.totalCount = data.totalCount ?? data.total ?? 0;
             this.filteredCount = data.filteredCount ?? data.totalCount ?? this.totalCount;
+            console.debug('LazyTable: totalCount:', this.totalCount, 'filteredCount:', this.filteredCount);
             
             // Call onDataLoaded callback if provided
             if (this.config.onDataLoaded) {

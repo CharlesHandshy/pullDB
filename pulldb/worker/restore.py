@@ -14,7 +14,6 @@ HCA Layer: features
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -30,7 +29,6 @@ from pulldb.domain.restore_models import (
     build_configured_myloader_spec,
 )
 from pulldb.infra.exec import (
-    CommandAbortedError,
     CommandExecutionError,
     CommandTimeoutError,
     run_command_streaming,
@@ -51,6 +49,7 @@ from pulldb.worker.atomic_rename import (
 from pulldb.worker.backup_metadata import (
     get_backup_metadata,
 )
+from pulldb.worker.early_analyze import EarlyAnalyzeStats, EarlyAnalyzeWorker
 from pulldb.worker.metadata import (
     MetadataConnectionSpec,
     MetadataSpec,
@@ -89,6 +88,7 @@ class RestoreWorkflowSpec:
         post_sql_conn: Connection + script directory spec for post-SQL.
         myloader_spec: Myloader command specification.
         timeout: Optional myloader timeout in seconds.
+        early_analyze_timeout: Timeout for early analyze worker (default 300s).
     """
 
     job: Job
@@ -97,6 +97,7 @@ class RestoreWorkflowSpec:
     post_sql_conn: PostSQLConnectionSpec
     myloader_spec: MyLoaderSpec
     timeout: float | None = None
+    early_analyze_timeout: float = 300.0  # 5 minute default
     progress_callback: Callable[[float, dict[str, Any]], None] | None = None
     event_callback: Callable[[str, dict[str, Any]], None] | None = None
     abort_check: Callable[[], bool] | None = None
@@ -235,7 +236,9 @@ def _detect_backup_version(backup_dir: str) -> str:
                     return "0.9 (Legacy metadata)"
         except Exception:
             # Graceful degradation: if metadata unreadable, continue to fallback
-            logger.debug("Failed to read metadata file %s", metadata_path, exc_info=True)
+            logger.debug(
+                "Failed to read metadata file %s", metadata_path, exc_info=True
+            )
 
     # 2. Fallback: .zst extension is definitive for 0.19+
     #    (.gz is NOT reliable - both formats can use gzip compression)
@@ -255,6 +258,7 @@ def run_myloader(
     processlist_monitor: ProcesslistMonitor | None = None,
     abort_check: Callable[[], bool] | None = None,
     event_callback: Callable[[str, dict[str, Any]], None] | None = None,
+    early_analyze_worker: EarlyAnalyzeWorker | None = None,
 ) -> MyLoaderResult:
     """Execute myloader and return structured result.
 
@@ -267,6 +271,7 @@ def run_myloader(
         timeout: Optional timeout in seconds.
         progress_callback: Called with (percent, detail_dict) for progress updates.
         processlist_monitor: Optional monitor for per-table progress from MySQL processlist.
+        early_analyze_worker: Optional worker to receive active thread updates.
         abort_check: Optional callback that returns True if job should abort.
         event_callback: Optional callback for metadata synthesis events.
 
@@ -298,6 +303,10 @@ def run_myloader(
         event_callback=event_callback,
     )
 
+    # Connect early analyze worker to tracker for UI updates
+    if early_analyze_worker is not None:
+        early_analyze_worker.set_progress_tracker(tracker)
+
     # Connect processlist monitor to tracker
     if processlist_monitor is not None:
         # Store original callback and chain through tracker
@@ -305,6 +314,9 @@ def run_myloader(
 
         def tracker_processlist_callback(snapshot: ProcesslistSnapshot) -> None:
             tracker.update_from_processlist(snapshot)
+            # Update early analyze worker with active thread count
+            if early_analyze_worker:
+                early_analyze_worker.update_active_threads(snapshot.active_threads)
             # Also call original if set
             if original_pl_callback:
                 original_pl_callback(snapshot)
@@ -361,6 +373,8 @@ def run_myloader(
         duration_seconds=result.duration_seconds,
         stdout=result.stdout[-STDOUT_TAIL_LIMIT:],
         stderr=result.stderr[-STDERR_TAIL_LIMIT:],
+        table_count=len(backup_meta.tables),
+        total_rows=backup_meta.total_rows,
     )
 
 
@@ -404,10 +418,13 @@ def orchestrate_restore_workflow(
                 "target": job.target,
             }
         )
-        _emit_event("staging_cleanup_started", {
-            "target": job.target,
-            "job_id": job.id,
-        })
+        _emit_event(
+            "staging_cleanup_started",
+            {
+                "target": job.target,
+                "job_id": job.id,
+            },
+        )
         staging_cleanup_start = datetime.now(UTC)
         with time_operation(
             "staging_cleanup_duration_seconds",
@@ -419,19 +436,24 @@ def orchestrate_restore_workflow(
                 job.id,
                 event_callback=_emit_event,
             )
-        staging_cleanup_duration = (datetime.now(UTC) - staging_cleanup_start).total_seconds()
+        staging_cleanup_duration = (
+            datetime.now(UTC) - staging_cleanup_start
+        ).total_seconds()
         emit_counter(
             "staging_cleanup_total",
             labels=MetricLabels(job_id=job.id, target=job.target, phase="staging"),
         )
         result["staging"] = staging_result
         result["staging_cleanup_duration_seconds"] = staging_cleanup_duration
-        _emit_event("staging_cleanup_complete", {
-            "staging_db": staging_result.staging_db,
-            "orphans_dropped": staging_result.orphans_dropped,
-            "orphans_count": len(staging_result.orphans_dropped),
-            "duration_seconds": round(staging_cleanup_duration, 2),
-        })
+        _emit_event(
+            "staging_cleanup_complete",
+            {
+                "staging_db": staging_result.staging_db,
+                "orphans_dropped": staging_result.orphans_dropped,
+                "orphans_count": len(staging_result.orphans_dropped),
+                "duration_seconds": round(staging_cleanup_duration, 2),
+            },
+        )
 
         # 2. Myloader restore to staging database
         logger.info(
@@ -463,10 +485,63 @@ def orchestrate_restore_workflow(
             logger.warning(f"Failed to start processlist monitor: {e}")
             processlist_monitor = None
 
-        _emit_event("myloader_started", {
-            "staging_db": staging_result.staging_db,
-            "backup_dir": str(spec.myloader_spec.backup_dir),
-        })
+        _emit_event(
+            "myloader_started",
+            {
+                "staging_db": staging_result.staging_db,
+                "backup_dir": str(spec.myloader_spec.backup_dir),
+            },
+        )
+
+        # Start early analyze worker for ANALYZE TABLE as tables complete
+        early_analyze_worker: EarlyAnalyzeWorker | None = None
+        try:
+
+            def _create_analyze_connection() -> Any:
+                """Factory for MySQL connections for analyze worker."""
+                import mysql.connector
+
+                return mysql.connector.connect(
+                    host=spec.staging_conn.mysql_host,
+                    port=spec.staging_conn.mysql_port,
+                    user=spec.staging_conn.mysql_user,
+                    password=spec.staging_conn.mysql_password,
+                    database=staging_result.staging_db,
+                    connect_timeout=10,
+                )
+
+            # Extract thread count from myloader extra_args (--threads=N)
+            max_threads = 4  # default
+            for arg in spec.myloader_spec.extra_args:
+                if arg.startswith("--threads="):
+                    try:
+                        max_threads = int(arg.split("=")[1])
+                    except (ValueError, IndexError):
+                        pass
+                    break
+
+            early_analyze_worker = EarlyAnalyzeWorker(
+                connection_factory=_create_analyze_connection,
+                staging_db=staging_result.staging_db,
+                max_threads=max_threads,
+                event_callback=_emit_event,
+            )
+            early_analyze_worker.start()
+            logger.info(f"Started early analyze worker for {staging_result.staging_db}")
+        except Exception as e:
+            # Non-fatal: continue without early analysis
+            logger.warning(f"Failed to start early analyze worker: {e}")
+            early_analyze_worker = None
+
+        # Create wrapped event callback that queues tables for analysis
+        def _event_with_analyze(event_type: str, data: dict) -> None:
+            """Event callback that also queues completed tables for analysis."""
+            _emit_event(event_type, data)
+            # Queue table for analysis when restore completes
+            if event_type == "table_restore_complete" and early_analyze_worker:
+                table_name = data.get("table")
+                if table_name:
+                    early_analyze_worker.queue_table(table_name)
 
         try:
             with time_operation(
@@ -479,13 +554,43 @@ def orchestrate_restore_workflow(
                     progress_callback=spec.progress_callback,
                     processlist_monitor=processlist_monitor,
                     abort_check=spec.abort_check,
-                    event_callback=_emit_event,
+                    event_callback=_event_with_analyze,
+                    early_analyze_worker=early_analyze_worker,
                 )
         finally:
             # Always stop the monitor - no final_poll needed since tracker handles finalization
             if processlist_monitor:
                 processlist_monitor.stop(final_poll=False)
                 logger.info("Stopped processlist monitor")
+
+        # Wait for early analysis to complete after myloader finishes
+        early_analyze_stats: EarlyAnalyzeStats | None = None
+        if early_analyze_worker:
+            try:
+                # Signal that myloader is done - analyzer can use full thread capacity
+                early_analyze_worker.notify_myloader_complete()
+                logger.info("Waiting for early analyze worker to complete...")
+                # Wait for all queued tables to be analyzed (with timeout)
+                early_analyze_stats = early_analyze_worker.wait_for_completion(
+                    timeout=spec.early_analyze_timeout
+                )
+                early_analyze_worker.stop()
+                logger.info(
+                    f"Early analyze complete: {early_analyze_stats.tables_analyzed} analyzed, "
+                    f"{early_analyze_stats.tables_failed} failed"
+                )
+                result["early_analyze"] = {
+                    "tables_analyzed": early_analyze_stats.tables_analyzed,
+                    "tables_failed": early_analyze_stats.tables_failed,
+                    "total_duration_seconds": round(
+                        early_analyze_stats.total_duration_seconds, 2
+                    ),
+                }
+            except Exception as e:
+                logger.warning(f"Early analyze worker error: {e}")
+                if early_analyze_worker:
+                    early_analyze_worker.stop()
+                result["early_analyze"] = {"error": str(e)}
 
         result["myloader"] = myloader_result
 
@@ -503,23 +608,28 @@ def orchestrate_restore_workflow(
             "post_sql_duration_seconds",
             MetricLabels(job_id=job.id, target=job.target, phase="post_sql"),
         ):
-            post_sql_result = execute_post_sql(spec.post_sql_conn, event_callback=_emit_event)
+            post_sql_result = execute_post_sql(
+                spec.post_sql_conn, event_callback=_emit_event
+            )
         post_sql_duration = (datetime.now(UTC) - post_sql_started_at).total_seconds()
         result["post_sql"] = post_sql_result
         result["post_sql_duration_seconds"] = post_sql_duration
-        _emit_event("post_sql_complete", {
-            "scripts_executed": len(post_sql_result.scripts_executed),
-            "duration_seconds": round(post_sql_duration, 2),
-            "scripts": [
-                {
-                    "name": s.script_name,
-                    "duration": round(s.duration_seconds, 3),
-                    "rows": s.rows_affected,
-                }
-                for s in post_sql_result.scripts_executed
-            ],
-            "source": str(spec.post_sql_conn.script_dir),
-        })
+        _emit_event(
+            "post_sql_complete",
+            {
+                "scripts_executed": len(post_sql_result.scripts_executed),
+                "duration_seconds": round(post_sql_duration, 2),
+                "scripts": [
+                    {
+                        "name": s.script_name,
+                        "duration": round(s.duration_seconds, 3),
+                        "rows": s.rows_affected,
+                    }
+                    for s in post_sql_result.scripts_executed
+                ],
+                "source": str(spec.post_sql_conn.script_dir),
+            },
+        )
 
         restore_completed_at = datetime.now(UTC)
 
@@ -561,7 +671,9 @@ def orchestrate_restore_workflow(
         metadata_duration = (datetime.now(UTC) - metadata_started_at).total_seconds()
         result["metadata"] = "injected"
         result["metadata_duration_seconds"] = metadata_duration
-        _emit_event("metadata_complete", {"duration_seconds": round(metadata_duration, 2)})
+        _emit_event(
+            "metadata_complete", {"duration_seconds": round(metadata_duration, 2)}
+        )
 
         # 5. Atomic rename staging → target
         logger.info(
@@ -572,10 +684,13 @@ def orchestrate_restore_workflow(
                 "target_db": job.target,
             }
         )
-        _emit_event("atomic_rename_started", {
-            "staging_db": staging_result.staging_db,
-            "target_db": job.target,
-        })
+        _emit_event(
+            "atomic_rename_started",
+            {
+                "staging_db": staging_result.staging_db,
+                "target_db": job.target,
+            },
+        )
         rename_started_at = datetime.now(UTC)
         rename_conn = AtomicRenameConnectionSpec(
             mysql_host=spec.staging_conn.mysql_host,
@@ -593,14 +708,19 @@ def orchestrate_restore_workflow(
             "atomic_rename_duration_seconds",
             MetricLabels(job_id=job.id, target=job.target, phase="atomic_rename"),
         ):
-            atomic_rename_staging_to_target(rename_conn, rename_spec, event_callback=_emit_event)
+            atomic_rename_staging_to_target(
+                rename_conn, rename_spec, event_callback=_emit_event
+            )
         rename_duration = (datetime.now(UTC) - rename_started_at).total_seconds()
         result["atomic_rename"] = "complete"
         result["atomic_rename_duration_seconds"] = rename_duration
-        _emit_event("atomic_rename_complete", {
-            "target_db": job.target,
-            "duration_seconds": round(rename_duration, 2),
-        })
+        _emit_event(
+            "atomic_rename_complete",
+            {
+                "target_db": job.target,
+                "duration_seconds": round(rename_duration, 2),
+            },
+        )
 
         logger.info(
             {

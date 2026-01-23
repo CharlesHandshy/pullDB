@@ -181,9 +181,9 @@ def test_dev_smoke_restore_then_status(monkeypatch: pytest.MonkeyPatch) -> None:
     host_repo = _FakeHostRepository()
     config = Config(
         mysql_host="coord-db",
-        mysql_user="pulldb",
+        mysql_user="pulldb_app",
         mysql_password="secret",
-        mysql_database="pulldb",
+        mysql_database="pulldb_service",
         default_dbhost="dev-db-01",
     )
     state = APIState(

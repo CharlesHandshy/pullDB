@@ -88,7 +88,7 @@ class Config:
         mysql_host: MySQL server hostname for pullDB coordination database.
         mysql_user: MySQL username for authentication.
         mysql_password: MySQL password for authentication.
-        mysql_database: MySQL database name (default: "pulldb").
+        mysql_database: MySQL coordination database name (default: "pulldb_service").
         s3_bucket_path: S3 bucket path for backup archives (e.g., s3://bucket/prefix/).
         aws_profile: AWS CLI profile name for authentication (Secrets Manager,
             MySQL settings, etc.).
@@ -111,17 +111,17 @@ class Config:
     Examples:
         >>> config = Config(
         ...     mysql_host="localhost",
-        ...     mysql_user="pulldb",
+        ...     mysql_user="pulldb_app",
         ...     mysql_password="secret",
         ... )
         >>> config.mysql_database
-        'pulldb'
+        'pulldb_service'
     """
 
     mysql_host: str
     mysql_user: str
     mysql_password: str
-    mysql_database: str = "pulldb"
+    mysql_database: str = "pulldb_service"
     mysql_socket: str | None = None
 
     s3_bucket_path: str | None = None

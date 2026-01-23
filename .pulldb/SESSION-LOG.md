@@ -6,6 +6,630 @@
 
 ---
 
+## 2026-01-22 | Design Encyclopedia & Template - Sixth Pass (v1.5.0)
+
+### Context
+User requested sixth pass continuation, focusing on icon system, theme system, data formatting utilities, state patterns, and navigation patterns to complete the comprehensive design encyclopedia.
+
+### What Was Done
+**Version 1.4.0 → 1.5.0** - Deep dive into patterns and utilities:
+
+**DESIGN-ENCYCLOPEDIA.md Additions**:
+
+1. **Icon System** (NEW Section in Part IV)
+   - Complete macro signature: `icon(name, size='20', class='', stroke_width='1.5')`
+   - Size guidelines (12px-48px with use cases)
+   - HCA layer mapping (shared, entities, features, widgets, pages)
+   - Unknown icon fallback behavior with debugging attribute
+
+2. **Dark Mode & Theme System** (EXPANDED from "Dark Mode")
+   - Theme resolution order: localStorage → admin default → system → light
+   - CSS manifest architecture (generated files, no cascade conflicts)
+   - JavaScript API for programmatic theme toggle
+   - Testing tips for both themes
+
+3. **Data Formatting Utilities** (NEW Section in Part V)
+   - `LocalDateTime` class documentation
+   - HTML `data-utc` attribute usage with format options
+   - JavaScript API: `convert()`, `format()`, `relative()`
+   - Auto-initialization on DOM ready and HTMX swaps
+   - `formatBytes()` utility for file sizes
+
+4. **State Patterns** (NEW Section in Part VI)
+   - Empty state pattern with structure and guidelines
+   - Loading state patterns (overlay, inline spinner, skeleton)
+   - Error state pattern with recovery options
+
+5. **Navigation Patterns** (NEW Section in Part VI)
+   - Sidebar slide-out mechanism with trigger strip
+   - Navigation link patterns (standard, active, with badge)
+   - Navigation sections structure
+   - Breadcrumb component
+
+6. **Updated Quick Reference Card**
+   - Added STATE PATTERNS column (empty-state, error-state, loading-overlay)
+   - Added DATE FORMATS column (data-format options)
+   - Added THEME column (data-theme values)
+   - Added NAV column (nav-link patterns)
+
+**NEW-PAGE-TEMPLATE.md Updates**:
+
+1. **Version bump**: 1.4.0 → 1.5.0
+2. **Enhanced Icons section** with HCA layer reference table
+3. **DateTime Formatting section** in JavaScript Patterns
+4. **Updated Empty State** with proper structure classes
+5. **Added Error State** pattern
+
+### Rationale
+- **Icon System documentation**: Developers need to know which icons exist and where they come from (HCA layers)
+- **Theme System expansion**: CSS manifest swap mechanism is non-obvious; documenting prevents flash-of-wrong-theme issues
+- **Data Formatting**: UTC→local conversion is critical for correct timestamp display; `LocalDateTime` API needed documentation
+- **State Patterns**: Empty/loading/error states follow Law of Prägnanz (simplicity); standardizing prevents inconsistent UX
+- **Navigation Patterns**: Sidebar trigger strip is a custom pattern requiring documentation
+
+### Files Modified
+- `docs/DESIGN-ENCYCLOPEDIA.md` (v1.4.0 → v1.5.0)
+- `docs/NEW-PAGE-TEMPLATE.md` (v1.4.0 → v1.5.0)
+- `.pulldb/SESSION-LOG.md` (this entry)
+
+---
+
+## 2026-01-22 | Design Encyclopedia & Template - Fifth Pass (v1.4.0)
+
+### Context
+User requested fifth pass with focus on accessibility, animations/transitions, and layout architecture to complete the "solid fully compliant template" for stable, consistent development.
+
+### What Was Done
+**Version 1.3.0 → 1.4.0** - Comprehensive additions for accessibility and motion:
+
+**DESIGN-ENCYCLOPEDIA.md Additions**:
+
+1. **Enhanced Accessibility Section**
+   - Focus styles (`:focus-visible` pattern from reset.css)
+   - Reduced motion support (`prefers-reduced-motion` media query)
+   - Screen reader utilities (`.sr-only`, `.skip-link`)
+   - Comprehensive accessibility checklist
+   - Implementation examples with ARIA attributes
+
+2. **Animations & Transitions** (NEW Section in Part VII)
+   - Transition tokens with Doherty Threshold (<400ms)
+   - Easing curves table (ease-in, ease-out, ease-in-out, bounce)
+   - Built-in animation classes (spin, pulse, fade-in)
+   - Loading spinner sizes and usage
+   - Transition utility classes
+
+3. **Layout Architecture** (NEW Section in Part VII)
+   - CSS Grid "Pancake Stack" pattern diagram
+   - Layout dimension tokens table
+   - Content container classes
+   - Page header pattern
+   - Z-index scale (0-800)
+
+4. **Enhanced Quick Reference Card**
+   - Added TRANSITIONS column
+   - Added ANIMATIONS column
+   - Added Z-INDEX column
+   - Added ACCESSIBILITY column
+
+**NEW-PAGE-TEMPLATE.md Additions**:
+
+1. **Animation & Loading** (NEW Section)
+   - Loading spinner patterns (sm, default, lg)
+   - Button with loading state
+   - Animation utilities (spin, pulse, fade-in)
+   - Transition utilities (fast, base, slow, none)
+
+2. **Accessibility Patterns** (NEW Section)
+   - Required attributes for buttons and forms
+   - Screen reader utilities
+   - Color + text pattern (never color alone)
+   - Toast accessibility (role="alert")
+   - Keyboard navigation notes
+
+3. **Updated Table of Contents**
+   - Added Animation & Loading (#8)
+   - Added Accessibility Patterns (#9)
+   - Renumbered Inline Style Rules (#10)
+   - Renumbered JavaScript Patterns (#11)
+   - Renumbered Checklist (#12)
+
+### Rationale
+- Accessibility is critical for all users (WCAG compliance)
+- Animations/transitions improve perceived performance (Doherty Threshold)
+- Layout architecture provides foundation for all page development
+- Research-based additions from actual CSS files ensure accuracy
+
+### Files Modified
+- `docs/DESIGN-ENCYCLOPEDIA.md` (~2100 lines, v1.4.0)
+- `docs/NEW-PAGE-TEMPLATE.md` (~1300 lines, v1.4.0)
+
+### Research Sources
+- `pulldb/web/shared/css/reset.css` (focus-visible, reduced motion)
+- `pulldb/web/shared/css/utilities.css` (animations, transitions)
+- `pulldb/web/shared/css/design-tokens.css` (tokens, z-index)
+- `pulldb/web/shared/css/layout.css` (grid structure)
+- `pulldb/web/features/css/status.css` (status components)
+
+---
+
+## 2026-01-22 | Design Encyclopedia & Template - Fourth Pass (v1.3.0)
+
+### Context
+User continued fourth pass enhancement with goal of having "solid fully compliant template" with comprehensive component documentation. Deep research into forms, modals, tables, buttons, and HTMX patterns.
+
+### What Was Done
+**Version 1.2.0 → 1.3.0** - Major additions based on CSS/HTML research:
+
+**DESIGN-ENCYCLOPEDIA.md Additions**:
+
+1. **Form Components** (NEW Section in Part IV)
+   - BEM structure with legacy compatibility table
+   - Complete form example with sections, rows, validation
+   - Validation states: `.is-valid`, `.is-invalid`
+   - Form layouts: `.form__grid`, `.form-row`, `.form-row-small`
+   - Input with status for HTMX validation pattern
+
+2. **Modal Components** (NEW Section in Part IV)
+   - BEM structure table
+   - Size variants: `--sm` (400px), default (500px), `--wide` (600px), `--lg` (700px)
+   - Complete modal template with form
+   - JavaScript open/close/escape/backdrop patterns
+   - Danger modal example with red header
+
+3. **Table Components** (NEW Section in Part IV)
+   - BEM structure with legacy `.data-table` compatibility
+   - Row states: `.is-selected`, `.is-excluded`
+   - Cell utilities: `.cell-primary`, `.cell-secondary`, `.cell-mono-sm`
+   - Action button patterns
+   - LazyTable widget documentation
+
+4. **Button Reference** (NEW Section in Part IV)
+   - All 8 color variants with use cases
+   - Size variants table with heights
+   - Icon button patterns: `.btn-icon`, `.btn-icon-primary`, `.action-btn`
+   - Disabled/loading state
+
+5. **HTMX Integration** (NEW Section in Part V)
+   - Common attributes table
+   - Pattern: Auto-refresh dashboard
+   - Pattern: Polling for running jobs (conditional)
+   - Pattern: Inline validation with `hx-post`
+   - Pattern: Load more pagination
+   - Swap methods reference
+   - Best practices list
+
+6. **Enhanced Quick Reference Card**
+   - Added button sizes column
+   - Added forms classes
+   - Added modals classes
+   - Added tables classes
+   - Added HTMX attributes
+
+**NEW-PAGE-TEMPLATE.md Additions**:
+
+1. **Modal Patterns** (expanded section)
+   - Size variants reference
+   - Complete form modal template
+   - Danger modal (delete confirmation)
+
+2. **HTMX Patterns** (NEW section)
+   - Auto-refresh container
+   - Conditional polling
+   - Inline validation
+   - Load more pagination
+
+3. **Updated Table of Contents**
+   - Added Modal Patterns (#6)
+   - Added HTMX Patterns (#7)
+   - Renumbered subsequent sections
+
+### Rationale
+- Forms, modals, tables, buttons are the core building blocks for all pages
+- HTMX is central to pullDB's live update architecture (dashboard, job details)
+- Comprehensive documentation enables consistent development without guesswork
+- Research-based approach ensures documentation matches actual codebase patterns
+
+### Files Modified
+- `docs/DESIGN-ENCYCLOPEDIA.md` (1434 → ~2000 lines, v1.3.0)
+- `docs/NEW-PAGE-TEMPLATE.md` (1044 → ~1200 lines, v1.3.0)
+
+---
+
+## 2026-01-22 | Design Encyclopedia & Template - Third Pass (v1.2.0)
+
+### Context
+User requested third pass with goal of having "solid fully compliant template" for stable, consistent development. Focus on researching issues and fixing in place.
+
+### What Was Done
+**Version 1.1.0 → 1.2.0** - Comprehensive enhancements based on deep codebase research:
+
+**New Sections Added to Encyclopedia**:
+
+1. **Global JavaScript Functions** (Part V - Coding Standards)
+   - `showToast(message, type)` - Full signature and examples
+   - `showConfirm(message, options)` - Themed confirmation dialog API
+   - `showValidationSummary(errors, title)` - Validation error display
+   - All from `static/js/main.js`, documented with actual signatures
+
+2. **Breadcrumbs** (Part VI - Page Development)
+   - Route setup pattern with `get_breadcrumbs()`
+   - Pre-defined breadcrumb path keys (dashboard, admin, admin_users, etc.)
+   - Custom breadcrumb building with `build_breadcrumbs()`
+   - From `pulldb/web/widgets/breadcrumbs/__init__.py`
+
+**Template Clarifications**:
+
+1. **header_title / header_subtitle blocks**
+   - Documented that these blocks exist in templates BUT are not rendered in base.html
+   - They're defined in `shared/layouts/app_layout.html` for future use
+   - Prevents confusion when copy-pasting template
+
+2. **Icon macro import**
+   - Added explicit `{% from "partials/icons/_index.html" import icon %}` to template
+   - Verified macro signature: `icon(name, size='20', class='', stroke_width='1.5')`
+
+3. **Page Template Enhancements**
+   - Added status-bar pattern with actual implementation
+   - Added card-actions pattern
+   - Added flash message toast integration
+
+**NEW-PAGE-TEMPLATE.md Updates**:
+- Bumped to v1.2.0
+- Added Breadcrumbs section with route setup guide
+- Added pre-defined breadcrumb key table
+- Updated JavaScript Patterns with global functions
+- Removed duplicate showToast (now references global)
+- Added cross-reference to DESIGN-ENCYCLOPEDIA.md
+
+**Research Findings** (documented patterns from actual code):
+- `showConfirm` uses options: `title`, `okText`, `type` ('default'|'danger'|'warning')
+- Toast auto-dismiss times: info=5s, success=4s, warning=10s, error=60s
+- Global confirm modal defined in base.html with id `confirm-modal`
+- Badge status classes: badge-queued, badge-running, badge-complete, badge-failed, badge-canceled
+
+### Files Modified
+- `docs/DESIGN-ENCYCLOPEDIA.md` (v1.1.0 → v1.2.0)
+- `docs/NEW-PAGE-TEMPLATE.md` (v1.1.0 → v1.2.0)
+
+### Rationale
+- Third pass focused on "fixing in place" - no theoretical patterns, only actual code
+- Global JS functions are critical for consistent UX (toasts, confirmations)
+- Breadcrumb setup is non-obvious (route-based, not template-based)
+- Cross-referencing documents reduces duplication and ensures single source of truth
+
+### Stability Assessment
+Both documents now accurately reflect:
+- Actual base.html structure and available blocks
+- Actual JS functions and their exact signatures
+- Actual CSS tokens and utility classes
+- Actual route patterns and context setup
+- Actual icon macro signature
+
+---
+
+## 2026-01-22 | Design Encyclopedia - Second Pass (v1.1.0)
+
+### Context
+User requested second review pass of DESIGN-ENCYCLOPEDIA.md to verify accuracy against actual codebase.
+
+### What Was Done
+**Version 1.0.0 → 1.1.0** - Major corrections based on codebase verification:
+
+**Authentication Corrections**:
+- Fixed `require_auth` → `require_login` (actual function name)
+- Fixed session token storage: SHA256 hashing, not bcrypt (bcrypt is for passwords only)
+- Added `get_session_user` and `require_manager_or_above` dependency documentation
+- Added `Annotated[User, Depends(...)]` pattern (actual implementation)
+
+**Authorization Corrections**:
+- Added `SERVICE` role to role hierarchy (system accounts)
+- Added `UserRole` enum with correct values from `pulldb.domain.models`
+- Fixed `require_admin` implementation to use `user.is_admin` property
+
+**Typography Corrections**:
+- Fixed type scale token names (removed incorrect `--text-page-title`, `--text-card-title`)
+- Corrected to actual tokens: `--text-2xs`, `--text-xs`, `--text-sm`, `--text-base`, etc.
+
+**Spacing Corrections**:
+- Changed pixel values to rem values (actual tokens use rem for accessibility)
+
+**New Sections Added**:
+- Web Exceptions section documenting `SessionExpiredError`, `PasswordResetRequiredError`, etc.
+- Updated Quick Reference Card with AUTH DEPS, USER ROLES, EXCEPTIONS columns
+
+**Bug Found and Fixed**:
+- `design-tokens.css` had typo: `--color-text-base` instead of `--text-base`
+- Fixed the typo (17 CSS files reference `--text-base`)
+
+### Files Modified
+- `docs/DESIGN-ENCYCLOPEDIA.md` (v1.0.0 → v1.1.0)
+- `pulldb/web/shared/css/design-tokens.css` (bug fix)
+
+### Rationale
+- Encyclopedia must match actual codebase, not theoretical patterns
+- Authentication dependency names must be exact for copy-paste usage
+- Token storage distinction (SHA256 for session tokens, bcrypt for passwords) is critical security knowledge
+- Fixing the CSS bug prevents potential styling issues
+
+---
+
+## 2026-01-22 | Design & Development Encyclopedia - First Review Pass
+
+### Context
+User requested a comprehensive design encyclopedia covering all aspects: security, HCA, style, coding standards, visual perfection, and overall site design guidance. This is an expansion of the NEW-PAGE-TEMPLATE.md into a complete reference.
+
+### What Was Done
+Created `docs/DESIGN-ENCYCLOPEDIA.md` - A comprehensive 7-part encyclopedia (approx. 1000 lines):
+
+**Part I: Core Philosophy**
+- Mission statement for pullDB as operations tool
+- Guiding principles (Clarity, Efficiency, Consistency, Safety, FAIL HARD)
+- Progressive disclosure pattern
+- Information hierarchy concept
+- UX Laws application table
+
+**Part II: Hierarchical Containment Architecture (HCA)**
+- Complete 6-law summary
+- Layer model diagram with directory mapping
+- Import rules with examples
+- File placement decision tree
+- Web package internal HCA structure
+
+**Part III: Security**
+- Security model overview (5 layers)
+- Authentication patterns (session management, login flow)
+- Authorization (RBAC with role hierarchy)
+- Input validation (SQL injection, XSS prevention)
+- Security checklist
+
+**Part IV: Visual Design System**
+- Design tokens philosophy
+- Color system with status mapping
+- Typography scale and rules
+- Spacing system
+- Component library (buttons, cards, alerts, badges, forms)
+- Dark mode implementation
+
+**Part V: Coding Standards**
+- Python: Ruff/Mypy, naming, type hints, docstrings
+- JavaScript: ES6+, DOM patterns
+- CSS: BEM naming, utility-first, HCA organization
+- Error handling (FAIL HARD protocol)
+
+**Part VI: Page Development**
+- Complete page template with all blocks
+- Utility classes reference
+- Inline style rules (allowed vs. forbidden)
+- Pre-commit checklist
+
+**Part VII: Quality & Testing**
+- Testing standards and organization
+- Accessibility requirements
+- Performance guidelines
+
+**Quick Reference Card**: At-a-glance lookup
+
+### Rationale
+- NEW-PAGE-TEMPLATE.md covered only visual/component patterns
+- Developers need unified reference for ALL standards
+- Security patterns were undocumented
+- HCA rules scattered across multiple files
+- Encyclopedia consolidates everything into one searchable document
+- Follows same structure as STYLE-GUIDE.md for consistency
+
+### Files Created
+- `docs/DESIGN-ENCYCLOPEDIA.md` (comprehensive 7-part encyclopedia)
+
+### Cross-References Added
+Links to existing detailed documents:
+- STYLE-GUIDE.md for visual deep-dive
+- NEW-PAGE-TEMPLATE.md for copy-paste templates
+- hca.md for full HCA specification
+- python.md for Python coding details
+- fail-hard.md for error handling protocol
+- KNOWLEDGE-POOL.md for operational facts
+
+---
+
+## 2026-01-22 | New Page Template Style Guide - Review Pass
+
+### Context
+User requested first review pass of the NEW-PAGE-TEMPLATE.md document.
+
+### What Was Done
+**Version 1.0.0 → 1.1.0** - Major corrections to match actual codebase patterns:
+
+**Quick Start Template Fixes**:
+- Added `{% block page_id %}` (standard pattern, not documented before)
+- Added `{% block header_title %}` and `{% block header_subtitle %}` 
+- Changed content wrapper from generic `page-header` to actual `page-header-row > page-header-left` structure
+- Added `status-bar` pattern for page-level stats
+- Added flash message pattern with `{% if flash_message %}`
+
+**Icon Macro Documentation**:
+- Documented correct signature: `icon(name, size='20', class='', stroke_width='1.5')`
+- Default size is '20', not '16' as originally documented
+- Added `class` parameter usage for styling (e.g., `class='icon-sm'`)
+- Icon sizes: 16 inline, 18 buttons, 20 default, 24 large
+
+**Component Pattern Fixes**:
+- Cards: Added `card-header-left` wrapper (actual pattern)
+- Cards: Added `no-padding` body variant for tables
+- Added `admin-stats-row` / `admin-stat-card` pattern
+- Added `status-bar` / `status-item` pattern
+- Icon-only buttons: Added `aria-label` requirement alongside `title`
+- Added `btn-icon-primary` variant
+
+**Checklist Updates**:
+- Added `{% block page_id %}` requirement
+- Added `{% block header_title %}` requirement
+- Added feature-specific wrapper div requirement
+- Added `page-header-row` structure requirement
+- Added icon macro usage checklist items
+- Added `aria-label` requirement for icon-only buttons
+
+**Quick Reference Card**:
+- Reorganized to show icon macro sizes vs. icon classes
+- Added page structure patterns section
+
+### Rationale
+Initial template was based on assumptions rather than actual codebase inspection. Review pass verified patterns against real templates (job_history.html, hosts.html, admin.html).
+
+### Files Modified
+- `docs/NEW-PAGE-TEMPLATE.md` (v1.0.0 → v1.1.0)
+
+---
+
+## 2026-01-22 | New Page Template Style Guide
+
+### Context
+User requested creation of a comprehensive template document for new page development, based on patterns established during the multi-pass style guide consolidation effort.
+
+### What Was Done
+Created `docs/NEW-PAGE-TEMPLATE.md` - A comprehensive copy-paste reference for creating new pages:
+
+**Sections Included**:
+1. **Quick Start Template** - Ready-to-copy HTML template extending base.html
+2. **Page Structure** - Block conventions, title patterns, layout structure
+3. **Utility Classes Reference** - All available utilities with examples:
+   - Display, Flexbox, Spacing (margin/padding), Typography
+   - Width constraints, Icons, Borders, Shadows, Visibility
+4. **Component Patterns** - Code examples for:
+   - Buttons (primary, secondary, danger, ghost, icon-only)
+   - Alerts, Cards, Form groups, Badges, Tables, Modals
+   - Empty states, Info panels, Hint text, Loading spinners
+5. **Inline Style Rules** - Clear guidance on what's allowed vs. forbidden
+6. **JavaScript Patterns** - Standard patterns for modals, toasts, lazy table renderers
+7. **Checklist** - Pre-submission verification items
+8. **Quick Reference Card** - At-a-glance lookup for common values
+
+### Rationale
+- **STYLE-GUIDE.md** is comprehensive but dense for quick reference
+- New developers need copy-paste patterns, not design philosophy
+- Fifth pass revealed common violations that a clear template would prevent
+- Emphasis on "NEVER inline styles" with concrete alternatives table
+
+### Files Created
+- `docs/NEW-PAGE-TEMPLATE.md` (comprehensive template guide)
+
+---
+
+## 2026-01-27 | Style Guide Consolidation - Fifth Pass (Inline Style Cleanup)
+
+### Context
+User requested solving remaining inline styles across admin templates.
+
+### What Was Done
+
+**New Utility Classes Added** to `shared/css/utilities.css`:
+- `.max-w-input-xs` (60px), `.max-w-input-sm` (100px), `.max-w-input-md` (150px), `.max-w-input-lg` (200px)
+- Used for form number inputs that need constrained widths
+
+**Files Fixed**:
+- `user_orphans.html`: 5 inline styles → utility classes (flex, text-muted, text-sm, mb-3)
+- `admin_task_status.html`: 7 SVG inline styles → `icon-sm` class, 2 spacing → `mt-4`, `mb-4`
+- `prune_preview.html`: max-width inline → `max-w-input-sm`
+- `cleanup_preview.html`: max-width inline → `max-w-input-sm`
+- `api_keys.html`: 4 SVG inline styles removed (buttons.css handles), paragraph → `text-muted mb-3`
+- `users.html`: 5 button SVG inline styles removed (buttons.css handles), modal icon → `icon-md mr-2`
+- `host_detail.html`: 3 alert margin-bottom → `mb-4`, link margin → `ml-2`
+
+**Acceptable Remaining Inline Styles**:
+- `styleguide.html`: Color swatches (intentional for demos)
+- `locked_databases.html`: `display: inline` on form (acceptable for inline form pattern)
+- `users.html`: Dynamic cursor styles in JS (necessary for conditional styling)
+- `api_keys.html`: `padding-left: 20px` on list (no pl-* utility, acceptable)
+- `users.html` password note: `vertical-align: middle` (no utility, acceptable)
+
+### Rationale
+- **buttons.css already handles SVGs**: `.btn svg:not(.btn__icon)` sets 16x16 + margin
+- **icon-* utilities**: Standard sizes (icon-xs=12, icon-sm=16, icon-md=20, icon-lg=24, icon-xl=32)
+- **New max-w-input-* utilities**: Reusable for form inputs across site
+
+### Files Modified
+- `pulldb/web/shared/css/utilities.css` (added max-w-input-* utilities)
+- `pulldb/web/templates/features/admin/user_orphans.html`
+- `pulldb/web/templates/features/admin/admin_task_status.html`
+- `pulldb/web/templates/features/admin/prune_preview.html`
+- `pulldb/web/templates/features/admin/cleanup_preview.html`
+- `pulldb/web/templates/features/admin/api_keys.html`
+- `pulldb/web/templates/features/admin/users.html`
+- `pulldb/web/templates/features/admin/host_detail.html`
+
+---
+
+## 2026-01-27 | Style Guide Consolidation - Fourth Pass
+
+### Context
+Continuing style guide audit. Fourth pass focused on admin preview pages which had extensive inline styles in JavaScript column renderers.
+
+### What Was Done
+
+**Admin Preview Pages Standardization**:
+- `prune_preview.html`: Replaced 6+ inline styles with utility classes
+  - Job ID: `style="font-size: 0.8em"` → `text-xs font-mono`
+  - Status badge: `style="font-size: 0.75rem"` → `badge--sm` + BEM modifiers
+  - User code: `style="font-size: 0.85em"` → `font-mono text-sm`
+  - Event count: `style="color: var(--danger-600)"` → `text-danger`
+  - Layout panels: Inline flex → `flex gap-4 items-end`, `flex items-center gap-2`
+  - Hint text: Inline styles → `text-muted text-sm mb-3`
+
+- `cleanup_preview.html`: Same pattern as prune_preview
+- `orphan_preview.html`: Same pattern + info panel flex layout
+
+**Badge Class Standardization**:
+- Changed old naming (`badge-success`) to BEM (`badge--success`) in JS renderers
+- Old naming still supported via legacy compatibility in badge.css
+
+### Rationale
+- **Style Guide Compliance**: Inline styles in JS violate the separation of concerns
+- **Utility-First**: Standard utility classes (text-xs, text-sm, flex, gap-*) are reusable
+- **BEM Convention**: Badge modifiers should use `--` separator per badge.css spec
+- **Consistency**: All three preview pages now follow same patterns as job_history.html
+
+### Files Modified
+- `pulldb/web/templates/features/admin/prune_preview.html` (~16 inline styles removed)
+- `pulldb/web/templates/features/admin/cleanup_preview.html` (~12 inline styles removed)
+- `pulldb/web/templates/features/admin/orphan_preview.html` (~8 inline styles removed)
+- `docs/THEME-CONFORMITY-INDEX.md` (updated changelog)
+
+---
+
+## 2026-01-27 | Style Guide Consolidation - Third Pass
+
+### Context
+Continued multi-pass style audit for job_history.html and site-wide CSS standardization. Pass 1 fixed inline styles and stats cards. Pass 2 fixed lazy table height. Pass 3 focused on removing duplicated CSS utilities.
+
+### What Was Done
+
+**Shared Utilities Consolidation**:
+- Added `.loading-spinner` class to `shared/css/utilities.css` with size modifiers (`--sm`, `--lg`)
+- Removed duplicated `.loading-spinner` definition from `job_history.html` inline styles
+- Removed duplicated `.loading-spinner` definition from `restore.css` (now references utilities)
+- Removed duplicated `.text-success`, `.text-danger`, `.text-warning` from job_history.html (already in utilities.css)
+
+**Audit Findings**:
+- `.card-section-title` kept as page-specific (differs from `.form-section-title` which has uppercase transform)
+- `.filter-grid` kept as page-specific (used only in job_history, pattern varies across site)
+- `@keyframes spin` animation already existed in utilities.css - leveraged existing
+
+**Documentation Updates**:
+- Updated `THEME-CONFORMITY-INDEX.md` with changelog entry and date
+
+### Rationale
+- **DRY principle**: Utility classes should live in shared layer, not duplicated per-page
+- **HCA compliance**: Shared layer → features layer import direction
+- **Style guide**: Text color utilities are foundational, belong in utilities.css
+- **Page-specific styles**: Kept `.card-section-title` and `.filter-grid` local - single use, intentionally different from similar patterns
+
+### Files Modified
+- `pulldb/web/shared/css/utilities.css` (added .loading-spinner)
+- `pulldb/web/templates/features/admin/job_history.html` (removed duplicated utilities)
+- `pulldb/web/static/css/pages/restore.css` (removed duplicated .loading-spinner)
+- `docs/THEME-CONFORMITY-INDEX.md` (updated changelog)
+
+---
+
 ## 2026-01-21 | MEDIUM Findings Remediation - Docstrings & Code Quality
 
 ### Context

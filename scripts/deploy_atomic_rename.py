@@ -107,7 +107,7 @@ def parse_args() -> argparse.Namespace:
         "--password", required=True, help="MySQL user password (avoid shells history)"
     )
     parser.add_argument(
-        "--database", default="pulldb", help="Database to deploy procedure into"
+        "--database", default="pulldb_service", help="Database to deploy procedure into"
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="Validate only; no deployment"

@@ -17,7 +17,7 @@
 <div class="content-body">
     <!-- Alert Banners -->
     {% if not host.enabled %}
-    <div class="alert alert-warning" style="margin-bottom: var(--space-4);">
+    <div class="alert alert-warning mb-4">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/>
             <line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/>
@@ -27,7 +27,7 @@
     {% endif %}
 
     {% if host.credential_error %}
-    <div class="alert alert-danger" style="margin-bottom: var(--space-4);">
+    <div class="alert alert-danger mb-4">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/>
             <line x1="12" y1="8" x2="12" y2="12"/>
@@ -36,7 +36,7 @@
         <div>
             <strong>Credential Error:</strong> {{ host.credential_error }}
             {% if host.aws_secret_url %}
-            <a href="{{ host.aws_secret_url }}" target="_blank" rel="noopener" style="margin-left: var(--space-2);">Check AWS →</a>
+            <a href="{{ host.aws_secret_url }}" target="_blank" rel="noopener" class="ml-2">Check AWS →</a>
             {% endif %}
         </div>
     </div>

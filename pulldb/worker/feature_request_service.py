@@ -89,10 +89,42 @@ class FeatureRequestService:
             finally:
                 cur.close()
 
+    async def get_distinct_values(self, column: str) -> list[str]:
+        """Get distinct values for a column (for filter dropdowns).
+        
+        Args:
+            column: Column name - 'status' or 'submitted_by_user_code'.
+            
+        Returns:
+            List of distinct values sorted alphabetically.
+        """
+        if column == "status":
+            # Return all possible status values in logical order
+            return [s.value for s in FeatureRequestStatus]
+        elif column == "submitted_by_user_code":
+            query = """
+                SELECT DISTINCT u.user_code
+                FROM feature_requests fr
+                JOIN auth_users u ON fr.submitted_by_user_id = u.user_id
+                WHERE u.user_code IS NOT NULL
+                ORDER BY u.user_code ASC
+            """
+            with self.db_pool.connection() as conn:
+                cur = TypedTupleCursor(conn.cursor())
+                try:
+                    cur.execute(query)
+                    return [row[0] for row in cur.fetchall()]
+                finally:
+                    cur.close()
+        else:
+            return []
+
     async def list_requests(
         self,
         current_user_id: str | None = None,
         status_filter: list[str] | None = None,
+        user_filter: list[str] | None = None,
+        title_filter: str | None = None,
         sort_by: str = DEFAULT_SORT_COLUMN,
         sort_order: str = "desc",
         limit: int = DEFAULT_LIST_LIMIT,
@@ -103,6 +135,8 @@ class FeatureRequestService:
         Args:
             current_user_id: If provided, includes the user's vote on each request.
             status_filter: Optional list of statuses to filter by.
+            user_filter: Optional list of user_codes to filter by.
+            title_filter: Optional title search (supports * wildcards).
             sort_by: Column to sort by (vote_score, created_at, status).
             sort_order: Sort direction (asc, desc).
             limit: Maximum results to return.
@@ -120,6 +154,20 @@ class FeatureRequestService:
             where_clauses.append(f"fr.status IN ({placeholders})")
             params.extend(status_filter)
         
+        if user_filter:
+            placeholders = ", ".join(["%s"] * len(user_filter))
+            where_clauses.append(f"u.user_code IN ({placeholders})")
+            params.extend(user_filter)
+        
+        if title_filter:
+            # Convert * wildcards to SQL % wildcards for LIKE query
+            like_pattern = title_filter.replace("*", "%")
+            if "%" not in like_pattern:
+                # No wildcards - add implicit contains search
+                like_pattern = f"%{like_pattern}%"
+            where_clauses.append("fr.title LIKE %s")
+            params.append(like_pattern)
+        
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         
         # Validate sort column
@@ -127,10 +175,17 @@ class FeatureRequestService:
             sort_by = DEFAULT_SORT_COLUMN
         sort_order = "DESC" if sort_order.lower() == "desc" else "ASC"
         
-        # Count query
-        count_query = f"""
-            SELECT COUNT(*) FROM feature_requests fr {where_sql}
-        """
+        # Count query - needs user join if filtering by user
+        if user_filter:
+            count_query = f"""
+                SELECT COUNT(*) FROM feature_requests fr
+                JOIN auth_users u ON fr.submitted_by_user_id = u.user_id
+                {where_sql}
+            """
+        else:
+            count_query = f"""
+                SELECT COUNT(*) FROM feature_requests fr {where_sql}
+            """
         
         # Main query with user vote join
         vote_join = ""
@@ -349,6 +404,7 @@ class FeatureRequestService:
         updates = []
         params: list[Any] = []
         
+        clear_votes = False
         if data.status is not None:
             updates.append("status = %s")
             params.append(data.status.value)
@@ -357,6 +413,8 @@ class FeatureRequestService:
             if data.status in (FeatureRequestStatus.COMPLETE, FeatureRequestStatus.DECLINED):
                 updates.append("completed_at = %s")
                 params.append(datetime.now(UTC))
+                # Clear votes when completing - allows request to fall down the list
+                clear_votes = True
             else:
                 updates.append("completed_at = NULL")
         
@@ -366,6 +424,10 @@ class FeatureRequestService:
         
         if not updates:
             return await self.get_request(request_id)
+        
+        # If clearing votes, also reset vote counts
+        if clear_votes:
+            updates.extend(["vote_score = 0", "upvote_count = 0", "downvote_count = 0"])
         
         params.append(request_id)
         query = f"""
@@ -380,6 +442,15 @@ class FeatureRequestService:
                 cur.execute(query, params)
                 if cur.rowcount == 0:
                     return None
+                
+                # Clear all votes for this request so users can vote on other requests
+                if clear_votes:
+                    cur.execute(
+                        "DELETE FROM feature_request_votes WHERE request_id = %s",
+                        (request_id,)
+                    )
+                    logger.info(f"Cleared votes for completed request {request_id}")
+                
                 conn.commit()
             finally:
                 cur.close()

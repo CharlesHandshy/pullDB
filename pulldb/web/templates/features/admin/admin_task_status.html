@@ -257,7 +257,7 @@
 
 {% block header_actions %}
 <a href="/web/admin/users" class="btn btn-ghost">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
         <line x1="19" y1="12" x2="5" y2="12"/>
         <polyline points="12 19 5 12 12 5"/>
     </svg>
@@ -281,23 +281,23 @@
             </h3>
             <span class="task-header-status {{ task.status.value }}">
                 {% if task.status.value == 'pending' %}
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
                         <circle cx="12" cy="12" r="10"/>
                         <polyline points="12 6 12 12 16 14"/>
                     </svg>
                     Pending
                 {% elif task.status.value == 'running' %}
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;" class="spinning">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm spinning">
                         <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
                     </svg>
                     Running
                 {% elif task.status.value == 'complete' %}
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
                         <polyline points="20 6 9 17 4 12"/>
                     </svg>
                     Complete
                 {% elif task.status.value == 'failed' %}
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
                         <circle cx="12" cy="12" r="10"/>
                         <line x1="15" y1="9" x2="9" y2="15"/>
                         <line x1="9" y1="9" x2="15" y2="15"/>
@@ -346,7 +346,7 @@
     </div>
     
     {% if task.result_json %}
-    <div class="card" style="margin-top: var(--space-4);">
+    <div class="card mt-4">
         <div class="card-header">
             <h3 class="card-title">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
@@ -390,7 +390,7 @@
             </div>
             
             {% if result.user_deleted %}
-            <div class="alert alert-success" style="margin-bottom: var(--space-4);">
+            <div class="alert alert-success mb-4">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="20 6 9 17 4 12"/>
                 </svg>

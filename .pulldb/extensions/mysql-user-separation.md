@@ -75,6 +75,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.settings TO 'pulldb_api'@
 GRANT SELECT, INSERT ON pulldb_service.audit_logs TO 'pulldb_api'@'localhost';
 GRANT SELECT ON pulldb_service.active_jobs TO 'pulldb_api'@'localhost';
 
+-- Job history (analytics/reporting)
+GRANT SELECT, INSERT, DELETE ON pulldb_service.job_history_summary TO 'pulldb_api'@'localhost';
+
 -- Explicit denial: Cannot access target databases
 -- (No grants on other databases)
 ```
@@ -91,6 +94,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.settings TO 'pulldb_worke
 GRANT SELECT, INSERT, UPDATE, DELETE ON pulldb_service.locks TO 'pulldb_worker'@'localhost';
 GRANT SELECT ON pulldb_service.active_jobs TO 'pulldb_worker'@'localhost';
 GRANT LOCK TABLES ON pulldb_service.* TO 'pulldb_worker'@'localhost';
+
+-- Job history (written at job completion)
+GRANT SELECT, INSERT, DELETE ON pulldb_service.job_history_summary TO 'pulldb_worker'@'localhost';
 
 -- Cannot create jobs (API only)
 -- Cannot modify users or hosts

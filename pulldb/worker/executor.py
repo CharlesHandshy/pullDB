@@ -18,6 +18,7 @@ HCA Layer: features
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import tarfile
 import time
@@ -891,13 +892,19 @@ class WorkerJobExecutor:
                 phase_profile.duration_seconds = float(workflow_result[phase_key])  # type: ignore[arg-type]
                 phase_profile.completed_at = datetime.now(UTC)
 
+        # Build restore_complete event with myloader metrics for history backfill
+        restore_complete_detail: dict[str, Any] = {
+            "backup_filename": backup_spec.filename,
+            "target": job.target,
+        }
+        if isinstance(myloader_result, MyLoaderResult):
+            restore_complete_detail["table_count"] = myloader_result.table_count
+            restore_complete_detail["total_rows"] = myloader_result.total_rows
+
         self._append_event(
             job.id,
             "restore_complete",
-            {
-                "backup_filename": backup_spec.filename,
-                "target": job.target,
-            },
+            restore_complete_detail,
         )
         return workflow_result
 
@@ -905,12 +912,16 @@ class WorkerJobExecutor:
         self,
         job: Job,
         profiler: RestoreProfiler,
+        backup_spec: BackupSpec,
+        workflow_result: dict[str, Any],
     ) -> None:
-        """Finalize successful workflow: emit profile and mark deployed.
+        """Finalize successful workflow: emit profile, mark deployed, save history.
 
         Args:
             job: Job being executed.
             profiler: RestoreProfiler with timing data.
+            backup_spec: Backup specification (for S3 path).
+            workflow_result: Result from restore workflow (contains myloader result).
         """
         profiler.complete()
         self._append_event(
@@ -929,6 +940,157 @@ class WorkerJobExecutor:
                 "profile": profiler.profile.phase_breakdown,
             },
         )
+
+        # Save job history summary
+        self._save_job_history_summary(
+            job=job,
+            profiler=profiler,
+            backup_spec=backup_spec,
+            workflow_result=workflow_result,
+            final_status="complete",
+            error_detail=None,
+        )
+
+    def _save_job_history_summary(
+        self,
+        job: Job,
+        profiler: RestoreProfiler,
+        backup_spec: BackupSpec | None,
+        workflow_result: dict[str, Any] | None,
+        final_status: str,
+        error_detail: str | None,
+    ) -> None:
+        """Save job history summary record for analytics.
+
+        Best-effort operation - failures are logged but don't affect job outcome.
+
+        Args:
+            job: Job being executed.
+            profiler: RestoreProfiler with timing data.
+            backup_spec: Backup specification (may be None for early failures).
+            workflow_result: Result from restore workflow (may be None for failures).
+            final_status: 'complete', 'failed', or 'canceled'.
+            error_detail: Error message for categorization (for failures).
+        """
+        try:
+            from pulldb.infra.factory import get_job_history_summary_repository
+            from pulldb.infra.mysql import JobHistorySummaryRepository
+
+            history_repo = get_job_history_summary_repository()
+            if history_repo is None:
+                logger.debug(
+                    "Skipping job history save (simulation mode)",
+                    extra={"job_id": job.id},
+                )
+                return
+
+            # Extract phase durations from profiler
+            profile = profiler.profile
+            phases = profile.phases
+
+            def _get_phase_duration(phase: RestorePhase) -> float | None:
+                p = phases.get(phase)
+                return p.duration_seconds if p else None
+
+            # Extract data from workflow result
+            table_count: int | None = None
+            total_rows: int | None = None
+            myloader_result = workflow_result.get("myloader") if workflow_result else None
+            if isinstance(myloader_result, MyLoaderResult):
+                table_count = myloader_result.table_count
+                total_rows = myloader_result.total_rows
+
+            # Calculate throughput metrics
+            download_mbps: float | None = None
+            download_phase = phases.get(RestorePhase.DOWNLOAD)
+            if download_phase and download_phase.bytes_per_second:
+                download_mbps = round(download_phase.bytes_per_second / (1024 * 1024), 2)
+
+            restore_rows_per_second: int | None = None
+            myloader_phase = phases.get(RestorePhase.MYLOADER)
+            if myloader_phase and myloader_phase.duration_seconds and total_rows:
+                if myloader_phase.duration_seconds > 0:
+                    restore_rows_per_second = int(total_rows / myloader_phase.duration_seconds)
+
+            # Extract backup date from S3 key if available
+            backup_date: datetime | None = None
+            backup_s3_path: str | None = None
+            if backup_spec:
+                backup_s3_path = f"s3://{backup_spec.bucket}/{backup_spec.key}"
+                # Truncate if exceeds schema VARCHAR(1024) limit
+                if len(backup_s3_path) > 1024:
+                    logger.warning(
+                        "Truncating backup_s3_path from %d chars to 1024",
+                        len(backup_s3_path),
+                        extra={"job_id": job.id},
+                    )
+                    backup_s3_path = backup_s3_path[:1024]
+                # Try to extract date from key (format: .../YYYY-MM-DD/...)
+                date_match = re.search(r'/(\d{4}-\d{2}-\d{2})/', backup_spec.key)
+                if date_match:
+                    try:
+                        backup_date = datetime.strptime(date_match.group(1), "%Y-%m-%d")
+                    except ValueError as e:
+                        logger.debug(
+                            "Could not parse backup date from S3 key: %s",
+                            e,
+                            extra={"job_id": job.id, "key": backup_spec.key},
+                        )
+
+            # Categorize error if failed
+            error_category: str | None = None
+            if final_status in ("failed", "canceled") and error_detail:
+                if final_status == "canceled":
+                    error_category = "canceled_by_user"
+                else:
+                    error_category = JobHistorySummaryRepository.categorize_error(error_detail)
+
+            history_repo.insert(
+                job_id=job.id,
+                owner_user_id=job.owner_user_id,
+                owner_username=job.owner_username,
+                dbhost=job.dbhost,
+                target=job.target,
+                custom_target=bool((job.options_json or {}).get("custom_target_used") == "true"),
+                submitted_at=job.submitted_at,
+                started_at=job.started_at,
+                completed_at=datetime.now(UTC),
+                final_status=final_status,
+                error_category=error_category,
+                archive_size_bytes=backup_spec.size_bytes if backup_spec else None,
+                extracted_size_bytes=(
+                    download_phase.bytes_processed if download_phase else None
+                ),
+                table_count=table_count,
+                total_rows=total_rows,
+                total_duration_seconds=(
+                    round(profile.total_duration_seconds, 2)
+                    if profile.total_duration_seconds else None
+                ),
+                discovery_duration_seconds=_get_phase_duration(RestorePhase.DISCOVERY),
+                download_duration_seconds=_get_phase_duration(RestorePhase.DOWNLOAD),
+                extraction_duration_seconds=_get_phase_duration(RestorePhase.EXTRACTION),
+                myloader_duration_seconds=_get_phase_duration(RestorePhase.MYLOADER),
+                post_sql_duration_seconds=_get_phase_duration(RestorePhase.POST_SQL),
+                metadata_duration_seconds=_get_phase_duration(RestorePhase.METADATA),
+                atomic_rename_duration_seconds=_get_phase_duration(RestorePhase.ATOMIC_RENAME),
+                download_mbps=download_mbps,
+                restore_rows_per_second=restore_rows_per_second,
+                backup_date=backup_date,
+                backup_s3_path=backup_s3_path,
+                worker_id=job.worker_id,
+            )
+            logger.info(
+                "Saved job history summary",
+                extra={"job_id": job.id, "final_status": final_status},
+            )
+        except Exception:
+            # Best effort - don't fail the job if history save fails
+            logger.warning(
+                "Failed to save job history summary",
+                extra={"job_id": job.id},
+                exc_info=True,
+            )
 
     # -------------------------------------------------------------------------
     # Main Entry Points
@@ -971,6 +1133,10 @@ class WorkerJobExecutor:
         job_dir, download_dir, extract_dir = self._prepare_job_dirs(job.id)
         profiler = RestoreProfiler(job.id)
 
+        # Track data for history summary (may be None for early failures)
+        backup_spec: BackupSpec | None = None
+        workflow_result: dict[str, Any] | None = None
+
         def _cancel_check() -> bool:
             """Check if job should abort (cancelled or no longer running)."""
             return bool(self.job_repo.should_abort_job(job.id))
@@ -1006,23 +1172,25 @@ class WorkerJobExecutor:
             self._check_cancellation(job.id, "pre_restore")
 
             # Phase 4: Restore - run myloader and post-SQL
-            self._run_restore_phase(
+            workflow_result = self._run_restore_phase(
                 job, backup_spec, backup_dir, host_credentials, profiler, _cancel_check
             )
 
-            # Phase 5: Finalize - mark deployed
-            self._finalize_workflow(job, profiler)
+            # Phase 5: Finalize - mark deployed and save history
+            self._finalize_workflow(job, profiler, backup_spec, workflow_result)
 
         except CancellationError as exc:
             # Cancellation is controlled termination, not an error
             profiler.complete(error=f"Canceled at {exc.detail.get('phase', 'unknown')}")
             self._append_event(job.id, "restore_profile", profiler.profile.to_dict())
             self._handle_failure(job, exc)
+            # No history record for cancellations - only deployed jobs get history
             # Don't re-raise - job terminated cleanly
         except Exception as exc:
             profiler.complete(error=str(exc))
             self._append_event(job.id, "restore_profile", profiler.profile.to_dict())
             self._handle_failure(job, exc)
+            # No history record for failures - only deployed jobs get history
             raise
         finally:
             self._cleanup_job_dir(job_dir)

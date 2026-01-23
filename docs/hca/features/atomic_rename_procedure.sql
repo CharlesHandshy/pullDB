@@ -1,5 +1,5 @@
 -- Atomic rename stored procedure for pullDB
--- Version: 1.0.1
+-- Version: 1.0.2
 --
 -- IMPORTANT: Procedure version MUST match expected version in deployment
 -- tooling and worker compatibility checks. Bump this version ONLY when
@@ -29,12 +29,14 @@
 --
 -- Behavior:
 --   1. Validate staging database exists.
---   2. If target exists, DROP it (zero-downtime expectation: clients connect only after restore completes).
---   3. Rename all tables from staging schema to target schema using RENAME TABLE ... syntax.
---   4. Verify target schema now contains at least one table.
---   5. Verify staging schema is empty.
---   6. Drop staging database.
---   7. Leave staging schema intact if ANY error occurs (caller will FAIL HARD; manual inspection allowed).
+--   2. If target exists, verify it has pullDB metadata table (ownership check).
+--   3. If target has no pullDB table, SIGNAL error (refuse to overwrite).
+--   4. If target is owned by pullDB, DROP it.
+--   5. Rename all tables from staging schema to target schema using RENAME TABLE ... syntax.
+--   6. Verify target schema now contains at least one table.
+--   7. Verify staging schema is empty.
+--   8. Drop staging database.
+--   9. Leave staging schema intact if ANY error occurs (caller will FAIL HARD; manual inspection allowed).
 --
 -- Transactional Notes:
 --   MySQL does not support transactional CREATE/DROP DATABASE operations.
@@ -69,11 +71,12 @@ DELIMITER $$
 DROP PROCEDURE IF EXISTS pulldb_atomic_rename $$
 CREATE PROCEDURE pulldb_atomic_rename(IN p_staging_db VARCHAR(64), IN p_target_db VARCHAR(64))
 BEGIN
-    -- Version: 1.0.1
+    -- Version: 1.0.2
     DECLARE v_table_count INT DEFAULT 0;
     DECLARE v_rename_sql LONGTEXT;
     DECLARE v_first_table VARCHAR(255);
     DECLARE v_msg VARCHAR(255);
+    DECLARE v_has_pulldb_table INT DEFAULT 0;
 
     -- Increase group_concat_max_len to handle many tables (default 1024 is too small)
     SET SESSION group_concat_max_len = 1000000;
@@ -89,10 +92,22 @@ BEGIN
     END IF;
 
     -- Drop target if exists (ensures clean cutover)
+    -- SAFETY: Only drop if target has pullDB table (ownership verification)
     IF EXISTS (
         SELECT 1 FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = p_target_db
     ) THEN
-        -- Output progress before dropping
+        -- Check if target has pullDB metadata table (ownership marker)
+        SELECT COUNT(*) INTO v_has_pulldb_table
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = p_target_db AND TABLE_NAME = 'pullDB';
+
+        IF v_has_pulldb_table = 0 THEN
+            -- Target exists but has no pullDB table - refuse to drop
+            SET v_msg = CONCAT('Target database ', p_target_db, ' exists but has no pullDB table - not created by pullDB, refusing to overwrite');
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_msg;
+        END IF;
+
+        -- Output progress before dropping (target is owned by pullDB)
         SELECT p_target_db AS database_name, 'target_dropped' AS status;
         
         SET @drop_sql = CONCAT('DROP DATABASE `', p_target_db, '`');

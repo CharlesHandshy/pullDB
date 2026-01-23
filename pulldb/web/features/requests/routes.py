@@ -123,6 +123,11 @@ async def get_requests_api(
         
         # Get status filter if present
         status_filter = filter_params.get("status")
+        # Get user filter if present
+        user_filter = filter_params.get("submitted_by_user_code")
+        # Get title filter if present (text search - single value, not list)
+        title_filter_list = filter_params.get("title")
+        title_filter = title_filter_list[0] if title_filter_list else None
         
         # Map sort column names
         sort_col = sortColumn
@@ -140,6 +145,8 @@ async def get_requests_api(
         requests, total = await service.list_requests(
             current_user_id=user.user_id,
             status_filter=status_filter,
+            user_filter=user_filter,
+            title_filter=title_filter,
             sort_by=sort_col,
             sort_order=sortDirection,
             limit=pageSize,
@@ -183,6 +190,35 @@ async def get_requests_api(
             "pageSize": pageSize,
             "error": str(e),
         }
+
+
+@router.get("/api/list/distinct")
+async def get_distinct_values_api(
+    column: str = Query(..., description="Column to get distinct values for"),
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> list:
+    """Get distinct values for a column (for filter dropdowns).
+    
+    Supports:
+        - status: Returns all status values
+        - submitted_by_user_code: Returns distinct user codes who have submitted requests
+    """
+    from pulldb.worker.feature_request_service import FeatureRequestService
+    
+    # Check for simulation mode - pool will be None
+    if is_simulation_mode() or state.pool is None:
+        # Return static status values for simulation mode
+        if column == "status":
+            return ["open", "in_progress", "complete", "declined"]
+        return []
+    
+    try:
+        service = FeatureRequestService(state.pool)
+        return await service.get_distinct_values(column)
+    except Exception as e:
+        logger.error(f"Error getting distinct values for {column}: {e}")
+        return []
 
 
 @router.post("/api/vote/{request_id}")

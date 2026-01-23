@@ -1442,16 +1442,8 @@ class SettingsRepository(Protocol):
         """
         ...
 
-    def get_max_retention_months(self) -> int:
-        """Get maximum retention months for database expiration.
-
-        Returns:
-            Maximum months a database can be retained (1-12). Default: 6.
-        """
-        ...
-
-    def get_expiring_notice_days(self) -> int:
-        """Get days before expiry to show warning notice.
+    def get_expiring_warning_days(self) -> int:
+        """Get days before expiry to show yellow 'will expire soon' warning.
 
         Returns:
             Number of days. Default: 7.

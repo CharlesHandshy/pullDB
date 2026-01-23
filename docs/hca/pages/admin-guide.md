@@ -355,9 +355,9 @@ When a restore completes, the database enters a retention period:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `database_retention_days` | 30 | Days until expiration warning |
-| `database_max_extensions` | 3 | Maximum retention extensions |
-| `database_extension_days` | 7 | Days added per extension |
+| `staging_retention_days` | 30 | Default days until database expires |
+| `expiring_warning_days` | 7 | Days before expiry to show warning |
+| `cleanup_grace_days` | 7 | Days after expiry before cleanup |
 
 **User Actions:**
 - **Extend** - Add time before expiration
@@ -627,9 +627,10 @@ Settings control system behavior. They can be stored in database, `.env` file, o
 | `work_directory` | string | `/opt/pulldb.service/work` | Working directory |
 | `max_active_jobs_per_user` | int | `0` | Per-user limit (0=unlimited) |
 | `max_active_jobs_global` | int | `0` | System limit (0=unlimited) |
-| `database_retention_days` | int | `30` | Default retention period |
-| `database_max_extensions` | int | `3` | Max retention extensions |
-| `database_extension_days` | int | `7` | Days added per extension |
+| `default_retention_days` | int | `7` | Default expiration for new restores |
+| `max_retention_days` | int | `180` | Maximum retention allowed |
+| `expiring_warning_days` | int | `7` | Days before expiry to show warning |
+| `cleanup_grace_days` | int | `7` | Days after expiry before cleanup |
 
 ### Priority Order
 

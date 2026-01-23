@@ -77,7 +77,7 @@ def _make_executor(
 ) -> WorkerJobExecutor:
     config = Config(
         mysql_host="localhost",
-        mysql_user="pulldb",
+        mysql_user="pulldb_app",
         mysql_password="secret",
         s3_backup_locations=locations,
         work_dir=tmp_path / "work",

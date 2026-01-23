@@ -519,9 +519,9 @@ CREATE TABLE settings (
 | `max_active_jobs_global` | integer | limits | System-wide active job limit (0=unlimited) |
 | `staging_retention_days` | integer | retention | Days to keep staging databases |
 | `job_log_retention_days` | integer | retention | Days to keep job event logs |
-| `max_retention_months` | integer | retention | Maximum database retention (months) |
-| `max_retention_increment` | integer | retention | Maximum extension per request (months) |
-| `expiring_notice_days` | integer | retention | Days before expiration to show warning |
+| `default_retention_days` | integer | retention | Default expiration for new restores |
+| `max_retention_days` | integer | retention | Maximum retention allowed (days) |
+| `expiring_warning_days` | integer | retention | Days before expiration to show warning |
 | `cleanup_grace_days` | integer | retention | Grace period after expiration |
 | `customers_after_sql_dir` | path | scripts | Customer post-SQL script directory |
 | `qa_template_after_sql_dir` | path | scripts | QA template post-SQL script directory |

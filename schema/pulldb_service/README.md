@@ -17,6 +17,7 @@ schema/pulldb_service/
 │   ├── 011_user_hosts.sql
 │   ├── 020_jobs.sql
 │   ├── 021_job_events.sql
+│   ├── 022_job_history_summary.sql
 │   ├── 030_locks.sql
 │   ├── 031_settings.sql
 │   ├── 040_admin_tasks.sql
@@ -84,6 +85,7 @@ schema/pulldb_service/
 |-------|---------|-------------|
 | `auth_users` | User accounts | role ENUM, manager_id, locked_at |
 | `jobs` | Restore job queue | status ENUM (11 states), all retention columns |
+| `job_history_summary` | Historical job metrics | isolated, no FK, manual retention |
 | `api_keys` | CLI authentication | approval workflow, host tracking |
 | `admin_tasks` | Background tasks | task_type ENUM (4 types) |
 | `feature_requests` | User feedback | status ENUM, voting, notes |

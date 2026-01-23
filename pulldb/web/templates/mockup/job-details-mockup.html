@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Details Mockup - pullDB</title>
+    <style>
+        /* =================================================================
+           MOCKUP PAGE - Fully Editable Standalone Design Tool
+           ================================================================= */
+        
+        :root {
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            --gray-950: #0a0e17;
+            
+            --primary-100: #dbeafe;
+            --primary-200: #bfdbfe;
+            --primary-400: #60a5fa;
+            --primary-500: #3b82f6;
+            --primary-600: #2563eb;
+            --primary-700: #1d4ed8;
+            --primary-800: #1e40af;
+            --primary-900: #1e3a8a;
+            
+            --success-300: #86efac;
+            --success-400: #4ade80;
+            --success-500: #22c55e;
+            --success-600: #16a34a;
+            --success-700: #15803d;
+            
+            --warning-300: #fcd34d;
+            --warning-400: #fbbf24;
+            --warning-500: #f59e0b;
+            --warning-600: #d97706;
+            
+            --danger-200: #fecaca;
+            --danger-300: #fca5a5;
+            --danger-400: #f87171;
+            --danger-500: #ef4444;
+            --danger-600: #dc2626;
+            --danger-700: #b91c1c;
+            --danger-800: #991b1b;
+            
+            --info-500: #3b82f6;
+            
+            --space-0-5: 0.125rem;
+            --space-1: 0.25rem;
+            --space-1-5: 0.375rem;
+            --space-2: 0.5rem;
+            --space-3: 0.75rem;
+            --space-4: 1rem;
+            --space-5: 1.25rem;
+            --space-6: 1.5rem;
+            --space-8: 2rem;
+            
+            --font-sans: system-ui, -apple-system, sans-serif;
+            --font-mono: 'SF Mono', Monaco, 'Courier New', monospace;
+            --text-xs: 0.75rem;
+            --text-sm: 0.875rem;
+            --text-base: 1rem;
+            --text-xl: 1.25rem;
+            --font-medium: 500;
+            --font-semibold: 600;
+            --font-bold: 700;
+            
+            --radius-sm: 0.25rem;
+            --radius-md: 0.375rem;
+            --radius-lg: 0.5rem;
+            --radius-full: 9999px;
+            
+            --color-bg: var(--gray-950);
+            --color-bg-card: var(--gray-900);
+            --color-border: var(--gray-700);
+            --color-text-primary: var(--gray-100);
+            --color-text-secondary: var(--gray-300);
+            --color-text-muted: var(--gray-500);
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: var(--font-sans);
+            background: var(--color-bg);
+            color: var(--color-text-primary);
+            padding: var(--space-6);
+            line-height: 1.5;
+        }
+        
+        /* TOOLBAR */
+        .mockup-toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, var(--gray-800), var(--gray-900));
+            border-bottom: 2px solid var(--primary-500);
+            padding: var(--space-2) var(--space-4);
+            display: flex;
+            align-items: center;
+            gap: var(--space-4);
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        
+        .mockup-toolbar h1 {
+            font-size: var(--text-sm);
+            color: var(--primary-400);
+            font-weight: var(--font-semibold);
+        }
+        
+        .mockup-toolbar-info {
+            font-size: var(--text-xs);
+            color: var(--gray-400);
+            padding: var(--space-1) var(--space-2);
+            background: var(--gray-800);
+            border-radius: var(--radius-md);
+        }
+        
+        .mockup-toolbar-actions {
+            margin-left: auto;
+            display: flex;
+            gap: var(--space-2);
+        }
+        
+        .mockup-btn {
+            padding: var(--space-1-5) var(--space-3);
+            font-size: var(--text-xs);
+            font-weight: var(--font-medium);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            border: 1px solid var(--gray-600);
+            background: var(--gray-700);
+            color: var(--gray-200);
+            transition: all 0.15s ease;
+        }
+        
+        .mockup-btn:hover { background: var(--gray-600); transform: translateY(-1px); }
+        .mockup-btn--primary { background: var(--primary-600); border-color: var(--primary-500); color: white; }
+        .mockup-btn--primary:hover { background: var(--primary-500); }
+        .mockup-btn--success { background: var(--success-600); border-color: var(--success-500); color: white; }
+        .mockup-btn--success:hover { background: var(--success-500); }
+        
+        /* EDITABLE ELEMENTS */
+        [contenteditable="true"] {
+            cursor: text;
+            border-radius: var(--radius-sm);
+            padding: 1px 4px;
+            margin: -1px -4px;
+            transition: all 0.15s ease;
+            outline: none;
+            min-width: 20px;
+            display: inline-block;
+        }
+        
+        [contenteditable="true"]:hover {
+            background: rgba(59, 130, 246, 0.15);
+            box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+        }
+        
+        [contenteditable="true"]:focus {
+            background: rgba(59, 130, 246, 0.25);
+            box-shadow: 0 0 0 2px var(--primary-500);
+        }
+        
+        /* DRAGGABLE */
+        .draggable {
+            position: relative;
+            transition: box-shadow 0.15s ease;
+        }
+        
+        .draggable::before {
+            content: '⋮⋮';
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 20px;
+            height: 20px;
+            background: var(--primary-600);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.15s;
+            font-size: 10px;
+            color: white;
+            z-index: 10;
+            cursor: grab;
+        }
+        
+        .draggable:hover::before { opacity: 0.8; }
+        .draggable:hover { outline: 1px dashed var(--primary-400); outline-offset: 2px; }
+        .draggable.dragging { cursor: grabbing; opacity: 0.9; z-index: 100; box-shadow: 0 10px 40px rgba(0,0,0,0.5); outline: 2px solid var(--primary-500); }
+        
+        /* LAYOUT */
+        .mockup-container { max-width: 900px; margin: 60px auto 0; }
+        .mb-4 { margin-bottom: var(--space-4); }
+        .mb-6 { margin-bottom: var(--space-6); }
+        .ml-1 { margin-left: var(--space-1); }
+        
+        .card {
+            background: var(--color-bg-card);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--space-4);
+        }
+        
+        /* PAGE HEADER */
+        .page-header-row { display: flex; align-items: center; justify-content: space-between; }
+        .page-title { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xl); font-weight: var(--font-bold); }
+        .page-title svg { width: 24px; height: 24px; opacity: 0.7; }
+        .job-id-code { font-family: var(--font-mono); font-size: 0.9em; background: var(--gray-800); padding: 0.1em 0.4em; border-radius: var(--radius-sm); }
+        
+        /* PHASE STEPPER */
+        .phase-stepper { padding: var(--space-4) var(--space-5); overflow-x: auto; }
+        .phase-stepper-track { display: flex; align-items: flex-start; justify-content: space-between; min-width: 600px; }
+        .phase-step { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); width: 72px; cursor: pointer; }
+        .phase-step:hover .phase-step-indicator { transform: scale(1.1); }
+        .phase-step-indicator { width: 28px; height: 28px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; font-size: var(--text-xs); font-weight: var(--font-semibold); transition: all 0.15s ease; }
+        .phase-step-indicator svg { width: 14px; height: 14px; }
+        .phase-step--complete .phase-step-indicator { background: var(--success-500); color: white; }
+        .phase-step--active .phase-step-indicator { background: var(--primary-900); color: var(--primary-400); border: 2px solid var(--primary-500); box-shadow: 0 0 0 3px var(--primary-900); }
+        .phase-step--pending .phase-step-indicator { background: var(--gray-800); color: var(--gray-500); border: 2px solid var(--gray-600); }
+        .phase-step--failed .phase-step-indicator { background: var(--danger-500); color: white; }
+        .phase-step-label { font-size: 0.65rem; font-weight: var(--font-medium); color: var(--gray-500); text-align: center; }
+        .phase-step--complete .phase-step-label { color: var(--success-500); }
+        .phase-step--active .phase-step-label { color: var(--primary-400); font-weight: var(--font-semibold); }
+        .phase-step--failed .phase-step-label { color: var(--danger-400); }
+        .phase-step-connector { flex: 1; height: 2px; margin-top: 13px; min-width: 16px; }
+        .phase-step-connector--complete { background: var(--success-500); }
+        .phase-step-connector--pending { background: var(--gray-600); }
+        .phase-step-spinner { width: 16px; height: 16px; border: 2px solid var(--primary-800); border-top-color: var(--primary-400); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* DETAILS CARD */
+        .details-header { display: flex; align-items: center; gap: var(--space-6); padding: var(--space-3) var(--space-4); background: var(--gray-800); border-bottom: 1px solid var(--gray-700); flex-wrap: wrap; }
+        .details-header-item { display: flex; flex-direction: column; gap: var(--space-0-5); }
+        .details-header-label { font-size: var(--text-xs); font-weight: var(--font-medium); text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-500); }
+        .details-header-value { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--gray-200); }
+        .badge { display: inline-flex; align-items: center; padding: 0.15em 0.6em; font-size: var(--text-xs); font-weight: var(--font-semibold); border-radius: var(--radius-full); text-transform: capitalize; cursor: pointer; }
+        .badge:hover { filter: brightness(1.2); }
+        .badge-success { background: rgba(34, 197, 94, 0.2); color: var(--success-400); }
+        .badge-primary { background: rgba(59, 130, 246, 0.2); color: var(--primary-400); }
+        .badge-warning { background: rgba(245, 158, 11, 0.2); color: var(--warning-400); }
+        .badge-danger { background: rgba(239, 68, 68, 0.2); color: var(--danger-400); }
+        .badge-info { background: rgba(59, 130, 246, 0.2); color: var(--info-500); }
+        .badge-neutral { background: rgba(107, 114, 128, 0.2); color: var(--gray-400); }
+        .details-rows { padding: var(--space-3) var(--space-4); }
+        .detail-row-full { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--gray-800); }
+        .detail-row-full:last-child { border-bottom: none; }
+        .detail-label { width: 85px; flex-shrink: 0; font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--gray-500); }
+        .detail-code-full, .detail-value-full { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--gray-200); word-break: break-all; flex: 1; }
+        .copy-btn { width: 24px; height: 24px; background: transparent; border: none; border-radius: var(--radius-sm); color: var(--gray-400); cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .copy-btn:hover { color: var(--gray-200); background: var(--gray-700); }
+        
+        /* EXECUTION LOG */
+        .logs-card { display: flex; flex-direction: column; max-height: 800px; }
+        .card-header-row { display: flex; align-items: center; justify-content: space-between; padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border); }
+        .card-title { font-size: var(--text-sm); font-weight: var(--font-semibold); }
+        .logs-progress-sticky { padding: var(--space-3) var(--space-4); background: var(--gray-900); border-bottom: 1px solid var(--gray-700); }
+        .log-progress { margin: var(--space-1-5) 0; }
+        .log-progress-bar-row { display: flex; align-items: center; gap: var(--space-2); }
+        .log-progress-label { flex-shrink: 0; width: 110px; font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--gray-200); }
+        .log-progress-bar-container { flex: 1; height: 8px; background: var(--gray-700); border-radius: var(--radius-full); overflow: hidden; cursor: ew-resize; position: relative; }
+        .log-progress-bar-container:hover { box-shadow: 0 0 0 2px var(--primary-500); }
+        .log-progress-bar { height: 100%; border-radius: var(--radius-full); transition: width 0.1s ease; position: relative; }
+        /* Smooth gradient fade on right edge - uses pseudo-element sized to container, clipped by bar width */
+        .log-progress--download .log-progress-bar { background: linear-gradient(90deg, #2563eb 0%, #3b82f6 70%, #60a5fa 90%, rgba(96, 165, 250, 0.4) 100%); }
+        .log-progress--extraction .log-progress-bar { background: linear-gradient(90deg, #d97706 0%, #f59e0b 70%, #fbbf24 90%, rgba(251, 191, 36, 0.4) 100%); }
+        .log-progress--restore .log-progress-bar { background: linear-gradient(90deg, #15803d 0%, #22c55e 70%, #4ade80 90%, rgba(74, 222, 128, 0.4) 100%); }
+        .log-progress--rename .log-progress-bar { background: linear-gradient(90deg, #1d4ed8 0%, #3b82f6 70%, #60a5fa 90%, rgba(96, 165, 250, 0.4) 100%); }
+        .log-progress-percent { min-width: 60px; font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--gray-200); text-align: right; }
+        .log-progress-stats-row { display: flex; gap: var(--space-4); padding-left: 110px; margin-top: var(--space-1); }
+        .log-progress-stat { display: flex; align-items: baseline; gap: var(--space-1); font-size: var(--text-xs); }
+        .log-progress-stat-label { color: var(--gray-500); text-transform: uppercase; font-size: 0.6rem; }
+        .log-progress-stat-value { color: var(--gray-300); font-weight: var(--font-medium); }
+        
+        /* PER-TABLE PROGRESS */
+        .log-progress-tables { margin-top: var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); max-height: 200px; overflow-y: auto; padding: var(--space-2); background: var(--gray-950); border-radius: var(--radius-md); }
+        .log-progress-table-row { display: flex; align-items: center; gap: var(--space-2); }
+        .log-progress-table-name { width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--gray-300); font-size: var(--text-xs); }
+        .log-progress-table-bar-container { flex: 1; height: 4px; background: var(--gray-700); border-radius: var(--radius-full); cursor: ew-resize; }
+        .log-progress-table-bar-container:hover { box-shadow: 0 0 0 2px var(--primary-500); }
+        .log-progress-table-bar { height: 100%; border-radius: var(--radius-full); transition: width 0.1s ease; }
+        .log-progress-table-bar--loading { background: linear-gradient(90deg, var(--success-400), var(--success-500), var(--success-600), var(--success-500), var(--success-400)); background-size: 200% 100%; animation: loading-gradient 2s linear infinite; }
+        @keyframes loading-gradient { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
+        .log-progress-table-bar--indexing { background: linear-gradient(90deg, var(--warning-500) 0%, var(--warning-300) 50%, var(--warning-500) 100%); background-size: 200% 100%; animation: indexing-shimmer 1.5s linear infinite; }
+        @keyframes indexing-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        .log-progress-table-percent { width: 40px; text-align: right; color: var(--gray-400); font-size: var(--text-xs); }
+        .icon-spin, .icon-loader-spin { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex-shrink: 0; }
+        .icon-spin svg, .icon-loader-spin svg { width: 12px; height: 12px; transform-origin: 50% 50%; }
+        .icon-spin svg { animation: spin 3s linear infinite; }
+        .icon-loader-spin svg { animation: spin 1s linear infinite; }
+        
+        /* LOG ENTRIES */
+        .logs-container { background: var(--gray-950); padding: var(--space-4); font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.6; flex: 1; overflow-y: auto; border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+        .log-block { padding-bottom: var(--space-3); margin-bottom: var(--space-3); border-bottom: 1px solid var(--gray-800); }
+        .log-block:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+        .log-header { display: flex; gap: var(--space-3); margin-bottom: var(--space-2); }
+        .log-timestamp { color: var(--gray-500); min-width: 60px; }
+        .log-task { color: var(--primary-400); font-weight: var(--font-semibold); }
+        .log-header-meta { color: var(--gray-500); font-style: italic; font-weight: normal; }
+        .log-details { padding-left: calc(60px + var(--space-3)); }
+        .log-detail--table { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); padding: var(--space-1) 0; }
+        .log-field { display: inline-flex; align-items: baseline; gap: var(--space-1); color: var(--gray-200); }
+        .log-field-label { color: var(--gray-500); font-size: 0.65rem; text-transform: uppercase; }
+        .log-detail--phase { display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-1) 0; padding-left: var(--space-2); border-left: 2px solid var(--gray-700); }
+        .log-phase-name { color: var(--gray-400); min-width: 100px; }
+        .log-phase-duration { color: var(--gray-200); min-width: 50px; }
+        .log-phase-speed { color: var(--gray-500); font-size: 0.7rem; }
+        .log-block--success .log-task { color: var(--success-400); }
+        
+        /* ADD/REMOVE BUTTONS */
+        .remove-btn { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; background: var(--danger-600); color: white; border: none; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; margin-left: var(--space-1); opacity: 0; transition: all 0.15s; }
+        *:hover > .remove-btn, .remove-btn:hover { opacity: 1; }
+        
+        /* SAMPLE DATA */
+        .sample-data-section { margin-top: var(--space-8); padding-top: var(--space-6); border-top: 2px dashed var(--gray-700); }
+        .sample-data-section h2 { font-size: var(--text-base); color: var(--primary-400); margin-bottom: var(--space-4); }
+        .sample-data-card { background: var(--gray-900); border: 1px solid var(--gray-700); border-radius: var(--radius-lg); margin-bottom: var(--space-4); overflow: hidden; }
+        .sample-data-header { background: var(--gray-800); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--gray-700); font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--gray-300); }
+        .sample-data-content { padding: var(--space-3) var(--space-4); font-family: var(--font-mono); font-size: 0.7rem; line-height: 1.5; color: var(--gray-300); white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--gray-900); }
+        ::-webkit-scrollbar-thumb { background: var(--gray-700); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--gray-600); }
+    </style>
+</head>
+<body>
+    <div class="mockup-toolbar">
+        <h1>🎨 Mockup Editor</h1>
+        <span class="mockup-toolbar-info">Click text to edit • Drag progress bars • Click phase steps to cycle states • Double-click badges to cycle colors</span>
+        <div class="mockup-toolbar-actions">
+            <button class="mockup-btn" onclick="toggleTableProgress()">Toggle Per-Table</button>
+            <button class="mockup-btn" onclick="addTableRow()">+ Table</button>
+            <button class="mockup-btn" onclick="addLogEntry()">+ Log</button>
+            <button class="mockup-btn mockup-btn--primary" onclick="resetAll()">Reset</button>
+            <button class="mockup-btn mockup-btn--success" onclick="exportMockup()">Export</button>
+        </div>
+    </div>
+
+    <div class="mockup-container">
+        
+        <!-- Page Header -->
+        <div class="page-header-row mb-6 draggable">
+            <div class="page-header-left">
+                <h1 class="page-title">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                    <span contenteditable="true">Job</span> <code class="job-id-code" contenteditable="true">ec6fe076</code>
+                </h1>
+            </div>
+        </div>
+
+        <!-- Phase Stepper -->
+        <div class="card phase-stepper draggable mb-4">
+            <div class="phase-stepper-track" id="phase-stepper">
+                <div class="phase-step phase-step--complete" onclick="cyclePhaseState(this)">
+                    <div class="phase-step-indicator"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>
+                    <div class="phase-step-label" contenteditable="true">Queued</div>
+                </div>
+                <div class="phase-step-connector phase-step-connector--complete"></div>
+                <div class="phase-step phase-step--complete" onclick="cyclePhaseState(this)">
+                    <div class="phase-step-indicator"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>
+                    <div class="phase-step-label" contenteditable="true">Download</div>
+                </div>
+                <div class="phase-step-connector phase-step-connector--complete"></div>
+                <div class="phase-step phase-step--complete" onclick="cyclePhaseState(this)">
+                    <div class="phase-step-indicator"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>
+                    <div class="phase-step-label" contenteditable="true">Extract</div>
+                </div>
+                <div class="phase-step-connector phase-step-connector--complete"></div>
+                <div class="phase-step phase-step--complete" onclick="cyclePhaseState(this)">
+                    <div class="phase-step-indicator"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>
+                    <div class="phase-step-label" contenteditable="true">Restore</div>
+                </div>
+                <div class="phase-step-connector phase-step-connector--complete"></div>
+                <div class="phase-step phase-step--complete" onclick="cyclePhaseState(this)">
+                    <div class="phase-step-indicator"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>
+                    <div class="phase-step-label" contenteditable="true">Post-SQL</div>
+                </div>
+                <div class="phase-step-connector phase-step-connector--complete"></div>
+                <div class="phase-step phase-step--complete" onclick="cyclePhaseState(this)">
+                    <div class="phase-step-indicator"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>
+                    <div class="phase-step-label" contenteditable="true">Rename</div>
+                </div>
+                <div class="phase-step-connector phase-step-connector--complete"></div>
+                <div class="phase-step phase-step--complete" onclick="cyclePhaseState(this)">
+                    <div class="phase-step-indicator"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></div>
+                    <div class="phase-step-label" contenteditable="true">Deployed</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Details Card -->
+        <div class="card details-card draggable">
+            <div class="details-header">
+                <div class="details-header-item">
+                    <span class="details-header-label" contenteditable="true">Status</span>
+                    <span class="details-header-value">
+                        <span class="badge badge-success" contenteditable="true" ondblclick="cycleBadgeStyle(this)">Deployed</span>
+                    </span>
+                </div>
+                <div class="details-header-item">
+                    <span class="details-header-label" contenteditable="true">Owner</span>
+                    <span class="details-header-value" contenteditable="true">admin</span>
+                </div>
+                <div class="details-header-item">
+                    <span class="details-header-label" contenteditable="true">Submitted</span>
+                    <span class="details-header-value" contenteditable="true">Jan 21, 26, 9:07 PM</span>
+                </div>
+                <div class="details-header-item">
+                    <span class="details-header-label" contenteditable="true">Expires</span>
+                    <span class="details-header-value">
+                        <span contenteditable="true">Jan 28, 26</span>
+                        <span class="badge badge-warning ml-1" contenteditable="true" ondblclick="cycleBadgeStyle(this)">Soon</span>
+                    </span>
+                </div>
+            </div>
+            <div class="details-rows">
+                <div class="detail-row-full">
+                    <span class="detail-label" contenteditable="true">Job ID</span>
+                    <code class="detail-code-full" contenteditable="true">ec6fe076-fb8f-42c9-88d7-72bcb2ea4587</code>
+                </div>
+                <div class="detail-row-full">
+                    <span class="detail-label" contenteditable="true">Database</span>
+                    <code class="detail-code-full" contenteditable="true">adminntanner</code>
+                    <button type="button" class="copy-btn" title="Copy"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
+                </div>
+                <div class="detail-row-full">
+                    <span class="detail-label" contenteditable="true">Host</span>
+                    <span class="detail-value-full" contenteditable="true">db-mysql-db4-clone-pulldb-test-cluster.cluster-c68atgvskclk.us-east-1.rds.amazonaws.com</span>
+                    <button type="button" class="copy-btn" title="Copy"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Execution Log Card -->
+        <div class="card logs-card draggable">
+            <div class="card-header-row">
+                <h3 class="card-title" contenteditable="true">Execution Log</h3>
+            </div>
+            
+            <div class="logs-progress-sticky">
+                <div class="log-progress log-progress--download">
+                    <div class="log-progress-bar-row">
+                        <span class="log-progress-label" contenteditable="true">✓ Download</span>
+                        <div class="log-progress-bar-container"><div class="log-progress-bar" style="width: 100%"></div></div>
+                        <div class="log-progress-percent" contenteditable="true">100.0%</div>
+                    </div>
+                    <div class="log-progress-stats-row">
+                        <span class="log-progress-stat"><span class="log-progress-stat-label" contenteditable="true">size</span><span class="log-progress-stat-value" contenteditable="true">201.6 MB</span></span>
+                        <span class="log-progress-stat"><span class="log-progress-stat-label" contenteditable="true">time</span><span class="log-progress-stat-value" contenteditable="true">6.5s</span></span>
+                        <span class="log-progress-stat"><span class="log-progress-stat-label" contenteditable="true">speed</span><span class="log-progress-stat-value" contenteditable="true">31.0 MB/s</span></span>
+                    </div>
+                </div>
+                <div class="log-progress log-progress--extraction">
+                    <div class="log-progress-bar-row">
+                        <span class="log-progress-label" contenteditable="true">✓ Extraction</span>
+                        <div class="log-progress-bar-container"><div class="log-progress-bar" style="width: 100%"></div></div>
+                        <div class="log-progress-percent" contenteditable="true">100.0%</div>
+                    </div>
+                    <div class="log-progress-stats-row">
+                        <span class="log-progress-stat"><span class="log-progress-stat-label" contenteditable="true">extracted</span><span class="log-progress-stat-value" contenteditable="true">200.4 MB</span></span>
+                        <span class="log-progress-stat"><span class="log-progress-stat-label" contenteditable="true">files</span><span class="log-progress-stat-value" contenteditable="true">1,338</span></span>
+                        <span class="log-progress-stat"><span class="log-progress-stat-label" contenteditable="true">time</span><span class="log-progress-stat-value" contenteditable="true">51s</span></span>
+                    </div>
+                </div>
+                <div class="log-progress log-progress--restore">
+                    <div class="log-progress-bar-row">
+                        <span class="log-progress-label" contenteditable="true">✓ Restore</span>
+                        <div class="log-progress-bar-container"><div class="log-progress-bar" style="width: 100%"></div></div>
+                        <div class="log-progress-percent" contenteditable="true">100.0%</div>
+                    </div>
+                    <div class="log-progress-stats-row">
+                        <span class="log-progress-stat"><span class="log-progress-stat-label" contenteditable="true">rows</span><span class="log-progress-stat-value" contenteditable="true">2,856,171</span></span>
+                        <span class="log-progress-stat"><span class="log-progress-stat-label" contenteditable="true">tables</span><span class="log-progress-stat-value" contenteditable="true">446</span></span>
+                        <span class="log-progress-stat"><span class="log-progress-stat-label" contenteditable="true">time</span><span class="log-progress-stat-value" contenteditable="true">3:06</span></span>
+                        <span class="log-progress-stat"><span class="log-progress-stat-label" contenteditable="true">rate</span><span class="log-progress-stat-value" contenteditable="true">15.3k rows/s</span></span>
+                    </div>
+                    <div class="log-progress-tables" id="table-progress" style="display: none;">
+                        <div class="log-progress-table-row">
+                            <span class="icon-loader-spin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></span>
+                            <span class="log-progress-table-name" contenteditable="true">spots</span>
+                            <div class="log-progress-table-bar-container"><div class="log-progress-table-bar log-progress-table-bar--loading" style="width: 72%"></div></div>
+                            <span class="log-progress-table-percent" contenteditable="true">72%</span>
+                            <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
+                        </div>
+                        <div class="log-progress-table-row">
+                            <span class="icon-loader-spin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></span>
+                            <span class="log-progress-table-name" contenteditable="true">chemicalsUsed</span>
+                            <div class="log-progress-table-bar-container"><div class="log-progress-table-bar log-progress-table-bar--loading" style="width: 53%"></div></div>
+                            <span class="log-progress-table-percent" contenteditable="true">53%</span>
+                            <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
+                        </div>
+                        <div class="log-progress-table-row">
+                            <span class="icon-spin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
+                            <span class="log-progress-table-name" contenteditable="true">serviceSubscriptions</span>
+                            <div class="log-progress-table-bar-container"><div class="log-progress-table-bar log-progress-table-bar--indexing" style="width: 99%"></div></div>
+                            <span class="log-progress-table-percent" contenteditable="true">99%</span>
+                            <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
+                        </div>
+                        <div class="log-progress-table-row">
+                            <span class="icon-loader-spin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></span>
+                            <span class="log-progress-table-name" contenteditable="true">jobInvoiceLineItems</span>
+                            <div class="log-progress-table-bar-container"><div class="log-progress-table-bar log-progress-table-bar--loading" style="width: 28%"></div></div>
+                            <span class="log-progress-table-percent" contenteditable="true">28%</span>
+                            <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-progress log-progress--rename">
+                    <div class="log-progress-bar-row">
+                        <span class="log-progress-label" contenteditable="true">✓ Rename</span>
+                        <div class="log-progress-bar-container"><div class="log-progress-bar" style="width: 100%"></div></div>
+                        <div class="log-progress-percent" contenteditable="true">100.0%</div>
+                    </div>
+                    <div class="log-progress-stats-row">
+                        <span class="log-progress-stat"><span class="log-progress-stat-label" contenteditable="true">tables</span><span class="log-progress-stat-value" contenteditable="true">446</span></span>
+                        <span class="log-progress-stat"><span class="log-progress-stat-label" contenteditable="true">time</span><span class="log-progress-stat-value" contenteditable="true">29s</span></span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="logs-container" id="logs-container">
+                <div class="log-block log-block--success">
+                    <div class="log-header">
+                        <span class="log-timestamp" contenteditable="true">9:12 PM</span>
+                        <span class="log-task" contenteditable="true">atomic rename complete</span>
+                        <button class="remove-btn" onclick="this.closest('.log-block').remove()">×</button>
+                    </div>
+                    <div class="log-details">
+                        <div class="log-detail--table">
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">target</span><span contenteditable="true">adminntanner</span></span>
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">time</span><span contenteditable="true">29s</span></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-block log-block--success">
+                    <div class="log-header">
+                        <span class="log-timestamp" contenteditable="true">9:12 PM</span>
+                        <span class="log-task" contenteditable="true">restore complete</span>
+                        <button class="remove-btn" onclick="this.closest('.log-block').remove()">×</button>
+                    </div>
+                    <div class="log-details">
+                        <div class="log-detail--table">
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">target</span><span contenteditable="true">adminntanner</span></span>
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">backup</span><span contenteditable="true">daily_mydumper_tanner_2026-01-21T07-41-53Z_Wednesday_db5.tar</span></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- IN-PROGRESS RESTORE EXAMPLES (when restore < 100%) -->
+                <div class="log-block" style="border-left: 3px solid var(--success-500); padding-left: var(--space-3);">
+                    <div class="log-header">
+                        <span class="log-timestamp" contenteditable="true">9:11 PM</span>
+                        <span class="log-task" style="color: var(--success-400);" contenteditable="true">⟳ restore in progress</span>
+                        <span class="log-header-meta" contenteditable="true">72.3% • 2:41 elapsed</span>
+                        <button class="remove-btn" onclick="this.closest('.log-block').remove()">×</button>
+                    </div>
+                    <div class="log-details">
+                        <div class="log-detail--table">
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">rows</span><span contenteditable="true">2,065,012 / 2,856,171</span></span>
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">tables</span><span contenteditable="true">312 / 446</span></span>
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">rate</span><span contenteditable="true">12,814 rows/s</span></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-block">
+                    <div class="log-header">
+                        <span class="log-timestamp" contenteditable="true">9:11 PM</span>
+                        <span class="log-task" contenteditable="true">table progress</span>
+                        <span class="log-header-meta" contenteditable="true">4 active threads</span>
+                        <button class="remove-btn" onclick="this.closest('.log-block').remove()">×</button>
+                    </div>
+                    <div class="log-details">
+                        <div class="log-detail--phase"><span class="log-phase-name" contenteditable="true">⟳ spots</span><span class="log-phase-duration" contenteditable="true">72%</span><span class="log-phase-speed" contenteditable="true">loading • 847,234 rows</span></div>
+                        <div class="log-detail--phase"><span class="log-phase-name" contenteditable="true">⟳ chemicalsUsed</span><span class="log-phase-duration" contenteditable="true">53%</span><span class="log-phase-speed" contenteditable="true">loading • 124,891 rows</span></div>
+                        <div class="log-detail--phase"><span class="log-phase-name" contenteditable="true">🔧 serviceSubscriptions</span><span class="log-phase-duration" contenteditable="true">99%</span><span class="log-phase-speed" contenteditable="true">indexing • 56,012 rows</span></div>
+                        <div class="log-detail--phase"><span class="log-phase-name" contenteditable="true">⟳ jobInvoiceLineItems</span><span class="log-phase-duration" contenteditable="true">28%</span><span class="log-phase-speed" contenteditable="true">loading • 234,567 rows</span></div>
+                    </div>
+                </div>
+                <div class="log-block">
+                    <div class="log-header">
+                        <span class="log-timestamp" contenteditable="true">9:10 PM</span>
+                        <span class="log-task" contenteditable="true">table complete</span>
+                        <button class="remove-btn" onclick="this.closest('.log-block').remove()">×</button>
+                    </div>
+                    <div class="log-details">
+                        <div class="log-detail--table">
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">table</span><span contenteditable="true">users</span></span>
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">rows</span><span contenteditable="true">45,892</span></span>
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">time</span><span contenteditable="true">12s</span></span>
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">rate</span><span contenteditable="true">3,824 rows/s</span></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-block">
+                    <div class="log-header">
+                        <span class="log-timestamp" contenteditable="true">9:09 PM</span>
+                        <span class="log-task" contenteditable="true">table complete</span>
+                        <button class="remove-btn" onclick="this.closest('.log-block').remove()">×</button>
+                    </div>
+                    <div class="log-details">
+                        <div class="log-detail--table">
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">table</span><span contenteditable="true">accounts</span></span>
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">rows</span><span contenteditable="true">12,456</span></span>
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">time</span><span contenteditable="true">3s</span></span>
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">rate</span><span contenteditable="true">4,152 rows/s</span></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-block">
+                    <div class="log-header">
+                        <span class="log-timestamp" contenteditable="true">9:12 PM</span>
+                        <span class="log-task" contenteditable="true">restore profile</span>
+                        <span class="log-header-meta" contenteditable="true">4:39 total</span>
+                        <button class="remove-btn" onclick="this.closest('.log-block').remove()">×</button>
+                    </div>
+                    <div class="log-details">
+                        <div class="log-detail--table">
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">total</span><span contenteditable="true">4:39</span></span>
+                            <span class="log-field"><span class="log-field-label" contenteditable="true">size</span><span contenteditable="true">403.1 MB</span></span>
+                        </div>
+                        <div class="log-detail--phase"><span class="log-phase-name" contenteditable="true">discovery</span><span class="log-phase-duration" contenteditable="true">0s</span></div>
+                        <div class="log-detail--phase"><span class="log-phase-name" contenteditable="true">download</span><span class="log-phase-duration" contenteditable="true">6s</span><span class="log-phase-speed" contenteditable="true">30.5 MB/s</span></div>
+                        <div class="log-detail--phase"><span class="log-phase-name" contenteditable="true">extraction</span><span class="log-phase-duration" contenteditable="true">51s</span><span class="log-phase-speed" contenteditable="true">3.9 MB/s</span></div>
+                        <div class="log-detail--phase"><span class="log-phase-name" contenteditable="true">myloader</span><span class="log-phase-duration" contenteditable="true">3:06</span><span class="log-phase-speed" contenteditable="true">1.1 MB/s</span></div>
+                        <div class="log-detail--phase"><span class="log-phase-name" contenteditable="true">post_sql</span><span class="log-phase-duration" contenteditable="true">1s</span></div>
+                        <div class="log-detail--phase"><span class="log-phase-name" contenteditable="true">metadata</span><span class="log-phase-duration" contenteditable="true">0s</span></div>
+                        <div class="log-detail--phase"><span class="log-phase-name" contenteditable="true">atomic_rename</span><span class="log-phase-duration" contenteditable="true">29s</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sample-data-section">
+            <h2>📊 Sample Data Reference</h2>
+            <div class="sample-data-card">
+                <div class="sample-data-header" contenteditable="true">myloader stdout/stderr (typical output)</div>
+                <div class="sample-data-content" contenteditable="true">** (myloader:12345): WARNING **: 09:08:32.123: zstd command not found
+2026-01-21 09:08:32 [INFO] - myloader 0.19.3-3 starting
+2026-01-21 09:08:32 [INFO] - Connected to MySQL 8.0.39
+2026-01-21 09:08:32 [INFO] - Starting 4 threads
+2026-01-21 09:11:38 [INFO] - Total rows restored: 2,856,171
+2026-01-21 09:11:38 [INFO] - myloader completed successfully</div>
+            </div>
+            <div class="sample-data-card">
+                <div class="sample-data-header" contenteditable="true">MySQL SHOW PROCESSLIST (0.1s intervals)</div>
+                <div class="sample-data-content" contenteditable="true">| 42 | pulldb_restore | Query | /* Completed: 23.5% */ INSERT INTO `spots`...
+| 43 | pulldb_restore | Query | /* Completed: 18.2% */ INSERT INTO `chemicalsUsed`...
+| 44 | pulldb_restore | Query | /* Completed: 45.7% */ INSERT INTO `users`...
+| 42 | pulldb_restore | Query | ALTER TABLE `serviceSubscriptions` ENABLE KEYS (indexing)
+
+KEY: /* Completed: XX% */ embedded by myloader in INSERT statements</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DRAGGABLE PROGRESS BARS
+        document.querySelectorAll('.log-progress-bar-container, .log-progress-table-bar-container').forEach(container => {
+            let isDragging = false;
+            container.addEventListener('mousedown', (e) => { isDragging = true; updateProgress(e, container); });
+            document.addEventListener('mousemove', (e) => { if (isDragging) updateProgress(e, container); });
+            document.addEventListener('mouseup', () => { isDragging = false; });
+        });
+        
+        function updateProgress(e, container) {
+            const rect = container.getBoundingClientRect();
+            let percent = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+            const bar = container.querySelector('.log-progress-bar, .log-progress-table-bar');
+            bar.style.width = percent + '%';
+            const row = container.closest('.log-progress-bar-row, .log-progress-table-row');
+            if (row) {
+                const percentEl = row.querySelector('.log-progress-percent, .log-progress-table-percent');
+                if (percentEl) percentEl.textContent = percent.toFixed(1) + '%';
+            }
+        }
+        
+        // PHASE STATE CYCLING
+        const phaseStates = ['complete', 'active', 'pending', 'failed'];
+        const checkSvg = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>';
+        const spinnerHtml = '<div class="phase-step-spinner"></div>';
+        const xSvg = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>';
+        
+        function cyclePhaseState(elem) {
+            if (event.target.getAttribute('contenteditable') === 'true') return;
+            const currentClass = phaseStates.find(s => elem.classList.contains('phase-step--' + s)) || 'pending';
+            const nextState = phaseStates[(phaseStates.indexOf(currentClass) + 1) % phaseStates.length];
+            phaseStates.forEach(s => elem.classList.remove('phase-step--' + s));
+            elem.classList.add('phase-step--' + nextState);
+            const indicator = elem.querySelector('.phase-step-indicator');
+            if (nextState === 'complete') indicator.innerHTML = checkSvg;
+            else if (nextState === 'active') indicator.innerHTML = spinnerHtml;
+            else if (nextState === 'failed') indicator.innerHTML = xSvg;
+            else indicator.innerHTML = '<span class="phase-step-number">' + (Array.from(elem.parentElement.querySelectorAll('.phase-step')).indexOf(elem) + 1) + '</span>';
+            const connector = elem.previousElementSibling;
+            if (connector && connector.classList.contains('phase-step-connector')) {
+                connector.classList.remove('phase-step-connector--complete', 'phase-step-connector--pending');
+                connector.classList.add('phase-step-connector--' + (nextState === 'complete' ? 'complete' : 'pending'));
+            }
+        }
+        
+        // BADGE STYLE CYCLING
+        const badgeStyles = ['badge-success', 'badge-primary', 'badge-warning', 'badge-danger', 'badge-info', 'badge-neutral'];
+        function cycleBadgeStyle(elem) {
+            const currentClass = badgeStyles.find(s => elem.classList.contains(s)) || 'badge-neutral';
+            const nextIndex = (badgeStyles.indexOf(currentClass) + 1) % badgeStyles.length;
+            badgeStyles.forEach(s => elem.classList.remove(s));
+            elem.classList.add(badgeStyles[nextIndex]);
+        }
+        
+        // TOOLBAR FUNCTIONS
+        function toggleTableProgress() {
+            const el = document.getElementById('table-progress');
+            el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+        }
+        
+        function addTableRow() {
+            const container = document.getElementById('table-progress');
+            container.style.display = 'flex';
+            const row = document.createElement('div');
+            row.className = 'log-progress-table-row';
+            row.innerHTML = '<span class="icon-loader-spin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></span><span class="log-progress-table-name" contenteditable="true">newTable</span><div class="log-progress-table-bar-container"><div class="log-progress-table-bar log-progress-table-bar--loading" style="width: 50%"></div></div><span class="log-progress-table-percent" contenteditable="true">50%</span><button class="remove-btn" onclick="this.parentElement.remove()">×</button>';
+            container.appendChild(row);
+            const newContainer = row.querySelector('.log-progress-table-bar-container');
+            let isDragging = false;
+            newContainer.addEventListener('mousedown', (e) => { isDragging = true; updateProgress(e, newContainer); });
+            document.addEventListener('mousemove', (e) => { if (isDragging) updateProgress(e, newContainer); });
+            document.addEventListener('mouseup', () => isDragging = false);
+        }
+        
+        function addLogEntry() {
+            const container = document.getElementById('logs-container');
+            const block = document.createElement('div');
+            block.className = 'log-block';
+            block.innerHTML = '<div class="log-header"><span class="log-timestamp" contenteditable="true">9:00 PM</span><span class="log-task" contenteditable="true">new_event</span><button class="remove-btn" onclick="this.closest(\'.log-block\').remove()">×</button></div><div class="log-details"><div class="log-detail--table"><span class="log-field"><span class="log-field-label" contenteditable="true">key</span><span contenteditable="true">value</span></span></div></div>';
+            container.insertBefore(block, container.firstChild);
+        }
+        
+        function resetAll() { if (confirm('Reset all changes?')) location.reload(); }
+        
+        function exportMockup() {
+            const html = document.documentElement.outerHTML;
+            const blob = new Blob([html], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'job-details-mockup-' + new Date().toISOString().slice(0,10) + '.html';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // DRAG SECTIONS
+        let draggedElement = null;
+        document.querySelectorAll('.draggable').forEach(elem => {
+            elem.addEventListener('mousedown', function(e) {
+                const rect = this.getBoundingClientRect();
+                if (e.clientX > rect.right - 30 && e.clientY < rect.top + 30) {
+                    draggedElement = this;
+                    draggedElement.classList.add('dragging');
+                    e.preventDefault();
+                }
+            });
+        });
+        document.addEventListener('mousemove', function(e) {
+            if (!draggedElement) return;
+            draggedElement.style.position = 'relative';
+            draggedElement.style.left = (e.movementX + (parseFloat(draggedElement.style.left) || 0)) + 'px';
+            draggedElement.style.top = (e.movementY + (parseFloat(draggedElement.style.top) || 0)) + 'px';
+        });
+        document.addEventListener('mouseup', function() {
+            if (draggedElement) { draggedElement.classList.remove('dragging'); draggedElement = null; }
+        });
+    </script>
+</body>
+</html>

@@ -689,13 +689,15 @@
             label: 'Request', 
             sortable: true, 
             filterable: true,
+            filterType: 'text',
+            filterPlaceholder: 'Search requests...',
             render: renderTitle
         },
         { 
             key: 'status', 
             label: 'Status', 
             sortable: true, 
-            filterable: true, 
+            filterable: true,
             width: '110px',
             render: renderStatus
         },
@@ -703,6 +705,7 @@
             key: 'submitted_by_user_code', 
             label: 'By', 
             sortable: true, 
+            filterable: true,
             width: '100px',
             render: renderUser
         },

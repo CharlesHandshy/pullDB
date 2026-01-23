@@ -329,7 +329,7 @@ class RetentionService:
         Returns:
             MaintenanceItems with expired, expiring, and locked lists.
         """
-        notice_days = self.settings_repo.get_expiring_notice_days()
+        notice_days = self.settings_repo.get_expiring_warning_days()
         grace_days = self.settings_repo.get_cleanup_grace_days()
         return self.job_repo.get_maintenance_items(user_id, notice_days, grace_days)
 

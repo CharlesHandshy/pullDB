@@ -39,13 +39,13 @@
 
 <!-- Config Panel -->
 <div class="card card-padding mb-4">
-    <form id="config-form" style="display: flex; gap: var(--space-4); align-items: flex-end;">
+    <form id="config-form" class="flex gap-4 items-end">
         <div>
             <label class="form-label">Delete databases from jobs completed more than</label>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="flex items-center gap-2">
                 <input type="number" id="days-input" name="days" value="{{ days }}" 
-                       class="form-input" style="width: 100px;" min="1" max="365">
-                <span style="color: var(--gray-600);">days ago</span>
+                       class="form-input w-auto max-w-input-sm" min="1" max="365">
+                <span class="text-muted">days ago</span>
             </div>
         </div>
         <button type="button" id="refresh-preview" class="btn btn-secondary">
@@ -56,7 +56,7 @@
 
 <!-- Preview Table -->
 <div class="card card-padding">
-    <div style="color: var(--gray-500); font-size: 0.875rem; margin-bottom: var(--space-3);">
+    <div class="text-muted text-sm mb-3">
         Click X to exclude items from deletion. Exclusions persist through filter changes.
     </div>
 
@@ -106,17 +106,17 @@
           filterType: 'dateRange',
           render: (val) => val ? new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '-' },
         { key: 'user_code', label: 'User', width: '75px', sortable: true, filterable: true,
-          render: (val) => '<span class="font-mono" style="font-size: 0.85em;">' + (val || '-') + '</span>' },
+          render: (val) => '<span class="font-mono text-sm">' + (val || '-') + '</span>' },
         { key: 'job_status', label: 'Status', width: '95px', sortable: true, filterable: true,
           render: (val) => {
-            const cls = val === 'complete' ? 'badge-success' : val === 'failed' ? 'badge-danger' : 'badge-neutral';
-            return '<span class="badge ' + cls + '" style="font-size: 0.75rem;">' + val + '</span>';
+            const cls = val === 'complete' ? 'badge--success' : val === 'failed' ? 'badge--danger' : 'badge--neutral';
+            return '<span class="badge badge--sm ' + cls + '">' + val + '</span>';
           }
         },
         { key: 'dbhost', label: 'Host', width: '130px', sortable: true, filterable: true,
           render: (val) => {
             const hostname = val ? val.split('.')[0] : '-';
-            return '<span style="font-size: 0.85em;">' + hostname + '</span>';
+            return '<span class="text-sm">' + hostname + '</span>';
           }
         },
         { key: 'target', label: 'Target', width: '140px', sortable: true, filterable: true },

@@ -285,6 +285,11 @@ _EVENT_LABELS: dict[str, str] = {
     # File and table completion events
     "restore_file_loaded": "file loaded",
     "restore_table_ready": "table ready",
+    "table_restore_complete": "table complete",
+    # Analyze events
+    "table_analyze_started": "analyzing",
+    "table_analyze_complete": "analyze complete",
+    "early_analyze_batch_complete": "all analyzed",
     # Other common events keep snake_case with spaces
 }
 

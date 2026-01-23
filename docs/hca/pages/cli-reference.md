@@ -546,9 +546,10 @@ pulldb-admin settings push [--dry-run]  # Sync: .env → database
 | `work_directory` | string | `/opt/pulldb.service/work` | Working directory |
 | `max_active_jobs_per_user` | int | `0` | Per-user limit (0=unlimited) |
 | `max_active_jobs_global` | int | `0` | System limit (0=unlimited) |
-| `database_retention_days` | int | `30` | Default retention for restored databases |
-| `database_max_extensions` | int | `3` | Max times retention can be extended |
-| `database_extension_days` | int | `7` | Days added per extension |
+| `default_retention_days` | int | `7` | Default expiration for new restores |
+| `max_retention_days` | int | `180` | Maximum retention allowed |
+| `expiring_warning_days` | int | `7` | Days before expiry to show warning |
+| `cleanup_grace_days` | int | `7` | Days after expiry before cleanup |
 
 **Priority:** Database > Environment > Default
 
