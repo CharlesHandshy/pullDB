@@ -169,6 +169,8 @@ class _MutableTableState:
     is_complete: bool = False
     last_seen_in_processlist: float = 0.0
     files_completed: int = 0  # Track how many chunk files have finished
+    files_started: int = 0  # Track how many chunk files have started (for file-based progress)
+    data_complete: bool = False  # True when "Enqueuing index" received (definitive)
     was_ever_seen: bool = False  # Track if table was ever in processlist
     first_seen_time: float = 0.0  # When table was first seen (for duration calc)
 
@@ -255,6 +257,17 @@ class RestoreProgressTracker:
         re.IGNORECASE,
     )
 
+    # Match "Progress X of Y" with full file details for file-based progress
+    # Message: "Thread N: restoring db.table part X of Y from filename | Progress A of B. Tables C of D completed"
+    # This is printed BEFORE file processing starts, so it tracks file STARTS not completions
+    _RE_PROGRESS_FILE = re.compile(
+        r"(?:\*\* Message: [\d:.]+: )?Thread\s+\d+:\s+restoring\s+"
+        r"(?:`?([^`\s.]+)`?\.`?([^`\s]+)`?|([^\s.]+)\.([^\s]+))\s+"
+        r"part\s+(\d+)\s+of\s+(\d+)\s+from\s+[^|]+\|\s*"
+        r"Progress\s+(\d+)\s+of\s+(\d+)",
+        re.IGNORECASE,
+    )
+
     def __init__(
         self,
         table_metadata: list[TableRowEstimate],
@@ -283,6 +296,7 @@ class RestoreProgressTracker:
         # Immutable setup
         self._total_tables = len(table_metadata)
         self._total_rows = sum(t.rows for t in table_metadata)
+        self._total_files = sum(t.file_count for t in table_metadata)
         self._table_rows: dict[str, int] = {t.table: t.rows for t in table_metadata}
         self._table_file_counts: dict[str, int] = {
             t.table: t.file_count for t in table_metadata
@@ -437,6 +451,7 @@ class RestoreProgressTracker:
         """Update progress from myloader stdout line.
 
         Called for each line of myloader output. Detects:
+        - File start with Progress X of Y (for file-based progress tracking)
         - Table restore start (tracking which tables are being worked on)
         - Index enqueue (data 100% complete for table)
         - Index restore start (indexing phase began)
@@ -444,6 +459,17 @@ class RestoreProgressTracker:
         Args:
             line: Single line from myloader stdout/stderr.
         """
+        # Check for "Progress X of Y" with file details - PRIMARY for file-based progress
+        # This message is printed BEFORE file processing, so it tracks file STARTS
+        if match := self._RE_PROGRESS_FILE.search(line):
+            # Groups: (bt_db, bt_table, plain_db, plain_table, part_num, part_total, progress, total)
+            table_name = match.group(2) or match.group(4)
+            part_num = int(match.group(5))
+            part_total = int(match.group(6))
+            if table_name:
+                self._mark_file_started(table_name, part_num, part_total)
+            return
+
         # Check for "Enqueuing index" = data load complete, entering indexing
         if match := self._RE_ENQUEUE_INDEX.search(line):
             # Pattern has 4 groups: (backtick_db, backtick_table, plain_db, plain_table)
@@ -500,6 +526,56 @@ class RestoreProgressTracker:
                 state.last_seen_in_processlist = time.monotonic()
                 logger.debug(f"Table {bare_name}: restore started from myloader output")
 
+    def _mark_file_started(
+        self, table_name: str, part_num: int, part_total: int
+    ) -> None:
+        """Mark that a file/chunk has started restoring for file-based progress.
+
+        Called when myloader emits "Progress X of Y" message which is printed
+        BEFORE file processing begins. This tracks file STARTS for accurate
+        progress calculation that cannot exceed 100%.
+
+        Args:
+            table_name: Table name from myloader output.
+            part_num: Current part number (1-based from myloader).
+            part_total: Total parts for this table.
+        """
+        bare_name = self._normalize_table_name(table_name)
+
+        with self._lock:
+            state = self._tables.get(bare_name)
+            if state is None:
+                logger.debug(f"Ignoring file start for unknown table: {table_name}")
+                return
+
+            if state.is_complete or state.data_complete:
+                return
+
+            # Update file count if we learn more accurate info from myloader
+            if part_total > 0 and part_total != state.file_count:
+                logger.debug(
+                    f"Table {bare_name}: updating file_count {state.file_count} -> {part_total}"
+                )
+                state.file_count = part_total
+
+            # Track files started (part_num is 1-based, so part 1 means 1 file started)
+            # Note: We use max() because messages may arrive out of order with threading
+            state.files_started = max(state.files_started, part_num)
+
+            # Mark table as active
+            if not state.was_ever_seen:
+                state.was_ever_seen = True
+                state.first_seen_time = time.monotonic()
+            state.last_seen_in_processlist = time.monotonic()
+
+            logger.debug(
+                f"Table {bare_name}: file {part_num}/{part_total} started, "
+                f"files_started={state.files_started}"
+            )
+
+            # Emit progress when files start - this triggers UI to show the table
+            self._emit_progress("file_complete")  # Reuse file_complete for throttling
+
     def _mark_data_complete(self, table_name: str) -> None:
         """Mark table's data load as 100% complete, entering indexing phase.
 
@@ -521,6 +597,7 @@ class RestoreProgressTracker:
                 return
 
             # Data is 100% complete, now entering indexing phase
+            state.data_complete = True  # Definitive: all files done
             state.percent_complete = 100.0
             state.phase = "indexing"
             files_loaded = state.files_completed
@@ -827,15 +904,52 @@ class RestoreProgressTracker:
         return None
 
     def _calculate_rows_loaded(self) -> int:
-        """Calculate total rows loaded across all tables."""
+        """Calculate total rows loaded across all tables.
+
+        Uses FILE-BASED progress instead of processlist row percentages to avoid
+        the >100% issue caused by InnoDB's inaccurate EXPLAIN row estimates.
+
+        Progress sources (in priority order):
+        1. data_complete=True (from "Enqueuing index"): 100% of rows
+        2. is_complete=True: 100% of rows
+        3. files_started > 0: (files_started / file_count) * rows_total
+        4. Fallback to processlist percent_complete (capped at 100%)
+        """
         total = 0
         for state in self._tables.values():
-            if state.is_complete:
+            if state.is_complete or state.data_complete:
+                # Table fully complete or data phase complete
                 total += state.rows_total
+            elif state.files_started > 0 and state.file_count > 0:
+                # File-based progress: use files_started / file_count
+                # This cannot exceed 100% since files_started <= file_count
+                file_percent = state.files_started / state.file_count
+                total += int(file_percent * state.rows_total)
             else:
-                # Use percent_complete from processlist
+                # Fallback: processlist percent (already capped at 100% on input)
                 total += int(state.percent_complete / 100.0 * state.rows_total)
         return total
+
+    def _calculate_file_based_percent(self) -> float:
+        """Calculate overall progress using file counts.
+
+        Used when row counts are unavailable (legacy backups with rows=0).
+        Progress = sum(files_started) / total_files across all tables.
+        Tables with data_complete or is_complete count as all files done.
+        """
+        if self._total_files <= 0:
+            return 0.0
+
+        files_done = 0
+        for state in self._tables.values():
+            if state.is_complete or state.data_complete:
+                # All files for this table are done
+                files_done += state.file_count
+            else:
+                # Count files started (files_started tracks how many began processing)
+                files_done += state.files_started
+
+        return min(100.0, (files_done / self._total_files) * 100)
 
     def _build_progress_snapshot(
         self,
@@ -858,8 +972,11 @@ class RestoreProgressTracker:
         eta = int(remaining / rps) if rps > 0 else None
 
         # Build list of in-progress tables
+        # Include tables that are actively being worked on based on LOG OUTPUT:
+        #   - files_started > 0: myloader has begun processing this table
+        #   - NOT data_complete: still loading data files
+        #   - OR data_complete but NOT is_complete: indexing phase
         # For "finalized" source, include all tables that had progress
-        # For normal updates, ONLY include tables currently in processlist
         in_progress: list[TableProgressInfo] = []
 
         for state in self._tables.values():
@@ -867,17 +984,36 @@ class RestoreProgressTracker:
 
             if source == "finalized":
                 # Include all tables that had any progress (now 100%)
-                include_table = state.rows_total > 0
+                include_table = state.rows_total > 0 or state.was_ever_seen
             else:
-                # Normal: ONLY include tables with active threads in processlist
-                include_table = state.name in self._tables_in_processlist
+                # Log-based active detection: table is active if:
+                # 1. Files have started being processed (files_started > 0), AND
+                # 2. Either still loading data OR in indexing phase
+                if state.files_started > 0:
+                    # Loading phase: data not yet complete
+                    # Indexing phase: data complete but not fully done
+                    include_table = not state.is_complete
 
             if include_table:
-                table_rows = int(state.percent_complete / 100.0 * state.rows_total)
+                # Calculate per-table progress
+                # For tables with rows_total=0 (legacy backups), use file-based %
+                if state.rows_total > 0:
+                    table_rows = int(state.percent_complete / 100.0 * state.rows_total)
+                    table_percent = state.percent_complete
+                else:
+                    # File-based: files_started / file_count
+                    table_rows = 0
+                    if state.file_count > 0:
+                        table_percent = (state.files_started / state.file_count) * 100
+                        if state.data_complete:
+                            table_percent = 100.0
+                    else:
+                        table_percent = 100.0 if state.data_complete else 0.0
+
                 in_progress.append(
                     TableProgressInfo(
                         name=state.name,
-                        percent_complete=state.percent_complete,
+                        percent_complete=min(100.0, table_percent),
                         phase=state.phase,  # type: ignore[arg-type]
                         rows_loaded=table_rows,
                         rows_total=state.rows_total,
@@ -886,7 +1022,12 @@ class RestoreProgressTracker:
                     )
                 )
 
-        percent = rows_loaded / self._total_rows * 100 if self._total_rows > 0 else 0.0
+        # Overall progress: use row-based if available, else file-based
+        if self._total_rows > 0:
+            percent = rows_loaded / self._total_rows * 100
+        else:
+            # Legacy backup: no row counts, use file-based progress
+            percent = self._calculate_file_based_percent()
 
         return RestoreProgress(
             percent_complete=min(100.0, percent),

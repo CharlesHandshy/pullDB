@@ -636,7 +636,12 @@ def _synthesize_metadata(
     binlog: BinlogPosition | None,
     event_callback: EventCallback | None = None,
 ) -> None:
-    """Synthesize complete myloader 0.19 compatible metadata file."""
+    """Synthesize myloader 0.19 compatible metadata file.
+
+    For legacy backups, we create valid metadata with rows=0 for all tables.
+    This allows myloader to work while avoiding expensive row estimation.
+    Progress tracking uses file-based completion instead of row counts.
+    """
     backup_path = Path(backup_dir)
 
     # Check if directory exists - gracefully handle nonexistent paths
@@ -644,7 +649,7 @@ def _synthesize_metadata(
         logger.error(f"Directory {backup_dir} not found.")
         return
 
-    # Group files by table
+    # Group files by table (cheap: just list directory)
     table_files: dict[tuple[str, str], list[Path]] = defaultdict(list)
 
     for filepath in backup_path.glob("*.sql.gz"):
@@ -653,19 +658,11 @@ def _synthesize_metadata(
             db, table = result
             table_files[(db, table)].append(filepath)
 
-    # Detect actual rows-per-chunk from smallest full chunk
-    # This is more accurate than assuming mydumper's default 1M
-    rows_per_chunk = _detect_rows_per_chunk(table_files)
-
-    # Estimate rows per table using detected rows-per-chunk
-    table_rows: dict[tuple[str, str], int] = {}
-    for (db, table), files in table_files.items():
-        table_rows[(db, table)] = _estimate_table_rows(files, rows_per_chunk)
-
+    # For legacy backups, we skip expensive row estimation
+    # Set rows=0 for all tables - progress tracking uses file counts instead
     logger.info(
-        "Estimated row counts for %d tables (rows_per_chunk=%d)",
-        len(table_rows),
-        rows_per_chunk,
+        "Creating metadata for %d tables (legacy backup, no row estimation)",
+        len(table_files),
     )
 
     # Generate INI content
@@ -687,9 +684,10 @@ def _synthesize_metadata(
         "Executed_Gtid_Set": binlog.gtid_set if binlog else "",
     }
 
-    for (db, table), rows in sorted(table_rows.items()):
+    # rows=0 for all tables - progress uses file-based tracking
+    for (db, table), files in sorted(table_files.items()):
         section_name = f"`{db}`.`{table}`"
-        config[section_name] = {"real_table_name": table, "rows": str(rows)}
+        config[section_name] = {"real_table_name": table, "rows": "0"}
 
     with open(output_file, "w") as f:
         config.write(f)
@@ -774,7 +772,22 @@ def _parse_ini_metadata(metadata_path: Path) -> list[TableRowEstimate]:
 
 
 def _scan_for_row_estimates(backup_dir: Path) -> list[TableRowEstimate]:
-    """Scan backup files and estimate rows using detected rows-per-chunk."""
+    """Scan backup files and count files per table.
+
+    For legacy backups (pre-0.19), we no longer estimate row counts because:
+    1. ISIZE estimation is unreliable (4GB wraparound, compression variance)
+    2. Full file scanning is too slow and resource-intensive
+    3. With log-based progress tracking, we only need file counts
+
+    Row counts are set to 0 for legacy backups. Progress tracking uses
+    file-based completion instead of row-based estimates.
+
+    Args:
+        backup_dir: Path to backup directory.
+
+    Returns:
+        List of TableRowEstimate with rows=0 but accurate file_count.
+    """
     table_files: dict[tuple[str, str], list[Path]] = defaultdict(list)
 
     for filepath in backup_dir.glob("*.sql.gz"):
@@ -783,13 +796,19 @@ def _scan_for_row_estimates(backup_dir: Path) -> list[TableRowEstimate]:
             db, table = result
             table_files[(db, table)].append(filepath)
 
-    # Detect actual rows-per-chunk from smallest full chunk
-    rows_per_chunk = _detect_rows_per_chunk(table_files)
+    # Log that we're not doing row estimation for legacy backups
+    if table_files:
+        logger.info(
+            f"Legacy backup detected ({len(table_files)} tables). "
+            "Using file-based progress tracking (no row estimation)."
+        )
 
     tables: list[TableRowEstimate] = []
     for (db, table), files in table_files.items():
-        rows = _estimate_table_rows(files, rows_per_chunk)
-        tables.append(TableRowEstimate(database=db, table=table, rows=rows, file_count=len(files)))
+        # rows=0 means "unknown" - progress tracker will use file-based tracking
+        tables.append(
+            TableRowEstimate(database=db, table=table, rows=0, file_count=len(files))
+        )
 
     return tables
 

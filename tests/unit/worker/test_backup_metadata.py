@@ -141,11 +141,16 @@ rows = 5000
         total = sum(e.rows for e in estimates)
         assert total == 6000
 
-    def test_estimate_from_file_scanning(self, tmp_path: Path) -> None:
-        """Fall back to file scanning when no INI rows exist."""
-        # Create gzip file with INSERT statements (small files are scanned)
+    def test_legacy_backup_returns_zero_rows(self, tmp_path: Path) -> None:
+        """Legacy backups return rows=0 (no row estimation), only file counts.
+
+        Row estimation for legacy backups was removed because:
+        1. ISIZE estimation is unreliable (4GB wraparound, compression variance)
+        2. Full file scanning is too slow and resource-intensive
+        3. With log-based progress tracking, we only need file counts
+        """
+        # Create gzip file with INSERT statements
         data_file = tmp_path / "db.table.sql.gz"
-        # Create content with INSERT statements that will be counted
         content = """INSERT INTO `table` VALUES (1, 'a'),
 ,(2, 'b'),
 ,(3, 'c');
@@ -162,8 +167,10 @@ INSERT INTO `table` VALUES (4, 'd'),
 
         estimates = get_table_row_estimates(str(tmp_path))
         assert len(estimates) == 1
-        # 2 INSERT lines + 8 continuation lines = 10 rows
-        assert estimates[0].rows == 10
+        # Rows is 0 for legacy backups (no row estimation)
+        assert estimates[0].rows == 0
+        # But file_count is accurate
+        assert estimates[0].file_count == 1
 
 
 class TestParseBinlogPosition:
