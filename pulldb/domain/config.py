@@ -155,7 +155,7 @@ class Config:
     )
     myloader_extra_args: tuple[str, ...] = ()
     myloader_timeout_seconds: float = 86400.0
-    myloader_threads: int = 8
+    myloader_threads: int = 4  # Reduced from 8 to prevent OOM on memory-constrained systems
     s3_backup_locations: tuple[S3BackupLocationConfig, ...] = ()
 
     @staticmethod
@@ -439,11 +439,15 @@ def _parse_extra_args(value: str | None, *, source: str) -> tuple[str, ...]:
 # Default myloader arguments (used when PULLDB_MYLOADER_DEFAULT_ARGS not set)
 # NOTE: --connection-timeout=30 prevents myloader from hanging forever if MySQL
 # is unreachable or slow to respond (the default is 0 = wait forever)
+# NOTE: --throttle auto-throttles when MySQL Threads_running exceeds threshold,
+# preventing OOM by backing off when server is under memory pressure.
+# NOTE: --rows=50000 and --queries-per-transaction=1000 are conservative defaults
+# to reduce memory footprint per thread (reduced from 100000/5000 after OOM issues).
 _MYLOADER_DEFAULT_ARGS_BUILTIN: tuple[str, ...] = (
     "--connection-timeout=30",
     "--max-threads-for-post-actions=1",
-    "--rows=100000",
-    "--queries-per-transaction=5000",
+    "--rows=50000",
+    "--queries-per-transaction=1000",
     "--optimize-keys=AFTER_IMPORT_PER_TABLE",
     "--checksum=warn",
     "--retry-count=20",
@@ -452,6 +456,7 @@ _MYLOADER_DEFAULT_ARGS_BUILTIN: tuple[str, ...] = (
     "--overwrite-tables",
     "--verbose=3",
     "--max-threads-per-table=1",
+    "--throttle=Threads_running=6",
 )
 
 

@@ -557,40 +557,42 @@ def orchestrate_restore_workflow(
                     event_callback=_event_with_analyze,
                     early_analyze_worker=early_analyze_worker,
                 )
+
+            # Wait for early analysis to complete after myloader finishes
+            # This is inside the try block so it runs on success
+            early_analyze_stats: EarlyAnalyzeStats | None = None
+            if early_analyze_worker:
+                try:
+                    # Signal that myloader is done - analyzer can use full thread capacity
+                    early_analyze_worker.notify_myloader_complete()
+                    logger.info("Waiting for early analyze worker to complete...")
+                    # Wait for all queued tables to be analyzed (with timeout)
+                    early_analyze_stats = early_analyze_worker.wait_for_completion(
+                        timeout=spec.early_analyze_timeout
+                    )
+                    logger.info(
+                        f"Early analyze complete: {early_analyze_stats.tables_analyzed} analyzed, "
+                        f"{early_analyze_stats.tables_failed} failed"
+                    )
+                    result["early_analyze"] = {
+                        "tables_analyzed": early_analyze_stats.tables_analyzed,
+                        "tables_failed": early_analyze_stats.tables_failed,
+                        "total_duration_seconds": round(
+                            early_analyze_stats.total_duration_seconds, 2
+                        ),
+                    }
+                except Exception as e:
+                    logger.warning(f"Early analyze worker error: {e}")
+                    result["early_analyze"] = {"error": str(e)}
         finally:
-            # Always stop the monitor - no final_poll needed since tracker handles finalization
+            # CRITICAL: Always stop both monitors to prevent connection leaks
+            # This runs on success, failure, and abort - closing all staging DB connections
             if processlist_monitor:
                 processlist_monitor.stop(final_poll=False)
                 logger.info("Stopped processlist monitor")
-
-        # Wait for early analysis to complete after myloader finishes
-        early_analyze_stats: EarlyAnalyzeStats | None = None
-        if early_analyze_worker:
-            try:
-                # Signal that myloader is done - analyzer can use full thread capacity
-                early_analyze_worker.notify_myloader_complete()
-                logger.info("Waiting for early analyze worker to complete...")
-                # Wait for all queued tables to be analyzed (with timeout)
-                early_analyze_stats = early_analyze_worker.wait_for_completion(
-                    timeout=spec.early_analyze_timeout
-                )
+            if early_analyze_worker:
                 early_analyze_worker.stop()
-                logger.info(
-                    f"Early analyze complete: {early_analyze_stats.tables_analyzed} analyzed, "
-                    f"{early_analyze_stats.tables_failed} failed"
-                )
-                result["early_analyze"] = {
-                    "tables_analyzed": early_analyze_stats.tables_analyzed,
-                    "tables_failed": early_analyze_stats.tables_failed,
-                    "total_duration_seconds": round(
-                        early_analyze_stats.total_duration_seconds, 2
-                    ),
-                }
-            except Exception as e:
-                logger.warning(f"Early analyze worker error: {e}")
-                if early_analyze_worker:
-                    early_analyze_worker.stop()
-                result["early_analyze"] = {"error": str(e)}
+                logger.info("Stopped early analyze worker")
 
         result["myloader"] = myloader_result
 
