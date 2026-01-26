@@ -4,25 +4,25 @@
 
 Purpose: a single-source, trimmed knowledge base used by agents and maintainers. This file contains only the facts required for current operations. It is intentionally concise and indexed for fast lookup.
 
-**Related:** [Deployment](deployment.md) · [policies/](policies/) · [terraform/](terraform/)
+**Related:** [Deployment](hca/widgets/deployment.md) · [policies/](hca/plugins/policies/) · [terraform/](hca/plugins/terraform/)
 
-Last updated: 2026-01-21
-Current version: v1.0.6
+Last updated: 2026-01-26
+Current version: v1.0.7
 Phases complete: 0-6
 
 ---
 
-## Package Contents Summary (v1.0.6)
+## Package Contents Summary (v1.0.7)
 
 | Component | Path in Package | Size |
 |-----------|-----------------|------|
-| Python wheel | `/opt/pulldb.service/dist/pulldb-1.0.6-py3-none-any.whl` | ~6MB |
+| Python wheel | `/opt/pulldb.service/dist/pulldb-1.0.7-py3-none-any.whl` | ~16MB |
 | myloader binary | `/opt/pulldb.service/bin/myloader-0.19.3-3` | 8.4MB |
-| Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 23 SQL files |
+| Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 24 SQL files |
 | Systemd units | `/opt/pulldb.service/systemd/` | 6 files |
 | Config templates | `/opt/pulldb.service/env.example`, `aws.config.example` | - |
 | After-SQL templates | `/opt/pulldb.service/template_after_sql/` | 12 customer scripts |
-| Install scripts | `/opt/pulldb.service/scripts/` | 10 scripts |
+| Install scripts | `/opt/pulldb.service/scripts/` | 7 scripts |
 
 ### Entry Points
 
@@ -43,11 +43,61 @@ Phases complete: 0-6
 
 ---
 
+## API Reference (v1.0.7)
+
+Complete API documentation: [docs/api/README.md](api/README.md)
+
+### REST API (port 8080) - 56 endpoints
+
+| Category | Count | Key Endpoints |
+|----------|-------|---------------|
+| Health/Status | 2 | `/api/health`, `/api/status` |
+| Auth | 4 | `/api/auth/register`, `/api/auth/change-password`, `/api/auth/request-host-key`, `/api/auth/user-exists/{username}` |
+| Users | 2 | `/api/users/{username}`, `/api/users/{user_code}/last-job` |
+| Hosts | 1 | `/api/hosts` |
+| Jobs | 14 | `/api/jobs`, `/api/jobs/{id}`, `/api/jobs/paginated`, `/api/jobs/search`, `/api/jobs/history` |
+| Job Actions | 4 | `/api/jobs/{id}/cancel`, `/api/jobs/{id}/extend`, `/api/jobs/{id}/lock`, `/api/jobs/{id}/unlock` |
+| Manager | 2 | `/api/manager/team`, `/api/manager/team/distinct` |
+| Admin Keys | 5 | `/api/admin/keys/pending`, `/api/admin/keys/approve`, `/api/admin/keys/revoke` |
+| Admin Maintenance | 8 | `/api/admin/prune-logs`, `/api/admin/cleanup-staging`, `/api/admin/orphan-databases`, `/api/admin/delete-orphans`, `/api/admin/hosts/{id}/rotate-secret` |
+| Dropdowns | 3 | `/api/dropdown/customers`, `/api/dropdown/users`, `/api/dropdown/hosts` |
+| Backups | 2 | `/api/customers/search`, `/api/backups/search` |
+| Features | 6 | `/api/feature-requests`, `/api/feature-requests/{id}`, `/api/feature-requests/{id}/vote` |
+
+### Web UI API (port 8000) - 142 routes
+
+| Module | Prefix | Route Count | Key Routes |
+|--------|--------|-------------|------------|
+| auth | `/web` | 12 | `/login`, `/logout`, `/change-password`, `/auth/profile` |
+| dashboard | `/web/dashboard` | 1 | `/` (role-specific) |
+| jobs | `/web/jobs` | 16 | `/`, `/{job_id}`, `/{job_id}/cancel`, `/api/paginated` |
+| restore | `/web/restore` | 4 | `/`, `/search-customers`, `/search-backups` |
+| admin | `/web/admin` | 88 | `/users`, `/hosts`, `/settings`, `/api-keys`, `/job-history`, `/locked-databases` |
+| manager | `/web/manager` | 7 | `/`, `/my-team/{user_id}/*`, `/api/team` |
+| audit | `/web/audit` | 3 | `/`, `/api/logs`, `/api/logs/distinct` |
+| requests | `/web/requests` | 10 | `/`, `/api/list`, `/api/vote/{id}`, `/api/notes/{id}` |
+| mockup | `/web/mockup` | 1 | `/job-details` (development only) |
+
+**Full reference**: [REST-API.md](api/REST-API.md) | [WEB-API.md](api/WEB-API.md) | [API-DOCUMENTATION-STANDARD.md](api/API-DOCUMENTATION-STANDARD.md)
+
+### API Package Files
+
+| File | Layer | Purpose |
+|------|-------|---------|
+| `pulldb/api/__init__.py` | pages | Package exports |
+| `pulldb/api/main.py` | pages | FastAPI application, API key validation |
+| `pulldb/api/auth.py` | pages | Authentication middleware, `get_authenticated_user()` |
+| `pulldb/api/schemas.py` | entities | Pydantic models: `JobRequest`, `JobResponse`, `JobSummary`, `JobHistoryItem` |
+| `pulldb/api/routes/*.py` | pages | Individual route modules (jobs, hosts, auth, admin) |
+
+---
+
 ## Index (categories)
+- **Architecture Diagrams** - [docs/diagrams/pulldb-flowchart.md](diagrams/pulldb-flowchart.md) (Mermaid)
+- **API Reference** (v1.0.7)
 - **Package Contents Summary** (Updated - v0.3.0)
 - **Default Accounts & Provisioning** (v0.2.0)
-- **CLI HMAC Authentication** (Phase 6)
-- **Multi-Host API Keys** (Phase 6)
+- **CLI HMAC Authentication** (Phase 6) - includes multi-host API key management
 - **Host Provisioning Service** (Phase 6)
 - **Secret Rotation** (Phase 6)
 - **Database Retention** (Phase 6)
@@ -61,7 +111,7 @@ Phases complete: 0-6
 - Web UI Style Guide
 - Web UI HCA Architecture
 - S3 Multi-Location Configuration (v0.0.7)
-- **Phase 4 Schema Tables**
+- **Schema Structure (Consolidated)**
 - Accounts & ARNs
 - S3 buckets & paths
 - IAM roles & policies
@@ -124,15 +174,15 @@ from pulldb.auth.password import verify_password
 is_valid = verify_password(plain_text, hashed)
 
 # Get current user (in route)
-from pulldb.api.auth import get_current_user
-user = await get_current_user(request, auth_repo)
+from pulldb.api.auth import get_authenticated_user
+user = await get_authenticated_user(request, auth_repo)
 ```
 
 ---
 
 ## RBAC Permission Matrix (Phase 4)
 
-Role-Based Access Control with three roles: `USER`, `MANAGER`, `ADMIN`.
+Role-Based Access Control with four roles: `USER`, `MANAGER`, `ADMIN`, `SERVICE` (system account).
 
 ### Permission Matrix
 
@@ -154,27 +204,31 @@ Role-Based Access Control with three roles: `USER`, `MANAGER`, `ADMIN`.
 
 ### Manager Relationships
 
-- Stored in `manager_user_relationship` table
+- Stored as `manager_id` column in `auth_users` table (FK to self)
 - One manager can manage multiple users
-- Users can have multiple managers (uncommon)
-- Query: `SELECT user_id FROM manager_user_relationship WHERE manager_id = ?`
+- Each user has at most one manager
+- Query: `SELECT user_id FROM auth_users WHERE manager_id = ?`
 
 ### Key Components
 
 | File | Layer | Purpose |
 |------|-------|---------|
-| `pulldb/domain/permissions.py` | entities | `check_permission()`, `UserRole` enum |
-| `pulldb/domain/models.py` | entities | `User.role` field |
+| `pulldb/domain/permissions.py` | entities | `can_cancel_job()`, `can_delete_job_database()`, `can_view_job()`, `UserRole` enum |
+| `pulldb/domain/models.py` | entities | `User.role`, `User.manager_id` fields |
 | `pulldb/infra/mysql.py` | shared | `UserRepository.get_managed_users()` |
 
 ### Usage Pattern
 
 ```python
-from pulldb.domain.permissions import check_permission, Permission
+from pulldb.domain.permissions import can_cancel_job, can_delete_job_database
 
-# Check if user can cancel a job
-if not check_permission(current_user, Permission.CANCEL_JOB, job.user_id):
-    raise PermissionDenied("Cannot cancel this job")
+# Check if user can cancel a job (needs job owner's manager_id for manager permission check)
+if not can_cancel_job(current_user, job.owner_user_id, job_owner_manager_id):
+    raise PermissionError("Cannot cancel this job")
+
+# Check if user can delete a job's databases
+if not can_delete_job_database(current_user, job.owner_user_id, job_owner_manager_id):
+    raise PermissionError("Cannot delete this job's databases")
 ```
 
 ---
@@ -278,14 +332,17 @@ if not protection.can_drop:
 - **Bulk Delete**: Checkbox selection → "Delete Selected" → type "I am sure." modal
 - **Progress**: Modal with progress bar, 2-second polling
 
-### Schema Migration
+### Schema Support
+
+Job delete support is now integrated into the consolidated schema:
 
 ```sql
--- Migration: 00800_job_delete_support.sql (adds deleting/deleted)
--- Migration: 00820_job_canceling_status.sql (adds canceling)
-ALTER TABLE jobs MODIFY status ENUM('queued','running','canceling','failed','complete','canceled','deleting','deleted');
-ALTER TABLE admin_tasks MODIFY task_type ENUM(..., 'bulk_delete_jobs');
-CREATE INDEX idx_jobs_deletable ON jobs(status, owner_user_id);
+-- Included in schema/pulldb_service/00_tables/020_jobs.sql
+-- Job status enum includes: 'canceling', 'deleting', 'deleted', 'superseded'
+-- Index: idx_jobs_deletable ON jobs(status, owner_user_id)
+
+-- Included in schema/pulldb_service/00_tables/040_admin_tasks.sql
+-- Task type enum includes: 'bulk_delete_jobs', 'retention_cleanup'
 ```
 
 ---
@@ -300,7 +357,7 @@ Secure API key authentication for CLI operations using HMAC-SHA256 signatures.
 |------|-------|---------|
 | `pulldb/cli/auth.py` | pages | HMAC signature generation, credential storage |
 | `pulldb/api/main.py` | pages | API key validation endpoints |
-| `schema/pulldb_service/00715_api_keys.sql` | schema | API key storage |
+| `schema/pulldb_service/00_tables/004_api_keys.sql` | schema | API key storage |
 
 ### Credential Flow
 
@@ -356,7 +413,7 @@ Atomic credential rotation with verification and rollback.
 
 ### Key File
 
-`pulldb/domain/services/secret_rotation.py` - `SecretRotationService`
+`pulldb/domain/services/secret_rotation.py` - `RotationResult` dataclass, `rotate_host_secret()` function
 
 ### Rotation Workflow
 
@@ -387,10 +444,12 @@ Lifecycle management for restored databases.
 - **Extension**: Extend retention by 1, 3, 6 months
 - **Maintenance modal**: Acknowledges about-to-expire databases
 
-### Schema Tables
+### Schema Integration
 
-- `database_retention`: Lock status and expiry dates
-- `retention_cleanup_task`: Scheduled cleanup tracking
+Retention is integrated into existing tables (not separate tables):
+- **`jobs` table**: `locked_at`, `expires_at`, `locked_by`, `db_dropped_at` columns (in 020_jobs.sql)
+- **`admin_tasks` table**: `retention_cleanup` task type (in 040_admin_tasks.sql)
+- **`settings` table**: Retention-related settings include `staging_retention_days`, `default_retention_days`, `max_retention_days`, `expiring_warning_days`, `cleanup_grace_days` (23 total settings defined in `pulldb/domain/settings.py`)
 
 ---
 
@@ -436,18 +495,20 @@ pulldb/web/help/
     ├── cli/index.html            # CLI Reference
     ├── concepts/job-lifecycle.html
     ├── troubleshooting/index.html
-    └── web-ui/                   # NEW: Web UI documentation
+    └── web-ui/                   # Web UI documentation
         ├── index.html            # Overview
         ├── dashboard.html        # Dashboard guide
         ├── restore.html          # Restore wizard
         ├── jobs.html             # Jobs management
         ├── profile.html          # Profile & API keys
-        └── admin.html            # Admin panel
+        ├── admin.html            # Admin panel
+        ├── manager.html          # Manager features
+        └── requests.html         # Feature requests
 ```
 
 ### Features
 
-- **12 help pages** with consistent navigation
+- **14 help pages** with consistent navigation
 - **Dark/light theme** toggle (respects OS preference)
 - **Search** (/) with keyboard shortcuts
 - **Role-based content** (Admin, Manager, User sections)
@@ -465,55 +526,121 @@ In-memory mock system for testing without external dependencies.
 ### Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│              pulldb/simulation/                     │
-├─────────────────────────────────────────────────────┤
-│ api/         │ FastAPI routes for scenario control  │
-├──────────────┼──────────────────────────────────────┤
-│ core/engine  │ SimulationEngine orchestration       │
-│ core/bus     │ EventBus for component communication │
-│ core/state   │ Global state management              │
-│ core/runner  │ MockQueueRunner job processing       │
-│ core/seed    │ Test data generation                 │
-├──────────────┼──────────────────────────────────────┤
-│ adapters/    │ Mock implementations                 │
-│   mock_mysql │ In-memory Job/User/Host repos        │
-│   mock_s3    │ Mock S3 client                       │
-│   mock_exec  │ Mock command executor                │
-└──────────────┴──────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│              pulldb/simulation/                          │
+├──────────────────────────────────────────────────────────┤
+│ api/__init__.py   │ Exports router (HCA: pages)          │
+│ api/router.py     │ FastAPI routes for scenario control  │
+├───────────────────┼──────────────────────────────────────┤
+│ core/engine.py    │ SimulationEngine orchestration       │
+│ core/bus.py       │ EventBus for component communication │
+│ core/state.py     │ Global state management              │
+│ core/queue_runner │ MockQueueRunner job processing       │
+│ core/seeding.py   │ Test data generation                 │
+│ core/scenarios.py │ Chaos testing scenarios              │
+├───────────────────┼──────────────────────────────────────┤
+│ adapters/         │ Mock implementations                 │
+│   mock_mysql.py   │ In-memory Job/User/Host repos        │
+│   mock_s3.py      │ Mock S3 client                       │
+│   mock_exec.py    │ Mock command executor                │
+└───────────────────┴──────────────────────────────────────┘
 ```
 
 ### Mock Adapters
 
 | Adapter | Replaces | Key Class |
 |---------|----------|-----------|
-| `mock_mysql.py` | `pulldb/infra/mysql.py` | `MockJobRepository`, `MockUserRepository` |
+| `mock_mysql.py` | `pulldb/infra/mysql.py` | `SimulatedJobRepository`, `SimulatedUserRepository` |
 | `mock_s3.py` | `pulldb/infra/s3.py` | `MockS3Client` |
-| `mock_exec.py` | `pulldb/infra/exec.py` | `MockCommandExecutor` |
+| `mock_exec.py` | `pulldb/infra/exec.py` | `MockProcessExecutor` |
 
 ### Usage
 
 ```python
 # Import through package root (HCA compliant)
 from pulldb.simulation import (
-    MockJobRepository,
-    MockUserRepository,
-    SimulationEngine,
+    SimulatedJobRepository,
+    SimulatedUserRepository,
+    ScenarioManager,
+    get_scenario_manager,
+    get_simulation_state,
 )
 
 # Set up simulation
-engine = SimulationEngine()
-job_repo = MockJobRepository()
-engine.register(job_repo)
+state = get_simulation_state()
+scenario_mgr = get_scenario_manager()
+job_repo = SimulatedJobRepository()
 ```
 
 ### Chaos Scenarios
 
-Available via `core/scenarios.py`:
-- `DownloadFailure` - S3 download fails
-- `RestoreTimeout` - myloader times out
-- `DiskFull` - Disk capacity check fails
-- `NetworkPartition` - Connection drops
+Available via `core/scenarios.py` (ScenarioType enum):
+
+**Happy Path:**
+- `HAPPY_PATH` - Default success scenario
+- `SINGLE_JOB_SUCCESS` - Single job completes successfully
+- `MULTIPLE_JOBS_SUCCESS` - Multiple jobs complete
+
+**Failure Scenarios:**
+- `S3_NOT_FOUND` - S3 object not found
+- `S3_PERMISSION_DENIED` - S3 access denied
+- `MYLOADER_FAILURE` - myloader execution fails
+- `MYLOADER_TIMEOUT` - myloader times out
+- `POST_SQL_FAILURE` - Post-SQL script fails
+
+**Chaos Scenarios:**
+- `RANDOM_FAILURES` - Random operation failures
+- `SLOW_OPERATIONS` - Delayed operations
+- `INTERMITTENT_FAILURES` - Sporadic failures
+
+---
+
+## Documentation Audit Agent
+
+Continuous documentation auditing to keep KNOWLEDGE-POOL synchronized with codebase reality.
+
+### Package Location
+
+`pulldb/audit/` - HCA Layer: features
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `agent.py` | `DocumentationAuditAgent` - main orchestrator |
+| `drift.py` | `DriftDetector`, `DriftAlert`, `DriftType` - comprehensive drift detection |
+| `inventory.py` | `FileInventory` - scans entire codebase |
+| `analyzers.py` | Code analyzers (Python, CSS, JS, SQL) |
+| `mappings.py` | `DocCodeMapping` - hardcoded doc-to-code relationships |
+| `knowledge_pool.py` | `KnowledgePoolParser`, `KnowledgePoolUpdater` |
+| `report.py` | `AuditReport`, `AuditFinding`, `FindingSeverity` |
+
+### Two Modes
+
+1. **Targeted Audit** - Uses 17 hardcoded mappings for precise verification
+   ```bash
+   python -m pulldb.audit --full
+   ```
+
+2. **Comprehensive Drift Detection** - Scans entire codebase
+   ```bash
+   python -m pulldb.audit --drift --severity high
+   python -m pulldb.audit --drift --copilot  # AI-friendly context
+   ```
+
+### Drift Types Detected
+
+| Type | Description |
+|------|-------------|
+| `undocumented_file` | New file not in KNOWLEDGE-POOL |
+| `missing_export` | Documented export not in `__all__` |
+| `extra_export` | Export exists but not documented |
+| `renamed_symbol` | Class/function was renamed |
+| `value_mismatch` | CSS/JS timing values changed |
+
+### Documentation
+
+Full documentation: `docs/AUDIT-AGENT.md`
 
 ---
 
@@ -525,11 +652,11 @@ The web package follows HCA internally for UI component organization.
 
 | HCA Layer | Web Directory | Contents |
 |-----------|---------------|----------|
-| **shared** | `web/shared/` | `layouts/`, `ui/`, `contracts/`, `utils/` |
-| **entities** | `web/entities/` | `job/`, `user/`, `host/`, `database/` |
-| **features** | `web/features/` | `auth/`, `dashboard/`, `jobs/`, `admin/`, `manager/`, `restore/` |
-| **widgets** | `web/widgets/` | `sidebar/`, `job_table/`, `filter_bar/`, `stats_cards/` |
-| **pages** | `web/pages/` | `admin/`, `dashboard/`, `error/` |
+| **shared** | `web/shared/` | `layouts/`, `ui/`, `contracts/`, `utils/`, `css/` |
+| **entities** | `web/entities/` | `css/` (domain entities - mostly empty, types in features) |
+| **features** | `web/features/` | `admin/`, `audit/`, `auth/`, `css/`, `dashboard/`, `jobs/`, `manager/`, `mockup/`, `requests/`, `restore/` |
+| **widgets** | `web/widgets/` | `sidebar/`, `filter_bar/`, `lazy_table/`, `virtual_table/`, `breadcrumbs/`, `bulk_actions/`, `searchable_dropdown/` |
+| **pages** | `web/pages/` | Empty - pages co-located within features (`features/<name>/pages/`) |
 
 ### Key Files
 
@@ -544,36 +671,71 @@ The web package follows HCA internally for UI component organization.
 ```
 templates/
 ├── base.html           # Root layout (shared)
-├── layouts/            # Page layouts (shared)
-├── components/         # Reusable components (widgets)
-├── pages/              # Full page templates
-└── partials/           # HTMX partials (features)
+├── base_auth.html      # Auth pages layout
+├── features/           # Feature-specific templates
+├── widgets/            # Widget templates
+├── partials/           # Shared partials (breadcrumbs, icons)
+└── mockup/             # Design mockups
 ```
 
 ---
 
-## Phase 4 Schema Tables
+## Schema Structure (Consolidated)
 
-New tables added in Phase 4 for authentication and RBAC.
+The schema uses a consolidated structure under `schema/pulldb_service/`. Legacy migration files (007xx series) have been merged into base table definitions.
 
-| Migration | Table | Purpose |
-|-----------|-------|---------|
-| `00700_auth_users_role.sql` | — | Adds `role` column to `auth_users` |
-| `00710_auth_credentials.sql` | `auth_credentials` | Bcrypt password hashes |
-| `00720_sessions.sql` | `sessions` | Session tokens with expiry |
-| `00720_password_reset.sql` | `password_reset_tokens` | Password reset flow |
-| `00730_manager_user_relationship.sql` | `manager_user_relationship` | Manager-to-user mapping |
-| `00740_audit_logs.sql` | `audit_logs` | Security audit trail |
+### Directory Layout
 
-### Table: auth_credentials
+```
+schema/pulldb_service/
+├── 00_tables/           # Core table definitions (17 files)
+│   ├── 001_auth_users.sql       # Users + role + manager_id
+│   ├── 002_auth_credentials.sql # Passwords + TOTP + reset
+│   ├── 003_sessions.sql         # Session tokens
+│   ├── 004_api_keys.sql         # CLI API keys
+│   ├── 010_db_hosts.sql         # Database hosts
+│   ├── 011_user_hosts.sql       # User-host assignments
+│   ├── 020_jobs.sql             # Job queue + retention
+│   ├── 021_job_events.sql       # Job event log
+│   ├── 022_job_history_summary.sql  # Aggregated job metrics
+│   ├── 030_locks.sql            # Distributed locks
+│   ├── 031_settings.sql         # System settings
+│   ├── 040_admin_tasks.sql      # Background tasks
+│   ├── 041_audit_logs.sql       # Security audit trail
+│   ├── 042_procedure_deployments.sql  # Stored proc versioning
+│   ├── 050_disallowed_users.sql # Blocked usernames
+│   ├── 060_feature_requests.sql # Feature request tracking
+│   └── 099_schema_migrations.sql # Migration history
+├── 01_views/            # Database views
+├── 02_seed/             # Seed data (5 files)
+└── 03_users/            # MySQL user grants
+```
+
+### Table: auth_users (includes RBAC + manager)
+
+```sql
+CREATE TABLE auth_users (
+    user_id CHAR(36) PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    user_code CHAR(6) NOT NULL UNIQUE,
+    role ENUM('user', 'manager', 'admin', 'service') NOT NULL DEFAULT 'user',
+    manager_id CHAR(36) NULL,  -- FK to self for manager relationship
+    max_active_jobs INT NULL,
+    locked_at TIMESTAMP(6) NULL,
+    CONSTRAINT fk_auth_users_manager FOREIGN KEY (manager_id) REFERENCES auth_users(user_id)
+);
+```
+
+### Table: auth_credentials (includes password reset)
 
 ```sql
 CREATE TABLE auth_credentials (
-    user_id INT PRIMARY KEY,
-    password_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES auth_users(id)
+    user_id CHAR(36) PRIMARY KEY,
+    password_hash VARCHAR(255) NULL,  -- bcrypt, NULL = no password set
+    totp_secret VARCHAR(64) NULL,     -- TOTP for 2FA
+    totp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    password_reset_at TIMESTAMP(6) NULL,  -- Forces password reset when set
+    CONSTRAINT fk_credentials_user FOREIGN KEY (user_id) REFERENCES auth_users(user_id)
 );
 ```
 
@@ -581,24 +743,14 @@ CREATE TABLE auth_credentials (
 
 ```sql
 CREATE TABLE sessions (
-    token VARCHAR(64) PRIMARY KEY,
-    user_id INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES auth_users(id)
-);
-```
-
-### Table: manager_user_relationship
-
-```sql
-CREATE TABLE manager_user_relationship (
-    manager_id INT NOT NULL,
-    user_id INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (manager_id, user_id),
-    FOREIGN KEY (manager_id) REFERENCES auth_users(id),
-    FOREIGN KEY (user_id) REFERENCES auth_users(id)
+    session_id CHAR(36) PRIMARY KEY,
+    user_id CHAR(36) NOT NULL,
+    token_hash CHAR(64) NOT NULL,  -- SHA-256 of session token
+    expires_at TIMESTAMP(6) NOT NULL,
+    last_activity TIMESTAMP(6) NOT NULL,
+    ip_address VARCHAR(45) NULL,
+    user_agent VARCHAR(255) NULL,
+    CONSTRAINT fk_session_user FOREIGN KEY (user_id) REFERENCES auth_users(user_id)
 );
 ```
 
@@ -608,15 +760,23 @@ CREATE TABLE manager_user_relationship (
 
 **Core Principle**: CLIs are thin interface clients to the server applications. All work is performed by the Worker service.
 
+**Documentation**: [docs/hca/pages/cli-reference.md](hca/pages/cli-reference.md)
+
 ### pulldb CLI (User-Facing)
 - **Scope**: Limited to operations from the user's own point of view
 - **Target users**: Developers restoring databases for their own work
-- **Allowed operations**:
-  - ✅ Submit restore jobs (`pulldb restore`)
-  - ✅ View status of own jobs (`pulldb status`)
-  - ✅ Cancel own jobs (`pulldb cancel`)
-  - ✅ View job history (`pulldb history`)
-  - ✅ View job events/logs (`pulldb events`)
+- **Commands** (11 total):
+  - `restore` - Submit restore jobs
+  - `status` - View status of jobs (supports `--rt` for realtime streaming)
+  - `search` - Search for customers by pattern
+  - `list` - List available backups for a customer
+  - `cancel` - Cancel own jobs
+  - `history` - View job history
+  - `events` - View job events/logs
+  - `profile` - Show performance profile for completed jobs
+  - `hosts` - Show available database hosts
+  - `register` - Register new account or request access from new machine
+  - `setpass` - Set a new password
 - **NOT allowed** (affects other users' work):
   - ❌ Orphan database reports
   - ❌ Deleting unaligned databases
@@ -626,12 +786,17 @@ CREATE TABLE manager_user_relationship (
 ### pulldb-admin CLI (Admin-Facing)
 - **Scope**: Administrative operations affecting the system as a whole
 - **Target users**: System administrators and operators
-- **Operations**:
-  - Orphan database reports and cleanup
-  - Scheduled staging cleanup
-  - Log pruning
-  - Host management
-  - System-wide monitoring
+- **Command Groups** (10 groups, 39 subcommands total):
+  - `settings` - Manage configuration (list, get, set, reset, export, diff, pull, push) - 8 subcommands
+  - `secrets` - Manage AWS Secrets Manager (list, get, set, delete, test, rotate-host) - 6 subcommands
+  - `jobs` - View and manage jobs (list, cancel) - 2 subcommands
+  - `backups` - Analyze S3 backup inventory (list, search) - 2 subcommands
+  - `cleanup` - Cleanup orphaned staging databases - 1 command
+  - `run-retention-cleanup` - Run database retention cleanup - 1 command
+  - `hosts` - Manage database hosts (list, add, provision, test, enable, disable, remove, cred) - 8 subcommands
+  - `users` - View and manage users (list, show, enable, disable) - 4 subcommands
+  - `keys` - Manage API keys (pending, approve, revoke, list) - 4 subcommands
+  - `disallow` - Manage disallowed usernames (list, add, remove) - 3 subcommands
 
 ### Architectural Flow
 ```
@@ -646,11 +811,26 @@ Both CLIs are thin clients that:
 
 The Worker performs all actual operations (database drops, S3 downloads, restores, etc.).
 
+### CLI Package Files
+
+| File | Layer | Purpose |
+|------|-------|---------|
+| `pulldb/cli/__init__.py` | pages | Package exports |
+| `pulldb/cli/__main__.py` | pages | CLI entrypoint (`python -m pulldb.cli`) |
+| `pulldb/cli/main.py` | pages | User CLI commands (11 commands) |
+| `pulldb/cli/admin.py` | pages | Admin CLI entry point |
+| `pulldb/cli/admin_commands.py` | pages | Admin CLI command groups (jobs, hosts, users, keys, disallow, cleanup) |
+| `pulldb/cli/settings.py` | pages | Settings management commands (8 subcommands) |
+| `pulldb/cli/secrets_commands.py` | pages | Secrets Manager CLI (6 subcommands) |
+| `pulldb/cli/backup_commands.py` | pages | Backup analysis commands (2 subcommands) |
+| `pulldb/cli/parse.py` | pages | `RestoreCLIOptions`, `parse_restore_args()` - CLI argument parsing |
+| `pulldb/cli/auth.py` | pages | HMAC signature generation, credential storage |
+
 ---
 
 ## Web UI Layout Architecture
 
-**Full documentation**: [design/web-layout.md](design/web-layout.md)
+**Full documentation**: [hca/pages/web-layout.md](hca/pages/web-layout.md)
 
 ### Layout Structure
 ```
@@ -662,7 +842,7 @@ The Worker performs all actual operations (database drops, S3 downloads, restore
 │ │BAR  │                  (content-body)                           │
 │ │HOVER│               Scrolls independently                       │
 │ │     ├───────────────────────────────────────────────────────────┤
-│ │     │ © 2025 pullDB • v0.0.8    │    Service Titan/Field Routes │
+│ │     │ © 2026 pullDB • v1.0.7    │    Service Titan/Field Routes │
 └───────┴───────────────────────────────────────────────────────────┘
 ```
 
@@ -735,8 +915,8 @@ pullDB is an **internal operations tool**. UI priorities:
 5. **Empty State**: Icon + title + description + action
 
 ### File Locations
-- Base styles: `pulldb/web/templates/base.html` (2100+ lines)
-- Component styles: Inline per template (refactor planned)
+- Base styles: `pulldb/web/templates/base.html` (~160 lines)
+- Component styles: Distributed in feature CSS files (`web/*/css/`)
 - Static assets: `pulldb/images/` → `/static/images/`
 
 ---
@@ -933,7 +1113,7 @@ The following JSON block is a compact, program-friendly index of the core artifa
     "loader": "/pulldb/mysql/loader"
   },
   "schema": {
-    "canonical_doc": "docs/mysql-schema.md",
+    "canonical_doc": "docs/hca/entities/mysql-schema.md",
     "database": "pulldb_service",
     "schema_dir": "schema/pulldb_service/",
     "hosts_table": "db_hosts"
@@ -946,7 +1126,7 @@ The following JSON block is a compact, program-friendly index of the core artifa
 }
 ```
 
-This JSON is intentionally compact. If you'd prefer a separate `docs/KNOWLEDGE-POOL.json` file, I can add it and keep it in sync.
+This JSON is intentionally compact. The full machine-readable index is in `docs/KNOWLEDGE-POOL.json`.
 
 ## EC2 / Instance Profile
 - Instance profile name: `pulldb-instance-profile`
@@ -1009,12 +1189,12 @@ This file should be created and applied in the production account only. Keep sec
 ## Restore workflow facts (operational)
 - Staging database naming: `{target}_{job_id_first_12_chars}` (max lengths enforced)
 - S3 preflight: require `*-schema-create.sql.{gz,zst}` exists and `free_space >= tar_size * 1.8` before extraction
-- Post-restore SQL: executed from `customers_after_sql/` or `qa_template_after_sql/` in lexicographic order
+- Post-restore SQL: executed from `customers_after_sql_dir` setting (default: `/opt/pulldb.service/customers_after_sql/` installed, `template_after_sql/customer/` in dev) in lexicographic order
 - Atomic rename via stored procedure: `pulldb_atomic_rename` / `pulldb_atomic_rename_preview` exists and is versioned
 - **Progress deduplication** (v0.2.0): ProcesslistMonitor polls every 2s but events only emit when overall percent OR any table's percent changes by 1%+. Dedup key: `(int(percent), active_threads, tuple(sorted(table_progress)))`. CLI uses TTY detection for in-place line updates (`\r`). Web UI has `_deduplicate_logs()`.
 
 ## Database Schema (Quick Reference)
-- **Canonical Source**: `docs/mysql-schema.md` (Read this for full column definitions)
+- **Canonical Source**: `docs/hca/entities/mysql-schema.md` (Read this for full column definitions)
 - **Hosts Table**: `db_hosts` (NOT `hosts`) - contains registered database servers
 - **Jobs Table**: `jobs` - tracks restore requests and status
 - **Users Table**: `auth_users` - tracks authorized users
@@ -1023,28 +1203,30 @@ This file should be created and applied in the production account only. Keep sec
 ## Test Configuration (Local Development)
 - **Test MySQL credentials**: Set environment variables to use local MySQL instead of AWS Secrets Manager:
   - `PULLDB_TEST_MYSQL_HOST=localhost`
-  - `PULLDB_TEST_MYSQL_USER=pulldb_test`
-  - `PULLDB_TEST_MYSQL_PASSWORD=test123` (or empty string for auth_socket users)
-- **Auto-database setup**: The test suite automatically creates the `pulldb` database if it doesn't exist and drops it after tests if it was created by the test suite
-- **Schema location**: `schema/pulldb/*.sql` (files applied in lexicographic order)
+  - `PULLDB_TEST_MYSQL_USER=pulldb_app`
+  - `PULLDB_TEST_MYSQL_PASSWORD=<password>` (or empty string for auth_socket users)
+- **Auto-database setup**: The test suite automatically creates the `pulldb_service` database if it doesn't exist and drops it after tests if it was created by the test suite
+- **Schema location**: `schema/pulldb_service/` (subdirectories applied in order: 00_tables, 01_views, 02_seed, 03_users)
 - **Empty password handling**: Empty passwords (`""`) are valid - the fixture checks `password is not None` not truthiness
 
 ## Local Environment & Binaries
-- myloader binaries location: `/opt/pulldb.service.service/bin/` (installed)
+- myloader binaries location: `/opt/pulldb.service/bin/` (installed)
   - Source location: `pulldb/binaries/`
   - Available versions: `myloader-0.9.5`, `myloader-0.19.3-3`
 
 ## System Paths & Service Locations
 - **Installation Root**: `/opt/pulldb.service`
-- **Virtual Environment**: `/opt/pulldb.service.service/venv`
-- **Logs**: `/opt/pulldb.service.service/logs`
-- **Work Directory**: `/opt/pulldb.service.service/work`
+- **Virtual Environment**: `/opt/pulldb.service/venv`
+- **Logs**: `/opt/pulldb.service/logs`
+- **Work Directory**: `/opt/pulldb.service/work`
 - **Systemd Units**:
   - API Service: `/etc/systemd/system/pulldb-api.service`
   - Worker Service: `/etc/systemd/system/pulldb-worker.service`
+  - Web Service: `/etc/systemd/system/pulldb-web.service`
+  - Retention Timer: `/etc/systemd/system/pulldb-retention.timer`
 - **Binaries**:
-  - `pulldb` CLI: `/opt/pulldb.service.service/venv/bin/pulldb`
-  - `myloader`: `/opt/pulldb.service.service/bin/myloader` (symlinked or direct)
+  - `pulldb` CLI: `/opt/pulldb.service/venv/bin/pulldb`
+  - `myloader`: `/opt/pulldb.service/bin/myloader` (symlinked or direct)
 
 ## Lessons Learned & Troubleshooting
 - **Service User Identity**: Services (`pulldb-api`, `pulldb-worker`) MUST run as the `pulldb` system user. Running as `root` or a developer user causes permission issues with logs and work directories.
@@ -1275,26 +1457,26 @@ grep -v "changeLog" resume | grep -v "salesRoutesAccess" | head
 The pullDB web interface uses a **hover-reveal sidebar** pattern for maximum content area:
 
 **Core Behavior**:
-- Sidebar hidden by default at ALL screen sizes (`transform: translateX(-100%)`)
+- Sidebar hidden by default using negative left position (`left: calc(-1 * var(--sidebar-width))`)
 - Content area uses 100% width (`margin-left: 0`)
 - Sidebar floats over content as overlay when triggered
-- Opens via: left edge hover (12px trigger zone) OR menu button tap
+- Opens via: left edge hover (5px trigger zone) OR menu button tap
 - Closes via: mouse leave (with delay) OR backdrop click
 
-**CSS Architecture**:
+**CSS Architecture** (actual from `sidebar.css`):
 ```css
-.sidebar {
+.app-sidebar {
     position: fixed;
-    transform: translateX(-100%);  /* Hidden by default */
-    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    z-index: 200;
+    left: calc(-1 * var(--sidebar-width-expanded, 240px));  /* Hidden */
+    transition: left 0.3s ease, box-shadow 0.3s ease;
+    z-index: var(--z-sticky);
 }
-.sidebar.open {
-    transform: translateX(0);
-    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
+.app-sidebar.sidebar-open {
+    left: 0;
+    box-shadow: var(--shadow-lg);
 }
 .sidebar-trigger {  /* Invisible left edge zone */
-    position: fixed; left: 0; width: 12px; height: 100%; z-index: 100;
+    position: fixed; left: 0; width: 5px; height: 100%; z-index: 100;
 }
 .sidebar-backdrop {  /* Dark overlay when open */
     position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); z-index: 150;
@@ -1302,8 +1484,8 @@ The pullDB web interface uses a **hover-reveal sidebar** pattern for maximum con
 ```
 
 **JavaScript Timing**:
-- Open delay: 150ms (prevents accidental triggers)
-- Close delay: 200ms (prevents flickering)
+- Open: immediate (no delay on mouseenter)
+- Close delay: 300ms (prevents flickering)
 - Menu button: immediate (no delay needed)
 
 ### Device Detection (Touch vs Mouse)
@@ -1341,24 +1523,28 @@ const isTouchDevice = navigator.maxTouchPoints > 0;
 ### Responsive Table Layout Pattern
 For full-viewport data tables (Jobs page):
 
-**Key Classes**:
-- `.main-content.full-height-page` - prevents scroll on container
-- `.layout-fullheight` - flex column, `min-height: 0` for shrinking
-- `.layout-body` - `flex: 1` fills remaining space
+**Key Classes** (actual from `layout.css`):
+- `.app-body` - `display: flex; min-height: 0; overflow: hidden`
+- `.main-content` - flex column container with `min-height: 0`
+- `.content-body` - flex: 1 with `overflow-y: auto`
 
-**Critical CSS**:
+**Critical CSS** (actual):
 ```css
+.app-body {
+    display: flex;
+    min-height: 0;
+    overflow: hidden;
+}
 .main-content {
-    height: 100vh;
-    max-height: 100vh;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
-.main-content.full-height-page {
-    overflow: hidden;  /* Children manage scroll */
-}
-.main-content.full-height-page > div {
+.content-body {
     flex: 1;
+    overflow-y: auto;
     min-height: 0;  /* Allow shrinking */
 }
 ```
@@ -1394,4 +1580,4 @@ If you'd like, I will:
 
 ---
 
-[← Back to Documentation Index](START-HERE.md) · [Deployment →](deployment.md)
+[← Back to Documentation Index](START-HERE.md) · [Deployment →](hca/widgets/deployment.md)

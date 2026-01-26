@@ -1,10 +1,10 @@
 {
-  "version": "1.0.6",
-  "last_updated": "2026-01-21",
+  "version": "1.0.7",
+  "last_updated": "2026-01-26",
   "package": {
-    "wheel": "pulldb-1.0.6-py3-none-any.whl",
+    "wheel": "pulldb-1.0.7-py3-none-any.whl",
     "myloader": "myloader-0.19.3-3",
-    "schema_files": 23,
+    "schema_files": 24,
     "systemd_units": 6,
     "after_sql_templates": 12
   },
@@ -15,33 +15,96 @@
     "pulldb-web": "pulldb.api.main:main_web",
     "pulldb-worker": "pulldb.worker.service:main"
   },
+  "api_documentation": {
+    "docs_location": "docs/api/",
+    "rest_api": {
+      "doc": "docs/api/REST-API.md",
+      "port": 8080,
+      "endpoint_count": 56,
+      "authentication": "HMAC signature (X-API-Key, X-Timestamp, X-Signature)",
+      "source": "pulldb/api/main.py",
+      "categories": ["health", "auth", "users", "hosts", "jobs", "lifecycle", "manager", "admin", "dropdown", "backups", "feature-requests"]
+    },
+    "web_api": {
+      "doc": "docs/api/WEB-API.md",
+      "port": 8000,
+      "route_count": 142,
+      "authentication": "session cookie (session_token)",
+      "source_dir": "pulldb/web/features/"
+    },
+    "standard_template": {
+      "doc": "docs/api/API-DOCUMENTATION-STANDARD.md",
+      "purpose": "Template for documenting API endpoints",
+      "includes": ["endpoint format", "multi-language examples", "error documentation"]
+    },
+    "admin_endpoints": {
+      "bulk_cancel": "POST /api/admin/jobs/bulk-cancel",
+      "prune_logs": "POST /api/admin/prune-logs",
+      "cleanup_staging": "POST /api/admin/cleanup-staging",
+      "orphan_databases": "GET /api/admin/orphan-databases",
+      "delete_orphans": "POST /api/admin/delete-orphans",
+      "rotate_secret": "POST /api/admin/hosts/{host_id}/rotate-secret"
+    }
+  },
   "default_accounts": {
     "admin": {
       "uuid": "00000000-0000-0000-0000-000000000002",
       "role": "admin",
       "password": "random 16-char bcrypt",
-      "seed_file": "02040_seed_admin_account.sql"
+      "seed_file": "02_seed/002_seed_admin_account.sql"
     },
     "pulldb_service": {
       "uuid": "00000000-0000-0000-0000-000000000001",
       "role": "service",
       "password": null,
       "locked": true,
-      "seed_file": "02050_seed_service_account.sql"
+      "seed_file": "02_seed/003_seed_service_account.sql"
     }
   },
   "cli_architecture": {
     "principle": "CLIs are thin interface clients to server applications",
+    "documentation": "docs/hca/pages/cli-reference.md",
     "pulldb_cli": {
       "scope": "user-facing, own work only",
-      "commands": ["restore", "status", "cancel", "history", "search"],
-      "excluded": ["prune-logs", "cleanup-staging", "orphan-report", "delete-orphans"]
+      "entry_point": "pulldb.cli.main:main",
+      "command_count": 11,
+      "commands": ["restore", "status", "search", "list", "cancel", "history", "events", "profile", "hosts", "register", "setpass"],
+      "excluded": ["orphan-report", "cleanup-staging", "delete-orphans", "system-wide operations"],
+      "key_features": {
+        "status_rt": "--rt flag for realtime event streaming",
+        "search_patterns": "wildcards: action*, *pest",
+        "list_backups": "list available backups for a customer"
+      }
     },
     "pulldb_admin_cli": {
       "scope": "admin-facing, system-wide operations",
-      "commands": ["prune-logs", "cleanup-staging", "orphan-report", "delete-orphans"]
+      "entry_point": "pulldb.cli.admin:main",
+      "command_groups": 10,
+      "subcommand_count": 39,
+      "groups": {
+        "settings": ["list", "get", "set", "reset", "export", "diff", "pull", "push"],
+        "secrets": ["list", "get", "set", "delete", "test", "rotate-host"],
+        "jobs": ["list", "cancel"],
+        "backups": ["list", "search"],
+        "cleanup": null,
+        "run-retention-cleanup": null,
+        "hosts": ["list", "add", "provision", "test", "enable", "disable", "remove", "cred"],
+        "users": ["list", "show", "enable", "disable"],
+        "keys": ["pending", "approve", "revoke", "list"],
+        "disallow": ["list", "add", "remove"]
+      }
     },
-    "flow": "CLI → API Service → Worker Service"
+    "flow": "CLI → API Service → Worker Service",
+    "source_files": [
+      "pulldb/cli/main.py",
+      "pulldb/cli/admin.py",
+      "pulldb/cli/admin_commands.py",
+      "pulldb/cli/settings.py",
+      "pulldb/cli/secrets_commands.py",
+      "pulldb/cli/backup_commands.py",
+      "pulldb/cli/parse.py",
+      "pulldb/cli/auth.py"
+    ]
   },
   "accounts": {
     "development": "345321506926",
@@ -96,11 +159,11 @@
     "canonical_doc": "docs/hca/entities/mysql-schema.md",
     "database": "pulldb_service",
     "schema_dir": "schema/pulldb_service/",
-    "schema_file_count": 23,
+    "schema_file_count": 24,
     "hosts_table": "db_hosts",
     "tables": [
       "auth_users", "auth_credentials", "sessions", "api_keys",
-      "db_hosts", "user_hosts", "jobs", "job_events", 
+      "db_hosts", "user_hosts", "jobs", "job_events", "job_history_summary",
       "locks", "settings", "admin_tasks", "audit_logs",
       "procedure_deployments", "disallowed_users", 
       "feature_requests", "feature_request_votes", "feature_request_notes",
@@ -190,13 +253,13 @@
   "web_ui": {
     "sidebar_pattern": {
       "name": "hover-reveal",
-      "default_state": "hidden (translateX(-100%))",
+      "default_state": "hidden (left: calc(-1 * var(--sidebar-width)))",
       "content_width": "100% (margin-left: 0)",
-      "trigger_zone_width": "12px",
-      "open_delay_ms": 150,
-      "close_delay_ms": 200,
+      "trigger_zone_width": "5px",
+      "open_delay_ms": 0,
+      "close_delay_ms": 300,
       "css_classes": {
-        "sidebar_open": ".sidebar.open",
+        "sidebar_open": ".app-sidebar.sidebar-open",
         "backdrop": ".sidebar-backdrop.visible",
         "trigger": ".sidebar-trigger"
       }
@@ -224,10 +287,11 @@
       }
     },
     "responsive_table": {
-      "key_class": ".main-content.full-height-page",
+      "key_classes": [".app-body", ".main-content", ".content-body"],
       "layout": {
-        "container": "height: 100vh; max-height: 100vh; overflow: hidden",
-        "children": "flex: 1; min-height: 0 (allow shrinking)"
+        "app_body": "display: flex; min-height: 0; overflow: hidden",
+        "main_content": "flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden",
+        "content_body": "flex: 1; overflow-y: auto; min-height: 0"
       }
     },
     "virtual_scroller": {
@@ -266,23 +330,26 @@
   },
   "rbac": {
     "roles": ["USER", "MANAGER", "ADMIN", "SERVICE"],
-    "permissions": {
-      "view_own_jobs": ["USER", "MANAGER", "ADMIN"],
-      "submit_own_jobs": ["USER", "MANAGER", "ADMIN"],
-      "cancel_own_jobs": ["USER", "MANAGER", "ADMIN"],
-      "view_managed_jobs": ["MANAGER", "ADMIN"],
-      "cancel_managed_jobs": ["MANAGER", "ADMIN"],
-      "view_all_jobs": ["ADMIN"],
-      "cancel_any_job": ["ADMIN"],
-      "manage_users": ["ADMIN"],
-      "orphan_cleanup": ["ADMIN"],
-      "system_settings": ["ADMIN"]
+    "permission_functions": {
+      "can_view_job": "Check if user can view a specific job",
+      "can_cancel_job": "Check if user can cancel a specific job",
+      "can_delete_job_database": "Check if user can delete a job's databases",
+      "can_submit_for_user": "Check if user can submit jobs for another user",
+      "can_manage_users": "Check if user can create new users",
+      "can_manage_user": "Check if user can modify a specific user",
+      "can_reset_password": "Check if user can reset another user's password",
+      "can_reassign_user": "Check if user can reassign users to different managers",
+      "can_bulk_manage_users": "Check if user can perform bulk user operations",
+      "can_change_user_role": "Check if user can change another user's role",
+      "can_view_all_jobs": "Check if user can view all jobs system-wide",
+      "can_manage_config": "Check if user can modify system settings",
+      "require_role": "Decorator/guard that raises PermissionError if user lacks required role"
     },
     "files": {
       "permissions": "pulldb/domain/permissions.py",
       "models": "pulldb/domain/models.py"
     },
-    "manager_relationship_table": "auth_users.manager_id"
+    "manager_relationship": "auth_users.manager_id column (FK to self)"
   },
   "job_statuses": {
     "all": ["queued", "running", "canceling", "deployed", "expired", "failed", "complete", "canceled", "deleting", "deleted", "superseded"],
@@ -307,18 +374,87 @@
       "mock_s3": "simulation/adapters/mock_s3.py",
       "mock_exec": "simulation/adapters/mock_exec.py"
     },
-    "exports": ["MockJobRepository", "MockUserRepository", "MockS3Client", "SimulationEngine"]
+    "exports": [
+      "MockCommandConfig",
+      "MockProcessExecutor",
+      "MockS3Client",
+      "SimulatedAuditRepository",
+      "SimulatedAuthRepository",
+      "SimulatedHostRepository",
+      "SimulatedJobRepository",
+      "SimulatedSettingsRepository",
+      "SimulatedUserRepository",
+      "EventType",
+      "SimulationEvent",
+      "SimulationEventBus",
+      "get_event_bus",
+      "ChaosConfig",
+      "Scenario",
+      "ScenarioManager",
+      "ScenarioType",
+      "get_scenario_manager",
+      "reset_scenario_manager",
+      "SimulationState",
+      "get_simulation_state",
+      "reset_simulation",
+      "reset_and_seed",
+      "seed_dev_scenario",
+      "JobPhase",
+      "MockQueueRunner",
+      "MockRunnerConfig",
+      "get_mock_queue_runner"
+    ]
   },
-  "phase4_schema": {
-    "migrations": [
-      {"file": "00700_auth_users_role.sql", "purpose": "adds role column to auth_users"},
-      {"file": "00710_auth_credentials.sql", "table": "auth_credentials"},
-      {"file": "00720_sessions.sql", "table": "sessions"},
-      {"file": "00720_password_reset.sql", "table": "password_reset_tokens"},
-      {"file": "00730_manager_user_relationship.sql", "table": "manager_user_relationship"},
-      {"file": "00740_audit_logs.sql", "table": "audit_logs"}
+  "audit": {
+    "package": "pulldb/audit/",
+    "hca_layer": "features",
+    "documentation": "docs/AUDIT-AGENT.md",
+    "exports": [
+      "DocumentationAuditAgent",
+      "AuditReport",
+      "AuditFinding",
+      "FindingSeverity",
+      "DriftDetector",
+      "DriftAlert",
+      "DriftType",
+      "FileInventory",
+      "FileInventoryItem",
+      "FileCategory"
     ],
-    "tables": ["auth_credentials", "sessions", "password_reset_tokens", "manager_user_relationship", "audit_logs"]
+    "components": {
+      "agent": "audit/agent.py",
+      "drift": "audit/drift.py",
+      "inventory": "audit/inventory.py",
+      "analyzers": "audit/analyzers.py",
+      "mappings": "audit/mappings.py",
+      "knowledge_pool": "audit/knowledge_pool.py",
+      "report": "audit/report.py"
+    },
+    "modes": {
+      "targeted": "Uses 17 hardcoded mappings (--full)",
+      "drift_detection": "Scans entire codebase (--drift)"
+    },
+    "cli_commands": {
+      "full_audit": "python -m pulldb.audit --full",
+      "drift_detection": "python -m pulldb.audit --drift",
+      "copilot_context": "python -m pulldb.audit --drift --copilot",
+      "severity_filter": "python -m pulldb.audit --drift --severity high"
+    }
+  },
+  "consolidated_schema": {
+    "note": "Legacy 007xx migrations consolidated into base table files",
+    "structure": {
+      "00_tables": "17 SQL files - see schema.tables for complete list",
+      "01_views": ["active_jobs view"],
+      "02_seed": ["5 seed data files"],
+      "03_users": ["mysql user grants"]
+    },
+    "key_consolidations": {
+      "auth_users": "Includes role, manager_id, max_active_jobs, locked_at",
+      "auth_credentials": "Includes password_reset_at column",
+      "admin_tasks": "Includes retention_cleanup task type",
+      "jobs": "Includes retention columns, custom_target"
+    }
   },
   "phase6_features": {
     "cli_hmac_auth": {
@@ -342,7 +478,11 @@
     "database_retention": {
       "service": "pulldb/worker/retention.py",
       "features": ["expiration", "locking", "extension", "maintenance_modal"],
-      "schema_tables": ["database_retention", "retention_cleanup_task"]
+      "schema_integration": {
+        "jobs_table": ["locked_at", "expires_at", "locked_by", "db_dropped_at"],
+        "admin_tasks": "retention_cleanup task type",
+        "settings": ["staging_retention_days", "default_retention_days", "max_retention_days", "expiring_warning_days", "cleanup_grace_days"]
+      }
     },
     "admin_tasks": {
       "executor": "pulldb/worker/admin_tasks.py",
