@@ -374,24 +374,31 @@ class TestDeleteJobDatabases:
         mock_repo.get_host_credentials_for_maintenance.return_value = mock_creds
         return mock_repo
 
-    def test_rejects_auto_target_without_user_code(
+    def test_proceeds_auto_target_without_user_code(
         self, mock_host_repo: MagicMock
     ) -> None:
-        """Rejects auto-generated target that doesn't contain owner user_code."""
-        # Target "myspecialdb" does NOT contain user_code "charle"
-        result = delete_job_databases(
-            job_id=SAMPLE_JOB_ID_PREFIX,
-            staging_name="myspecialdb_abcdef123456",
-            target_name="myspecialdb",  # Does NOT contain "charle"
-            owner_user_code="charle",
-            dbhost=SAMPLE_DBHOST,
-            host_repo=mock_host_repo,
-            custom_target=False,  # Auto-generated target
-        )
+        """Auto-generated target WITHOUT user_code proceeds (authorization handled upstream).
+        
+        The user_code-in-name check was removed because:
+        1. Authorization is enforced upstream by can_delete_job_database()
+        2. Target names from job records are trusted
+        3. Defense-in-depth is via _drop_target_database_unsafe() pullDB table check
+        """
+        with patch("pulldb.worker.cleanup._database_exists", return_value=False):
+            # Target "myspecialdb" does NOT contain user_code "charle"
+            # Now allowed - authorization handled by can_delete_job_database() upstream
+            result = delete_job_databases(
+                job_id=SAMPLE_JOB_ID_PREFIX,
+                staging_name="myspecialdb_abcdef123456",
+                target_name="myspecialdb",  # Does NOT contain "charle" - OK now
+                owner_user_code="charle",
+                dbhost=SAMPLE_DBHOST,
+                host_repo=mock_host_repo,
+                custom_target=False,  # Auto-generated target
+            )
 
-        assert result.error is not None
-        assert "does not contain" in result.error
-        assert "charle" in result.error
+        # Should succeed - no error expected
+        assert result.error is None
 
     def test_allows_custom_target_without_user_code(
         self, mock_host_repo: MagicMock

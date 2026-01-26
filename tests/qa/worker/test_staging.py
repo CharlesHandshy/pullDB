@@ -268,7 +268,7 @@ class TestCleanupOrphanedStaging:
         import mysql.connector
 
         mock_cursor = MagicMock()
-        # Calls: SHOW DATABASES, processlist, DROP (fails)
+        # Calls: SHOW DATABASES, processlist, pullDB table check, DROP (fails)
         # fetchall calls:
         #   1. SHOW DATABASES - returns databases including orphan
         #   2. processlist - returns empty (no active connections, so DROP proceeds)
@@ -276,8 +276,10 @@ class TestCleanupOrphanedStaging:
             [("mysql",), ("charleqatemplate_aaaaaaaaaaaa",)],  # SHOW DATABASES
             [],  # processlist - no active connections
         ]
+        # fetchone call for pullDB table check - return something to indicate table exists
+        mock_cursor.fetchone.return_value = (1,)  # pullDB table exists
 
-        def execute_side_effect(sql: str) -> None:
+        def execute_side_effect(sql: str, params: tuple | None = None) -> None:
             if "DROP" in sql:
                 raise mysql.connector.Error("Drop denied")
 

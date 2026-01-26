@@ -158,12 +158,14 @@ class TestExecuteDeleteJob:
         # Should mark as deleted
         mock_job_repo.mark_job_deleted.assert_called_once()
 
+    @patch("pulldb.worker.cleanup.get_pulldb_job_id")
     @patch("pulldb.worker.cleanup._database_exists")
     @patch("pulldb.worker.cleanup.delete_job_databases")
     def test_successful_delete(
         self,
         mock_delete_dbs,
         mock_db_exists,
+        mock_get_pulldb_job_id,
         mock_job_repo,
         mock_host_repo,
         sample_deleting_job,
@@ -171,6 +173,8 @@ class TestExecuteDeleteJob:
         """Test successful database deletion."""
         mock_host_repo.get_host_credentials.return_value = MagicMock()
         mock_db_exists.return_value = True  # DBs exist
+        # Return matching job_id from pullDB table to confirm ownership
+        mock_get_pulldb_job_id.return_value = sample_deleting_job.id
         mock_delete_dbs.return_value = MagicMock(
             error=None,
             staging_dropped=True,
@@ -183,12 +187,14 @@ class TestExecuteDeleteJob:
         assert result.databases_already_gone is False
         mock_job_repo.mark_job_deleted.assert_called_once()
 
+    @patch("pulldb.worker.cleanup.get_pulldb_job_id")
     @patch("pulldb.worker.cleanup._database_exists")
     @patch("pulldb.worker.cleanup.delete_job_databases")
     def test_delete_failure_under_max_retries(
         self,
         mock_delete_dbs,
         mock_db_exists,
+        mock_get_pulldb_job_id,
         mock_job_repo,
         mock_host_repo,
         sample_deleting_job,
@@ -196,6 +202,8 @@ class TestExecuteDeleteJob:
         """Test delete failure when under max retries."""
         mock_host_repo.get_host_credentials.return_value = MagicMock()
         mock_db_exists.return_value = True
+        # Return matching job_id from pullDB table to confirm ownership
+        mock_get_pulldb_job_id.return_value = sample_deleting_job.id
         mock_delete_dbs.return_value = MagicMock(
             error="Protection check failed",
             staging_dropped=False,
@@ -210,12 +218,14 @@ class TestExecuteDeleteJob:
         mock_job_repo.mark_job_delete_failed.assert_not_called()
         mock_job_repo.mark_job_deleted.assert_not_called()
 
+    @patch("pulldb.worker.cleanup.get_pulldb_job_id")
     @patch("pulldb.worker.cleanup._database_exists")
     @patch("pulldb.worker.cleanup.delete_job_databases")
     def test_delete_failure_at_max_retries(
         self,
         mock_delete_dbs,
         mock_db_exists,
+        mock_get_pulldb_job_id,
         mock_job_repo,
         mock_host_repo,
         sample_deleting_job,
@@ -224,6 +234,8 @@ class TestExecuteDeleteJob:
         job_at_max = replace(sample_deleting_job, retry_count=MAX_DELETE_RETRY_COUNT)
         mock_host_repo.get_host_credentials.return_value = MagicMock()
         mock_db_exists.return_value = True
+        # Return matching job_id from pullDB table to confirm ownership
+        mock_get_pulldb_job_id.return_value = job_at_max.id
         mock_delete_dbs.return_value = MagicMock(
             error="Drop failed",
             staging_dropped=False,
@@ -372,7 +384,7 @@ class TestMockJobRepositoryDeleteMethods:
         assert job.error_detail == "Test error"
 
     def test_claim_stale_deleting_skips_superseded_jobs(self):
-        """Test that claim_stale_deleting_job skips jobs superseded by newer jobs."""
+        """Test that claim_stale_deleting_job skips jobs explicitly marked as superseded."""
         from pulldb.simulation.adapters.mock_mysql import SimulatedJobRepository
         from pulldb.simulation.core.state import get_simulation_state, reset_simulation
 
@@ -381,20 +393,13 @@ class TestMockJobRepositoryDeleteMethods:
         state = get_simulation_state()
         repo = SimulatedJobRepository()
 
-        # Create an older job and mark as stale deleting
+        # Create an older job and mark as stale deleting AND EXPLICITLY SUPERSEDED
         old_job_id = self._create_test_job(repo, job_id="old-job-12345678901234567890")
         old_job = state.jobs[old_job_id]
         old_time = datetime.now(UTC) - timedelta(hours=1)
         stale_time = datetime.now(UTC) - timedelta(minutes=10)
-        state.jobs[old_job_id] = replace(
-            old_job,
-            status=JobStatus.DELETING,
-            submitted_at=old_time,
-            started_at=stale_time,
-            retry_count=1,
-        )
-
-        # Create a newer job for SAME target+owner (supersedes old job)
+        
+        # Create a newer job for SAME target+owner
         new_job = Job(
             id="new-job-12345678901234567890",
             owner_user_id="user-1",
@@ -413,8 +418,19 @@ class TestMockJobRepositoryDeleteMethods:
             worker_id=None,
         )
         repo.enqueue_job(new_job)
+        
+        # Mark the old job as EXPLICITLY superseded by the new job
+        # This is the key - superseded_by_job_id must be set for skipping
+        state.jobs[old_job_id] = replace(
+            old_job,
+            status=JobStatus.DELETING,
+            submitted_at=old_time,
+            started_at=stale_time,
+            retry_count=1,
+            superseded_by_job_id=new_job.id,  # EXPLICITLY SUPERSEDED
+        )
 
-        # Should NOT claim the old job (superseded by newer job)
+        # Should NOT claim the old job (explicitly superseded)
         claimed = repo.claim_stale_deleting_job(
             worker_id="worker-1",
             stale_timeout_minutes=5,
@@ -471,3 +487,69 @@ class TestMockJobRepositoryDeleteMethods:
         
         assert claimed is not None, "Should claim job that's newest for its target"
         assert claimed.id == job_id
+    def test_claim_stale_deleting_allows_non_superseded_with_newer_sibling(self):
+        """Test that jobs with newer siblings are claimed if NOT explicitly superseded.
+        
+        This tests the fix for the zombie job bug where a job stuck in 'deleting'
+        was blocked from recovery just because a newer job for the same target
+        existed, even though that newer job didn't actually supersede it.
+        
+        The fix: Only skip jobs that have superseded_by_job_id set (explicitly
+        marked as superseded during another job's restore), not just any job
+        that has a newer sibling.
+        """
+        from pulldb.simulation.adapters.mock_mysql import SimulatedJobRepository
+        from pulldb.simulation.core.state import get_simulation_state, reset_simulation
+
+        # Reset state for clean test
+        reset_simulation()
+        state = get_simulation_state()
+        repo = SimulatedJobRepository()
+
+        # Create older job stuck in deleting (the "zombie")
+        older_job_id = self._create_test_job(repo)
+        older_job = state.jobs[older_job_id]
+        stale_time = datetime.now(UTC) - timedelta(hours=25)  # Very stale
+        older_submitted = datetime.now(UTC) - timedelta(hours=26)
+        state.jobs[older_job_id] = replace(
+            older_job,
+            status=JobStatus.DELETING,
+            started_at=stale_time,
+            submitted_at=older_submitted,
+            retry_count=1,
+            # KEY: superseded_by_job_id is NOT set
+        )
+
+        # Create newer job for SAME target (completed successfully)
+        newer_job = Job(
+            id="newer-job-123456789012345678",
+            owner_user_id="user-1",
+            owner_username="testuser",
+            owner_user_code="TS0001",
+            target="TS0001customer",  # Same target as older job
+            staging_name="TS0001customer_newer12345678",
+            dbhost="host1",
+            status=JobStatus.DELETED,  # Already deleted
+            submitted_at=datetime.now(UTC) - timedelta(hours=24),  # Newer
+            started_at=None,
+            completed_at=datetime.now(UTC) - timedelta(hours=23),
+            options_json=None,
+            retry_count=0,
+            error_detail=None,
+            worker_id=None,
+        )
+        repo.enqueue_job(newer_job)
+
+        # SHOULD claim the older zombie job because it's NOT explicitly superseded
+        # (superseded_by_job_id is NULL)
+        claimed = repo.claim_stale_deleting_job(
+            worker_id="worker-1",
+            stale_timeout_minutes=5,
+        )
+        
+        assert claimed is not None, (
+            "Should claim zombie job that has newer sibling but is NOT explicitly superseded. "
+            "The old NOT EXISTS check was too aggressive - it blocked recovery just because "
+            "a newer job existed. The fix uses superseded_by_job_id IS NULL instead."
+        )
+        assert claimed.id == older_job_id

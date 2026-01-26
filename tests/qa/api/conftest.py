@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from pulldb.domain.models import Job, JobEvent, JobStatus, User
+from pulldb.domain.models import Job, JobEvent, JobStatus, MySQLCredentials, User
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +129,6 @@ def mock_admin_user() -> User:
         user_id="admin-1",
         username="admin",
         user_code="admin",
-        is_admin=True,
         role=UserRole.ADMIN,
         created_at=datetime.now(UTC),
         disabled_at=None,
@@ -178,7 +177,6 @@ def sample_user() -> User:
         user_id="1",
         username=SAMPLE_USERNAME,
         user_code=SAMPLE_USER_CODE,
-        is_admin=False,
         role=UserRole.USER,
         created_at=datetime.now(UTC),
         disabled_at=None,
@@ -195,7 +193,6 @@ def user_factory() -> Callable[..., User]:
         user_id: str = "1",
         username: str = SAMPLE_USERNAME,
         user_code: str = SAMPLE_USER_CODE,
-        is_admin: bool = False,
         role: UserRole = UserRole.USER,
         disabled: bool = False,
         allowed_hosts: list[str] | None = None,
@@ -204,7 +201,6 @@ def user_factory() -> Callable[..., User]:
             user_id=user_id,
             username=username,
             user_code=user_code,
-            is_admin=is_admin,
             role=role,
             created_at=datetime.now(UTC),
             disabled_at=datetime.now(UTC) if disabled else None,
@@ -368,10 +364,30 @@ def configure_settings_repo(
 def configure_host_repo(
     state: MagicMock,
     hosts: list | None = None,
+    default_host: str = SAMPLE_DBHOST,
 ) -> None:
-    """Configure mock host repository."""
+    """Configure mock host repository with proper credentials.
+    
+    Args:
+        state: The MockAPIState instance.
+        hosts: List of enabled hosts.
+        default_host: Default hostname for credentials (used in get_host_credentials).
+    """
     repo = state._mock_host_repo
     repo.get_enabled_hosts.return_value = hosts or []
+    
+    # Configure get_host_credentials to return proper MySQLCredentials
+    # This is needed for _target_database_exists_on_host() and other DB checks
+    def mock_get_credentials(hostname: str) -> MySQLCredentials:
+        return MySQLCredentials(
+            username="mock_user",
+            password="mock_password",
+            host=hostname,
+            port=3306,
+        )
+    
+    repo.get_host_credentials.side_effect = mock_get_credentials
+    repo.get_host_credentials_for_maintenance.side_effect = mock_get_credentials
 
 
 # ---------------------------------------------------------------------------

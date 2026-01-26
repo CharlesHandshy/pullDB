@@ -14,7 +14,7 @@ Test Count: 32 tests
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -45,8 +45,9 @@ from .conftest import (
 class TestJobSubmission:
     """Tests for job submission endpoint."""
 
+    @patch("pulldb.api.logic._target_database_exists_on_host", return_value=False)
     def test_submit_job_qatemplate(
-        self, client: TestClient, mock_api_state, sample_user, job_factory
+        self, mock_db_exists, client: TestClient, mock_api_state, sample_user, job_factory
     ) -> None:
         """POST /api/jobs with qatemplate creates job."""
         configure_user_repo(mock_api_state, user=sample_user, create_user=sample_user)
@@ -66,8 +67,9 @@ class TestJobSubmission:
         assert_contains(data, "job_id", "target", "staging_name", "status")
         assert data["status"] == "queued"
 
+    @patch("pulldb.api.logic._target_database_exists_on_host", return_value=False)
     def test_submit_job_customer(
-        self, client: TestClient, mock_api_state, sample_user, job_factory
+        self, mock_db_exists, client: TestClient, mock_api_state, sample_user, job_factory
     ) -> None:
         """POST /api/jobs with customer creates job."""
         configure_user_repo(mock_api_state, user=sample_user, create_user=sample_user)
@@ -126,8 +128,9 @@ class TestJobSubmission:
         assert_error(response, 400)
         assert "alphabetic" in response.json()["detail"].lower()
 
+    @patch("pulldb.api.logic._target_database_exists_on_host", return_value=False)
     def test_submit_job_with_options(
-        self, client: TestClient, mock_api_state, sample_user, job_factory
+        self, mock_db_exists, client: TestClient, mock_api_state, sample_user, job_factory
     ) -> None:
         """POST /api/jobs with date and env options."""
         configure_user_repo(mock_api_state, user=sample_user, create_user=sample_user)
@@ -157,8 +160,9 @@ class TestJobSubmission:
 class TestConcurrencyLimits:
     """Tests for job submission concurrency limits."""
 
+    @patch("pulldb.api.logic._target_database_exists_on_host", return_value=False)
     def test_submit_job_global_limit(
-        self, client: TestClient, mock_api_state, sample_user
+        self, mock_db_exists, client: TestClient, mock_api_state, sample_user
     ) -> None:
         """POST /api/jobs at global limit returns 429."""
         configure_user_repo(mock_api_state, user=sample_user, create_user=sample_user)
@@ -172,8 +176,9 @@ class TestConcurrencyLimits:
         assert_error(response, 429)
         assert "capacity" in response.json()["detail"].lower()
 
+    @patch("pulldb.api.logic._target_database_exists_on_host", return_value=False)
     def test_submit_job_per_user_limit(
-        self, client: TestClient, mock_api_state, sample_user
+        self, mock_db_exists, client: TestClient, mock_api_state, sample_user
     ) -> None:
         """POST /api/jobs at per-user limit returns 429."""
         configure_user_repo(mock_api_state, user=sample_user, create_user=sample_user)

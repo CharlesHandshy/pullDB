@@ -82,6 +82,50 @@ def _get_pulldb_job_id(credentials: "MySQLCredentials", db_name: str) -> str | N
         conn.close()
 
 
+def _get_pulldb_owner_user_id(credentials: "MySQLCredentials", db_name: str) -> str | None:
+    """Get owner_user_id from pullDB metadata table.
+
+    SAFETY: The pullDB table is the AUTHORITATIVE source for database ownership.
+    This replaces name-pattern-based ownership checks.
+
+    Args:
+        credentials: MySQL credentials for the host.
+        db_name: Database name to check.
+
+    Returns:
+        owner_user_id if pullDB table exists and has owner info, None otherwise.
+    """
+    conn = mysql.connector.connect(
+        host=credentials.host,
+        port=credentials.port,
+        user=credentials.username,
+        password=credentials.password,
+        connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
+    )
+    try:
+        cursor = conn.cursor()
+        # Check if pullDB table exists
+        cursor.execute("""
+            SELECT 1 FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = 'pullDB'
+            LIMIT 1
+        """, (db_name,))
+        if not cursor.fetchone():
+            return None  # No pullDB table - not created by pullDB
+
+        # Get owner_user_id from pullDB table
+        cursor.execute(f"SELECT owner_user_id FROM `{db_name}`.`pullDB` LIMIT 1")
+        row = cursor.fetchone()
+        if row and row[0]:
+            return str(row[0])
+        return None
+    except Exception as e:
+        logger.warning("Failed to get pullDB owner_user_id for %s: %s", db_name, e)
+        return None
+    finally:
+        conn.close()
+
+
 # Protected databases that must NEVER be dropped
 PROTECTED_DATABASES = frozenset({
     "mysql",
@@ -241,18 +285,31 @@ class AdminTaskExecutor:
                     result["databases_skipped"].append(db_info)
                     continue
 
-                # SAFETY: Only drop databases that contain the user's code
-                # This prevents dropping databases that don't belong to this user
-                if target_user_code not in db_name:
+                # SAFETY: Verify database ownership via pullDB metadata table
+                # The pullDB table is AUTHORITATIVE - replaces name pattern checks
+                try:
+                    credentials = self.host_repo.get_host_credentials(db_host)
+                    db_owner_id = _get_pulldb_owner_user_id(credentials, db_name)
+                except Exception as e:
+                    skip_msg = f"Skipping database '{db_name}' - cannot verify ownership: {e}"
+                    logger.warning(skip_msg)
+                    result["databases_skipped"].append({
+                        "name": db_name,
+                        "host": db_host,
+                        "reason": "Cannot verify ownership",
+                    })
+                    continue
+                
+                if db_owner_id is None:
                     skip_msg = (
                         f"Skipping database '{db_name}' - "
-                        f"does not contain user code '{target_user_code}'"
+                        f"no pullDB metadata table (external database)"
                     )
                     logger.warning(skip_msg)
                     result["databases_skipped"].append({
                         "name": db_name,
                         "host": db_host,
-                        "reason": f"Name does not contain user code",
+                        "reason": "No pullDB metadata table (external database)",
                     })
                     self.audit_repo.log_action(
                         actor_user_id=task.requested_by,
@@ -263,6 +320,31 @@ class AdminTaskExecutor:
                             "task_id": task.task_id,
                             "database": db_name,
                             "host": db_host,
+                        },
+                    )
+                    continue
+                
+                if db_owner_id != target_user_id:
+                    skip_msg = (
+                        f"Skipping database '{db_name}' - "
+                        f"owned by different user (owner_user_id={db_owner_id})"
+                    )
+                    logger.warning(skip_msg)
+                    result["databases_skipped"].append({
+                        "name": db_name,
+                        "host": db_host,
+                        "reason": f"Owned by different user",
+                    })
+                    self.audit_repo.log_action(
+                        actor_user_id=task.requested_by,
+                        action="database_drop_skipped",
+                        target_user_id=target_user_id,
+                        detail=skip_msg,
+                        context={
+                            "task_id": task.task_id,
+                            "database": db_name,
+                            "host": db_host,
+                            "actual_owner": db_owner_id,
                         },
                     )
                     continue

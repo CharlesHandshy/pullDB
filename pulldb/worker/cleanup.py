@@ -107,14 +107,18 @@ class OrphanMetadata:
     """Metadata from pullDB table inside an orphan database.
     
     Loaded on-demand when user clicks details icon.
+    The owner_user_code is the AUTHORITATIVE source for database ownership.
     """
     
     job_id: str | None = None
+    owner_user_id: str | None = None  # UUID of database owner
+    owner_user_code: str | None = None  # 6-char user identifier (authoritative)
     restored_by: str | None = None
     restored_at: datetime | None = None
     target_database: str | None = None
     backup_filename: str | None = None
     restore_duration_seconds: float | None = None
+    custom_target: bool = False  # Whether custom target name was used
 
 
 @dataclass
@@ -432,6 +436,84 @@ def _get_databases_with_pulldb_table(credentials: MySQLCredentials) -> frozenset
         conn.close()
 
 
+@dataclass
+class PullDBOwnerInfo:
+    """Owner information from pullDB metadata table."""
+    
+    database_name: str
+    owner_user_code: str | None
+    owner_user_id: str | None
+    restored_at: datetime | None
+    restored_by: str | None
+    custom_target: bool
+
+
+def _get_all_pulldb_owner_info(credentials: MySQLCredentials) -> dict[str, PullDBOwnerInfo]:
+    """Get owner_user_code from pullDB tables for all pullDB-managed databases.
+
+    PERFORMANCE OPTIMIZATION: Uses a single query with dynamic SQL to read
+    owner_user_code from each database's pullDB table. This avoids N+1 queries
+    when detecting user orphans.
+
+    Args:
+        credentials: MySQL credentials for the host.
+
+    Returns:
+        Dict mapping database name to PullDBOwnerInfo with owner details.
+    """
+    # First get list of databases with pullDB table
+    databases_with_pulldb = _get_databases_with_pulldb_table(credentials)
+    if not databases_with_pulldb:
+        return {}
+    
+    result: dict[str, PullDBOwnerInfo] = {}
+    
+    conn = mysql.connector.connect(
+        host=credentials.host,
+        port=credentials.port,
+        user=credentials.username,
+        password=credentials.password,
+        connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
+    )
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        # Query each database's pullDB table individually
+        # This is still more efficient than opening N connections
+        for db_name in databases_with_pulldb:
+            try:
+                # Use backtick quoting for database name
+                cursor.execute(f"""
+                    SELECT owner_user_code, owner_user_id, restored_at, restored_by, custom_target
+                    FROM `{db_name}`.`pullDB`
+                    LIMIT 1
+                """)
+                row = cursor.fetchone()
+                if row:
+                    meta: dict[str, Any] = row  # type: ignore[assignment]
+                    custom_target_val = meta.get("custom_target")
+                    result[db_name] = PullDBOwnerInfo(
+                        database_name=db_name,
+                        owner_user_code=str(meta["owner_user_code"]) if meta.get("owner_user_code") else None,
+                        owner_user_id=str(meta["owner_user_id"]) if meta.get("owner_user_id") else None,
+                        restored_at=meta.get("restored_at"),
+                        restored_by=str(meta["restored_by"]) if meta.get("restored_by") else None,
+                        custom_target=bool(custom_target_val) if custom_target_val is not None else False,
+                    )
+            except Exception as e:
+                # Log but continue - some databases might have incomplete pullDB tables
+                logger.debug("Failed to read pullDB table from %s: %s", db_name, e)
+                continue
+                
+    except Exception as e:
+        logger.warning("Failed to batch query pullDB owner info: %s", e)
+        return {}
+    finally:
+        conn.close()
+    
+    return result
+
+
 def _has_pulldb_table(credentials: MySQLCredentials, db_name: str) -> bool:
     """Check if a database contains the pullDB marker table.
 
@@ -476,6 +558,10 @@ def get_orphan_metadata(
 
     The pullDB table is created by the restore process and contains
     information about when/how the database was restored.
+    
+    The owner_user_code field is the AUTHORITATIVE source for database ownership,
+    especially important for custom target names where the database name
+    doesn't contain the user_code.
 
     Args:
         credentials: MySQL credentials for the host.
@@ -503,10 +589,10 @@ def get_orphan_metadata(
         if not row or row["cnt"] == 0:
             return None
         
-        # Query the pullDB metadata table
+        # Query the pullDB metadata table - include owner fields for orphan detection
         cursor.execute("""
-            SELECT job_id, restored_by, restored_at, target_database,
-                   backup_filename, restore_duration_seconds
+            SELECT job_id, owner_user_id, owner_user_code, restored_by, restored_at,
+                   target_database, backup_filename, restore_duration_seconds, custom_target
             FROM pullDB
             LIMIT 1
         """)
@@ -517,13 +603,17 @@ def get_orphan_metadata(
         # Cast to dict for type checker (cursor with dictionary=True returns dict)
         meta: dict[str, Any] = meta_row  # type: ignore[assignment]
         duration = meta.get("restore_duration_seconds")
+        custom_target_val = meta.get("custom_target")
         return OrphanMetadata(
             job_id=str(meta["job_id"]) if meta.get("job_id") else None,
+            owner_user_id=str(meta["owner_user_id"]) if meta.get("owner_user_id") else None,
+            owner_user_code=str(meta["owner_user_code"]) if meta.get("owner_user_code") else None,
             restored_by=str(meta["restored_by"]) if meta.get("restored_by") else None,
             restored_at=meta.get("restored_at"),
             target_database=str(meta["target_database"]) if meta.get("target_database") else None,
             backup_filename=str(meta["backup_filename"]) if meta.get("backup_filename") else None,
             restore_duration_seconds=float(duration) if duration else None,
+            custom_target=bool(custom_target_val) if custom_target_val is not None else False,
         )
     except Exception as e:
         logger.warning("Failed to get metadata for orphan %s: %s", db_name, e)
@@ -671,7 +761,9 @@ def _drop_target_database_unsafe(credentials: MySQLCredentials, db_name: str) ->
     be called after verifying the database name matches the expected user_code
     pattern. Used for user-initiated database deletion.
     
-    SAFETY: Still blocks protected databases.
+    SAFETY CHECKS (defense-in-depth):
+    - Blocks protected databases (mysql, information_schema, etc.)
+    - Blocks external databases (no pullDB metadata table)
     
     Args:
         credentials: MySQL credentials for the host.
@@ -681,13 +773,21 @@ def _drop_target_database_unsafe(credentials: MySQLCredentials, db_name: str) ->
         True if database was dropped and confirmed gone, False otherwise.
         
     Raises:
-        ValueError: If attempting to drop a protected database.
+        ValueError: If attempting to drop a protected or external database.
     """
-    # HARD BLOCK: Never drop protected databases
+    # HARD BLOCK 1: Never drop protected databases
     if db_name.lower() in PROTECTED_DATABASES:
         raise ValueError(
             f"FATAL: Attempted to drop protected database: {db_name}. "
             f"This should never happen - report this as a critical bug."
+        )
+    
+    # HARD BLOCK 2: Never drop external databases (no pullDB table)
+    # Defense-in-depth: even if caller validation fails, we won't destroy external data
+    if not _has_pulldb_table(credentials, db_name):
+        raise ValueError(
+            f"FATAL: Attempted to drop external database: {db_name} (no pullDB metadata table). "
+            f"Only pullDB-managed databases can be deleted. Report this as a critical bug."
         )
     
     conn = mysql.connector.connect(
@@ -777,16 +877,10 @@ def delete_job_databases(
         result.target_existed = False
         return result
     
-    # SAFETY: Validate target_name contains owner's user_code (auto-generated targets only)
-    # For custom targets, this check is skipped - ownership verified via pullDB metadata table
-    if not custom_target and owner_user_code not in target_name:
-        result.error = (
-            f"Target database '{target_name}' does not contain "
-            f"owner user code '{owner_user_code}' - refusing to delete. "
-            f"(If this is a custom target, set custom_target=True)"
-        )
-        logger.error(result.error)
-        return result
+    # NOTE: user_code-in-name check REMOVED (2026-01-26)
+    # Authorization is handled upstream by can_delete_job_database() in permissions.py
+    # Target name comes from trusted job records (not user input)
+    # Defense-in-depth: _drop_target_database_unsafe() verifies pullDB table exists
     
     # SAFETY: Check if target is protected by deployed/locked job
     # FAIL-SAFE: If protection check throws an exception, BLOCK deletion
@@ -2142,18 +2236,22 @@ USER_DB_PATTERN = re.compile(r"^([a-z]{6})([a-z]+)(_[0-9a-f]{12})?$", re.IGNOREC
 
 @dataclass
 class UserOrphanCandidate:
-    """A database that appears to belong to a deleted user.
+    """A database that belongs to a deleted user.
 
-    User_code was extracted from database name but doesn't exist in auth_users.
+    The owner_user_code is read from the pullDB metadata table (authoritative source),
+    and that user_code doesn't exist in auth_users.
+    Only databases with a pullDB table are considered - others are ignored as
+    they are not pullDB-managed.
     """
 
     database_name: str
-    extracted_user_code: str
+    owner_user_code: str  # From pullDB table (authoritative)
     dbhost: str
     discovered_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     size_mb: float | None = None
     restored_at: datetime | None = None  # From pullDB metadata table
     restored_by: str | None = None  # From pullDB metadata table
+    custom_target: bool = False  # Whether custom target name was used
 
 
 @dataclass
@@ -2224,6 +2322,9 @@ def scan_databases_for_user_code(
     """Scan hosts for databases belonging to a specific user_code.
 
     Used by force-delete preview to find all databases for a user being deleted.
+    
+    AUTHORITATIVE: Queries pullDB metadata table for owner_user_code.
+    Does NOT rely on database name patterns (supports custom target names).
 
     Args:
         user_code: The 6-char user code to search for.
@@ -2249,16 +2350,18 @@ def scan_databases_for_user_code(
     for hostname in hosts_to_scan:
         try:
             credentials = host_repo.get_host_credentials(hostname)
-            all_databases = _list_databases(credentials)
+            
+            # AUTHORITATIVE: Query pullDB tables for owner_user_code
+            # This correctly handles custom target names that don't match naming pattern
+            owner_info = _get_all_pulldb_owner_info(credentials)
 
-            for db_name in all_databases:
+            for db_name, info in owner_info.items():
                 # Skip protected databases
                 if db_name.lower() in PROTECTED_DATABASES:
                     continue
 
-                # Check if database belongs to this user
-                extracted = _extract_user_code(db_name)
-                if extracted and extracted.lower() == user_code_lower:
+                # Check if database belongs to this user via pullDB table
+                if info.owner_user_code and info.owner_user_code.lower() == user_code_lower:
                     results.append((hostname, db_name))
 
         except Exception as e:
@@ -2307,8 +2410,12 @@ def detect_user_orphaned_databases(
 ) -> UserOrphanReport | str:
     """Detect databases belonging to users that no longer exist.
 
-    Scans a host for databases that match the user_code pattern but whose
-    extracted user_code is not in the valid_user_codes set (from auth_users).
+    Scans a host for pullDB-managed databases (those with a pullDB table) and
+    checks if the owner_user_code from the pullDB table exists in auth_users.
+    
+    IMPORTANT: The owner_user_code from the pullDB metadata table is the
+    AUTHORITATIVE source for ownership. We do NOT extract user_code from
+    the database name, as custom target names don't follow the naming pattern.
 
     Args:
         dbhost: Hostname to scan.
@@ -2328,62 +2435,57 @@ def detect_user_orphaned_databases(
 
     try:
         credentials = host_repo.get_host_credentials(dbhost)
-        all_databases = _list_databases(credentials)
         
         # PERFORMANCE: Get sizes for all pullDB-managed databases in ONE query
-        # This query combines the pullDB table check and size calculation,
-        # so we only need 2 connections total (list DBs + get pullDB sizes)
         all_database_sizes = _get_all_database_sizes_mb(credentials)
         
-        # Extract database names that have pullDB table (keys from size dict)
-        databases_with_pulldb = frozenset(all_database_sizes.keys())
+        # PERFORMANCE: Get owner info from pullDB tables for all databases
+        # This is the AUTHORITATIVE source for ownership (not the database name)
+        all_owner_info = _get_all_pulldb_owner_info(credentials)
+        
     except Exception as e:
         logger.error("Failed to list databases on %s: %s", dbhost, e)
         return f"Failed to connect: {e}"
 
-    for db_name in all_databases:
+    # Check each pullDB-managed database for orphaned ownership
+    for db_name, owner_info in all_owner_info.items():
         # Skip protected databases
         if db_name.lower() in PROTECTED_DATABASES:
             continue
 
-        # Try to extract user_code
-        extracted_code = _extract_user_code(db_name)
-        if not extracted_code:
+        # Get owner_user_code from pullDB table (AUTHORITATIVE source)
+        owner_code = owner_info.owner_user_code
+        if not owner_code:
+            # No owner_user_code in pullDB table - skip (corrupted metadata)
+            logger.warning(
+                "Skipping %s on %s: pullDB table has no owner_user_code (corrupted metadata)",
+                db_name,
+                dbhost,
+            )
             continue
 
-        # Check if user_code exists
-        if extracted_code.lower() not in valid_user_codes:
-            # User doesn't exist - verify this is a pullDB-managed database
-            # by checking if it's in our batch query results
-            if db_name not in databases_with_pulldb:
-                logger.debug(
-                    "Skipping %s on %s: no pullDB marker table (not pullDB-managed)",
-                    db_name,
-                    dbhost,
-                )
-                continue
-
-            # Confirmed pullDB-managed orphan - get metadata
+        # Check if owner user still exists in the system
+        if owner_code.lower() not in valid_user_codes:
+            # User doesn't exist - this is an orphan
             size_mb = all_database_sizes.get(db_name)
-            metadata = get_orphan_metadata(credentials, db_name)
-            restored_at = metadata.restored_at if metadata else None
-            restored_by = metadata.restored_by if metadata else None
 
             orphan = UserOrphanCandidate(
                 database_name=db_name,
-                extracted_user_code=extracted_code,
+                owner_user_code=owner_code,
                 dbhost=dbhost,
                 size_mb=size_mb,
-                restored_at=restored_at,
-                restored_by=restored_by,
+                restored_at=owner_info.restored_at,
+                restored_by=owner_info.restored_by,
+                custom_target=owner_info.custom_target,
             )
             report.orphans.append(orphan)
             logger.info(
-                "Detected user-orphan database: %s on %s (user_code '%s' not in system, %.2f MB)",
+                "Detected user-orphan database: %s on %s (owner_user_code '%s' not in system, %.2f MB%s)",
                 db_name,
                 dbhost,
-                extracted_code,
+                owner_code,
                 size_mb or 0,
+                ", custom_target" if owner_info.custom_target else "",
             )
 
     return report
@@ -2393,7 +2495,11 @@ def _detect_user_orphaned_databases_simulation(
     dbhost: str,
     valid_user_codes: frozenset[str],
 ) -> UserOrphanReport:
-    """Simulation mode user orphan detection."""
+    """Simulation mode user orphan detection.
+    
+    In simulation, we extract user_code from database names for simplicity,
+    but real mode uses the pullDB table's owner_user_code (authoritative).
+    """
     from pulldb.simulation.core.state import get_simulation_state
 
     state = get_simulation_state()
@@ -2414,6 +2520,8 @@ def _detect_user_orphaned_databases_simulation(
             if (dbhost, db_name) in state.deleted_orphans:
                 continue
 
+            # In simulation, we still use name extraction for simplicity
+            # Real mode uses pullDB.owner_user_code which is authoritative
             extracted_code = _extract_user_code(db_name)
             if not extracted_code:
                 continue
@@ -2427,9 +2535,10 @@ def _detect_user_orphaned_databases_simulation(
 
                 orphan = UserOrphanCandidate(
                     database_name=db_name,
-                    extracted_user_code=extracted_code,
+                    owner_user_code=extracted_code,  # In sim, use extracted; real uses pullDB table
                     dbhost=dbhost,
                     size_mb=size_mb,
+                    custom_target=False,  # Simulation doesn't track custom targets
                 )
                 report.orphans.append(orphan)
 
@@ -2444,8 +2553,11 @@ def admin_delete_user_orphan_databases(
 ) -> dict[str, bool]:
     """Delete user orphan databases (admin-initiated).
 
-    Unlike staging orphan deletion, this drops databases that match the user_code
-    pattern but have no matching user in the system.
+    Drops databases that are pullDB-managed (have a pullDB table) but whose
+    owner user no longer exists in the system.
+    
+    SAFETY: Only databases with a pullDB table are eligible for deletion.
+    The pullDB table is the AUTHORITATIVE proof that pullDB created the database.
 
     Args:
         dbhost: Hostname where databases exist.
@@ -2470,15 +2582,6 @@ def admin_delete_user_orphan_databases(
         return {db: False for db in database_names}
 
     for db_name in database_names:
-        # Validate it matches user database pattern
-        if not _extract_user_code(db_name):
-            logger.warning(
-                "Admin deletion rejected: %s doesn't match user database pattern",
-                db_name,
-            )
-            results[db_name] = False
-            continue
-
         # Check it's not a protected database
         if db_name.lower() in PROTECTED_DATABASES:
             logger.error("Attempted to delete protected database: %s", db_name)
@@ -2494,6 +2597,7 @@ def admin_delete_user_orphan_databases(
 
             # SAFETY: Verify pullDB ownership before dropping
             # Only drop databases that have a pullDB table (created by pullDB)
+            # This is the AUTHORITATIVE check - we don't rely on database name patterns
             pulldb_job_id = get_pulldb_job_id(credentials, db_name)
             if pulldb_job_id is None:
                 logger.warning(
@@ -2544,7 +2648,11 @@ def _admin_delete_user_orphan_databases_simulation(
     database_names: list[str],
     admin_user: str,
 ) -> dict[str, bool]:
-    """Simulation mode user orphan deletion."""
+    """Simulation mode user orphan deletion.
+    
+    In simulation, we accept any database name that exists in the simulated
+    staging databases (real mode requires pullDB table verification).
+    """
     from pulldb.simulation.core.state import get_simulation_state
 
     state = get_simulation_state()
@@ -2552,10 +2660,7 @@ def _admin_delete_user_orphan_databases_simulation(
 
     with state.lock:
         for db_name in database_names:
-            if not _extract_user_code(db_name):
-                results[db_name] = False
-                continue
-
+            # In simulation, we don't have pullDB tables, so just check existence
             host_dbs = state.staging_databases.get(dbhost, set())
             if db_name not in host_dbs:
                 results[db_name] = True

@@ -139,26 +139,35 @@ class TestDeleteJobDatabases:
         assert result.target_dropped is True
 
     @patch("pulldb.worker.cleanup._database_exists")
-    def test_user_code_validation_fails(
+    def test_proceeds_without_user_code_in_name(
         self,
         mock_exists: MagicMock,
     ) -> None:
-        """Test that target must contain owner user_code."""
+        """Test that target NOT containing user_code proceeds (authorization handled upstream).
+        
+        The user_code-in-name check was removed because:
+        1. Authorization is enforced upstream by can_delete_job_database()
+        2. Target names from job records are trusted
+        3. Defense-in-depth is via _drop_target_database_unsafe() pullDB table check
+        """
+        mock_exists.return_value = False  # Databases don't exist
         mock_host_repo = MagicMock()
+        mock_creds = MagicMock()
+        mock_host_repo.get_host_credentials.return_value = mock_creds
         
         result = delete_job_databases(
             job_id="550e8400-e29b-41d4-a716-446655440000",
             staging_name="othercustomer_550e8400e29b",
-            target_name="othercustomer",  # Does not contain "jdoe"
+            target_name="othercustomer",  # Does not contain "jdoe" - OK now
             owner_user_code="jdoe",
             dbhost="mysql.example.com",
             host_repo=mock_host_repo,
         )
         
-        assert result.error is not None
-        assert "user code" in result.error.lower()
-        # Should not have called database operations
-        mock_exists.assert_not_called()
+        # Should succeed - no error expected
+        assert result.error is None
+        # Should have called database existence check
+        mock_exists.assert_called()
 
     @patch("pulldb.worker.cleanup._database_exists")
     @patch("pulldb.worker.cleanup._drop_database")

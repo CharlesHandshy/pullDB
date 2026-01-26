@@ -57,7 +57,6 @@ def sample_user() -> User:
         user_id="00000000-0000-0000-0000-000000000001",
         username="testuser",
         user_code="testu",
-        is_admin=False,
         role=UserRole.USER,
         created_at=datetime.now(UTC),
         default_host=None,
@@ -472,16 +471,37 @@ class TestAPILogicDatabaseChecks:
             )
             assert result is False
 
-    def test_target_database_exists_error_returns_false(self) -> None:
-        """Returns False on connection error (fail safe)."""
+    def test_target_database_exists_error_raises_http_exception(self) -> None:
+        """Raises HTTPException on connection error (fail HARD).
+        
+        Per .pulldb/standards/database-protection.md: silent failures FORBIDDEN.
+        Connection errors must block the operation, not proceed unsafely.
+        """
+        from fastapi import HTTPException
         from pulldb.api.logic import _target_database_exists_on_host
         from pulldb.api.types import APIState
 
         mock_state = MagicMock(spec=APIState)
         mock_state.host_repo.get_host_credentials.side_effect = Exception("Error")
 
+        with pytest.raises(HTTPException) as exc:
+            _target_database_exists_on_host(
+                mock_state, "mytestdb", "localhost"
+            )
+        assert exc.value.status_code == 503
+        assert "Cannot verify database safety" in exc.value.detail
+    
+    def test_target_database_exists_error_fail_hard_false_returns_false(self) -> None:
+        """Returns False on connection error when fail_hard=False (legacy mode)."""
+        from pulldb.api.logic import _target_database_exists_on_host
+        from pulldb.api.types import APIState
+
+        mock_state = MagicMock(spec=APIState)
+        mock_state.host_repo.get_host_credentials.side_effect = Exception("Error")
+
+        # With fail_hard=False, returns False (legacy behavior)
         result = _target_database_exists_on_host(
-            mock_state, "mytestdb", "localhost"
+            mock_state, "mytestdb", "localhost", fail_hard=False
         )
         assert result is False
 
@@ -501,9 +521,11 @@ class TestAPILogicDatabaseChecks:
         with patch("mysql.connector.connect") as mock_connect:
             mock_cursor = MagicMock()
             # First call: SHOW TABLES LIKE 'pullDB' - table exists
-            # Second call: SELECT owner info
+            # Second call: SHOW COLUMNS (check for owner columns)
+            # Third call: SELECT owner info
             mock_cursor.fetchone.side_effect = [
                 ("pullDB",),  # Table exists
+                ("owner_user_id",),  # Has owner columns (new schema)
                 ("owner-uuid", "ownrx"),  # Owner info
             ]
             mock_conn = MagicMock()
@@ -563,20 +585,55 @@ class TestWorkerPreFlightVerification:
         creds.password = "password"
         return creds
 
-    def test_preflight_skips_without_overwrite(
+    def test_preflight_blocks_without_overwrite_when_db_exists(
         self, sample_job: Job, mock_credentials: MagicMock
     ) -> None:
-        """Pre-flight is skipped when overwrite=false."""
+        """Pre-flight BLOCKS when overwrite=false and database exists.
+        
+        Per .pulldb/standards/database-protection.md: pre-flight runs ALWAYS
+        to protect against external databases, not just when overwrite=true.
+        """
         from pulldb.worker.executor import pre_flight_verify_target_overwrite_safe
 
         job = replace(
             sample_job, options_json={"customer_id": "acme", "overwrite": "false"}
         )
 
-        # Should not raise, should not connect
         with patch("mysql.connector.connect") as mock_connect:
+            mock_cursor = MagicMock()
+            # DB exists with pullDB table, owned by this user, but overwrite=false
+            mock_cursor.fetchone.side_effect = [
+                ("mytestdb",),  # DB exists
+                ("pullDB",),  # pullDB table exists
+                ("testu",),  # Owner matches
+            ]
+            mock_conn = MagicMock()
+            mock_conn.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_conn
+
+            with pytest.raises(TargetCollisionError) as exc:
+                pre_flight_verify_target_overwrite_safe(job, mock_credentials)
+            assert exc.value.detail["collision_type"] == "exists_no_overwrite"
+    
+    def test_preflight_passes_without_overwrite_when_db_not_exists(
+        self, sample_job: Job, mock_credentials: MagicMock
+    ) -> None:
+        """Pre-flight passes when overwrite=false but database doesn't exist."""
+        from pulldb.worker.executor import pre_flight_verify_target_overwrite_safe
+
+        job = replace(
+            sample_job, options_json={"customer_id": "acme", "overwrite": "false"}
+        )
+
+        with patch("mysql.connector.connect") as mock_connect:
+            mock_cursor = MagicMock()
+            mock_cursor.fetchone.return_value = None  # DB doesn't exist
+            mock_conn = MagicMock()
+            mock_conn.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_conn
+
+            # Should not raise - DB doesn't exist, safe to create
             pre_flight_verify_target_overwrite_safe(job, mock_credentials)
-            mock_connect.assert_not_called()
 
     def test_preflight_passes_db_not_exists(
         self, sample_job: Job, mock_credentials: MagicMock
@@ -663,18 +720,24 @@ class TestWorkerPreFlightVerification:
             error_msg = str(exc.value)
             assert "otherusr" in error_msg
 
-    def test_preflight_continues_on_connection_error(
+    def test_preflight_fails_hard_on_connection_error(
         self, sample_job: Job, mock_credentials: MagicMock
     ) -> None:
-        """Pre-flight logs warning but continues on connection error."""
+        """Pre-flight FAILS HARD on connection error (no longer continues).
+        
+        Per .pulldb/standards/database-protection.md: silent failures FORBIDDEN.
+        If we can't verify safety, we can't proceed.
+        """
         from pulldb.worker.executor import pre_flight_verify_target_overwrite_safe
         import mysql.connector
 
         with patch("mysql.connector.connect") as mock_connect:
             mock_connect.side_effect = mysql.connector.Error("Connection refused")
 
-            # Should NOT raise - logs warning and continues
-            pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
+            # Should RAISE - fail hard, not continue with caution
+            with pytest.raises(TargetCollisionError) as exc:
+                pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
+            assert exc.value.detail["collision_type"] == "connection_failed"
 
     def test_preflight_allows_empty_owner(
         self, sample_job: Job, mock_credentials: MagicMock
@@ -703,28 +766,41 @@ class TestWorkerPreFlightVerification:
 
 
 class TestCleanupCustomTarget:
-    """Tests for cleanup behavior with custom_target parameter."""
+    """Tests for cleanup behavior with custom_target parameter.
+    
+    NOTE: The user_code-in-name check was REMOVED (2026-01-26) because:
+    - Authorization is handled upstream by can_delete_job_database()
+    - Target names come from trusted job records (not user input)
+    - Defense-in-depth is now the pullDB table check in _drop_target_database_unsafe()
+    """
 
-    def test_delete_rejects_auto_target_without_user_code(self) -> None:
-        """Rejects auto-generated target without user_code in name."""
+    def test_delete_proceeds_without_user_code_in_name(self) -> None:
+        """Delete proceeds even if target doesn't contain user_code.
+        
+        The user_code-in-name check was removed because:
+        - Authorization is handled by can_delete_job_database() in permissions.py
+        - Target name comes from trusted job records
+        - pullDB table check in _drop_target_database_unsafe() provides defense-in-depth
+        """
         from pulldb.worker.cleanup import delete_job_databases
 
         mock_host_repo = MagicMock()
         mock_creds = MagicMock()
         mock_host_repo.get_host_credentials_for_maintenance.return_value = mock_creds
 
-        result = delete_job_databases(
-            job_id="test-job-123",
-            staging_name="myspecialdb_abcdef123456",
-            target_name="myspecialdb",  # Does NOT contain "charle"
-            owner_user_code="charle",
-            dbhost="localhost",
-            host_repo=mock_host_repo,
-            custom_target=False,  # Auto-generated target
-        )
+        with patch("pulldb.worker.cleanup._database_exists", return_value=False):
+            result = delete_job_databases(
+                job_id="test-job-123",
+                staging_name="myspecialdb_abcdef123456",
+                target_name="myspecialdb",  # Does NOT contain "charle" - now allowed
+                owner_user_code="charle",
+                dbhost="localhost",
+                host_repo=mock_host_repo,
+                custom_target=False,  # Auto-generated target
+            )
 
-        assert result.error is not None
-        assert "does not contain" in result.error
+        # No error - user_code check removed, authorization handled upstream
+        assert result.error is None
 
     def test_delete_allows_custom_target_without_user_code(self) -> None:
         """Allows custom target without user_code in name."""

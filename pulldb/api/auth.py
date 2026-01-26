@@ -31,13 +31,13 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from pulldb.domain.errors import KeyPendingApprovalError, KeyRevokedError
+from pulldb.domain.models import User  # Import at runtime for Pydantic OpenAPI schema generation
 from fastapi.concurrency import run_in_threadpool
 
 
 if TYPE_CHECKING:
     from pulldb.api.types import APIState
     from pulldb.domain.interfaces import AuthRepository
-    from pulldb.domain.models import User
 
 
 # Constants for HMAC signature verification
@@ -560,14 +560,9 @@ def validate_job_submission_user(
         # No auth provided - allow in trusted mode (backwards compat)
         return
 
-    # Admins can submit jobs for anyone
-    # Check both is_admin flag and role for backwards compatibility
+    # Admins and service accounts can submit jobs for anyone
     from pulldb.domain.models import UserRole
-    is_admin = (
-        authenticated_user.is_admin 
-        or authenticated_user.role in (UserRole.ADMIN, UserRole.SERVICE)
-    )
-    if is_admin:
+    if authenticated_user.role in (UserRole.ADMIN, UserRole.SERVICE):
         return
 
     # Non-admins can only submit jobs for themselves
@@ -582,7 +577,7 @@ def validate_job_submission_user(
 # Type Aliases for Clean Endpoint Signatures
 # =============================================================================
 
-AuthUser = Annotated["User", Depends(get_authenticated_user)]
-AdminUser = Annotated["User", Depends(get_admin_user)]
-ManagerUser = Annotated["User", Depends(get_manager_user)]
-OptionalUser = Annotated["User | None", Depends(get_optional_user)]
+AuthUser = Annotated[User, Depends(get_authenticated_user)]
+AdminUser = Annotated[User, Depends(get_admin_user)]
+ManagerUser = Annotated[User, Depends(get_manager_user)]
+OptionalUser = Annotated[User | None, Depends(get_optional_user)]
