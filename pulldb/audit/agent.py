@@ -252,13 +252,14 @@ class DocumentationAuditAgent:
             report.duration_seconds = time.time() - start_time
             return report
 
-        # Find affected mappings
-        affected_mappings: set[DocCodeMapping] = set()
+        # Find affected mappings (use dict to deduplicate by doc_section)
+        affected_mappings: dict[str, DocCodeMapping] = {}
         for file_path in staged_files:
-            affected_mappings.update(get_mappings_for_file(file_path))
+            for mapping in get_mappings_for_file(file_path):
+                affected_mappings[mapping.doc_section] = mapping
 
         # Audit each affected mapping
-        for mapping in affected_mappings:
+        for mapping in affected_mappings.values():
             findings = self._audit_mapping(mapping)
             report.findings.extend(findings)
             report.sections_checked.append(mapping.doc_section)
