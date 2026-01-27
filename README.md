@@ -115,9 +115,8 @@ pulldb list <customer>                     # List backup dates
 pulldb hosts                               # List available database hosts
 
 # Account management  
-pulldb register                            # Register new account
+pulldb register                            # Register new account (or request host key)
 pulldb setpass                             # Set/change password
-pulldb request-host-key                    # Request host authorization
 ```
 
 ### Admin Commands
@@ -132,16 +131,45 @@ pulldb-admin hosts list                    # View database hosts
 pulldb-admin hosts test <hostname>         # Test host connection
 pulldb-admin users list                    # List all users
 pulldb-admin users enable <username>       # Enable user access
-pulldb-admin keys list --pending           # View pending API keys
+pulldb-admin keys pending                  # View pending API keys
 pulldb-admin keys approve <key_id>         # Approve API key
 pulldb-admin disallow add <username>       # Block username
 ```
+
+## API Reference
+
+pullDB provides two API surfaces:
+
+| API | Port | Purpose | Documentation |
+|-----|------|---------|---------------|
+| REST API | 8080 | CLI, programmatic access | [REST-API.md](docs/api/REST-API.md) |
+| Web UI | 8000 | Browser interface | [WEB-API.md](docs/api/WEB-API.md) |
+
+**Key REST endpoints:**
+```bash
+GET  /api/health                    # Health check
+POST /api/jobs                      # Submit restore job
+GET  /api/jobs/{id}                 # Get job status
+GET  /api/jobs/{id}/events          # Stream job events
+POST /api/jobs/{id}/cancel          # Cancel job
+GET  /api/jobs/search?q=<query>     # Search jobs
+```
+
+**Web UI pages:**
+- `/web/login` - Login page
+- `/web/dashboard/` - Role-specific dashboard
+- `/web/jobs/` - My jobs list
+- `/web/restore/` - Submit new restore
+- `/web/admin/` - Admin panel
+
+Full API reference: [docs/api/](docs/api/)
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
 | **[Getting Started](docs/hca/pages/getting-started.md)** | Installation and initial setup |
+| **[API Reference](docs/api/README.md)** | REST API and Web UI routes |
 | [CLI Reference](docs/hca/pages/cli-reference.md) | Complete command documentation |
 | [Admin Guide](docs/hca/pages/admin-guide.md) | Operations and maintenance |
 | [Architecture](docs/hca/widgets/architecture.md) | System design and data flow |

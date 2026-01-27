@@ -15,7 +15,7 @@
 - [Job Details & Events](#job-details--events)
 - [Manager Features](#manager-features)
 - [Admin Features](#admin-features)
-- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Keyboard Navigation](#keyboard-navigation)
 
 ---
 
@@ -54,16 +54,16 @@ Navigate to the root URL to access the login page:
 │                                                                   │
 │                    [        Login        ]                       │
 │                                                                   │
-│                    Need an account? Register                     │
-│                                                                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+> **Note**: User registration is handled via CLI (`pulldb register`), not the web UI.
 
 ### Session Management
 
 - Sessions expire after **24 hours** by default
 - You'll be redirected to login if your session expires
-- Use "Remember Me" for extended sessions (if enabled)
+- Session timeout can be configured by the administrator
 
 ### First-Time Password Setup
 
@@ -379,17 +379,16 @@ Users with `ADMIN` role have full system access.
 
 ---
 
-## Keyboard Shortcuts
+## Keyboard Navigation
 
 | Shortcut | Action |
 |----------|--------|
-| `g` `d` | Go to Dashboard |
-| `g` `n` | Go to New Restore |
-| `g` `j` | Go to Jobs |
-| `g` `s` | Go to Settings |
-| `/` | Focus search |
-| `?` | Show shortcuts help |
-| `Esc` | Close modal/dialog |
+| `Esc` | Close sidebar/modal/dialog |
+| `Tab` | Navigate between form fields |
+| `Enter` | Submit forms, activate buttons |
+| `Arrow Keys` | Navigate dropdown options, table rows |
+
+> **Note**: Additional keyboard shortcuts for page navigation may be added in future releases.
 
 ---
 

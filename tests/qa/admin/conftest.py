@@ -466,8 +466,7 @@ def configure_cursor_for_query(
                 user_id=str(row[col_map.get("id", col_map.get("user_id", 0))]),
                 username=row[col_map["username"]],
                 user_code=row[col_map["user_code"]],
-                is_admin=row[col_map.get("is_admin", 3)] if "is_admin" in col_map else False,
-                role=UserRole.ADMIN if row[col_map.get("is_admin", 3)] else UserRole.USER if "is_admin" in col_map else UserRole.USER,
+                role=UserRole.ADMIN if ("is_admin" in col_map and row[col_map.get("is_admin", 3)]) else UserRole.USER,
                 created_at=row[col_map.get("created_at", 5)] if "created_at" in col_map else datetime(2025, 1, 15),
                 disabled_at=datetime.now() if row[col_map.get("disabled", 4)] else None if "disabled" in col_map else None,
             )
@@ -583,8 +582,7 @@ def configure_cursor_fetchone(
             user_id=str(row[col_map.get("id", 0)]),
             username=row[col_map["username"]],
             user_code=row[col_map["user_code"]],
-            is_admin=row[col_map.get("is_admin", 3)] if "is_admin" in col_map else False,
-            role=UserRole.ADMIN if row[col_map.get("is_admin", 3)] else UserRole.USER if "is_admin" in col_map else UserRole.USER,
+            role=UserRole.ADMIN if ("is_admin" in col_map and row[col_map.get("is_admin", 3)]) else UserRole.USER,
             created_at=row[col_map.get("created_at", 5)] if "created_at" in col_map else datetime(2025, 1, 15),
             disabled_at=datetime.now() if row[col_map.get("disabled", 4)] else None if "disabled" in col_map else None,
         )

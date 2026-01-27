@@ -95,24 +95,19 @@ This command:
 
 After registering, contact an administrator to approve your account.
 
-#### Request Host Key Command
+#### Existing User - New Host
 
-Request an API key for a new machine (existing users only):
+If you already have a pullDB account but need access from a different machine, run `register` again:
 
 ```bash
-pulldb request-host-key [--host-name=<name>]
+pulldb register
 ```
 
-Use this when you already have a pullDB account but need access from a different machine:
-1. Prompts for your password
+The command detects that your username already exists and offers to request a new API key for this host:
+1. Prompts for your password to verify identity
 2. Creates a new API key for this host
 3. Saves credentials to `~/.pulldb/credentials`
 4. Key is created in **pending approval** state
-
-**Options:**
-| Option | Description |
-|--------|-------------|
-| `--host-name` | Custom hostname (auto-detected if omitted) |
 
 Contact an administrator to approve the new API key.
 
@@ -403,7 +398,7 @@ This removes:
 | Check version | `pulldb --version` |
 | Get help | `pulldb --help` |
 | **Register account** | `pulldb register` |
-| **Request host key** | `pulldb request-host-key` |
+| **Request host key (existing user)** | `pulldb register` (detects existing user) |
 | Restore customer | `pulldb restore user=NAME customer=ID` |
 | Restore QA template | `pulldb restore user=NAME qatemplate` |
 | View active jobs | `pulldb status` |

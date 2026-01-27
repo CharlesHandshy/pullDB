@@ -33,7 +33,6 @@ def _make_user(
         user_id=user_id,
         username=username,
         user_code="testus",
-        is_admin=(role == UserRole.ADMIN),
         role=role,
         created_at=datetime(2025, 1, 1, tzinfo=UTC),
     )
@@ -112,7 +111,6 @@ class TestCanSubmitForUser:
             user_id="managed-user-id",
             username="managed",
             user_code="manage",
-            is_admin=False,
             role=UserRole.USER,
             created_at=datetime(2025, 1, 1, tzinfo=UTC),
             manager_id="manager-123",  # Managed by the manager

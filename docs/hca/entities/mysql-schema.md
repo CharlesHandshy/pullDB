@@ -29,6 +29,7 @@
   - [api_keys](#api_keys)
   - [jobs](#jobs)
   - [job_events](#job_events)
+  - [job_history_summary](#job_history_summary)
   - [db_hosts](#db_hosts)
   - [user_hosts](#user_hosts)
   - [locks](#locks)
@@ -42,6 +43,8 @@
   - [feature_requests](#feature_requests)
   - [feature_request_votes](#feature_request_votes)
   - [feature_request_notes](#feature_request_notes)
+- [Schema Management Tables](#schema-management-tables)
+  - [schema_migrations](#schema_migrations)
 - [Supporting Views & Indices](#supporting-views--indices)
 - [Stored Procedures](#stored-procedures)
 - [Initial Data Population](#initial-data-population)
@@ -133,9 +136,8 @@ CREATE TABLE auth_users (
     user_id CHAR(36) PRIMARY KEY,
     username VARCHAR(255) NOT NULL UNIQUE,
     user_code CHAR(6) NOT NULL UNIQUE,
-    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
     
-    -- RBAC support
+    -- RBAC role controlling access levels
     role ENUM('user', 'manager', 'admin', 'service') NOT NULL DEFAULT 'user',
     
     -- Manager relationship
@@ -172,7 +174,6 @@ CREATE INDEX idx_auth_users_manager ON auth_users(manager_id);
 - `user_id`: immutable UUID referenced by other tables.
 - `username`: normalized login supplied through the trusted wrapper.
 - `user_code`: six-character identifier used to derive restore targets. Generation rules follow the README prototype strategy and reject non-unique results.
-- `is_admin`: legacy boolean flag (retained for compatibility, use `role` column instead).
 - `role`: RBAC role controlling access levels:
   - `user`: Standard user - submit and manage own jobs only
   - `manager`: Team lead - view all jobs, manage assigned users' jobs
@@ -214,16 +215,25 @@ CREATE TABLE auth_credentials (
     password_hash VARCHAR(255) NULL,  -- bcrypt hash, NULL = no password set
     totp_secret VARCHAR(64) NULL,     -- Base32 encoded TOTP secret
     totp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    
+    -- Password reset flag
+    password_reset_at TIMESTAMP(6) NULL
+        COMMENT 'When set, user must reset password via CLI before next login',
+    
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     CONSTRAINT fk_credentials_user FOREIGN KEY (user_id) 
         REFERENCES auth_users(user_id) ON DELETE CASCADE
 );
+
+-- Index for efficient lookup of users needing password reset
+CREATE INDEX idx_auth_credentials_reset ON auth_credentials(password_reset_at);
 ```
 
 - `password_hash`: bcrypt hash of user password. NULL means no password set (uses Linux system auth only).
 - `totp_secret`: Base32 encoded TOTP secret for 2FA. NULL if 2FA not configured.
 - `totp_enabled`: Whether 2FA is active for this user.
+- `password_reset_at`: When set, forces user to reset password before next login. Admin can trigger this via Web UI.
 
 ### sessions (Phase 4)
 
@@ -299,7 +309,7 @@ CREATE TABLE api_keys (
 ```
 
 **Approval Workflow:**
-1. User requests key via CLI (`pulldb request-host-key`) or Web UI
+1. User requests key via CLI (`pulldb register`) or Web UI Profile page
 2. Key created with `is_active=FALSE`, `approved_at=NULL`
 3. Admin reviews pending keys in Web UI or CLI (`pulldb-admin keys pending`)
 4. Admin approves: sets `is_active=TRUE`, `approved_at`, `approved_by`
@@ -457,21 +467,102 @@ CREATE INDEX idx_job_events_job_id ON job_events(job_id, logged_at);
 - `logged_at`: timestamp of event (uses CURRENT_TIMESTAMP(6) for microsecond precision).
 - Actor columns removed in final implementation - job ownership is tracked in jobs table.
 
+### job_history_summary
+
+Aggregated metrics from completed jobs for historical reporting. This table is isolated (no foreign keys) and managed by the worker during job completion.
+
+```sql
+CREATE TABLE job_history_summary (
+    job_id CHAR(36) PRIMARY KEY,
+    
+    -- Job identity (denormalized for fast queries)
+    owner_user_id CHAR(36) NOT NULL,
+    owner_username VARCHAR(255) NOT NULL,
+    dbhost VARCHAR(255) NOT NULL,
+    target VARCHAR(255) NOT NULL,
+    custom_target TINYINT(1) NOT NULL DEFAULT 0,
+    
+    -- Timestamps
+    submitted_at TIMESTAMP(6) NOT NULL,
+    started_at TIMESTAMP(6) NULL,
+    completed_at TIMESTAMP(6) NOT NULL,
+    
+    -- Outcome
+    final_status ENUM('complete', 'failed', 'canceled') NOT NULL,
+    error_category ENUM(
+        'download_timeout',
+        'download_failed',
+        'extraction_failed',
+        'mysql_error',
+        'disk_full',
+        's3_access_denied',
+        'canceled_by_user',
+        'worker_crash',
+        'uncategorized'
+    ) NULL COMMENT 'Categorized failure reason',
+    
+    -- Data volume metrics
+    archive_size_bytes BIGINT NULL COMMENT 'Downloaded archive size',
+    extracted_size_bytes BIGINT NULL COMMENT 'Extracted data size on disk',
+    table_count INT NULL COMMENT 'Number of tables restored',
+    total_rows BIGINT NULL COMMENT 'Total rows restored across all tables',
+    
+    -- Phase durations (seconds)
+    total_duration_seconds DECIMAL(10,2) NULL,
+    discovery_duration_seconds DECIMAL(10,2) NULL,
+    download_duration_seconds DECIMAL(10,2) NULL,
+    extraction_duration_seconds DECIMAL(10,2) NULL,
+    myloader_duration_seconds DECIMAL(10,2) NULL,
+    post_sql_duration_seconds DECIMAL(10,2) NULL,
+    metadata_duration_seconds DECIMAL(10,2) NULL,
+    atomic_rename_duration_seconds DECIMAL(10,2) NULL,
+    
+    -- Throughput metrics
+    download_mbps DECIMAL(8,2) NULL COMMENT 'Download throughput MB/s',
+    restore_rows_per_second INT NULL COMMENT 'Average rows/s during myloader phase',
+    
+    -- Source backup info
+    backup_date DATE NULL,
+    backup_source VARCHAR(255) NULL,
+    
+    -- Record metadata
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+);
+
+-- Analytics indexes
+CREATE INDEX idx_history_user ON job_history_summary(owner_user_id, submitted_at);
+CREATE INDEX idx_history_host ON job_history_summary(dbhost, submitted_at);
+CREATE INDEX idx_history_status ON job_history_summary(final_status, submitted_at);
+CREATE INDEX idx_history_date ON job_history_summary(submitted_at);
+```
+
+**Design Notes:**
+
+- **Isolated table**: No foreign keys to jobs table - data persists even if jobs are purged.
+- **Denormalized**: Username and host are copied for fast historical queries without joins.
+- **Best-effort population**: Worker saves history during job completion. If this fails, the `history_backfill` service recovers missing records.
+- **Used for**: Admin reports, analytics dashboards, performance trending, capacity planning.
+
 ### db_hosts
 
 ```sql
 CREATE TABLE db_hosts (
     id CHAR(36) PRIMARY KEY,
     hostname VARCHAR(255) NOT NULL UNIQUE,
+    host_alias VARCHAR(64) NULL 
+        COMMENT 'Short alias for hostname (e.g., dev-db-01)',
     credential_ref VARCHAR(512) NOT NULL,
     max_running_jobs INT NOT NULL DEFAULT 1,
     max_active_jobs INT NOT NULL DEFAULT 10,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
 );
+
+CREATE UNIQUE INDEX idx_db_hosts_alias ON db_hosts(host_alias);
 ```
 
-- `hostname`: Logical hostname or alias (e.g., `dev-db-01`). Must match the `dbhost` value used in CLI/API. The actual connection FQDN is stored in the referenced secret.
+- `hostname`: FQDN or hostname for MySQL connection.
+- `host_alias`: Short, human-friendly alias displayed in UI (e.g., `dev-db-01`). Must be unique.
 - `credential_ref`: Reference to credentials in AWS Secrets Manager or SSM Parameter Store
   - Format: `aws-secretsmanager:/pulldb/mysql/dev-db-01` (recommended)
   - Format: `aws-ssm:/pulldb/mysql/dev-db-01-credentials` (alternative)
@@ -520,8 +611,9 @@ CREATE TABLE settings (
 | `staging_retention_days` | integer | retention | Days to keep staging databases |
 | `job_log_retention_days` | integer | retention | Days to keep job event logs |
 | `default_retention_days` | integer | retention | Default expiration for new restores |
-| `max_retention_days` | integer | retention | Maximum retention allowed (days) |
-| `expiring_warning_days` | integer | retention | Days before expiration to show warning |
+| `max_retention_months` | integer | retention | Maximum retention period allowed (months) |
+| `max_retention_increment` | integer | retention | Maximum months to add per extension |
+| `expiring_notice_days` | integer | retention | Days before expiration to show in "Expiring Soon" |
 | `cleanup_grace_days` | integer | retention | Grace period after expiration |
 | `customers_after_sql_dir` | path | scripts | Customer post-SQL script directory |
 | `qa_template_after_sql_dir` | path | scripts | QA template post-SQL script directory |
@@ -532,19 +624,30 @@ CREATE TABLE settings (
 CREATE TABLE user_hosts (
     user_id CHAR(36) NOT NULL,
     host_id CHAR(36) NOT NULL,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
     assigned_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    assigned_by CHAR(36) NULL,
+    assigned_by CHAR(36) NULL COMMENT 'Admin user who made the assignment',
+    
     PRIMARY KEY (user_id, host_id),
-    FOREIGN KEY (user_id) REFERENCES auth_users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (host_id) REFERENCES db_hosts(id) ON DELETE CASCADE,
-    FOREIGN KEY (assigned_by) REFERENCES auth_users(user_id) ON DELETE SET NULL
+    
+    CONSTRAINT fk_user_hosts_user 
+        FOREIGN KEY (user_id) REFERENCES auth_users(user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_hosts_host 
+        FOREIGN KEY (host_id) REFERENCES db_hosts(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_hosts_assigned_by 
+        FOREIGN KEY (assigned_by) REFERENCES auth_users(user_id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_user_hosts_host ON user_hosts(host_id);
+-- Index for default host lookups
+CREATE INDEX idx_user_hosts_default ON user_hosts(user_id, is_default);
+
+-- Index for looking up all users assigned to a host
+CREATE INDEX idx_user_hosts_by_host ON user_hosts(host_id);
 ```
 
 - Tracks which hosts each user is allowed to restore to.
 - If no entries exist for a user, they can restore to any enabled host.
+- `is_default`: Whether this is the user's default host (pre-selected in forms).
 - `assigned_by`: Admin user who granted this host access.
 
 ---
@@ -782,6 +885,31 @@ CREATE TABLE feature_request_notes (
     INDEX idx_notes_created (created_at)
 );
 ```
+
+---
+
+## Schema Management Tables
+
+### schema_migrations
+
+Tracks which schema SQL files have been applied to the database:
+
+```sql
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename VARCHAR(255) PRIMARY KEY,
+    applied_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+);
+```
+
+**Purpose:**
+- Prevents re-running already-applied schema files during database setup
+- Enables schema version tracking across environments
+- Used by the schema loader to determine which files to skip
+
+**Usage:**
+- Each entry records a schema filename and when it was applied
+- Schema loader checks this table before running any `.sql` file
+- The table itself is created by `099_schema_migrations.sql` (run last)
 
 ---
 

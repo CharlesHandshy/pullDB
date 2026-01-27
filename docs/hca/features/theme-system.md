@@ -24,7 +24,7 @@ pullDB's theme system provides consistent Light and Dark mode support through se
 ### Key Features
 
 - **Light/Dark modes**: Full support for both color schemes
-- **Semantic variables**: 68+ named color tokens
+- **Semantic variables**: 147+ named design tokens
 - **Automatic switching**: Respects system preference
 - **User override**: Manual toggle via UI
 - **Persistence**: Saves preference to localStorage
@@ -44,22 +44,24 @@ pullDB's theme system provides consistent Light and Dark mode support through se
 ### File Structure
 
 ```
-pulldb/web/
-├── shared/css/
-│   ├── design-tokens.css      # Raw color palette (68+ variables)
+pulldb/web/static/css/
+├── shared/
+│   ├── design-tokens.css      # Raw color/spacing/font palette (147+ variables)
 │   ├── manifest.css           # Import aggregator
 │   ├── reset.css              # Browser normalization
-│   └── layout.css             # Layout using variables
+│   ├── layout.css             # Layout using variables
+│   ├── utilities.css          # Utility classes
+│   └── fonts.css              # Font definitions
 │
-├── static/css/
-│   └── generated/
-│       ├── manifest-light.css # Generated light theme
-│       ├── manifest-dark.css  # Generated dark theme
-│       └── version.txt        # Cache-buster
+├── generated/
+│   ├── manifest-light.css     # Generated light theme
+│   ├── manifest-dark.css      # Generated dark theme
+│   └── version.txt            # Cache-buster
 │
-├── features/css/              # Feature styles (use variables)
-├── widgets/css/               # Widget styles (use variables)
-└── pages/css/                 # Page-specific styles
+├── features/                  # Feature styles (use variables)
+├── widgets/                   # Widget styles (use variables)
+├── pages/                     # Page-specific styles
+└── entities/                  # Entity-specific styles
 ```
 
 ### Generation Pipeline
@@ -269,28 +271,28 @@ class ColorSchema:
 
 ### Preset Schemas
 
+Built-in color schemas are defined in `pulldb/domain/color_schemas.py`:
+
+**Light Mode Presets:**
+- `Default` - Standard professional light theme
+- `Warm` - Warmer color temperature
+- `Cool` - Cooler/blue-tinted theme
+
+**Dark Mode Presets:**
+- `Default` - Standard dark theme
+- `Midnight Blue` - Deep blue dark theme
+- `OLED Black` - True black for OLED displays
+- `Solarized Dark` - Classic Solarized color scheme
+
 ```python
-def get_preset_schemas() -> dict[str, ColorSchema]:
-    return {
-        'light': ColorSchema(
-            name='light',
-            surface=SurfaceColors(
-                default='#ffffff',
-                hover='#f9fafb',
-                ...
-            ),
-            ...
-        ),
-        'dark': ColorSchema(
-            name='dark',
-            surface=SurfaceColors(
-                default='#1f2937',
-                hover='#374151',
-                ...
-            ),
-            ...
-        )
-    }
+from pulldb.domain.color_schemas import get_preset_names, get_preset
+
+# Get available preset names
+light_presets = get_preset_names("light")  # ["Default", "Warm", "Cool"]
+dark_presets = get_preset_names("dark")    # ["Default", "Midnight Blue", ...]
+
+# Get a specific preset
+schema = get_preset("dark", "OLED Black")
 ```
 
 ---

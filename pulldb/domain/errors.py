@@ -451,9 +451,13 @@ class TargetCollisionError(JobExecutionError):
     Raised when the target database exists but cannot be safely overwritten:
     - External database (no pullDB metadata table)
     - Owned by different user
+    - Database exists but overwrite not enabled
+    - Connection failed (cannot verify safety)
     
     This check runs BEFORE expensive operations (download, extract, myloader)
     to fail fast and save resources.
+    
+    See .pulldb/standards/database-protection.md for protection requirements.
     """
 
     def __init__(
@@ -470,12 +474,16 @@ class TargetCollisionError(JobExecutionError):
             job_id: Job UUID.
             target: Target database name that collided.
             dbhost: Database host where collision occurred.
-            collision_type: Type of collision ('external_db' or 'owner_mismatch').
+            collision_type: Type of collision:
+                - 'external_db': No pullDB metadata table
+                - 'owner_mismatch': Owned by different user
+                - 'exists_no_overwrite': Exists but overwrite not enabled
+                - 'connection_failed': Cannot connect to verify safety
             owner_info: Owner username/code if available (for owner_mismatch).
         """
         if collision_type == "external_db":
             problem = (
-                f"Database '{target}' exists on '{dbhost}' but was NOT created by pullDB "
+                f"PROTECTED: Database '{target}' exists on '{dbhost}' but was NOT created by pullDB "
                 f"(no pullDB metadata table found)"
             )
             solutions = [
@@ -485,12 +493,29 @@ class TargetCollisionError(JobExecutionError):
             ]
         elif collision_type == "owner_mismatch":
             problem = (
-                f"Database '{target}' exists on '{dbhost}' and is owned by user '{owner_info}'"
+                f"PROTECTED: Database '{target}' exists on '{dbhost}' and is owned by user '{owner_info}'"
             )
             solutions = [
                 f"Contact user '{owner_info}' to coordinate database access",
                 "Choose a different target database name",
                 "Request administrator assistance if user is no longer active",
+            ]
+        elif collision_type == "exists_no_overwrite":
+            problem = (
+                f"Database '{target}' already exists on '{dbhost}' but overwrite was not enabled"
+            )
+            solutions = [
+                "Enable 'Allow Overwrite' checkbox in the UI or add 'overwrite' flag in CLI",
+                "Choose a different target database name",
+            ]
+        elif collision_type == "connection_failed":
+            problem = (
+                f"Cannot verify safety of target '{target}' on '{dbhost}' - connection failed"
+            )
+            solutions = [
+                "Check that the target database host is reachable",
+                "Verify MySQL credentials are correct",
+                "Try again after network connectivity is restored",
             ]
         else:
             problem = f"Target collision detected: {collision_type}"

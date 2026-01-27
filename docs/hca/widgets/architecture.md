@@ -218,8 +218,7 @@ CREATE TABLE auth_users (
     user_id CHAR(36) PRIMARY KEY,
     username VARCHAR(100) UNIQUE,
     user_code CHAR(6) UNIQUE,
-    role ENUM('user','manager','admin') DEFAULT 'user',
-    is_admin BOOLEAN DEFAULT FALSE
+    role ENUM('user','manager','admin','service') DEFAULT 'user'
 );
 ```
 

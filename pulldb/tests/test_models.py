@@ -48,7 +48,6 @@ class TestUserModel:
                 user_id="123",
                 username="test",
                 user_code="test",
-                is_admin=False,
                 # role is missing
                 created_at=datetime.now(UTC),
                 disabled_at=None,
@@ -60,7 +59,6 @@ class TestUserModel:
             user_id="123",
             username="test",
             user_code="test",
-            is_admin=False,
             role=UserRole.MANAGER,
             created_at=datetime.now(UTC),
             disabled_at=None,
@@ -76,7 +74,6 @@ class TestUserModel:
             user_id="123",
             username="test",
             user_code="test",
-            is_admin=False,
             role=UserRole.ADMIN,
             created_at=datetime.now(UTC),
             disabled_at=None,

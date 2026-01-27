@@ -45,7 +45,7 @@
     
     {% block extra_css %}{% endblock %}
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="app-layout {% block body_class %}{% endblock %}">
     {% from "partials/icons/_index.html" import icon %}
     
     {# Accessibility: Skip link for keyboard navigation #}

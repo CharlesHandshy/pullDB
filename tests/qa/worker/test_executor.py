@@ -330,8 +330,9 @@ class TestWorkerExecutorTimeouts:
     def test_default_values(self) -> None:
         """Has sensible default timeouts."""
         timeouts = WorkerExecutorTimeouts()
-        assert timeouts.staging_seconds == 7200
-        assert timeouts.post_sql_seconds == 600
+        assert timeouts.staging_seconds == 86400  # 24 hours
+        assert timeouts.post_sql_seconds == 1800  # 30 minutes
+        assert timeouts.connect_timeout_seconds == 30  # 30 seconds
 
     def test_custom_values(self) -> None:
         """Can override timeouts."""
@@ -466,6 +467,11 @@ class TestPreFlightVerifyTargetOverwriteSafe:
     
     This function runs BEFORE expensive operations (download, extract, myloader)
     to detect external database collisions early.
+    
+    Per .pulldb/standards/database-protection.md:
+    - Pre-flight runs ALWAYS (not just when overwrite=true)
+    - External databases are ALWAYS blocked
+    - Connection errors FAIL HARD (no silent proceed)
     """
 
     @pytest.fixture
@@ -489,26 +495,43 @@ class TestPreFlightVerifyTargetOverwriteSafe:
         creds.password = "secret"
         return creds
 
-    def test_skips_when_overwrite_false(
+    def test_blocks_when_overwrite_false_and_db_exists(
         self, sample_job: MagicMock, mock_credentials: MagicMock
     ) -> None:
-        """Skips check when overwrite is not enabled."""
+        """Blocks when overwrite=false but database exists (defense in depth)."""
         sample_job.options_json = {"overwrite": "false"}
 
-        # Should return without connecting to DB
         with patch("mysql.connector.connect") as mock_connect:
-            pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
-            mock_connect.assert_not_called()
+            mock_conn = MagicMock()
+            mock_cursor = MagicMock()
+            mock_connect.return_value = mock_conn
+            mock_conn.cursor.return_value = mock_cursor
+            # DB exists with pullDB table, same owner
+            mock_cursor.fetchone.side_effect = [
+                (SAMPLE_TARGET,),  # DB exists
+                ("pullDB",),       # pullDB table exists
+                (SAMPLE_USER_CODE,),  # Same owner
+            ]
 
-    def test_skips_when_overwrite_not_set(
+            with pytest.raises(TargetCollisionError) as exc_info:
+                pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
+            assert exc_info.value.detail["collision_type"] == "exists_no_overwrite"
+
+    def test_passes_when_overwrite_false_and_db_not_exists(
         self, sample_job: MagicMock, mock_credentials: MagicMock
     ) -> None:
-        """Skips check when overwrite is not set."""
-        sample_job.options_json = {}
+        """Passes when overwrite=false and database doesn't exist (new DB)."""
+        sample_job.options_json = {"overwrite": "false"}
 
         with patch("mysql.connector.connect") as mock_connect:
+            mock_conn = MagicMock()
+            mock_cursor = MagicMock()
+            mock_connect.return_value = mock_conn
+            mock_conn.cursor.return_value = mock_cursor
+            mock_cursor.fetchone.return_value = None  # DB doesn't exist
+
+            # Should not raise - safe to create new DB
             pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
-            mock_connect.assert_not_called()
 
     def test_passes_when_target_does_not_exist(
         self, sample_job: MagicMock, mock_credentials: MagicMock
@@ -595,14 +618,20 @@ class TestPreFlightVerifyTargetOverwriteSafe:
             assert exc_info.value.detail["collision_type"] == "owner_mismatch"
             assert exc_info.value.detail["owner"] == "jsmith"
 
-    def test_continues_on_connection_failure(
+    def test_fails_hard_on_connection_failure(
         self, sample_job: MagicMock, mock_credentials: MagicMock
     ) -> None:
-        """Continues with warning when cannot connect to verify."""
+        """FAILS HARD when cannot connect to verify (no silent proceed).
+        
+        Per .pulldb/standards/database-protection.md: silent failures FORBIDDEN.
+        If we can't verify safety, we can't proceed with the restore.
+        """
         import mysql.connector
 
         with patch("mysql.connector.connect") as mock_connect:
             mock_connect.side_effect = mysql.connector.Error("Connection refused")
 
-            # Should not raise - logs warning and proceeds
-            pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
+            with pytest.raises(TargetCollisionError) as exc_info:
+                pre_flight_verify_target_overwrite_safe(sample_job, mock_credentials)
+            
+            assert exc_info.value.detail["collision_type"] == "connection_failed"

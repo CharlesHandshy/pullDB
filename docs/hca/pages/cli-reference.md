@@ -29,12 +29,16 @@ pulldb restore actionpest suffix=dev
 
 # Check job status
 pulldb status [job_id]
+pulldb status --rt           # Realtime event streaming
 
 # View job events
 pulldb events <job_id> [--follow]
 
-# Search for backups
-pulldb search <customer>
+# Search for customers
+pulldb search <pattern>
+
+# List backups for a customer
+pulldb list <customer>
 
 # View job history
 pulldb history [--days=30]
@@ -46,8 +50,7 @@ pulldb cancel <job_id>
 pulldb profile <job_id>
 
 # Account management
-pulldb register              # Create new account (first-time setup)
-pulldb request-host-key      # Request API key for new host machine
+pulldb register              # Create new account or request key for new machine
 pulldb setpass               # Change password
 pulldb hosts                 # List available database hosts
 ```
@@ -185,29 +188,43 @@ pulldb restore actionpest user=jsmith
 
 ### status
 
-Shows your active (queued/running) jobs.
+Shows job status and history. When run without arguments, shows your last submitted job.
 
 **Syntax:**
 ```bash
-pulldb status [job_id]
+pulldb status [job_id] [options]
 ```
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `--limit=N` | Maximum results (default: 20) |
-| `--all` | Show all active jobs, not just yours |
+| `--limit=N` | Maximum results (default: 100) |
+| `--active` | Show only active jobs (queued/running) |
+| `--history` | Show historical jobs (completed/failed/canceled) |
+| `--status=` | Filter by status: queued, running, complete, failed, canceled |
+| `--wide` | Show additional columns (staging_name) |
+| `--rt` | Realtime mode: stream job events, auto-exits when job completes |
 | `--json` | Output JSON |
 
 **Examples:**
 
 ```bash
-# Your active jobs
+# Your last submitted job
 pulldb status
 
 # Specific job details
 pulldb status abc123de
+
+# Stream job events in realtime
+pulldb status --rt
+pulldb status abc123de --rt
+
+# Active jobs only
+pulldb status --active
+
+# Filter by status
+pulldb status --history --status failed
 ```
 
 ---
@@ -245,33 +262,88 @@ pulldb events <job_id> [options]
 
 ### search
 
-Search for available backups by customer name.
+Search for customers by name pattern. Returns matching customer identifiers.
 
 **Syntax:**
 ```bash
-pulldb search <customer> [options]
+pulldb search <pattern> [options]
 ```
 
 **Options:**
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--date=` | - | Start date (YYYYMMDD format) |
-| `--limit=` | 5 | Maximum backups to show |
-| `--env=` | both | Environment: staging, prod, or both |
-| `--json` | - | Output JSON |
+| `limit=N` | 20 | Maximum results to show |
+| `json` | - | Output JSON |
+
+**Pattern Matching:**
+- `action` - Find customers containing 'action'
+- `action*` - Find customers starting with 'action'
+- `*pest` - Find customers ending with 'pest'
+- `actionpest` - Exact match
 
 **Examples:**
 
 ```bash
-# Search for recent backups
-pulldb search actionpest
+# Find customers containing 'action'
+pulldb search action
 
-# Search with wildcard
+# Find customers starting with 'action'
 pulldb search action*
 
-# Production backups from specific date
-pulldb search actionpest --date=20251101 --env=prod
+# Find customers ending with 'pest'
+pulldb search *pest
+
+# Show more results
+pulldb search action limit=50
+```
+
+---
+
+### list
+
+List available backups for a customer. Shows backup dates, sizes, and filenames.
+
+**Syntax:**
+```bash
+pulldb list <customer> [options]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `date=YYYYMMDD` | - | Show backups from this date onwards |
+| `limit=N` | 10 | Maximum backups to show |
+| `s3env=` | prod | S3 environment: staging, prod, or both |
+| `json` | - | Output JSON |
+
+**Examples:**
+
+```bash
+# List recent backups for actionpest
+pulldb list actionpest
+
+# Show backups from specific date
+pulldb list actionpest date=20251101
+
+# Show more backups
+pulldb list actionpest limit=20
+
+# Show production backups
+pulldb list actionpest s3env=prod
+```
+
+**Typical Workflow:**
+```bash
+# Step 1: Find customer
+pulldb search action
+
+# Step 2: List their backups
+pulldb list actionpest
+
+# Step 3: Restore specific date
+pulldb restore actionpest date=2025-11-25
 ```
 
 ---
@@ -371,21 +443,23 @@ TOTAL            12m 34s
 
 ### register
 
-Create a new pullDB account. This is the first step for new users.
+Create a new pullDB account or request CLI access from a new machine.
+
+This command handles two scenarios:
+
+1. **New User**: Creates a new user account
+2. **Existing User**: Requests a new API key for this host machine
 
 **Syntax:**
 ```bash
 pulldb register
 ```
 
-The command prompts for:
-- Username (must contain at least 6 letters)
-- Password (minimum 8 characters)
+The command prompts for your password.
 
-**Output:**
+**For New Users:**
 ```bash
 $ pulldb register
-Enter username: jsmith
 Enter password: ********
 Confirm password: ********
 
@@ -400,35 +474,11 @@ Your account is pending approval.
 Contact an administrator to enable your account.
 ```
 
-**What Happens:**
-1. Account is created in **disabled** state
-2. API key is created in **pending** state
-3. Credentials are saved to `~/.pulldb/credentials`
-4. Admin must run `pulldb-admin users enable jsmith` to activate
-5. Admin must run `pulldb-admin keys approve <key_id>` for CLI access
-
----
-
-### request-host-key
-
-Request an API key for a new host machine. Use this when you need CLI access from a second (or subsequent) computer.
-
-**Syntax:**
+**For Existing Users (New Machine):**
 ```bash
-pulldb request-host-key [--host-name=<hostname>]
-```
+$ pulldb register
+User 'jsmith' already exists. Requesting API key for this machine...
 
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--host-name=` | Override auto-detected hostname |
-
-The command prompts for your password to verify identity.
-
-**Output:**
-```bash
-$ pulldb request-host-key
 Enter password: ********
 
 ✓ API key requested successfully!
@@ -443,7 +493,14 @@ Enter password: ********
 Contact an administrator to approve your key.
 ```
 
-**What Happens:**
+**What Happens (New User):**
+1. Account is created in **disabled** state
+2. API key is created in **pending** state
+3. Credentials are saved to `~/.pulldb/credentials`
+4. Admin must run `pulldb-admin users enable jsmith` to activate
+5. Admin must run `pulldb-admin keys approve <key_id>` for CLI access
+
+**What Happens (Existing User):**
 1. New API key is created for this host
 2. Key is in **pending** state until approved
 3. Credentials saved to `~/.pulldb/credentials`
@@ -778,7 +835,7 @@ pulldb-admin cleanup --execute --older-than=48
 
 ### run-retention-cleanup
 
-Execute database retention cleanup to delete expired databases.
+Execute database retention cleanup to delete expired databases. Locked databases are never dropped.
 
 **Syntax:**
 
@@ -792,8 +849,7 @@ pulldb-admin run-retention-cleanup --execute     # Execute
 | Option | Description |
 |--------|-------------|
 | `--dry-run` | Preview only - show what would be deleted |
-| `--execute` | Actually delete expired databases |
-| `--yes`, `-y` | Skip confirmation prompt |
+| `--json` | Output JSON instead of human-readable text |
 
 **Examples:**
 
@@ -801,12 +857,17 @@ pulldb-admin run-retention-cleanup --execute     # Execute
 # Preview expired databases
 pulldb-admin run-retention-cleanup --dry-run
 
-# Execute cleanup (with confirmation)
-pulldb-admin run-retention-cleanup --execute
-
-# Execute without confirmation
-pulldb-admin run-retention-cleanup --execute --yes
+# Preview in JSON format
+pulldb-admin run-retention-cleanup --dry-run --json
 ```
+
+**Cleanup Process:**
+1. Finds databases past their expiration + grace period
+2. Skips locked databases (protected by users)
+3. Drops the staging database from the target host
+4. Marks the job record as cleaned in the database
+
+> **Note:** This command is typically run automatically via systemd timer (`pulldb-retention.timer`).
 
 ---
 
@@ -1292,4 +1353,138 @@ Environment variables override credential file values.
 
 ---
 
-[← Back to Documentation Index](START-HERE.md) · [Admin Guide →](admin-guide.md)
+## Programmatic Usage Examples
+
+The CLI tools can be invoked programmatically from scripts. Here are examples for common automation scenarios.
+
+### Python (subprocess)
+
+```python
+import subprocess
+import json
+
+# Submit a restore job
+result = subprocess.run(
+    ["pulldb", "restore", "actionpest", "target=mytest"],
+    capture_output=True,
+    text=True
+)
+if result.returncode == 0:
+    print("Job submitted successfully")
+    print(result.stdout)
+else:
+    print(f"Error: {result.stderr}")
+
+# Check job status (JSON output for parsing)
+result = subprocess.run(
+    ["pulldb", "status", "--json"],
+    capture_output=True,
+    text=True
+)
+if result.returncode == 0:
+    jobs = json.loads(result.stdout)
+    for job in jobs:
+        print(f"{job['id'][:8]}: {job['status']} - {job['target']}")
+
+# Search for customers
+result = subprocess.run(
+    ["pulldb", "search", "action*", "limit=10", "json"],
+    capture_output=True,
+    text=True
+)
+customers = json.loads(result.stdout) if result.returncode == 0 else []
+
+# Admin: List users (JSON output)
+result = subprocess.run(
+    ["pulldb-admin", "users", "list", "--json"],
+    capture_output=True,
+    text=True
+)
+users = json.loads(result.stdout) if result.returncode == 0 else []
+```
+
+### PHP (shell_exec)
+
+```php
+<?php
+// Submit a restore job
+$output = shell_exec('pulldb restore actionpest target=mytest 2>&1');
+echo $output;
+
+// Check job status (JSON output for parsing)
+$json = shell_exec('pulldb status --json 2>&1');
+$jobs = json_decode($json, true);
+if ($jobs) {
+    foreach ($jobs as $job) {
+        echo substr($job['id'], 0, 8) . ": {$job['status']} - {$job['target']}\n";
+    }
+}
+
+// Search for customers
+$json = shell_exec('pulldb search "action*" limit=10 json 2>&1');
+$customers = json_decode($json, true) ?: [];
+
+// Admin: List pending API keys
+$json = shell_exec('pulldb-admin keys pending --json 2>&1');
+$pending = json_decode($json, true) ?: [];
+foreach ($pending as $key) {
+    echo "Key: {$key['key_id']} - User: {$key['username']}\n";
+}
+?>
+```
+
+### Bash (scripting)
+
+```bash
+#!/bin/bash
+set -e
+
+# Submit a restore job and capture the output
+output=$(pulldb restore actionpest target=mytest 2>&1)
+echo "$output"
+
+# Extract job_id from output (grep for UUID pattern)
+job_id=$(echo "$output" | grep -oE 'job_id:\s+[0-9a-f-]+' | cut -d' ' -f2)
+echo "Job ID: $job_id"
+
+# Wait for job completion
+while true; do
+    status=$(pulldb status "$job_id" --json 2>/dev/null | jq -r '.[0].status')
+    echo "Status: $status"
+    
+    case "$status" in
+        complete|deployed)
+            echo "Job completed successfully!"
+            break
+            ;;
+        failed|canceled)
+            echo "Job failed or was canceled"
+            exit 1
+            ;;
+        *)
+            sleep 10
+            ;;
+    esac
+done
+
+# Admin: Approve all pending keys (batch)
+pulldb-admin keys pending --json | jq -r '.[].key_id' | while read key_id; do
+    echo "Approving $key_id..."
+    pulldb-admin keys approve "$key_id"
+done
+
+# Admin: Export settings to JSON
+pulldb-admin settings export --format=json > /backup/pulldb-settings.json
+```
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Unauthorized (for admin commands) |
+| 3 | Connection error |
+
+---
+

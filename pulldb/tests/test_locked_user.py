@@ -92,7 +92,6 @@ class TestUserModelLockedProperty:
             user_id="test-id",
             username="test",
             user_code="TSTCD",
-            is_admin=False,
             role=UserRole.USER,
             created_at=datetime.now(UTC),
             locked_at=datetime.now(UTC),
@@ -105,7 +104,6 @@ class TestUserModelLockedProperty:
             user_id="test-id",
             username="test",
             user_code="TSTCD",
-            is_admin=False,
             role=UserRole.USER,
             created_at=datetime.now(UTC),
             locked_at=None,
@@ -126,7 +124,6 @@ class TestServiceRole:
             user_id="test-id",
             username="pulldb_service",
             user_code="sbcacc",
-            is_admin=True,
             role=UserRole.SERVICE,
             created_at=datetime.now(UTC),
         )
@@ -138,7 +135,6 @@ class TestServiceRole:
             user_id="test-id",
             username="pulldb_service",
             user_code="sbcacc",
-            is_admin=True,
             role=UserRole.SERVICE,
             created_at=datetime.now(UTC),
         )
@@ -150,7 +146,6 @@ class TestServiceRole:
             user_id="test-id",
             username="pulldb_service",
             user_code="sbcacc",
-            is_admin=True,
             role=UserRole.SERVICE,
             created_at=datetime.now(UTC),
         )

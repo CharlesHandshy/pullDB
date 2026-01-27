@@ -131,7 +131,22 @@ def pre_flight_verify_target_overwrite_safe(
     job: Job,
     credentials: MySQLCredentials,
 ) -> None:
-    """PRE-FLIGHT CHECK: Verify target is safe to overwrite BEFORE expensive operations.
+    """PRE-FLIGHT CHECK: Verify target is safe BEFORE expensive operations.
+
+    ==========================================================================
+    CRITICAL DATABASE PROTECTION - NON-NEGOTIABLE
+    Per .pulldb/standards/database-protection.md
+    
+    This check runs ALWAYS (not just when overwrite=true) because:
+    1. External databases (no pullDB table) must NEVER be overwritten
+    2. Cross-user databases must NEVER be overwritten
+    3. The worker is the second line of defense after API check
+    
+    REMOVAL OF THIS CHECK REQUIRES:
+    - Direct user acknowledgment
+    - Written documentation of accepted risk
+    - See .pulldb/standards/database-protection.md for removal policy
+    ==========================================================================
 
     Called by worker at the START of restore, BEFORE:
     - Downloading backup from S3
@@ -139,7 +154,7 @@ def pre_flight_verify_target_overwrite_safe(
     - Running myloader
     - Any other expensive operations
 
-    APPLIES TO ALL TARGETS (custom and auto-generated) when overwrite=true.
+    APPLIES TO ALL TARGETS (custom and auto-generated).
 
     Args:
         job: The job being executed.
@@ -154,13 +169,14 @@ def pre_flight_verify_target_overwrite_safe(
     options = job.options_json or {}
     overwrite = options.get("overwrite", "false") == "true"
 
-    # Only check when overwrite is enabled
-    if not overwrite:
-        return  # No overwrite: skip check (new DB will be created)
-
     logger.info(
-        "Pre-flight check: verifying target is safe to overwrite",
-        extra={"job_id": job.id, "target": job.target, "dbhost": job.dbhost},
+        "Pre-flight check: verifying target database safety",
+        extra={
+            "job_id": job.id,
+            "target": job.target,
+            "dbhost": job.dbhost,
+            "overwrite": overwrite,
+        },
     )
 
     try:
@@ -172,12 +188,18 @@ def pre_flight_verify_target_overwrite_safe(
             connect_timeout=DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER,
         )
     except mysql.connector.Error as e:
-        # Can't connect - log warning but don't block (API check should have caught issues)
-        logger.warning(
-            "Pre-flight check: cannot connect to verify target - proceeding with caution",
+        # FAIL HARD: Cannot connect means cannot verify safety
+        # Per .pulldb/standards/database-protection.md - silent failures FORBIDDEN
+        logger.error(
+            "Pre-flight check FAILED: cannot connect to verify target safety",
             extra={"job_id": job.id, "target": job.target, "error": str(e)},
         )
-        return
+        raise TargetCollisionError(
+            job_id=job.id,
+            target=job.target,
+            dbhost=job.dbhost,
+            collision_type="connection_failed",
+        ) from e
 
     try:
         cursor = conn.cursor()
@@ -191,18 +213,20 @@ def pre_flight_verify_target_overwrite_safe(
             )
             return  # DB doesn't exist - safe to proceed
 
-        # DB exists - check for pullDB metadata table
+        # Database EXISTS - MUST verify it's safe to use as target
+
+        # Check for pullDB metadata table
         try:
             cursor.execute(f"SHOW TABLES IN {quote_identifier(job.target)} LIKE 'pullDB'")
             has_pulldb_table = cursor.fetchone() is not None
         except mysql.connector.Error:
-            # Can't query tables - assume external DB (fail safe)
+            # Can't query tables - assume external DB (fail safe = fail HARD)
             has_pulldb_table = False
 
         if not has_pulldb_table:
-            # FAIL HARD, FAIL FAST: External database detected
+            # EXTERNAL DATABASE - ABSOLUTE BLOCK (regardless of overwrite setting)
             logger.error(
-                "Pre-flight check FAILED: external database detected",
+                "Pre-flight check FAILED: EXTERNAL database detected (no pullDB table)",
                 extra={
                     "job_id": job.id,
                     "target": job.target,
@@ -217,7 +241,7 @@ def pre_flight_verify_target_overwrite_safe(
                 collision_type="external_db",
             )
 
-        # DB exists with pullDB table - check ownership
+        # Database has pullDB table - check ownership
         try:
             cursor.execute(
                 f"SELECT owner_user_code FROM `{job.target}`.pullDB "
@@ -225,30 +249,50 @@ def pre_flight_verify_target_overwrite_safe(
             )
             row = cursor.fetchone()
         except mysql.connector.Error:
-            # Can't query ownership - table may be old schema, allow overwrite
+            # Can't query ownership - table may be old schema
+            # Old schema without owner tracking is still pullDB-managed
             row = None
 
-        if row:
-            db_owner_code = str(row[0]) if row[0] else None  # type: ignore[index]
-            if db_owner_code and db_owner_code != job.owner_user_code:
-                # FAIL HARD: Database owned by different user
-                logger.error(
-                    "Pre-flight check FAILED: database owned by different user",
-                    extra={
-                        "job_id": job.id,
-                        "target": job.target,
-                        "dbhost": job.dbhost,
-                        "db_owner": db_owner_code,
-                        "job_owner": job.owner_user_code,
-                    },
-                )
-                raise TargetCollisionError(
-                    job_id=job.id,
-                    target=job.target,
-                    dbhost=job.dbhost,
-                    collision_type="owner_mismatch",
-                    owner_info=db_owner_code,
-                )
+        db_owner_code = str(row[0]) if row and row[0] else None  # type: ignore[index]
+        
+        if db_owner_code and db_owner_code != job.owner_user_code:
+            # CROSS-USER DATABASE - ABSOLUTE BLOCK
+            logger.error(
+                "Pre-flight check FAILED: database owned by different user",
+                extra={
+                    "job_id": job.id,
+                    "target": job.target,
+                    "dbhost": job.dbhost,
+                    "db_owner": db_owner_code,
+                    "job_owner": job.owner_user_code,
+                },
+            )
+            raise TargetCollisionError(
+                job_id=job.id,
+                target=job.target,
+                dbhost=job.dbhost,
+                collision_type="owner_mismatch",
+                owner_info=db_owner_code,
+            )
+
+        # Database is pullDB-managed and owned by this user
+        if not overwrite:
+            # User didn't enable overwrite - they shouldn't have gotten here
+            # (API should have blocked), but double-check as defense in depth
+            logger.error(
+                "Pre-flight check FAILED: database exists but overwrite not enabled",
+                extra={
+                    "job_id": job.id,
+                    "target": job.target,
+                    "dbhost": job.dbhost,
+                },
+            )
+            raise TargetCollisionError(
+                job_id=job.id,
+                target=job.target,
+                dbhost=job.dbhost,
+                collision_type="exists_no_overwrite",
+            )
 
         logger.info(
             "Pre-flight check passed: target is pullDB-managed and owned by job owner",

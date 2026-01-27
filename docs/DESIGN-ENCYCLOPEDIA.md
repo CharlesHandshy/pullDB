@@ -369,7 +369,7 @@ def require_admin(
     user: Annotated[User, Depends(require_login)],
 ) -> User:
     """Require authenticated admin user."""
-    if not user.is_admin:  # User model has is_admin property
+    if not user.is_admin:  # Computed property: returns self.role == UserRole.ADMIN
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",

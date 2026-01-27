@@ -36,8 +36,8 @@ class TestAuthRepositoryPassword:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO auth_users (user_id, username, user_code, is_admin, created_at)
-                VALUES (%s, %s, %s, FALSE, UTC_TIMESTAMP(6))
+                INSERT INTO auth_users (user_id, username, user_code, role, created_at)
+                VALUES (%s, %s, %s, 'user', UTC_TIMESTAMP(6))
                 """,
                 (user_id, f"testuser_{user_id[:8]}", user_id[:6]),
             )
@@ -69,8 +69,8 @@ class TestAuthRepositoryPassword:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO auth_users (user_id, username, user_code, is_admin, created_at)
-                VALUES (%s, %s, %s, FALSE, UTC_TIMESTAMP(6))
+                INSERT INTO auth_users (user_id, username, user_code, role, created_at)
+                VALUES (%s, %s, %s, 'user', UTC_TIMESTAMP(6))
                 """,
                 (user_id, f"testuser_{user_id[:8]}", user_id[:6]),
             )
@@ -101,8 +101,8 @@ class TestAuthRepositoryPassword:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO auth_users (user_id, username, user_code, is_admin, created_at)
-                VALUES (%s, %s, %s, FALSE, UTC_TIMESTAMP(6))
+                INSERT INTO auth_users (user_id, username, user_code, role, created_at)
+                VALUES (%s, %s, %s, 'user', UTC_TIMESTAMP(6))
                 """,
                 (user_id, f"testuser_{user_id[:8]}", user_id[:6]),
             )
@@ -132,8 +132,8 @@ class TestAuthRepositorySessions:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO auth_users (user_id, username, user_code, is_admin, created_at)
-                VALUES (%s, %s, %s, FALSE, UTC_TIMESTAMP(6))
+                INSERT INTO auth_users (user_id, username, user_code, role, created_at)
+                VALUES (%s, %s, %s, 'user', UTC_TIMESTAMP(6))
                 """,
                 (user_id, f"testuser_{user_id[:8]}", user_id[:6]),
             )

@@ -192,11 +192,8 @@ BLOCKED_USERNAMES = [
 If you have a username but no password (created by admin), set one:
 
 ```bash
-# CLI
-pulldb set-password
-
-# Or with username
-pulldb set-password --username jsmith
+# CLI (prompts for username)
+pulldb setpass
 ```
 
 ### Changing Password
@@ -204,13 +201,14 @@ pulldb set-password --username jsmith
 #### Web UI
 
 1. Login to web UI
-2. Navigate to Settings → Security
-3. Enter current and new password
+2. Navigate to Profile page
+3. Click "Change Password"
 
 #### CLI
 
 ```bash
-pulldb set-password --change
+# Follow prompts to change password
+pulldb setpass
 ```
 
 #### API
@@ -353,16 +351,24 @@ Contact an administrator to approve your key, then CLI will work.
 
 #### Requesting Key for New Host
 
-If you already have an account but need CLI access from a new machine:
+If you already have an account but need CLI access from a new machine, run `register` again:
 
 ```bash
-$ pulldb request-host-key
+$ pulldb register
+Username: jsmith
+User 'jsmith' already exists.
+
+Request an API key for this host? [y/N]: y
+Password: ********
+
 ✓ API key requested for host: devserver
   Key ID: abc12345...
   Status: Pending admin approval
 
 Contact an administrator to approve your key.
 ```
+
+> **Note:** The `register` command detects if you already have an account and offers to request a new host key instead.
 
 ### Key Status and Errors
 
@@ -421,11 +427,8 @@ The CLI supports two authentication methods: **API Key** (recommended) and **Tru
 This is the default and preferred method. See [API Key Authentication](#api-key-authentication) above for details.
 
 ```bash
-# Register and get API key
+# Register and get API key (also handles existing users requesting new host key)
 pulldb register
-
-# Or request key for existing account on new host
-pulldb request-host-key
 
 # After admin approval, CLI commands work automatically
 pulldb status
@@ -517,20 +520,20 @@ pulldb status
 ### "API key revoked"
 
 - Your API key has been revoked by an administrator
-- Request a new key: `pulldb request-host-key`
+- Request a new key: `pulldb register` (will detect existing user and offer host key)
 - Contact your admin to understand why it was revoked
 
 ### "API key required for this host"
 
 - You don't have an API key for this machine
-- Run: `pulldb request-host-key`
+- Run: `pulldb register` (will detect existing user and offer host key)
 - Wait for admin approval
 
 ### "Invalid API key"
 
 - Key doesn't exist in database
 - May have been deleted or corrupted
-- Request new key: `pulldb request-host-key`
+- Request new key: `pulldb register` (will detect existing user and offer host key)
 
 ### "Invalid username or password"
 

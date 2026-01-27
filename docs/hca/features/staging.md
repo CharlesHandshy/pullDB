@@ -233,33 +233,47 @@ def cleanup_staging_on_failure(
 
 ---
 
-## Automatic Cleanup (Phase 1 Feature)
+## Automatic Cleanup
 
-Background task for scheduled orphan cleanup:
+Staging database cleanup is implemented as functions in `pulldb/worker/cleanup.py` and `pulldb/worker/staging.py`:
+
+### During Restore (`cleanup_orphaned_staging`)
+
+Before each restore, orphaned staging databases matching the target pattern are automatically dropped:
 
 ```python
-# Planned for Phase 1: Scheduled Staging Database Cleanup
+# pulldb/worker/staging.py
+from pulldb.worker.staging import cleanup_orphaned_staging
 
-class StagingCleanupTask:
-    """Background task to clean truly abandoned staging databases.
-    
-    Runs on configurable schedule (default: daily at 03:00 UTC).
-    Age threshold configurable via settings table (default: 7 days).
-    """
-    
-    def __init__(self, settings: SettingsRepository):
-        self.age_threshold_days = settings.get_int(
-            "staging_cleanup_age_days",
-            default=7,
-        )
-    
-    def run(self) -> CleanupResult:
-        """Execute scheduled cleanup across all db_hosts."""
-        # 1. Query failed/cancelled jobs older than threshold
-        # 2. For each db_host, connect and scan for orphans
-        # 3. Verify safety (no active jobs) and delete
-        # 4. Log audit entries and metrics
-        pass
+# Called during restore workflow
+staging_result = cleanup_orphaned_staging(
+    mysql=mysql_client,
+    target=job.target,
+    current_staging=job.staging_name,
+)
+# Returns: StagingCleanupResult with dropped_count, errors
+```
+
+### Admin-Initiated Cleanup (`cleanup_host_staging`)
+
+Administrators can trigger manual cleanup via CLI or Web UI:
+
+```bash
+# CLI: Preview and optionally clean
+pulldb-admin cleanup staging --host dev-db-01 --dry-run
+pulldb-admin cleanup staging --host dev-db-01 --force
+```
+
+```python
+# API: pulldb/worker/cleanup.py
+from pulldb.worker.cleanup import cleanup_host_staging
+
+result = cleanup_host_staging(
+    mysql=mysql_client,
+    host_id=host.id,
+    dry_run=False,
+    age_threshold_days=7,  # From settings.staging_retention_days
+)
 ```
 
 ---

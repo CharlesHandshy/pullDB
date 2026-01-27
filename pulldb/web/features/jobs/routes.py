@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from pulldb.domain.models import JobStatus, User, UserRole
+from pulldb.domain.models import Job, JobStatus, User, UserRole
 from pulldb.web.dependencies import get_api_state, require_login, templates
 from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
 
@@ -285,12 +285,13 @@ EVENT_TO_PHASE: dict[str, str] = {
     "table_index_rebuild_confirmed": "myloader",
     "table_index_rebuild_progress": "myloader",
     "table_restore_complete": "myloader",
+    # ANALYZE TABLE events - run concurrently with myloader (EarlyAnalyzeWorker)
+    "table_analyze_started": "myloader",
+    "table_analyze_complete": "myloader",
+    "analyze_batch_started": "myloader",
+    "analyze_batch_complete": "myloader",
+    "early_analyze_batch_complete": "myloader",
     "restore_complete": "post_sql",
-    # ANALYZE TABLE events
-    "table_analyze_started": "post_sql",
-    "table_analyze_complete": "post_sql",
-    "analyze_batch_started": "post_sql",
-    "analyze_batch_complete": "post_sql",
     "post_sql_started": "post_sql",
     "post_sql_script_complete": "post_sql",
     "post_sql_complete": "post_sql",
@@ -906,8 +907,30 @@ async def job_details(
             ) if job else False,
             "retention_options": _get_retention_options(state),
             "expiring_warning_days": _get_expiring_warning_days(state),
+            # Zombie job detection - show force-complete button for admins
+            "is_zombie_deleting": _is_zombie_deleting_job(job),
+            "can_force_complete": user.is_admin and job.status in (JobStatus.DELETING, JobStatus.FAILED),
         },
     )
+
+
+def _is_zombie_deleting_job(job: Job | None) -> bool:
+    """Check if a job is a zombie (stuck in deleting for 24+ hours)."""
+    from datetime import UTC, datetime, timedelta
+
+    if not job:
+        return False
+    if job.status != JobStatus.DELETING:
+        return False
+    if not job.started_at:
+        return False
+    
+    # 24 hour threshold for zombie detection
+    zombie_threshold = timedelta(hours=24)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    job_started = job.started_at
+    
+    return (now - job_started) > zombie_threshold
 
 
 @router.post("/{job_id}/cancel")
@@ -996,6 +1019,128 @@ async def cancel_job(
         if refreshed_job and not refreshed_job.can_cancel:
             return redirect_error("Cannot cancel: job has entered loading phase")
         return redirect_error("Cancellation already requested or job completed")
+
+
+@router.post("/{job_id}/force-complete-delete")
+async def force_complete_job_deletion(
+    job_id: str,
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> RedirectResponse:
+    """Force-complete a stuck deleting job without database verification.
+
+    Used for zombie jobs where:
+    - The job has been stuck in 'deleting' for an extended period
+    - Host may be unavailable/deleted
+    - Databases may already be cleaned up
+    - Normal retry mechanism has failed
+
+    Requires admin privileges. Marks the job as 'deleted' immediately.
+    """
+    from urllib.parse import urlencode
+
+    base_url = f"/web/jobs/{job_id}"
+
+    def redirect_error(msg: str) -> RedirectResponse:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_error': msg})}",
+            status_code=303,
+        )
+
+    def redirect_success(msg: str) -> RedirectResponse:
+        return RedirectResponse(
+            url=f"{base_url}?{urlencode({'delete_success': msg})}",
+            status_code=303,
+        )
+
+    # Require admin privileges for force-complete
+    if not user.is_admin:
+        return redirect_error("Admin privileges required to force-complete deletion")
+
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return redirect_error("Job repository unavailable")
+
+    job = state.job_repo.get_job_by_id(job_id)
+    if not job:
+        return redirect_error("Job not found")
+
+    # Only allow force-complete for deleting or failed jobs
+    if job.status not in (JobStatus.DELETING, JobStatus.FAILED):
+        return redirect_error(
+            f"Cannot force-complete job (status: {job.status.value}). "
+            "Only 'deleting' or 'failed' jobs can be force-completed."
+        )
+
+    # Check if databases exist before force-completing
+    # If they don't exist, this is safe to force-complete
+    from pulldb.worker.cleanup import _database_exists
+
+    databases_status = []
+    skip_reason = None
+    
+    try:
+        if hasattr(state, "host_repo") and state.host_repo:
+            credentials = state.host_repo.get_host_credentials_for_maintenance(job.dbhost)
+            
+            staging_exists = _database_exists(credentials, job.staging_name)
+            target_exists = _database_exists(credentials, job.target)
+            
+            if staging_exists:
+                databases_status.append(f"staging '{job.staging_name}' exists")
+            if target_exists:
+                databases_status.append(f"target '{job.target}' exists")
+            
+            if not staging_exists and not target_exists:
+                skip_reason = "databases_already_gone"
+    except ValueError as e:
+        if "not found" in str(e):
+            # Host deleted - safe to force-complete
+            skip_reason = "host_not_found"
+        else:
+            # Other credential error - still allow admin to force
+            skip_reason = f"credential_error: {e}"
+    except Exception as e:
+        # Any error checking - still allow admin to force
+        skip_reason = f"check_error: {e}"
+
+    # Perform force-complete
+    reason = (
+        f"Force-completed by admin {user.username}"
+        + (f" ({skip_reason})" if skip_reason else "")
+        + (f" [Warning: {', '.join(databases_status)}]" if databases_status else "")
+    )
+    
+    success = state.job_repo.force_complete_delete(
+        job_id=job_id,
+        reason=reason,
+        admin_username=user.username,
+    )
+
+    if not success:
+        return redirect_error("Failed to force-complete job - may have changed status")
+
+    # Audit log
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        state.audit_repo.log_action(
+            actor_user_id=user.user_id,
+            action="job_force_delete",
+            target_user_id=job.owner_user_id,
+            detail=f"Force-completed deletion for job {job_id[:12]} (host: {job.dbhost})",
+            context={
+                "job_id": job_id,
+                "target": job.target,
+                "dbhost": job.dbhost,
+                "previous_status": job.status.value,
+                "skip_reason": skip_reason,
+                "databases_still_exist": databases_status,
+            }
+        )
+
+    return redirect_success(
+        f"Job force-completed as deleted"
+        + (f" ({skip_reason})" if skip_reason else "")
+    )
 
 
 @router.post("/{job_id}/delete-database")

@@ -32,7 +32,6 @@ class TestPermissionsIntegration:
             user_id="admin-1",
             username="admin",
             user_code="admin",
-            is_admin=True,
             role=UserRole.ADMIN,
             created_at=datetime.now(UTC),
         )
@@ -44,7 +43,6 @@ class TestPermissionsIntegration:
             user_id="manager-1",
             username="manager",
             user_code="manage",
-            is_admin=False,
             role=UserRole.MANAGER,
             created_at=datetime.now(UTC),
         )
@@ -56,7 +54,6 @@ class TestPermissionsIntegration:
             user_id="user-1",
             username="user",
             user_code="user",
-            is_admin=False,
             role=UserRole.USER,
             created_at=datetime.now(UTC),
         )
@@ -68,14 +65,13 @@ class TestPermissionsIntegration:
             user_id="disabled-1",
             username="disabled",
             user_code="disabl",
-            is_admin=False,
             role=UserRole.USER,
             created_at=datetime.now(UTC),
             disabled_at=datetime.now(UTC),
         )
 
-    def test_is_admin_true_gives_admin_permissions(self, admin_user: User) -> None:
-        """User with is_admin=True should have admin permissions."""
+    def test_admin_role_gives_admin_permissions(self, admin_user: User) -> None:
+        """User with role=ADMIN should have admin permissions."""
         assert can_manage_users(admin_user)
         assert can_manage_config(admin_user)
         assert can_view_all_jobs(admin_user)
@@ -83,13 +79,11 @@ class TestPermissionsIntegration:
 
     def test_role_admin_gives_admin_permissions(self, admin_user: User) -> None:
         """User with role=ADMIN should have admin permissions."""
-        # Even if is_admin was False (though model enforces consistency usually)
-        # permissions module checks role OR is_admin
+        # permissions module checks role
         user = User(
             user_id="admin-2",
             username="admin2",
             user_code="admin2",
-            is_admin=False,  # Explicitly false to test role check
             role=UserRole.ADMIN,
             created_at=datetime.now(UTC),
         )
@@ -133,7 +127,6 @@ class TestPermissionsIntegration:
             user_id="target-user-id",
             username="target",
             user_code="target",
-            is_admin=False,
             role=UserRole.USER,
             created_at=datetime.now(UTC),
         )
@@ -142,7 +135,6 @@ class TestPermissionsIntegration:
             user_id="managed-user-id",
             username="managed",
             user_code="manage",
-            is_admin=False,
             role=UserRole.USER,
             created_at=datetime.now(UTC),
             manager_id="manager-1",  # Managed by manager_user

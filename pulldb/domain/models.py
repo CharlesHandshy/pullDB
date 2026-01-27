@@ -128,20 +128,21 @@ class User:
         user_id: UUID primary key.
         username: Unique username from authentication system.
         user_code: 6-character lowercase code (a-z only) derived from username.
-        is_admin: Whether user has admin privileges (legacy, kept for compatibility).
-        role: RBAC role (user/manager/admin) - Phase 4.
+        role: RBAC role (user/manager/admin/service). Single source of truth for permissions.
         manager_id: User ID of the manager who manages this user (NULL if unmanaged).
         created_at: Timestamp when user was created.
         disabled_at: Timestamp when user was disabled (soft delete).
         allowed_hosts: List of database hostnames this user can restore to.
         default_host: User's default database host for restores.
         last_maintenance_ack: Last date user acknowledged maintenance modal.
+    
+    Properties:
+        is_admin: Computed from role == ADMIN.
     """
 
     user_id: str
     username: str
     user_code: str
-    is_admin: bool
     role: UserRole
     created_at: datetime
     manager_id: str | None = None
@@ -151,6 +152,11 @@ class User:
     default_host: str | None = None
     last_maintenance_ack: datetime | None = None  # Date only, stored as datetime
     locked_at: datetime | None = None  # System-protected accounts
+
+    @property
+    def is_admin(self) -> bool:
+        """Check if user has admin role (computed from role field)."""
+        return self.role == UserRole.ADMIN
 
     @property
     def is_manager_or_above(self) -> bool:

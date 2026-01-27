@@ -519,7 +519,8 @@ class JobRepository:
                 """
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code, j.target,
                        j.staging_name, j.dbhost, j.status, j.submitted_at, j.started_at,
-                       j.completed_at, j.options_json, j.retry_count, j.error_detail, j.worker_id
+                       j.completed_at, j.options_json, j.retry_count, j.error_detail, j.worker_id,
+                       j.custom_target
                 FROM jobs j
                 JOIN db_hosts h ON j.dbhost = h.hostname
                 WHERE j.status = 'queued'
@@ -582,6 +583,7 @@ class JobRepository:
                 retry_count=job.retry_count,
                 error_detail=job.error_detail,
                 worker_id=worker_id,  # Reflect the worker that claimed this job
+                custom_target=job.custom_target,
             )
 
     def get_job_by_id(self, job_id: str) -> Job | None:
@@ -602,7 +604,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail, worker_id,
                        staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id
+                       superseded_at, superseded_by_job_id, custom_target
                 FROM jobs
                 WHERE id = %s
                 """,
@@ -636,7 +638,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail, worker_id,
                        staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id
+                       superseded_at, superseded_by_job_id, custom_target
                 FROM jobs
                 WHERE id LIKE %s
                 ORDER BY submitted_at DESC
@@ -1167,27 +1169,24 @@ class JobRepository:
             cursor = TypedDictCursor(conn.cursor(dictionary=True))
 
             # Find stale deleting jobs that haven't exceeded retry limit.
-            # IMPORTANT: Only recover jobs that are the NEWEST for their target.
-            # Older superseded jobs have already had their DBs cleaned up by the
-            # newer job's restore process, so retrying deletion is pointless.
+            # IMPORTANT: Only skip jobs that were EXPLICITLY marked as superseded
+            # (superseded_by_job_id IS NOT NULL). The old NOT EXISTS check was too
+            # aggressive - it blocked recovery of legitimate zombie jobs just because
+            # a newer job for the same target existed, even if that newer job didn't
+            # actually supersede this one during its restore process.
             # Also handle legacy jobs with NULL started_at (treat as stale).
             cursor.execute(
                 """
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
                        j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
-                       j.error_detail, j.worker_id
+                       j.error_detail, j.worker_id, j.custom_target
                 FROM jobs j
                 WHERE j.status = 'deleting'
                   AND (j.started_at IS NULL 
                        OR j.started_at < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL %s MINUTE))
                   AND j.retry_count < %s
-                  AND NOT EXISTS (
-                      SELECT 1 FROM jobs j2
-                      WHERE j2.target = j.target
-                        AND j2.owner_user_code = j.owner_user_code
-                        AND j2.submitted_at > j.submitted_at
-                  )
+                  AND j.superseded_by_job_id IS NULL
                 ORDER BY j.started_at ASC
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
@@ -1257,6 +1256,7 @@ class JobRepository:
                 retry_count=new_retry,
                 error_detail=job.error_detail,
                 worker_id=worker_id,
+                custom_target=job.custom_target,
             )
 
     def mark_job_delete_failed(
@@ -1299,6 +1299,124 @@ class JobRepository:
             )
 
             conn.commit()
+
+    # Constants for zombie deleting job detection
+    # Jobs stuck in 'deleting' for longer than this are considered zombies
+    ZOMBIE_DELETING_TIMEOUT_HOURS: ClassVar[int] = 24
+
+    def get_zombie_deleting_jobs(
+        self,
+        zombie_timeout_hours: int | None = None,
+    ) -> list[Job]:
+        """Find jobs stuck in 'deleting' status for an extended period (zombies).
+
+        Unlike stale deleting jobs (5 min timeout, auto-retry), zombie jobs have
+        been stuck for 24+ hours and likely need manual intervention. This can
+        happen when:
+        - Host was deleted and job can't be retried
+        - Database was already cleaned up by another job
+        - Max retry count exceeded but status stuck
+        - Worker crashed during deletion and never recovered
+
+        Args:
+            zombie_timeout_hours: Hours stuck in deleting before considered zombie.
+                Defaults to ZOMBIE_DELETING_TIMEOUT_HOURS (24).
+
+        Returns:
+            List of zombie jobs in 'deleting' status.
+        """
+        if zombie_timeout_hours is None:
+            zombie_timeout_hours = self.ZOMBIE_DELETING_TIMEOUT_HOURS
+
+        with self.pool.connection() as conn:
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
+
+            cursor.execute(
+                """
+                SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
+                       j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
+                       j.started_at, j.completed_at, j.options_json, j.retry_count,
+                       j.error_detail, j.worker_id, j.custom_target
+                FROM jobs j
+                WHERE j.status = 'deleting'
+                  AND j.started_at < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL %s HOUR)
+                ORDER BY j.started_at ASC
+                """,
+                (zombie_timeout_hours,),
+            )
+
+            rows = cursor.fetchall()
+            return [self._row_to_job(row) for row in rows]
+
+    def force_complete_delete(
+        self,
+        job_id: str,
+        reason: str,
+        admin_username: str | None = None,
+    ) -> bool:
+        """Force-complete a stuck deleting job without database verification.
+
+        Used for zombie jobs where:
+        - Host is unavailable/deleted
+        - Databases were already cleaned up
+        - Job needs to be cleared from the queue
+
+        This marks the job as 'deleted' without attempting to drop databases.
+
+        Args:
+            job_id: UUID of job to force-complete.
+            reason: Reason for force-completion (logged in event).
+            admin_username: Admin who initiated the action (for audit).
+
+        Returns:
+            True if job was updated, False if job not found or wrong status.
+        """
+        with self.pool.transaction() as conn:
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
+
+            # Verify job exists and is in deleting or failed status
+            cursor.execute(
+                "SELECT id, status FROM jobs WHERE id = %s FOR UPDATE",
+                (job_id,),
+            )
+            row = cursor.fetchone()
+
+            if not row:
+                return False
+
+            if row["status"] not in ("deleting", "failed"):
+                return False
+
+            # Update to deleted status
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET status = 'deleted',
+                    completed_at = COALESCE(completed_at, UTC_TIMESTAMP(6)),
+                    db_dropped_at = UTC_TIMESTAMP(6),
+                    error_detail = NULL
+                WHERE id = %s
+                """,
+                (job_id,),
+            )
+
+            # Log force_deleted event with reason
+            event_detail = json.dumps({
+                "reason": reason,
+                "admin": admin_username or "system",
+                "previous_status": row["status"],
+            })
+            cursor.execute(
+                """
+                INSERT INTO job_events
+                (job_id, event_type, detail, logged_at)
+                VALUES (%s, 'force_deleted', %s, UTC_TIMESTAMP(6))
+                """,
+                (job_id, event_detail),
+            )
+
+            # Transaction commits on context manager exit
+            return True
 
     def get_candidate_stale_running_job(
         self,
@@ -1346,7 +1464,7 @@ class JobRepository:
                 SELECT j.id, j.owner_user_id, j.owner_username, j.owner_user_code,
                        j.target, j.staging_name, j.dbhost, j.status, j.submitted_at,
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
-                       j.error_detail, j.worker_id
+                       j.error_detail, j.worker_id, j.custom_target
                 FROM jobs j
                 LEFT JOIN (
                     SELECT job_id, MAX(logged_at) AS last_logged_at
@@ -1810,7 +1928,7 @@ class JobRepository:
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
                        j.error_detail, j.expires_at, j.locked_at, j.locked_by,
                        j.db_dropped_at, j.superseded_at, j.superseded_by_job_id,
-                       j.can_cancel, j.cancel_requested_at
+                       j.can_cancel, j.cancel_requested_at, j.custom_target
                 FROM jobs j
                 WHERE (
                     j.status IN ('queued', 'running', 'canceling', 'deployed')
@@ -1880,7 +1998,7 @@ class JobRepository:
                        j.started_at, j.completed_at, j.options_json, j.retry_count,
                        j.error_detail, j.expires_at, j.locked_at, j.locked_by,
                        j.db_dropped_at, j.superseded_at, j.superseded_by_job_id,
-                       j.can_cancel, j.cancel_requested_at
+                       j.can_cancel, j.cancel_requested_at, j.custom_target
                 FROM jobs j
                 WHERE j.status IN ('failed', 'canceled', 'deleted', 'deleting', 'expired', 'complete', 'superseded')
             """
@@ -3010,7 +3128,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id
+                       superseded_at, superseded_by_job_id, custom_target
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -3051,7 +3169,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id
+                       superseded_at, superseded_by_job_id, custom_target
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -3090,7 +3208,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id
+                       superseded_at, superseded_by_job_id, custom_target
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -3129,7 +3247,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id
+                       superseded_at, superseded_by_job_id, custom_target
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -3195,7 +3313,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id
+                       superseded_at, superseded_by_job_id, custom_target
                 FROM jobs
                 WHERE target = %s 
                   AND dbhost = %s 
@@ -3235,7 +3353,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id
+                       superseded_at, superseded_by_job_id, custom_target
                 FROM jobs
                 WHERE owner_user_id = %s
                   AND status = 'deployed'
@@ -3290,7 +3408,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id
+                       superseded_at, superseded_by_job_id, custom_target
                 FROM jobs
                 WHERE status = 'deployed'
                   AND locked_at IS NULL
@@ -3320,7 +3438,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id
+                       superseded_at, superseded_by_job_id, custom_target
                 FROM jobs
                 WHERE locked_at IS NOT NULL
                   AND db_dropped_at IS NULL
@@ -3350,7 +3468,7 @@ class JobRepository:
                        completed_at, options_json, retry_count, error_detail,
                        worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
                        expires_at, locked_at, locked_by, db_dropped_at,
-                       superseded_at, superseded_by_job_id
+                       superseded_at, superseded_by_job_id, custom_target
                 FROM jobs
                 WHERE owner_user_id = %s
                   AND status = 'complete'
@@ -3450,7 +3568,7 @@ class UserRepository:
             cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
-                SELECT user_id, username, user_code, is_admin, role, created_at,
+                SELECT user_id, username, user_code, role, created_at,
                        disabled_at, manager_id, max_active_jobs, locked_at
                 FROM auth_users
                 WHERE username = %s
@@ -3502,7 +3620,7 @@ class UserRepository:
             cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
-                SELECT user_id, username, user_code, is_admin, role, created_at,
+                SELECT user_id, username, user_code, role, created_at,
                        disabled_at, manager_id, max_active_jobs, locked_at
                 FROM auth_users
                 WHERE user_id = %s
@@ -3550,7 +3668,7 @@ class UserRepository:
             cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
-                SELECT user_id, username, user_code, is_admin, role, created_at,
+                SELECT user_id, username, user_code, role, created_at,
                        disabled_at, manager_id, max_active_jobs, locked_at
                 FROM auth_users
                 ORDER BY username
@@ -3581,8 +3699,8 @@ class UserRepository:
                 cursor.execute(
                     """
                     INSERT INTO auth_users
-                        (user_id, username, user_code, is_admin, role, created_at, manager_id)
-                    VALUES (%s, %s, %s, FALSE, 'user', UTC_TIMESTAMP(6), %s)
+                        (user_id, username, user_code, role, created_at, manager_id)
+                    VALUES (%s, %s, %s, 'user', UTC_TIMESTAMP(6), %s)
                     """,
                     (user_id, username, user_code, manager_id),
                 )
@@ -3591,7 +3709,7 @@ class UserRepository:
                 # Fetch the created user
                 cursor.execute(
                     """
-                    SELECT user_id, username, user_code, is_admin, role,
+                    SELECT user_id, username, user_code, role,
                            created_at, disabled_at, manager_id, locked_at
                     FROM auth_users
                     WHERE user_id = %s
@@ -3760,7 +3878,7 @@ class UserRepository:
             cursor.execute(
                 """
                 SELECT
-                    u.user_id, u.username, u.user_code, u.is_admin, u.role,
+                    u.user_id, u.username, u.user_code, u.role,
                     u.created_at, u.disabled_at, u.manager_id,
                     (SELECT COUNT(*) FROM jobs j WHERE j.owner_user_id = u.user_id AND j.status IN ('queued', 'running')) as active_jobs
                 FROM auth_users u
@@ -3873,7 +3991,7 @@ class UserRepository:
             cursor.execute(
                 """
                 SELECT
-                    u.user_id, u.username, u.user_code, u.is_admin, u.role,
+                    u.user_id, u.username, u.user_code, u.role,
                     u.created_at, u.disabled_at, u.manager_id,
                     (SELECT COUNT(*) FROM jobs j WHERE j.owner_user_id = u.user_id) as total_jobs,
                     (SELECT COUNT(*) FROM jobs j WHERE j.owner_user_id = u.user_id AND j.status = 'complete') as complete_jobs,
@@ -3980,21 +4098,13 @@ class UserRepository:
         Returns:
             User instance with all fields populated.
         """
-        # Handle role field with backward compatibility
-        # If role column doesn't exist yet (pre-migration), derive from is_admin
-        role_value = row.get("role")
-        if role_value:
-            role = UserRole(role_value)
-        elif row.get("is_admin"):
-            role = UserRole.ADMIN
-        else:
-            role = UserRole.USER
+        # Role is the single source of truth for permissions
+        role = UserRole(row["role"])
 
         return User(
             user_id=row["user_id"],
             username=row["username"],
             user_code=row["user_code"],
-            is_admin=bool(row["is_admin"]),
             role=role,
             created_at=row["created_at"],
             manager_id=row.get("manager_id"),
@@ -4066,7 +4176,7 @@ class UserRepository:
             cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
-                SELECT user_id, username, user_code, is_admin, role, created_at,
+                SELECT user_id, username, user_code, role, created_at,
                        disabled_at, manager_id, locked_at
                 FROM auth_users
                 WHERE manager_id = %s
@@ -4116,8 +4226,8 @@ class UserRepository:
         with self.pool.connection() as conn:
             cursor = TypedTupleCursor(conn.cursor())
             cursor.execute(
-                "UPDATE auth_users SET role = %s, is_admin = %s WHERE user_id = %s",
-                (role.value, role == UserRole.ADMIN, user_id),
+                "UPDATE auth_users SET role = %s WHERE user_id = %s",
+                (role.value, user_id),
             )
             conn.commit()
             if cursor.rowcount == 0:
@@ -4166,7 +4276,7 @@ class UserRepository:
             search_pattern = f"%{query}%"
             cursor.execute(
                 """
-                SELECT user_id, username, user_code, is_admin, role, created_at,
+                SELECT user_id, username, user_code, role, created_at,
                        disabled_at, manager_id, locked_at
                 FROM auth_users
                 WHERE (username LIKE %s OR user_code LIKE %s)
@@ -4365,7 +4475,7 @@ class UserRepository:
             cursor = TypedDictCursor(conn.cursor(dictionary=True))
             cursor.execute(
                 """
-                SELECT user_id, username, user_code, is_admin, role, created_at,
+                SELECT user_id, username, user_code, role, created_at,
                        disabled_at, manager_id, locked_at
                 FROM auth_users
                 WHERE role IN ('manager', 'admin')

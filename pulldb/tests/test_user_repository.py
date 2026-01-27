@@ -45,8 +45,8 @@ class TestUserRepository:
             cursor.execute(
                 (
                     "INSERT INTO auth_users (user_id, username, user_code, "
-                    "is_admin, created_at) VALUES "
-                    "(%s,'john_existing','johndo',0,UTC_TIMESTAMP(6))"
+                    "role, created_at) VALUES "
+                    "(%s,'john_existing','johndo','user',UTC_TIMESTAMP(6))"
                 ),
                 (user_id,),
             )
@@ -69,16 +69,16 @@ class TestUserRepository:
             cursor.execute(
                 (
                     "INSERT INTO auth_users (user_id, username, user_code, "
-                    "is_admin, created_at) VALUES "
-                    "(%s,'user1','johndo',0,UTC_TIMESTAMP(6))"
+                    "role, created_at) VALUES "
+                    "(%s,'user1','johndo','user',UTC_TIMESTAMP(6))"
                 ),
                 (user_id1,),
             )
             cursor.execute(
                 (
                     "INSERT INTO auth_users (user_id, username, user_code, "
-                    "is_admin, created_at) VALUES "
-                    "(%s,'user2','johnda',0,UTC_TIMESTAMP(6))"
+                    "role, created_at) VALUES "
+                    "(%s,'user2','johnda','user',UTC_TIMESTAMP(6))"
                 ),
                 (user_id2,),
             )
@@ -104,8 +104,8 @@ class TestUserRepository:
                 cursor.execute(
                     (
                         "INSERT INTO auth_users (user_id, username, user_code, "
-                        "is_admin, created_at) VALUES "
-                        "(%s,%s,%s,0,UTC_TIMESTAMP(6))"
+                        "role, created_at) VALUES "
+                        "(%s,%s,%s,'user',UTC_TIMESTAMP(6))"
                     ),
                     (uid, f"user_{code}", code),
                 )
@@ -140,8 +140,8 @@ class TestUserRepository:
                     cursor.execute(
                         (
                             "INSERT INTO auth_users (user_id, username, user_code, "
-                            "is_admin, created_at) VALUES "
-                            "(%s,%s,%s,0,UTC_TIMESTAMP(6))"
+                            "role, created_at) VALUES "
+                            "(%s,%s,%s,'user',UTC_TIMESTAMP(6))"
                         ),
                         (str(uuid.uuid4()), f"user_{v}_{uuid.uuid4().hex[:8]}", v),
                     )
@@ -179,8 +179,8 @@ class TestUserRepository:
             cursor.execute(
                 (
                     "INSERT INTO auth_users (user_id, username, user_code, "
-                    "is_admin, created_at) VALUES "
-                    "(%s,%s,%s,0,UTC_TIMESTAMP(6))"
+                    "role, created_at) VALUES "
+                    "(%s,%s,%s,'user',UTC_TIMESTAMP(6))"
                 ),
                 (user_id, username, code),
             )

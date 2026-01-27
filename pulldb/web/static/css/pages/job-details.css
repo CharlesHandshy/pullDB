@@ -447,6 +447,44 @@
 }
 
 /* ===========================================
+   WARNING CARD (Zombie Jobs)
+   =========================================== */
+
+.card-warning {
+    border-color: var(--warning-300);
+    background: var(--warning-50);
+}
+
+.card-warning .card-title {
+    color: var(--warning-700);
+}
+
+.card-warning .zombie-warning-content {
+    color: var(--warning-800);
+}
+
+.card-warning .zombie-warning-content ul {
+    color: var(--warning-700);
+}
+
+[data-theme="dark"] .card-warning {
+    border-color: var(--warning-600);
+    background: rgba(245, 158, 11, 0.1);
+}
+
+[data-theme="dark"] .card-warning .card-title {
+    color: var(--warning-300);
+}
+
+[data-theme="dark"] .card-warning .zombie-warning-content {
+    color: var(--warning-200);
+}
+
+[data-theme="dark"] .card-warning .zombie-warning-content ul {
+    color: var(--warning-300);
+}
+
+/* ===========================================
    LOGS CONTAINER - Block Grouped Output
    =========================================== */
 

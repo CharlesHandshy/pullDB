@@ -29,8 +29,8 @@ class TestUserRepositoryRoleField:
             cursor.execute(
                 """
                 INSERT INTO auth_users 
-                    (user_id, username, user_code, is_admin, role, created_at)
-                VALUES (%s, %s, %s, FALSE, %s, UTC_TIMESTAMP(6))
+                    (user_id, username, user_code, role, created_at)
+                VALUES (%s, %s, %s, %s, UTC_TIMESTAMP(6))
                 """,
                 (user_id, username, user_code, role),
             )
@@ -120,8 +120,8 @@ class TestUserRepositoryRoleField:
             finally:
                 self._cleanup_user(mysql_pool, user_id)
 
-    def test_is_admin_synced_with_role(self, mysql_pool: Any) -> None:
-        """is_admin field is independent of role field."""
+    def test_is_admin_property_from_role(self, mysql_pool: Any) -> None:
+        """is_admin property is computed from role field."""
         repo = UserRepository(mysql_pool)
         user_id = str(uuid.uuid4())
         username = f"admintest_{user_id[:8]}"
@@ -133,8 +133,8 @@ class TestUserRepositoryRoleField:
                 cursor.execute(
                     """
                     INSERT INTO auth_users 
-                        (user_id, username, user_code, is_admin, role, created_at)
-                    VALUES (%s, %s, %s, TRUE, 'admin', UTC_TIMESTAMP(6))
+                        (user_id, username, user_code, role, created_at)
+                    VALUES (%s, %s, %s, 'admin', UTC_TIMESTAMP(6))
                     """,
                     (user_id, username, username[:6]),
                 )

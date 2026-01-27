@@ -71,7 +71,6 @@ class TestUserModelRole:
                 user_id="test-123",
                 username="testuser",
                 user_code="testus",
-                is_admin=False,
                 created_at=datetime(2025, 1, 1, tzinfo=UTC),
             )
 
@@ -81,7 +80,6 @@ class TestUserModelRole:
             user_id="test-123",
             username="testuser",
             user_code="testus",
-            is_admin=False,
             role=UserRole.MANAGER,
             created_at=datetime(2025, 1, 1, tzinfo=UTC),
         )
@@ -93,7 +91,6 @@ class TestUserModelRole:
             user_id="test-123",
             username="testuser",
             user_code="testus",
-            is_admin=True,
             role=UserRole.ADMIN,
             created_at=datetime(2025, 1, 1, tzinfo=UTC),
         )
@@ -107,7 +104,6 @@ class TestUserModelRole:
             user_id="test-123",
             username="testuser",
             user_code="testus",
-            is_admin=False,
             role=UserRole("manager"),
             created_at=datetime(2025, 1, 1, tzinfo=UTC),
         )
@@ -119,7 +115,6 @@ class TestUserModelRole:
             user_id="test-123",
             username="testuser",
             user_code="testus",
-            is_admin=False,
             role=UserRole.ADMIN,
             created_at=datetime(2025, 1, 1, tzinfo=UTC),
         )

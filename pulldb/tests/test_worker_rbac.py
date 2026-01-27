@@ -94,7 +94,7 @@ class TestWorkerRBAC:
         state = get_simulation_state()
         with state.lock:
             state.users[admin.user_id] = replace(
-                admin, role=UserRole.ADMIN, is_admin=True
+                admin, role=UserRole.ADMIN
             )
             admin = state.users[admin.user_id]
 

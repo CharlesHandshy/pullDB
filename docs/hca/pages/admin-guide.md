@@ -304,10 +304,16 @@ When a user runs CLI commands from a new host:
 ```bash
 # User's first CLI command from new host
 $ pulldb status
-API key required for this host. Run: pulldb request-host-key
+API key required for this host. Run: pulldb register
 
-# User requests key for this host
-$ pulldb request-host-key
+# User requests key for this host (register detects existing user)
+$ pulldb register
+Username: jsmith
+User 'jsmith' already exists.
+
+Request an API key for this host? [y/N]: y
+Password: ********
+
 ✓ API key requested for host: devserver
   Key ID: abc12345...
   Status: Pending admin approval

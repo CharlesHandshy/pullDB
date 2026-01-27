@@ -349,7 +349,6 @@ def _seed_users(state: SimulationState, mode: str = "standard") -> dict[str, Use
                 user_id=user_id,
                 username=username,
                 user_code=user_code,
-                is_admin=(role == UserRole.ADMIN),
                 role=role,
                 created_at=datetime(2024, 1, 1, tzinfo=UTC),
                 manager_id=manager_id,

@@ -249,7 +249,7 @@ When users run `pulldb register`, their account is created in a **pending approv
 
 Users can access pullDB from multiple machines. Each machine needs its own API key:
 
-1. User runs `pulldb request-host-key` on new machine
+1. User runs `pulldb register` on new machine (detects existing user, offers host key)
 2. API key created in **pending approval** state
 3. Admin approves the key
 4. User can now use pullDB from that machine
@@ -280,10 +280,9 @@ sudo pulldb-admin users enable <username>
 
 # Disable a user
 sudo pulldb-admin users disable <username>
-
-# Reset a user's password
-sudo pulldb-admin users resetpass <username>
 ```
+
+> **Note:** Password resets are done via the Web UI (Admin → Users → Reset Password), not via CLI.
 
 ### Web UI User Management
 

@@ -4268,7 +4268,7 @@ async def api_user_orphan_candidates(
                 all_orphans.append({
                     "database_name": oc.database_name,
                     "dbhost": oc.dbhost,
-                    "extracted_user_code": oc.extracted_user_code,
+                    "user_code": oc.owner_user_code,  # From pullDB table (authoritative)
                     "restored_at": oc.restored_at.isoformat() if oc.restored_at else None,
                     "restored_by": oc.restored_by,
                     "size_mb": oc.size_mb,
@@ -4400,8 +4400,8 @@ async def api_user_orphan_distinct_values(
             for oc in result.orphans:
                 if column == "dbhost":
                     all_values.add(oc.dbhost)
-                elif column == "extracted_user_code":
-                    all_values.add(oc.extracted_user_code)
+                elif column == "user_code":
+                    all_values.add(oc.owner_user_code)
                 elif column == "database_name":
                     all_values.add(oc.database_name)
 

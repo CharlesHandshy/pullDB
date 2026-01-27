@@ -52,7 +52,6 @@ class _FakeUserRepository:
             user_id="user-123",
             username=username,
             user_code="janedo",
-            is_admin=False,
             role=UserRole.USER,
             created_at=datetime(2025, 11, 3, 0, 0, tzinfo=UTC),
             # Host authorization: user has access to the default dbhost

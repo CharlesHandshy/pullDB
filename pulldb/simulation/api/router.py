@@ -539,8 +539,7 @@ class SeedUserRequest(BaseModel):
     username: str = Field(..., description="Username for the test user")
     password: str = Field(..., description="Password for the test user")
     user_code: str = Field(default="test", description="User code")
-    is_admin: bool = Field(default=False, description="Whether user is admin")
-    role: str = Field(default="user", description="User role: user, manager, or admin")
+    role: str = Field(default="user", description="User role: user, manager, admin, or service")
     manager_id: str | None = Field(default=None, description="ID of the user's manager")
 
 
@@ -583,33 +582,18 @@ async def seed_user(request: SeedUserRequest) -> SeedUserResponse:
     password_hash = hash_password(request.password)
     auth_repo.set_password_hash(user.user_id, password_hash)
 
-    # Make admin if requested
-    if request.is_admin:
+    # Set role if not default user
+    if request.role != "user":
         state = get_simulation_state()
         with state.lock:
             from pulldb.domain.models import UserRole
-            # Determine role - admin flag or explicit role
-            if request.role == "admin" or request.is_admin:
-                role = UserRole.ADMIN
-            elif request.role == "manager":
-                role = UserRole.MANAGER
-            else:
-                role = UserRole.USER
-            state.users[user.user_id] = replace(user, is_admin=True, role=role)
-            # Also update users_by_code index
-            if user.user_code in state.users_by_code:
-                state.users_by_code[user.user_code] = replace(user, is_admin=True, role=role)
-    elif request.role and request.role != "user":
-        # Set role even if not admin
-        state = get_simulation_state()
-        with state.lock:
-            from pulldb.domain.models import UserRole
-            if request.role == "manager":
-                role = UserRole.MANAGER
-            elif request.role == "admin":
-                role = UserRole.ADMIN
-            else:
-                role = UserRole.USER
+            role_map = {
+                "user": UserRole.USER,
+                "manager": UserRole.MANAGER,
+                "admin": UserRole.ADMIN,
+                "service": UserRole.SERVICE,
+            }
+            role = role_map.get(request.role, UserRole.USER)
             state.users[user.user_id] = replace(user, role=role)
             if user.user_code in state.users_by_code:
                 state.users_by_code[user.user_code] = replace(user, role=role)

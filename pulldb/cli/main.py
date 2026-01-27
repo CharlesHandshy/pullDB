@@ -25,7 +25,10 @@ from dotenv import load_dotenv
 from pulldb import __version__
 from pulldb.cli.auth import get_auth_headers, get_calling_username, get_current_username
 from pulldb.cli.parse import CLIParseError, parse_restore_args
-from pulldb.infra.timeouts import DEFAULT_API_CLIENT_TIMEOUT
+
+# Default timeout for CLI HTTP requests to API (seconds)
+# Defined locally to keep CLI client package self-contained (no infra dependency)
+DEFAULT_API_CLIENT_TIMEOUT = 30.0
 
 # UUID validation pattern (copied from domain.validation to keep CLI self-contained)
 _UUID_PATTERN = re.compile(

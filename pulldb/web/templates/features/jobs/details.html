@@ -182,6 +182,71 @@
     </div>
     {% endif %}
 
+    <!-- Zombie Job Warning - shown for jobs stuck in deleting -->
+    {% if is_zombie_deleting %}
+    <div class="card card-warning">
+        <div class="card-header-row">
+            <h3 class="card-title">
+                {{ icon('alert-triangle', size='18', class='icon-sm') }}
+                Zombie Job Detected
+            </h3>
+        </div>
+        <div class="zombie-warning-content" style="padding: 1rem;">
+            <p style="margin-bottom: 0.75rem;">
+                This job has been stuck in <strong>deleting</strong> status for over 24 hours.
+                This typically indicates that:
+            </p>
+            <ul style="margin: 0.5rem 0 1rem 1.5rem; padding: 0;">
+                <li>The worker process crashed during deletion</li>
+                <li>The target host is no longer accessible</li>
+                <li>The databases were already cleaned up by another process</li>
+            </ul>
+            {% if can_force_complete %}
+            <form method="post" action="/web/jobs/{{ job.id }}/force-complete-delete" 
+                  onsubmit="return confirm('Are you sure you want to force-complete this deletion?\\n\\nThis will mark the job as deleted without verifying database cleanup.\\n\\nOnly proceed if you are certain the databases are already gone or inaccessible.');">
+                <button type="submit" class="btn btn-danger">
+                    {{ icon('trash-2', size='16') }}
+                    Force Complete Deletion
+                </button>
+            </form>
+            {% else %}
+            <p class="text-muted" style="font-size: 0.875rem; margin: 0;">
+                <em>Admin privileges required to force-complete deletion.</em>
+            </p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Admin Actions - shown for stuck deleting/failed jobs (admins only) -->
+    {% if can_force_complete and not is_zombie_deleting and job.status.value in ['deleting', 'failed'] %}
+    <div class="card">
+        <div class="card-header-row">
+            <h3 class="card-title">
+                {{ icon('settings', size='18', class='icon-sm') }}
+                Admin Actions
+            </h3>
+        </div>
+        <div class="admin-actions-content" style="padding: 1rem;">
+            <p style="margin-bottom: 0.75rem; color: var(--text-secondary);">
+                Job is in <strong>{{ job.status.value }}</strong> status. 
+                {% if job.status.value == 'deleting' %}
+                If the deletion process cannot complete normally, you can force-complete it.
+                {% else %}
+                You can force-complete the deletion to clear this job from the queue.
+                {% endif %}
+            </p>
+            <form method="post" action="/web/jobs/{{ job.id }}/force-complete-delete"
+                  onsubmit="return confirm('Force-complete this deletion?\\n\\nThis marks the job as deleted without attempting database cleanup.');">
+                <button type="submit" class="btn btn-outline btn-sm">
+                    {{ icon('check-circle', size='14') }}
+                    Force Complete as Deleted
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Logs -->
     <div class="card logs-card">
         <div class="card-header-row logs-header-sticky">
@@ -299,7 +364,7 @@
                 {# Per-table progress bars from processlist - ONLY show active tables (not complete) #}
                 {# Tables disappear when their thread finishes - no lingering at 100% #}
                 {% if restore_stats.tables and not atomic_rename_stats %}
-                {% set active_tables = restore_stats.tables | dictsort | selectattr('1.is_complete', 'false') | list %}
+                {% set active_tables = restore_stats.tables | dictsort | rejectattr('1.is_complete') | list %}
                 {% if active_tables %}
                 <div class="log-progress-tables">
                     {% for table_name, table in active_tables %}

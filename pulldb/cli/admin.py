@@ -138,12 +138,10 @@ def _check_admin_authorization(ctx: click.Context) -> None:
                 click.style("Account not authorized.", fg="red", bold=True)
             )
 
-        # Check for admin/service role (handle both enum and string comparison)
+        # Check for admin/service role
         # SERVICE role has same CLI permissions as admin (for system accounts like pulldb_service)
-        is_admin = user.is_admin or str(user.role).lower() in (
-            "admin", "userrole.admin", "service", "userrole.service"
-        )
-        if not is_admin:
+        from pulldb.domain.models import UserRole
+        if user.role not in (UserRole.ADMIN, UserRole.SERVICE):
             raise click.ClickException(
                 click.style("Account not authorized.", fg="red", bold=True)
             )

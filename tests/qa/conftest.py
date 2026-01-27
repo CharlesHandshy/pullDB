@@ -406,7 +406,6 @@ def mock_auth_user():
         user_id="qa-test-user-id",
         username="qa-test-user",
         user_code="qatest",
-        is_admin=True,
         role=UserRole.ADMIN,  # Admin for full access
         created_at=datetime.now(timezone.utc),
     )

@@ -34,7 +34,7 @@ Comprehensive guide to job status states, retention policies, locking mechanisms
 | `canceled` | Terminal | User canceled |
 | `deleting` | Transition | Database being dropped |
 | `deleted` | Terminal | Database dropped |
-| `superseded` | Terminal | Replaced by newer restore |
+| `superseded` | Special | Replaced by newer restore (not in TERMINAL_STATUSES) |
 
 ### State Transition Diagram
 
@@ -91,10 +91,13 @@ Comprehensive guide to job status states, retention policies, locking mechanisms
   "all": ["queued", "running", "canceling", "deployed", "expired", 
           "failed", "complete", "canceled", "deleting", "deleted", "superseded"],
   "active": ["queued", "running", "canceling", "deployed"],
-  "terminal": ["expired", "failed", "complete", "canceled", "deleted", "superseded"],
-  "deletable": ["deployed", "expired", "failed", "complete"]
+  "terminal": ["expired", "failed", "complete", "canceled", "deleted"],
+  "deletable": ["deployed", "expired", "failed", "complete"],
+  "special": ["superseded"]
 }
 ```
+
+> **Note**: `superseded` is NOT in `TERMINAL_STATUSES` in code - it's a special state indicating the database was replaced by a newer restore to the same target.
 
 ---
 

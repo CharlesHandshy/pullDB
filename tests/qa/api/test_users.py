@@ -18,6 +18,8 @@ from fastapi.testclient import TestClient
 
 from pulldb.domain.models import JobStatus
 
+from pulldb.domain.models import UserRole
+
 from .conftest import (
     SAMPLE_JOB_ID,
     SAMPLE_USER_CODE,
@@ -64,7 +66,7 @@ class TestUserLookup:
         self, client: TestClient, mock_api_state, user_factory
     ) -> None:
         """GET /api/users/{username} shows admin status."""
-        admin_user = user_factory(is_admin=True)
+        admin_user = user_factory(role=UserRole.ADMIN)
         configure_user_repo(mock_api_state, user=admin_user)
 
         response = client.get(f"/api/users/{SAMPLE_USERNAME}")

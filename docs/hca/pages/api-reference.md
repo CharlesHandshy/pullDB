@@ -579,7 +579,8 @@ curl "http://localhost:8080/api/users/jsmith"
   "user_code": "JSMITH",
   "is_admin": false,
   "is_disabled": false,
-  "has_password": true
+  "has_password": true,
+  "role": "user"
 }
 ```
 

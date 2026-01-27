@@ -45,7 +45,6 @@ class FakeUserRepository:
             user_id="user-1",
             username=username,
             user_code="janedo",
-            is_admin=False,
             role=UserRole.USER,
             created_at=datetime(2025, 11, 3, 0, 0, tzinfo=UTC),
             allowed_hosts=["dev-db-01"],  # Allow default host for tests
@@ -58,7 +57,6 @@ class FakeUserRepository:
             user_id="user-1",
             username=username,
             user_code="janedo",
-            is_admin=False,
             role=UserRole.USER,
             created_at=datetime(2025, 11, 3, 0, 0, tzinfo=UTC),
             allowed_hosts=["dev-db-01"],  # Allow default host for tests
@@ -251,7 +249,6 @@ def fake_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRepos]:
             user_id="user-1",
             username="jane.doe",
             user_code="janedo",
-            is_admin=True,  # Admin bypasses self-submission check
             role=UserRole.ADMIN,
             created_at=datetime(2025, 11, 3, 0, 0, tzinfo=UTC),
             allowed_hosts=["dev-db-01"],

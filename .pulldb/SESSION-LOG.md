@@ -6,6 +6,411 @@
 
 ---
 
+## 2026-01-26 | CRITICAL: Database Protection Safety Audit & Fix
+
+### Context
+**MAJOR SECURITY INCIDENT**: User reported being able to overwrite an existing database using a customer name. This is a catastrophic data loss scenario that should never be possible. User mandate: "MAXIMUM REQUIREMENT that existing database be protected at all costs!"
+
+### Audit Findings
+
+**CRITICAL VULNERABILITIES IDENTIFIED:**
+
+1. **`overwrite=false` BYPASSED ALL CHECKS**
+   - API external database check only ran when `req.overwrite=true`
+   - Jobs could be queued targeting external databases without verification
+   - Location: `pulldb/api/logic.py` line ~704
+
+2. **Worker Pre-Flight Skipped When `overwrite=false`**
+   - `pre_flight_verify_target_overwrite_safe()` returned early if overwrite=false
+   - No defense-in-depth for external database protection
+   - Location: `pulldb/worker/executor.py` line ~157
+
+3. **Silent Failures (Fail-Open)**
+   - `_target_database_exists_on_host()` returned `False` on connection errors
+   - `pre_flight_verify_target_overwrite_safe()` logged warning and continued
+   - Both allowed operations to proceed when safety could not be verified
+
+4. **Race Condition Window**
+   - Database could be created after API check but before worker execution
+   - Worker pre-flight skip exacerbated this
+
+**EXISTING PROTECTIONS WORKING:**
+- Stored procedure `pulldb_atomic_rename` (line 91-105) correctly blocks external DBs
+- This was the ONLY functioning protection layer
+
+### What Was Done
+
+**1. Created Non-Negotiable Safety Standard**
+- New file: `.pulldb/standards/database-protection.md`
+- Documents ALL protection requirements
+- Specifies removal policy (requires written acknowledgment + risk acceptance)
+- Defines audit checklist for code reviews
+
+**2. Fixed API Layer (`pulldb/api/logic.py`)**
+- Database existence check now runs REGARDLESS of `overwrite` setting
+- External database protection is ABSOLUTE (no user flag can override)
+- Cross-user protection is ABSOLUTE
+- Connection errors now FAIL HARD (503 instead of silent proceed)
+- `_target_database_exists_on_host()` now has `fail_hard=True` default
+
+**3. Fixed Worker Pre-Flight (`pulldb/worker/executor.py`)**
+- Pre-flight check now runs ALWAYS (not just when overwrite=true)
+- Connection errors raise `TargetCollisionError` (fail HARD)
+- External database check blocks even with overwrite=false
+- Added new collision type `exists_no_overwrite` for double-checking
+
+**4. Updated Error Types (`pulldb/domain/errors.py`)**
+- Added `exists_no_overwrite` collision type
+- Added `connection_failed` collision type
+- Updated docstrings with protection reference
+
+### Protection Matrix (Now Enforced)
+
+| Scenario | API Check | Worker Pre-Flight | Stored Procedure |
+|----------|-----------|-------------------|------------------|
+| External DB exists | ✅ BLOCK | ✅ BLOCK | ✅ BLOCK |
+| Cross-user DB | ✅ BLOCK | ✅ BLOCK | N/A |
+| Same-user, no overwrite | ✅ BLOCK | ✅ BLOCK | N/A |
+| Same-user + overwrite | ✅ ALLOW | ✅ ALLOW | ✅ ALLOW |
+| Connection error | ✅ FAIL HARD | ✅ FAIL HARD | N/A |
+
+### Rationale
+Per FAIL HARD protocol and ROOT CAUSE FIXING principle:
+- Silent failures (fail-open) are FORBIDDEN in safety-critical paths
+- Defense in depth requires ALL THREE layers to protect
+- The `overwrite` flag is consent to replace YOUR OWN data, not external systems
+- Connection errors cannot be ignored - if we can't verify safety, we can't proceed
+
+### Files Modified
+- `.pulldb/standards/database-protection.md` (NEW)
+- `pulldb/api/logic.py` (CRITICAL FIX)
+- `pulldb/worker/executor.py` (CRITICAL FIX)
+- `pulldb/domain/errors.py` (extended)
+
+### Action Required
+- Run full test suite to verify no regressions
+- Deploy to all environments immediately (security fix)
+- Audit any recent restores that may have overwritten databases
+
+---
+
+## 2026-01-23 | Comprehensive Drift Detection Added to Audit Agent
+
+### Context
+User requested expanding the audit agent beyond 17 hardcoded mappings to cover ALL existing files and integrate with Copilot agent for reasoning. Original feedback: "This is more like an alerter of drift than auditor, lets make sure to cover all the existing files and integrate with the copilot agent for reasoning."
+
+### What Was Done
+
+**New Files Created**
+- `pulldb/audit/inventory.py` - FileInventory class that scans entire codebase
+  - Categorizes files: Python, CSS, JS, SQL, HTML, Config, Test
+  - Extracts symbols: classes, functions, exports, CSS selectors, SQL tables
+  - Checks documentation references in KNOWLEDGE-POOL
+  - Properly excludes: venv, tests, engineering-dna, packaging, etc.
+
+- `pulldb/audit/drift.py` - DriftDetector with comprehensive drift detection
+  - DriftType enum: undocumented_file, missing_file, renamed_file, undocumented_class, missing_export, extra_export, renamed_symbol, count_mismatch, value_mismatch, package_restructure
+  - DriftAlert dataclass with AI-friendly context for reasoning
+  - `to_agent_prompt()` method generates markdown context for AI consumption
+
+**Agent Integration**
+- Added `detect_drift()` method for comprehensive scanning
+- Added `get_copilot_context()` method for AI-friendly output
+- Properties for lazy-loading inventory and drift detector
+
+**CLI Updates**
+- `--drift` flag for comprehensive drift detection mode
+- `--copilot` flag for AI/Copilot-friendly context output
+- `--severity` filter for alerts (critical, high, medium, low, info)
+- Separate output formatting for drift vs targeted audit
+
+**Documentation Updated**
+- Updated `docs/AUDIT-AGENT.md` with two-mode documentation
+- Documented drift detection types and CLI usage
+
+**Tests Added** (8 new tests, 22 total now passing)
+- TestDriftDetection class: 5 tests
+- TestFileInventory class: 3 tests
+
+### Rationale
+Per CONTINUOUS LEARNING principle - capturing operational knowledge about comprehensive codebase audit. The two-mode approach (targeted vs comprehensive) allows:
+1. Fast CI/pre-commit with deterministic mappings
+2. Thorough analysis for AI reasoning with full codebase scan
+
+Following HCA principles, drift.py and inventory.py are in features layer (business logic) alongside agent.py.
+
+### Files Modified
+- `pulldb/audit/__init__.py` - Added DriftDetector, DriftAlert, DriftType, FileInventory, FileInventoryItem, FileCategory exports
+- `pulldb/audit/agent.py` - Added detect_drift(), get_copilot_context(), lazy-loaded properties
+- `pulldb/audit/__main__.py` - Added --drift, --copilot, --severity CLI options
+- `docs/AUDIT-AGENT.md` - Documented two-mode operation
+- `tests/unit/test_audit_agent.py` - Added 8 new tests
+
+### Test Results
+```
+pytest tests/unit/test_audit_agent.py -v → 22 passed in 3.92s
+```
+
+### Usage Example
+```bash
+# Run comprehensive drift detection
+python -m pulldb.audit --drift
+
+# Get AI-friendly context
+python -m pulldb.audit --drift --copilot
+
+# Filter to high severity
+python -m pulldb.audit --drift --severity high
+
+# Current stats: 357 files scanned, 201 drift alerts found
+```
+
+---
+
+## 2026-01-23 | Documentation Audit Agent Created
+
+### Context
+After completing 11 passes of manual KNOWLEDGE-POOL auditing, user requested building a continuous audit agent that automates this process - triggered after edits to capture and update documentation to match codebase reality.
+
+### What Was Done
+
+**New Package: `pulldb/audit/`**
+- `__init__.py` - Package exports
+- `__main__.py` - CLI interface (`python -m pulldb.audit`)
+- `agent.py` - Main DocumentationAuditAgent orchestrator
+- `analyzers.py` - Code analyzers (Python, CSS, JS, SQL)
+- `knowledge_pool.py` - KNOWLEDGE-POOL parser and updater
+- `mappings.py` - Documentation-to-code mapping registry (17 mappings)
+- `report.py` - AuditReport and AuditFinding data structures
+
+**Features**
+- Audit recent git changes: `python -m pulldb.audit`
+- Full audit: `python -m pulldb.audit --full`
+- Section-specific: `python -m pulldb.audit --section "Sidebar"`
+- Pre-commit hook: `python -m pulldb.audit --pre-commit`
+- Auto-fix mode: `python -m pulldb.audit --auto-fix`
+- JSON output: `python -m pulldb.audit --json`
+
+**Verification Types Implemented**
+- `exports` - Python __all__ exports
+- `class_names` - Class existence verification
+- `function_names` - Function existence verification
+- `css_values` - CSS property values (targeted for sidebar)
+- `css_classes` - CSS class existence
+- `file_count` - File count verification
+- `click_commands` - CLI command verification
+- `route_count` - API endpoint counting
+
+**Supporting Files**
+- `scripts/pre-commit-doc-audit.sh` - Pre-commit hook script
+- `docs/AUDIT-AGENT.md` - Documentation
+- `tests/unit/test_audit_agent.py` - 14 unit tests (all passing)
+
+**Bug Fixed During Development**
+- Updated KNOWLEDGE-POOL.json simulation exports (was 5 items, now 28 items matching actual __all__)
+
+### Rationale
+Manual auditing discovered patterns of documentation drift:
+1. Class renames (Mock→Simulated)
+2. Timing values change in CSS/JS
+3. Export lists expand but docs don't update
+4. File counts drift as files are added/removed
+
+Automating these checks ensures documentation stays synchronized. Pre-commit hook prevents commits that would introduce documentation debt.
+
+### Files Created
+- `pulldb/audit/__init__.py`
+- `pulldb/audit/__main__.py`
+- `pulldb/audit/agent.py`
+- `pulldb/audit/analyzers.py`
+- `pulldb/audit/knowledge_pool.py`
+- `pulldb/audit/mappings.py`
+- `pulldb/audit/report.py`
+- `scripts/pre-commit-doc-audit.sh`
+- `docs/AUDIT-AGENT.md`
+- `tests/unit/test_audit_agent.py`
+
+### Files Modified
+- `docs/KNOWLEDGE-POOL.json` - Fixed simulation exports array
+
+---
+
+## 2026-01-23 | KNOWLEDGE-POOL Comprehensive Audit (11 Passes)
+
+### Context
+User identified out-of-date information in KNOWLEDGE-POOL.md and requested a systematic audit comparing documentation against actual codebase.
+
+### What Was Done
+
+**Pass 11: Web UI CSS/JS Accuracy**
+- Fixed sidebar timing: open delay 150ms→0 (immediate), close delay 200ms→300ms
+- Fixed sidebar trigger width: 12px→5px
+- Fixed sidebar CSS technique: `translateX(-100%)`→`left: calc(-1 * var(--sidebar-width))`
+- Fixed sidebar class: `.sidebar.open`→`.app-sidebar.sidebar-open`
+- Fixed responsive table classes: removed non-existent `.main-content.full-height-page`, `.layout-fullheight`, `.layout-body`
+- Added actual classes: `.app-body`, `.main-content`, `.content-body` with real CSS
+- Updated KNOWLEDGE-POOL.json to match all corrections
+
+**Pass 10: Code Examples & Class References**
+- Merged orphaned "Multi-Host API Keys" index entry into CLI HMAC section
+- Fixed `get_current_user` → `get_authenticated_user` auth function
+- Fixed simulation class names: `MockJobRepository` → `SimulatedJobRepository`, `MockUserRepository` → `SimulatedUserRepository`
+- Fixed `MockCommandExecutor` → `MockProcessExecutor`
+- Fixed exports: `SimulationEngine` → `ScenarioManager, get_simulation_state`
+- Verified CredentialResolver and MySQLCredentials usage examples
+
+**Pass 1-9: (See previous log entries)**
+- Schema consolidation, RBAC, CLI commands, settings keys
+- Broken links, test user, counts (REST API, help pages)
+
+### Rationale
+Applying KNOWLEDGE-POOL's own stated purpose: "single-source of truth for pullDB facts". Each documented pattern, class name, and value must match actual codebase to maintain trustworthiness. Web UI patterns especially prone to drift as CSS/JS evolves.
+
+### Files Modified
+- `docs/KNOWLEDGE-POOL.md` - Sidebar timing, CSS classes, responsive table patterns
+- `docs/KNOWLEDGE-POOL.json` - All matching JSON entries updated
+
+---
+
+## 2026-01-23 | KNOWLEDGE-POOL Comprehensive Audit (9 Passes)
+
+### Context
+User identified out-of-date information in KNOWLEDGE-POOL.md and requested a systematic audit comparing documentation against actual codebase.
+
+### What Was Done
+
+**Pass 1: Major Schema Consolidation**
+- Fixed file counts throughout document
+- Updated schema structure from legacy 007xx migrations to consolidated `00_tables/`
+- Corrected paths and manager relationships
+
+**Pass 2: RBAC & Configuration**
+- Fixed RBAC usage patterns
+- Corrected test configuration references
+- Updated CLI HMAC authentication section
+- Fixed database retention schema details
+
+**Pass 3: Broken Links**
+- Fixed deployment.md, policies/, terraform/ link paths
+- Corrected footer links
+- Removed old migration references
+- Fixed schema doc paths
+
+**Pass 4: Structural Documentation**
+- Fixed web-layout.md link path
+- Corrected seed file names in JSON
+- Updated script count (10→7)
+- Fixed HCA layer mapping for web/ directory
+- Updated template hierarchy
+- Fixed base.html line count (2100→160)
+- Updated copyright/version in layout diagram
+- Added missing help pages (manager.html, requests.html)
+
+**Pass 5: Schema Completeness**
+- Added all 17 SQL files to schema directory listing
+- Added job_history_summary to JSON tables
+- Simplified consolidated_schema section in JSON
+- Updated note about KNOWLEDGE-POOL.json existence
+- Fixed post-restore SQL path
+
+**Pass 6: Data Accuracy**
+- Fixed RBAC role count (three→four including SERVICE)
+- Removed non-existent `extended_count` column from jobs table docs
+- Fixed settings table keys (max_retention_months→max_retention_days, etc.)
+- Added 4 missing permission functions to JSON (can_reset_password, can_reassign_user, can_bulk_manage_users, can_change_user_role)
+
+**Pass 7: CLI & Scenarios**
+- Updated pulldb CLI commands (5→11): restore, status, list, search, cancel, history, events, profile, hosts, register, setpass
+- Updated pulldb-admin CLI commands (vague→10 specific groups): settings, secrets, jobs, backups, cleanup, run-retention-cleanup, hosts, users, keys, disallow
+- Fixed chaos scenarios to match actual `ScenarioType` enum values
+- Corrected after-SQL template count (14→12)
+- Updated features list to include all 10: admin, audit, auth, css, dashboard, jobs, manager, mockup, requests, restore
+
+**Pass 8: Final Count Corrections**
+- Fixed REST API endpoint count (56→53)
+- Fixed help pages count (13→14)
+- Clarified settings count (5 retention settings shown, 23 total defined)
+
+**Pass 9: Test Configuration Correction**
+- Fixed test MySQL user in doc (pulldb_test→pulldb_app to match conftest.py)
+- Verified all remaining paths and ARNs are accurate
+- Confirmed JSON syntax remains valid
+
+### Rationale
+- **FAIL HARD principle**: Documentation must match code exactly
+- **KNOWLEDGE-POOL FIRST**: Agents rely on this as single source of truth
+- **ROOT CAUSE FIXING**: Each pass found deeper issues by following references
+
+### Files Modified
+- `docs/KNOWLEDGE-POOL.md` - 16+ corrections across 9 passes
+- `docs/KNOWLEDGE-POOL.json` - Synchronized with .md changes
+
+### Verified Accurate
+- Version 1.0.6 matches pyproject.toml
+- All 24 schema files exist
+- All markdown links valid
+- JSON syntax valid
+- 141 web routes confirmed
+- 53 REST endpoints confirmed
+- 14 help pages confirmed
+- 12 after-SQL templates confirmed
+- 23 settings defined
+- 4 RBAC roles (USER, MANAGER, ADMIN, SERVICE)
+- 12 permission functions
+- Test user: pulldb_app (matches conftest.py)
+
+---
+
+## 2026-01-22 | Comprehensive API Audit & Documentation
+
+### Context
+User requested full API audit: index all endpoints, document in detail, update all related documentation (KNOWLEDGE-POOL, README, etc.).
+
+### What Was Done
+
+1. **Indexed REST API** (`pulldb/api/main.py`)
+   - 56 endpoints identified across categories: Health, Auth, Hosts, Jobs, Job Actions, Manager, Admin, Dropdowns, Backups, Feature Requests
+   - Documented all methods, paths, parameters, request/response bodies
+   - Created comprehensive [REST-API.md](../docs/api/REST-API.md)
+
+2. **Indexed Web UI API** (`pulldb/web/features/*/routes.py`)
+   - 141 routes across 8 feature modules: auth, dashboard, jobs, restore, admin, manager, audit, requests
+   - Documented pages, actions, and JSON API endpoints
+   - Created comprehensive [WEB-API.md](../docs/api/WEB-API.md)
+
+3. **Created API Index** (`docs/api/README.md`)
+   - Overview of both API surfaces
+   - Quick reference for common operations
+   - Authentication documentation
+   - Common patterns (pagination, filtering, cascading)
+
+4. **Updated KNOWLEDGE-POOL.md**
+   - Added new "API Reference (v1.0.6)" section
+   - Summary tables for REST API (56 endpoints) and Web API (141 routes)
+   - Links to detailed documentation
+
+5. **Updated README.md**
+   - Added "API Reference" section with endpoint examples
+   - Added API Reference to Documentation table
+   - Listed key REST endpoints and Web UI pages
+
+### Files Created
+- `docs/api/README.md` - API documentation index
+- `docs/api/REST-API.md` - Complete REST API reference
+- `docs/api/WEB-API.md` - Complete Web UI API reference
+
+### Files Modified
+- `docs/KNOWLEDGE-POOL.md` - Added API Reference section
+- `README.md` - Added API Reference section and documentation link
+
+### Rationale
+- **Discoverability**: `docs/api/` was empty - no API documentation existed
+- **Self-service**: Developers and integrators need clear API contracts
+- **Maintenance**: Centralized API docs easier to keep in sync with code
+- **HCA compliance**: Documentation follows layer conventions
+
+---
+
 ## 2026-01-22 | Design Encyclopedia & Template - Sixth Pass (v1.5.0)
 
 ### Context

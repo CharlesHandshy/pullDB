@@ -82,19 +82,28 @@ def _target_database_exists_on_host(
     state: APIState,
     target: str,
     dbhost: str,
+    *,
+    fail_hard: bool = True,
 ) -> bool:
     """Check if a target database exists on the specified host.
     
     Uses host_repo to resolve credentials and queries SHOW DATABASES.
     
+    SAFETY: This function now FAILS HARD by default on connection errors.
+    This is a NON-NEGOTIABLE requirement per .pulldb/standards/database-protection.md
+    
     Args:
         state: API state with host_repo.
         target: Target database name to check.
         dbhost: Hostname to query.
+        fail_hard: If True (default), raises HTTPException on errors.
+                   If False, returns False on errors (legacy behavior).
         
     Returns:
         True if database exists on host, False otherwise.
-        Returns False on connection/query errors (fail safe for UX).
+        
+    Raises:
+        HTTPException: If fail_hard=True and connection/query fails.
     """
     import mysql.connector
     
@@ -113,9 +122,22 @@ def _target_database_exists_on_host(
         cursor.close()
         conn.close()
         return exists
-    except Exception:
-        # Fail safe - if we can't check, allow the operation
-        logger.debug("Database existence check failed for '%s' on '%s'", target, dbhost, exc_info=True)
+    except Exception as e:
+        # FAIL HARD: Cannot verify database safety - block operation
+        # Per .pulldb/standards/database-protection.md - silent failures FORBIDDEN
+        logger.error(
+            "Database existence check failed for '%s' on '%s': %s",
+            target, dbhost, e,
+            exc_info=True,
+        )
+        if fail_hard:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    f"Cannot verify database safety on '{dbhost}'. "
+                    f"The target host may be unreachable. Please try again later."
+                ),
+            ) from e
         return False
 
 
@@ -708,34 +730,45 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
                     ),
                 )
 
-    # CRITICAL: External database protection
-    # If overwrite is enabled, verify the target is either:
-    # 1. Non-existent (safe to create)
-    # 2. pullDB-managed AND owned by this user (safe to overwrite)
-    # External databases (no pullDB table) MUST NEVER be overwritten
-    if req.overwrite and _target_database_exists_on_host(state, target, dbhost):
+    # ==========================================================================
+    # CRITICAL DATABASE PROTECTION - NON-NEGOTIABLE
+    # Per .pulldb/standards/database-protection.md
+    #
+    # This check runs REGARDLESS of overwrite setting because:
+    # 1. External databases (no pullDB table) must NEVER be overwritten
+    # 2. Cross-user databases must NEVER be overwritten
+    # 3. The 'overwrite' flag is consent to replace YOUR OWN pullDB data only
+    #
+    # REMOVAL OF THIS CHECK REQUIRES:
+    # - Direct user acknowledgment
+    # - Written documentation of accepted risk
+    # - See .pulldb/standards/database-protection.md for removal policy
+    # ==========================================================================
+    if _target_database_exists_on_host(state, target, dbhost):
         has_pulldb, owner_id, owner_code = _get_pulldb_metadata_owner(state, target, dbhost)
         
         if not has_pulldb:
-            # External database - NEVER overwrite
+            # EXTERNAL DATABASE - ABSOLUTE BLOCK (regardless of overwrite setting)
+            # This database was not created by pullDB and MUST NOT be destroyed
             emit_event(
                 "job_enqueue_blocked",
-                f"Restore blocked: external database '{target}' on '{dbhost}' detected (no pullDB table)",
+                f"Restore blocked: EXTERNAL database '{target}' on '{dbhost}' detected (no pullDB table)",
                 labels=MetricLabels(
                     target=target,
                     phase="enqueue",
-                    status="blocked",
+                    status="blocked_external_db",
                 ),
             )
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
                 detail=(
-                    f"Database '{target}' exists but is not pullDB-managed (no metadata table). "
+                    f"PROTECTED: Database '{target}' exists on '{dbhost}' but is NOT pullDB-managed. "
+                    f"This appears to be an external database that cannot be overwritten. "
                     f"Choose a different target name or manually remove the database before restoring."
                 ),
             )
         
-        # pullDB-managed but owned by different user
+        # pullDB-managed but owned by different user - ABSOLUTE BLOCK
         if owner_id and owner_id != user.user_id:
             emit_event(
                 "job_enqueue_blocked",
@@ -743,15 +776,34 @@ def enqueue_job(state: APIState, req: JobRequest) -> JobResponse:
                 labels=MetricLabels(
                     target=target,
                     phase="enqueue",
-                    status="blocked",
+                    status="blocked_cross_user",
                 ),
             )
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
                 detail=(
-                    f"Database '{target}' on '{dbhost}' is owned by user '{owner_code}'. "
+                    f"PROTECTED: Database '{target}' on '{dbhost}' is owned by user '{owner_code}'. "
                     f"You cannot overwrite another user's database. "
                     f"Choose a different target name."
+                ),
+            )
+        
+        # pullDB-managed, owned by this user - requires overwrite consent
+        if not req.overwrite:
+            emit_event(
+                "job_enqueue_blocked",
+                f"Restore blocked: database '{target}' on '{dbhost}' exists (overwrite not enabled)",
+                labels=MetricLabels(
+                    target=target,
+                    phase="enqueue",
+                    status="blocked_no_overwrite",
+                ),
+            )
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Database '{target}' already exists on '{dbhost}'. "
+                    f"Enable 'Allow Overwrite' to replace it, or use a different target name."
                 ),
             )
 

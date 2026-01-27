@@ -1386,35 +1386,21 @@ class SimulatedJobRepository:
     ) -> Job | None:
         """Atomically claim a stale job stuck in 'deleting' status.
         
-        Only claims jobs that are the NEWEST for their target+owner_user_code.
-        Older superseded jobs have already had their DBs cleaned up.
+        Only skips jobs that are EXPLICITLY superseded (superseded_by_job_id set).
+        Jobs with newer siblings that are NOT explicitly superseded will be claimed.
         """
         with self.state.lock:
             cutoff = datetime.now(UTC) - timedelta(minutes=stale_timeout_minutes)
             
-            # Find stale deleting jobs
+            # Find stale deleting jobs that are NOT explicitly superseded
             candidates = [
                 j for j in self.state.jobs.values()
                 if j.status == JobStatus.DELETING
                 and j.started_at
                 and j.started_at < cutoff
                 and j.retry_count < max_retry_count
+                and j.superseded_by_job_id is None  # Key fix: use explicit supersession
             ]
-            
-            if not candidates:
-                return None
-            
-            # Filter to only include jobs that are newest for their target+owner
-            def is_newest_for_target(job: Job) -> bool:
-                """Check if this job is the newest for its target+owner_user_code."""
-                for other in self.state.jobs.values():
-                    if (other.target == job.target 
-                        and other.owner_user_code == job.owner_user_code
-                        and other.submitted_at > job.submitted_at):
-                        return False
-                return True
-            
-            candidates = [j for j in candidates if is_newest_for_target(j)]
             
             if not candidates:
                 return None
@@ -1461,6 +1447,65 @@ class SimulatedJobRepository:
                 self.append_job_event(
                     job_id, "delete_failed", f'{{"reason": "{detail}"}}'
                 )
+
+    # Constants for zombie deleting job detection
+    ZOMBIE_DELETING_TIMEOUT_HOURS: ClassVar[int] = 24
+
+    def get_zombie_deleting_jobs(
+        self,
+        zombie_timeout_hours: int | None = None,
+    ) -> list[Job]:
+        """Find jobs stuck in 'deleting' status for an extended period (zombies)."""
+        if zombie_timeout_hours is None:
+            zombie_timeout_hours = self.ZOMBIE_DELETING_TIMEOUT_HOURS
+
+        with self.state.lock:
+            cutoff = datetime.now(UTC) - timedelta(hours=zombie_timeout_hours)
+            
+            zombies = [
+                j for j in self.state.jobs.values()
+                if j.status == JobStatus.DELETING
+                and j.started_at
+                and j.started_at < cutoff
+            ]
+            
+            # Sort by started_at ascending (oldest first)
+            zombies.sort(key=lambda j: j.started_at or datetime.min.replace(tzinfo=UTC))
+            return zombies
+
+    def force_complete_delete(
+        self,
+        job_id: str,
+        reason: str,
+        admin_username: str | None = None,
+    ) -> bool:
+        """Force-complete a stuck deleting job without database verification."""
+        with self.state.lock:
+            job = self.state.jobs.get(job_id)
+            if not job:
+                return False
+
+            if job.status not in (JobStatus.DELETING, JobStatus.FAILED):
+                return False
+
+            updated = replace(
+                job,
+                status=JobStatus.DELETED,
+                completed_at=job.completed_at or datetime.now(UTC),
+                error_detail=None,
+            )
+            self.state.jobs[job_id] = updated
+
+            # Log event
+            import json
+            event_detail = json.dumps({
+                "reason": reason,
+                "admin": admin_username or "system",
+                "previous_status": job.status.value,
+            })
+            self.append_job_event(job_id, "force_deleted", event_detail)
+            
+            return True
 
     # Constants for stale running job recovery (mirroring real JobRepository)
     STALE_RUNNING_TIMEOUT_MINUTES: ClassVar[int] = 15
@@ -1761,7 +1806,6 @@ class SimulatedUserRepository:
                 user_id=user_id,
                 username=username,
                 user_code=user_code,
-                is_admin=False,
                 role=UserRole.USER,
                 created_at=datetime.now(UTC),
                 disabled_at=None,
