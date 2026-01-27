@@ -1,0 +1,17 @@
+# Binary files - do not diff or merge as text
+pulldb/binaries/myloader-* binary
+pulldb/binaries/zstd-local binary
+
+# Keep line endings consistent
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.sh text eol=lf
+
+# Ensure wheel files are treated as binary
+*.whl binary

@@ -149,7 +149,7 @@ class Config:
         "--retry-count=20",
         "--local-infile=TRUE",
         "--ignore-errors=1146",
-        "--overwrite-tables",
+        "--drop-table",
         "--verbose=3",
         "--max-threads-per-table=1",
     )
@@ -253,7 +253,7 @@ class Config:
             s3_aws_profile=s3_aws_profile,
             default_dbhost=os.getenv("PULLDB_DEFAULT_DBHOST"),
             myloader_binary=myloader_binary
-            or "/opt/pulldb.service/bin/myloader-0.19.3-3",
+            or "/opt/pulldb.service/bin/myloader-0.20.1-1",
             myloader_default_args=_parse_myloader_default_args(default_args_env),
             myloader_extra_args=_parse_extra_args(
                 extra_args_env,
@@ -443,9 +443,12 @@ def _parse_extra_args(value: str | None, *, source: str) -> tuple[str, ...]:
 # preventing OOM by backing off when server is under memory pressure.
 # NOTE: --rows=50000 and --queries-per-transaction=1000 are conservative defaults
 # to reduce memory footprint per thread (reduced from 100000/5000 after OOM issues).
+# NOTE: --max-threads-for-index-creation=1 prevents OOM during index rebuilds
+# (default is 4, which can cause ERROR 1041 on memory-constrained systems).
 _MYLOADER_DEFAULT_ARGS_BUILTIN: tuple[str, ...] = (
     "--connection-timeout=30",
     "--max-threads-for-post-actions=1",
+    "--max-threads-for-index-creation=1",
     "--rows=50000",
     "--queries-per-transaction=1000",
     "--optimize-keys=AFTER_IMPORT_PER_TABLE",
@@ -453,7 +456,7 @@ _MYLOADER_DEFAULT_ARGS_BUILTIN: tuple[str, ...] = (
     "--retry-count=20",
     "--local-infile=TRUE",
     "--ignore-errors=1146",
-    "--overwrite-tables",
+    "--drop-table",
     "--verbose=3",
     "--max-threads-per-table=1",
     "--throttle=Threads_running=6",

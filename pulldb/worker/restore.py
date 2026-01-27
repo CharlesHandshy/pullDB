@@ -177,7 +177,7 @@ def _build_command(spec: MyLoaderSpec) -> list[str]:
     Notes:
         * We pass credentials explicitly; future enhancement may use
           a defaults file or socket.
-        * `--overwrite-tables` deliberately omitted until overwrite
+        * `--drop-table` deliberately omitted until overwrite
           semantics are fully documented.
     """
     cmd: list[str] = [

@@ -91,6 +91,12 @@ TIER 4: Session (Task-specific)
    - Hooks are part of the project's integrity system
 7. **SESSION LOGGING**: Automatically log work to `.pulldb/SESSION-LOG.md` (see below)
 8. **RUN DRIFT DETECTION**: After significant edits, run drift detection to verify documentation stays in sync
+9. **EXCLUDE ARCHIVED DOCS**: Do NOT search or reference these directories for current work:
+   - `docs/archived/` - Superseded documentation, kept for historical reference only
+   - `docs/archived/superseded/` - Replaced by newer docs
+   - `docs/archived/status-reports/` - Historical implementation plans
+   - Only access archived docs when user explicitly asks about "how things were before" or historical context
+   - **Current truth lives in**: `docs/KNOWLEDGE-POOL.json`, `docs/hca/`, `.pulldb/`, `engineering-dna/`
 
 ## Documentation Drift Detection (AUTOMATIC)
 
@@ -240,4 +246,6 @@ Use `list_dir` for full structure. Key paths:
 - `pulldb/domain/` - config, models, errors
 - `pulldb/audit/` - **Documentation drift detection tools**
 - `docs/` - Operational facts, schema, setup guides
+- `docs/hca/` - **Current HCA documentation** (authoritative)
+- `docs/archived/` - ⛔ **DO NOT USE** - Historical only, outdated
 - `tests/` - comprehensive test suite

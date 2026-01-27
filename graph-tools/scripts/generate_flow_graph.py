@@ -402,7 +402,7 @@ class FlowGenerator:
         self.add_node(view, "rc_user", "Add User", "process", "--user={user}")
         self.add_node(view, "rc_host", "Add Host", "process", "--host={host}")
         self.add_node(view, "rc_dir", "Add Dir", "process", "--directory={dir}")
-        self.add_node(view, "rc_over", "Add Overwrite", "process", "--overwrite-tables")
+        self.add_node(view, "rc_over", "Add Drop Table", "process", "--drop-table")
         self.add_node(view, "rc_verb", "Add Verbose", "process", "--verbose=3")
         self.add_node(view, "rc_end", "Return List", "end", "Command List")
 

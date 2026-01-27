@@ -14,10 +14,10 @@ def test_build_command_uses_binary_and_extra_args() -> None:
         mysql_port=3306,
         mysql_user="u",
         mysql_password="p",
-        extra_args=("--threads=4", "--overwrite-tables"),
+        extra_args=("--threads=4", "--drop-table"),
         binary_path="/opt/custom/bin/myloader",
     )
     cmd = restore_module.build_myloader_command(spec)
     assert cmd[0] == "/opt/custom/bin/myloader"
     assert "--threads=4" in cmd
-    assert "--overwrite-tables" in cmd
+    assert "--drop-table" in cmd

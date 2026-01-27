@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PIP ?= pip
 
-.PHONY: all wheel client server server-signed client-signed all-signed clean help dev-install
+.PHONY: all wheel client server server-signed client-signed all-signed clean help dev-install changes
 
 help:
 	@echo "pullDB Build System"
@@ -9,6 +9,7 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  make dev-install      - Install in dev mode + restore pulldb-admin wrapper"
+	@echo "  make changes          - Show uncommitted changes (filters binaries)"
 	@echo ""
 	@echo "Build Targets:"
 	@echo "  make all              - Build wheel + all .deb packages (server + client)"
@@ -79,3 +80,10 @@ dev-install:
 	./scripts/restore_admin_wrapper.sh
 	@echo ""
 	@echo "Dev install complete. pulldb-admin auto-escalation preserved."
+
+# Show uncommitted changes (filters out binary files)
+changes:
+	@./scripts/git-changes.sh --stat
+
+changes-diff:
+	@./scripts/git-changes.sh --diff

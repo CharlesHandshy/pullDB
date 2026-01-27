@@ -3,7 +3,7 @@
   "last_updated": "2026-01-26",
   "package": {
     "wheel": "pulldb-1.0.7-py3-none-any.whl",
-    "myloader": "myloader-0.19.3-3",
+    "myloader": "myloader-0.20.1-1",
     "schema_files": 24,
     "systemd_units": 6,
     "after_sql_templates": 12
@@ -195,7 +195,7 @@
   },
   "binaries": {
     "myloader_path": "/opt/pulldb.service/bin/",
-    "myloader_binary": "myloader-0.19.3-3",
+    "myloader_binary": "myloader-0.20.1-1",
     "myloader_source": "pulldb/binaries/"
   },
   "lessons_learned": [

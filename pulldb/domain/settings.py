@@ -75,7 +75,7 @@ SETTING_REGISTRY: dict[str, SettingMeta] = {
     "myloader_binary": SettingMeta(
         key="myloader_binary",
         env_var="PULLDB_MYLOADER_BINARY",
-        default="/opt/pulldb.service/bin/myloader-0.19.3-3",
+        default="/opt/pulldb.service/bin/myloader-0.20.1-1",
         description="Path to myloader binary",
         setting_type=SettingType.EXECUTABLE,
         category=SettingCategory.MYLOADER,

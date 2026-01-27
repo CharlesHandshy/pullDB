@@ -225,7 +225,7 @@ docs/             # Documentation (HCA organized)
 - **Python**: 3.12+
 - **MySQL**: 8.0+ (for job coordination)
 - **AWS**: S3 access for backup retrieval, Secrets Manager for credentials
-- **myloader**: 0.9.5 or 0.19.3 (bundled in package)
+- **myloader**: 0.20.1-1 (bundled in package, supports legacy 0.9.x backups via metadata synthesis)
 
 ## License
 
