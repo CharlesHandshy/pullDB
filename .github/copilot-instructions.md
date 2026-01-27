@@ -84,7 +84,75 @@ TIER 4: Session (Task-specific)
    - Test the fix and verify it solves the root cause
    - Check edge cases and related code
    - Never suppress errors via configuration—fix the actual code
-6. **SESSION LOGGING**: Automatically log work to `.pulldb/SESSION-LOG.md` (see below)
+6. **NEVER BYPASS GIT HOOKS**: Do NOT use `--no-verify` or similar flags
+   - Pre-commit hooks exist for documentation audit and quality checks
+   - If a hook fails, FIX THE UNDERLYING ISSUE (root cause fixing)
+   - Report hook failures to user and propose fixes
+   - Hooks are part of the project's integrity system
+7. **SESSION LOGGING**: Automatically log work to `.pulldb/SESSION-LOG.md` (see below)
+8. **RUN DRIFT DETECTION**: After significant edits, run drift detection to verify documentation stays in sync
+
+## Documentation Drift Detection (AUTOMATIC)
+
+**Use the audit agent to detect when code changes drift from documentation.**
+
+### When to Run Drift Detection
+- **After creating new files/classes**: Check if they need documenting
+- **After modifying exports or APIs**: Verify KNOWLEDGE-POOL stays accurate
+- **Before completing a task**: Quick sanity check
+- **When reviewing code**: Understand what's undocumented
+
+### CLI Commands
+```bash
+# Quick drift check (high severity only)
+python -m pulldb.audit --drift --severity high
+
+# Full drift detection
+python -m pulldb.audit --drift
+
+# AI-friendly context for reasoning
+python -m pulldb.audit --drift --copilot
+
+# Targeted audit (fast, uses hardcoded mappings)
+python -m pulldb.audit --full
+```
+
+### Python API
+```python
+from pulldb.audit import DocumentationAuditAgent
+
+agent = DocumentationAuditAgent()
+
+# Get comprehensive drift analysis
+drift = agent.detect_drift()
+print(f"Found {len(drift.alerts)} drift alerts")
+
+# Get AI-friendly context for reasoning
+context = agent.get_copilot_context()
+# Use this context to understand what needs updating
+
+# Filter by severity
+drift = agent.detect_drift(severities=["high", "critical"])
+for alert in drift.alerts:
+    print(f"{alert.drift_type.value}: {alert.description}")
+    print(f"  Suggested: {alert.suggested_actions[0]}")
+```
+
+### Drift Types Detected
+| Type | Description | Action |
+|------|-------------|--------|
+| `undocumented_file` | New file not in KNOWLEDGE-POOL | Add to appropriate section |
+| `missing_export` | Documented export not in `__all__` | Remove from docs or add to code |
+| `extra_export` | Export exists but not documented | Add to KNOWLEDGE-POOL.json |
+| `renamed_symbol` | Class/function was renamed | Update documentation |
+| `value_mismatch` | CSS/JS timing values changed | Update documented values |
+| `missing_file` | Documented file doesn't exist | Remove from documentation |
+
+### Integration with Workflow
+1. **Make code changes**
+2. **Run**: `python -m pulldb.audit --drift --severity high`
+3. **If alerts found**: Update KNOWLEDGE-POOL.md/json accordingly
+4. **Log to SESSION-LOG.md** if significant changes made
 
 ## Session Logging (AUTOMATIC)
 
@@ -146,6 +214,7 @@ Read the relevant file **before** performing that type of task:
 | AWS/S3 | `standards/aws.md` | | |
 | Testing | `protocols/test-timeout-monitoring.md` | | `copilot-instructions-testing.md` |
 | Status/progress | | | `copilot-instructions-status.md` |
+| **Doc drift/audit** | | | **Run `python -m pulldb.audit --drift`** |
 
 ## Key Reference Docs
 
@@ -156,6 +225,7 @@ Read the relevant file **before** performing that type of task:
 | **`.pulldb/standards/hca.md`** | **HCA layer model & enforcement** | 2 |
 | `docs/KNOWLEDGE-POOL.md` | AWS/infra quick facts | 3 |
 | `docs/WORKSPACE-INDEX.md` | Atomic-level code index | 3 |
+| `docs/AUDIT-AGENT.md` | **Drift detection documentation** | 3 |
 | `constitution.md` | Project governance | 3 |
 | `docs/mysql-schema.md` | Database schema + invariants | 3 |
 
@@ -168,5 +238,6 @@ Use `list_dir` for full structure. Key paths:
 - `pulldb/infra/` - secrets, mysql, logging, s3, exec
 - `pulldb/worker/` - service, downloader, restore, staging, post_sql
 - `pulldb/domain/` - config, models, errors
+- `pulldb/audit/` - **Documentation drift detection tools**
 - `docs/` - Operational facts, schema, setup guides
 - `tests/` - comprehensive test suite
