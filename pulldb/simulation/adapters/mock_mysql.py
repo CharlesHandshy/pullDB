@@ -1015,6 +1015,32 @@ class SimulatedJobRepository:
                     return job
             return None
 
+    def get_in_progress_job_for_target(
+        self, target: str, dbhost: str
+    ) -> Job | None:
+        """Get any in-progress (queued/running) job for target+host.
+
+        Used by resubmit validation to prevent duplicate concurrent restores
+        to the same database. Checks across ALL users.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+
+        Returns:
+            In-progress Job if found (any user), None otherwise.
+        """
+        in_progress_statuses = (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELING)
+        with self.state.lock:
+            for job in self.state.jobs.values():
+                if (
+                    job.target == target
+                    and job.dbhost == dbhost
+                    and job.status in in_progress_statuses
+                ):
+                    return job
+            return None
+
     def has_any_deployed_job_for_target(
         self, target: str, dbhost: str
     ) -> Job | None:

@@ -1,14 +1,19 @@
 """Metadata table injection for restored databases.
 
-Adds a `pullDB` table to the staging database after successful restore and
-post-SQL execution, capturing job details, timing, backup source, and
-post-SQL execution status for audit trail and diagnostics.
+Adds a `pullDB` table to the staging database to track restore metadata.
+The table is created BEFORE myloader runs (pre-creation) with initial data,
+then UPDATED after restore completion with final timing and post-SQL status.
+
+This two-phase approach solves the orphan cleanup problem: if myloader crashes,
+the staging database still has the pullDB table, so cleanup can identify it
+as a pullDB-managed database and safely drop it.
 
 Design Principles (FAIL HARD):
 - Fail on any SQL error during table creation or data insertion.
 - Provide clear diagnostics: which operation failed and MySQL error details.
 - Do not attempt retries or workarounds.
-- Table schema is fixed and immutable for prototype (no migrations).
+- Pre-create table with status='in_progress' before myloader.
+- Update to status='completed' after successful restore.
 
 HCA Layer: features (pulldb/worker/)
 """
@@ -18,17 +23,22 @@ from __future__ import annotations
 import json
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Literal
 
 import mysql.connector
 
 from pulldb.domain.errors import MetadataInjectionError
 from pulldb.infra.logging import get_logger
+from pulldb.infra.mysql_utils import quote_identifier
 from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_WORKER
 from pulldb.worker.post_sql import PostSQLExecutionResult
 
 
 logger = get_logger("pulldb.worker.metadata")
+
+# Restore status type for type safety
+RestoreStatus = Literal["in_progress", "completed", "failed"]
 
 
 @dataclass(slots=True, frozen=True)
@@ -59,9 +69,10 @@ class MetadataConnectionSpec:
 
 @dataclass(slots=True, frozen=True)
 class MetadataSpec:
-    """Specification for metadata table injection.
+    """Specification for metadata table completion update.
 
-    Contains all required data to populate the pullDB metadata table.
+    Contains all required data to populate the pullDB metadata table
+    after restore completion.
 
     Attributes:
         job_id: Job UUID.
@@ -88,35 +99,338 @@ class MetadataSpec:
     post_sql_result: PostSQLExecutionResult | None
 
 
-# pullDB metadata table schema (fixed for prototype)
+@dataclass(slots=True, frozen=True)
+class InitialMetadataSpec:
+    """Specification for pre-creating pullDB metadata table.
+
+    Contains the data available BEFORE myloader runs. This enables
+    orphan cleanup to identify the database as pullDB-managed even
+    if myloader crashes.
+
+    Attributes:
+        job_id: Job UUID.
+        owner_user_id: UUID of database owner.
+        owner_user_code: 6-char owner identifier.
+        owner_username: Username of job owner.
+        target_db: Final target database name.
+        backup_filename: S3 backup filename used for restore.
+        started_at: UTC timestamp when restore workflow began.
+        custom_target: Whether custom target naming was used.
+    """
+
+    job_id: str
+    owner_user_id: str
+    owner_user_code: str
+    owner_username: str
+    target_db: str
+    backup_filename: str
+    started_at: datetime
+    custom_target: bool
+
+
+# pullDB metadata table schema - supports two-phase creation
+# Phase 1 (pre-create): INSERT with restore_status='in_progress', NULL completion fields
+# Phase 2 (completion): UPDATE with restore_status='completed', final timing/post-SQL
 _CREATE_METADATA_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS `pullDB` (
     `job_id` VARCHAR(36) NOT NULL COMMENT 'UUID of restore job',
     `owner_user_id` CHAR(36) NOT NULL COMMENT 'UUID of database owner',
     `owner_user_code` CHAR(6) NOT NULL COMMENT '6-char owner identifier',
     `restored_by` VARCHAR(255) NOT NULL COMMENT 'Username who initiated restore',
-    `restored_at` DATETIME(6) NOT NULL COMMENT 'UTC timestamp of restore completion',
+    `restored_at` DATETIME(6) NULL COMMENT 'UTC timestamp of restore completion (NULL if in progress)',
     `target_database` VARCHAR(64) NOT NULL COMMENT 'Final target database name',
     `backup_filename` VARCHAR(512) NOT NULL COMMENT 'S3 backup filename used',
-    `restore_duration_seconds` DECIMAL(10, 3) NOT NULL COMMENT 'Total restore duration',
+    `restore_duration_seconds` DECIMAL(10, 3) NULL COMMENT 'Total restore duration (NULL if in progress)',
     `custom_target` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Whether custom target was used',
     `post_sql_report` JSON NULL COMMENT 'Post-SQL execution status (JSON)',
+    `restore_status` ENUM('in_progress', 'completed', 'failed') NOT NULL DEFAULT 'in_progress' COMMENT 'Current restore status',
+    `started_at` DATETIME(6) NOT NULL COMMENT 'UTC timestamp when restore began',
     PRIMARY KEY (`job_id`),
     INDEX `idx_pulldb_owner` (`owner_user_id`),
-    INDEX `idx_pulldb_user_code` (`owner_user_code`)
+    INDEX `idx_pulldb_user_code` (`owner_user_code`),
+    INDEX `idx_pulldb_status` (`restore_status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='pullDB restore metadata - do not modify';
 """
+
+
+def pre_create_metadata_table(
+    conn_spec: MetadataConnectionSpec,
+    initial_spec: InitialMetadataSpec,
+) -> None:
+    """Pre-create pullDB metadata table BEFORE myloader runs.
+
+    This is Phase 1 of the two-phase metadata creation. Creates the database
+    (if not exists), creates the pullDB table, and inserts initial metadata
+    with restore_status='in_progress'.
+
+    This ensures that if myloader crashes, the staging database still has
+    the pullDB table, allowing orphan cleanup to identify it as pullDB-managed.
+
+    Args:
+        conn_spec: MySQL connection parameters (staging_db will be created).
+        initial_spec: Initial metadata available before restore.
+
+    Raises:
+        MetadataInjectionError: On connection failure, database creation failure,
+            table creation failure, or insert failure.
+    """
+    logger.info(
+        "Pre-creating metadata table (Phase 1)",
+        extra={
+            "job_id": initial_spec.job_id,
+            "staging_db": conn_spec.staging_db,
+            "target_db": initial_spec.target_db,
+        },
+    )
+
+    # Connect WITHOUT database first to create it
+    try:
+        connection = mysql.connector.connect(
+            host=conn_spec.mysql_host,
+            port=conn_spec.mysql_port,
+            user=conn_spec.mysql_user,
+            password=conn_spec.mysql_password,
+            connect_timeout=conn_spec.connect_timeout_seconds,
+            autocommit=True,
+        )
+    except mysql.connector.Error as e:
+        raise MetadataInjectionError(
+            job_id=initial_spec.job_id,
+            operation="connect",
+            error_message=(
+                f"Failed to connect to MySQL server "
+                f"{conn_spec.mysql_host}:{conn_spec.mysql_port} "
+                f"for staging pre-creation: {e}. "
+                f"Verify credentials and network connectivity."
+            ),
+        ) from e
+
+    try:
+        cursor = connection.cursor()
+
+        # Create staging database if not exists
+        try:
+            cursor.execute(
+                f"CREATE DATABASE IF NOT EXISTS {quote_identifier(conn_spec.staging_db)}"
+            )
+        except mysql.connector.Error as e:
+            raise MetadataInjectionError(
+                job_id=initial_spec.job_id,
+                operation="create_database",
+                error_message=(
+                    f"Failed to create staging database '{conn_spec.staging_db}': {e}. "
+                    f"Verify user {conn_spec.mysql_user} has CREATE privilege."
+                ),
+            ) from e
+
+        # Switch to staging database
+        try:
+            cursor.execute(f"USE {quote_identifier(conn_spec.staging_db)}")
+        except mysql.connector.Error as e:
+            raise MetadataInjectionError(
+                job_id=initial_spec.job_id,
+                operation="use_database",
+                error_message=(
+                    f"Failed to switch to staging database '{conn_spec.staging_db}': {e}."
+                ),
+            ) from e
+
+        # Create pullDB table
+        try:
+            cursor.execute(_CREATE_METADATA_TABLE_SQL)
+        except mysql.connector.Error as e:
+            raise MetadataInjectionError(
+                job_id=initial_spec.job_id,
+                operation="create_table",
+                error_message=(
+                    f"Failed to create pullDB metadata table in "
+                    f"'{conn_spec.staging_db}': {e}. "
+                    f"Verify user {conn_spec.mysql_user} has CREATE TABLE privilege."
+                ),
+            ) from e
+
+        # Insert initial metadata with status='in_progress'
+        insert_sql = """
+            INSERT INTO `pullDB` (
+                job_id,
+                owner_user_id,
+                owner_user_code,
+                restored_by,
+                target_database,
+                backup_filename,
+                custom_target,
+                restore_status,
+                started_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        try:
+            cursor.execute(
+                insert_sql,
+                (
+                    initial_spec.job_id,
+                    initial_spec.owner_user_id,
+                    initial_spec.owner_user_code,
+                    initial_spec.owner_username,
+                    initial_spec.target_db,
+                    initial_spec.backup_filename,
+                    1 if initial_spec.custom_target else 0,
+                    "in_progress",
+                    initial_spec.started_at,
+                ),
+            )
+        except mysql.connector.Error as e:
+            raise MetadataInjectionError(
+                job_id=initial_spec.job_id,
+                operation="insert",
+                error_message=(
+                    f"Failed to insert initial metadata record into pullDB table "
+                    f"in '{conn_spec.staging_db}': {e}."
+                ),
+            ) from e
+
+        logger.info(
+            "Pre-creation successful (Phase 1 complete)",
+            extra={"job_id": initial_spec.job_id, "staging_db": conn_spec.staging_db},
+        )
+        cursor.close()
+
+    finally:
+        with suppress(Exception):
+            connection.close()
+
+
+def update_metadata_completion(
+    conn_spec: MetadataConnectionSpec,
+    metadata_spec: MetadataSpec,
+) -> None:
+    """Update pullDB metadata table after successful restore (Phase 2).
+
+    This is Phase 2 of the two-phase metadata creation. Updates the existing
+    record with completion timestamp, duration, and post-SQL results, and
+    sets restore_status='completed'.
+
+    Args:
+        conn_spec: MySQL connection parameters.
+        metadata_spec: Final metadata after restore completion.
+
+    Raises:
+        MetadataInjectionError: On connection failure or update failure.
+    """
+    logger.info(
+        "Updating metadata table (Phase 2)",
+        extra={
+            "job_id": metadata_spec.job_id,
+            "staging_db": conn_spec.staging_db,
+            "target_db": metadata_spec.target_db,
+        },
+    )
+
+    try:
+        connection = mysql.connector.connect(
+            host=conn_spec.mysql_host,
+            port=conn_spec.mysql_port,
+            user=conn_spec.mysql_user,
+            password=conn_spec.mysql_password,
+            database=conn_spec.staging_db,
+            connect_timeout=conn_spec.connect_timeout_seconds,
+            autocommit=True,
+        )
+    except mysql.connector.Error as e:
+        raise MetadataInjectionError(
+            job_id=metadata_spec.job_id,
+            operation="connect",
+            error_message=(
+                f"Failed to connect to staging database '{conn_spec.staging_db}' "
+                f"for metadata update: {e}."
+            ),
+        ) from e
+
+    try:
+        cursor = connection.cursor()
+
+        # Prepare post-SQL report JSON
+        post_sql_json = None
+        if metadata_spec.post_sql_result:
+            post_sql_json = json.dumps(
+                {
+                    "scripts_executed": [
+                        {
+                            "script_name": s.script_name,
+                            "started_at": s.started_at.isoformat(),
+                            "completed_at": s.completed_at.isoformat(),
+                            "duration_seconds": s.duration_seconds,
+                            "rows_affected": s.rows_affected,
+                        }
+                        for s in metadata_spec.post_sql_result.scripts_executed
+                    ],
+                    "total_duration_seconds": (
+                        metadata_spec.post_sql_result.total_duration_seconds
+                    ),
+                }
+            )
+
+        # Calculate restore duration
+        restore_duration = (
+            metadata_spec.restore_completed_at - metadata_spec.restore_started_at
+        ).total_seconds()
+
+        # Update metadata record with completion data
+        update_sql = """
+            UPDATE `pullDB` SET
+                restored_at = %s,
+                restore_duration_seconds = %s,
+                post_sql_report = %s,
+                restore_status = 'completed'
+            WHERE job_id = %s
+        """
+        try:
+            cursor.execute(
+                update_sql,
+                (
+                    metadata_spec.restore_completed_at,
+                    restore_duration,
+                    post_sql_json,
+                    metadata_spec.job_id,
+                ),
+            )
+            if cursor.rowcount == 0:
+                logger.warning(
+                    "No rows updated - job_id not found in pullDB table",
+                    extra={"job_id": metadata_spec.job_id},
+                )
+        except mysql.connector.Error as e:
+            raise MetadataInjectionError(
+                job_id=metadata_spec.job_id,
+                operation="update",
+                error_message=(
+                    f"Failed to update metadata record in pullDB table "
+                    f"in '{conn_spec.staging_db}': {e}."
+                ),
+            ) from e
+
+        logger.info(
+            "Metadata update successful (Phase 2 complete)",
+            extra={"job_id": metadata_spec.job_id},
+        )
+        cursor.close()
+
+    finally:
+        with suppress(Exception):
+            connection.close()
 
 
 def inject_metadata_table(
     conn_spec: MetadataConnectionSpec,
     metadata_spec: MetadataSpec,
 ) -> None:
-    """Inject pullDB metadata table into staging database.
+    """Inject pullDB metadata table into staging database (legacy single-phase).
 
-    Creates the `pullDB` table if it doesn't exist and inserts a record
-    with restore metadata including job details, timing, and post-SQL status.
+    DEPRECATED: Use pre_create_metadata_table() + update_metadata_completion()
+    for the two-phase approach that solves orphan cleanup issues.
+
+    This function is kept for backward compatibility and tests. It creates
+    the pullDB table and inserts a complete record in one operation.
 
     Args:
         conn_spec: MySQL connection parameters.
@@ -128,7 +442,7 @@ def inject_metadata_table(
     """
     # Connect to staging database
     logger.info(
-        "Injecting metadata table",
+        "Injecting metadata table (legacy single-phase)",
         extra={
             "job_id": metadata_spec.job_id,
             "staging_db": conn_spec.staging_db,
@@ -200,7 +514,7 @@ def inject_metadata_table(
             metadata_spec.restore_completed_at - metadata_spec.restore_started_at
         ).total_seconds()
 
-        # Insert metadata record
+        # Insert metadata record (legacy format with all fields)
         insert_sql = """
             INSERT INTO `pullDB` (
                 job_id,
@@ -212,8 +526,10 @@ def inject_metadata_table(
                 backup_filename,
                 restore_duration_seconds,
                 custom_target,
-                post_sql_report
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                post_sql_report,
+                restore_status,
+                started_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         try:
             cursor.execute(
@@ -229,6 +545,8 @@ def inject_metadata_table(
                     restore_duration,
                     1 if metadata_spec.custom_target else 0,
                     post_sql_json,
+                    "completed",
+                    metadata_spec.restore_started_at,
                 ),
             )
         except mysql.connector.Error as e:
@@ -251,7 +569,11 @@ def inject_metadata_table(
 
 
 __all__ = [
+    "InitialMetadataSpec",
     "MetadataConnectionSpec",
     "MetadataSpec",
+    "RestoreStatus",
     "inject_metadata_table",
+    "pre_create_metadata_table",
+    "update_metadata_completion",
 ]

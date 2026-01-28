@@ -784,6 +784,52 @@ def _calculate_atomic_rename_stats(logs: list[Any]) -> dict[str, Any] | None:
     }
 
 
+def _extract_staging_warnings(logs: list[Any]) -> list[dict[str, str]]:
+    """Extract staging cleanup warnings from job events.
+
+    Scans events for staging_drop_skipped events to build a list of
+    databases that were not dropped during cleanup (e.g., databases
+    without pullDB table that weren't created by pullDB).
+
+    Returns list of warning dicts with 'database', 'reason', and 'message'.
+    """
+    warnings: list[dict[str, str]] = []
+    
+    for event in logs:
+        event_type = getattr(event, "event_type", "")
+        detail = getattr(event, "detail", None)
+        
+        if event_type == "staging_drop_skipped" and detail:
+            parsed_detail = detail
+            if isinstance(detail, str):
+                try:
+                    parsed_detail = json.loads(detail)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+            
+            if isinstance(parsed_detail, dict):
+                database = parsed_detail.get("database", "unknown")
+                reason = parsed_detail.get("reason", "unknown")
+                message = parsed_detail.get("message", "")
+                
+                # Build user-friendly message based on reason
+                if not message:
+                    if reason == "no_pulldb_table":
+                        message = "Database has no pullDB metadata table - not created by pullDB"
+                    elif reason == "active_connections":
+                        message = "Database has active connections"
+                    else:
+                        message = f"Skipped for reason: {reason}"
+                
+                warnings.append({
+                    "database": database,
+                    "reason": reason,
+                    "message": message,
+                })
+    
+    return warnings
+
+
 @router.get("/{job_id}", response_class=HTMLResponse)
 async def job_details(
     request: Request,
@@ -808,6 +854,7 @@ async def job_details(
     extraction_stats: dict[str, Any] | None = None
     restore_stats: dict[str, Any] | None = None
     atomic_rename_stats: dict[str, Any] | None = None
+    staging_warnings: list[dict[str, str]] = []
 
     if hasattr(state, "job_repo") and state.job_repo:
         job = state.job_repo.get_job_by_id(job_id)
@@ -828,6 +875,9 @@ async def job_details(
 
             # Calculate atomic rename progress stats for progress bar (uses raw logs)
             atomic_rename_stats = _calculate_atomic_rename_stats(raw_logs)
+
+            # Extract staging cleanup warnings (skipped databases)
+            staging_warnings = _extract_staging_warnings(raw_logs)
 
             # Deduplicate logs for display (collapse repetitive processlist updates)
             logs = _deduplicate_logs(raw_logs)
@@ -901,6 +951,7 @@ async def job_details(
             "extraction_stats": extraction_stats,
             "restore_stats": restore_stats,
             "atomic_rename_stats": atomic_rename_stats,
+            "staging_warnings": staging_warnings,
             # Retention management
             "can_manage_retention": (
                 job.owner_user_id == user.user_id or user.is_admin
@@ -1419,6 +1470,22 @@ async def api_jobs_paginated(
                 if job_owner and job_owner.manager_id == user.user_id:
                     can_delete = True
         
+        # Determine if user can resubmit this job (failed jobs only)
+        can_resubmit = False
+        if j.status == JobStatus.FAILED:
+            # Check has backup_path (not legacy job)
+            options = j.options_json or {}
+            has_backup_path = bool(options.get("backup_path"))
+            if has_backup_path:
+                if user.is_admin:
+                    can_resubmit = True
+                elif j.owner_user_id == user.user_id:
+                    can_resubmit = True
+                elif user.role == UserRole.MANAGER:
+                    job_owner = state.user_repo.get_user_by_id(j.owner_user_id) if state.user_repo else None
+                    if job_owner and job_owner.manager_id == user.user_id:
+                        can_resubmit = True
+        
         cancel_requested_at = None
         if hasattr(state.job_repo, "get_cancel_requested_at"):
             cancel_requested_at = state.job_repo.get_cancel_requested_at(j.id)
@@ -1436,6 +1503,7 @@ async def api_jobs_paginated(
             "completed_at": j.completed_at.isoformat() if getattr(j, "completed_at", None) else None,
             "can_cancel": can_cancel,
             "can_delete": can_delete,
+            "can_resubmit": can_resubmit,
             "cancel_requested_at": cancel_requested_at.isoformat() if cancel_requested_at else None,
             # Retention fields (use walrus operator to avoid repeated getattr)
             "expires_at": (exp := getattr(j, "expires_at", None)) and exp.isoformat(),
@@ -2160,3 +2228,206 @@ async def api_mark_jobs_expired(
             content={"detail": str(e)},
             status_code=500,
         )
+
+@router.post("/api/{job_id}/resubmit")
+async def api_resubmit_job(
+    job_id: str,
+    request: Request,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> JSONResponse:
+    """Resubmit a failed job with the same parameters.
+    
+    Creates a new job using the original job's options_json.
+    Managers and admins submit as the original owner (not themselves).
+    
+    Validations:
+    - Only failed jobs can be resubmitted
+    - Must have backup_path in options_json (not legacy job)
+    - Original owner must still exist
+    - No in-progress job for same target+host
+    - Deployed jobs by different owner blocked (unless admin)
+    
+    Returns:
+        JSON with new_job_id on success, or error details on failure.
+    """
+    from fastapi.concurrency import run_in_threadpool
+    from pulldb.api.logic import enqueue_job
+    from pulldb.api.schemas import JobRequest
+    
+    if not hasattr(state, "job_repo") or not state.job_repo:
+        return JSONResponse(content={"detail": "Job repository unavailable"}, status_code=503)
+    
+    # Fetch the original job
+    original_job = await run_in_threadpool(state.job_repo.get_job_by_id, job_id)
+    if not original_job:
+        return JSONResponse(content={"detail": f"Job {job_id[:8]} not found"}, status_code=404)
+    
+    # Validate and get warnings
+    can_resubmit, error, warnings = await run_in_threadpool(
+        _validate_resubmit, original_job, user, state
+    )
+    
+    if not can_resubmit:
+        return JSONResponse(content={"detail": error, "can_resubmit": False}, status_code=400)
+    
+    # Check if this is a preflight check (just validation, no actual resubmit)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    
+    if body.get("preflight"):
+        # Return validation result + warnings for modal display
+        options = original_job.options_json or {}
+        return JSONResponse(content={
+            "can_resubmit": True,
+            "warnings": warnings,
+            "job_info": {
+                "original_job_id": original_job.id,
+                "owner_username": original_job.owner_username,
+                "target": original_job.target,
+                "dbhost": original_job.dbhost,
+                "customer": options.get("customer_id", ""),
+                "backup_path": options.get("backup_path", "")[:60] + "..." if len(options.get("backup_path", "")) > 60 else options.get("backup_path", ""),
+            }
+        }, status_code=200)
+    
+    # Confirm warnings if present (must pass confirm=true)
+    if warnings and not body.get("confirm"):
+        return JSONResponse(content={
+            "detail": "Confirmation required",
+            "warnings": warnings,
+            "requires_confirmation": True
+        }, status_code=400)
+    
+    # Extract parameters from original job's options_json
+    options = original_job.options_json or {}
+    
+    # Determine job type
+    is_qatemplate = options.get("is_qatemplate", "false").lower() == "true"
+    is_custom_target = options.get("custom_target_used") == "true"
+    
+    # Construct JobRequest from original parameters
+    # Note: customer and qatemplate are mutually exclusive
+    # BUT custom_target jobs ALSO need a customer (the backup source)
+    job_request = JobRequest(
+        user=original_job.owner_username,  # Always submit as original owner
+        customer=options.get("customer_id") if not is_qatemplate else None,
+        qatemplate=is_qatemplate,
+        dbhost=original_job.dbhost,
+        backup_path=options.get("backup_path"),  # Use exact same backup
+        overwrite=True,  # Resubmit implies overwrite intent
+        custom_target=original_job.target if is_custom_target else None,
+    )
+    
+    # Add audit trail to new job
+    # We'll inject resubmit_of_job_id into the options after creation
+    try:
+        response = await run_in_threadpool(enqueue_job, state, job_request)
+        
+        # Update the new job's options_json with audit trail
+        await run_in_threadpool(
+            _add_resubmit_audit_trail,
+            state.job_repo,
+            response.job_id,
+            original_job.id,
+        )
+        
+        return JSONResponse(content={
+            "success": True,
+            "new_job_id": response.job_id,
+            "target": response.target,
+            "message": f"Job resubmitted successfully as {original_job.owner_username}",
+        }, status_code=201)
+        
+    except HTTPException as e:
+        return JSONResponse(content={"detail": e.detail}, status_code=e.status_code)
+    except Exception as e:
+        logger.exception("Resubmit failed for job %s", job_id)
+        return JSONResponse(content={"detail": str(e)}, status_code=500)
+
+
+def _validate_resubmit(
+    job: Job,
+    user: User,
+    state: Any,
+) -> tuple[bool, str | None, list[str]]:
+    """Validate if a job can be resubmitted.
+    
+    Returns:
+        (can_resubmit, error_message, warnings)
+    """
+    warnings: list[str] = []
+    
+    # 1. Must be a failed job
+    if job.status != JobStatus.FAILED:
+        return (False, f"Only failed jobs can be resubmitted. This job is '{job.status.value}'.", [])
+    
+    # 2. Permission check: who can resubmit this job?
+    can_resubmit_this = False
+    if user.is_admin:
+        can_resubmit_this = True
+    elif user.role == UserRole.MANAGER:
+        # Manager can resubmit for managed users
+        owner = state.user_repo.get_user_by_id(job.owner_user_id)
+        if owner and owner.manager_id == user.user_id:
+            can_resubmit_this = True
+        elif job.owner_user_id == user.user_id:
+            can_resubmit_this = True
+    elif job.owner_user_id == user.user_id:
+        # User can resubmit own jobs
+        can_resubmit_this = True
+    
+    if not can_resubmit_this:
+        return (False, "You don't have permission to resubmit this job.", [])
+    
+    # 3. Must have backup_path (required for replay)
+    options = job.options_json or {}
+    if not options.get("backup_path"):
+        return (False, "This job predates backup tracking. Create a new restore job instead.", [])
+    
+    # 4. Original owner must still exist
+    owner = state.user_repo.get_user_by_id(job.owner_user_id)
+    if not owner:
+        return (False, f"Original job owner '{job.owner_username}' no longer exists.", [])
+    
+    # 5. Check for in-progress job (hard block)
+    in_progress = state.job_repo.get_in_progress_job_for_target(job.target, job.dbhost)
+    if in_progress:
+        return (False, f"Job {in_progress.id[:8]} is currently {in_progress.status.value}. Wait for it to finish or cancel it.", [])
+    
+    # 6. Check for deployed job (soft block based on ownership)
+    deployed = state.job_repo.has_any_deployed_job_for_target(job.target, job.dbhost)
+    if deployed:
+        if deployed.owner_user_id == job.owner_user_id:
+            # Same owner - warn but allow
+            warnings.append(f"This will replace the deployed database '{job.target}'.")
+        elif user.is_admin:
+            # Admin override - warn but allow
+            warnings.append(f"Database '{job.target}' is deployed by {deployed.owner_username}. You are overriding as admin.")
+        else:
+            # Different owner, not admin - deny
+            return (False, f"Database '{job.target}' is deployed by {deployed.owner_username}. Contact them or an admin.", [])
+    
+    return (True, None, warnings)
+
+
+def _add_resubmit_audit_trail(job_repo: Any, new_job_id: str, original_job_id: str) -> None:
+    """Add audit trail to new job's options_json.
+    
+    Records that this job was created via resubmit of another job.
+    """
+    try:
+        job = job_repo.get_job_by_id(new_job_id)
+        if not job:
+            return
+        
+        options = dict(job.options_json or {})
+        options["resubmit_of_job_id"] = original_job_id
+        
+        # Update in database
+        job_repo.update_job_options(new_job_id, options)
+    except Exception:
+        # Audit trail is best-effort, don't fail the resubmit
+        logger.warning("Failed to add resubmit audit trail", exc_info=True)

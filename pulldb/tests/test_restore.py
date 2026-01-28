@@ -187,14 +187,14 @@ def test_build_restore_workflow_spec_uses_config(tmp_path: Any) -> None:
         backup_dir=str(tmp_path),
         staging_conn=staging_conn,
         post_sql_conn=post_sql_conn,
-        extra_myloader_args=["--rows-per-insert=500"],
+        extra_myloader_args=["--rows=500"],
     )
 
     assert spec.timeout == pytest.approx(1337.0)
     assert spec.myloader_spec.binary_path == "/opt/myloader"
     assert spec.myloader_spec.extra_args == (
         "--skip-triggers",
-        "--rows-per-insert=500",
+        "--rows=500",
         "--threads=6",
     )
 

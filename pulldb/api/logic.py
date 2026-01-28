@@ -20,6 +20,7 @@ from pulldb.domain.errors import StagingError
 from pulldb.domain.models import Job, JobStatus, User
 from pulldb.domain.naming import normalize_customer_name
 from pulldb.domain.services.discovery import DiscoveryService
+from pulldb.infra.factory import is_simulation_mode
 from pulldb.infra.metrics import MetricLabels, emit_counter, emit_event
 from pulldb.infra.timeouts import DEFAULT_MYSQL_CONNECT_TIMEOUT_API
 from pulldb.worker.staging import generate_staging_name
@@ -92,6 +93,10 @@ def _target_database_exists_on_host(
     SAFETY: This function now FAILS HARD by default on connection errors.
     This is a NON-NEGOTIABLE requirement per .pulldb/standards/database-protection.md
     
+    In SIMULATION MODE, this check is skipped (returns False) because there
+    are no real databases to check. The simulation assumes all restore
+    targets are safe to create.
+    
     Args:
         state: API state with host_repo.
         target: Target database name to check.
@@ -105,6 +110,15 @@ def _target_database_exists_on_host(
     Raises:
         HTTPException: If fail_hard=True and connection/query fails.
     """
+    # In simulation mode, skip the real database check
+    # The simulation doesn't have actual MySQL databases
+    if is_simulation_mode():
+        logger.debug(
+            "Simulation mode: skipping database existence check for '%s' on '%s'",
+            target, dbhost
+        )
+        return False
+    
     import mysql.connector
     
     try:

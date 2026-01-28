@@ -286,7 +286,7 @@ stateDiagram-v2
                         </div>
                         <p>Something went wrong. Check events for details and see <a href="#failure-modes">failure modes</a>.</p>
                         <div class="state-meta">
-                            <span><strong>Next step:</strong> Review error, possibly retry</span>
+                            <span><strong>Next step:</strong> Review error, then <strong>resubmit</strong> from History view</span>
                         </div>
                     </div>
                     
@@ -529,9 +529,9 @@ flowchart LR
                         <path d="M12 16v-4M12 8h.01"/>
                     </svg>
                     <div>
-                        <strong>No going back</strong><br>
-                        Once a job reaches a terminal state (DELETED, FAILED, CANCELED), it cannot be modified.
-                        To retry, submit a new job.
+                        <strong>Terminal states are final</strong><br>
+                        Once a job reaches DELETED, FAILED, or CANCELED, it cannot be modified.
+                        However, <strong>failed jobs can be resubmitted</strong> from the History view—this creates a new job with the same backup and settings.
                     </div>
                 </div>
                 

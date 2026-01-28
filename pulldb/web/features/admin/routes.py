@@ -2981,9 +2981,16 @@ async def list_settings(
     for key, meta in SETTING_REGISTRY.items():
         settings_list.append(_build_setting_dict(key, db_settings, meta))
 
-    # Also include any database settings not in registry
+    # Deprecated settings to exclude from display (managed via individual settings now)
+    deprecated_settings = {
+        "myloader_default_args",  # Replaced by individual myloader_* settings
+        "myloader_extra_args",    # Deprecated passthrough
+    }
+
+    # Also include any database settings not in registry (legacy/custom)
+    # but exclude known deprecated settings
     for key in db_settings:
-        if key not in SETTING_REGISTRY:
+        if key not in SETTING_REGISTRY and key not in deprecated_settings:
             settings_list.append(_build_setting_dict(key, db_settings, None))
 
     # Group by category
@@ -3019,6 +3026,9 @@ async def list_settings(
             # Graceful degradation: audit logs are informational, page works without
             logger.debug("Failed to get audit logs for settings page", exc_info=True)
 
+    # Check for settings drift (DB vs ENV)
+    drift_items = get_settings_drift(db_settings)
+
     return templates.TemplateResponse(
         "features/admin/settings.html",
         {
@@ -3028,10 +3038,134 @@ async def list_settings(
             "category_order": category_order,
             "settings": settings_list,  # Flat list for search
             "audit_logs": audit_logs,
+            "drift_items": drift_items,  # Settings out of sync
             "user": user,
             "breadcrumbs": get_breadcrumbs("admin_settings"),
         },
     )
+
+
+# NOTE: Static path routes MUST be defined before parameterized routes
+# to avoid /settings/sync-to-env matching /settings/{key} with key="sync-to-env"
+@router.post("/settings/sync-to-env")
+async def sync_all_settings_to_env(
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> dict:
+    """Sync all database settings to .env file.
+
+    Copies settings from database to the server's .env file.
+    This resolves drift by making ENV match the authoritative DB values.
+    """
+    from pathlib import Path
+    import re
+
+    # .env file location - SECURITY: Only use the canonical production path
+    # for server-side writes. User home and dev workspace paths are excluded
+    # to prevent privilege escalation via writable directories.
+    #
+    # For development, create /opt/pulldb.service/.env or set PULLDB_ENV_FILE.
+    import os
+    
+    env_file_override = os.environ.get("PULLDB_ENV_FILE")
+    if env_file_override:
+        env_file_paths = [Path(env_file_override)]
+    else:
+        env_file_paths = [Path("/opt/pulldb.service/.env")]
+
+    def find_env_file() -> Path | None:
+        for path in env_file_paths:
+            if path.exists():
+                return path
+        return None
+
+    def write_env_setting(env_path: Path, env_var: str, value: str) -> bool:
+        if not env_path.exists():
+            return False
+        lines: list[str] = []
+        found = False
+        pattern = re.compile(rf"^{re.escape(env_var)}\s*=")
+        with open(env_path) as f:
+            for line in f:
+                if pattern.match(line.strip()):
+                    lines.append(f"{env_var}={value}\n")
+                    found = True
+                else:
+                    lines.append(line)
+        if not found:
+            if lines and not lines[-1].endswith("\n"):
+                lines.append("\n")
+            lines.append(f"{env_var}={value}\n")
+        with open(env_path, "w") as f:
+            f.writelines(lines)
+        return True
+
+    # Get database settings
+    if not hasattr(state, "settings_repo") or not state.settings_repo:
+        return {"success": False, "error": "Settings repository not available"}
+
+    try:
+        db_settings = state.settings_repo.get_all_settings()
+    except Exception as e:
+        logger.exception("Failed to get settings from database")
+        return {"success": False, "error": f"Database error: {e}"}
+
+    if not db_settings:
+        return {"success": False, "error": "No settings in database to sync"}
+
+    # Find .env file
+    env_path = find_env_file()
+    if not env_path:
+        return {"success": False, "error": "No .env file found on server"}
+
+    # Sync each setting
+    updated = 0
+    errors = []
+    for key, value in db_settings.items():
+        meta = get_setting_meta(key)
+        if meta:
+            env_var = meta.env_var
+        else:
+            env_var = f"PULLDB_{key.upper()}"
+
+        try:
+            if write_env_setting(env_path, env_var, value):
+                updated += 1
+            else:
+                errors.append(f"{key}: write failed")
+        except Exception as e:
+            errors.append(f"{key}: {e}")
+
+    # Audit log
+    if hasattr(state, "audit_repo") and state.audit_repo:
+        try:
+            state.audit_repo.log_action(
+                actor_user_id=user.user_id,
+                action="settings_synced_to_env",
+                detail=f"Synced {updated} settings from DB to .env",
+                context={
+                    "env_path": str(env_path),
+                    "settings_updated": updated,
+                    "errors": errors if errors else None,
+                },
+            )
+        except Exception:
+            logger.debug("Failed to log audit for settings sync", exc_info=True)
+
+    if errors:
+        return {
+            "success": False,
+            "error": f"Synced {updated} settings, but {len(errors)} failed",
+            "details": errors,
+            "updated": updated,
+        }
+
+    return {
+        "success": True,
+        "message": f"Synced {updated} settings to {env_path}",
+        "updated": updated,
+        "note": "Restart services to apply .env changes",
+    }
 
 
 @router.post("/settings/{key}")
@@ -3228,6 +3362,182 @@ async def create_setting_directory(
         return {"success": True, "message": f"Directory created: {path}"}
 
     return {"success": False, "error": error}
+
+
+@router.get("/settings/myloader-preview")
+async def myloader_args_preview(
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> dict:
+    """Get the generated myloader command-line arguments based on current settings.
+
+    Returns the args that would be used for a restore based on the current
+    database settings values, plus the full command with binary path.
+    """
+    from pulldb.domain.config import build_myloader_args_from_settings
+
+    # Get all database settings
+    db_settings: dict[str, str] = {}
+    if hasattr(state, "settings_repo") and state.settings_repo:
+        try:
+            db_settings = state.settings_repo.get_all_settings()
+        except Exception:
+            logger.debug("Failed to get settings for myloader preview", exc_info=True)
+
+    # Build the args from settings
+    args = list(build_myloader_args_from_settings(db_settings))
+
+    # Get the myloader binary path for full command display
+    myloader_binary = state.config.myloader_binary if hasattr(state, "config") else "/opt/pulldb.service/bin/myloader-0.20.1-1"
+    full_command = f"{myloader_binary} {' '.join(args)}" if args else myloader_binary
+
+    return {"args": args, "full_command": full_command}
+
+
+@router.post("/settings/{key}/sync")
+async def sync_single_setting(
+    key: str,
+    direction: str = Form(...),  # "db_to_env" or "env_to_db"
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_admin),
+) -> dict:
+    """Sync a single setting between database and environment.
+
+    Args:
+        key: Setting key to sync
+        direction: "db_to_env" (copy DB value to .env) or "env_to_db" (copy ENV to DB)
+    """
+    from pathlib import Path
+    import re
+    import os
+
+    meta = get_setting_meta(key)
+    if not meta:
+        return {"success": False, "error": f"Unknown setting: {key}"}
+
+    env_var = meta.env_var
+
+    # .env file handling - SECURITY: Only canonical production path
+    env_file_override = os.environ.get("PULLDB_ENV_FILE")
+    if env_file_override:
+        env_file_paths = [Path(env_file_override)]
+    else:
+        env_file_paths = [Path("/opt/pulldb.service/.env")]
+
+    def find_env_file() -> Path | None:
+        for path in env_file_paths:
+            if path.exists():
+                return path
+        return None
+
+    def read_env_value(env_path: Path, env_var: str) -> str | None:
+        if not env_path.exists():
+            return None
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("#") or not line:
+                    continue
+                if "=" in line:
+                    k, _, v = line.partition("=")
+                    k = k.strip()
+                    v = v.strip()
+                    if (v.startswith("'") and v.endswith("'")) or (v.startswith('"') and v.endswith('"')):
+                        v = v[1:-1]
+                    if k == env_var:
+                        return v
+        return None
+
+    def write_env_setting(env_path: Path, env_var: str, value: str) -> bool:
+        if not env_path.exists():
+            return False
+        lines: list[str] = []
+        found = False
+        pattern = re.compile(rf"^{re.escape(env_var)}\s*=")
+        with open(env_path) as f:
+            for line in f:
+                if pattern.match(line.strip()):
+                    lines.append(f"{env_var}={value}\n")
+                    found = True
+                else:
+                    lines.append(line)
+        if not found:
+            if lines and not lines[-1].endswith("\n"):
+                lines.append("\n")
+            lines.append(f"{env_var}={value}\n")
+        with open(env_path, "w") as f:
+            f.writelines(lines)
+        return True
+
+    env_path = find_env_file()
+
+    if direction == "db_to_env":
+        # Copy DB value → .env file
+        if not hasattr(state, "settings_repo") or not state.settings_repo:
+            return {"success": False, "error": "Settings repository not available"}
+
+        try:
+            db_settings = state.settings_repo.get_all_settings()
+        except Exception as e:
+            return {"success": False, "error": f"Database error: {e}"}
+
+        db_value = db_settings.get(key)
+        if db_value is None:
+            return {"success": False, "error": f"Setting '{key}' not found in database"}
+
+        if not env_path:
+            return {"success": False, "error": "No .env file found on server"}
+
+        try:
+            if write_env_setting(env_path, env_var, db_value):
+                # Audit
+                if hasattr(state, "audit_repo") and state.audit_repo:
+                    try:
+                        state.audit_repo.log_action(
+                            actor_user_id=user.user_id,
+                            action="setting_synced",
+                            detail=f"Synced '{key}' from DB to .env",
+                            context={"key": key, "direction": "db_to_env", "value": db_value[:100]},
+                        )
+                    except Exception:
+                        pass
+                return {"success": True, "message": f"Synced {key} to .env", "value": db_value}
+            return {"success": False, "error": "Failed to write to .env file"}
+        except Exception as e:
+            return {"success": False, "error": f"Write error: {e}"}
+
+    elif direction == "env_to_db":
+        # Copy current ENV value → database
+        env_value = _os.getenv(env_var)
+        if env_value is None:
+            # Try reading from .env file directly
+            if env_path:
+                env_value = read_env_value(env_path, env_var)
+            if env_value is None:
+                return {"success": False, "error": f"Environment variable {env_var} not set"}
+
+        if not hasattr(state, "settings_repo") or not state.settings_repo:
+            return {"success": False, "error": "Settings repository not available"}
+
+        try:
+            state.settings_repo.set_setting(key, env_value)
+            # Audit
+            if hasattr(state, "audit_repo") and state.audit_repo:
+                try:
+                    state.audit_repo.log_action(
+                        actor_user_id=user.user_id,
+                        action="setting_synced",
+                        detail=f"Synced '{key}' from ENV to DB",
+                        context={"key": key, "direction": "env_to_db", "value": env_value[:100]},
+                    )
+                except Exception:
+                    pass
+            return {"success": True, "message": f"Synced {key} to database", "value": env_value}
+        except Exception as e:
+            return {"success": False, "error": f"Database error: {e}"}
+
+    else:
+        return {"success": False, "error": f"Invalid direction: {direction}. Use 'db_to_env' or 'env_to_db'"}
 
 
 # =============================================================================

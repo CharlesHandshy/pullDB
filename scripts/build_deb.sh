@@ -91,11 +91,14 @@ cp packaging/systemd/pulldb-retention.timer "$APP_ROOT/systemd/"
 # Copy myloader binaries
 if [ -d "pulldb/binaries" ]; then
     mkdir -p "$APP_ROOT/bin"
-    # Copy myloader binaries (both versions for compatibility)
-    if [ -f "pulldb/binaries/myloader-0.19.3-3" ]; then
-        cp pulldb/binaries/myloader-0.19.3-3 "$APP_ROOT/bin/"
-        chmod +x "$APP_ROOT/bin/myloader-0.19.3-3"
-        echo "Included myloader-0.19.3-3 binary"
+    # Copy unified myloader binary (0.20.1-1 supports all backup formats via metadata synthesis)
+    if [ -f "pulldb/binaries/myloader-0.20.1-1" ]; then
+        cp pulldb/binaries/myloader-0.20.1-1 "$APP_ROOT/bin/"
+        chmod +x "$APP_ROOT/bin/myloader-0.20.1-1"
+        echo "Included myloader-0.20.1-1 binary"
+    else
+        echo "[ERROR] myloader-0.20.1-1 binary not found in pulldb/binaries/" >&2
+        exit 1
     fi
 fi
 

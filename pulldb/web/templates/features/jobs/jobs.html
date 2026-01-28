@@ -126,6 +126,39 @@
         </div>
     </div>
 </div>
+
+<!-- Resubmit Job Confirmation Modal -->
+<div id="resubmit-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="resubmit-title">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title" id="resubmit-title">🔄 Resubmit Failed Job</h2>
+            <button type="button" class="modal-close" id="resubmit-close" title="Close" aria-label="Close">×</button>
+        </div>
+        <div class="modal-body">
+            <p id="resubmit-job-info">Resubmit job <strong>#<span id="resubmit-job-id"></span></strong> for <strong><span id="resubmit-target"></span></strong></p>
+            <p class="text-muted">This creates a new job using the same backup and settings from the original failed job.</p>
+            
+            <!-- Warning alerts populated by preflight -->
+            <div id="resubmit-warnings" class="hidden">
+                <div class="alert alert-warning mt-3" id="resubmit-warning-text"></div>
+            </div>
+            
+            <!-- Error alerts populated by preflight -->
+            <div id="resubmit-errors" class="hidden">
+                <div class="alert alert-danger mt-3" id="resubmit-error-text"></div>
+            </div>
+            
+            <!-- Loading state during preflight -->
+            <div id="resubmit-loading" class="mt-3 text-center hidden">
+                <span class="spinner-sm"></span> Validating...
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn" id="resubmit-cancel">Cancel</button>
+            <button type="button" class="btn btn-primary" id="resubmit-execute" disabled>Resubmit Job</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -498,6 +531,18 @@
             
             html += '</div>';
             return html;
+        },
+        
+        // History view actions - resubmit button for failed jobs
+        historyActions: (val, row) => {
+            // Only show resubmit for failed jobs with permission
+            if (row.status !== 'failed' || !row.can_resubmit) {
+                return '';
+            }
+            
+            return `<button class="action-btn action-btn-primary resubmit-btn" data-job-id="${row.id}" data-target="${row.target}" data-owner="${row.owner_username || row.owner_user_code}" title="Resubmit failed job">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+            </button>`;
         }
     };
     
@@ -522,21 +567,24 @@
             { key: 'status', label: 'Status', sortable: true, filterable: true, width: '110px', render: Renderers.status },
             { key: 'submitted_at', label: 'Date', sortable: true, filterable: true, filterType: 'dateRange', width: '100px', render: Renderers.date },
             { key: 'dbhost', label: 'Host', sortable: true, filterable: true, nowrap: true, maxWidth: '150px', render: Renderers.host },
-            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, maxWidth: '180px' },
+            { key: 'target', label: 'Target', sortable: true, filterable: true, nowrap: true, maxWidth: '160px' },
             { key: 'expires_at', label: 'Expires', sortable: false, width: '90px', render: Renderers.historyExpires },
-            // Actions column at far right - only shows delete button when rows selected
+            // Actions column - resubmit button for failed jobs, delete button in header for selection
             { 
                 type: 'actions', 
                 label: '', 
-                width: '48px',
+                width: '72px',
                 headerRender: () => `<button type="button" class="selection-action-btn bulk-delete-action-btn" title="Delete selected jobs" disabled>${DELETE_ICON_SVG}</button>`,
-                render: (val, row) => '' // Empty cells - action is header-only
+                render: Renderers.historyActions
             }
         ]
     };
     
     // Delete icon SVG for bulk delete action
     const DELETE_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M16.5 4.478v.227a48.816 48.816 0 0 1 3.878.512.75.75 0 1 1-.256 1.478l-.209-.035-1.005 13.07a3 3 0 0 1-2.991 2.77H8.084a3 3 0 0 1-2.991-2.77L4.087 6.66l-.209.035a.75.75 0 0 1-.256-1.478A48.567 48.567 0 0 1 7.5 4.705v-.227c0-1.564 1.213-2.9 2.816-2.951a52.662 52.662 0 0 1 3.369 0c1.603.051 2.815 1.387 2.815 2.951Zm-6.136-1.452a51.196 51.196 0 0 1 3.273 0C14.39 3.05 15 3.684 15 4.478v.113a49.488 49.488 0 0 0-6 0v-.113c0-.794.609-1.428 1.364-1.452Zm-.355 5.945a.75.75 0 1 0-1.5.058l.347 9a.75.75 0 1 0 1.499-.058l-.346-9Zm5.48.058a.75.75 0 1 0-1.498-.058l-.347 9a.75.75 0 0 0 1.5.058l.345-9Z" clip-rule="evenodd"/></svg>';
+    
+    // Resubmit icon SVG
+    const RESUBMIT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
     
     // =========================================================================
     // Filter Logic
@@ -1040,6 +1088,109 @@
             }
         },
         
+        // Resubmit Job Modal
+        resubmit: {
+            currentJobId: null,
+            currentTarget: null,
+            
+            async open(jobId, target, owner) {
+                this.currentJobId = jobId;
+                this.currentTarget = target;
+                
+                // Reset modal state
+                document.getElementById('resubmit-job-id').textContent = jobId;
+                document.getElementById('resubmit-target').textContent = target;
+                document.getElementById('resubmit-warnings').classList.add('hidden');
+                document.getElementById('resubmit-errors').classList.add('hidden');
+                document.getElementById('resubmit-loading').classList.remove('hidden');
+                document.getElementById('resubmit-execute').disabled = true;
+                
+                Modals.show('resubmit-modal');
+                
+                // Preflight validation
+                try {
+                    const response = await fetch(`/web/jobs/api/${jobId}/resubmit`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ preflight: true })
+                    });
+                    
+                    const data = await response.json();
+                    document.getElementById('resubmit-loading').classList.add('hidden');
+                    
+                    if (!response.ok || data.can_resubmit === false) {
+                        // Hard error - cannot resubmit
+                        document.getElementById('resubmit-error-text').textContent = data.detail || 'Cannot resubmit this job';
+                        document.getElementById('resubmit-errors').classList.remove('hidden');
+                        document.getElementById('resubmit-execute').disabled = true;
+                        return;
+                    }
+                    
+                    // Show warnings if any
+                    if (data.warnings && data.warnings.length > 0) {
+                        document.getElementById('resubmit-warning-text').innerHTML = 
+                            data.warnings.map(w => `⚠️ ${w}`).join('<br>');
+                        document.getElementById('resubmit-warnings').classList.remove('hidden');
+                    }
+                    
+                    // Enable execute button
+                    document.getElementById('resubmit-execute').disabled = false;
+                    
+                } catch (error) {
+                    document.getElementById('resubmit-loading').classList.add('hidden');
+                    document.getElementById('resubmit-error-text').textContent = `Validation failed: ${error.message}`;
+                    document.getElementById('resubmit-errors').classList.remove('hidden');
+                }
+            },
+            
+            close() {
+                Modals.hide('resubmit-modal');
+                this.currentJobId = null;
+                this.currentTarget = null;
+            },
+            
+            async execute() {
+                if (!this.currentJobId) return;
+                
+                const btn = document.getElementById('resubmit-execute');
+                btn.disabled = true;
+                btn.textContent = 'Submitting...';
+                
+                try {
+                    const response = await fetch(`/web/jobs/api/${this.currentJobId}/resubmit`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ confirm: true })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (!response.ok || !data.success) {
+                        showToast(`Resubmit failed: ${data.detail || 'Unknown error'}`, 'error');
+                        btn.textContent = 'Resubmit Job';
+                        btn.disabled = false;
+                        return;
+                    }
+                    
+                    // Success - redirect to new job
+                    this.close();
+                    showToast(`Job resubmitted as #${data.new_job_id}`, 'success');
+                    
+                    // Redirect to new job details after a short delay
+                    setTimeout(() => {
+                        window.location.href = `/web/jobs/${data.new_job_id}`;
+                    }, 500);
+                    
+                } catch (error) {
+                    showToast(`Resubmit failed: ${error.message}`, 'error');
+                    btn.textContent = 'Resubmit Job';
+                    btn.disabled = false;
+                }
+            }
+        },
+
         {% if user.is_admin %}
         // Bulk Cancel Modal (Admin only)
         bulkCancel: {
@@ -1361,6 +1512,27 @@
             if (e.target.id === 'delete-result-modal') Modals.result.close();
         });
         
+        // Resubmit modal
+        document.getElementById('resubmit-close')?.addEventListener('click', () => Modals.resubmit.close());
+        document.getElementById('resubmit-cancel')?.addEventListener('click', () => Modals.resubmit.close());
+        document.getElementById('resubmit-execute')?.addEventListener('click', () => Modals.resubmit.execute());
+        document.getElementById('resubmit-modal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'resubmit-modal') Modals.resubmit.close();
+        });
+        
+        // Resubmit button click handler (in history table actions column)
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.resubmit-btn');
+            if (btn) {
+                e.preventDefault();
+                e.stopPropagation();
+                const jobId = btn.dataset.jobId;
+                const target = btn.dataset.target;
+                const owner = btn.dataset.owner;
+                Modals.resubmit.open(jobId, target, owner);
+            }
+        });
+
         {% if user.is_admin %}
         // Bulk cancel modal (admin only)
         document.getElementById('bulk-cancel-btn')?.addEventListener('click', () => Modals.bulkCancel.open());

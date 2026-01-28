@@ -137,7 +137,9 @@
         if (!row) return false;
         
         const form = row.querySelector('.edit-form');
-        const value = form.querySelector('input[name="value"]').value;
+        // Handle input, select, or textarea
+        const valueEl = form.querySelector('[name="value"]');
+        const value = valueEl ? valueEl.value : '';
         const isDangerous = row.dataset.dangerous === 'true';
         const validationMsg = row.querySelector('.validation-message');
         
@@ -198,7 +200,8 @@
                     validationMsg.className = 'validation-message error';
                     
                     if (result.can_create) {
-                        const value = form.querySelector('input[name="value"]').value;
+                        const valueEl = form.querySelector('[name="value"]');
+                        const value = valueEl ? valueEl.value : '';
                         validationMsg.innerHTML = `${result.error} <button type="button" class="btn btn-xs btn-primary" onclick="showCreateDirModal('${key}', '${value}')">Create Directory</button>`;
                         validationMsg.className = 'validation-message can-create';
                     }
@@ -383,6 +386,96 @@
     }
 
     // ==========================================================================
+    // Settings Drift Sync
+    // ==========================================================================
+
+    window.toggleDriftDetails = function() {
+        const details = document.getElementById('drift-details');
+        const chevron = document.getElementById('drift-chevron');
+        if (details) {
+            const isHidden = details.style.display === 'none';
+            details.style.display = isHidden ? 'block' : 'none';
+            if (chevron) {
+                chevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+            }
+        }
+    };
+
+    window.syncSetting = async function(key, direction) {
+        try {
+            const formData = new FormData();
+            formData.append('direction', direction);
+
+            const response = await fetch(`/web/admin/settings/${key}/sync`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showToast(result.message, 'success');
+                // Remove the drift row from the table
+                const row = document.querySelector(`tr[data-drift-key="${key}"]`);
+                if (row) {
+                    row.style.transition = 'opacity 0.3s';
+                    row.style.opacity = '0';
+                    setTimeout(() => {
+                        row.remove();
+                        // Check if drift table is now empty
+                        const tbody = document.querySelector('#drift-details tbody');
+                        if (tbody && tbody.children.length === 0) {
+                            const banner = document.getElementById('drift-banner');
+                            if (banner) banner.remove();
+                        }
+                    }, 300);
+                }
+                // Refresh page to update setting display
+                setTimeout(() => location.reload(), 500);
+            } else {
+                showToast(result.error || 'Sync failed', 'error');
+            }
+        } catch (error) {
+            showToast('Network error during sync', 'error');
+            console.error('Sync error:', error);
+        }
+    };
+
+    window.syncAllToEnv = async function() {
+        if (!confirm('Sync all database settings to .env file?\n\nThis will overwrite environment values with database values.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/web/admin/settings/sync-to-env', {
+                method: 'POST',
+                credentials: 'same-origin',
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showToast(result.message + (result.note ? '\n' + result.note : ''), 'success');
+                // Remove drift banner
+                const banner = document.getElementById('drift-banner');
+                if (banner) {
+                    banner.style.transition = 'opacity 0.3s';
+                    banner.style.opacity = '0';
+                    setTimeout(() => banner.remove(), 300);
+                }
+            } else {
+                showToast(result.error || 'Sync failed', 'error');
+                if (result.details) {
+                    console.error('Sync errors:', result.details);
+                }
+            }
+        } catch (error) {
+            showToast('Network error during sync', 'error');
+            console.error('Sync error:', error);
+        }
+    };
+
+    // ==========================================================================
     // Keyboard Shortcuts
     // ==========================================================================
 
@@ -408,6 +501,13 @@
         const tabParam = urlParams.get('tab');
         if (tabParam) {
             switchTab(tabParam);
+        }
+
+        // Auto-expand drift details if present
+        const driftBanner = document.getElementById('drift-banner');
+        if (driftBanner) {
+            // Optionally auto-expand on load
+            // toggleDriftDetails();
         }
     });
 

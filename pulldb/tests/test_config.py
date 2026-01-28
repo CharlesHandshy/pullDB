@@ -50,7 +50,7 @@ class TestMinimalFromEnv:
         assert config.aws_profile is None
         assert config.s3_aws_profile is None
         assert config.default_dbhost is None
-        assert config.myloader_binary == "/opt/pulldb.service/bin/myloader-0.19.3-3"
+        assert config.myloader_binary == "/opt/pulldb.service/bin/myloader-0.20.1-1"
         assert config.myloader_extra_args == ()
         assert config.myloader_timeout_seconds == 86400.0
         assert config.myloader_threads == 8
@@ -72,7 +72,7 @@ class TestMinimalFromEnv:
         os.environ["PULLDB_DEFAULT_DBHOST"] = "db-prod-01"
         os.environ["PULLDB_MYLOADER_BINARY"] = "/opt/bin/myloader-custom"
         os.environ["PULLDB_MYLOADER_EXTRA_ARGS"] = (
-            "--rows-per-insert=1000 --skip-triggers"
+            "--rows=1000 --skip-triggers"
         )
         os.environ["PULLDB_MYLOADER_TIMEOUT_SECONDS"] = "3600.5"
         os.environ["PULLDB_MYLOADER_THREADS"] = "16"
@@ -89,7 +89,7 @@ class TestMinimalFromEnv:
         assert config.default_dbhost == "db-prod-01"
         assert config.myloader_binary == "/opt/bin/myloader-custom"
         assert config.myloader_extra_args == (
-            "--rows-per-insert=1000",
+            "--rows=1000",
             "--skip-triggers",
         )
         assert config.myloader_timeout_seconds == pytest.approx(3600.5)
@@ -126,6 +126,9 @@ class TestFromEnvAndMySQL:
         Note: mysql_user is intentionally not loaded from PULLDB_MYSQL_USER env var
         in production code - it's service-specific. This test uses mocked pool so
         we verify the actual config behavior.
+
+        Note: myloader_extra_args is deprecated in favor of individual settings.
+        The myloader command args are now built from myloader_* settings.
         """
         os.environ["PULLDB_MYSQL_HOST"] = "localhost"
         # PULLDB_MYSQL_USER is NOT read - mysql_user comes from service-specific config
@@ -146,9 +149,14 @@ class TestFromEnvAndMySQL:
                 "setting_key": "myloader_binary",
                 "setting_value": "/usr/local/bin/myloader",
             },
+            # Individual myloader settings (replaces deprecated myloader_extra_args)
             {
-                "setting_key": "myloader_extra_args",
-                "setting_value": "--skip-triggers --rows-per-insert=500",
+                "setting_key": "myloader_skip_triggers",
+                "setting_value": "true",
+            },
+            {
+                "setting_key": "myloader_rows",
+                "setting_value": "500",
             },
             {
                 "setting_key": "myloader_timeout_seconds",
@@ -174,10 +182,11 @@ class TestFromEnvAndMySQL:
             "/opt/pulldb.service/customers_after_sql"
         )
         assert config.myloader_binary == "/usr/local/bin/myloader"
-        assert config.myloader_extra_args == (
-            "--skip-triggers",
-            "--rows-per-insert=500",
-        )
+        # myloader_extra_args is deprecated - args are now built from individual settings
+        assert config.myloader_extra_args == ()
+        # Verify the myloader_default_args contains the configured options
+        assert "--skip-triggers" in config.myloader_default_args
+        assert "--rows=500" in config.myloader_default_args
         assert config.myloader_timeout_seconds == 1800.0
         assert config.myloader_threads == 12
 

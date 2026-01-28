@@ -123,7 +123,7 @@ def build_configured_myloader_spec(
     Returns:
         Configured MyLoaderSpec honoring environment/settings overrides.
     """
-    # Unified binary: always use myloader 0.19.3-3
+    # Unified binary: always use myloader 0.20.1-1
     # Legacy backups are supported via metadata synthesis (see metadata_synthesis.py)
     binary_path = config.myloader_binary
 
@@ -133,7 +133,7 @@ def build_configured_myloader_spec(
     if binary_path == "myloader":
         pkg_root = os.path.dirname(os.path.dirname(__file__))
         bin_dir = os.path.join(pkg_root, "binaries")
-        candidate = os.path.join(bin_dir, "myloader-0.19.3-3")
+        candidate = os.path.join(bin_dir, "myloader-0.20.1-1")
         if os.path.exists(candidate):
             binary_path = candidate
 

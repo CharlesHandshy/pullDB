@@ -6,6 +6,47 @@
 
 ---
 
+## 2026-01-27 | TODO: Simulation Mode Orphan Detection Bug
+
+### Context
+User reported orphaned databases page showing currently active (running) jobs as orphans.
+
+### Root Cause Analysis
+The simulation mode `_detect_orphaned_databases_simulation()` function in `pulldb/worker/cleanup.py` (lines 1804-1864) does NOT check if a matching job exists before classifying a database as an orphan.
+
+**Real implementation** (`detect_orphaned_databases`):
+1. Lists all databases from MySQL
+2. Parses staging pattern
+3. **Checks if job exists with `find_job_by_staging_prefix`**
+4. Only adds to orphans if NO job found
+
+**Simulation implementation** (`_detect_orphaned_databases_simulation`):
+1. Gets databases from `state.staging_databases`
+2. Parses staging pattern
+3. **DOES NOT check if job exists** ← BUG
+4. Adds ALL matching databases to orphans
+
+### Fix Required
+Update `_detect_orphaned_databases_simulation()` to call `find_job_by_staging_prefix()` on the mock job repository, matching the real implementation's behavior.
+
+### Status
+**TODO** - Noted for later implementation.
+
+---
+
+## 2026-01-27 | Two-Phase Metadata Creation & Staging Warnings
+
+### Context
+Implemented pre-creation of pullDB metadata table to solve orphan staging database cleanup problem.
+
+### What Was Done
+1. Added two-phase metadata approach to metadata.py (pre_create + update_completion)
+2. Updated restore.py orchestration for 6-step workflow
+3. Added staging cleanup warnings to job detail page
+4. Updated cleanup.py to handle new restore_status field
+
+---
+
 ## 2026-01-26 | CRITICAL: Database Protection Safety Audit & Fix
 
 ### Context

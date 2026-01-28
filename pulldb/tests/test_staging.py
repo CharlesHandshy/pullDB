@@ -168,14 +168,19 @@ class _FakeCursor:
         self._databases = list(all_databases)
         self._orphans_to_drop = orphans_to_drop
         self._last_query: str = ""
+        self._last_params: tuple[Any, ...] | None = None
 
-    def execute(self, sql: str) -> None:
+    def execute(self, sql: str, params: tuple[Any, ...] | None = None) -> None:
         """Simulate SQL execution."""
         self._last_query = sql
+        self._last_params = params
         if sql == "SHOW DATABASES":
             return  # fetchall() will return _databases
         elif sql.startswith("SELECT db FROM information_schema.processlist"):
             return  # fetchall() will return empty list (no active connections)
+        elif "information_schema.TABLES" in sql and "pullDB" in sql:
+            # Query to check if pullDB table exists - return True for orphans
+            return  # fetchone() will handle the result
         elif sql.startswith("DROP DATABASE"):
             # Extract database name from DROP statement
             # Format: DROP DATABASE IF EXISTS `dbname`
@@ -188,6 +193,17 @@ class _FakeCursor:
         if "information_schema.processlist" in self._last_query:
             return []  # No active connections
         return [(db,) for db in self._databases]
+
+    def fetchone(self) -> tuple[int] | None:
+        """Return single row result based on last query."""
+        if "information_schema.TABLES" in self._last_query and "pullDB" in self._last_query:
+            # Check if the queried database is in our orphans list
+            if self._last_params:
+                db_name = self._last_params[0]
+                # Return (1,) if this is an orphan (has pullDB table), None otherwise
+                if db_name in self._orphans_to_drop:
+                    return (1,)
+        return None
 
     def close(self) -> None:
         """Simulate cursor close."""

@@ -6,7 +6,12 @@ This module handles the staging-to-production rename pattern:
 1. Generate staging database name from target and job_id
 2. Clean up orphaned staging databases from previous restores
 3. Verify staging database doesn't exist after cleanup
-4. Coordinate atomic rename from staging to production (placeholder)
+4. (NEW) Pre-create staging DB with pullDB table via metadata.pre_create_metadata_table()
+5. Coordinate atomic rename from staging to production
+
+The two-phase metadata approach ensures orphan cleanup works even if myloader crashes:
+- Phase 1 (pre-create): Create staging DB + pullDB table with status='in_progress'
+- Phase 2 (completion): Update pullDB table with status='completed' after restore
 
 The staging pattern provides zero-downtime restores with validation before
 cutover and rollback capability.

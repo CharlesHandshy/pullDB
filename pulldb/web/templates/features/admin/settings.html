@@ -21,14 +21,97 @@
                 System Settings
             </h1>
         </div>
-        <button class="btn-icon" onclick="exportSettings()" title="Export Settings to JSON" aria-label="Export settings to JSON">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" x2="12" y1="15" y2="3"/>
-            </svg>
-        </button>
+        <div class="page-header-actions">
+            <button class="btn btn-primary btn-sm" onclick="syncAllToEnv()" title="Save all database settings to .env file">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" x2="12" y1="15" y2="3"/>
+                </svg>
+                Save DB → .env
+            </button>
+            <button class="btn-icon" onclick="exportSettings()" title="Export Settings to JSON" aria-label="Export settings to JSON">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" x2="12" y1="15" y2="3"/>
+                </svg>
+            </button>
+        </div>
     </div>
+
+    {% if drift_items %}
+    <!-- Settings Drift Warning Banner -->
+    <div class="alert alert-warning mb-4" id="drift-banner">
+        <div class="alert-content">
+            <div class="alert-header" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleDriftDetails()">
+                <div>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" style="vertical-align: middle;">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <strong>Settings Drift Detected</strong> — {{ drift_items|length }} setting(s) differ between database and environment
+                </div>
+                <svg id="drift-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" style="transition: transform 0.2s;">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+            </div>
+            <div id="drift-details" class="mt-3" style="display: none;">
+                <p class="text-muted mb-2" style="font-size: 0.85em;">
+                    Database settings take precedence. Use <strong>&gt;</strong> to copy DB → ENV, or <strong>&lt;</strong> to copy ENV → DB.
+                </p>
+                <table class="data-table" style="font-size: 0.85em;">
+                    <thead>
+                        <tr>
+                            <th>Setting</th>
+                            <th>Database Value</th>
+                            <th style="text-align: center;">Sync</th>
+                            <th>Environment Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for item in drift_items %}
+                        <tr data-drift-key="{{ item.setting_key }}">
+                            <td>
+                                <code>{{ item.setting_key }}</code>
+                                <br><small class="text-muted">{{ item.description[:50] }}{% if item.description|length > 50 %}...{% endif %}</small>
+                            </td>
+                            <td>
+                                <code class="drift-db-value" style="background: var(--success-bg); color: var(--success-text); padding: 0.15rem 0.3rem; border-radius: 3px; font-size: 0.8em;">
+                                    {{ item.db_value[:40] }}{% if item.db_value|length > 40 %}...{% endif %}
+                                </code>
+                            </td>
+                            <td style="text-align: center; white-space: nowrap;">
+                                <button class="btn btn-xs btn-secondary" onclick="syncSetting('{{ item.setting_key }}', 'db_to_env')" title="Copy DB → ENV">
+                                    &gt;
+                                </button>
+                                <button class="btn btn-xs btn-secondary" onclick="syncSetting('{{ item.setting_key }}', 'env_to_db')" title="Copy ENV → DB">
+                                    &lt;
+                                </button>
+                            </td>
+                            <td>
+                                {% if item.env_value == "(not set)" %}
+                                <span class="text-danger" style="font-style: italic;">{{ item.env_value }}</span>
+                                {% else %}
+                                <code class="drift-env-value" style="background: var(--danger-bg); color: var(--danger-text); padding: 0.15rem 0.3rem; border-radius: 3px; font-size: 0.8em;">
+                                    {{ item.env_value[:40] }}{% if item.env_value|length > 40 %}...{% endif %}
+                                </code>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                <div class="mt-2" style="text-align: right;">
+                    <button class="btn btn-sm btn-primary" onclick="syncAllToEnv()">
+                        Sync All DB → ENV
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Category Tabs (icon-only with tooltips) -->
     <div class="tabs mb-4">
@@ -118,6 +201,9 @@
                 {% if category == "Appearance" %}
                 {# Special UI for Appearance settings with color sliders #}
                 {% include "features/admin/partials/_appearance.html" %}
+                {% elif category == "Myloader Configuration" %}
+                {# Special UI for Myloader settings with grouped controls #}
+                {% include "features/admin/partials/_myloader.html" %}
                 {% else %}
                 <div class="settings-list">
                     {% for setting in cat_settings %}

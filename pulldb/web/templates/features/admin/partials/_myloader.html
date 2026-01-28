@@ -1,0 +1,303 @@
+<!-- Myloader Configuration Partial
+     Uses IDENTICAL styling to other settings tabs (.settings-list pattern)
+     All myloader settings displayed as flat rows like Job Limits, Paths, etc.
+-->
+
+<!-- Command Preview Banner -->
+<div class="myloader-command-banner">
+    <div class="command-preview-row">
+        <div class="command-label">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="4 17 10 11 4 5"/>
+                <line x1="12" y1="19" x2="20" y2="19"/>
+            </svg>
+            Generated Arguments
+        </div>
+        <code id="myloader-args-preview" class="command-preview-code">Loading...</code>
+        <div class="command-actions">
+            <button type="button" class="btn btn-xs btn-secondary" onclick="copyMyloaderArgs()" title="Copy arguments">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+            </button>
+            <button type="button" class="btn btn-xs btn-secondary" onclick="showMyloaderCommand()" title="View full command">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                    <polyline points="15 3 21 3 21 9"/>
+                    <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Settings List - IDENTICAL structure to other tabs -->
+<div class="settings-list">
+    {% for setting in categories.get('Myloader Configuration', []) %}
+    <div class="setting-row" 
+         data-key="{{ setting.setting_key }}" 
+         data-type="{{ setting.setting_type }}"
+         data-dangerous="{{ 'true' if setting.dangerous else 'false' }}">
+        <div class="setting-info">
+            <div class="setting-key-row">
+                <code class="setting-key">{{ setting.setting_key }}</code>
+                {% if setting.dangerous %}
+                <span class="danger-badge" title="Changing this setting could break the system">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    Dangerous
+                </span>
+                {% endif %}
+            </div>
+            <div class="setting-description">{{ setting.description }}</div>
+            <div class="setting-meta">
+                <span class="env-var" title="Environment variable">{{ setting.env_var }}</span>
+            </div>
+        </div>
+        
+        <div class="setting-value-col">
+            <!-- View Mode -->
+            <div class="setting-view">
+                <div class="value-display">
+                    {% if setting.setting_type == 'boolean' %}
+                    <code class="setting-value">{{ setting.setting_value or setting.default or 'false' }}</code>
+                    {% else %}
+                    <code class="setting-value {% if setting.setting_type in ('directory', 'path', 'executable') %}path-value{% endif %}">{{ setting.setting_value or '(not set)' }}</code>
+                    {% endif %}
+                    <span class="source-badge {{ setting.source }}" title="Source: {{ setting.source }}">
+                        {% if setting.source == 'database' %}🗄️ DB{% elif setting.source == 'environment' %}🌐 ENV{% else %}⚙️ DEF{% endif %}
+                    </span>
+                </div>
+                {% if setting.default and setting.setting_value != setting.default %}
+                <div class="default-hint">
+                    <span>Default:</span>
+                    <code>{{ setting.default }}</code>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Edit Mode (hidden by default) -->
+            <div class="setting-edit js-hidden">
+                <form class="edit-form" onsubmit="return saveSetting(event, '{{ setting.setting_key }}')">
+                    {% if setting.setting_type == 'integer' %}
+                    <input type="number" 
+                           name="value" 
+                           class="edit-input" 
+                           value="{{ setting.setting_value }}"
+                           min="0">
+                    {% elif setting.setting_type == 'boolean' %}
+                    <select name="value" class="edit-input">
+                        <option value="true" {% if (setting.setting_value or setting.default|string).lower() in ('true', '1', 'yes', 'on') %}selected{% endif %}>true</option>
+                        <option value="false" {% if (setting.setting_value or setting.default|string).lower() in ('false', '0', 'no', 'off') %}selected{% endif %}>false</option>
+                    </select>
+                    {% elif setting.setting_key == 'myloader_optimize_keys' %}
+                    <select name="value" class="edit-input">
+                        <option value="AFTER_IMPORT_PER_TABLE" {% if (setting.setting_value or setting.default) == 'AFTER_IMPORT_PER_TABLE' %}selected{% endif %}>AFTER_IMPORT_PER_TABLE</option>
+                        <option value="AFTER_IMPORT_ALL_TABLES" {% if (setting.setting_value or setting.default) == 'AFTER_IMPORT_ALL_TABLES' %}selected{% endif %}>AFTER_IMPORT_ALL_TABLES</option>
+                        <option value="SKIP" {% if (setting.setting_value or setting.default) == 'SKIP' %}selected{% endif %}>SKIP</option>
+                    </select>
+                    {% elif setting.setting_key == 'myloader_checksum' %}
+                    <select name="value" class="edit-input">
+                        <option value="warn" {% if (setting.setting_value or setting.default) == 'warn' %}selected{% endif %}>warn</option>
+                        <option value="fail" {% if (setting.setting_value or setting.default) == 'fail' %}selected{% endif %}>fail</option>
+                        <option value="skip" {% if (setting.setting_value or setting.default) == 'skip' %}selected{% endif %}>skip</option>
+                    </select>
+                    {% elif setting.setting_key == 'myloader_drop_table_mode' %}
+                    <select name="value" class="edit-input">
+                        <option value="DROP" {% if (setting.setting_value or setting.default) == 'DROP' %}selected{% endif %}>DROP</option>
+                        <option value="TRUNCATE" {% if (setting.setting_value or setting.default) == 'TRUNCATE' %}selected{% endif %}>TRUNCATE</option>
+                        <option value="DELETE" {% if (setting.setting_value or setting.default) == 'DELETE' %}selected{% endif %}>DELETE</option>
+                        <option value="NONE" {% if (setting.setting_value or setting.default) == 'NONE' %}selected{% endif %}>NONE</option>
+                        <option value="FAIL" {% if (setting.setting_value or setting.default) == 'FAIL' %}selected{% endif %}>FAIL</option>
+                    </select>
+                    {% elif setting.setting_key == 'myloader_verbose' %}
+                    <select name="value" class="edit-input">
+                        <option value="0" {% if (setting.setting_value or setting.default) == '0' %}selected{% endif %}>0 - Silent</option>
+                        <option value="1" {% if (setting.setting_value or setting.default) == '1' %}selected{% endif %}>1 - Errors</option>
+                        <option value="2" {% if (setting.setting_value or setting.default) == '2' %}selected{% endif %}>2 - Warnings</option>
+                        <option value="3" {% if (setting.setting_value or setting.default) == '3' %}selected{% endif %}>3 - Info</option>
+                    </select>
+                    {% else %}
+                    <input type="text" 
+                           name="value" 
+                           class="edit-input" 
+                           value="{{ setting.setting_value }}"
+                           placeholder="{{ setting.default or '' }}">
+                    {% endif %}
+                    <div class="edit-actions">
+                        <button type="button" class="btn btn-secondary btn-xs" onclick="cancelEdit('{{ setting.setting_key }}')">Cancel</button>
+                        <button type="submit" class="btn btn-primary btn-xs">Save</button>
+                    </div>
+                    <div class="validation-message"></div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="setting-actions">
+            <button type="button" 
+                    class="action-btn action-btn-primary edit-btn" 
+                    onclick="startEdit('{{ setting.setting_key }}')"
+                    title="Edit setting">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                </svg>
+            </button>
+            {% if setting.source == 'database' %}
+            <button type="button" 
+                    class="action-btn action-btn-muted reset-btn" 
+                    onclick="resetSetting('{{ setting.setting_key }}')"
+                    title="Reset to default">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="1 4 1 10 7 10"/>
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                </svg>
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Full Command Modal -->
+<div id="myloader-command-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="4 17 10 11 4 5"/>
+                    <line x1="12" y1="19" x2="20" y2="19"/>
+                </svg>
+                MyLoader Command
+            </h3>
+            <button type="button" class="modal-close" onclick="hideMyloaderCommand()" aria-label="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" x2="6" y1="6" y2="18"/>
+                    <line x1="6" x2="18" y1="6" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="text-muted" style="font-size: 0.8125rem; margin-bottom: var(--space-3);">
+                Full command with binary path and all configured arguments. Connection details (<code>--host</code>, <code>--user</code>, etc.) are added at runtime.
+            </p>
+            <pre id="myloader-full-command" style="background: var(--color-code-bg); color: var(--color-code-text); padding: var(--space-4); border-radius: var(--radius-md); border: 1px solid var(--color-code-border); font-size: 0.8rem; white-space: pre-wrap; word-break: break-all; max-height: 900px; overflow-y: auto; margin: 0;">Loading...</pre>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="copyMyloaderFullCommand()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                Copy Command
+            </button>
+            <button type="button" class="btn btn-primary" onclick="hideMyloaderCommand()">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    // Update preview on load
+    document.addEventListener('DOMContentLoaded', function() {
+        refreshMyloaderPreview();
+    });
+
+    window.copyMyloaderArgs = function() {
+        const preview = document.getElementById('myloader-args-preview');
+        navigator.clipboard.writeText(preview.textContent.trim());
+        showToast('Arguments copied to clipboard', 'success');
+    };
+
+    window.copyMyloaderFullCommand = function() {
+        const preview = document.getElementById('myloader-full-command');
+        navigator.clipboard.writeText(preview.textContent.trim());
+        showToast('Full command copied to clipboard', 'success');
+    };
+
+    window.showMyloaderCommand = function() {
+        const modal = document.getElementById('myloader-command-modal');
+        modal.classList.remove('hidden');
+        refreshMyloaderPreview();
+    };
+
+    window.hideMyloaderCommand = function() {
+        const modal = document.getElementById('myloader-command-modal');
+        modal.classList.add('hidden');
+    };
+
+    async function refreshMyloaderPreview() {
+        try {
+            const response = await fetch('/web/admin/settings/myloader-preview');
+            const result = await response.json();
+            
+            const preview = document.getElementById('myloader-args-preview');
+            if (preview && result.args) {
+                preview.textContent = result.args.join(' ') || '(no arguments)';
+            }
+            
+            const fullCommand = document.getElementById('myloader-full-command');
+            if (fullCommand && result.full_command) {
+                fullCommand.textContent = result.full_command;
+            }
+        } catch (error) {
+            console.error('Failed to refresh preview:', error);
+            // Build locally as fallback
+            buildLocalPreview();
+        }
+    }
+
+    function buildLocalPreview() {
+        const args = [];
+        
+        // Get all myloader settings from the page
+        document.querySelectorAll('.setting-row[data-key^="myloader_"]').forEach(row => {
+            const key = row.dataset.key;
+            const valueEl = row.querySelector('.setting-value');
+            if (!valueEl) return;
+            
+            let value = valueEl.textContent.trim();
+            if (value === '(not set)') return;
+            
+            const flag = key.replace('myloader_', '').replace(/_/g, '-');
+            
+            // Handle booleans
+            if (value === 'true') {
+                args.push(`--${flag}`);
+            } else if (value !== 'false' && value) {
+                args.push(`--${flag}=${value}`);
+            }
+        });
+        
+        const preview = document.getElementById('myloader-args-preview');
+        if (preview) {
+            preview.textContent = args.length > 0 ? args.join(' ') : '(no arguments)';
+        }
+    }
+
+    // Close modal on escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            hideMyloaderCommand();
+        }
+    });
+
+    // Refresh preview when settings change
+    const originalSaveSetting = window.saveSetting;
+    if (originalSaveSetting) {
+        window.saveSetting = function(event, key) {
+            const result = originalSaveSetting(event, key);
+            if (key && key.startsWith('myloader_')) {
+                setTimeout(refreshMyloaderPreview, 500);
+            }
+            return result;
+        };
+    }
+
+})();
+</script>

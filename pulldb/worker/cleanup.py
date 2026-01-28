@@ -119,6 +119,8 @@ class OrphanMetadata:
     backup_filename: str | None = None
     restore_duration_seconds: float | None = None
     custom_target: bool = False  # Whether custom target name was used
+    restore_status: str | None = None  # 'in_progress', 'completed', or 'failed'
+    started_at: datetime | None = None  # When restore started (Phase 2 schema)
 
 
 @dataclass
@@ -590,9 +592,29 @@ def get_orphan_metadata(
             return None
         
         # Query the pullDB metadata table - include owner fields for orphan detection
+        # First check which columns exist (for backward compat with older schema)
         cursor.execute("""
-            SELECT job_id, owner_user_id, owner_user_code, restored_by, restored_at,
-                   target_database, backup_filename, restore_duration_seconds, custom_target
+            SELECT COLUMN_NAME FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = 'pullDB'
+        """, (db_name,))
+        # Note: dictionary cursor returns dict rows; cast for type checker
+        col_rows: list[dict[str, Any]] = cursor.fetchall()  # type: ignore[assignment]
+        existing_columns = {row["COLUMN_NAME"] for row in col_rows}
+        
+        # Build column list based on what exists
+        base_columns = [
+            "job_id", "owner_user_id", "owner_user_code", "restored_by", "restored_at",
+            "target_database", "backup_filename", "restore_duration_seconds", "custom_target"
+        ]
+        optional_columns = ["restore_status", "started_at"]
+        columns_to_select = [c for c in base_columns if c in existing_columns]
+        columns_to_select.extend(c for c in optional_columns if c in existing_columns)
+        
+        if not columns_to_select:
+            return None
+        
+        cursor.execute(f"""
+            SELECT {', '.join(columns_to_select)}
             FROM pullDB
             LIMIT 1
         """)
@@ -614,6 +636,8 @@ def get_orphan_metadata(
             backup_filename=str(meta["backup_filename"]) if meta.get("backup_filename") else None,
             restore_duration_seconds=float(duration) if duration else None,
             custom_target=bool(custom_target_val) if custom_target_val is not None else False,
+            restore_status=str(meta["restore_status"]) if meta.get("restore_status") else None,
+            started_at=meta.get("started_at"),
         )
     except Exception as e:
         logger.warning("Failed to get metadata for orphan %s: %s", db_name, e)
@@ -1864,6 +1888,9 @@ def _get_orphan_metadata_simulation(dbhost: str, db_name: str) -> OrphanMetadata
             restored_at = meta_dict.get("restored_at")
             if isinstance(restored_at, str):
                 restored_at = datetime.fromisoformat(restored_at.replace("Z", "+00:00"))
+            started_at = meta_dict.get("started_at")
+            if isinstance(started_at, str):
+                started_at = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
             
             return OrphanMetadata(
                 job_id=meta_dict.get("job_id"),
@@ -1873,6 +1900,8 @@ def _get_orphan_metadata_simulation(dbhost: str, db_name: str) -> OrphanMetadata
                 backup_filename=meta_dict.get("backup_filename"),
                 restore_duration_seconds=float(meta_dict["restore_duration_seconds"])
                     if meta_dict.get("restore_duration_seconds") else None,
+                restore_status=meta_dict.get("restore_status"),
+                started_at=started_at,
             )
         
         # No seeded metadata - return None (simulates no pulldb table)

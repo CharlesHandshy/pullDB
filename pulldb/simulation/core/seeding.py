@@ -318,7 +318,15 @@ def _seed_users(state: SimulationState, mode: str = "standard") -> dict[str, Use
         Dict mapping user_id to User.
     """
     default_host = "staging-01"
-    dev_hosts = ["staging-01", "staging-02", "staging-03"]
+    dev_hosts = ["mysql-staging-01.example.com", "mysql-staging-02.example.com", "mysql-staging-03.example.com"]
+    all_hosts = [
+        "mysql-staging-01.example.com",
+        "mysql-staging-02.example.com", 
+        "mysql-staging-03.example.com",
+        "mysql-prod-01.example.com",
+        "mysql-broken.example.com",
+        "mysql-dev.example.com"
+    ]
     
     # Password hash for: PullDB_Dev2025!
     password_hash = "$2b$12$uJQJWPXefk/JICbVNIt23OYvf/ul545Uk5Mb50wTuxKsvDtj6Xmr2"
@@ -327,14 +335,14 @@ def _seed_users(state: SimulationState, mode: str = "standard") -> dict[str, Use
         # Lean: 3 users only
         users_data: list[tuple] = [
             ("usr-001", "devuser", "devusr", UserRole.USER, "usr-003", dev_hosts[:1], None, None, None, None),
-            ("usr-002", "devadmin", "devadm", UserRole.ADMIN, None, None, None, None, "JBSWY3DPEHPK3PXP", None),
+            ("usr-002", "devadmin", "devadm", UserRole.ADMIN, None, all_hosts, None, None, "JBSWY3DPEHPK3PXP", None),
             ("usr-003", "devmanager", "devmgr", UserRole.MANAGER, "usr-002", dev_hosts[:1], None, None, None, None),
         ]
     else:
         # Standard: 6 users with various states
         users_data = [
             ("usr-001", "devuser", "devusr", UserRole.USER, "usr-003", dev_hosts, None, None, None, None),
-            ("usr-002", "devadmin", "devadm", UserRole.ADMIN, None, None, None, None, "JBSWY3DPEHPK3PXP", None),
+            ("usr-002", "devadmin", "devadm", UserRole.ADMIN, None, all_hosts, None, None, "JBSWY3DPEHPK3PXP", None),
             ("usr-003", "devmanager", "devmgr", UserRole.MANAGER, "usr-002", dev_hosts, None, None, None, None),
             ("usr-004", "disableduser", "disusr", UserRole.USER, "usr-003", dev_hosts, datetime(2025, 1, 15, tzinfo=UTC), None, None, None),
             ("usr-005", "resetuser", "rstusr", UserRole.USER, "usr-003", dev_hosts, None, None, None, datetime(2025, 1, 20, 14, 30, tzinfo=UTC)),
@@ -421,11 +429,13 @@ def _seed_user_host_assignments(state: SimulationState, mode: str = "standard") 
     if mode == "lean":
         user_host_assignments = [
             ("usr-001", ["staging-01"], "staging-01"),
+            ("usr-002", ["staging-01", "staging-02", "staging-03", "prod-01", "broken", "dev"], "staging-01"),  # devadmin - all hosts
             ("usr-003", ["staging-01"], "staging-01"),
         ]
     else:
         user_host_assignments = [
             ("usr-001", ["staging-01", "staging-02", "staging-03"], "staging-01"),
+            ("usr-002", ["staging-01", "staging-02", "staging-03", "prod-01", "broken", "dev"], "staging-01"),  # devadmin - all hosts
             ("usr-003", ["staging-01", "staging-02", "staging-03"], "staging-01"),
         ]
     
@@ -521,13 +531,18 @@ def _create_job(
     
     options = {
         "customer": source_customer if not is_qatemplate else "qatemplate",
+        "customer_id": source_customer if not is_qatemplate else "qatemplate",
         "backup_env": backup_env,
         "s3_key": f"s3://pulldb-backups/{backup_env}/{source_customer}/latest.xbstream.zst",
+        # backup_path is required for resubmit feature
+        "backup_path": f"s3://pulldb-backups/{backup_env}/{source_customer}/latest.xbstream.zst",
     }
     if is_qatemplate:
         options["qatemplate"] = "true"
+        options["is_qatemplate"] = "true"
     if is_custom_target:
         options["custom_target"] = custom_target_name
+        options["custom_target_used"] = "true"
     
     # Set retention fields for deployed/complete jobs
     job_expires_at = expires_at

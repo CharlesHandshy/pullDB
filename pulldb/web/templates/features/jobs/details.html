@@ -218,6 +218,36 @@
     </div>
     {% endif %}
 
+    <!-- Staging Cleanup Warnings - databases skipped during orphan cleanup -->
+    {% if staging_warnings %}
+    <div class="card card-warning">
+        <div class="card-header-row">
+            <h3 class="card-title">
+                {{ icon('alert-triangle', size='18', class='icon-sm') }}
+                Staging Cleanup Notice
+            </h3>
+        </div>
+        <div class="staging-warnings-content" style="padding: 1rem;">
+            <p style="margin-bottom: 0.75rem;">
+                The following databases were <strong>not removed</strong> during staging cleanup:
+            </p>
+            <ul class="staging-warnings-list" style="margin: 0; padding: 0; list-style: none;">
+                {% for warning in staging_warnings %}
+                <li style="margin-bottom: 0.5rem; padding: 0.5rem; background: var(--surface-secondary); border-radius: var(--radius-sm); font-family: var(--font-mono);">
+                    <code class="text-warning" style="font-weight: 600;">{{ warning.database }}</code>
+                    <span class="text-muted" style="font-size: 0.875rem; display: block; margin-top: 0.25rem;">
+                        {{ warning.message }}
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
+            <p class="text-muted" style="font-size: 0.875rem; margin: 0.75rem 0 0 0;">
+                <em>These databases may require manual cleanup via the Admin → Orphan Databases page.</em>
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Admin Actions - shown for stuck deleting/failed jobs (admins only) -->
     {% if can_force_complete and not is_zombie_deleting and job.status.value in ['deleting', 'failed'] %}
     <div class="card">

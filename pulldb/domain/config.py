@@ -139,7 +139,7 @@ class Config:
     qa_template_after_sql_dir: Path = (
         Path(__file__).parent.parent / "template_after_sql" / "quality"
     )
-    myloader_binary: str = "/opt/pulldb.service/bin/myloader-0.19.3-3"
+    myloader_binary: str = "/opt/pulldb.service/bin/myloader-0.20.1-1"
     myloader_default_args: tuple[str, ...] = (
         "--max-threads-for-post-actions=1",
         "--rows=100000",
@@ -347,20 +347,12 @@ class Config:
             if mysql_binary:
                 myloader_binary = mysql_binary
 
-        myloader_default_args = base_config.myloader_default_args
-        if "PULLDB_MYLOADER_DEFAULT_ARGS" not in os.environ:
-            mysql_default_args = _strip_or_none(settings.get("myloader_default_args"))
-            if mysql_default_args:
-                myloader_default_args = _parse_myloader_default_args(mysql_default_args)
+        # Build myloader args from individual settings (new approach)
+        # This replaces the monolithic myloader_default_args string
+        myloader_default_args = build_myloader_args_from_settings(settings)
 
+        # Legacy: myloader_extra_args is deprecated, but keep for backward compat
         myloader_extra_args = base_config.myloader_extra_args
-        if "PULLDB_MYLOADER_EXTRA_ARGS" not in os.environ:
-            mysql_extra = _strip_or_none(settings.get("myloader_extra_args"))
-            if mysql_extra:
-                myloader_extra_args = _parse_extra_args(
-                    mysql_extra,
-                    source="settings.myloader_extra_args",
-                )
 
         myloader_timeout_seconds = base_config.myloader_timeout_seconds
         if "PULLDB_MYLOADER_TIMEOUT_SECONDS" not in os.environ:
@@ -437,16 +429,14 @@ def _parse_extra_args(value: str | None, *, source: str) -> tuple[str, ...]:
 
 
 # Default myloader arguments (used when PULLDB_MYLOADER_DEFAULT_ARGS not set)
-# NOTE: --connection-timeout=30 prevents myloader from hanging forever if MySQL
-# is unreachable or slow to respond (the default is 0 = wait forever)
 # NOTE: --throttle auto-throttles when MySQL Threads_running exceeds threshold,
 # preventing OOM by backing off when server is under memory pressure.
 # NOTE: --rows=50000 and --queries-per-transaction=1000 are conservative defaults
 # to reduce memory footprint per thread (reduced from 100000/5000 after OOM issues).
 # NOTE: --max-threads-for-index-creation=1 prevents OOM during index rebuilds
 # (default is 4, which can cause ERROR 1041 on memory-constrained systems).
+# NOTE: myloader 0.20.x does NOT have a --connection-timeout option.
 _MYLOADER_DEFAULT_ARGS_BUILTIN: tuple[str, ...] = (
-    "--connection-timeout=30",
     "--max-threads-for-post-actions=1",
     "--max-threads-for-index-creation=1",
     "--rows=50000",
@@ -461,6 +451,107 @@ _MYLOADER_DEFAULT_ARGS_BUILTIN: tuple[str, ...] = (
     "--max-threads-per-table=1",
     "--throttle=Threads_running=6",
 )
+
+
+def build_myloader_args_from_settings(settings: dict[str, str]) -> tuple[str, ...]:
+    """Build myloader command-line arguments from individual settings.
+
+    Constructs the myloader args tuple from granular settings stored in the
+    database or environment. This replaces the monolithic myloader_default_args
+    string with individual, UI-editable settings.
+
+    Args:
+        settings: Dict of setting_key -> value from database/environment
+
+    Returns:
+        Tuple of myloader command-line arguments (e.g., ("--threads=8", ...))
+    """
+    args: list[str] = []
+
+    # Helper to get setting with default
+    def get(key: str, default: str) -> str:
+        return settings.get(key, default)
+
+    def get_bool(key: str, default: str) -> bool:
+        val = get(key, default).lower()
+        return val in ("true", "1", "yes", "on")
+
+    # Main parallelism setting (--threads)
+    threads = get("myloader_threads", "8")
+    args.append(f"--threads={threads}")
+
+    # Thread settings for specific phases
+    threads_per_table = get("myloader_max_threads_per_table", "1")
+    args.append(f"--max-threads-per-table={threads_per_table}")
+
+    threads_index = get("myloader_max_threads_index", "1")
+    args.append(f"--max-threads-for-index-creation={threads_index}")
+
+    threads_post = get("myloader_max_threads_post_actions", "1")
+    args.append(f"--max-threads-for-post-actions={threads_post}")
+
+    threads_schema = get("myloader_max_threads_schema", "4")
+    args.append(f"--max-threads-for-schema-creation={threads_schema}")
+
+    # Performance settings
+    rows = get("myloader_rows", "50000")
+    if rows and rows != "0":
+        args.append(f"--rows={rows}")
+
+    queries = get("myloader_queries_per_transaction", "1000")
+    args.append(f"--queries-per-transaction={queries}")
+
+    # NOTE: myloader 0.20.x does NOT have a --connection-timeout option.
+    # The setting is preserved for UI compatibility but not added to args.
+
+    retry = get("myloader_retry_count", "20")
+    args.append(f"--retry-count={retry}")
+
+    throttle = get("myloader_throttle_threshold", "6")
+    args.append(f"--throttle=Threads_running={throttle}")
+
+    # Behavior settings
+    optimize = get("myloader_optimize_keys", "AFTER_IMPORT_PER_TABLE")
+    args.append(f"--optimize-keys={optimize}")
+
+    checksum = get("myloader_checksum", "warn")
+    args.append(f"--checksum={checksum}")
+
+    drop_mode = get("myloader_drop_table_mode", "DROP")
+    if drop_mode == "DROP":
+        args.append("--drop-table")
+    elif drop_mode != "NONE" and drop_mode != "FAIL":
+        args.append(f"--drop-table={drop_mode}")
+    # FAIL is the default when --drop-table is not specified
+
+    verbose = get("myloader_verbose", "3")
+    args.append(f"--verbose={verbose}")
+
+    # Feature flags (boolean)
+    if get_bool("myloader_local_infile", "true"):
+        args.append("--local-infile=TRUE")
+
+    if get_bool("myloader_skip_triggers", "false"):
+        args.append("--skip-triggers")
+
+    if get_bool("myloader_skip_constraints", "false"):
+        args.append("--skip-constraints")
+
+    if get_bool("myloader_skip_indexes", "false"):
+        args.append("--skip-indexes")
+
+    if get_bool("myloader_skip_post", "false"):
+        args.append("--skip-post")
+
+    if get_bool("myloader_skip_definer", "false"):
+        args.append("--skip-definer")
+
+    # Advanced settings
+    ignore_errors = get("myloader_ignore_errors", "1146")
+    if ignore_errors:
+        args.append(f"--ignore-errors={ignore_errors}")
+
+    return tuple(args)
 
 
 def _parse_myloader_default_args(value: str | None) -> tuple[str, ...]:

@@ -51,9 +51,12 @@ from pulldb.worker.backup_metadata import (
 )
 from pulldb.worker.early_analyze import EarlyAnalyzeStats, EarlyAnalyzeWorker
 from pulldb.worker.metadata import (
+    InitialMetadataSpec,
     MetadataConnectionSpec,
     MetadataSpec,
     inject_metadata_table,
+    pre_create_metadata_table,
+    update_metadata_completion,
 )
 from pulldb.worker.post_sql import PostSQLConnectionSpec, execute_post_sql
 from pulldb.worker.processlist_monitor import (
@@ -353,14 +356,38 @@ def run_myloader(
             stderr=str(e),
         ) from e
 
+    # Handle non-zero exit codes
     if result.exit_code != 0:
-        raise MyLoaderError(
-            job_id=spec.job_id,
-            command=result.command,
-            exit_code=result.exit_code,
-            stdout=result.stdout[-STDOUT_TAIL_LIMIT:],
-            stderr=result.stderr[-STDERR_TAIL_LIMIT:],
-        )
+        # myloader with --checksum=warn may exit with code 1 even on successful restore
+        # if there are checksum warnings. This is a "completed with warnings" state,
+        # NOT a failure. We detect this by checking:
+        # 1. stdout contains "Restore completed" (myloader's success message)
+        # 2. stderr is empty or trivial (no actual errors)
+        #
+        # See: https://github.com/mydumper/mydumper/blob/v0.20.1-1/src/myloader/myloader.c
+        # The 'errors' counter increments for various conditions, but "Restore completed"
+        # is only printed after successful restoration of all tables.
+        stdout_lower = result.stdout.lower()
+        stderr_stripped = result.stderr.strip()
+        restore_completed = "restore completed" in stdout_lower
+
+        if restore_completed and not stderr_stripped:
+            # This is a warning-level success - restore completed but myloader
+            # exited with non-zero (likely due to checksum warnings or similar)
+            logger.warning(
+                f"myloader exited with code {result.exit_code} but restore completed "
+                f"successfully (likely checksum warnings with --checksum=warn). "
+                f"Job: {spec.job_id}"
+            )
+        else:
+            # Genuine failure - raise error
+            raise MyLoaderError(
+                job_id=spec.job_id,
+                command=result.command,
+                exit_code=result.exit_code,
+                stdout=result.stdout[-STDOUT_TAIL_LIMIT:],
+                stderr=result.stderr[-STDERR_TAIL_LIMIT:],
+            )
 
     # Finalize tracker - marks all tables complete
     tracker.finalize()
@@ -385,10 +412,14 @@ def orchestrate_restore_workflow(
 
     Steps:
         1. Staging lifecycle: cleanup orphaned staging DBs
-        2. Myloader restore to staging DB
-        3. Post-SQL execution (if scripts exist)
-        4. Metadata table injection
-        5. Atomic rename staging → target
+        2. Pre-create staging DB with pullDB table (status='in_progress')
+        3. Myloader restore to staging DB
+        4. Post-SQL execution (if scripts exist)
+        5. Update metadata table with completion data (status='completed')
+        6. Atomic rename staging → target
+
+    The two-phase metadata approach (steps 2 and 5) ensures orphan cleanup works
+    even if myloader crashes - the pullDB table exists from the start.
 
     Args:
         spec: Complete workflow specification.
@@ -455,7 +486,54 @@ def orchestrate_restore_workflow(
             },
         )
 
-        # 2. Myloader restore to staging database
+        # 2. Pre-create staging DB with pullDB table (status='in_progress')
+        # This ensures orphan cleanup works even if myloader crashes later
+        logger.info(
+            {
+                "phase": "pre_create_metadata",
+                "job_id": job.id,
+                "staging_db": staging_result.staging_db,
+            }
+        )
+        _emit_event(
+            "pre_create_metadata_started",
+            {"staging_db": staging_result.staging_db},
+        )
+        pre_create_started_at = datetime.now(UTC)
+        metadata_conn = MetadataConnectionSpec(
+            staging_db=staging_result.staging_db,
+            mysql_host=spec.staging_conn.mysql_host,
+            mysql_port=spec.staging_conn.mysql_port,
+            mysql_user=spec.staging_conn.mysql_user,
+            mysql_password=spec.staging_conn.mysql_password,
+            timeout_seconds=spec.staging_conn.timeout_seconds,
+        )
+        initial_metadata = InitialMetadataSpec(
+            job_id=job.id,
+            owner_user_id=job.owner_user_id,
+            owner_user_code=job.owner_user_code,
+            owner_username=job.owner_username,
+            target_db=job.target,
+            backup_filename=spec.backup_filename,
+            started_at=restore_started_at,
+            custom_target=(job.options_json or {}).get("custom_target_used") == "true",
+        )
+        with time_operation(
+            "pre_create_metadata_duration_seconds",
+            MetricLabels(job_id=job.id, target=job.target, phase="pre_create_metadata"),
+        ):
+            pre_create_metadata_table(metadata_conn, initial_metadata)
+        pre_create_duration = (
+            datetime.now(UTC) - pre_create_started_at
+        ).total_seconds()
+        result["pre_create_metadata"] = "created"
+        result["pre_create_metadata_duration_seconds"] = pre_create_duration
+        _emit_event(
+            "pre_create_metadata_complete",
+            {"duration_seconds": round(pre_create_duration, 2)},
+        )
+
+        # 3. Myloader restore to staging database
         logger.info(
             {
                 "phase": "myloader",
@@ -596,7 +674,7 @@ def orchestrate_restore_workflow(
 
         result["myloader"] = myloader_result
 
-        # 3. Post-SQL execution (if scripts exist in script_dir)
+        # 4. Post-SQL execution (if scripts exist in script_dir)
         logger.info(
             {
                 "phase": "post_sql",
@@ -635,24 +713,18 @@ def orchestrate_restore_workflow(
 
         restore_completed_at = datetime.now(UTC)
 
-        # 4. Metadata table injection
+        # 5. Update metadata table with completion data (status='completed')
+        # The pullDB table was pre-created in step 2; now we update it with final data
         logger.info(
             {
-                "phase": "metadata",
+                "phase": "update_metadata",
                 "job_id": job.id,
                 "staging_db": staging_result.staging_db,
             }
         )
-        _emit_event("metadata_started", {"staging_db": staging_result.staging_db})
-        metadata_started_at = datetime.now(UTC)
-        metadata_conn = MetadataConnectionSpec(
-            staging_db=staging_result.staging_db,
-            mysql_host=spec.staging_conn.mysql_host,
-            mysql_port=spec.staging_conn.mysql_port,
-            mysql_user=spec.staging_conn.mysql_user,
-            mysql_password=spec.staging_conn.mysql_password,
-            timeout_seconds=spec.staging_conn.timeout_seconds,
-        )
+        _emit_event("metadata_update_started", {"staging_db": staging_result.staging_db})
+        metadata_update_started_at = datetime.now(UTC)
+        # Build full MetadataSpec for completion update
         metadata_spec = MetadataSpec(
             job_id=job.id,
             owner_user_id=job.owner_user_id,
@@ -666,18 +738,21 @@ def orchestrate_restore_workflow(
             post_sql_result=post_sql_result,
         )
         with time_operation(
-            "metadata_injection_duration_seconds",
-            MetricLabels(job_id=job.id, target=job.target, phase="metadata"),
+            "metadata_update_duration_seconds",
+            MetricLabels(job_id=job.id, target=job.target, phase="update_metadata"),
         ):
-            inject_metadata_table(metadata_conn, metadata_spec)
-        metadata_duration = (datetime.now(UTC) - metadata_started_at).total_seconds()
-        result["metadata"] = "injected"
-        result["metadata_duration_seconds"] = metadata_duration
+            update_metadata_completion(metadata_conn, metadata_spec)
+        metadata_update_duration = (
+            datetime.now(UTC) - metadata_update_started_at
+        ).total_seconds()
+        result["metadata"] = "updated"
+        result["metadata_duration_seconds"] = metadata_update_duration
         _emit_event(
-            "metadata_complete", {"duration_seconds": round(metadata_duration, 2)}
+            "metadata_update_complete",
+            {"duration_seconds": round(metadata_update_duration, 2)},
         )
 
-        # 5. Atomic rename staging → target
+        # 6. Atomic rename staging → target
         logger.info(
             {
                 "phase": "atomic_rename",

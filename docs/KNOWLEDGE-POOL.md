@@ -17,7 +17,7 @@ Phases complete: 0-6
 | Component | Path in Package | Size |
 |-----------|-----------------|------|
 | Python wheel | `/opt/pulldb.service/dist/pulldb-1.0.7-py3-none-any.whl` | ~16MB |
-| myloader binary | `/opt/pulldb.service/bin/myloader-0.19.3-3` | 8.4MB |
+| myloader binary | `/opt/pulldb.service/bin/myloader-0.20.1-1` | 8.4MB |
 | Schema files | `/opt/pulldb.service/schema/pulldb_service/` | 24 SQL files |
 | Systemd units | `/opt/pulldb.service/systemd/` | 6 files |
 | Config templates | `/opt/pulldb.service/env.example`, `aws.config.example` | - |
@@ -312,6 +312,7 @@ if not protection.can_drop:
 
 | Route | Method | Purpose |
 |-------|--------|---------|
+| `/web/jobs/api/{job_id}/resubmit` | POST | Resubmit failed job (preflight or execute) |
 | `/web/jobs/{job_id}/delete-database` | POST | Single job delete |
 | `/web/jobs/bulk-delete` | POST | Create bulk delete task |
 | `/web/jobs/bulk-delete/{task_id}/status` | GET | Poll bulk delete progress |
@@ -343,6 +344,82 @@ Job delete support is now integrated into the consolidated schema:
 
 -- Included in schema/pulldb_service/00_tables/040_admin_tasks.sql
 -- Task type enum includes: 'bulk_delete_jobs', 'retention_cleanup'
+```
+
+---
+
+## Resubmit Failed Jobs (v1.1.0+)
+
+Allows users to resubmit failed jobs using the same backup and settings. Available in the History view.
+
+### Permission Model
+
+| Role | Own Jobs | Managed User's Jobs | Other User's Jobs |
+|------|----------|---------------------|-------------------|
+| User | ✅ | ❌ | ❌ |
+| Manager | ✅ | ✅ | ❌ |
+| Admin | ✅ | ✅ | ✅ |
+
+**Key behavior**: Managers/Admins resubmit jobs *as the original owner*, preserving ownership.
+
+### Validation Rules
+
+| Condition | Result |
+|-----------|--------|
+| Job status ≠ `failed` | ❌ Blocked |
+| Missing `backup_path` in options | ❌ Blocked |
+| Original owner deleted | ❌ Blocked |
+| Active job for same target+host | ❌ Blocked (wait or cancel) |
+| Deployed job by different owner | ❌ Blocked (admin can override) |
+| Deployed job by same owner | ⚠️ Warning (will overwrite) |
+| Host is disabled | ⚠️ Warning (will queue but not run) |
+
+### Key Components
+
+| File | Layer | Purpose |
+|------|-------|---------|
+| `pulldb/web/features/jobs/routes.py` | pages | `api_resubmit_job()`, `_validate_resubmit()` |
+| `pulldb/infra/mysql.py` | shared | `get_in_progress_job_for_target()`, `update_job_options()` |
+| `pulldb/web/templates/features/jobs/jobs.html` | pages | Resubmit button + modal in History view |
+
+### API Endpoint
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/web/jobs/api/{job_id}/resubmit` | POST | Resubmit failed job |
+
+**Request body:**
+- `{ "preflight": true }` — Validate only, return warnings
+- `{ "confirm": true }` — Execute resubmit after reviewing warnings
+
+**Response (preflight):**
+```json
+{
+  "can_resubmit": true,
+  "warnings": ["Target has deployed database that will be overwritten"],
+  "job_info": { "original_job_id": 123, "owner_username": "bob", "target": "acme_staging" }
+}
+```
+
+**Response (execute):**
+```json
+{
+  "success": true,
+  "new_job_id": 456,
+  "target": "acme_staging",
+  "message": "Job resubmitted successfully as bob"
+}
+```
+
+### Audit Trail
+
+New jobs created via resubmit include `resubmit_of_job_id` in their `options_json`:
+
+```json
+{
+  "backup_path": "s3://...",
+  "resubmit_of_job_id": 123
+}
 ```
 
 ---

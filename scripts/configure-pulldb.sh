@@ -236,7 +236,7 @@ show_current_config() {
     
     echo ""
     echo "  MyLoader:"
-    echo "    Binary:    $(get_var PULLDB_MYLOADER_BINARY '/opt/pulldb.service/bin/myloader-0.19.3-3')"
+    echo "    Binary:    $(get_var PULLDB_MYLOADER_BINARY '/opt/pulldb.service/bin/myloader-0.20.1-1')"
     echo "    Threads:   $(get_var PULLDB_MYLOADER_THREADS '8')"
     echo "    Timeout:   $(get_var PULLDB_MYLOADER_TIMEOUT_SECONDS '86400') seconds"
     
@@ -493,7 +493,7 @@ configure_myloader() {
     
     local current_threads=$(get_var PULLDB_MYLOADER_THREADS '8')
     local current_timeout=$(get_var PULLDB_MYLOADER_TIMEOUT_SECONDS '86400')
-    local current_binary=$(get_var PULLDB_MYLOADER_BINARY '/opt/pulldb.service/bin/myloader-0.19.3-3')
+    local current_binary=$(get_var PULLDB_MYLOADER_BINARY '/opt/pulldb.service/bin/myloader-0.20.1-1')
     
     echo ""
     echo "  Configure myloader restore settings."

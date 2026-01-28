@@ -956,6 +956,28 @@ class JobRepository:
             )
             conn.commit()
 
+    def update_job_options(self, job_id: str, options: dict) -> None:
+        """Update a job's options_json field.
+
+        Used to add audit trail information (e.g., resubmit_of_job_id).
+
+        Args:
+            job_id: UUID of job to update.
+            options: New options dictionary to store.
+        """
+        import json
+        with self.pool.connection() as conn:
+            cursor = TypedTupleCursor(conn.cursor())
+            cursor.execute(
+                """
+                UPDATE jobs
+                SET options_json = %s
+                WHERE id = %s
+                """,
+                (json.dumps(options), job_id),
+            )
+            conn.commit()
+
     def has_restore_started(self, job_id: str) -> bool:
         """Check if myloader restore has started for a job.
 
@@ -3176,6 +3198,43 @@ class JobRepository:
                   AND status = 'deployed'
                   AND superseded_at IS NULL
                   AND db_dropped_at IS NULL
+                ORDER BY submitted_at DESC
+                LIMIT 1
+                """,
+                (target, dbhost),
+            )
+            row = cursor.fetchone()
+            return self._row_to_job(row) if row else None
+
+    def get_in_progress_job_for_target(
+        self, target: str, dbhost: str
+    ) -> Job | None:
+        """Get any in-progress (queued/running) job for target+host.
+
+        Used by resubmit validation to prevent duplicate concurrent restores
+        to the same database. Checks across ALL users.
+
+        Args:
+            target: Target database name.
+            dbhost: Database host.
+
+        Returns:
+            In-progress Job if found (any user), None otherwise.
+        """
+        with self.pool.connection() as conn:
+            cursor = TypedDictCursor(conn.cursor(dictionary=True))
+            cursor.execute(
+                """
+                SELECT id, owner_user_id, owner_username, owner_user_code, target,
+                       staging_name, dbhost, status, submitted_at, started_at,
+                       completed_at, options_json, retry_count, error_detail,
+                       worker_id, staging_cleaned_at, cancel_requested_at, can_cancel,
+                       expires_at, locked_at, locked_by, db_dropped_at,
+                       superseded_at, superseded_by_job_id, custom_target
+                FROM jobs
+                WHERE target = %s 
+                  AND dbhost = %s 
+                  AND status IN ('queued', 'running', 'canceling')
                 ORDER BY submitted_at DESC
                 LIMIT 1
                 """,
