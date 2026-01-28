@@ -690,3 +690,340 @@ class TestFileBasedProgress:
         # All 3 files started = 100% of 1000 rows
         rows = tracker._calculate_rows_loaded()
         assert rows == 1000
+
+
+# =============================================================================
+# Strike-Based Completion Detection Tests
+# =============================================================================
+
+
+class TestStrikeBasedCompletion:
+    """Test strike-based table completion detection.
+    
+    The strike system counts consecutive polls where a table is absent from
+    the processlist. This handles FULLTEXT index gaps where a table briefly
+    leaves and rejoins the processlist between separate ALTER statements.
+    
+    Key thresholds:
+    - _INDEX_COMPLETE_STRIKES = 3 (after data_complete signal)
+    - _FALLBACK_COMPLETE_STRIKES = 5 (without data_complete signal)
+    """
+
+    def test_strike_increments_when_table_absent(
+        self, tracker: RestoreProgressTracker
+    ) -> None:
+        """Strikes increment when table leaves processlist."""
+        # First, table appears in processlist
+        snapshot1 = make_snapshot({"users": ("loading", 50.0, 5)})
+        tracker.update_from_processlist(snapshot1)
+        
+        state = tracker._tables["users"]
+        assert state.was_ever_seen is True
+        assert state.absent_strikes == 0
+        
+        # Table leaves processlist - strike 1
+        snapshot2 = make_snapshot({})
+        tracker.update_from_processlist(snapshot2)
+        assert state.absent_strikes == 1
+        
+        # Still absent - strike 2
+        tracker.update_from_processlist(snapshot2)
+        assert state.absent_strikes == 2
+
+    def test_strikes_reset_when_table_reappears(
+        self, tracker: RestoreProgressTracker
+    ) -> None:
+        """Strikes reset to 0 when table reappears (FULLTEXT gap handling)."""
+        # Table appears
+        snapshot1 = make_snapshot({"users": ("loading", 50.0, 5)})
+        tracker.update_from_processlist(snapshot1)
+        
+        state = tracker._tables["users"]
+        
+        # Table leaves - accumulate 2 strikes
+        snapshot_empty = make_snapshot({})
+        tracker.update_from_processlist(snapshot_empty)
+        tracker.update_from_processlist(snapshot_empty)
+        assert state.absent_strikes == 2
+        
+        # Table reappears (e.g., next FULLTEXT ALTER) - strikes reset
+        snapshot2 = make_snapshot({"users": ("indexing", 0.0, 1)})
+        tracker.update_from_processlist(snapshot2)
+        assert state.absent_strikes == 0
+
+    def test_completes_after_index_strikes_with_data_complete(
+        self, tracker: RestoreProgressTracker
+    ) -> None:
+        """Table completes after 3 strikes when data_complete is True."""
+        # Table appears and gets data_complete signal
+        snapshot1 = make_snapshot({"users": ("indexing", 0.0, 5)})
+        tracker.update_from_processlist(snapshot1)
+        
+        state = tracker._tables["users"]
+        state.data_complete = True  # Simulate "Enqueuing index" received
+        
+        assert state.is_complete is False
+        
+        # Table leaves - need 3 strikes to complete
+        snapshot_empty = make_snapshot({})
+        tracker.update_from_processlist(snapshot_empty)  # Strike 1
+        assert state.is_complete is False
+        
+        tracker.update_from_processlist(snapshot_empty)  # Strike 2
+        assert state.is_complete is False
+        
+        tracker.update_from_processlist(snapshot_empty)  # Strike 3 - complete!
+        assert state.is_complete is True
+        assert state.percent_complete == 100.0
+        assert state.phase == "complete"
+
+    def test_completes_after_fallback_strikes_without_data_complete(
+        self, tracker: RestoreProgressTracker
+    ) -> None:
+        """Table completes after 5 strikes when data_complete is False."""
+        # Table appears but no data_complete signal
+        snapshot1 = make_snapshot({"users": ("loading", 100.0, 10)})
+        tracker.update_from_processlist(snapshot1)
+        
+        state = tracker._tables["users"]
+        assert state.data_complete is False
+        assert state.is_complete is False
+        
+        # Table leaves - need 5 strikes for fallback completion
+        snapshot_empty = make_snapshot({})
+        for i in range(4):
+            tracker.update_from_processlist(snapshot_empty)
+            assert state.is_complete is False, f"Should not complete at strike {i+1}"
+        
+        tracker.update_from_processlist(snapshot_empty)  # Strike 5 - complete!
+        assert state.is_complete is True
+
+    def test_fulltext_gap_prevents_premature_completion(
+        self, tracker: RestoreProgressTracker
+    ) -> None:
+        """Simulates FULLTEXT index gap - table leaves and rejoins processlist.
+        
+        myloader runs separate ALTER per FULLTEXT index, so table briefly
+        leaves processlist between them. Strike reset prevents premature completion.
+        """
+        # Table starts indexing
+        snapshot1 = make_snapshot({"users": ("indexing", 0.0, 2)})
+        tracker.update_from_processlist(snapshot1)
+        
+        state = tracker._tables["users"]
+        state.data_complete = True
+        
+        # First FULLTEXT ALTER finishes - table leaves
+        snapshot_empty = make_snapshot({})
+        tracker.update_from_processlist(snapshot_empty)  # Strike 1
+        tracker.update_from_processlist(snapshot_empty)  # Strike 2
+        assert state.absent_strikes == 2
+        assert state.is_complete is False
+        
+        # Second FULLTEXT ALTER starts - table reappears, strikes reset!
+        snapshot2 = make_snapshot({"users": ("indexing", 0.0, 1)})
+        tracker.update_from_processlist(snapshot2)
+        assert state.absent_strikes == 0
+        assert state.is_complete is False
+        
+        # Second ALTER finishes - need fresh 3 strikes
+        tracker.update_from_processlist(snapshot_empty)  # Strike 1
+        tracker.update_from_processlist(snapshot_empty)  # Strike 2
+        tracker.update_from_processlist(snapshot_empty)  # Strike 3 - now complete
+        assert state.is_complete is True
+
+    def test_never_seen_tables_not_completed_by_strikes(
+        self, tracker: RestoreProgressTracker
+    ) -> None:
+        """Tables never seen in processlist are skipped (rely on finalize)."""
+        # Don't put users in processlist at all
+        snapshot = make_snapshot({"orders": ("loading", 50.0, 5)})
+        tracker.update_from_processlist(snapshot)
+        
+        # Remove orders too
+        for _ in range(10):
+            tracker.update_from_processlist(make_snapshot({}))
+        
+        # Users was never seen, so should not be complete
+        users_state = tracker._tables["users"]
+        assert users_state.was_ever_seen is False
+        assert users_state.is_complete is False
+        
+        # Orders should be complete (fallback strikes)
+        orders_state = tracker._tables["orders"]
+        assert orders_state.is_complete is True
+
+    def test_already_complete_tables_ignored(
+        self, tracker: RestoreProgressTracker
+    ) -> None:
+        """Tables already marked complete don't accumulate more strikes."""
+        # Complete a table
+        snapshot1 = make_snapshot({"users": ("indexing", 0.0, 5)})
+        tracker.update_from_processlist(snapshot1)
+        tracker.mark_table_complete("users")
+        
+        state = tracker._tables["users"]
+        assert state.is_complete is True
+        initial_strikes = state.absent_strikes
+        
+        # Further polls should not affect strikes
+        for _ in range(5):
+            tracker.update_from_processlist(make_snapshot({}))
+        
+        assert state.absent_strikes == initial_strikes
+
+
+# =============================================================================
+# File-Based ETA Tests
+# =============================================================================
+
+
+class TestFileBasedETA:
+    """Test file-based ETA fallback for legacy backups with rows=0.
+    
+    When row counts are unavailable (0.9.0 backups), ETA is calculated from:
+    - files_completed / elapsed = files_per_second
+    - remaining_files / files_per_second = eta_seconds
+    """
+
+    def test_uses_row_based_eta_when_rows_available(self) -> None:
+        """Row-based ETA is preferred when row counts are available."""
+        metadata = [
+            TableRowEstimate(database="db", table="users", rows=1000, file_count=2),
+            TableRowEstimate(database="db", table="orders", rows=2000, file_count=3),
+        ]
+        tracker = RestoreProgressTracker(
+            table_metadata=metadata,
+            throttle_interval_seconds=0,
+        )
+        
+        # Simulate some progress
+        import time
+        time.sleep(0.02)  # Small delay for elapsed time
+        snapshot = make_snapshot({"users": ("loading", 50.0, 5)})
+        tracker.update_from_processlist(snapshot)
+        
+        progress = tracker.get_progress()
+        # Should use rows mode when rows are available and loaded > 0
+        if progress.throughput.eta_mode is not None:
+            assert progress.throughput.eta_mode == "rows"
+
+    def test_uses_bytes_based_eta_when_total_bytes_available(self) -> None:
+        """Bytes-based ETA is used when total_bytes > 0 and files completing."""
+        # Backup with rows=0 but total_bytes available (from extraction stats)
+        metadata = [
+            TableRowEstimate(
+                database="db", table="users", rows=0, file_count=3, total_bytes=30_000_000
+            ),
+            TableRowEstimate(
+                database="db", table="orders", rows=0, file_count=5, total_bytes=50_000_000
+            ),
+        ]
+        tracker = RestoreProgressTracker(
+            table_metadata=metadata,
+            throttle_interval_seconds=0,
+        )
+        
+        # Mark one table as data complete (all bytes done)
+        tracker._mark_data_complete("users")
+        
+        import time
+        time.sleep(0.02)  # Small delay for elapsed time
+        
+        progress = tracker.get_progress()
+        
+        # Should use bytes mode when total_bytes available
+        assert progress.throughput.eta_mode == "bytes"
+        assert progress.throughput.bytes_completed == 30_000_000  # users complete
+        assert progress.throughput.bytes_total == 80_000_000  # 30M + 50M
+        assert progress.throughput.bytes_per_second > 0
+        assert progress.throughput.eta_seconds is not None
+
+    def test_falls_back_to_file_based_eta_when_rows_zero(self) -> None:
+        """File-based ETA is used when all row counts are 0."""
+        # Legacy backup with rows=0
+        metadata = [
+            TableRowEstimate(database="db", table="users", rows=0, file_count=3),
+            TableRowEstimate(database="db", table="orders", rows=0, file_count=5),
+        ]
+        tracker = RestoreProgressTracker(
+            table_metadata=metadata,
+            throttle_interval_seconds=0,
+        )
+        
+        # Mark some files complete
+        tracker.mark_table_file_complete("users")  # 1 file done
+        tracker.mark_table_file_complete("users")  # 2 files done
+        
+        import time
+        time.sleep(0.02)  # Small delay for elapsed time
+        
+        progress = tracker.get_progress()
+        
+        # Should use files mode
+        assert progress.throughput.eta_mode == "files"
+        assert progress.throughput.files_completed == 2
+        assert progress.throughput.files_total == 8  # 3 + 5
+        assert progress.throughput.files_per_second > 0
+        assert progress.throughput.eta_seconds is not None
+
+    def test_eta_none_when_no_progress(self) -> None:
+        """ETA is None when no files completed yet."""
+        metadata = [
+            TableRowEstimate(database="db", table="users", rows=0, file_count=3),
+        ]
+        tracker = RestoreProgressTracker(
+            table_metadata=metadata,
+            throttle_interval_seconds=0,
+        )
+        
+        progress = tracker.get_progress()
+        
+        # No progress yet - ETA should be None
+        assert progress.throughput.eta_seconds is None
+        assert progress.throughput.eta_mode is None
+
+    def test_files_completed_counts_data_complete_tables(self) -> None:
+        """Tables with data_complete count as all files done."""
+        metadata = [
+            TableRowEstimate(database="db", table="users", rows=0, file_count=3),
+            TableRowEstimate(database="db", table="orders", rows=0, file_count=5),
+        ]
+        tracker = RestoreProgressTracker(
+            table_metadata=metadata,
+            throttle_interval_seconds=0,
+        )
+        
+        # Mark users as data complete (all 3 files done)
+        tracker._mark_data_complete("users")
+        
+        # Mark 1 file done for orders
+        tracker.mark_table_file_complete("orders")
+        
+        import time
+        time.sleep(0.01)
+        
+        progress = tracker.get_progress()
+        
+        # users: 3 files (data_complete), orders: 1 file = 4 total
+        assert progress.throughput.files_completed == 4
+
+    def test_event_dict_includes_file_stats(self) -> None:
+        """to_event_dict includes file-based stats."""
+        metadata = [
+            TableRowEstimate(database="db", table="users", rows=0, file_count=5),
+        ]
+        tracker = RestoreProgressTracker(
+            table_metadata=metadata,
+            throttle_interval_seconds=0,
+        )
+        
+        progress = tracker.get_progress()
+        event_dict = progress.to_event_dict()
+        
+        detail = event_dict["detail"]
+        assert "eta_mode" in detail
+        assert "files_per_second" in detail
+        assert "files_completed" in detail
+        assert "files_total" in detail
+        assert detail["files_total"] == 5

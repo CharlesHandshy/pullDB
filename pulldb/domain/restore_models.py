@@ -21,6 +21,25 @@ from datetime import datetime
 from pulldb.domain.config import Config
 
 
+@dataclass(slots=True, frozen=True)
+class ExtractionStats:
+    """Statistics captured during archive extraction.
+
+    Used to pass file size information from extraction phase to restore
+    progress tracking, enabling bytes-based bandwidth calculation without
+    re-scanning the extracted directory.
+
+    Attributes:
+        total_bytes: Sum of all extracted file sizes.
+        total_files: Count of files extracted.
+        file_sizes: Mapping of filename to size in bytes.
+    """
+
+    total_bytes: int
+    total_files: int
+    file_sizes: dict[str, int]
+
+
 # NOTE: Default myloader arguments are now configured via:
 #   1. Database `settings` table (key: myloader_default_args)
 #   2. Environment variable PULLDB_MYLOADER_DEFAULT_ARGS

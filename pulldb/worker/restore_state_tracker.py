@@ -1,5 +1,15 @@
 """Coordinated state tracker merging myloader log parsing with processlist monitoring.
 
+.. deprecated:: 1.0.8
+    This module is NOT used in production restore flow. The production code uses
+    :class:`~pulldb.worker.restore_progress.RestoreProgressTracker` instead, which
+    implements strike-based completion detection. This module is retained for
+    potential future use but should NOT be relied upon for accurate progress tracking.
+    
+    Key difference: This module uses time-based stale detection (10s default) which
+    can cause premature completion detection. RestoreProgressTracker uses strike-based
+    detection that properly handles FULLTEXT index gaps.
+
 Ensures table is only marked complete when BOTH:
 1. Data load finished (from log: "Enqueuing index")
 2. Index rebuild finished (from processlist: no ALTER TABLE, or from log: thread ending)

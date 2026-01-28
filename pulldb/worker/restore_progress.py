@@ -67,15 +67,37 @@ class TableProgressInfo:
 class ThroughputStats:
     """Throughput and ETA calculations.
 
+    Supports three modes (in order of preference):
+    1. Row-based: When row counts are available from backup metadata
+    2. Bytes-based: When file sizes are available (most accurate for ETA)
+    3. File-based: Fallback when neither rows nor bytes available
+
+    Note: ETA only covers data loading phase. The indexing phase
+    (which can be substantial for large tables) is not included.
+
     Attributes:
-        rows_per_second: Current restore throughput.
+        rows_per_second: Current restore throughput (rows/s).
         elapsed_seconds: Time since restore started.
         eta_seconds: Estimated seconds remaining (None if cannot estimate).
+        eta_mode: How ETA was calculated - 'rows', 'bytes', 'files', or None.
+        bytes_per_second: Bandwidth in bytes/sec (compressed file size basis).
+        bytes_completed: Total compressed bytes loaded.
+        bytes_total: Total compressed bytes to restore.
+        files_per_second: File completion rate.
+        files_completed: Total files completed across all tables.
+        files_total: Total files to restore.
     """
 
     rows_per_second: int
     elapsed_seconds: float
     eta_seconds: int | None
+    eta_mode: Literal["rows", "bytes", "files"] | None = None
+    bytes_per_second: float = 0.0
+    bytes_completed: int = 0
+    bytes_total: int = 0
+    files_per_second: float = 0.0
+    files_completed: int = 0
+    files_total: int = 0
 
 
 @dataclass(slots=True, frozen=True)
@@ -145,6 +167,13 @@ class RestoreProgress:
                 "total_rows": self.rows_total,
                 "rows_per_second": self.throughput.rows_per_second,
                 "eta_seconds": self.throughput.eta_seconds,
+                "eta_mode": self.throughput.eta_mode,
+                "bytes_per_second": round(self.throughput.bytes_per_second, 0),
+                "bytes_completed": self.throughput.bytes_completed,
+                "bytes_total": self.throughput.bytes_total,
+                "files_per_second": round(self.throughput.files_per_second, 2),
+                "files_completed": self.throughput.files_completed,
+                "files_total": self.throughput.files_total,
                 "tables_completed": self.tables_completed,
                 "tables_total": self.tables_total,
             },
@@ -163,6 +192,7 @@ class _MutableTableState:
     name: str
     rows_total: int
     file_count: int = 1  # Total data files for this table
+    total_bytes: int = 0  # Total compressed size of data files
     percent_complete: float = 0.0
     phase: str = "loading"  # 'loading', 'indexing', 'analyzing', 'complete'
     running_seconds: float = 0.0
@@ -173,11 +203,34 @@ class _MutableTableState:
     data_complete: bool = False  # True when "Enqueuing index" received (definitive)
     was_ever_seen: bool = False  # Track if table was ever in processlist
     first_seen_time: float = 0.0  # When table was first seen (for duration calc)
+    absent_strikes: int = 0  # Consecutive polls where table was absent from processlist
 
 
-# Timeout after which a table not in processlist is considered complete
-# If a table had progress and disappears for this long, it's done
-_STALE_TABLE_TIMEOUT_SECONDS = 10.0
+# =============================================================================
+# Strike-based Completion Detection
+# =============================================================================
+# We use a "3 strikes" approach to detect table completion:
+# - A "strike" = one poll cycle where table is absent from processlist
+# - When table reappears (e.g., next FULLTEXT ALTER), strikes reset to 0
+# - After N consecutive strikes, mark table complete
+#
+# This naturally handles:
+# - FULLTEXT indexes: myloader runs separate ALTER per FULLTEXT, table briefly
+#   leaves processlist between them, reappears → strikes reset
+# - Normal indexes: single ALTER, table leaves once → strikes accumulate
+# - Random file order: data files processed randomly, table may reappear → reset
+#
+# Poll interval is 2s, so 3 strikes = 6s minimum absence.
+
+# Strikes required after data_complete ("Enqueuing index" received).
+# Table is in indexing phase, just need to confirm indexes are done.
+# 3 strikes = 6s at 2s poll interval - enough for gaps between FULLTEXT ALTERs.
+_INDEX_COMPLETE_STRIKES = 3
+
+# Strikes required when no data_complete signal (fallback).
+# We're less certain data is done, so require more consecutive absences.
+# 5 strikes = 10s at 2s poll interval.
+_FALLBACK_COMPLETE_STRIKES = 5
 
 
 # =============================================================================
@@ -297,9 +350,13 @@ class RestoreProgressTracker:
         self._total_tables = len(table_metadata)
         self._total_rows = sum(t.rows for t in table_metadata)
         self._total_files = sum(t.file_count for t in table_metadata)
+        self._total_bytes = sum(t.total_bytes for t in table_metadata)
         self._table_rows: dict[str, int] = {t.table: t.rows for t in table_metadata}
         self._table_file_counts: dict[str, int] = {
             t.table: t.file_count for t in table_metadata
+        }
+        self._table_bytes: dict[str, int] = {
+            t.table: t.total_bytes for t in table_metadata
         }
 
         # Mutable state
@@ -317,11 +374,12 @@ class RestoreProgressTracker:
                 name=t.table,
                 rows_total=t.rows,
                 file_count=t.file_count,
+                total_bytes=t.total_bytes,
             )
 
         logger.info(
             f"Initialized progress tracker: {self._total_tables} tables, "
-            f"{self._total_rows:,} total rows"
+            f"{self._total_rows:,} total rows, {self._total_bytes / 1024 / 1024:.1f} MB"
         )
 
     def update_from_processlist(self, snapshot: ProcesslistSnapshot) -> None:
@@ -366,12 +424,17 @@ class RestoreProgressTracker:
             # Store current processlist tables for UI display
             self._tables_in_processlist = tables_in_processlist
 
-            # Check for tables that have left processlist
-            # Mark complete if: was seen before, not in processlist now, and either:
-            #   - has file completions (myloader confirmed), OR
-            #   - has been gone for > stale timeout (likely complete)
-            # BUT: don't mark complete if table is in indexing phase - it may be
-            #      between data thread ending and ALTER TABLE starting
+            # Check for tables that have left processlist using STRIKE-BASED detection
+            # 
+            # IMPORTANT: Do NOT use files_started/files_completed for completion!
+            # myloader processes files in RANDOM order, so seeing some files done
+            # doesn't mean the table won't appear in processlist again.
+            #
+            # Strike logic:
+            # - Table in processlist → reset strikes to 0 (it's active)
+            # - Table absent → increment strikes
+            # - Strikes >= threshold → mark complete
+            # This naturally handles FULLTEXT gaps (table reappears → reset)
             for state in self._tables.values():
                 if state.is_complete:
                     continue
@@ -380,36 +443,40 @@ class RestoreProgressTracker:
                 if not state.was_ever_seen:
                     continue
 
-                # Table is currently in processlist - not stale
+                # Table is currently in processlist - reset strikes
                 if state.name in tables_in_processlist:
+                    if state.absent_strikes > 0:
+                        logger.debug(
+                            f"Table {state.name} reappeared in processlist, "
+                            f"resetting strikes (was {state.absent_strikes})"
+                        )
+                        state.absent_strikes = 0
                     continue
 
-                # Table was seen but is no longer in processlist
-                time_since_seen = now - state.last_seen_in_processlist
+                # Table was seen but is no longer in processlist - increment strike
+                state.absent_strikes += 1
 
-                # Handle indexing tables specially - they may briefly leave
-                # processlist between data thread ending and ALTER starting.
-                # Only mark complete if gone for > 3 seconds.
-                if state.phase == "indexing":
-                    if time_since_seen > 3.0:
-                        # Indexing finished - table is complete
+                # Determine required strikes based on whether we have data_complete
+                if state.data_complete:
+                    # CASE 1: We have the definitive "Enqueuing index" signal
+                    # Data files are done, table is in indexing phase (or done)
+                    required_strikes = _INDEX_COMPLETE_STRIKES
+                    if state.absent_strikes >= required_strikes:
                         self._mark_table_complete(state, now)
                         logger.info(
-                            f"Table {state.name} complete: indexing finished "
-                            f"(left processlist {time_since_seen:.1f}s ago)"
+                            f"Table {state.name} complete: data_complete + "
+                            f"{state.absent_strikes} consecutive absent polls"
                         )
-                    continue
-
-                # Mark complete if has file completions OR stale timeout exceeded
-                if (
-                    state.files_completed > 0
-                    or time_since_seen > _STALE_TABLE_TIMEOUT_SECONDS
-                ):
-                    self._mark_table_complete(state, now)
-                    logger.info(
-                        f"Table {state.name} complete: left processlist "
-                        f"({state.files_completed} files, {time_since_seen:.1f}s ago)"
-                    )
+                else:
+                    # CASE 2: No data_complete signal (stdout may have missed it)
+                    # Require more strikes since we're less certain
+                    required_strikes = _FALLBACK_COMPLETE_STRIKES
+                    if state.absent_strikes >= required_strikes:
+                        logger.warning(
+                            f"Table {state.name} marked complete via fallback "
+                            f"({state.absent_strikes} strikes, no data_complete signal)"
+                        )
+                        self._mark_table_complete(state, now)
 
             self._emit_progress("processlist")
 
@@ -951,6 +1018,48 @@ class RestoreProgressTracker:
 
         return min(100.0, (files_done / self._total_files) * 100)
 
+    def _calculate_files_completed(self) -> int:
+        """Calculate total files COMPLETED across all tables.
+
+        Different from _calculate_file_based_percent which uses files_started.
+        This counts only actually completed files, used for throughput/ETA.
+
+        Returns:
+            Number of data files that have finished loading.
+        """
+        files_done = 0
+        for state in self._tables.values():
+            if state.is_complete or state.data_complete:
+                # All files for this table are done
+                files_done += state.file_count
+            else:
+                # Only count actually completed files (not in-progress)
+                files_done += state.files_completed
+        return files_done
+
+    def _calculate_bytes_completed(self) -> int:
+        """Calculate total bytes COMPLETED across all tables.
+
+        Uses file completion to estimate bytes loaded. When a table has
+        data_complete or is_complete, all its bytes are counted.
+        Otherwise, uses (files_completed / file_count) * total_bytes.
+
+        Returns:
+            Estimated bytes loaded (compressed file size basis).
+        """
+        bytes_done = 0
+        for state in self._tables.values():
+            if state.is_complete or state.data_complete:
+                # All files for this table are done
+                bytes_done += state.total_bytes
+            elif state.file_count > 0 and state.files_completed > 0:
+                # Proportional bytes based on files completed
+                # This assumes roughly equal file sizes within a table
+                bytes_done += int(
+                    (state.files_completed / state.file_count) * state.total_bytes
+                )
+        return bytes_done
+
     def _build_progress_snapshot(
         self,
         source: Literal[
@@ -967,9 +1076,44 @@ class RestoreProgressTracker:
         """
         rows_loaded = self._calculate_rows_loaded()
         elapsed = time.monotonic() - self._start_time
-        rps = int(rows_loaded / elapsed) if elapsed > 0 else 0
-        remaining = self._total_rows - rows_loaded
-        eta = int(remaining / rps) if rps > 0 else None
+        files_completed = self._calculate_files_completed()
+        bytes_completed = self._calculate_bytes_completed()
+
+        # Calculate throughput and ETA
+        # Priority: 1) Row-based 2) Bytes-based 3) File-based
+        # Bytes-based is more accurate than file-based because files vary in size
+        eta: int | None = None
+        eta_mode: Literal["rows", "bytes", "files"] | None = None
+        rps = 0
+        bps = 0.0
+        fps = 0.0
+
+        if self._total_rows > 0 and rows_loaded > 0 and elapsed > 0:
+            # Row-based ETA (most accurate when row counts available)
+            rps = int(rows_loaded / elapsed)
+            remaining_rows = self._total_rows - rows_loaded
+            if rps > 0:
+                eta = int(remaining_rows / rps)
+                eta_mode = "rows"
+        elif self._total_bytes > 0 and bytes_completed > 0 and elapsed > 0:
+            # Bytes-based ETA (bandwidth-aware, good for legacy backups)
+            # More accurate than file-based because files vary in size
+            bps = bytes_completed / elapsed
+            remaining_bytes = self._total_bytes - bytes_completed
+            if bps > 0:
+                eta = int(remaining_bytes / bps)
+                eta_mode = "bytes"
+        elif self._total_files > 0 and files_completed > 0 and elapsed > 0:
+            # File-based ETA (fallback when no size info)
+            fps = files_completed / elapsed
+            remaining_files = self._total_files - files_completed
+            if fps > 0:
+                eta = int(remaining_files / fps)
+                eta_mode = "files"
+
+        # Also calculate file rate for stats even when using bytes-based ETA
+        if elapsed > 0 and files_completed > 0:
+            fps = files_completed / elapsed
 
         # Build list of in-progress tables
         # Include tables that are actively being worked on based on LOG OUTPUT:
@@ -1040,6 +1184,13 @@ class RestoreProgressTracker:
                 rows_per_second=rps,
                 elapsed_seconds=elapsed,
                 eta_seconds=eta,
+                eta_mode=eta_mode,
+                bytes_per_second=bps,
+                bytes_completed=bytes_completed,
+                bytes_total=self._total_bytes,
+                files_per_second=fps,
+                files_completed=files_completed,
+                files_total=self._total_files,
             ),
             timestamp=datetime.now(UTC),
             source=source,

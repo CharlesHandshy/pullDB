@@ -24,6 +24,7 @@ from pulldb.domain.config import Config
 from pulldb.domain.errors import MyLoaderError
 from pulldb.domain.models import CommandResult, Job
 from pulldb.domain.restore_models import (
+    ExtractionStats,
     MyLoaderResult,
     MyLoaderSpec,
     build_configured_myloader_spec,
@@ -92,6 +93,7 @@ class RestoreWorkflowSpec:
         myloader_spec: Myloader command specification.
         timeout: Optional myloader timeout in seconds.
         early_analyze_timeout: Timeout for early analyze worker (default 300s).
+        extraction_stats: Optional file stats from extraction for bytes-based ETA.
     """
 
     job: Job
@@ -104,6 +106,7 @@ class RestoreWorkflowSpec:
     progress_callback: Callable[[float, dict[str, Any]], None] | None = None
     event_callback: Callable[[str, dict[str, Any]], None] | None = None
     abort_check: Callable[[], bool] | None = None
+    extraction_stats: ExtractionStats | None = None
 
 
 def build_restore_workflow_spec(
@@ -121,6 +124,7 @@ def build_restore_workflow_spec(
     progress_callback: Callable[[float, dict[str, Any]], None] | None = None,
     event_callback: Callable[[str, dict[str, Any]], None] | None = None,
     abort_check: Callable[[], bool] | None = None,
+    extraction_stats: ExtractionStats | None = None,
 ) -> RestoreWorkflowSpec:
     """Construct :class:`RestoreWorkflowSpec` using global configuration.
 
@@ -171,6 +175,7 @@ def build_restore_workflow_spec(
         progress_callback=progress_callback,
         event_callback=event_callback,
         abort_check=abort_check,
+        extraction_stats=extraction_stats,
     )
 
 
@@ -262,6 +267,7 @@ def run_myloader(
     abort_check: Callable[[], bool] | None = None,
     event_callback: Callable[[str, dict[str, Any]], None] | None = None,
     early_analyze_worker: EarlyAnalyzeWorker | None = None,
+    extraction_stats: ExtractionStats | None = None,
 ) -> MyLoaderResult:
     """Execute myloader and return structured result.
 
@@ -277,6 +283,7 @@ def run_myloader(
         early_analyze_worker: Optional worker to receive active thread updates.
         abort_check: Optional callback that returns True if job should abort.
         event_callback: Optional callback for metadata synthesis events.
+        extraction_stats: Optional file size stats from extraction for bytes-based ETA.
 
     Raises:
         MyLoaderError: On non-zero exit, startup failure, or timeout.
@@ -292,8 +299,12 @@ def run_myloader(
     logger.info(f"Detected backup version info: {version_info}")
 
     # Get backup metadata (ensures compatibility + extracts row counts)
-    # This emits metadata_synthesis_started/complete events if callback provided
-    backup_meta = get_backup_metadata(spec.backup_dir, event_callback=event_callback)
+    # Pass extraction_stats to avoid re-scanning file sizes
+    backup_meta = get_backup_metadata(
+        spec.backup_dir,
+        event_callback=event_callback,
+        extraction_stats=extraction_stats,
+    )
     logger.info(
         f"Backup metadata: format={backup_meta.format.value}, "
         f"{len(backup_meta.tables)} tables, {backup_meta.total_rows:,} total rows"
@@ -634,6 +645,7 @@ def orchestrate_restore_workflow(
                     abort_check=spec.abort_check,
                     event_callback=_event_with_analyze,
                     early_analyze_worker=early_analyze_worker,
+                    extraction_stats=spec.extraction_stats,
                 )
 
             # Wait for early analysis to complete after myloader finishes

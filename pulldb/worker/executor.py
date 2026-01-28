@@ -39,7 +39,7 @@ from pulldb.domain.errors import (
 )
 from pulldb.domain.config import parse_s3_bucket_path
 from pulldb.domain.models import Job
-from pulldb.domain.restore_models import MyLoaderResult
+from pulldb.domain.restore_models import ExtractionStats, MyLoaderResult
 from pulldb.infra.logging import get_logger
 from pulldb.infra.mysql_utils import quote_identifier
 from pulldb.infra.s3 import (
@@ -330,12 +330,15 @@ def extract_tar_archive(
     job_id: str,
     progress_callback: ExtractionProgressCallback | None = None,
     abort_check: Callable[[], bool] | None = None,
-) -> str:
+) -> tuple[str, ExtractionStats]:
     """Extract tar archive into *dest_dir* with progress reporting.
 
     Extracts member-by-member to support progress callbacks and abort checks.
     Emits progress every 64MB extracted OR every 1000 files OR every 30 seconds
     (hybrid approach ensures UI never appears frozen).
+    
+    Returns extraction stats (file sizes) for restore ETA calculation,
+    avoiding re-scanning during metadata loading.
 
     Args:
         archive_path: Path to tar archive.
@@ -347,7 +350,7 @@ def extract_tar_archive(
         abort_check: Optional callback that returns True to abort extraction.
 
     Returns:
-        Path to destination directory.
+        Tuple of (path to destination directory, ExtractionStats).
 
     Raises:
         ExtractionError: When tar extraction fails or path escape attempted.
@@ -356,14 +359,14 @@ def extract_tar_archive(
     dest_dir.mkdir(parents=True, exist_ok=True)
     try:
         with tarfile.open(archive_path, "r:*") as tar:
-            _safe_extract_with_progress(
+            stats = _safe_extract_with_progress(
                 tar, dest_dir, progress_callback, abort_check, job_id
             )
     except CancellationError:
         raise  # Re-raise cancellation without wrapping
     except (tarfile.TarError, OSError, ValueError) as exc:
         raise ExtractionError(job_id, archive_path, str(exc)) from exc
-    return str(dest_dir)
+    return str(dest_dir), stats
 
 
 def _safe_extract_with_progress(
@@ -372,11 +375,14 @@ def _safe_extract_with_progress(
     progress_callback: ExtractionProgressCallback | None,
     abort_check: Callable[[], bool] | None,
     job_id: str,
-) -> None:
+) -> ExtractionStats:
     """Extract tar members with progress tracking and abort support.
 
     Validates each member path before extraction to prevent directory escape.
     Emits progress using hybrid threshold: 64MB or 1000 files or 30 seconds.
+    
+    Returns:
+        ExtractionStats with file sizes for restore ETA calculation.
     """
     base = dest.resolve()
     members = tar.getmembers()
@@ -389,6 +395,9 @@ def _safe_extract_with_progress(
     last_progress_files = 0
     last_progress_time = time.monotonic()
     start_time = last_progress_time
+    
+    # Collect file sizes for extraction stats
+    file_sizes: dict[str, int] = {}
 
     for member in members:
         # Abort check before each file
@@ -407,6 +416,9 @@ def _safe_extract_with_progress(
         files_extracted += 1
         if member.isfile():
             extracted_bytes += member.size
+            # Record file size for stats using basename only
+            # (backup_metadata expects filenames, not paths)
+            file_sizes[Path(member.name).name] = member.size
 
         # Emit progress using hybrid threshold (bytes OR files OR time)
         current_time = time.monotonic()
@@ -432,6 +444,12 @@ def _safe_extract_with_progress(
             last_progress_files = files_extracted
             last_progress_time = current_time
 
+    return ExtractionStats(
+        total_bytes=total_bytes,
+        total_files=files_extracted,
+        file_sizes=file_sizes,
+    )
+
 
 def _default_extract_archive(
     archive_path: str,
@@ -439,7 +457,7 @@ def _default_extract_archive(
     job_id: str,
     progress_callback: ExtractionProgressCallback | None = None,
     abort_check: Callable[[], bool] | None = None,
-) -> str:
+) -> tuple[str, ExtractionStats]:
     """Forward to extract_tar_archive as overridable hook."""
     return extract_tar_archive(
         archive_path, dest_dir, job_id, progress_callback, abort_check
@@ -512,7 +530,7 @@ class WorkerExecutorHooks:
     ] = download_backup
     extract_archive: Callable[
         [str, Path, str, ExtractionProgressCallback | None, Callable[[], bool] | None],
-        str,
+        tuple[str, ExtractionStats],
     ] = _default_extract_archive
 
 
@@ -696,7 +714,7 @@ class WorkerJobExecutor:
         extract_dir: Path,
         profiler: RestoreProfiler,
         cancel_check: Callable[[], bool],
-    ) -> Path:
+    ) -> tuple[Path, ExtractionStats]:
         """Execute extraction phase: unpack archive.
 
         Args:
@@ -708,7 +726,7 @@ class WorkerJobExecutor:
             cancel_check: Callback returning True to abort.
 
         Returns:
-            Path to backup directory (resolved from extraction).
+            Tuple of (path to backup directory, ExtractionStats).
         """
         def _extraction_progress_callback(
             extracted: int,
@@ -738,7 +756,7 @@ class WorkerJobExecutor:
         )
 
         with profiler.phase(RestorePhase.EXTRACTION) as extraction_profile:
-            extracted_dir = self._extract_archive(
+            extracted_dir, extraction_stats = self._extract_archive(
                 archive_path,
                 extract_dir,
                 job.id,
@@ -747,16 +765,24 @@ class WorkerJobExecutor:
             )
             extraction_profile.metadata["extracted_dir"] = extracted_dir
             extraction_profile.metadata["bytes_processed"] = backup_spec.size_bytes
+            extraction_profile.metadata["extraction_stats"] = {
+                "total_bytes": extraction_stats.total_bytes,
+                "total_files": extraction_stats.total_files,
+            }
 
         self._append_event(
             job.id,
             "extraction_complete",
-            {"path": extracted_dir},
+            {
+                "path": extracted_dir,
+                "total_bytes": extraction_stats.total_bytes,
+                "total_files": extraction_stats.total_files,
+            },
         )
 
         # Resolve actual backup root (handle top-level directory in tarball)
         backup_dir = self._resolve_backup_dir(Path(extracted_dir))
-        return backup_dir
+        return backup_dir, extraction_stats
 
     def _build_restore_progress_callback(
         self,
@@ -836,6 +862,8 @@ class WorkerJobExecutor:
         host_credentials: MySQLCredentials,
         profiler: RestoreProfiler,
         cancel_check: Callable[[], bool],
+        *,
+        extraction_stats: ExtractionStats | None = None,
     ) -> dict[str, Any]:
         """Execute restore phase: run myloader and post-SQL.
 
@@ -846,6 +874,7 @@ class WorkerJobExecutor:
             host_credentials: MySQL credentials.
             profiler: RestoreProfiler for timing.
             cancel_check: Callback returning True to abort.
+            extraction_stats: Optional file stats from extraction for progress tracking.
 
         Returns:
             Workflow result dict with timing information.
@@ -890,6 +919,7 @@ class WorkerJobExecutor:
             progress_callback=progress_callback,
             event_callback=_workflow_event_callback,
             abort_check=cancel_check,
+            extraction_stats=extraction_stats,
         )
 
         # Lock for restore - point of no return
@@ -1205,7 +1235,7 @@ class WorkerJobExecutor:
             self._check_cancellation(job.id, "post_download")
 
             # Phase 3: Extraction - unpack archive
-            backup_dir = self._run_extraction_phase(
+            backup_dir, extraction_stats = self._run_extraction_phase(
                 job, archive_path, backup_spec, extract_dir, profiler, _cancel_check
             )
 
@@ -1217,7 +1247,8 @@ class WorkerJobExecutor:
 
             # Phase 4: Restore - run myloader and post-SQL
             workflow_result = self._run_restore_phase(
-                job, backup_spec, backup_dir, host_credentials, profiler, _cancel_check
+                job, backup_spec, backup_dir, host_credentials, profiler, _cancel_check,
+                extraction_stats=extraction_stats,
             )
 
             # Phase 5: Finalize - mark deployed and save history
@@ -1552,6 +1583,7 @@ class WorkerJobExecutor:
 
 
 __all__ = [
+    "ExtractionStats",
     "JobExecutor",
     "WorkerExecutorDependencies",
     "WorkerExecutorHooks",

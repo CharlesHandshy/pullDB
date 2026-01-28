@@ -27,9 +27,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pulldb.infra.logging import get_logger
+
+if TYPE_CHECKING:
+    from pulldb.domain.restore_models import ExtractionStats
 
 logger = get_logger("pulldb.worker.backup_metadata")
 
@@ -89,6 +92,7 @@ class TableRowEstimate:
     table: str
     rows: int
     file_count: int = 1  # Number of data files for this table
+    total_bytes: int = 0  # Total compressed size of data files (for bandwidth ETA)
 
 
 @dataclass(slots=True, frozen=True)
@@ -169,6 +173,7 @@ def ensure_myloader_compatibility(
 def get_backup_metadata(
     backup_dir: str,
     event_callback: EventCallback | None = None,
+    extraction_stats: ExtractionStats | None = None,
 ) -> BackupMetadata:
     """Get complete backup metadata including row estimates.
 
@@ -177,6 +182,7 @@ def get_backup_metadata(
     Args:
         backup_dir: Path to extracted backup directory.
         event_callback: Optional callback for progress events.
+        extraction_stats: Optional file size data from extraction phase to avoid re-scanning.
 
     Returns:
         BackupMetadata with tables, row estimates, and binlog position.
@@ -184,14 +190,16 @@ def get_backup_metadata(
     # Ensure compatibility (creates/upgrades metadata if needed)
     fmt = ensure_myloader_compatibility(backup_dir, event_callback)
 
-    # Parse the metadata
-    tables = get_table_row_estimates(backup_dir)
+    # Parse the metadata, passing file sizes if available
+    file_sizes = extraction_stats.file_sizes if extraction_stats else None
+    tables = get_table_row_estimates(backup_dir, file_sizes=file_sizes)
     total_rows = sum(t.rows for t in tables)
     binlog = parse_binlog_position(backup_dir)
 
     logger.info(
         f"Backup metadata: format={fmt.value}, "
         f"tables={len(tables)}, total_rows={total_rows:,}"
+        + (", file_sizes=from_extraction" if file_sizes else ", file_sizes=scanned")
     )
 
     return BackupMetadata(
@@ -202,7 +210,10 @@ def get_backup_metadata(
     )
 
 
-def get_table_row_estimates(backup_dir: str) -> list[TableRowEstimate]:
+def get_table_row_estimates(
+    backup_dir: str,
+    file_sizes: dict[str, int] | None = None,
+) -> list[TableRowEstimate]:
     """Get row estimates for all tables in backup.
 
     Uses fastest available method:
@@ -211,6 +222,7 @@ def get_table_row_estimates(backup_dir: str) -> list[TableRowEstimate]:
 
     Args:
         backup_dir: Path to extracted backup directory.
+        file_sizes: Optional pre-computed file sizes from extraction (filename -> bytes).
 
     Returns:
         List of TableRowEstimate for each table.
@@ -219,12 +231,12 @@ def get_table_row_estimates(backup_dir: str) -> list[TableRowEstimate]:
 
     # Try INI format first
     if metadata_path.exists():
-        tables = _parse_ini_metadata(metadata_path)
+        tables = _parse_ini_metadata(metadata_path, file_sizes=file_sizes)
         if tables:
             return tables
 
     # Fall back to ISIZE scanning
-    return _scan_for_row_estimates(Path(backup_dir))
+    return _scan_for_row_estimates(Path(backup_dir), file_sizes=file_sizes)
 
 
 def parse_binlog_position(backup_dir: str) -> BinlogPosition | None:
@@ -700,25 +712,51 @@ def _synthesize_metadata(
 # =============================================================================
 
 
-def _parse_ini_metadata(metadata_path: Path) -> list[TableRowEstimate]:
+def _parse_ini_metadata(
+    metadata_path: Path,
+    file_sizes: dict[str, int] | None = None,
+) -> list[TableRowEstimate]:
     """Parse 0.19+ INI format metadata for row counts.
     
-    Also counts data files per table by scanning the backup directory.
+    Also counts data files per table and their sizes. If file_sizes is provided
+    from extraction stats, uses those instead of re-scanning the directory.
+    
+    Args:
+        metadata_path: Path to the INI metadata file.
+        file_sizes: Optional pre-computed file sizes from extraction (filename -> bytes).
     """
     tables: list[TableRowEstimate] = []
     
-    # Count files per table from the backup directory
+    # Count files and total bytes per table
     backup_dir = metadata_path.parent
     file_counts: dict[tuple[str, str], int] = defaultdict(int)
-    for filepath in backup_dir.glob("*.sql.gz"):
-        result = _parse_mydumper_filename(filepath.name)
-        if result:
-            file_counts[result] += 1
-    # Also check for .sql.zst files
-    for filepath in backup_dir.glob("*.sql.zst"):
-        result = _parse_mydumper_filename(filepath.name.replace(".zst", ".gz"))
-        if result:
-            file_counts[result] += 1
+    file_bytes: dict[tuple[str, str], int] = defaultdict(int)
+    
+    if file_sizes:
+        # Use pre-computed file sizes from extraction
+        for filename, size in file_sizes.items():
+            # Only process SQL data files
+            if not (filename.endswith(".sql.gz") or filename.endswith(".sql.zst")):
+                continue
+            # Parse the filename to get database and table
+            parsed_name = filename.replace(".sql.zst", ".sql.gz")  # Normalize
+            result = _parse_mydumper_filename(parsed_name)
+            if result:
+                file_counts[result] += 1
+                file_bytes[result] += size
+    else:
+        # Fall back to scanning the directory
+        for filepath in backup_dir.glob("*.sql.gz"):
+            result = _parse_mydumper_filename(filepath.name)
+            if result:
+                file_counts[result] += 1
+                file_bytes[result] += filepath.stat().st_size
+        # Also check for .sql.zst files
+        for filepath in backup_dir.glob("*.sql.zst"):
+            result = _parse_mydumper_filename(filepath.name.replace(".zst", ".gz"))
+            if result:
+                file_counts[result] += 1
+                file_bytes[result] += filepath.stat().st_size
 
     try:
         parser = configparser.ConfigParser()
@@ -757,12 +795,17 @@ def _parse_ini_metadata(metadata_path: Path) -> list[TableRowEstimate]:
 
             # Get file count (default to 1 if not found - schema file)
             fc = file_counts.get((database, table), 1)
+            
+            # Get total bytes for this table's data files
+            tb = file_bytes.get((database, table), 0)
 
             # Include ALL tables, even empty ones (rows=0)
             # Empty tables still need to be tracked for progress reporting
             # and are restored/renamed by myloader/atomic_rename
             tables.append(
-                TableRowEstimate(database=database, table=table, rows=rows, file_count=fc)
+                TableRowEstimate(
+                    database=database, table=table, rows=rows, file_count=fc, total_bytes=tb
+                )
             )
 
     except Exception as e:
@@ -771,7 +814,10 @@ def _parse_ini_metadata(metadata_path: Path) -> list[TableRowEstimate]:
     return tables
 
 
-def _scan_for_row_estimates(backup_dir: Path) -> list[TableRowEstimate]:
+def _scan_for_row_estimates(
+    backup_dir: Path,
+    file_sizes: dict[str, int] | None = None,
+) -> list[TableRowEstimate]:
     """Scan backup files and count files per table.
 
     For legacy backups (pre-0.19), we no longer estimate row counts because:
@@ -784,17 +830,33 @@ def _scan_for_row_estimates(backup_dir: Path) -> list[TableRowEstimate]:
 
     Args:
         backup_dir: Path to backup directory.
+        file_sizes: Optional pre-computed file sizes from extraction (filename -> bytes).
 
     Returns:
-        List of TableRowEstimate with rows=0 but accurate file_count.
+        List of TableRowEstimate with rows=0 but accurate file_count and total_bytes.
     """
-    table_files: dict[tuple[str, str], list[Path]] = defaultdict(list)
+    # table_key -> list of (filename, size)
+    table_files: dict[tuple[str, str], list[tuple[str, int]]] = defaultdict(list)
 
-    for filepath in backup_dir.glob("*.sql.gz"):
-        result = _parse_mydumper_filename(filepath.name)
-        if result:
-            db, table = result
-            table_files[(db, table)].append(filepath)
+    if file_sizes:
+        # Use pre-computed file sizes from extraction
+        for filename, size in file_sizes.items():
+            # Only process SQL data files (both .gz and .zst formats)
+            if not (filename.endswith(".sql.gz") or filename.endswith(".sql.zst")):
+                continue
+            # Normalize .zst to .gz for filename parsing
+            parsed_name = filename.replace(".sql.zst", ".sql.gz")
+            result = _parse_mydumper_filename(parsed_name)
+            if result:
+                db, table = result
+                table_files[(db, table)].append((filename, size))
+    else:
+        # Fall back to scanning the directory
+        for filepath in backup_dir.glob("*.sql.gz"):
+            result = _parse_mydumper_filename(filepath.name)
+            if result:
+                db, table = result
+                table_files[(db, table)].append((filepath.name, filepath.stat().st_size))
 
     # Log that we're not doing row estimation for legacy backups
     if table_files:
@@ -806,8 +868,13 @@ def _scan_for_row_estimates(backup_dir: Path) -> list[TableRowEstimate]:
     tables: list[TableRowEstimate] = []
     for (db, table), files in table_files.items():
         # rows=0 means "unknown" - progress tracker will use file-based tracking
+        # Calculate total bytes from all files for this table
+        # files is list of (filename, size) tuples
+        total_bytes = sum(size for _, size in files)
         tables.append(
-            TableRowEstimate(database=db, table=table, rows=0, file_count=len(files))
+            TableRowEstimate(
+                database=db, table=table, rows=0, file_count=len(files), total_bytes=total_bytes
+            )
         )
 
     return tables

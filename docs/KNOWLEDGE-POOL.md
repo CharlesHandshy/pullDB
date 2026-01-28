@@ -122,6 +122,7 @@ Complete API documentation: [docs/api/README.md](api/README.md)
 - Lessons Learned & Troubleshooting
   - **Packaging & Installation Lessons (Jan 2026)**
   - Phase 2 Lessons (Nov 2025)
+  - **Myloader Thread Architecture & Progress Tracking (Jan 2026)**
 - Quick commands & verification
 - Purge candidates (files/docs to archive)
 - Machine-readable index (JSON)
@@ -1640,6 +1641,244 @@ For large datasets with smooth scrolling:
 - `overscan`: Extra rows above/below viewport (default: 10)
 - `totalRows`: Total dataset size
 - `visibleRange`: Currently rendered row indices
+
+---
+
+---
+
+## Myloader Thread Architecture & Progress Tracking (Jan 2026)
+
+Understanding how myloader manages threads internally is critical for accurate progress tracking in pullDB.
+
+### Myloader Internal Thread Types
+
+| Thread Type | Count | Purpose | MySQL User |
+|-------------|-------|---------|------------|
+| **Loader Threads** (`L-Thread N`) | `--threads` (default 4) | Process data files, execute INSERTs | `pulldb_loader` |
+| **Connection Pool** (`myloader_conn`) | `--threads` (N threads) | Execute queries via `connection_pool` queue | `pulldb_loader` |
+| **Schema Threads** | `--max-threads-for-schema-creation` (default 4) | CREATE TABLE statements | `pulldb_loader` |
+| **Index Threads** (`I-Thread N`) | `--max-threads-for-index-creation` (default 4) | ALTER TABLE ADD INDEX | `pulldb_loader` |
+| **Post Threads** | `--max-threads-for-post-actions` (default 1) | Triggers, constraints | `pulldb_loader` |
+| **Control Thread** (`CJT`) | 1 | Job dispatching, coordination | Internal |
+| **Directory Thread** | 1 | File discovery | Internal |
+
+**Key insight**: With `--threads=6`, you may see **more than 6 connections** in MySQL's processlist because:
+1. Index threads run in parallel with final data loads
+2. Schema threads may overlap with data threads
+3. Connection pool reuse can show multiple "slots"
+
+### Thread Lifecycle
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ STARTUP                                                                 │
+│  initialize_connection_pool()  → Creates N connection slots             │
+│  start_connection_pool()       → Spawns N restore_thread() threads      │
+│  initialize_loader_threads()   → Spawns N loader_thread() threads       │
+│  start_worker_schema()         → Schema creation threads                │
+└─────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ EXECUTION                                                               │
+│  Loader thread picks job from data_job_queue                            │
+│    → wait_for_available_restore_thread() gets connection from pool      │
+│    → restore_data_from_mydumper_file() reads .sql file                  │
+│    → restore_insert() sends batched INSERTs via connection pool         │
+│    → mysql_real_query() BLOCKS until MySQL completes                    │
+│    → Connection returned to pool                                        │
+│  remaining_jobs atomically decremented after file completes             │
+└─────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ DATA_DONE → INDEX                                                       │
+│  When remaining_jobs=0 AND current_threads=0:                           │
+│    → schema_state = DATA_DONE                                           │
+│    → "Enqueuing index for table: db.table" printed                      │
+│    → Job added to index_queue                                           │
+│    → Index threads process ALTER TABLE ADD KEY                          │
+└─────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ SHUTDOWN                                                                │
+│  wait_schema_worker_to_finish()                                         │
+│  wait_worker_loader_main()                                              │
+│  wait_index_worker_to_finish()                                          │
+│  wait_post_worker_to_finish()                                           │
+│  wait_restore_threads_to_close()  → g_thread_join() all threads         │
+│  "Restore completed" printed                                            │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Index Rebuild: Single vs Multiple ALTER Statements
+
+**Normal indexes**: myloader builds ONE ALTER statement with all indexes:
+```sql
+ALTER TABLE `t` 
+ADD KEY `idx1` (`col1`),
+ADD KEY `idx2` (`col2`),
+ADD UNIQUE KEY `unique_idx` (`col3`);
+```
+
+**FULLTEXT indexes**: MySQL cannot add multiple FULLTEXT indexes in one ALTER.
+myloader detects this and splits into SEPARATE ALTER statements:
+```sql
+ALTER TABLE `t` ADD FULLTEXT KEY `ft1` (`col1`);
+ALTER TABLE `t` ADD FULLTEXT KEY `ft2` (`col2`);
+ALTER TABLE `t` ADD FULLTEXT KEY `ft3` (`col3`);
+```
+
+**Progress tracking implication**: For tables with multiple FULLTEXT indexes:
+1. Table appears in processlist for first ALTER
+2. First ALTER completes → table **briefly leaves** processlist
+3. Second ALTER starts → table **reappears** in processlist
+4. Repeat for each FULLTEXT index
+
+This is why we use a **strike-based approach** instead of time-based:
+- Strike = one poll where table is absent from processlist
+- Table reappears (next FULLTEXT ALTER) → strikes reset to 0
+- After N consecutive strikes → mark complete
+- Naturally handles any number of FULLTEXT gaps
+
+### Critical Facts About mysql_real_query()
+
+**`mysql_real_query()` is SYNCHRONOUS (blocking)**:
+- myloader sends query, waits for MySQL server response
+- Thread is blocked until query completes
+- myloader does NOT exit while queries are in-flight
+
+**Implication**: If you see INSERTs in `SHOW PROCESSLIST` but myloader shows 100%, the issue is NOT async query execution. Look for:
+1. Multiple concurrent myloader processes
+2. Progress calculation bugs in pullDB
+3. Stale processlist monitor state
+
+### The `/* Completed: XX% */` Comment
+
+```c
+// From myloader_restore.c:
+g_string_printf(new_insert,"/* Completed: %"G_GUINT64_FORMAT"%% */ ",
+    dbt->rows>0?dbt->rows_inserted*100/dbt->rows:0);
+```
+
+**What it means**:
+- `dbt->rows_inserted` = rows already loaded for this table BEFORE current batch
+- `dbt->rows` = total row estimate from metadata file
+- Shows **per-table progress** at the moment the batch is created
+
+**Why you see 0%**:
+1. **Legacy backups (0.9.0)**: metadata sets `rows=0` for all tables → formula gives 0%
+2. **First batch**: `rows_inserted=0` at start → 0%
+3. **Not useful for 0.9.0 backups** - use file-based progress instead
+
+### pullDB Progress Tracking vs Myloader
+
+| Source | What It Tracks | Reliability |
+|--------|---------------|-------------|
+| **ProcesslistMonitor** | Active threads in MySQL processlist | Real-time but sampling |
+| **Myloader stdout** | "Progress X of Y", "Enqueuing index" | Definitive events |
+| **`/* Completed: XX% */`** | Per-table row progress | **Broken for rows=0 backups** |
+| **File-based progress** | files_started / file_count | Safe, cannot exceed 100% |
+
+### How pullDB Calculates Progress
+
+```python
+# From restore_progress.py _calculate_rows_loaded():
+for state in self._tables.values():
+    if state.is_complete or state.data_complete:
+        total += state.rows_total  # 100% of rows
+    elif state.files_started > 0 and state.file_count > 0:
+        # File-based: safe, cannot exceed 100%
+        file_percent = state.files_started / state.file_count
+        total += int(file_percent * state.rows_total)
+    else:
+        # Fallback to processlist percent (capped at 100%)
+        total += int(state.percent_complete / 100.0 * state.rows_total)
+```
+
+**For 0.9.0 backups with rows=0**:
+- `rows_total = 0` for all tables
+- `total` will always be 0
+- Progress falls back to file-based calculation in `_calculate_file_based_percent()`
+
+### Debugging Checklist
+
+When progress shows 100% but processlist shows active queries:
+
+1. **Check if single myloader**: `ps aux | grep myloader` - ensure only one process
+2. **Check staging DB match**: Ensure processlist queries target the same staging DB
+3. **Check thread counts**: With `--threads=6`, you can see 6+ connections due to index threads
+4. **Check `finalize()` timing**: `tracker.finalize()` marks 100% - verify myloader actually exited
+5. **Check file-based progress**: For 0.9.0 backups, file counts determine progress
+
+### Known Bug: Premature 100% Completion (Fixed Jan 2026)
+
+**Root cause**: The original timeout logic was marking tables complete too aggressively.
+
+**Original bug in `restore_progress.py`**:
+```python
+# BUG: This marked tables complete after 10s absence from processlist
+# even without any evidence myloader actually finished processing them
+_STALE_TABLE_TIMEOUT_SECONDS = 10.0  # Too short!
+
+if (
+    state.files_completed > 0
+    or time_since_seen > _STALE_TABLE_TIMEOUT_SECONDS  # ← Problem: OR not AND
+):
+    self._mark_table_complete(state, now)  # ← Premature!
+```
+
+**How it manifested**:
+1. myloader loads files in **random order** (not sequential per table)
+2. Table A appears in processlist while loading file 1
+3. myloader switches to table B (table A leaves processlist)
+4. After 10s, table A marked complete (even though files 2-N not done)
+5. Progress calculation counts ALL files for table A as done
+6. Repeat → premature 100%
+
+**Fix applied - Strike-based detection**:
+```python
+# Strike = one poll where table is absent from processlist
+# Poll interval is 2s, so 3 strikes = 6s minimum absence
+
+_INDEX_COMPLETE_STRIKES = 3     # After data_complete (indexing phase)
+_FALLBACK_COMPLETE_STRIKES = 5  # No data_complete (less certain)
+
+# Table in processlist → reset strikes to 0
+if state.name in tables_in_processlist:
+    state.absent_strikes = 0
+    continue
+
+# Table absent → increment strike
+state.absent_strikes += 1
+
+if state.data_complete:
+    if state.absent_strikes >= _INDEX_COMPLETE_STRIKES:
+        self._mark_table_complete(state, now)
+else:
+    if state.absent_strikes >= _FALLBACK_COMPLETE_STRIKES:
+        self._mark_table_complete(state, now)  # With warning log
+```
+
+**Why strikes are better than time-based**:
+- Naturally handles FULLTEXT gaps: table reappears → strikes reset → wait again
+- Poll-based: directly tied to actual observations, not wall-clock time
+- Self-correcting: if table comes back, we start over
+
+**Key insight**: Do NOT use `files_started`/`files_completed` for completion detection. myloader processes files in random order, so seeing some files done doesn't mean the table won't reappear in processlist.
+
+### Configuration Impact
+
+| Setting | Default | Effect on Thread Count |
+|---------|---------|----------------------|
+| `--threads` | 4 | Data loader threads, connection pool size |
+| `--max-threads-per-table` | 4 | Max parallel threads per single table |
+| `--max-threads-for-schema-creation` | 4 | Schema threads (auto-scaled up to 8 on multi-core) |
+| `--max-threads-for-index-creation` | 4 | Index rebuild threads (auto-scaled up to 8) |
+| `--max-threads-for-post-actions` | 1 | Post-load threads |
+
+**Total potential MySQL connections** = threads + schema_threads + index_threads (during overlap phases)
 
 ---
 
