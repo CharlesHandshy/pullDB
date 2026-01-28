@@ -272,9 +272,27 @@ class RestoreProgressTracker:
     #
     # All patterns allow optional "** Message: HH:MM:SS.mmm: " prefix
 
-    # Match "Thread N finished restoring" for file completion
-    _RE_FINISHED = re.compile(
-        r"(?:\*\* Message: [\d:.]+: )?(?:Thread \d+|Message: Thread \d+) finished restoring (\S+)"
+    # Authoritative signal that myloader completed successfully
+    # Message: "Restore completed"
+    _RE_RESTORE_COMPLETED = re.compile(
+        r"(?:\*\* Message: [\d:.]+: )?Restore completed",
+        re.IGNORECASE,
+    )
+
+    # Match "Thread N: Creating table db.table" - schema creation started
+    # Message: "Thread 5: Creating table db.table from content in filename. On db: source_db"
+    _RE_CREATING_TABLE = re.compile(
+        r"(?:\*\* Message: [\d:.]+: )?Thread\s+\d+:\s+Creating table\s+"
+        r"(?:`?([^`\s.]+)`?\.`?([^`\s]+)`?|([^\s.]+)\.([^\s]+))",
+        re.IGNORECASE,
+    )
+
+    # Match "Thread N: Table db.table created" - schema creation completed
+    # Message: "Thread 5: Table db.table created. Tables that pass created stage: 3 of 10"
+    _RE_TABLE_CREATED = re.compile(
+        r"(?:\*\* Message: [\d:.]+: )?Thread\s+\d+:\s+Table\s+"
+        r"(?:`?([^`\s.]+)`?\.`?([^`\s]+)`?|([^\s.]+)\.([^\s]+))\s+created",
+        re.IGNORECASE,
     )
 
     # Match "Thread N restoring `db`.`table` part N" - table data started loading
@@ -367,6 +385,11 @@ class RestoreProgressTracker:
         # De-duplication for events (prevent identical events)
         self._emitted_file_events: set[tuple[str, int]] = set()  # (table, file_index)
         self._emitted_table_ready: set[str] = set()  # table names
+        self._emitted_schema_creating: set[str] = set()  # tables with schema creating emitted
+        self._emitted_schema_created: set[str] = set()  # tables with schema created emitted
+
+        # Track authoritative completion signal from myloader
+        self._myloader_restore_completed: bool = False
 
         # Initialize table states
         for t in table_metadata:
@@ -563,6 +586,26 @@ class RestoreProgressTracker:
                 self._mark_table_restore_started(table_name)
             return
 
+        # Check for schema table creation started
+        if match := self._RE_CREATING_TABLE.search(line):
+            table_name = match.group(2) or match.group(4)
+            if table_name:
+                self._emit_schema_creating(table_name)
+            return
+
+        # Check for schema table created
+        if match := self._RE_TABLE_CREATED.search(line):
+            table_name = match.group(2) or match.group(4)
+            if table_name:
+                self._emit_schema_created(table_name)
+            return
+
+        # Check for authoritative "Restore completed" signal
+        if self._RE_RESTORE_COMPLETED.search(line):
+            self._myloader_restore_completed = True
+            logger.info("Myloader reported: Restore completed")
+            return
+
         # Check for file completion (less reliable but useful for progress)
         table_name = self._extract_completed_table(line)
         if table_name:
@@ -642,6 +685,64 @@ class RestoreProgressTracker:
 
             # Emit progress when files start - this triggers UI to show the table
             self._emit_progress("file_complete")  # Reuse file_complete for throttling
+
+    def _emit_schema_creating(self, table_name: str) -> None:
+        """Emit event when myloader starts creating a table's schema.
+
+        Called when myloader emits 'Thread N: Creating table db.table'.
+        This provides visibility into the schema creation phase before data loading.
+
+        Args:
+            table_name: Table name being created.
+        """
+        bare_name = self._normalize_table_name(table_name)
+
+        with self._lock:
+            # De-duplicate events
+            if bare_name in self._emitted_schema_creating:
+                return
+            self._emitted_schema_creating.add(bare_name)
+
+            if self._on_event:
+                self._on_event(
+                    "schema_creating",
+                    {
+                        "table": bare_name,
+                        "tables_total": self._total_tables,
+                    },
+                )
+            logger.debug(f"Schema creating: {bare_name}")
+
+    def _emit_schema_created(self, table_name: str) -> None:
+        """Emit event when myloader finishes creating a table's schema.
+
+        Called when myloader emits 'Thread N: Table db.table created'.
+        This signals schema is ready and data loading can begin.
+
+        Args:
+            table_name: Table name that was created.
+        """
+        bare_name = self._normalize_table_name(table_name)
+
+        with self._lock:
+            # De-duplicate events
+            if bare_name in self._emitted_schema_created:
+                return
+            self._emitted_schema_created.add(bare_name)
+
+            tables_created = len(self._emitted_schema_created)
+            if self._on_event:
+                self._on_event(
+                    "schema_created",
+                    {
+                        "table": bare_name,
+                        "tables_created": tables_created,
+                        "tables_total": self._total_tables,
+                    },
+                )
+            logger.debug(
+                f"Schema created: {bare_name} ({tables_created}/{self._total_tables})"
+            )
 
     def _mark_data_complete(self, table_name: str) -> None:
         """Mark table's data load as 100% complete, entering indexing phase.
@@ -882,6 +983,18 @@ class RestoreProgressTracker:
         with self._lock:
             return self._build_progress_snapshot("processlist")
 
+    @property
+    def myloader_completed(self) -> bool:
+        """Check if myloader emitted authoritative 'Restore completed' message.
+
+        This is a definitive signal that myloader finished successfully,
+        as opposed to inferring completion from processlist absence.
+
+        Returns:
+            True if 'Restore completed' was seen in myloader output.
+        """
+        return self._myloader_restore_completed
+
     def finalize(self) -> RestoreProgress:
         """Finalize progress when myloader exits.
 
@@ -960,13 +1073,12 @@ class RestoreProgressTracker:
         Returns:
             Table name if line indicates completion, None otherwise.
         """
-        # Check verbose output first
+        # Check verbose output format:
+        # "Thread N restoring `db`.`table` part N"
         if match := self._RE_VERBOSE_RESTORE.search(line):
-            return match.group(1).strip()
-
-        # Check standard format
-        if match := self._RE_FINISHED.search(line):
-            return match.group(1).strip()
+            group = match.group(1)
+            if group:
+                return group.strip()
 
         return None
 

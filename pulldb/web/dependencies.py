@@ -282,6 +282,9 @@ templates.env.filters["format_number"] = _format_number
 
 # Event type to human-readable label mapping
 _EVENT_LABELS: dict[str, str] = {
+    # Schema phase events
+    "schema_creating": "creating schema",
+    "schema_created": "schema created",
     # File and table completion events
     "restore_file_loaded": "file loaded",
     "restore_table_ready": "table ready",

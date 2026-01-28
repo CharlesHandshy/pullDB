@@ -562,6 +562,17 @@
                         <span class="log-field"><span class="log-field-label">backup</span>{{ data.backup_filename | default('?') }}</span>
                     </div>
                     
+                    {% elif log.event_type == 'schema_creating' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">table</span>{{ data.table | default('?') }}</span>
+                    </div>
+                    
+                    {% elif log.event_type == 'schema_created' and data is mapping %}
+                    <div class="log-detail log-detail--table">
+                        <span class="log-field"><span class="log-field-label">table</span>{{ data.table | default('?') }}</span>
+                        <span class="log-field"><span class="log-field-label">progress</span>{{ data.tables_created | default(1) }}/{{ data.tables_total | default('?') }}</span>
+                    </div>
+                    
                     {% elif log.event_type == 'restore_file_loaded' and data is mapping %}
                     <div class="log-detail log-detail--table">
                         <span class="log-field"><span class="log-field-label">table</span>{{ data.table | default('?') }}</span>
