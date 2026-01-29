@@ -187,7 +187,17 @@ class RestoreProgress:
 
 @dataclass
 class _MutableTableState:
-    """Internal mutable state for a single table."""
+    """Internal mutable state for a single table.
+    
+    Phase Lifecycle:
+        pending → loading → indexing → analyzing → complete
+    
+    Completion Model (Conservative):
+        - is_complete is ONLY set when we have POSITIVE confirmation
+        - Strike-based detection is used for INDEX phase only (after data_complete)
+        - A table must pass through analyze phase (if enabled) before is_complete=True
+        - finalize() is the ONLY path to mark tables complete in batch
+    """
 
     name: str
     rows_total: int
@@ -201,6 +211,9 @@ class _MutableTableState:
     files_completed: int = 0  # Track how many chunk files have finished
     files_started: int = 0  # Track how many chunk files have started (for file-based progress)
     data_complete: bool = False  # True when "Enqueuing index" received (definitive)
+    index_complete: bool = False  # True when indexes done (strike-based after data_complete)
+    analyze_complete: bool = False  # True when ANALYZE TABLE finished
+    analyze_skipped: bool = False  # True if early analyze is disabled for this table
     was_ever_seen: bool = False  # Track if table was ever in processlist
     first_seen_time: float = 0.0  # When table was first seen (for duration calc)
     absent_strikes: int = 0  # Consecutive polls where table was absent from processlist
@@ -345,6 +358,7 @@ class RestoreProgressTracker:
         on_progress: Callable[[RestoreProgress], None] | None = None,
         on_event: Callable[[str, dict], None] | None = None,
         throttle_interval_seconds: float = 0.5,
+        early_analyze_enabled: bool = False,
     ) -> None:
         """Initialize tracker.
 
@@ -356,6 +370,8 @@ class RestoreProgressTracker:
                 Called with (event_type: str, event_data: dict).
             throttle_interval_seconds: Minimum interval between progress emissions.
                 Prevents flooding with too many events. Set to 0 to disable.
+            early_analyze_enabled: If True, tables are NOT marked complete until
+                analyze phase finishes. This prevents premature 100% progress.
         """
         self._lock = threading.RLock()  # Reentrant for nested calls
         self._on_progress = on_progress
@@ -363,6 +379,7 @@ class RestoreProgressTracker:
         self._throttle_interval = throttle_interval_seconds
         self._last_emit_time: float = 0.0
         self._start_time = time.monotonic()
+        self._early_analyze_enabled = early_analyze_enabled
 
         # Immutable setup
         self._total_tables = len(table_metadata)
@@ -480,28 +497,75 @@ class RestoreProgressTracker:
                 state.absent_strikes += 1
 
                 # Determine required strikes based on whether we have data_complete
+                # NOTE: Strike detection marks INDEX phase complete.
+                # Whether it also marks the TABLE complete depends on early_analyze_enabled:
+                # - early_analyze_enabled=False: mark table complete (traditional behavior)
+                # - early_analyze_enabled=True: emit index_complete event for analyze queueing
                 if state.data_complete:
                     # CASE 1: We have the definitive "Enqueuing index" signal
                     # Data files are done, table is in indexing phase (or done)
                     required_strikes = _INDEX_COMPLETE_STRIKES
-                    if state.absent_strikes >= required_strikes:
-                        self._mark_table_complete(state, now)
+                    if state.absent_strikes >= required_strikes and not state.index_complete:
+                        state.index_complete = True
                         logger.info(
-                            f"Table {state.name} complete: data_complete + "
+                            f"Table {state.name} INDEX phase complete: "
                             f"{state.absent_strikes} consecutive absent polls"
                         )
+                        if self._early_analyze_enabled:
+                            # Emit event to queue for early analyze
+                            self._emit_index_complete(state, now)
+                        else:
+                            # Traditional: mark table fully complete
+                            self._mark_table_complete(state, now)
+                            logger.info(f"Table {state.name} complete (no early analyze)")
                 else:
                     # CASE 2: No data_complete signal (stdout may have missed it)
                     # Require more strikes since we're less certain
+                    # This marks both data_complete and index_complete
                     required_strikes = _FALLBACK_COMPLETE_STRIKES
-                    if state.absent_strikes >= required_strikes:
+                    if state.absent_strikes >= required_strikes and not state.index_complete:
+                        state.data_complete = True
+                        state.index_complete = True
                         logger.warning(
-                            f"Table {state.name} marked complete via fallback "
+                            f"Table {state.name} INDEX phase complete via fallback "
                             f"({state.absent_strikes} strikes, no data_complete signal)"
                         )
-                        self._mark_table_complete(state, now)
+                        if self._early_analyze_enabled:
+                            # Emit event to queue for early analyze
+                            self._emit_index_complete(state, now)
+                        else:
+                            # Traditional: mark table fully complete
+                            self._mark_table_complete(state, now)
+                            logger.info(f"Table {state.name} complete (fallback, no early analyze)")
 
             self._emit_progress("processlist")
+
+    def _emit_index_complete(self, state: _MutableTableState, now: float) -> None:
+        """Emit table_index_complete event when indexing finishes.
+
+        This is emitted in early_analyze mode to trigger queueing for ANALYZE TABLE.
+        Unlike table_restore_complete, this doesn't mean the table is fully done -
+        it still needs to go through the analyze phase.
+
+        Args:
+            state: Table state that completed indexing.
+            now: Current monotonic time.
+        """
+        if self._on_event:
+            # Calculate duration from first seen to now
+            duration_seconds = 0.0
+            if state.first_seen_time > 0:
+                duration_seconds = now - state.first_seen_time
+
+            self._on_event(
+                "table_index_complete",
+                {
+                    "table": state.name,
+                    "rows": state.rows_total,
+                    "duration_seconds": round(duration_seconds, 1),
+                },
+            )
+            logger.debug(f"Emitted table_index_complete for {state.name}")
 
     def _mark_table_complete(self, state: _MutableTableState, now: float) -> None:
         """Mark a table as complete and emit table_restore_complete event.
@@ -917,7 +981,14 @@ class RestoreProgressTracker:
         """Mark a table as being analyzed (ANALYZE TABLE).
 
         Called when EarlyAnalyzeWorker starts analyzing a table.
-        This transitions the table from 'indexing' phase to 'analyzing' phase.
+        This transitions the table to 'analyzing' phase.
+
+        Lifecycle: loading → indexing → analyzing → complete
+                                    ↑ YOU ARE HERE
+
+        NOTE: This method intentionally re-activates tables that were marked
+        complete by finalize(). The early analyze phase runs AFTER myloader
+        exits, so tables need to transition: complete -> analyzing -> complete.
 
         Args:
             table_name: Table name to mark as analyzing.
@@ -935,6 +1006,8 @@ class RestoreProgressTracker:
                     percent_complete=99.0,
                     phase="analyzing",
                     is_complete=False,
+                    data_complete=True,  # Must be true to reach analyze
+                    index_complete=True,  # Indexes done if we're analyzing
                     first_seen_time=time.monotonic(),
                 )
                 self._tables[bare_name] = state
@@ -942,12 +1015,22 @@ class RestoreProgressTracker:
                 self._emit_progress("analyzing_started")
                 return
 
+            # If we're entering analyze phase, index phase is definitively complete
+            if not state.index_complete:
+                state.index_complete = True
+                state.data_complete = True  # Must also be true
+                logger.debug(f"Table {bare_name}: index phase complete (entering analyze)")
+
+            # Re-activate table for analyzing phase
+            # This handles the case where finalize() was already called
+            # (myloader exited) but early analyze is still running
             if state.is_complete:
-                # Already complete - don't revert
-                return
+                state.is_complete = False
+                self._tables_completed.discard(bare_name)
+                logger.info(f"Table {bare_name}: re-activated for analyzing phase")
 
             state.phase = "analyzing"
-            state.percent_complete = 99.0  # Show indeterminate progress
+            state.percent_complete = 99.0  # Show near-complete progress
             logger.debug(f"Table {bare_name}: entering analyzing phase")
             self._emit_progress("analyzing_started")
 
@@ -955,7 +1038,10 @@ class RestoreProgressTracker:
         """Mark a table's ANALYZE as complete.
 
         Called when EarlyAnalyzeWorker finishes analyzing a table.
-        This marks the table as fully complete.
+        This marks the table as fully complete - the final step in the lifecycle.
+
+        Lifecycle: loading → indexing → analyzing → complete
+                                            ↑ YOU ARE HERE
 
         Args:
             table_name: Table name to mark as analyze complete.
@@ -968,11 +1054,42 @@ class RestoreProgressTracker:
             if state is None:
                 return
 
+            # Set analyze_complete flag
+            state.analyze_complete = True
+
             if not state.is_complete:
                 self._mark_table_complete(state, now)
-                logger.debug(f"Table analyze complete: {bare_name}")
+                logger.info(
+                    f"Table {bare_name} fully complete: "
+                    f"data={state.data_complete}, index={state.index_complete}, "
+                    f"analyze={state.analyze_complete}"
+                )
 
                 self._emit_progress("analyzing_complete")
+
+    def finalize_analyze_phase(self) -> None:
+        """Safety net: mark any tables stuck in 'analyzing' phase as complete.
+
+        Called when early_analyze_worker times out or errors, to prevent
+        tables from being stuck at 99% with is_complete=False forever.
+
+        This is a graceful degradation - we lose the analyze tracking but
+        the progress display won't show stuck tables.
+        """
+        now = time.monotonic()
+        with self._lock:
+            stuck_count = 0
+            for state in self._tables.values():
+                if state.phase == "analyzing" and not state.is_complete:
+                    state.analyze_complete = True  # Mark as "done" even if not verified
+                    self._mark_table_complete(state, now)
+                    stuck_count += 1
+
+            if stuck_count > 0:
+                logger.warning(
+                    f"Finalized {stuck_count} tables stuck in analyzing phase "
+                    "(early analyze timeout/error)"
+                )
 
     def get_progress(self) -> RestoreProgress:
         """Get current progress snapshot.
@@ -998,28 +1115,62 @@ class RestoreProgressTracker:
     def finalize(self) -> RestoreProgress:
         """Finalize progress when myloader exits.
 
-        Called after myloader completes successfully. Marks all tables as
-        complete (myloader wouldn't exit if tables were incomplete).
+        Called after myloader completes successfully.
+
+        Behavior depends on early_analyze_enabled:
+        - If False: Marks all tables as complete (traditional behavior)
+        - If True: Marks tables as index_complete but NOT is_complete
+          (tables will be marked complete by mark_table_analyze_complete)
+
+        This ensures progress doesn't show 100% while analyze is still running.
 
         Returns:
-            Final progress snapshot with all tables complete.
+            Final progress snapshot.
         """
         now = time.monotonic()
         with self._lock:
-            # Any table still "in progress" is actually done
             for state in self._tables.values():
-                if not state.is_complete:
+                if state.is_complete:
+                    continue
+
+                if self._early_analyze_enabled:
+                    # Early analyze mode: mark index phase done, but wait for analyze
+                    # Tables will be completed by mark_table_analyze_complete()
+                    if not state.data_complete:
+                        state.data_complete = True
+                    if not state.index_complete:
+                        state.index_complete = True
+                        logger.debug(
+                            f"Table {state.name}: index phase complete (finalized, "
+                            f"awaiting analyze)"
+                        )
+                    # Set phase to "indexing" if not already analyzing
+                    # (early_analyze may have already started on some tables)
+                    if state.phase not in ("analyzing", "complete"):
+                        state.phase = "indexing"
+                        state.percent_complete = 99.0  # Near-complete, awaiting analyze
+                else:
+                    # Traditional mode: mark all tables complete
                     self._mark_table_complete(state, now)
 
-            progress = self._build_progress_snapshot("finalized")
+            source = "finalized"
+            progress = self._build_progress_snapshot(source)
 
-            logger.info(
-                "Finalized progress: %d/%d tables, %s/%s rows",
-                progress.tables_completed,
-                progress.tables_total,
-                f"{progress.rows_loaded:,}",
-                f"{progress.rows_total:,}",
-            )
+            if self._early_analyze_enabled:
+                logger.info(
+                    "Finalized (early_analyze mode): %d/%d tables index-complete, "
+                    "awaiting analyze phase",
+                    sum(1 for s in self._tables.values() if s.index_complete),
+                    self._total_tables,
+                )
+            else:
+                logger.info(
+                    "Finalized progress: %d/%d tables, %s/%s rows",
+                    progress.tables_completed,
+                    progress.tables_total,
+                    f"{progress.rows_loaded:,}",
+                    f"{progress.rows_total:,}",
+                )
 
             # Always emit final progress
             if self._on_progress:
@@ -1242,12 +1393,14 @@ class RestoreProgressTracker:
                 # Include all tables that had any progress (now 100%)
                 include_table = state.rows_total > 0 or state.was_ever_seen
             else:
-                # Log-based active detection: table is active if:
-                # 1. Files have started being processed (files_started > 0), AND
-                # 2. Either still loading data OR in indexing phase
-                if state.files_started > 0:
-                    # Loading phase: data not yet complete
-                    # Indexing phase: data complete but not fully done
+                # Table is active if:
+                # 1. In analyzing phase (early analyze running), OR
+                # 2. Files have started (files_started > 0) AND not complete
+                if state.phase == "analyzing":
+                    # Analyzing phase: always show (ANALYZE TABLE running)
+                    include_table = True
+                elif state.files_started > 0:
+                    # Loading/indexing phase: show if not complete
                     include_table = not state.is_complete
 
             if include_table:
@@ -1344,6 +1497,7 @@ def create_progress_tracker(
     table_metadata: list[TableRowEstimate],
     progress_callback: Callable[[float, dict], None] | None = None,
     event_callback: Callable[[str, dict], None] | None = None,
+    early_analyze_enabled: bool = False,
 ) -> RestoreProgressTracker:
     """Create a RestoreProgressTracker with compatible callback.
 
@@ -1355,6 +1509,8 @@ def create_progress_tracker(
         progress_callback: Old-style callback receiving (percent, detail_dict).
         event_callback: Optional callback for file/table completion events.
             Called with (event_type: str, event_data: dict).
+        early_analyze_enabled: If True, tables are NOT marked complete until
+            analyze phase finishes. This prevents premature 100% progress.
 
     Returns:
         Configured RestoreProgressTracker instance.
@@ -1363,6 +1519,7 @@ def create_progress_tracker(
         return RestoreProgressTracker(
             table_metadata=table_metadata,
             on_event=event_callback,
+            early_analyze_enabled=early_analyze_enabled,
         )
 
     def on_progress(p: RestoreProgress) -> None:
@@ -1373,4 +1530,5 @@ def create_progress_tracker(
         table_metadata=table_metadata,
         on_progress=on_progress,
         on_event=event_callback,
+        early_analyze_enabled=early_analyze_enabled,
     )

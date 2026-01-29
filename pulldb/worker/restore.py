@@ -311,10 +311,13 @@ def run_myloader(
     )
 
     # Create progress tracker - single source of truth
+    # Enable early_analyze mode if worker is provided - this prevents premature
+    # 100% progress by waiting for analyze phase to complete each table
     tracker = create_progress_tracker(
         table_metadata=backup_meta.tables,
         progress_callback=progress_callback,
         event_callback=event_callback,
+        early_analyze_enabled=(early_analyze_worker is not None),
     )
 
     # Connect early analyze worker to tracker for UI updates
@@ -626,8 +629,10 @@ def orchestrate_restore_workflow(
         def _event_with_analyze(event_type: str, data: dict) -> None:
             """Event callback that also queues completed tables for analysis."""
             _emit_event(event_type, data)
-            # Queue table for analysis when restore completes
-            if event_type == "table_restore_complete" and early_analyze_worker:
+            # Queue table for analysis when index building completes
+            # In early_analyze mode: table_index_complete fires when indexes done
+            # In traditional mode: table_restore_complete fires (indexes done = table done)
+            if event_type in ("table_index_complete", "table_restore_complete") and early_analyze_worker:
                 table_name = data.get("table")
                 if table_name:
                     early_analyze_worker.queue_table(table_name)
@@ -674,6 +679,10 @@ def orchestrate_restore_workflow(
                 except Exception as e:
                     logger.warning(f"Early analyze worker error: {e}")
                     result["early_analyze"] = {"error": str(e)}
+                    # Safety net: finalize any tables stuck in analyzing phase
+                    # This prevents progress from showing stuck tables at 99%
+                    if tracker:
+                        tracker.finalize_analyze_phase()
         finally:
             # CRITICAL: Always stop both monitors to prevent connection leaks
             # This runs on success, failure, and abort - closing all staging DB connections

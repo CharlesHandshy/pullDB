@@ -6,6 +6,71 @@
 
 ---
 
+## 2026-01-28 | Fix: Restore Progress Shows 100% During Analyze Phase
+
+### Context
+User reported "Restore" progress bar showing 100% while processlist still showed table activity. Investigation revealed the issue occurred during the early analyze phase.
+
+### Root Cause Analysis
+1. **Timeline mismatch**: When myloader exits, `tracker.finalize()` is called, marking ALL tables as `is_complete=True`
+2. **Early analyze runs AFTER myloader exits**: The EarlyAnalyzeWorker continues running ANALYZE TABLE commands
+3. **Silently ignored**: `mark_table_analyzing()` had early return when `is_complete=True`, so analyze phase never appeared in UI
+4. **Result**: Progress showed 100%, but processlist showed ANALYZE TABLE activity
+
+### What Was Done
+1. **Fixed `mark_table_analyzing()`**: Removed early return for `is_complete=True` tables
+   - Now re-activates finalized tables: sets `is_complete=False`, removes from `_tables_completed`
+   - Allows transition: complete → analyzing → complete
+2. **Updated table inclusion logic in `_build_progress_snapshot()`**:
+   - Tables in "analyzing" phase are ALWAYS included (regardless of `files_started`)
+   - Ensures ANALYZE TABLE activity appears in per-table progress bars
+
+### Rationale
+- Per FAIL HARD: UI must accurately reflect system state
+- Per ROOT CAUSE FIXING: Fixed the actual bug instead of masking it
+- Early analyze phase IS part of the restore process; UI should show it
+
+### Files Modified
+- `pulldb/worker/restore_progress.py` (+12/-6) - re-activate finalized tables for analyzing
+
+### Test Results
+- 263 unit tests passing
+- Package rebuilt: `dist/pulldb-1.0.7-py3-none-any.whl`
+
+---
+
+## 2026-01-28 | Schema Creation Events & Myloader Completion Signal
+
+### Context
+User wanted to improve Execution Log visibility during restore operations. Analyzed myloader source code (mydumper/mydumper GitHub repo) to identify valuable logging patterns.
+
+### What Was Done
+1. **Analyzed myloader source** - Compiled all `g_message`, `g_warning`, `g_critical` patterns
+2. **Added schema phase visibility**:
+   - `_RE_CREATING_TABLE` - captures "Thread N: Creating table db.table"
+   - `_RE_TABLE_CREATED` - captures "Thread N: Table db.table created"
+   - New events: `schema_creating`, `schema_created` with progress (e.g., "2/10")
+3. **Added authoritative completion signal**:
+   - `_RE_RESTORE_COMPLETED` - captures "Restore completed" (case-insensitive)
+   - New `myloader_completed` property for callers
+4. **Removed dead code** - `_RE_FINISHED` pattern never matched current myloader output
+5. **Updated UI** - Template renders new events, dependencies.py has labels
+
+### Rationale
+- Users couldn't see activity during schema creation phase (first 5-10s of restore)
+- No authoritative completion signal existed - relied on processlist absence inference
+- Dead `_RE_FINISHED` pattern cluttered codebase (per ROOT CAUSE FIXING principle)
+
+### Files Modified
+- `pulldb/worker/restore_progress.py` (+130/-9) - new patterns, events, property
+- `pulldb/web/dependencies.py` (+3) - event labels
+- `pulldb/web/templates/features/jobs/details.html` (+11) - event rendering
+
+### Commits
+- `48ab2c1` - feat(restore): add schema creation events and myloader completion signal
+
+---
+
 ## 2026-01-27 | TODO: Simulation Mode Orphan Detection Bug
 
 ### Context

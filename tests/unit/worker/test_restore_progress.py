@@ -1027,3 +1027,219 @@ class TestFileBasedETA:
         assert "files_completed" in detail
         assert "files_total" in detail
         assert detail["files_total"] == 5
+
+
+# =============================================================================
+# Early Analyze Mode Tests
+# =============================================================================
+
+
+class TestEarlyAnalyzeMode:
+    """Test early_analyze_enabled behavior for proper phase tracking."""
+
+    @pytest.fixture
+    def early_analyze_tracker(
+        self, table_metadata: list[TableRowEstimate]
+    ) -> RestoreProgressTracker:
+        """Tracker with early_analyze_enabled=True."""
+        return RestoreProgressTracker(
+            table_metadata=table_metadata,
+            throttle_interval_seconds=0,
+            early_analyze_enabled=True,
+        )
+
+    def test_strikes_do_not_complete_table_in_early_analyze_mode(
+        self, early_analyze_tracker: RestoreProgressTracker
+    ) -> None:
+        """With early_analyze_enabled, strikes mark index_complete but NOT is_complete."""
+        # Table appears and gets data_complete signal
+        snapshot1 = make_snapshot({"users": ("indexing", 0.0, 5)})
+        early_analyze_tracker.update_from_processlist(snapshot1)
+        
+        state = early_analyze_tracker._tables["users"]
+        state.data_complete = True
+        
+        # Table leaves - accumulate 3 strikes
+        snapshot_empty = make_snapshot({})
+        for _ in range(3):
+            early_analyze_tracker.update_from_processlist(snapshot_empty)
+        
+        # index_complete should be True, but is_complete should still be False
+        assert state.index_complete is True
+        assert state.is_complete is False
+
+    def test_mark_table_analyzing_reactivates_finalized_table(
+        self, early_analyze_tracker: RestoreProgressTracker
+    ) -> None:
+        """mark_table_analyzing should re-activate a table after finalize()."""
+        # Simulate myloader completing
+        early_analyze_tracker.finalize()
+        
+        state = early_analyze_tracker._tables["users"]
+        # Table should NOT be complete after finalize in early_analyze mode
+        assert state.is_complete is False
+        assert state.index_complete is True
+        
+        # Now early analyze starts
+        early_analyze_tracker.mark_table_analyzing("users")
+        assert state.phase == "analyzing"
+        assert state.is_complete is False
+
+    def test_mark_table_analyze_complete_finalizes_table(
+        self, early_analyze_tracker: RestoreProgressTracker
+    ) -> None:
+        """mark_table_analyze_complete marks table as truly complete."""
+        # Simulate full lifecycle
+        early_analyze_tracker.finalize()  # myloader done
+        early_analyze_tracker.mark_table_analyzing("users")  # analyze starts
+        early_analyze_tracker.mark_table_analyze_complete("users")  # analyze done
+        
+        state = early_analyze_tracker._tables["users"]
+        assert state.is_complete is True
+        assert state.analyze_complete is True
+        assert state.phase == "complete"
+
+    def test_finalize_waits_for_analyze_in_early_analyze_mode(
+        self, early_analyze_tracker: RestoreProgressTracker
+    ) -> None:
+        """In early_analyze mode, finalize() doesn't mark tables complete."""
+        # finalize represents myloader exiting
+        progress = early_analyze_tracker.finalize()
+        
+        # Tables should NOT be complete yet - waiting for analyze
+        assert progress.tables_completed == 0
+        
+        for state in early_analyze_tracker._tables.values():
+            assert state.is_complete is False
+            assert state.index_complete is True
+
+    def test_traditional_mode_still_completes_on_finalize(
+        self, tracker: RestoreProgressTracker
+    ) -> None:
+        """Without early_analyze_enabled, finalize() completes all tables."""
+        progress = tracker.finalize()
+        
+        # All tables should be complete
+        assert progress.tables_completed == 3
+        
+        for state in tracker._tables.values():
+            assert state.is_complete is True
+
+    def test_create_progress_tracker_passes_early_analyze_flag(
+        self, table_metadata: list[TableRowEstimate]
+    ) -> None:
+        """create_progress_tracker passes early_analyze_enabled correctly."""
+        tracker = create_progress_tracker(
+            table_metadata=table_metadata,
+            early_analyze_enabled=True,
+        )
+        
+        assert tracker._early_analyze_enabled is True
+
+    def test_analyzing_tables_show_in_progress(
+        self, early_analyze_tracker: RestoreProgressTracker
+    ) -> None:
+        """Tables in 'analyzing' phase should appear in tables_in_progress."""
+        early_analyze_tracker.finalize()
+        early_analyze_tracker.mark_table_analyzing("users")
+        
+        progress = early_analyze_tracker.get_progress()
+        
+        # users should be in tables_in_progress with phase 'analyzing'
+        table_names = [t.name for t in progress.tables_in_progress]
+        assert "users" in table_names
+        
+        users_info = next(t for t in progress.tables_in_progress if t.name == "users")
+        assert users_info.phase == "analyzing"
+
+    def test_finalize_analyze_phase_safety_net(
+        self, early_analyze_tracker: RestoreProgressTracker
+    ) -> None:
+        """finalize_analyze_phase marks stuck analyzing tables as complete."""
+        # Simulate myloader done + some tables in analyzing
+        early_analyze_tracker.finalize()
+        early_analyze_tracker.mark_table_analyzing("users")
+        early_analyze_tracker.mark_table_analyzing("orders")
+        
+        # One table completes normally
+        early_analyze_tracker.mark_table_analyze_complete("users")
+        
+        # orders is stuck in analyzing
+        orders_state = early_analyze_tracker._tables["orders"]
+        assert orders_state.phase == "analyzing"
+        assert orders_state.is_complete is False
+        
+        # Call safety net (simulates timeout)
+        early_analyze_tracker.finalize_analyze_phase()
+        
+        # Now orders should be complete
+        assert orders_state.is_complete is True
+        assert orders_state.analyze_complete is True
+
+    def test_emits_table_index_complete_event_in_early_analyze_mode(
+        self, table_metadata: list[TableRowEstimate]
+    ) -> None:
+        """Strike completion emits table_index_complete event in early_analyze mode."""
+        events: list[tuple[str, dict]] = []
+        
+        def capture_event(event_type: str, data: dict) -> None:
+            events.append((event_type, data))
+        
+        tracker = RestoreProgressTracker(
+            table_metadata=table_metadata,
+            throttle_interval_seconds=0,
+            early_analyze_enabled=True,
+            on_event=capture_event,
+        )
+        
+        # Table appears with data_complete
+        snapshot1 = make_snapshot({"users": ("indexing", 0.0, 5)})
+        tracker.update_from_processlist(snapshot1)
+        tracker._tables["users"].data_complete = True
+        
+        # Table leaves - accumulate 3 strikes
+        snapshot_empty = make_snapshot({})
+        for _ in range(3):
+            tracker.update_from_processlist(snapshot_empty)
+        
+        # Should have emitted table_index_complete (NOT table_restore_complete)
+        index_complete_events = [e for e in events if e[0] == "table_index_complete"]
+        restore_complete_events = [e for e in events if e[0] == "table_restore_complete"]
+        
+        assert len(index_complete_events) == 1
+        assert index_complete_events[0][1]["table"] == "users"
+        assert len(restore_complete_events) == 0  # Should NOT emit restore_complete
+
+    def test_emits_table_restore_complete_in_traditional_mode(
+        self, table_metadata: list[TableRowEstimate]
+    ) -> None:
+        """Strike completion emits table_restore_complete in traditional mode."""
+        events: list[tuple[str, dict]] = []
+        
+        def capture_event(event_type: str, data: dict) -> None:
+            events.append((event_type, data))
+        
+        tracker = RestoreProgressTracker(
+            table_metadata=table_metadata,
+            throttle_interval_seconds=0,
+            early_analyze_enabled=False,  # Traditional mode
+            on_event=capture_event,
+        )
+        
+        # Table appears with data_complete
+        snapshot1 = make_snapshot({"users": ("indexing", 0.0, 5)})
+        tracker.update_from_processlist(snapshot1)
+        tracker._tables["users"].data_complete = True
+        
+        # Table leaves - accumulate 3 strikes
+        snapshot_empty = make_snapshot({})
+        for _ in range(3):
+            tracker.update_from_processlist(snapshot_empty)
+        
+        # Should have emitted table_restore_complete (NOT table_index_complete)
+        index_complete_events = [e for e in events if e[0] == "table_index_complete"]
+        restore_complete_events = [e for e in events if e[0] == "table_restore_complete"]
+        
+        assert len(restore_complete_events) == 1
+        assert restore_complete_events[0][1]["table"] == "users"
+        assert len(index_complete_events) == 0  # Should NOT emit index_complete
