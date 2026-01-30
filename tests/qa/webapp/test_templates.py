@@ -243,10 +243,28 @@ class TestJobDetailTemplateContent:
         assert "badge" in content
 
     def test_has_htmx_polling_for_active_jobs(self) -> None:
-        """Job detail has HTMX polling for running jobs."""
+        """Job detail has HTMX polling for running jobs.
+        
+        HTMX polling is now in included partials (job_header.html, job_progress_bars.html).
+        The main template includes these partials, which contain the hx-* directives.
+        """
         content = JOB_DETAIL_TEMPLATE.read_text()
-        assert "hx-get" in content
-        assert "hx-trigger" in content
+        # Verify that progress bars partial is included (which has HTMX)
+        assert 'job_progress_bars.html' in content
+        # Verify that header partial is included (which has HTMX for phase stepper)
+        assert 'job_header.html' in content
+        
+        # Check the partials have HTMX directives
+        progress_partial = TEMPLATES_DIR / "partials" / "job_progress_bars.html"
+        header_partial = TEMPLATES_DIR / "partials" / "job_header.html"
+        
+        progress_content = progress_partial.read_text()
+        assert "hx-get" in progress_content
+        assert "hx-trigger" in progress_content
+        
+        header_content = header_partial.read_text()
+        assert "hx-get" in header_content
+        assert "hx-trigger" in header_content
 
     def test_shows_phase_progress(self) -> None:
         """Job detail shows phase progress stepper."""

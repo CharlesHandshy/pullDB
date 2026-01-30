@@ -567,7 +567,7 @@ def orchestrate_restore_workflow(
                 mysql_user=spec.staging_conn.mysql_user,
                 mysql_password=spec.staging_conn.mysql_password,
                 staging_db=staging_result.staging_db,
-                poll_interval_seconds=2.0,
+                poll_interval_seconds=0.5,  # Fast polling to capture index rebuilds
             )
             processlist_monitor = ProcesslistMonitor(monitor_config)
             processlist_monitor.start()

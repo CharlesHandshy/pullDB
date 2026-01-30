@@ -1457,10 +1457,10 @@ class RestoreProgressTracker:
             fps = files_completed / elapsed
 
         # Build list of in-progress tables
-        # Include tables that are actively being worked on based on LOG OUTPUT:
-        #   - files_started > 0: myloader has begun processing this table
-        #   - NOT data_complete: still loading data files
-        #   - OR data_complete but NOT is_complete: indexing phase
+        # Include tables that are actively being worked on:
+        #   - Currently in processlist (thread actively running), OR
+        #   - In analyzing phase (ANALYZE TABLE doesn't show in processlist), OR
+        #   - Still loading data (not data_complete) with files started
         # For "finalized" source, include all tables that had progress
         in_progress: list[TableProgressInfo] = []
 
@@ -1472,13 +1472,19 @@ class RestoreProgressTracker:
                 include_table = state.rows_total > 0 or state.was_ever_seen
             else:
                 # Table is active if:
-                # 1. In analyzing phase (early analyze running), OR
-                # 2. Files have started (files_started > 0) AND not complete
+                # 1. Currently in processlist (actively running), OR
+                # 2. In analyzing phase (ANALYZE TABLE running - not visible in processlist), OR
+                # 3. Still loading data (files_started but not data_complete)
+                is_in_processlist = state.name in self._tables_in_processlist
+                
                 if state.phase == "analyzing":
-                    # Analyzing phase: always show (ANALYZE TABLE running)
+                    # Analyzing phase: always show (ANALYZE TABLE running, not in processlist)
                     include_table = True
-                elif state.files_started > 0:
-                    # Loading/indexing phase: show if not complete
+                elif is_in_processlist:
+                    # Currently in processlist: actively running
+                    include_table = not state.is_complete
+                elif state.files_started > 0 and not state.data_complete:
+                    # Data still loading (not yet reached "Enqueuing index")
                     include_table = not state.is_complete
 
             if include_table:

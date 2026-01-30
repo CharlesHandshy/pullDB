@@ -1001,7 +1001,7 @@ class WorkerJobExecutor:
         backup_spec: BackupSpec,
         workflow_result: dict[str, Any],
     ) -> None:
-        """Finalize successful workflow: emit profile, mark deployed, save history.
+        """Finalize successful workflow: mark deployed, emit profile, save history.
 
         Args:
             job: Job being executed.
@@ -1010,12 +1010,8 @@ class WorkerJobExecutor:
             workflow_result: Result from restore workflow (contains myloader result).
         """
         profiler.complete()
-        self._append_event(
-            job.id,
-            "restore_profile",
-            profiler.profile.to_dict(),
-        )
 
+        # Mark deployed FIRST so UI can refresh and see correct status
         self.job_repo.mark_job_deployed(job.id)
         logger.info(
             "Job deployed",
@@ -1025,6 +1021,14 @@ class WorkerJobExecutor:
                 "phase": "executor_deployed",
                 "profile": profiler.profile.phase_breakdown,
             },
+        )
+
+        # Emit profile AFTER status update - UI refreshes on this event
+        # and needs to see deployed status
+        self._append_event(
+            job.id,
+            "restore_profile",
+            profiler.profile.to_dict(),
         )
 
         # Save job history summary

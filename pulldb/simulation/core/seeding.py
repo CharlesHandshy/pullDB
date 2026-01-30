@@ -598,26 +598,53 @@ def _create_event(
 
 
 def _seed_job_events(state: SimulationState, job: Job, base_event_id: int) -> None:
-    """Seed events for a single job."""
+    """Seed events for a single job using PRODUCTION-IDENTICAL event types.
+    
+    Event sequence mirrors actual worker workflow:
+    1. created → 2. running → 3. backup_selected → 4. download_started →
+    5. download_progress → 6. download_complete → 7. extraction_started →
+    8. extraction_complete → 9. staging_cleanup_started → 10. staging_cleanup_complete →
+    11. myloader_started → 12. restore_progress → 13. restore_complete →
+    14. post_sql_started → 15. post_sql_complete → 16. atomic_rename_started →
+    17. atomic_rename_complete
+    """
     events: list[JobEvent] = []
     event_id = base_event_id + 1
     base_time = job.submitted_at
     
+    # Phase 1: Queued
     events.append(_create_event(event_id, job.id, "created", "Job queued", logged_at=base_time))
     event_id += 1
     
     if job.status in (JobStatus.RUNNING, JobStatus.DEPLOYED, JobStatus.COMPLETE, JobStatus.FAILED, JobStatus.CANCELED):
         claim_time = base_time + timedelta(seconds=random.randint(5, 30))
         worker = job.worker_id or random.choice(WORKERS)
-        events.append(_create_event(event_id, job.id, "claimed", f"Claimed by {worker}", logged_at=claim_time))
+        
+        # Phase 2: Discovery (running + backup_selected)
+        events.append(_create_event(event_id, job.id, "running", json.dumps({
+            "worker_id": worker,
+        }), logged_at=claim_time))
         event_id += 1
         
-        dl_time = claim_time + timedelta(seconds=random.randint(2, 10))
-        events.append(_create_event(event_id, job.id, "downloading", "Downloading backup from S3...", logged_at=dl_time))
+        backup_time = claim_time + timedelta(seconds=random.randint(1, 5))
+        events.append(_create_event(event_id, job.id, "backup_selected", json.dumps({
+            "bucket": "pulldb-backups",
+            "key": f"customer/{job.target}/backup.tar.gz",
+            "size_bytes": random.randint(500_000_000, 5_000_000_000),
+        }), logged_at=backup_time))
+        event_id += 1
+        
+        # Phase 3: Download
+        dl_time = backup_time + timedelta(seconds=random.randint(2, 10))
+        events.append(_create_event(event_id, job.id, "download_started", json.dumps({
+            "bucket": "pulldb-backups",
+            "key": f"customer/{job.target}/backup.tar.gz",
+        }), logged_at=dl_time))
         event_id += 1
         
         if job.status == JobStatus.RUNNING:
-            download_progress = random.randint(30, 80)
+            # Still running - show partial progress
+            download_progress = random.randint(30, 95)
             total_bytes = random.randint(500_000_000, 5_000_000_000)
             downloaded_bytes = int(total_bytes * download_progress / 100)
             progress_detail = json.dumps({
@@ -630,25 +657,157 @@ def _seed_job_events(state: SimulationState, job: Job, base_event_id: int) -> No
             events.append(_create_event(event_id, job.id, "download_progress", progress_detail, logged_at=progress_time))
             event_id += 1
             
-            restore_time = dl_time + timedelta(minutes=random.randint(5, 20))
-            events.append(_create_event(event_id, job.id, "restoring", "Running myloader restore...", logged_at=restore_time))
-            event_id += 1
+            # Randomly advance to extraction or restore phase
+            phase_roll = random.random()
+            if phase_roll > 0.7:
+                # In restore phase
+                dl_complete_time = progress_time + timedelta(minutes=random.randint(1, 5))
+                events.append(_create_event(event_id, job.id, "download_complete", json.dumps({
+                    "path": "/tmp/backup.tar.gz",
+                }), logged_at=dl_complete_time))
+                event_id += 1
+                
+                extract_time = dl_complete_time + timedelta(seconds=random.randint(5, 30))
+                events.append(_create_event(event_id, job.id, "extraction_started", json.dumps({
+                    "archive_path": "/tmp/backup.tar.gz",
+                }), logged_at=extract_time))
+                event_id += 1
+                
+                extract_complete = extract_time + timedelta(minutes=random.randint(2, 10))
+                events.append(_create_event(event_id, job.id, "extraction_complete", json.dumps({
+                    "path": "/tmp/extracted",
+                    "total_files": random.randint(100, 1000),
+                }), logged_at=extract_complete))
+                event_id += 1
+                
+                staging_time = extract_complete + timedelta(seconds=random.randint(1, 5))
+                events.append(_create_event(event_id, job.id, "staging_cleanup_started", json.dumps({
+                    "target": job.target,
+                }), logged_at=staging_time))
+                event_id += 1
+                
+                staging_complete = staging_time + timedelta(seconds=random.randint(1, 10))
+                events.append(_create_event(event_id, job.id, "staging_cleanup_complete", json.dumps({
+                    "staging_db": job.staging_name,
+                }), logged_at=staging_complete))
+                event_id += 1
+                
+                restore_time = staging_complete + timedelta(seconds=random.randint(1, 5))
+                events.append(_create_event(event_id, job.id, "myloader_started", json.dumps({
+                    "staging_db": job.staging_name,
+                    "backup_dir": "/tmp/extracted",
+                }), logged_at=restore_time))
+                event_id += 1
+                
+                restore_progress_time = restore_time + timedelta(minutes=random.randint(5, 15))
+                events.append(_create_event(event_id, job.id, "restore_progress", json.dumps({
+                    "percent": random.randint(30, 80),
+                    "detail": {"status": "restoring", "active_threads": random.randint(1, 8)},
+                }), logged_at=restore_progress_time))
+                event_id += 1
+            elif phase_roll > 0.4:
+                # In extraction phase
+                dl_complete_time = progress_time + timedelta(minutes=random.randint(1, 5))
+                events.append(_create_event(event_id, job.id, "download_complete", json.dumps({
+                    "path": "/tmp/backup.tar.gz",
+                }), logged_at=dl_complete_time))
+                event_id += 1
+                
+                extract_time = dl_complete_time + timedelta(seconds=random.randint(5, 30))
+                events.append(_create_event(event_id, job.id, "extraction_started", json.dumps({
+                    "archive_path": "/tmp/backup.tar.gz",
+                }), logged_at=extract_time))
+                event_id += 1
+                
+                # Partial extraction progress
+                events.append(_create_event(event_id, job.id, "extraction_progress", json.dumps({
+                    "percent": random.randint(30, 80),
+                    "files_extracted": random.randint(50, 500),
+                }), logged_at=extract_time + timedelta(minutes=random.randint(1, 5))))
+                event_id += 1
             
         elif job.status in (JobStatus.DEPLOYED, JobStatus.COMPLETE):
+            # Complete workflow - all phases
             dl_complete = dl_time + timedelta(minutes=random.randint(2, 15))
-            events.append(_create_event(event_id, job.id, "downloaded", "Download complete", logged_at=dl_complete))
+            events.append(_create_event(event_id, job.id, "download_complete", json.dumps({
+                "path": "/tmp/backup.tar.gz",
+            }), logged_at=dl_complete))
             event_id += 1
             
-            restore_start = dl_complete + timedelta(seconds=random.randint(5, 30))
-            events.append(_create_event(event_id, job.id, "restoring", "Running myloader restore...", logged_at=restore_start))
+            # Phase 4: Extraction
+            extract_time = dl_complete + timedelta(seconds=random.randint(5, 30))
+            events.append(_create_event(event_id, job.id, "extraction_started", json.dumps({
+                "archive_path": "/tmp/backup.tar.gz",
+            }), logged_at=extract_time))
             event_id += 1
             
-            post_time = restore_start + timedelta(minutes=random.randint(10, 45))
-            events.append(_create_event(event_id, job.id, "post_sql", "Applying post-restore scripts...", logged_at=post_time))
+            extract_complete = extract_time + timedelta(minutes=random.randint(2, 10))
+            events.append(_create_event(event_id, job.id, "extraction_complete", json.dumps({
+                "path": "/tmp/extracted",
+                "total_files": random.randint(100, 1000),
+            }), logged_at=extract_complete))
             event_id += 1
             
-            complete_time = post_time + timedelta(minutes=random.randint(1, 5))
-            events.append(_create_event(event_id, job.id, "complete", "Restore complete", logged_at=complete_time))
+            # Phase 5: Staging cleanup
+            staging_cleanup_time = extract_complete + timedelta(seconds=random.randint(1, 5))
+            events.append(_create_event(event_id, job.id, "staging_cleanup_started", json.dumps({
+                "target": job.target,
+            }), logged_at=staging_cleanup_time))
+            event_id += 1
+            
+            staging_cleanup_complete = staging_cleanup_time + timedelta(seconds=random.randint(1, 10))
+            events.append(_create_event(event_id, job.id, "staging_cleanup_complete", json.dumps({
+                "staging_db": job.staging_name,
+            }), logged_at=staging_cleanup_complete))
+            event_id += 1
+            
+            # Phase 6: Myloader restore
+            restore_start = staging_cleanup_complete + timedelta(seconds=random.randint(1, 5))
+            events.append(_create_event(event_id, job.id, "myloader_started", json.dumps({
+                "staging_db": job.staging_name,
+                "backup_dir": "/tmp/extracted",
+            }), logged_at=restore_start))
+            event_id += 1
+            
+            restore_complete_time = restore_start + timedelta(minutes=random.randint(10, 45))
+            events.append(_create_event(event_id, job.id, "restore_complete", json.dumps({
+                "target": job.target,
+                "table_count": random.randint(50, 200),
+                "total_rows": random.randint(1_000_000, 100_000_000),
+            }), logged_at=restore_complete_time))
+            event_id += 1
+            
+            # Phase 7: Post-SQL
+            post_sql_start = restore_complete_time + timedelta(seconds=random.randint(1, 5))
+            events.append(_create_event(event_id, job.id, "post_sql_started", json.dumps({
+                "staging_db": job.staging_name,
+            }), logged_at=post_sql_start))
+            event_id += 1
+            
+            post_sql_complete = post_sql_start + timedelta(minutes=random.randint(1, 5))
+            events.append(_create_event(event_id, job.id, "post_sql_complete", json.dumps({
+                "scripts_executed": random.randint(1, 5),
+                "duration_seconds": random.randint(30, 300),
+            }), logged_at=post_sql_complete))
+            event_id += 1
+            
+            # Phase 8: Atomic rename
+            rename_start = post_sql_complete + timedelta(seconds=random.randint(1, 5))
+            events.append(_create_event(event_id, job.id, "atomic_rename_started", json.dumps({
+                "staging_db": job.staging_name,
+                "target_db": job.target,
+            }), logged_at=rename_start))
+            event_id += 1
+            
+            rename_complete = rename_start + timedelta(seconds=random.randint(5, 30))
+            events.append(_create_event(event_id, job.id, "atomic_rename_complete", json.dumps({
+                "target_db": job.target,
+                "duration_seconds": random.randint(5, 30),
+            }), logged_at=rename_complete))
+            event_id += 1
+            
+            # Final complete event
+            events.append(_create_event(event_id, job.id, "complete", "Restore complete", logged_at=rename_complete))
             event_id += 1
             
         elif job.status == JobStatus.FAILED:

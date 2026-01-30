@@ -72,9 +72,10 @@ class TestDeriveCurrentPhase:
             MockEvent("restore_progress"),  # myloader still running
         ]
 
-        phase, phase_list = _derive_current_phase(events, "running")
+        phase, phase_list, effective_status = _derive_current_phase(events, "running")
 
         assert phase == "myloader"
+        assert effective_status == "running"
         # Verify phase list has myloader as active
         myloader_phase = next(p for p in phase_list if p["id"] == "myloader")
         assert myloader_phase["state"] == "active"
@@ -88,9 +89,10 @@ class TestDeriveCurrentPhase:
             MockEvent("restore_complete"),  # This should trigger post_sql
         ]
 
-        phase, phase_list = _derive_current_phase(events, "running")
+        phase, phase_list, effective_status = _derive_current_phase(events, "running")
 
         assert phase == "post_sql"
+        assert effective_status == "running"
         # Verify phase list has post_sql as active
         post_sql_phase = next(p for p in phase_list if p["id"] == "post_sql")
         assert post_sql_phase["state"] == "active"
@@ -104,10 +106,11 @@ class TestDeriveCurrentPhase:
             MockEvent("myloader_started"),
         ]
 
-        phase, _ = _derive_current_phase(events, "running")
+        phase, _, effective_status = _derive_current_phase(events, "running")
 
         # Most recent is myloader_started
         assert phase == "myloader"
+        assert effective_status == "running"
 
     def test_deployed_status_overrides_to_complete(self) -> None:
         """Deployed job status should show complete phase."""
@@ -116,9 +119,10 @@ class TestDeriveCurrentPhase:
             MockEvent("restore_complete"),
         ]
 
-        phase, phase_list = _derive_current_phase(events, "deployed")
+        phase, phase_list, effective_status = _derive_current_phase(events, "deployed")
 
         assert phase == "complete"
+        assert effective_status == "deployed"
         # All phases before complete should be marked complete
         for p in phase_list:
             if p["id"] != "complete":
@@ -131,13 +135,30 @@ class TestDeriveCurrentPhase:
             MockEvent("restore_progress"),
         ]
 
-        phase, phase_list = _derive_current_phase(events, "failed")
+        phase, phase_list, effective_status = _derive_current_phase(events, "failed")
 
         assert phase == "myloader"
+        assert effective_status == "failed"
         myloader_phase = next(p for p in phase_list if p["id"] == "myloader")
         assert myloader_phase["state"] == "failed"
 
     def test_empty_events_defaults_to_queued(self) -> None:
         """No events should default to queued phase."""
-        phase, _ = _derive_current_phase([], "queued")
+        phase, _, effective_status = _derive_current_phase([], "queued")
         assert phase == "queued"
+        assert effective_status == "queued"
+
+    def test_stale_queued_status_returns_running_effective_status(self) -> None:
+        """When DB says queued but events show progress, effective_status should be running."""
+        events = [
+            MockEvent("download_started"),
+            MockEvent("download_complete"),
+            MockEvent("extraction_started"),
+        ]
+
+        phase, phase_list, effective_status = _derive_current_phase(events, "queued")
+
+        # Even though DB says queued, events show extraction phase
+        assert phase == "extraction"
+        # effective_status should override to "running"
+        assert effective_status == "running"

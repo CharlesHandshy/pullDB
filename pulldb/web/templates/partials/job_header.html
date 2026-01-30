@@ -1,0 +1,105 @@
+{#
+   Job Header Partial (Phase Stepper + Status)
+   ============================================
+   HCA Layer: pages (partials)
+   
+   Displays the phase stepper and job status header row.
+   Used by job details page with HTMX polling for live updates.
+   
+   Required context:
+   - job: Job model
+   - phase_list: list of phase dicts with id, label, state
+   - is_active: bool (whether job is still running - controls HTMX polling)
+   - cancel_requested_at: datetime | None (for canceling indicator)
+   - effective_status: str | None (overrides job.status.value if DB status is stale)
+#}
+
+{# Determine the actual status to display - prefer effective_status if provided #}
+{% set display_status = effective_status if effective_status else job.status.value %}
+
+{# Wrapper div with HTMX for auto-refresh when job is active #}
+<div id="job-header-container"
+     {% if is_active %}
+     hx-get="/web/jobs/{{ job.id }}/header"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+    <!-- Phase Progress -->
+    {% if phase_list %}
+    <div class="phase-stepper card">
+        <div class="phase-stepper-track">
+            {% for phase in phase_list %}
+            <div class="phase-step phase-step--{{ phase.state }}" data-phase="{{ phase.id }}">
+                <div class="phase-step-indicator">
+                    {% if phase.state == 'complete' %}
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                    {% elif phase.state == 'active' %}
+                    <div class="phase-step-spinner"></div>
+                    {% elif phase.state == 'failed' %}
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                    {% else %}
+                    <span class="phase-step-number">{{ loop.index }}</span>
+                    {% endif %}
+                </div>
+                <div class="phase-step-label">{{ phase.label }}</div>
+            </div>
+            {% if not loop.last %}
+            <div class="phase-step-connector phase-step-connector--{{ 'complete' if phase.state == 'complete' else 'pending' }}"></div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Status Header Row (inside details card styling handled by parent) -->
+    <div class="details-header" id="job-status-header">
+        <div class="details-header-item">
+            <span class="details-header-label">Status</span>
+            <span class="details-header-value">
+                <span class="badge 
+                    {% if display_status == 'deployed' %}badge-success
+                    {% elif display_status == 'complete' %}badge-success
+                    {% elif display_status == 'superseded' %}badge-neutral
+                    {% elif display_status == 'failed' %}badge-danger
+                    {% elif display_status == 'expired' %}badge-danger
+                    {% elif display_status == 'running' %}badge-primary
+                    {% elif display_status == 'queued' %}badge-warning
+                    {% elif display_status == 'deleted' %}badge-neutral
+                    {% elif display_status == 'deleting' %}badge-warning badge-pulse
+                    {% elif display_status == 'canceling' %}badge-warning badge-pulse
+                    {% elif display_status == 'canceled' %}badge-neutral
+                    {% else %}badge-neutral{% endif %}"
+                    {% if display_status == 'running' and cancel_requested_at %}
+                    style="text-decoration: line-through;"
+                    {% endif %}>
+                    {{ display_status | capitalize }}
+                </span>
+                {% if display_status == 'running' and cancel_requested_at %}
+                <span class="badge badge-warning ml-2">Canceling...</span>
+                {% endif %}
+            </span>
+        </div>
+        <div class="details-header-item">
+            <span class="details-header-label">Owner</span>
+            <span class="details-header-value">{{ job.owner_username }}</span>
+        </div>
+        <div class="details-header-item">
+            <span class="details-header-label">Submitted</span>
+            <span class="details-header-value">
+                {% if job.submitted_at %}
+                <span data-utc="{{ job.submitted_at.isoformat() }}Z" data-format="datetime">{{ job.submitted_at.strftime('%b %d, %y %H:%M:%S') }} UTC</span>
+                {% else %}—{% endif %}
+            </span>
+        </div>
+        {% if display_status in ['deployed', 'complete', 'superseded'] and job.expires_at %}
+        <div class="details-header-item">
+            <span class="details-header-label">Expires</span>
+            <span class="details-header-value">
+                <span data-utc="{{ job.expires_at.isoformat() }}Z" data-format="date">{{ job.expires_at.strftime('%b %d, %y') }}</span>
+            </span>
+        </div>
+        {% endif %}
+    </div>
+
+</div>

@@ -260,17 +260,24 @@ JOB_PHASES = [
 # Map event types to phases
 EVENT_TO_PHASE: dict[str, str] = {
     "queued": "queued",
+    "created": "queued",  # Simulation/legacy event
+    "claimed": "discovery",  # Simulation/legacy event
     "running": "discovery",
     "backup_selected": "discovery",
+    "downloading": "download",  # Simulation/legacy event
+    "downloaded": "download",  # Simulation/legacy event (download complete)
     "download_started": "download",
     "download_progress": "download",
     "download_complete": "download",
+    "download_failed": "download",
     "extraction_started": "extraction",
     "extraction_progress": "extraction",
     "extraction_complete": "extraction",
     "extraction_failed": "extraction",
     "format_detected": "extraction",
+    "restoring": "myloader",  # Simulation/legacy event
     "restore_started": "myloader",
+    "restore_failed": "myloader",
     "staging_cleanup_started": "myloader",
     "staging_drop_started": "myloader",
     "staging_drop_complete": "myloader",
@@ -278,8 +285,19 @@ EVENT_TO_PHASE: dict[str, str] = {
     "staging_cleanup_complete": "myloader",
     "myloader_started": "myloader",
     "restore_progress": "myloader",
+    # Metadata synthesis events (pre-myloader prep)
+    "metadata_synthesis_started": "myloader",
+    "metadata_synthesis_complete": "myloader",
+    # Schema creation events from myloader callback
+    "schema_creating": "myloader",
+    "schema_created": "myloader",
+    "restore_table_ready": "myloader",
+    "restore_file_loaded": "myloader",
     # Index rebuild events - still in myloader phase
+    "indexing_started": "myloader",
+    "indexing_progress": "myloader",
     "table_data_progress": "myloader",
+    "table_index_complete": "myloader",
     "table_index_rebuild_queued": "myloader",
     "table_index_rebuild_started": "myloader",
     "table_index_rebuild_confirmed": "myloader",
@@ -295,8 +313,21 @@ EVENT_TO_PHASE: dict[str, str] = {
     "post_sql_started": "post_sql",
     "post_sql_script_complete": "post_sql",
     "post_sql_complete": "post_sql",
+    # Pre-create metadata (before atomic rename)
+    "pre_create_metadata_started": "post_sql",
+    "pre_create_metadata_complete": "post_sql",
+    # Atomic rename phase - all sub-events
     "metadata_started": "atomic_rename",
     "metadata_complete": "atomic_rename",
+    "metadata_update_started": "atomic_rename",
+    "metadata_update_complete": "atomic_rename",
+    "atomic_rename_validating": "atomic_rename",
+    "atomic_rename_validation_pass": "atomic_rename",
+    "atomic_rename_checking_procedure": "atomic_rename",
+    "atomic_rename_procedure_ready": "atomic_rename",
+    "atomic_rename_executing": "atomic_rename",
+    "atomic_rename_target_dropped": "atomic_rename",
+    "atomic_rename_progress": "atomic_rename",
     "atomic_rename_started": "atomic_rename",
     "atomic_rename_complete": "atomic_rename",
     "staging_cleanup": "atomic_rename",
@@ -308,24 +339,33 @@ EVENT_TO_PHASE: dict[str, str] = {
 
 def _derive_current_phase(
     logs: list[Any], job_status: str
-) -> tuple[str, list[dict[str, Any]]]:
+) -> tuple[str, list[dict[str, Any]], str]:
     """Derive current phase from job events and build phase list with states.
 
     Returns:
-        Tuple of (current_phase_id, phase_list) where phase_list has
-        entries with 'id', 'label', and 'state' (pending/active/complete/failed).
+        Tuple of (current_phase_id, phase_list, effective_status) where:
+        - phase_list has entries with 'id', 'label', and 'state' (pending/active/complete/failed)
+        - effective_status is the status to display (may differ from DB status if stale)
     """
     # Determine the actual phase from events
     current_phase = "queued"
+    matched_event = None
     for event in reversed(logs):
         event_type = getattr(event, "event_type", "")
         if event_type in EVENT_TO_PHASE:
             current_phase = EVENT_TO_PHASE[event_type]
+            matched_event = event_type
             break
 
     # For completed/deployed jobs, the phase is "complete"
     if job_status in ("deployed", "complete"):
         current_phase = "complete"
+
+    # Derive effective status from events when DB status might be stale
+    # If events show the job has progressed past queued, it must be running
+    effective_status = job_status
+    if job_status == "queued" and current_phase != "queued":
+        effective_status = "running"
 
     # Determine if this is a terminal failure/cancel state
     # (but keep the actual phase where it failed)
@@ -342,7 +382,7 @@ def _derive_current_phase(
                 state = "failed"
             elif is_canceled:
                 state = "failed"  # Show canceled phase as failed (red X)
-            elif job_status in ("running", "queued"):
+            elif effective_status in ("running", "queued"):
                 state = "active"
             else:
                 state = "complete"
@@ -355,7 +395,7 @@ def _derive_current_phase(
             state = "complete"
         phase_list.append({"id": phase_id, "label": phase_label, "state": state})
 
-    return current_phase, phase_list
+    return current_phase, phase_list, effective_status
 
 
 def _get_retention_options(state: Any) -> list[dict[str, Any]]:
@@ -899,6 +939,7 @@ async def job_details(
     restore_stats: dict[str, Any] | None = None
     atomic_rename_stats: dict[str, Any] | None = None
     staging_warnings: list[dict[str, str]] = []
+    effective_status: str = "queued"
 
     if hasattr(state, "job_repo") and state.job_repo:
         job = state.job_repo.get_job_by_id(job_id)
@@ -906,7 +947,8 @@ async def job_details(
             raw_logs = state.job_repo.get_job_events(job_id)
 
             # Derive current phase for progress indicator (uses raw logs)
-            current_phase, phase_list = _derive_current_phase(raw_logs, job.status.value)
+            # Also get effective_status which handles DB status race condition
+            current_phase, phase_list, effective_status = _derive_current_phase(raw_logs, job.status.value)
 
             # Calculate download progress stats for progress bar (uses raw logs)
             download_stats = _calculate_download_stats(raw_logs)
@@ -1033,7 +1075,8 @@ async def job_details(
         flash_type = "success"
 
     # Determine if job is still active (controls HTMX polling for progress bars)
-    is_active = job.status in (JobStatus.QUEUED, JobStatus.RUNNING) if job else False
+    # Use effective_status which correctly handles stale DB status race condition
+    is_active = effective_status in ("queued", "running", "canceling") if job else False
 
     return templates.TemplateResponse(
         "features/jobs/details.html",
@@ -1059,6 +1102,8 @@ async def job_details(
             "atomic_rename_stats": atomic_rename_stats,
             "staging_warnings": staging_warnings,
             "is_active": is_active,
+            # Effective status for stale DB status handling
+            "effective_status": effective_status,
             # Retention management
             "can_manage_retention": (
                 job.owner_user_id == user.user_id or user.is_admin
@@ -1115,7 +1160,8 @@ async def job_progress_bars(
         raise HTTPException(status_code=404, detail="Job not found")
 
     # Determine if job is still active (controls HTMX polling)
-    is_active = job.status in (JobStatus.QUEUED, JobStatus.RUNNING)
+    # Include CANCELING to keep polling until job transitions to canceled/failed
+    is_active = job.status in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELING)
 
     return templates.TemplateResponse(
         "partials/job_progress_bars.html",
@@ -1128,6 +1174,66 @@ async def job_progress_bars(
             "restore_stats": restore_stats,
             "atomic_rename_stats": atomic_rename_stats,
             "is_active": is_active,
+        },
+    )
+
+
+@router.get("/{job_id}/header", response_class=HTMLResponse)
+async def job_header(
+    request: Request,
+    job_id: str,
+    state: Any = Depends(get_api_state),
+    user: User = Depends(require_login),
+) -> HTMLResponse:
+    """Return the phase stepper and status header for HTMX polling.
+    
+    This endpoint is called every 2s by HTMX to update the phase stepper
+    and status badge while the job is active.
+    """
+    logger.info(f"[HTMX] /header called for job {job_id[:8]}")
+    job = None
+    phase_list: list[dict[str, Any]] = []
+    cancel_requested_at = None
+    effective_status: str = "queued"
+
+    if hasattr(state, "job_repo") and state.job_repo:
+        job = state.job_repo.get_job_by_id(job_id)
+        if job:
+            raw_logs = state.job_repo.get_job_events(job_id)
+            logger.info(f"[HTMX] Job {job_id[:8]} status={job.status.value}, events={len(raw_logs)}")
+            
+            # Derive phase information from events
+            # Also get effective_status which handles DB status race condition
+            current_phase, phase_list, effective_status = _derive_current_phase(raw_logs, job.status.value)
+            logger.info(f"[HTMX] Job {job_id[:8]} derived phase={current_phase}, effective_status={effective_status}")
+            
+            # Check for cancel request
+            for event in raw_logs:
+                if getattr(event, "event_type", "") == "cancel_requested":
+                    cancel_requested_at = getattr(event, "timestamp", None)
+                    break
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Determine if job is still active (controls HTMX polling)
+    # Use effective_status which handles stale DB status
+    is_active = effective_status in ("queued", "running", "canceling")
+
+    # Get expiring_warning_days from settings
+    expiring_warning_days = _get_expiring_warning_days(state)
+
+    return templates.TemplateResponse(
+        "partials/job_header.html",
+        {
+            "request": request,
+            "job": job,
+            "phase_list": phase_list,
+            "is_active": is_active,
+            "cancel_requested_at": cancel_requested_at,
+            "expiring_warning_days": expiring_warning_days,
+            # Pass effective_status to override stale job.status in template
+            "effective_status": effective_status,
         },
     )
 

@@ -893,24 +893,25 @@ class VirtualLog {
 
             const data = await response.json();
 
+            // Check for restore_profile event FIRST - triggers page refresh to show complete state
+            // This must come before is_active check because restore_profile may arrive after status changes
+            if (data.events && data.events.length > 0) {
+                const hasProfileEvent = data.events.some(e => e.event_type === 'restore_profile');
+                if (hasProfileEvent) {
+                    console.log(`[VirtualLog] restore_profile detected - refreshing page to show complete state`);
+                    this._stopPolling();
+                    // Delay to let user see the event before refresh
+                    setTimeout(() => window.location.reload(), 1500);
+                    return;
+                }
+            }
+
             // Check if job is still active - stop polling if complete
             if (data.is_active === false) {
                 console.log(`[VirtualLog] Job ${this.jobId} completed (status: ${data.job_status}), stopping poll`);
                 this.isRunning = false;
                 this._stopPolling();
                 // One final update with any remaining events
-            }
-
-            // Check for restore_profile event - triggers page refresh to show complete state
-            if (data.events && data.events.length > 0) {
-                const hasProfileEvent = data.events.some(e => e.event_type === 'restore_profile');
-                if (hasProfileEvent) {
-                    console.log(`[VirtualLog] restore_profile detected - refreshing page to show complete state`);
-                    this._stopPolling();
-                    // Small delay to let user see the event before refresh
-                    setTimeout(() => window.location.reload(), 500);
-                    return;
-                }
             }
 
             // Always update total_count from server (authoritative)
