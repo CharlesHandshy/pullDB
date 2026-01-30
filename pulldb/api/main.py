@@ -39,7 +39,6 @@ from pulldb.api.schemas import (
 )
 from pulldb.api.types import APIState
 from pulldb.domain.config import Config
-from pulldb.domain.errors import StagingError
 from pulldb.domain.models import Job, JobStatus, User
 from pulldb.domain.services.discovery import DiscoveryService
 from pulldb.infra.factory import is_simulation_mode

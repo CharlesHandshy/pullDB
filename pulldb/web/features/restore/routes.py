@@ -7,9 +7,6 @@ HCA Layer: features (pulldb/web/features/)
 
 import logging
 import os
-from typing import Any
-
-logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
@@ -24,9 +21,9 @@ from pulldb.api.schemas import JobRequest
 from pulldb.domain.models import User, UserRole
 from pulldb.domain.naming import normalize_customer_name
 from pulldb.web.dependencies import get_api_state, require_login, templates
-from pulldb.infra.s3 import S3Client, BACKUP_FILENAME_REGEX
-from pulldb.infra.factory import is_simulation_mode
 from pulldb.web.widgets.breadcrumbs import get_breadcrumbs
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/web/restore", tags=["web-restore"])
 

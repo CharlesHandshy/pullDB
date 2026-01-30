@@ -34,7 +34,6 @@ HEARTBEAT_SUPPRESSION_WINDOW_SECONDS = 30.0
 from pulldb.domain.config import Config, S3BackupLocationConfig
 from pulldb.domain.errors import (
     BackupDiscoveryError,
-    BackupValidationError,
     CancellationError,
     DownloadError,
     ExtractionError,

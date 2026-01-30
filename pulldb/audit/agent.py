@@ -48,10 +48,9 @@ from pulldb.audit.analyzers import (
     FileCountAnalyzer,
     JavaScriptAnalyzer,
     PythonAnalyzer,
-    get_analyzer,
 )
-from pulldb.audit.drift import DriftAlert, DriftDetector, DriftType
-from pulldb.audit.inventory import FileCategory, FileInventory
+from pulldb.audit.drift import DriftDetector
+from pulldb.audit.inventory import FileInventory
 from pulldb.audit.knowledge_pool import KnowledgePoolParser, KnowledgePoolUpdater
 from pulldb.audit.mappings import (
     DocCodeMapping,
