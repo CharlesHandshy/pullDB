@@ -143,28 +143,100 @@
 
     <!-- Performance Profile -->
     {% if profile %}
-    <div class="card">
+    {% set phase_order = ['discovery', 'download', 'extraction', 'myloader', 'post_sql', 'atomic_rename'] %}
+    {% set phase_labels = {
+        'discovery': 'Discovery',
+        'download': 'Download',
+        'extraction': 'Extraction',
+        'myloader': 'Loading',
+        'post_sql': 'Post-SQL',
+        'atomic_rename': 'Rename'
+    } %}
+    {% set phase_colors = {
+        'queued': '#6b7280',
+        'discovery': '#60a5fa',
+        'download': '#4ade80',
+        'extraction': '#fbbf24',
+        'myloader': '#818cf8',
+        'post_sql': '#c084fc',
+        'atomic_rename': '#fb923c'
+    } %}
+    {% set queue_seconds = (job.started_at - job.submitted_at).total_seconds() if job.started_at and job.submitted_at else 0 %}
+    {% set total_job_seconds = (job.completed_at - job.submitted_at).total_seconds() if job.completed_at and job.submitted_at else profile.total_duration_seconds %}
+    
+    {# Helper macro for HHh MMm SSs format #}
+    {% macro format_duration(seconds) %}
+        {%- if seconds is none or seconds == 0 -%}
+            0s
+        {%- elif seconds < 60 -%}
+            {{ "%.1f"|format(seconds) }}s
+        {%- elif seconds < 3600 -%}
+            {{ (seconds // 60)|int }}m {{ (seconds % 60)|int }}s
+        {%- else -%}
+            {{ (seconds // 3600)|int }}h {{ ((seconds % 3600) // 60)|int }}m {{ (seconds % 60)|int }}s
+        {%- endif -%}
+    {% endmacro %}
+    
+    <div class="card perf-profile-card">
         <div class="card-header-row">
-            <h3 class="card-title">Performance</h3>
+            <h3 class="card-title">Performance Profile</h3>
+            <span class="perf-complete-summary">
+                <span class="perf-complete-icon">✓</span>
+                Complete: {{ format_duration(total_job_seconds) }} total
+                · {{ "%.1f"|format(profile.total_bytes / 1024 / 1024) }} MB
+                · {% if total_job_seconds > 0 %}{{ "%.2f"|format((profile.total_bytes / 1024 / 1024) / total_job_seconds) }} MB/s avg{% else %}—{% endif %}
+            </span>
         </div>
-        <div class="profile-stats">
-            <div class="profile-stat">
-                <span class="profile-stat-value">{{ "%.1f"|format(profile.total_duration_seconds) }}s</span>
-                <span class="profile-stat-label">Total Duration</span>
-            </div>
-            <div class="profile-stat">
-                <span class="profile-stat-value">{{ "%.1f"|format(profile.total_bytes / 1024 / 1024) }} MB</span>
-                <span class="profile-stat-label">Total Size</span>
+        
+        {# Stacked progress bar showing time breakdown #}
+        {# Build segments list first to know first/last #}
+        {% set ns = namespace(segments=[]) %}
+        {% if queue_seconds and total_job_seconds %}
+            {% set queue_pct = (queue_seconds / total_job_seconds * 100) %}
+            {% set _ = ns.segments.append({'pct': queue_pct, 'color': phase_colors.queued, 'label': 'Queued', 'duration': queue_seconds}) %}
+        {% endif %}
+        {% for phase_key in phase_order %}
+            {% set phase = profile.phases.get(phase_key) %}
+            {% if phase and phase.duration_seconds and total_job_seconds %}
+                {% set pct = (phase.duration_seconds / total_job_seconds * 100) %}
+                {% set _ = ns.segments.append({'pct': pct, 'color': phase_colors.get(phase_key, 'var(--gray-400)'), 'label': phase_labels.get(phase_key), 'duration': phase.duration_seconds}) %}
+            {% endif %}
+        {% endfor %}
+        
+        <div class="perf-bar-container">
+            <div class="perf-bar">
+                {% for seg in ns.segments %}
+                    {% set is_first = loop.first %}
+                    {% set is_last = loop.last %}
+                    {% set radius_left = '10px' if is_first else '0' %}
+                    {% set radius_right = '10px' if is_last else '0' %}
+                    {% set grow = 'flex-grow: 1;' if is_last else '' %}
+                    <div class="perf-bar-segment" style="width: {{ seg.pct }}%; background: {{ seg.color }}; border-radius: {{ radius_left }} {{ radius_right }} {{ radius_right }} {{ radius_left }}; {{ grow }}" title="{{ seg.label }}: {{ format_duration(seg.duration) }} ({{ '%.1f'|format(seg.pct) }}%)"></div>
+                {% endfor %}
             </div>
         </div>
         
-        <div class="profile-phases">
-            {% for phase_name, phase in profile.phases.items() %}
-            <div class="profile-phase">
-                <span class="profile-phase-name">{{ phase.phase }}</span>
-                <span class="profile-phase-duration">{{ "%.1f"|format(phase.duration_seconds) if phase.duration_seconds else '—' }}s</span>
-                <span class="profile-phase-speed">{{ "%.1f"|format(phase.mbps) if phase.mbps else '—' }} MB/s</span>
+        {# Legend with times #}
+        <div class="perf-legend">
+            {# Queued #}
+            {% if queue_seconds %}
+            <div class="perf-legend-item">
+                <span class="perf-legend-color" style="background: {{ phase_colors.queued }};"></span>
+                <span class="perf-legend-label">Queued</span>
+                <span class="perf-legend-time">{{ format_duration(queue_seconds) }}</span>
             </div>
+            {% endif %}
+            
+            {# Phases #}
+            {% for phase_key in phase_order %}
+                {% set phase = profile.phases.get(phase_key) %}
+                {% if phase and phase.duration_seconds %}
+                <div class="perf-legend-item">
+                    <span class="perf-legend-color" style="background: {{ phase_colors.get(phase_key) }};"></span>
+                    <span class="perf-legend-label">{{ phase_labels.get(phase_key) }}</span>
+                    <span class="perf-legend-time">{{ format_duration(phase.duration_seconds) }}</span>
+                </div>
+                {% endif %}
             {% endfor %}
         </div>
     </div>

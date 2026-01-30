@@ -2587,16 +2587,18 @@ class JobRepository:
         job_id: str,
         limit: int = 50,
         offset: int = 0,
+        order: str = "desc",
     ) -> tuple[list[dict[str, Any]], int]:
         """Fetch events for a job by position offset.
 
         Used for scrollbar jump navigation where cursor-based pagination
-        isn't possible. Events are returned newest-first (position 0 = newest).
+        isn't possible.
 
         Args:
             job_id: Job UUID.
             limit: Max events to return.
-            offset: Position offset (0 = start with newest event).
+            offset: Position offset (0 = first event in specified order).
+            order: "desc" for newest-first, "asc" for oldest-first (chronological).
 
         Returns:
             Tuple of (events, total_count) where events is a list of dicts
@@ -2612,14 +2614,15 @@ class JobRepository:
             count_row = count_cursor.fetchone()
             total_count = count_row[0] if count_row else 0
 
-            # Get events at offset, newest first
+            # Get events at offset with specified order
+            order_clause = "DESC" if order.lower() == "desc" else "ASC"
             dict_cursor = TypedDictCursor(conn.cursor(dictionary=True))
             dict_cursor.execute(
-                """
+                f"""
                 SELECT id, event_type, detail, logged_at
                 FROM job_events
                 WHERE job_id = %s
-                ORDER BY id DESC
+                ORDER BY id {order_clause}
                 LIMIT %s OFFSET %s
                 """,
                 (job_id, limit, offset),

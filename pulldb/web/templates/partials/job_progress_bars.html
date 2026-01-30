@@ -33,24 +33,20 @@
             <span class="log-progress-label">{% if download_stats.is_complete %}✓{% endif %} Download</span>
             <div class="log-progress-bar-container">
                 <div class="log-progress-bar" style="width: {{ download_stats.percent_complete }}%"></div>
+                <div class="log-progress-bar-overlay">
+                    {% if download_stats.is_complete %}
+                    <span>{{ download_stats.total_bytes | format_filesize }}</span>
+                    <span>{{ download_stats.duration_seconds | format_duration if download_stats.duration_seconds else '' }}</span>
+                    <span>{{ download_stats.speed_bps | format_speed }}</span>
+                    {% elif download_stats.downloaded_bytes > 0 %}
+                    <span>{{ download_stats.downloaded_bytes | format_filesize }} / {{ download_stats.total_bytes | format_filesize }}</span>
+                    <span>{{ download_stats.speed_bps | format_speed }}</span>
+                    {% if download_stats.eta_seconds > 0 %}<span>ETA {{ download_stats.eta_seconds | format_eta }}</span>{% endif %}
+                    {% endif %}
+                </div>
             </div>
             <div class="log-progress-percent">{{ "%.1f" | format(download_stats.percent_complete) }}%</div>
         </div>
-        {% if download_stats.is_complete %}
-        <div class="log-progress-stats-row">
-            <span class="log-progress-stat"><span class="log-progress-stat-label">size</span><span class="log-progress-stat-value">{{ download_stats.total_bytes | format_filesize }}</span></span>
-            <span class="log-progress-stat"><span class="log-progress-stat-label">time</span><span class="log-progress-stat-value">{{ download_stats.duration_seconds | format_duration if download_stats.duration_seconds else '—' }}</span></span>
-            <span class="log-progress-stat"><span class="log-progress-stat-label">speed</span><span class="log-progress-stat-value">{{ download_stats.speed_bps | format_speed }}</span></span>
-        </div>
-        {% elif download_stats.downloaded_bytes > 0 %}
-        <div class="log-progress-stats-row">
-            <span class="log-progress-stat"><span class="log-progress-stat-label">downloaded</span><span class="log-progress-stat-value">{{ download_stats.downloaded_bytes | format_filesize }} / {{ download_stats.total_bytes | format_filesize }}</span></span>
-            <span class="log-progress-stat"><span class="log-progress-stat-label">speed</span><span class="log-progress-stat-value">{{ download_stats.speed_bps | format_speed }}</span></span>
-            {% if download_stats.eta_seconds > 0 %}
-            <span class="log-progress-stat"><span class="log-progress-stat-label">eta</span><span class="log-progress-stat-value">{{ download_stats.eta_seconds | format_eta }}</span></span>
-            {% endif %}
-        </div>
-        {% endif %}
     </div>
     {% endif %}
 
@@ -61,28 +57,22 @@
             <span class="log-progress-label">{% if extraction_stats.is_complete %}✓{% endif %} Extraction</span>
             <div class="log-progress-bar-container">
                 <div class="log-progress-bar" style="width: {{ extraction_stats.percent_complete }}%"></div>
+                <div class="log-progress-bar-overlay">
+                    {% if extraction_stats.has_failed %}
+                    <span class="text-danger">{{ extraction_stats.error_message or 'Failed' }}</span>
+                    {% elif extraction_stats.is_complete %}
+                    <span>{{ extraction_stats.total_bytes | format_filesize }}</span>
+                    <span>{{ "{:,}".format(extraction_stats.total_files) }} files</span>
+                    <span>{{ extraction_stats.duration_seconds | format_duration if extraction_stats.duration_seconds else '' }}</span>
+                    {% elif extraction_stats.extracted_bytes > 0 %}
+                    <span>{{ extraction_stats.extracted_bytes | format_filesize }} / {{ extraction_stats.total_bytes | format_filesize }}</span>
+                    <span>{{ extraction_stats.files_extracted }}/{{ extraction_stats.total_files }} files</span>
+                    {% if extraction_stats.eta_seconds > 0 %}<span>ETA {{ extraction_stats.eta_seconds | format_eta }}</span>{% endif %}
+                    {% endif %}
+                </div>
             </div>
             <div class="log-progress-percent">{{ "%.1f" | format(extraction_stats.percent_complete) }}%</div>
         </div>
-        {% if extraction_stats.has_failed %}
-        <div class="log-progress-stats-row">
-            <span class="log-progress-stat"><span class="log-progress-stat-label">error</span><span class="log-progress-stat-value text-danger">{{ extraction_stats.error_message or 'Extraction failed' }}</span></span>
-        </div>
-        {% elif extraction_stats.is_complete %}
-        <div class="log-progress-stats-row">
-            <span class="log-progress-stat"><span class="log-progress-stat-label">extracted</span><span class="log-progress-stat-value">{{ extraction_stats.total_bytes | format_filesize }}</span></span>
-            <span class="log-progress-stat"><span class="log-progress-stat-label">files</span><span class="log-progress-stat-value">{{ "{:,}".format(extraction_stats.total_files) }}</span></span>
-            <span class="log-progress-stat"><span class="log-progress-stat-label">time</span><span class="log-progress-stat-value">{{ extraction_stats.duration_seconds | format_duration if extraction_stats.duration_seconds else '—' }}</span></span>
-        </div>
-        {% elif extraction_stats.extracted_bytes > 0 %}
-        <div class="log-progress-stats-row">
-            <span class="log-progress-stat"><span class="log-progress-stat-label">extracted</span><span class="log-progress-stat-value">{{ extraction_stats.extracted_bytes | format_filesize }} / {{ extraction_stats.total_bytes | format_filesize }}</span></span>
-            <span class="log-progress-stat"><span class="log-progress-stat-label">files</span><span class="log-progress-stat-value">{{ "{:,}".format(extraction_stats.files_extracted) }}/{{ "{:,}".format(extraction_stats.total_files) }}</span></span>
-            {% if extraction_stats.eta_seconds > 0 %}
-            <span class="log-progress-stat"><span class="log-progress-stat-label">eta</span><span class="log-progress-stat-value">{{ extraction_stats.eta_seconds | format_eta }}</span></span>
-            {% endif %}
-        </div>
-        {% endif %}
     </div>
     {% endif %}
 
@@ -94,36 +84,20 @@
             <span class="log-progress-label">{% if restore_stats.is_complete %}✓{% endif %} Restore</span>
             <div class="log-progress-bar-container">
                 <div class="log-progress-bar" style="width: {{ restore_percent_clamped }}%"></div>
+                <div class="log-progress-bar-overlay">
+                    {% if restore_stats.is_complete %}
+                    <span>{{ "{:,}".format(restore_stats.total_rows) if restore_stats.total_rows else '—' }} rows</span>
+                    <span>{{ restore_stats.tables_total }} tables</span>
+                    <span>{{ restore_stats.duration_seconds | format_duration if restore_stats.duration_seconds else '' }}</span>
+                    {% elif restore_stats.tables_completed is defined and restore_stats.tables_total is defined %}
+                    <span>{{ restore_stats.tables_completed }}/{{ restore_stats.tables_total }} tables</span>
+                    {% if restore_stats.rows_per_second %}<span>{{ "{:,}".format(restore_stats.rows_per_second) }} rows/s</span>{% endif %}
+                    {% if restore_stats.eta_seconds %}<span>ETA {{ restore_stats.eta_seconds | format_eta }}</span>{% endif %}
+                    {% endif %}
+                </div>
             </div>
             <div class="log-progress-percent">{{ "%.1f" | format(restore_percent_clamped) }}%</div>
         </div>
-        {% if restore_stats.is_complete %}
-        <div class="log-progress-stats-row">
-            <span class="log-progress-stat"><span class="log-progress-stat-label">rows</span><span class="log-progress-stat-value">{{ "{:,}".format(restore_stats.total_rows) if restore_stats.total_rows else '—' }}</span></span>
-            {% if restore_stats.tables_total %}
-            <span class="log-progress-stat"><span class="log-progress-stat-label">tables</span><span class="log-progress-stat-value">{{ restore_stats.tables_total }}</span></span>
-            {% endif %}
-            <span class="log-progress-stat"><span class="log-progress-stat-label">time</span><span class="log-progress-stat-value">{{ restore_stats.duration_seconds | format_duration if restore_stats.duration_seconds else '—' }}</span></span>
-            {% if restore_stats.rows_per_second and restore_stats.rows_per_second > 0 %}
-            <span class="log-progress-stat"><span class="log-progress-stat-label">rate</span><span class="log-progress-stat-value">{{ "{:,}".format(restore_stats.rows_per_second) }} rows/s</span></span>
-            {% endif %}
-        </div>
-        {% elif restore_stats.rows_per_second or restore_stats.active_threads or restore_stats.tables_completed is defined %}
-        <div class="log-progress-stats-row">
-            {% if restore_stats.rows_per_second and restore_stats.rows_per_second > 0 %}
-            <span class="log-progress-stat"><span class="log-progress-stat-label">rate</span><span class="log-progress-stat-value">{{ "{:,}".format(restore_stats.rows_per_second) }} rows/s</span></span>
-            {% endif %}
-            {% if restore_stats.active_threads and restore_stats.active_threads > 0 %}
-            <span class="log-progress-stat"><span class="log-progress-stat-label">threads</span><span class="log-progress-stat-value">{{ restore_stats.active_threads }}</span></span>
-            {% endif %}
-            {% if restore_stats.tables_completed is defined and restore_stats.tables_total is defined and restore_stats.tables_total > 0 %}
-            <span class="log-progress-stat"><span class="log-progress-stat-label">tables</span><span class="log-progress-stat-value">{{ restore_stats.tables_completed }}/{{ restore_stats.tables_total }}</span></span>
-            {% endif %}
-            {% if restore_stats.eta_seconds %}
-            <span class="log-progress-stat"><span class="log-progress-stat-label">eta</span><span class="log-progress-stat-value">{{ restore_stats.eta_seconds | format_eta }}</span></span>
-            {% endif %}
-        </div>
-        {% endif %}
         
         {# Per-table progress bars from processlist - ONLY show active tables (not complete) #}
         {# Tables disappear when their thread finishes - no lingering at 100% #}
@@ -172,40 +146,18 @@
             <span class="log-progress-label">{% if atomic_rename_stats.is_complete %}✓{% endif %} Rename</span>
             <div class="log-progress-bar-container">
                 <div class="log-progress-bar" style="width: {{ atomic_rename_stats.percent_complete }}%"></div>
+                <div class="log-progress-bar-overlay">
+                    {% if atomic_rename_stats.is_complete %}
+                    <span>{{ atomic_rename_stats.total_tables }} tables</span>
+                    <span>{{ atomic_rename_stats.duration_seconds | format_duration if atomic_rename_stats.duration_seconds else '' }}</span>
+                    {% elif atomic_rename_stats.total_tables > 0 %}
+                    <span>{{ atomic_rename_stats.tables_renamed }}/{{ atomic_rename_stats.total_tables }} tables</span>
+                    {% if atomic_rename_stats.current_table %}<span>{{ atomic_rename_stats.current_table }}</span>{% endif %}
+                    {% endif %}
+                </div>
             </div>
             <div class="log-progress-percent">{{ "%.1f" | format(atomic_rename_stats.percent_complete) }}%</div>
         </div>
-        {% if atomic_rename_stats.is_complete %}
-        <div class="log-progress-stats-row">
-            <span class="log-progress-stat"><span class="log-progress-stat-label">tables</span><span class="log-progress-stat-value">{{ atomic_rename_stats.total_tables }}</span></span>
-            <span class="log-progress-stat"><span class="log-progress-stat-label">time</span><span class="log-progress-stat-value">{{ atomic_rename_stats.duration_seconds | format_duration if atomic_rename_stats.duration_seconds else '—' }}</span></span>
-        </div>
-        {% elif atomic_rename_stats.total_tables > 0 %}
-        <div class="log-progress-stats-row">
-            <span class="log-progress-stat"><span class="log-progress-stat-label">tables</span><span class="log-progress-stat-value">{{ atomic_rename_stats.tables_renamed }} / {{ atomic_rename_stats.total_tables }}</span></span>
-            {% if atomic_rename_stats.current_table %}
-            <span class="log-progress-stat"><span class="log-progress-stat-label">current</span><span class="log-progress-stat-value">{{ atomic_rename_stats.current_table }}</span></span>
-            {% endif %}
-        </div>
-        {% endif %}
-    </div>
-    {% endif %}
-
-    {# Performance summary row - shown after job completion #}
-    {% if profile and job.status.value in ['deployed', 'complete', 'superseded'] %}
-    <div class="log-progress-summary">
-        <span class="log-progress-summary-icon">✓</span>
-        <span class="log-progress-summary-text">
-            Complete: {{ profile.total_duration_seconds | format_duration }} total
-            <span class="log-progress-separator">•</span>
-            {{ profile.total_bytes | format_filesize }}
-            <span class="log-progress-separator">•</span>
-            {% if profile.total_duration_seconds > 0 %}
-            {{ "%.2f"|format((profile.total_bytes / 1024 / 1024) / profile.total_duration_seconds) }} MB/s avg
-            {% else %}
-            — MB/s avg
-            {% endif %}
-        </span>
     </div>
     {% endif %}
 </div>

@@ -27,6 +27,7 @@
 
 /* Ensure all cards above the logs-card maintain their natural height */
 #job-details-content > .card:not(.logs-card),
+#job-details-content > .perf-profile-card,
 #job-details-content > .phase-stepper,
 #job-details-content > .page-header-row,
 #job-details-content > .alert {
@@ -59,7 +60,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-6);
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-2) var(--space-4);
     background: var(--gray-800);
     border-bottom: 1px solid var(--gray-700);
 }
@@ -71,8 +72,8 @@
 
 .details-header-item {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-0-5);
+    align-items: center;
+    gap: var(--space-2);
 }
 
 .details-header-label {
@@ -99,11 +100,10 @@
 
 /* Full-width rows section */
 .details-rows {
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-2) var(--space-4);
     display: flex;
     flex-direction: column;
     gap: 0;
-    border-top: 1px solid var(--gray-700);
 }
 
 [data-theme="light"] .details-rows {
@@ -114,8 +114,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-2) 0;
-    border-bottom: 1px solid var(--gray-800);
+    padding: var(--space-1) 0;
 }
 
 .detail-row-full:last-child {
@@ -386,8 +385,119 @@
 }
 
 /* ===========================================
-   PERFORMANCE PROFILE
+   PERFORMANCE PROFILE - Minimalist Stacked Bar
    =========================================== */
+
+.perf-profile-card {
+    flex-shrink: 0;
+}
+
+.perf-profile-card .card-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.perf-total-time {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+}
+
+.perf-bar-container {
+    padding: var(--space-3) var(--space-4);
+}
+
+.perf-bar {
+    display: flex;
+    height: 20px;
+    border-radius: 10px;
+    background: var(--gray-800);
+}
+
+[data-theme="light"] .perf-bar {
+    background: var(--gray-200);
+}
+
+.perf-bar-segment {
+    height: 100%;
+    min-width: 2px;
+    transition: opacity 0.15s ease;
+    cursor: help;
+    /* Ensure segments touch without gaps */
+    margin: 0;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+/* Round the ends of first and last segments */
+.perf-bar-segment:first-child {
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 10px;
+}
+
+.perf-bar-segment:last-child {
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
+    flex-grow: 1;  /* Fill any remaining gap from rounding errors */
+}
+
+.perf-bar-segment:only-child {
+    border-radius: 10px;
+}
+
+.perf-bar-segment:hover {
+    opacity: 0.8;
+}
+
+.perf-legend {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-4) var(--space-3);
+    overflow-x: auto;
+}
+
+.perf-legend-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    white-space: nowrap;
+}
+
+.perf-legend-color {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.perf-legend-label {
+    font-size: 11px;
+    color: var(--color-text-muted);
+}
+
+.perf-legend-time {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-secondary);
+}
+
+/* Complete summary in Performance Profile header */
+.perf-complete-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--success-400);
+    font-family: var(--font-mono);
+}
+
+.perf-complete-icon {
+    font-weight: bold;
+}
+
+/* Legacy profile styles (kept for backwards compatibility) */
 
 .profile-stats {
     display: flex;
@@ -842,6 +952,39 @@
 }
 
 /* ===========================================
+   JOB SUMMARY (Completed jobs stats)
+   =========================================== */
+
+.job-summary {
+    display: flex;
+    gap: var(--space-6);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-surface-secondary);
+    border-bottom: 1px solid var(--color-border);
+    flex-wrap: wrap;
+}
+
+.job-summary__stat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+}
+
+.job-summary__value {
+    font-family: var(--font-mono);
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+}
+
+.job-summary__label {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* ===========================================
    PROGRESS BARS
    =========================================== */
 
@@ -868,10 +1011,11 @@
 /* Progress bar track */
 .log-progress-bar-container {
     flex: 1;
-    height: 8px;
+    height: 20px;
     background: var(--gray-700);
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-md);
     overflow: hidden;
+    position: relative;
 }
 
 [data-theme="light"] .log-progress-bar-container {
@@ -882,9 +1026,36 @@
 .log-progress-bar {
     height: 100%;
     max-width: 100%; /* Clamp to container even if width > 100% */
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-md);
     transition: width var(--transition-base);
-    position: relative;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+/* Stats overlay on progress bar */
+.log-progress-bar-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--color-text-primary);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    z-index: 1;
+    padding: 0 var(--space-2);
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+[data-theme="light"] .log-progress-bar-overlay {
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
 }
 
 /* Download progress (blue/info) - smooth gradient fade */

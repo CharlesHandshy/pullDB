@@ -23,6 +23,10 @@ class VirtualLog {
         this.isRunning = options.isRunning || false;
         this.pollInterval = options.pollInterval || 5000;
 
+        // Sort order: running jobs show newest first, completed jobs show oldest first
+        // This is stored and doesn't change during the session
+        this._newestFirst = this.isRunning;
+
         // Config
         this.rowHeight = 32;           // Fixed row height in pixels
         this.pageSize = 50;            // Events per API request
@@ -107,7 +111,10 @@ class VirtualLog {
     _initCache(events) {
         if (!events || events.length === 0) return;
 
-        // Initial events are newest first, starting at position 0
+        // Server now sends events in the correct order:
+        // - Running jobs: newest-first (for live updates at top)
+        // - Completed jobs: oldest-first (for chronological reading)
+        // No reversal needed - use events as-is
         for (let i = 0; i < events.length; i++) {
             this._cache.set(i, events[i]);
         }
@@ -309,6 +316,7 @@ class VirtualLog {
         const params = new URLSearchParams({
             offset: offset.toString(),
             limit: limit.toString(),
+            order: this._newestFirst ? 'desc' : 'asc',
         });
 
         const response = await fetch(`/web/jobs/${this.jobId}/events?${params}`, { signal });
@@ -351,16 +359,13 @@ class VirtualLog {
     }
 
     async _fetchOlder(signal) {
-        const lastEvent = this._cache.get(this._cacheEndPos - 1);
-        const cursor = lastEvent ? lastEvent.id : null;
-
+        // Fetch events after current cache end (scrolling toward older events)
+        const offset = this._cacheEndPos;
         const params = new URLSearchParams({
+            offset: offset.toString(),
             limit: this.pageSize.toString(),
-            direction: 'older',
+            order: this._newestFirst ? 'desc' : 'asc',
         });
-        if (cursor != null) {
-            params.set('cursor', cursor.toString());
-        }
 
         const response = await fetch(`/web/jobs/${this.jobId}/events?${params}`, { signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -375,16 +380,16 @@ class VirtualLog {
     }
 
     async _fetchNewer(signal) {
-        const firstEvent = this._cache.get(this._cacheStartPos);
-        const cursor = firstEvent ? firstEvent.id : null;
-
+        // Fetch events before current cache start (scrolling toward newer events)
+        const fetchCount = Math.min(this.pageSize, this._cacheStartPos);
+        if (fetchCount <= 0) return;
+        
+        const offset = this._cacheStartPos - fetchCount;
         const params = new URLSearchParams({
-            limit: this.pageSize.toString(),
-            direction: 'newer',
+            offset: offset.toString(),
+            limit: fetchCount.toString(),
+            order: this._newestFirst ? 'desc' : 'asc',
         });
-        if (cursor != null) {
-            params.set('cursor', cursor.toString());
-        }
 
         const response = await fetch(`/web/jobs/${this.jobId}/events?${params}`, { signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -392,8 +397,7 @@ class VirtualLog {
         const data = await response.json();
 
         if (data.events && data.events.length > 0) {
-            const newStartPos = Math.max(0, this._cacheStartPos - data.events.length);
-            this._addEventsAtPosition(data.events, newStartPos);
+            this._addEventsAtPosition(data.events, offset);
         }
     }
 
@@ -476,7 +480,7 @@ class VirtualLog {
 
         el.innerHTML = `
             <span class="virtual-log-entry__time">${time}</span>
-            <span class="virtual-log-entry__type">${event.event_type}</span>
+            <span class="virtual-log-entry__type" title="${event.event_type}">${event.event_type}</span>
             <span class="virtual-log-entry__msg">${details}</span>
         `;
 
@@ -553,22 +557,40 @@ class VirtualLog {
                 return d.status || d.message || 'Worker alive';
 
             // === Download phase ===
-            case 'backup_selected':
-                return `Backup: ${d.key || d.backup_key || 'unknown'} (${this._formatBytes(d.size_bytes)})`;
-            case 'download_started':
-                return `Downloading: ${d.key || d.backup_key || ''}`;
-            case 'download_progress':
-                return `Download: ${(d.percent || 0).toFixed(1)}% (${this._formatBytes(d.downloaded_bytes)} / ${this._formatBytes(d.total_bytes)})`;
-            case 'download_complete':
-                return `Downloaded ${this._formatBytes(d.size_bytes)} in ${(d.duration_seconds || 0).toFixed(1)}s`;
+            case 'backup_selected': {
+                const key = d.key || d.backup_key || 'unknown';
+                const filename = key.split('/').pop() || key;
+                const size = this._formatBytes(d.size_bytes);
+                return `${filename} (${size})`;
+            }
+            case 'download_started': {
+                const key = d.key || d.backup_key || '';
+                const filename = key.split('/').pop() || key || 'backup';
+                return `Downloading: ${filename}`;
+            }
+            case 'download_progress': {
+                const pct = d.percent ?? d.percent_complete ?? 0;
+                return `Download: ${pct.toFixed(1)}% (${this._formatBytes(d.downloaded_bytes)} / ${this._formatBytes(d.total_bytes)})`;
+            }
+            case 'download_complete': {
+                const size = d.size_bytes || d.total_bytes;
+                const dur = d.duration_seconds ?? d.elapsed_seconds;
+                if (size && dur != null) {
+                    return `Downloaded ${this._formatBytes(size)} in ${dur.toFixed(1)}s`;
+                }
+                // Fallback: just show completion (detail may only have path)
+                return `Download complete`;
+            }
             case 'download_failed':
                 return `Download failed: ${d.error || d.message || 'unknown'}`;
 
             // === Extraction phase ===
             case 'extraction_started':
                 return `Extracting backup...`;
-            case 'extraction_progress':
-                return `Extraction: ${(d.percent || 0).toFixed(1)}%`;
+            case 'extraction_progress': {
+                const pct = d.percent ?? d.percent_complete ?? 0;
+                return `Extraction: ${pct.toFixed(1)}%`;
+            }
             case 'extraction_complete':
                 return `Extracted ${d.total_files || '?'} files (${this._formatBytes(d.total_bytes)})`;
             case 'extraction_failed':
@@ -617,8 +639,14 @@ class VirtualLog {
                 return `Table ${d.table_name || d.table || '?'}: ${(d.row_count || 0).toLocaleString()} rows`;
             case 'restore_table_ready':
                 return `Table ready: ${d.table || '?'}`;
-            case 'restore_complete':
-                return `Restore complete in ${(d.duration_seconds || 0).toFixed(1)}s`;
+            case 'restore_complete': {
+                const dur = d.duration_seconds ?? d.elapsed_seconds;
+                if (dur != null) {
+                    return `Restore complete in ${dur.toFixed(1)}s`;
+                }
+                const tables = d.table_count || d.tables_count;
+                return tables ? `Restore complete: ${tables} tables` : `Restore complete`;
+            }
             case 'restore_failed':
                 return `Restore failed: ${d.error || d.message || 'unknown'}`;
 
@@ -659,8 +687,15 @@ class VirtualLog {
                 return `Metadata synthesis complete`;
 
             // === Atomic rename phase ===
-            case 'atomic_rename_validating':
-                return `Validating rename: ${d.staging_db || '?'} → ${d.target_db || '?'}`;
+            case 'atomic_rename_validating': {
+                if (d.staging_db && d.target_db) {
+                    return `Validating rename: ${d.staging_db} → ${d.target_db}`;
+                }
+                if (d.expected_tables) {
+                    return `Validating: ${d.expected_tables} tables (${d.phase || 'validation'})`;
+                }
+                return `Validating rename`;
+            }
             case 'atomic_rename_validation_pass':
                 return `Validation passed: ${d.table_count || '?'} tables`;
             case 'atomic_rename_checking_procedure':
@@ -679,8 +714,20 @@ class VirtualLog {
                 const total = d.total_tables || d.tables_total || '?';
                 return tableName ? `Renamed: ${tableName} (${renamed}/${total})` : `Renamed ${renamed}/${total} tables`;
             }
-            case 'atomic_rename_complete':
-                return `Atomic rename complete: ${d.tables_renamed || d.total_tables || '?'} tables`;
+            case 'atomic_rename_complete': {
+                const tables = d.tables_renamed || d.total_tables || d.table_count;
+                const dur = d.duration_seconds ?? d.elapsed_seconds;
+                if (tables && dur != null) {
+                    return `Atomic rename complete: ${tables} tables in ${dur.toFixed(1)}s`;
+                }
+                if (dur != null) {
+                    return `Atomic rename complete in ${dur.toFixed(1)}s`;
+                }
+                if (tables) {
+                    return `Atomic rename complete: ${tables} tables`;
+                }
+                return `Atomic rename complete`;
+            }
 
             // === Workflow/profile ===
             case 'workflow_complete':
@@ -796,6 +843,18 @@ class VirtualLog {
                 this.isRunning = false;
                 this._stopPolling();
                 // One final update with any remaining events
+            }
+
+            // Check for restore_profile event - triggers page refresh to show complete state
+            if (data.events && data.events.length > 0) {
+                const hasProfileEvent = data.events.some(e => e.event_type === 'restore_profile');
+                if (hasProfileEvent) {
+                    console.log(`[VirtualLog] restore_profile detected - refreshing page to show complete state`);
+                    this._stopPolling();
+                    // Small delay to let user see the event before refresh
+                    setTimeout(() => window.location.reload(), 500);
+                    return;
+                }
             }
 
             // Always update total_count from server (authoritative)

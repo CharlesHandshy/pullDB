@@ -396,7 +396,10 @@ def _calculate_download_stats(logs: list[Any]) -> dict[str, Any] | None:
     stats dict with: downloaded_bytes, total_bytes, percent_complete,
     elapsed_seconds, speed_bps, eta_seconds, is_complete, duration_seconds.
 
-    Returns None if no download progress events found.
+    Also handles case where download completes without progress events
+    by using backup_selected size and timestamps.
+
+    Returns None if no download events found.
     """
     from datetime import datetime
 
@@ -404,11 +407,23 @@ def _calculate_download_stats(logs: list[Any]) -> dict[str, Any] | None:
     is_complete = False
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    backup_size: int | None = None
 
     for event in logs:
         event_type = getattr(event, "event_type", "")
         detail = getattr(event, "detail", None)
         logged_at = getattr(event, "logged_at", None)
+
+        if event_type == "backup_selected" and detail:
+            # Get file size from backup_selected event
+            parsed_detail = detail
+            if isinstance(detail, str):
+                try:
+                    parsed_detail = json.loads(detail)
+                except (json.JSONDecodeError, TypeError):
+                    parsed_detail = None
+            if isinstance(parsed_detail, dict):
+                backup_size = parsed_detail.get("size_bytes")
 
         if event_type == "download_started":
             started_at = logged_at
@@ -430,6 +445,26 @@ def _calculate_download_stats(logs: list[Any]) -> dict[str, Any] | None:
                     parsed_detail = None
             if isinstance(parsed_detail, dict):
                 latest_progress = parsed_detail
+
+    # If we have download events but no progress, synthesize stats from timestamps
+    if not latest_progress and (started_at or is_complete):
+        duration_seconds: float | None = None
+        if is_complete and started_at and completed_at:
+            duration_seconds = (completed_at - started_at).total_seconds()
+
+        total_bytes = backup_size or 0
+        speed_bps = total_bytes / duration_seconds if duration_seconds and duration_seconds > 0 else 0
+
+        return {
+            "downloaded_bytes": total_bytes if is_complete else 0,
+            "total_bytes": total_bytes,
+            "percent_complete": 100.0 if is_complete else 0.0,
+            "elapsed_seconds": duration_seconds or 0,
+            "duration_seconds": duration_seconds,
+            "speed_bps": speed_bps,
+            "eta_seconds": 0,
+            "is_complete": is_complete,
+        }
 
     if not latest_progress:
         return None
@@ -885,8 +920,8 @@ async def job_details(
             logs = _deduplicate_logs(raw_logs)
 
             # Prepare initial events for VirtualLog widget (serialized for JSON)
-            # Take latest 50 events for initial render (newest first, matching API order)
-            # Use raw_logs (not deduplicated) for consistency with paginated API
+            # For running jobs: newest 50 events (newest first for live updates)
+            # For completed jobs: oldest 50 events (chronological reading start from beginning)
             def _format_timestamp(dt: datetime | None) -> str | None:
                 """Format datetime to ISO 8601 with Z suffix for UTC."""
                 if dt is None:
@@ -908,8 +943,15 @@ async def job_details(
                         return {"message": detail}
                 return {"message": detail} if detail else None
 
-            # Get newest 50 events in descending order (newest first)
-            newest_events = list(reversed(raw_logs[-50:]))
+            is_job_running = job.status in (JobStatus.QUEUED, JobStatus.RUNNING)
+            
+            if is_job_running:
+                # Running: newest 50 events in descending order (newest first)
+                source_events = list(reversed(raw_logs[-50:]))
+            else:
+                # Completed: oldest 50 events in ascending order (oldest first)
+                source_events = raw_logs[:50]
+            
             initial_events = [
                 {
                     "id": getattr(e, "id", i),
@@ -917,7 +959,7 @@ async def job_details(
                     "logged_at": _format_timestamp(e.logged_at),
                     "detail": _parse_detail(e.detail),
                 }
-                for i, e in enumerate(newest_events)
+                for i, e in enumerate(source_events)
             ]
             total_event_count = len(raw_logs)
 
@@ -935,13 +977,26 @@ async def job_details(
                 and job.status in (JobStatus.QUEUED, JobStatus.RUNNING)
             )
 
-            # Try to get profile if job is complete
-            if job.status in (JobStatus.COMPLETE, JobStatus.FAILED):
+            # Try to get profile if job is not actively running
+            # (complete, failed, deployed, expired, superseded, etc.)
+            if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELING):
                 from pulldb.worker.profiling import parse_profile_from_event
 
-                for event in logs:
+                for event in raw_logs:
                     if event.event_type == "restore_profile" and event.detail:
-                        profile = parse_profile_from_event(event.detail)
+                        parsed = parse_profile_from_event(event.detail)
+                        if parsed:
+                            # Get total_duration_seconds from raw JSON (computed property may be None)
+                            raw_data = json.loads(event.detail) if isinstance(event.detail, str) else event.detail
+                            # Convert phases dict to use string keys for Jinja2 template
+                            profile = {
+                                "total_duration_seconds": raw_data.get("total_duration_seconds") or parsed.total_duration_seconds,
+                                "total_bytes": parsed.total_bytes,
+                                "phases": {
+                                    phase.value: phase_data
+                                    for phase, phase_data in parsed.phases.items()
+                                },
+                            }
                         break
 
     if not job:
@@ -2460,6 +2515,7 @@ async def get_job_events_api(
     cursor: int | None = None,
     offset: int | None = None,
     direction: str = "older",
+    order: str = "desc",
     limit: int = 50,
     state: Any = Depends(get_api_state),
     user: User = Depends(require_login),
@@ -2468,8 +2524,9 @@ async def get_job_events_api(
 
     Query params:
         cursor: Event ID for pagination (omit for latest)
-        offset: Position offset for jump scrolling (0 = newest)
+        offset: Position offset for jump scrolling (0 = first in order)
         direction: "older" (default) or "newer"
+        order: "desc" (newest first, default) or "asc" (oldest first/chronological)
         limit: Max events to return (default 50, max 100)
 
     Note: If offset is provided, cursor is ignored. Offset-based loading
@@ -2488,6 +2545,11 @@ async def get_job_events_api(
 
     # Validate limit (clamp to 1-100)
     limit = max(1, min(100, limit))
+    
+    # Validate order
+    order = order.lower()
+    if order not in ("asc", "desc"):
+        order = "desc"
 
     if not hasattr(state, "job_repo") or not state.job_repo:
         return JSONResponse(
@@ -2510,6 +2572,7 @@ async def get_job_events_api(
             job_id,
             limit,
             offset,
+            order,
         )
     else:
         events, total_count = await run_in_threadpool(
