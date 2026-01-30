@@ -692,19 +692,26 @@ def _calculate_restore_stats(logs: list[Any]) -> dict[str, Any] | None:
     tables_total = detail_info.get("tables_total", 0)
     
     # Normalize tables data for template
-    # Only include tables that are NOT complete (active in processlist)
-    # Tables disappear from UI when their thread finishes
+    # Include tables that are:
+    # 1. Not complete (actively loading), OR
+    # 2. In indexing/analyzing phase (may briefly leave processlist between ALTERs)
+    # Tables only disappear when phase is 'complete' (fully restored)
     tables = {}
     if isinstance(tables_data, dict):
         for table_name, table_info in tables_data.items():
             if isinstance(table_info, dict):
-                # Skip completed tables - only show active ones
-                if table_info.get("is_complete", False):
+                phase = table_info.get("phase", "loading")
+                is_complete = table_info.get("is_complete", False)
+                
+                # Only hide tables that are truly complete (phase="complete")
+                # Indexing/analyzing tables stay visible even if is_complete was set
+                if is_complete and phase == "complete":
                     continue
+                    
                 tables[table_name] = {
                     "percent": min(100.0, table_info.get("percent_complete", 0.0)),
-                    "phase": table_info.get("phase", "loading"),
-                    "is_complete": False,  # We filtered these out above
+                    "phase": phase,
+                    "is_complete": is_complete,
                 }
             elif isinstance(table_info, (int, float)):
                 tables[table_name] = {

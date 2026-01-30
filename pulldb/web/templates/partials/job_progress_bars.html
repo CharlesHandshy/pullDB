@@ -99,10 +99,10 @@
             <div class="log-progress-percent">{{ "%.1f" | format(restore_percent_clamped) }}%</div>
         </div>
         
-        {# Per-table progress bars from processlist - ONLY show active tables (not complete) #}
-        {# Tables disappear when their thread finishes - no lingering at 100% #}
+        {# Per-table progress bars from processlist - show active and indexing tables #}
+        {# Tables only disappear when phase='complete' (not just is_complete) #}
         {% if restore_stats.tables and not atomic_rename_stats %}
-        {% set active_tables = restore_stats.tables | dictsort | rejectattr('1.is_complete') | list %}
+        {% set active_tables = restore_stats.tables | dictsort | rejectattr('1.phase', 'equalto', 'complete') | list %}
         {% if active_tables %}
         <div class="log-progress-tables">
             {% for table_name, table in active_tables %}

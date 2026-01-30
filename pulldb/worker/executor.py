@@ -28,6 +28,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+# Heartbeat suppression: skip heartbeat if meaningful event was emitted within this window
+HEARTBEAT_SUPPRESSION_WINDOW_SECONDS = 30.0
+
 from pulldb.domain.config import Config, S3BackupLocationConfig
 from pulldb.domain.errors import (
     BackupDiscoveryError,
@@ -561,6 +564,8 @@ class WorkerJobExecutor:
         self._discover_backup = hook_cfg.discover_backup
         self._download_backup = hook_cfg.download_backup
         self._extract_archive = hook_cfg.extract_archive
+        # Track when meaningful events were emitted (for heartbeat suppression)
+        self._last_meaningful_event_time: float = 0.0
         self.backup_locations = list(config.s3_backup_locations)
         if not self.backup_locations:
             if config.s3_bucket_path is None:
@@ -841,6 +846,8 @@ class WorkerJobExecutor:
                     "restore_progress",
                     {"percent": percent, "detail": detail},
                 )
+                # Track as meaningful event for heartbeat suppression
+                self._last_meaningful_event_time = time.monotonic()
                 return
 
             # Emit progress event (throttled to every 5% or completion)
@@ -850,6 +857,8 @@ class WorkerJobExecutor:
                     "restore_progress",
                     {"percent": percent, "detail": detail},
                 )
+                # Track as meaningful event for heartbeat suppression
+                self._last_meaningful_event_time = time.monotonic()
                 last_percent_logged = percent
 
         return _restore_progress_callback
@@ -907,6 +916,10 @@ class WorkerJobExecutor:
 
         def _workflow_event_callback(event_type: str, detail: dict[str, Any]) -> None:
             self._append_event(job.id, event_type, detail)
+            # Track meaningful events for heartbeat suppression
+            # Skip trivial events like heartbeat itself
+            if event_type not in ("heartbeat",):
+                self._last_meaningful_event_time = time.monotonic()
 
         workflow_spec = build_restore_workflow_spec(
             config=self.config,
@@ -1176,11 +1189,17 @@ class WorkerJobExecutor:
         Wraps execution in a heartbeat context to prevent stale job detection
         from killing the worker during long-running operations. Heartbeat events
         are emitted every 60 seconds to keep the job alive.
+
+        Heartbeats are suppressed when meaningful events (progress, table updates)
+        have been emitted recently, reducing noise in the job event log.
         """
         logger.info(
             "Executing job",
             extra={"job_id": job.id, "target": job.target, "phase": "executor_start"},
         )
+
+        # Reset meaningful event tracking for this job
+        self._last_meaningful_event_time = 0.0
 
         # Create heartbeat emission function
         def _emit_heartbeat() -> None:
@@ -1192,8 +1211,17 @@ class WorkerJobExecutor:
                     extra={"job_id": job.id, "error": str(e)},
                 )
 
+        # Should emit heartbeat only if no meaningful event was emitted recently
+        def _should_emit_heartbeat() -> bool:
+            elapsed = time.monotonic() - self._last_meaningful_event_time
+            return elapsed >= HEARTBEAT_SUPPRESSION_WINDOW_SECONDS
+
         # Wrap entire execution in heartbeat context to prevent stale detection
-        with HeartbeatContext(_emit_heartbeat, interval_seconds=60.0):
+        with HeartbeatContext(
+            _emit_heartbeat,
+            interval_seconds=60.0,
+            should_emit_fn=_should_emit_heartbeat,
+        ):
             self._execute_workflow(job)
 
     def _execute_workflow(self, job: Job) -> None:

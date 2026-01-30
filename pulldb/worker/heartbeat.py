@@ -40,9 +40,14 @@ class HeartbeatThread(threading.Thread):
     The thread runs as a daemon, so it will be automatically terminated
     if the main process exits. Use stop() + join() for graceful shutdown.
 
+    Supports optional suppression via should_emit_fn callback - when provided,
+    heartbeat is skipped if the callback returns False. This allows suppressing
+    redundant heartbeats when meaningful progress events are being emitted.
+
     Attributes:
         heartbeat_fn: Function called on each heartbeat interval.
         interval: Seconds between heartbeat emissions.
+        should_emit_fn: Optional callback that returns False to suppress heartbeat.
     """
 
     def __init__(
@@ -50,6 +55,7 @@ class HeartbeatThread(threading.Thread):
         heartbeat_fn: Callable[[], None],
         interval_seconds: float = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
         name: str = "heartbeat",
+        should_emit_fn: Callable[[], bool] | None = None,
     ) -> None:
         """Initialize heartbeat thread.
 
@@ -58,19 +64,27 @@ class HeartbeatThread(threading.Thread):
                 Should be safe to call from a background thread.
             interval_seconds: Seconds between heartbeats (default 60).
             name: Thread name for debugging.
+            should_emit_fn: Optional callback returning True if heartbeat should
+                be emitted. When None or returns True, heartbeat is emitted.
+                When returns False, heartbeat is skipped (suppressed).
         """
         super().__init__(name=name, daemon=True)
         self.heartbeat_fn = heartbeat_fn
         self.interval = interval_seconds
+        self.should_emit_fn = should_emit_fn
         self._stop_event = threading.Event()
         self._is_active = False
         self._heartbeat_count = 0
+        self._suppressed_count = 0
 
     def run(self) -> None:
         """Background loop that emits heartbeats until stopped.
 
         Catches and logs exceptions from heartbeat_fn to prevent
         thread crashes. Heartbeat emission is best-effort.
+
+        If should_emit_fn is provided and returns False, the heartbeat
+        is skipped for that interval (suppressed due to meaningful activity).
         """
         self._is_active = True
         logger.debug(
@@ -80,6 +94,15 @@ class HeartbeatThread(threading.Thread):
 
         while not self._stop_event.wait(self.interval):
             try:
+                # Check if heartbeat should be suppressed
+                if self.should_emit_fn is not None and not self.should_emit_fn():
+                    self._suppressed_count += 1
+                    logger.debug(
+                        "Heartbeat suppressed (meaningful activity)",
+                        extra={"suppressed_count": self._suppressed_count},
+                    )
+                    continue
+
                 self.heartbeat_fn()
                 self._heartbeat_count += 1
                 logger.debug(
@@ -96,7 +119,10 @@ class HeartbeatThread(threading.Thread):
 
         logger.debug(
             "Heartbeat thread stopped",
-            extra={"total_heartbeats": self._heartbeat_count},
+            extra={
+                "total_heartbeats": self._heartbeat_count,
+                "suppressed": self._suppressed_count,
+            },
         )
 
     def stop(self) -> None:
@@ -116,6 +142,11 @@ class HeartbeatThread(threading.Thread):
         """Number of successful heartbeats emitted."""
         return self._heartbeat_count
 
+    @property
+    def suppressed_count(self) -> int:
+        """Number of heartbeats suppressed due to meaningful activity."""
+        return self._suppressed_count
+
 
 class HeartbeatContext:
     """Context manager for automatic heartbeat lifecycle.
@@ -133,15 +164,20 @@ class HeartbeatContext:
         self,
         heartbeat_fn: Callable[[], None],
         interval_seconds: float = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+        should_emit_fn: Callable[[], bool] | None = None,
     ) -> None:
         """Initialize heartbeat context.
 
         Args:
             heartbeat_fn: Function to call on each heartbeat.
             interval_seconds: Seconds between heartbeats (default 60).
+            should_emit_fn: Optional callback returning True if heartbeat should
+                be emitted. When None or returns True, heartbeat is emitted.
+                Use this to suppress heartbeats during meaningful activity.
         """
         self.heartbeat_fn = heartbeat_fn
         self.interval = interval_seconds
+        self.should_emit_fn = should_emit_fn
         self._thread: HeartbeatThread | None = None
 
     def __enter__(self) -> HeartbeatContext:
@@ -149,6 +185,7 @@ class HeartbeatContext:
         self._thread = HeartbeatThread(
             self.heartbeat_fn,
             interval_seconds=self.interval,
+            should_emit_fn=self.should_emit_fn,
         )
         self._thread.start()
         return self

@@ -625,6 +625,18 @@ class VirtualLog {
                 return `Creating schema: ${d.table || '?'}`;
             case 'schema_created':
                 return `Schema created: ${d.table || ''} (${d.tables_created || '?'}/${d.tables_total || '?'})`;
+            
+            // === Indexing phase events ===
+            case 'indexing_started':
+                return `Building indexes: ${d.table || '?'} (${(d.rows || 0).toLocaleString()} rows)`;
+            case 'indexing_progress': {
+                const count = d.count || (d.tables ? d.tables.length : 0);
+                if (count === 0) return 'Indexing in progress...';
+                const names = (d.tables || []).slice(0, 3).map(t => t.table).join(', ');
+                const more = count > 3 ? ` +${count - 3} more` : '';
+                return `Indexing ${count} table(s): ${names}${more}`;
+            }
+            
             case 'table_data_progress':
                 return `Loading data: ${d.table || '?'} (${(d.percent || 0).toFixed(1)}%)`;
             case 'table_data_complete':

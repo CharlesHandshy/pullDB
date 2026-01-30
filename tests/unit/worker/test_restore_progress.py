@@ -608,7 +608,14 @@ class TestFileBasedProgress:
     def test_data_complete_flag_means_100_percent(
         self, table_metadata: list[TableRowEstimate]
     ) -> None:
-        """When data_complete=True (from Enqueuing index), use 100% of rows."""
+        """When data_complete=True (from Enqueuing index), use DATA_PHASE_WEIGHT of rows.
+        
+        Tables with data_complete contribute 85% of their rows to overall progress
+        because indexing is still pending. Only index_complete or is_complete
+        contribute 100% of rows.
+        """
+        from pulldb.worker.restore_progress import DATA_PHASE_WEIGHT
+        
         tracker = RestoreProgressTracker(
             table_metadata=table_metadata,
             throttle_interval_seconds=0,
@@ -620,11 +627,12 @@ class TestFileBasedProgress:
 
         state = tracker._tables["users"]
         assert state.data_complete is True
-        assert state.percent_complete == 100.0
+        # Percent is capped at 85% because indexing is still pending
+        assert state.percent_complete == DATA_PHASE_WEIGHT * 100.0  # 85%
 
-        # Calculate rows: should be 100% = 1000 rows
+        # Calculate rows: should be 85% = 850 rows (weighted by DATA_PHASE_WEIGHT)
         rows = tracker._calculate_rows_loaded()
-        assert rows == 1000
+        assert rows == int(DATA_PHASE_WEIGHT * 1000)  # 850
 
     def test_fallback_to_processlist_when_no_file_data(
         self, table_metadata: list[TableRowEstimate]

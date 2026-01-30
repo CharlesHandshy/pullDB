@@ -220,6 +220,18 @@ class _MutableTableState:
 
 
 # =============================================================================
+# Phase Weighting for Progress Display
+# =============================================================================
+# Progress is weighted by phase to prevent premature 100% display:
+# - Data loading phase: contributes up to 85% of progress
+# - Index rebuild phase: contributes the remaining 15%
+# This ensures overall progress doesn't reach 100% while indexes are building.
+
+DATA_PHASE_WEIGHT = 0.85  # Data loading = 85% of total progress
+INDEX_PHASE_WEIGHT = 0.15  # Index rebuild = 15% of total progress
+
+
+# =============================================================================
 # Strike-based Completion Detection
 # =============================================================================
 # We use a "3 strikes" approach to detect table completion:
@@ -404,6 +416,11 @@ class RestoreProgressTracker:
         self._emitted_table_ready: set[str] = set()  # table names
         self._emitted_schema_creating: set[str] = set()  # tables with schema creating emitted
         self._emitted_schema_created: set[str] = set()  # tables with schema created emitted
+        self._emitted_indexing_started: set[str] = set()  # tables with indexing_started emitted
+
+        # Indexing progress event throttling (max every 5s to avoid spam)
+        self._indexing_emit_interval = 5.0
+        self._last_indexing_emit: float = 0.0
 
         # Track authoritative completion signal from myloader
         self._myloader_restore_completed: bool = False
@@ -507,6 +524,7 @@ class RestoreProgressTracker:
                     required_strikes = _INDEX_COMPLETE_STRIKES
                     if state.absent_strikes >= required_strikes and not state.index_complete:
                         state.index_complete = True
+                        state.percent_complete = 100.0  # Now truly complete
                         logger.info(
                             f"Table {state.name} INDEX phase complete: "
                             f"{state.absent_strikes} consecutive absent polls"
@@ -538,7 +556,52 @@ class RestoreProgressTracker:
                             self._mark_table_complete(state, now)
                             logger.info(f"Table {state.name} complete (fallback, no early analyze)")
 
+            # Emit indexing events for tables in indexing phase
+            self._emit_indexing_events(now)
+
             self._emit_progress("processlist")
+
+    def _emit_indexing_events(self, now: float) -> None:
+        """Emit indexing_started and indexing_progress events.
+
+        - indexing_started: Emitted once per table when entering indexing phase
+        - indexing_progress: Throttled every 5s showing all tables currently indexing
+
+        Args:
+            now: Current monotonic time.
+        """
+        if not self._on_event:
+            return
+
+        # Find all tables currently in indexing phase
+        indexing_tables: list[_MutableTableState] = []
+        for state in self._tables.values():
+            if state.phase == "indexing" and not state.is_complete:
+                indexing_tables.append(state)
+
+                # Emit indexing_started once per table
+                if state.name not in self._emitted_indexing_started:
+                    self._emitted_indexing_started.add(state.name)
+                    self._on_event(
+                        "indexing_started",
+                        {
+                            "table": state.name,
+                            "rows": state.rows_total,
+                        },
+                    )
+                    logger.debug(f"Emitted indexing_started for {state.name}")
+
+        # Emit throttled indexing_progress if we have indexing tables
+        if indexing_tables and (now - self._last_indexing_emit) >= self._indexing_emit_interval:
+            self._last_indexing_emit = now
+            self._on_event(
+                "indexing_progress",
+                {
+                    "count": len(indexing_tables),
+                    "tables": [t.name for t in indexing_tables],
+                },
+            )
+            logger.debug(f"Emitted indexing_progress for {len(indexing_tables)} tables")
 
     def _emit_index_complete(self, state: _MutableTableState, now: float) -> None:
         """Emit table_index_complete event when indexing finishes.
@@ -829,8 +892,9 @@ class RestoreProgressTracker:
                 return
 
             # Data is 100% complete, now entering indexing phase
+            # Cap at 85% because indexing is still pending (DATA_PHASE_WEIGHT)
             state.data_complete = True  # Definitive: all files done
-            state.percent_complete = 100.0
+            state.percent_complete = DATA_PHASE_WEIGHT * 100.0  # 85% - indexing pending
             state.phase = "indexing"
             files_loaded = state.files_completed
             file_count = state.file_count
@@ -889,9 +953,12 @@ class RestoreProgressTracker:
             if state.is_complete:
                 return
 
-            # Ensure we're in indexing phase
+            # Ensure we're in indexing phase with correct weighted percent
             if state.phase != "indexing":
-                state.percent_complete = 100.0
+                # Use DATA_PHASE_WEIGHT since indexing is still pending
+                if not state.data_complete:
+                    state.data_complete = True
+                state.percent_complete = DATA_PHASE_WEIGHT * 100.0  # 85%
                 state.phase = "indexing"
                 logger.info(f"Table {bare_name}: indexing started (data complete)")
 
@@ -1246,20 +1313,21 @@ class RestoreProgressTracker:
     def _calculate_rows_loaded(self) -> int:
         """Calculate total rows loaded across all tables.
 
-        Uses FILE-BASED progress instead of processlist row percentages to avoid
-        the >100% issue caused by InnoDB's inaccurate EXPLAIN row estimates.
+        Uses PHASE-WEIGHTED progress to prevent premature 100% display:
+        - is_complete or index_complete: 100% of rows (truly done)
+        - data_complete only: 85% of rows (DATA_PHASE_WEIGHT) - indexing pending
+        - In progress: proportional based on files or processlist
 
-        Progress sources (in priority order):
-        1. data_complete=True (from "Enqueuing index"): 100% of rows
-        2. is_complete=True: 100% of rows
-        3. files_started > 0: (files_started / file_count) * rows_total
-        4. Fallback to processlist percent_complete (capped at 100%)
+        This ensures overall progress doesn't reach 100% while indexes are building.
         """
         total = 0
         for state in self._tables.values():
-            if state.is_complete or state.data_complete:
-                # Table fully complete or data phase complete
+            if state.is_complete or state.index_complete:
+                # Table fully complete (data + indexes done)
                 total += state.rows_total
+            elif state.data_complete:
+                # Data done, indexing pending - contribute 85%
+                total += int(DATA_PHASE_WEIGHT * state.rows_total)
             elif state.files_started > 0 and state.file_count > 0:
                 # File-based progress: use files_started / file_count
                 # This cannot exceed 100% since files_started <= file_count
