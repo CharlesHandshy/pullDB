@@ -178,12 +178,56 @@ class VirtualLog {
     // Scroll Handling & Visible Range
     // =========================================================================
 
+    /**
+     * Check if user is at the "live edge" where new events appear.
+     * For newestFirst (running jobs): top of list (scrollTop near 0)
+     * For oldestFirst (completed jobs): bottom of list
+     */
+    _isAtLiveEdge() {
+        const threshold = this.rowHeight * 2; // Within 2 rows of edge
+        
+        if (this._newestFirst) {
+            // New events appear at top
+            return this._scrollEl.scrollTop <= threshold;
+        } else {
+            // Completed jobs: events at bottom (rarely matters, no polling)
+            const maxScroll = this._scrollEl.scrollHeight - this._scrollEl.clientHeight;
+            return this._scrollEl.scrollTop >= maxScroll - threshold;
+        }
+    }
+
+    /**
+     * Update the external Pause/Play button state to match our polling state.
+     * Called when auto-pause/resume triggers from scroll behavior.
+     */
+    _updatePauseButtonState() {
+        const icon = document.getElementById('refresh-icon');
+        const label = document.getElementById('refresh-label');
+        
+        if (this.isRunning) {
+            if (icon) icon.textContent = '⏸';
+            if (label) label.textContent = 'Pause';
+        } else {
+            if (icon) icon.textContent = '▶';
+            if (label) label.textContent = 'Resume';
+        }
+    }
+
     _onScroll() {
         if (this._isDestroyed) return;
 
         // IMMEDIATE: Render placeholders for visible range (no delay)
         // This gives instant visual feedback during scroll
         this._render();
+
+        // Auto-pause when user scrolls away from live edge (reading history)
+        // Only applies to running jobs that are currently polling
+        if (this._newestFirst && this.isRunning && !this._isAtLiveEdge()) {
+            console.log('[VirtualLog] User scrolled away - auto-pausing');
+            this._stopPolling();
+            this.isRunning = false;
+            this._updatePauseButtonState();
+        }
 
         // DEBOUNCED: Wait for scroll to settle before loading data
         // This prevents hundreds of requests during rapid scroll wheel or drag

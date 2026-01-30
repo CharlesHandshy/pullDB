@@ -474,6 +474,10 @@ function toggleAutoRefresh() {
         virtualLog._startPolling();
         if (icon) icon.textContent = '⏸';
         if (label) label.textContent = 'Pause';
+        // Scroll to top so user sees new events when resuming
+        if (virtualLog._scrollEl && virtualLog._newestFirst) {
+            virtualLog._scrollEl.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     }
 }
 </script>
